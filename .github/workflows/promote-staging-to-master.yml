@@ -1,0 +1,100 @@
+name: Promote Staging To Master
+
+on:
+  workflow_run:
+    workflows: [ "Staging Qualification" ]
+    types: [ completed ]
+    branches: [ staging ]
+  workflow_dispatch:
+
+concurrency:
+  group: promote-staging-to-master
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: staging
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Refresh remote refs
+        run: git fetch origin master staging
+
+      - name: Resolve staging candidate SHA
+        id: candidate
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            CANDIDATE_SHA="${{ github.event.workflow_run.head_sha }}"
+          else
+            CANDIDATE_SHA="$(git rev-parse origin/staging)"
+          fi
+          test "$(git rev-parse origin/staging)" = "$CANDIDATE_SHA"
+          echo "sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Generate promotion batch inventory
+        run: |
+          npm run check:batch-inventory -- --base origin/master --head "${{ steps.candidate.outputs.sha }}" --write --require-ship --inventory ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.md"
+          npm run validate:batch-inventory -- --inventory ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.json" --base origin/master --head "${{ steps.candidate.outputs.sha }}" --require-ship
+
+      - name: Prove QA target before automatic deployment is enabled
+        if: vars.ENABLE_AUTO_PRODUCTION_DEPLOY == '1'
+        env:
+          RELEASE_TARGET_SHA: ${{ steps.candidate.outputs.sha }}
+          DEPLOY_PROD_REMOTE_HOST: ${{ secrets.DEPLOY_PROD_REMOTE_HOST }}
+          DEPLOY_PROD_REMOTE_DIR: ${{ secrets.DEPLOY_PROD_REMOTE_DIR }}
+          QA_SSH_HOST: ${{ secrets.QA_SSH_HOST }}
+          QA_APP_DIR: ${{ secrets.QA_APP_DIR }}
+          QA_RUNTIME_MARKER: ${{ secrets.QA_RUNTIME_MARKER }}
+          QA_DATABASE_MARKER: ${{ secrets.QA_DATABASE_MARKER }}
+          QA_TENANT_DATA_MARKER: ${{ secrets.QA_TENANT_DATA_MARKER }}
+          QA_DISPOSABLE_TEST_DATA: ${{ secrets.QA_DISPOSABLE_TEST_DATA }}
+          QA_DEPLOY_SUMMARY_FILE: .tmp/release-gates/${{ steps.candidate.outputs.sha }}/qa_deploy_summary.txt
+        run: npm run check:qa-target-proof -- --target-sha "${{ steps.candidate.outputs.sha }}" --report ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/qa_target_proof.json"
+
+      - name: Create or update staging-to-master PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          STAGING_QUALIFICATION_ARTIFACT_URL: ${{ github.event.workflow_run.html_url }}
+          PROMOTION_ENABLE_AUTO_MERGE: ${{ vars.ENABLE_PROMOTION_AUTO_MERGE }}
+        run: npm run promote:staging-to-master -- --base master --head staging --title "Promote staging to master" --candidate-sha "${{ steps.candidate.outputs.sha }}" --artifact-url "${{ github.event.workflow_run.html_url }}" --inventory-markdown ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.md"
+
+      - name: Write promotion summary
+        if: always()
+        run: |
+          {
+            echo "## Staging To Master Promotion"
+            echo ""
+            echo "- Candidate SHA: \`${{ steps.candidate.outputs.sha }}\`"
+            echo "- Promotion PR source: \`staging\`"
+            echo "- Production deployment enabled: \`${{ vars.ENABLE_AUTO_PRODUCTION_DEPLOY }}\`"
+            echo "- Auto-merge enabled: \`${{ vars.ENABLE_PROMOTION_AUTO_MERGE }}\`"
+            echo "- Emergency bypass: not used by this workflow"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload promotion artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promote-staging-to-master-${{ github.sha }}
+          path: .tmp/release-gates/**
+          if-no-files-found: ignore
+          retention-days: 30

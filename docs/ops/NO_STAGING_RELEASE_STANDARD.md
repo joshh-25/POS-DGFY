@@ -3,8 +3,14 @@
 ## Purpose
 Enforce production safety when no staging environment exists by requiring QA evidence before every production deploy.
 
+Development-to-production branch promotion is governed by `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`. This no-staging standard remains the production hard gate for the exact `origin/master` SHA after `staging -> master` promotion.
+
 ## Hard Gate Policy
 Production release is blocked unless all of the following are true for the exact target SHA:
+0. Batch inventory exists for the target SHA and every changed file belongs to exactly one release batch.
+   ```bash
+   npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<sha>/batch_inventory.json" --base origin/master~1 --head "<sha>" --require-ship
+   ```
 1. QA deploy evidence proves commit-pinned deployment success.
 2. QA multi-location smoke/contract checks pass.
 3. QA rollback drill result is passing.
@@ -75,6 +81,8 @@ Required files:
 8. `deploy_source_contract.json`
 9. `frontend_build_manifest.json` from production deploy logs
 10. `production_contract.json` from production deploy logs
+11. `qa_target_proof.json`
+12. `deployed_change_accuracy.json` after production deployment
 
 Current behavior note:
 1. `qa_deploy_summary.txt` must prove that QA deployed the exact `RELEASE_TARGET_SHA`.
@@ -155,6 +163,10 @@ Emergency bypass cannot override:
 2. Missing or failing merge adoption proof when high-risk paths changed.
 3. Stale frontend build parity.
 4. Production runtime SHA mismatch after deploy.
+5. Missing batch inventory.
+6. Payment-sensitive release uncertainty.
+7. Unknown or production-equivalent QA target.
+8. Deployed-change accuracy failure.
 
 ## References
 1. `docs/ops/PRODUCTION_CHECKLIST.md`

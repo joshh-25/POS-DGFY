@@ -46,6 +46,7 @@ This is the canonical entry point for implementation planning.
 2. Confirm ADR impact (`new`, `update`, or `not needed`).
 3. Confirm planning does not rely on deprecated docs.
 4. Run `npm run check:architecture` for architecture-sensitive changes.
+5. For release, CI/CD, branch, or production-promotion work, read `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`.
 
 ## Deprecated or Historical Material
 Use only for context. Do not use these as a source of architectural truth.

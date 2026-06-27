@@ -101,7 +101,7 @@ Recommended by environment:
 - Staging/Production: run `--verify` only when a known verification tenant/dataset is available
 
 ## 2. `scripts/deploy-remote.sh`
-Local convenience script that pushes to GitHub and triggers remote deploy over SSH.
+Local operator convenience script that triggers the existing SSH production deploy after the governed `staging -> master` promotion has produced the exact production SHA.
 
 Usage:
 ```bash
@@ -109,7 +109,7 @@ bash scripts/deploy-remote.sh
 ```
 
 Notes:
-- Operates on local `master` branch by design.
+- Operates on the production branch `master` by design after promotion; developers still open feature PRs into `staging` and do not push directly to `master`.
 - Meant to run locally, not on the production server.
 - Requires working SSH auth to production. Prefer key-based auth over password prompts.
 - When using a clean linked release worktree while another worktree has local `master` checked out, confirm `origin/master` already equals the intended release SHA or push the release worktree explicitly with `git push origin HEAD:master` before running this script. Do not let a stale local `master` from another worktree define the deploy target.

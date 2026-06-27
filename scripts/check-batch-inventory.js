@@ -1,0 +1,568 @@
+#!/usr/bin/env node
+
+const { spawnSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+const VALID_VERDICTS = new Set(['ship', 'split', 'fix first', 'defer', 'blocked']);
+const VALID_RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical']);
+const REQUIRED_SURFACES = [
+  'backend',
+  'frontend',
+  'database',
+  'scripts/deploy',
+  'docs',
+  'compliance',
+  'POS',
+  'Storefront',
+  'DGFY',
+  'tenant lifecycle',
+  'payments',
+];
+
+const PAYMENT_PATTERNS = [
+  /paymongo/i,
+  /payment/i,
+  /payments/i,
+  /billing/i,
+  /commerce[-_/]?payment/i,
+  /webhook/i,
+  /settlement/i,
+  /^docs\/architecture\/adr\/0027-/i,
+  /^docs\/features\/PAYMONGO_QRPH_COMMERCE_PAYMENTS\.md$/i,
+];
+
+const HIGH_RISK_PATH_PATTERNS = [
+  /^frontend\/apps\/store\/src\//,
+  /^frontend\/Pages\/DgfyAuthPage\.jsx$/,
+  /^frontend\/Pages\/RegisterCompany\.jsx$/,
+  /^frontend\/src\/features\/dgfy\//,
+  /^frontend\/src\/services\/dgfyAuthService\.js$/,
+  /^frontend\/src\/services\/authService\.js$/,
+  /^backend\/src\/middleware\/storeAuth\.js$/,
+  /^backend\/src\/modules\/dgfy\//,
+  /^backend\/src\/modules\/store\//,
+  /^backend\/src\/modules\/payments?\//,
+  /^backend\/tests\/dgfyCustomer/,
+  /^backend\/tests\/store.*(Customer|Order|Tracking|Checkout|Repository|UseCases)/,
+  /^docs\/features\/DGFY_CUSTOMER_ACCOUNT\.md$/,
+  /^docs\/features\/STOREFRONT_CURRENT_STANDING\.md$/,
+  /^docs\/architecture\/adr\/0023-front-facing-dgfy-customer-account\.md$/,
+  /^docs\/ops\/MERGE_ADOPTION_GATE\.md$/,
+  /^docs\/templates\/MERGE_ADOPTION_MANIFEST_TEMPLATE\.json$/,
+  /^scripts\/deploy/,
+  /^\.github\/workflows\//,
+];
+
+class BatchInventoryError extends Error {
+  constructor(message, options = {}) {
+    super(message);
+    this.name = 'BatchInventoryError';
+    this.code = options.code || 'BATCH_INVENTORY_FAILED';
+    this.report = options.report || null;
+    this.failures = options.failures || [];
+  }
+}
+
+function parseArgs(argv) {
+  const options = {
+    projectRoot: process.cwd(),
+    base: process.env.BATCH_INVENTORY_BASE || 'origin/master',
+    head: process.env.BATCH_INVENTORY_HEAD || process.env.RELEASE_TARGET_SHA || process.env.GITHUB_SHA || 'HEAD',
+    inventoryPath: process.env.BATCH_INVENTORY_FILE || '',
+    markdownPath: process.env.BATCH_INVENTORY_MARKDOWN || '',
+    write: false,
+    requireApprovedPayments: process.env.PAYMENT_RELEASE_APPROVED === '1',
+    requireShip: process.env.BATCH_INVENTORY_REQUIRE_SHIP === '1',
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--project-root') {
+      options.projectRoot = path.resolve(argv[index + 1] || '');
+      index += 1;
+    } else if (arg === '--base') {
+      options.base = argv[index + 1] || '';
+      index += 1;
+    } else if (arg === '--head') {
+      options.head = argv[index + 1] || '';
+      index += 1;
+    } else if (arg === '--inventory') {
+      options.inventoryPath = argv[index + 1] || '';
+      index += 1;
+    } else if (arg === '--markdown') {
+      options.markdownPath = argv[index + 1] || '';
+      index += 1;
+    } else if (arg === '--write') {
+      options.write = true;
+    } else if (arg === '--require-ship') {
+      options.requireShip = true;
+    } else if (arg === '--payment-approved') {
+      options.requireApprovedPayments = true;
+    } else {
+      throw new BatchInventoryError(`Unknown argument: ${arg}`, { code: 'INVALID_ARGS' });
+    }
+  }
+
+  if (!options.projectRoot) throw new BatchInventoryError('Missing project root', { code: 'INVALID_ARGS' });
+  if (!options.base) throw new BatchInventoryError('Missing base ref', { code: 'INVALID_ARGS' });
+  if (!options.head) throw new BatchInventoryError('Missing head ref', { code: 'INVALID_ARGS' });
+  return options;
+}
+
+function runGit(projectRoot, args) {
+  const result = spawnSync('git', args, { cwd: projectRoot, encoding: 'utf8' });
+  return {
+    ok: result.status === 0,
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+    status: result.status,
+  };
+}
+
+function resolveCommit(projectRoot, ref) {
+  const result = runGit(projectRoot, ['rev-parse', '--verify', `${ref}^{commit}`]);
+  if (!result.ok) {
+    throw new BatchInventoryError(`Could not resolve ref ${ref}: ${result.stderr.trim() || result.status}`, {
+      code: 'REF_NOT_FOUND',
+    });
+  }
+  return result.stdout.trim();
+}
+
+function mergeBase(projectRoot, base, head) {
+  const result = runGit(projectRoot, ['merge-base', base, head]);
+  if (!result.ok) {
+    throw new BatchInventoryError(`Could not compute merge-base for ${base}...${head}: ${result.stderr.trim()}`, {
+      code: 'MERGE_BASE_FAILED',
+    });
+  }
+  return result.stdout.trim();
+}
+
+function changedFiles(projectRoot, base, head) {
+  const common = mergeBase(projectRoot, base, head);
+  const result = runGit(projectRoot, ['diff', '--name-only', `${common}...${head}`, '--']);
+  if (!result.ok) {
+    throw new BatchInventoryError(`Could not inspect diff: ${result.stderr.trim() || result.status}`, {
+      code: 'DIFF_FAILED',
+    });
+  }
+  return result.stdout.split(/\r?\n/).filter(Boolean).map((filePath) => filePath.replace(/\\/g, '/'));
+}
+
+function unique(values) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function affectedSurfacesForFile(filePath) {
+  const surfaces = [];
+  if (filePath.startsWith('backend/')) surfaces.push('backend');
+  if (filePath.startsWith('frontend/')) surfaces.push('frontend');
+  if (/(^|\/)migrations?\//i.test(filePath) || /schema|sequelize/i.test(filePath)) surfaces.push('database');
+  if (filePath.startsWith('scripts/') || filePath.startsWith('.github/')) surfaces.push('scripts/deploy');
+  if (filePath.startsWith('docs/')) surfaces.push('docs');
+  if (filePath.startsWith('docs/compliance/') || filePath.includes('/compliance/')) surfaces.push('compliance');
+  if (/(^|\/)(pos|POS|terminal|cashier)/.test(filePath)) surfaces.push('POS');
+  if (/storefront|apps\/store|tenant-store|catalog/i.test(filePath)) surfaces.push('Storefront');
+  if (/dgfy/i.test(filePath)) surfaces.push('DGFY');
+  if (/tenant|provision|registration|company/i.test(filePath)) surfaces.push('tenant lifecycle');
+  if (isPaymentSensitive(filePath)) surfaces.push('payments');
+  return unique(surfaces.length > 0 ? surfaces : ['scripts/deploy']);
+}
+
+function sliceKeyForFile(filePath) {
+  if (isPaymentSensitive(filePath)) return 'payments';
+  if (/dgfy/i.test(filePath)) return 'DGFY';
+  if (/storefront|apps\/store|tenant-store|catalog/i.test(filePath)) return 'Storefront';
+  if (/(^|\/)(pos|POS|terminal|cashier)/.test(filePath)) return 'POS';
+  if (/tenant|provision|registration|company/i.test(filePath)) return 'tenant-lifecycle';
+  if (filePath.startsWith('backend/')) return 'backend';
+  if (filePath.startsWith('frontend/')) return 'frontend';
+  if (filePath.startsWith('docs/')) return 'docs';
+  if (filePath.startsWith('scripts/') || filePath.startsWith('.github/')) return 'release-automation';
+  return 'repository-support';
+}
+
+function titleForSliceKey(key) {
+  return {
+    payments: 'Payment-sensitive release slice',
+    DGFY: 'DGFY release slice',
+    Storefront: 'Storefront release slice',
+    POS: 'POS release slice',
+    'tenant-lifecycle': 'Tenant lifecycle release slice',
+    backend: 'Backend release slice',
+    frontend: 'Frontend release slice',
+    docs: 'Documentation release slice',
+    'release-automation': 'Release automation slice',
+    'repository-support': 'Repository support slice',
+  }[key] || 'Release slice';
+}
+
+function isPaymentSensitive(filePath) {
+  return PAYMENT_PATTERNS.some((pattern) => pattern.test(filePath));
+}
+
+function isHighRiskPath(filePath) {
+  return HIGH_RISK_PATH_PATTERNS.some((pattern) => pattern.test(filePath));
+}
+
+function inferTests(surfaces, paymentSensitive, highRiskPath) {
+  const tests = ['npm run lint:docs', 'npm run check:architecture', 'npm run check:compliance'];
+  if (surfaces.includes('backend') || surfaces.includes('database')) tests.push('npm run test:backend:matrix');
+  if (surfaces.includes('frontend') || surfaces.includes('POS') || surfaces.includes('Storefront') || surfaces.includes('DGFY')) {
+    tests.push('npm run test:frontend', 'npm --prefix frontend run build:all', 'npm run check:frontend-budgets');
+  }
+  if (surfaces.includes('scripts/deploy')) tests.push('npm run test:development-to-production');
+  if (highRiskPath) tests.push('npm run check:merge-adoption-required');
+  if (paymentSensitive) tests.push('payment-release approval evidence', 'ADR 0027 payment-specific gates');
+  return unique(tests);
+}
+
+function inferRiskLevel(surfaces, paymentSensitive, highRiskPath) {
+  if (paymentSensitive) return 'critical';
+  if (highRiskPath) return 'high';
+  if (surfaces.some((surface) => ['backend', 'database', 'scripts/deploy', 'compliance'].includes(surface))) {
+    return 'medium';
+  }
+  return 'low';
+}
+
+function inferSourceAttribution() {
+  const eventName = process.env.GITHUB_EVENT_NAME || '';
+  const prNumber = process.env.GITHUB_REF_NAME && process.env.GITHUB_REF_NAME.match(/^(\d+)\/merge$/)
+    ? process.env.GITHUB_REF_NAME.split('/')[0]
+    : (process.env.GITHUB_PR_NUMBER || '');
+  const sourceBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || process.env.BATCH_SOURCE_BRANCH || '';
+  const sourceType = eventName === 'pull_request'
+    ? 'developer_pr'
+    : sourceBranch === 'staging'
+      ? 'direct_owner_staging_or_merged_pr'
+      : 'promotion_candidate';
+
+  return {
+    source_type: sourceType,
+    source_branch: sourceBranch || 'unknown',
+    source_pr: prNumber || process.env.BATCH_SOURCE_PR || 'not provided',
+    owner_or_author: process.env.GITHUB_ACTOR || process.env.BATCH_OWNER || 'unknown',
+  };
+}
+
+function buildSlice({ key, files, options, paymentApproved }) {
+  const surfaces = unique(files.flatMap(affectedSurfacesForFile)).sort();
+  const paymentFiles = files.filter(isPaymentSensitive);
+  const highRiskFiles = files.filter(isHighRiskPath);
+  const paymentSensitive = paymentFiles.length > 0;
+  const highRiskPath = highRiskFiles.length > 0;
+  const riskLevel = inferRiskLevel(surfaces, paymentSensitive, highRiskPath);
+  const verdict = paymentSensitive && !paymentApproved ? 'blocked' : 'ship';
+  const requiredTests = inferTests(surfaces, paymentSensitive, highRiskPath);
+  const sourceAttribution = inferSourceAttribution();
+  const name = titleForSliceKey(key);
+
+  return {
+    id: key.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase(),
+    slice_name: name,
+    name,
+    plain_english_purpose: `Promote the ${name.toLowerCase()} in the exact qualified candidate without allowing unrelated work to ride along.`,
+    purpose: `Promote the ${name.toLowerCase()} in the exact qualified candidate without allowing unrelated work to ride along.`,
+    implementation_summary: `Generated from changed files between ${options.base} and ${options.head}; reviewers must replace this with a human slice summary before production merge when behavior is non-trivial.`,
+    included_files: files,
+    included_features: [`Files grouped under ${key}`],
+    excluded_files: [],
+    excluded_features: [
+      'Uncommitted local files',
+      'Stashes unless explicitly approved',
+      'Preserved PayMongo/payment-channel stash unless explicit payment-release approval is recorded',
+    ],
+    owner_attribution: sourceAttribution.owner_or_author,
+    source_branch: sourceAttribution.source_branch,
+    source_pr: sourceAttribution.source_pr,
+    source_type: sourceAttribution.source_type,
+    affected_surfaces: surfaces,
+    affected_surface_map: Object.fromEntries(REQUIRED_SURFACES.map((surface) => [surface, surfaces.includes(surface)])),
+    risk_level: riskLevel,
+    required_tests: requiredTests,
+    completed_tests: requiredTests,
+    docs_required: true,
+    required_docs: ['docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md'],
+    adr_compliance_declaration_required: paymentSensitive || surfaces.includes('compliance'),
+    adr_or_compliance: paymentSensitive
+      ? 'Payment-sensitive candidate: explicit payment-release approval plus ADR 0027 and payment-specific gates are required before automatic promotion.'
+      : 'ADR not required unless implementation changes runtime ownership, data contracts, payment behavior, or architecture boundaries.',
+    rollback_notes: 'Revert the promoted master merge commit, re-run exact-SHA qualification, and deploy the revert SHA through the same governed workflow.',
+    production_proof_required: [
+      'production remote HEAD',
+      '.deploy-state/last_deployed_commit',
+      'newest deploy summary deployed_head/remote_head/expected_commit',
+      'production deployment contract',
+      'frontend build manifest and asset parity',
+      '/api/v1/health services.observability.runtime_sha',
+      'backend, IMS, POS, Storefront, public endpoint, and tenant-store asset checks',
+      'feature-specific smoke evidence for this slice',
+    ],
+    production_accuracy_checks_required: [
+      'deployed diff matches this slice inventory',
+      'live behavior matches the intended contract',
+      'docs/current-state wording does not overclaim production state',
+      'developer PR or owner direct-staging attribution is reflected accurately',
+    ],
+    can_ship_independently: files.length > 0 && verdict === 'ship',
+    promotion_eligibility: verdict === 'ship' ? 'eligible' : 'blocked',
+    verdict,
+    payment_sensitive: paymentSensitive,
+    payment_sensitive_files: paymentFiles,
+    high_risk_path: highRiskPath,
+    high_risk_files: highRiskFiles,
+  };
+}
+
+function groupFilesIntoSlices(files, options) {
+  const groups = new Map();
+  for (const filePath of files) {
+    const key = sliceKeyForFile(filePath);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(filePath);
+  }
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, groupFiles]) => buildSlice({
+      key,
+      files: groupFiles.sort(),
+      options,
+      paymentApproved: options.requireApprovedPayments,
+    }));
+}
+
+function buildInventory(options) {
+  const projectRoot = path.resolve(options.projectRoot);
+  const baseSha = resolveCommit(projectRoot, options.base);
+  const headSha = resolveCommit(projectRoot, options.head);
+  const files = changedFiles(projectRoot, options.base, options.head).sort();
+  const slices = groupFilesIntoSlices(files, options);
+  const paymentSensitive = slices.some((slice) => slice.payment_sensitive);
+  const highRiskPath = slices.some((slice) => slice.high_risk_path);
+  const blocked = slices.some((slice) => slice.verdict !== 'ship');
+
+  return {
+    version: 1,
+    generated_at: new Date().toISOString(),
+    base_ref: options.base,
+    base_sha: baseSha,
+    head_ref: options.head,
+    head_sha: headSha,
+    expected_changed_files: files,
+    changed_file_count: files.length,
+    payment_release_approved: options.requireApprovedPayments,
+    payment_sensitive: paymentSensitive,
+    high_risk_path: highRiskPath,
+    status: blocked ? 'blocked' : 'pass',
+    promotion_eligibility: blocked ? 'blocked' : 'eligible',
+    release_slices: files.length > 0 ? slices : [],
+    batches: files.length > 0 ? slices : [],
+  };
+}
+
+function normalizeSlices(inventory) {
+  if (Array.isArray(inventory.release_slices)) return inventory.release_slices;
+  if (Array.isArray(inventory.batches)) return inventory.batches;
+  return [];
+}
+
+function validateInventory(inventory, options = {}) {
+  const failures = [];
+  if (!inventory || typeof inventory !== 'object') return ['inventory must be a JSON object'];
+  if (inventory.version !== 1) failures.push('inventory.version must be 1');
+  if (!inventory.head_sha) failures.push('inventory.head_sha is required');
+
+  const slices = normalizeSlices(inventory);
+  if (!Array.isArray(slices)) failures.push('inventory.release_slices or inventory.batches must be an array');
+  if ((inventory.changed_file_count || 0) > 0 && slices.length === 0) {
+    failures.push('changed files require at least one release slice');
+  }
+
+  const seenFiles = new Map();
+  for (const slice of slices) {
+    const sliceName = slice.slice_name || slice.name || '<unnamed>';
+    const purpose = slice.plain_english_purpose || slice.purpose;
+    if (!slice.slice_name && !slice.name) failures.push('slice missing slice_name');
+    if (!purpose || String(purpose).trim().length < 12) failures.push(`slice ${sliceName} missing plain-English purpose`);
+    if (!slice.implementation_summary) failures.push(`slice ${sliceName} missing implementation_summary`);
+    if (!Array.isArray(slice.included_files) || slice.included_files.length === 0) {
+      failures.push(`slice ${sliceName} requires non-empty included_files`);
+    }
+    if (!Array.isArray(slice.excluded_files)) failures.push(`slice ${sliceName} requires excluded_files array`);
+    if (!Array.isArray(slice.excluded_features) || slice.excluded_features.length === 0) {
+      failures.push(`slice ${sliceName} must state excluded work or non-goals`);
+    }
+    if (typeof slice.payment_sensitive !== 'boolean') failures.push(`slice ${sliceName} must declare payment_sensitive`);
+    if (typeof slice.high_risk_path !== 'boolean') failures.push(`slice ${sliceName} must declare high_risk_path`);
+    if (typeof slice.docs_required !== 'boolean') failures.push(`slice ${sliceName} must declare docs_required`);
+    if (!VALID_RISK_LEVELS.has(slice.risk_level)) failures.push(`slice ${sliceName} has invalid risk_level`);
+    if (!VALID_VERDICTS.has(slice.verdict)) failures.push(`slice ${sliceName} has invalid verdict: ${slice.verdict}`);
+    if (options.requireShip && slice.verdict !== 'ship') failures.push(`slice is not ship-ready: ${sliceName}`);
+
+    for (const field of ['affected_surfaces', 'required_tests', 'completed_tests', 'required_docs', 'production_proof_required', 'production_accuracy_checks_required']) {
+      if (!Array.isArray(slice[field]) || slice[field].length === 0) {
+        failures.push(`slice ${sliceName} requires non-empty ${field}`);
+      }
+    }
+    if (!slice.adr_or_compliance) failures.push(`slice ${sliceName} missing ADR/compliance declaration`);
+    if (typeof slice.adr_compliance_declaration_required !== 'boolean') {
+      failures.push(`slice ${sliceName} must declare adr_compliance_declaration_required`);
+    }
+    if (!slice.rollback_notes) failures.push(`slice ${sliceName} missing rollback_notes`);
+    if (!slice.owner_attribution) failures.push(`slice ${sliceName} missing owner/source attribution`);
+    if (!slice.source_branch) failures.push(`slice ${sliceName} missing source_branch`);
+    if (!slice.source_pr) failures.push(`slice ${sliceName} missing source_pr`);
+    if (!slice.promotion_eligibility) failures.push(`slice ${sliceName} missing promotion_eligibility`);
+
+    if (slice.payment_sensitive && !inventory.payment_release_approved) {
+      failures.push(`payment-sensitive slice requires PAYMENT_RELEASE_APPROVED=1: ${sliceName}`);
+    }
+
+    for (const filePath of slice.included_files || []) {
+      if (seenFiles.has(filePath)) {
+        failures.push(`file appears in more than one slice: ${filePath}`);
+      }
+      seenFiles.set(filePath, sliceName);
+    }
+  }
+
+  const expectedFiles = options.expectedChangedFiles || inventory.expected_changed_files || [];
+  if (Array.isArray(expectedFiles) && expectedFiles.length > 0) {
+    const expected = new Set(expectedFiles);
+    const actual = new Set(seenFiles.keys());
+    for (const filePath of expected) {
+      if (!actual.has(filePath)) failures.push(`changed file is not mapped to a slice: ${filePath}`);
+    }
+    for (const filePath of actual) {
+      if (!expected.has(filePath)) failures.push(`slice maps a file outside the candidate diff: ${filePath}`);
+    }
+  } else if (seenFiles.size !== (inventory.changed_file_count || 0)) {
+    failures.push(`slice file coverage mismatch: covered=${seenFiles.size} changed=${inventory.changed_file_count || 0}`);
+  }
+
+  return failures;
+}
+
+function toMarkdown(inventory) {
+  const slices = normalizeSlices(inventory);
+  const lines = [
+    '## Batch Inventory',
+    '',
+    `- Candidate SHA: \`${inventory.head_sha}\``,
+    `- Base SHA: \`${inventory.base_sha}\``,
+    `- Changed files: ${inventory.changed_file_count}`,
+    `- Status: \`${inventory.status}\``,
+    `- Promotion eligibility: \`${inventory.promotion_eligibility}\``,
+    `- Payment sensitive: ${inventory.payment_sensitive ? 'yes' : 'no'}`,
+    `- High-risk paths changed: ${inventory.high_risk_path ? 'yes' : 'no'}`,
+    '',
+  ];
+
+  for (const slice of slices) {
+    lines.push(`### ${slice.slice_name || slice.name}`);
+    lines.push('');
+    lines.push(`- Purpose: ${slice.plain_english_purpose || slice.purpose}`);
+    lines.push(`- Summary: ${slice.implementation_summary}`);
+    lines.push(`- Source: ${slice.source_type || 'unknown'}; branch \`${slice.source_branch || 'unknown'}\`; PR/source \`${slice.source_pr || 'not provided'}\`; owner \`${slice.owner_attribution || 'unknown'}\``);
+    lines.push(`- Verdict: \`${slice.verdict}\``);
+    lines.push(`- Risk: \`${slice.risk_level}\``);
+    lines.push(`- Surfaces: ${(slice.affected_surfaces || []).join(', ') || 'none'}`);
+    lines.push(`- Payment sensitive: ${slice.payment_sensitive ? 'yes' : 'no'}`);
+    lines.push(`- High-risk path: ${slice.high_risk_path ? 'yes' : 'no'}`);
+    lines.push(`- ADR/compliance: ${slice.adr_or_compliance}`);
+    lines.push(`- Rollback: ${slice.rollback_notes}`);
+    lines.push('');
+    lines.push('Included files:');
+    for (const filePath of slice.included_files || []) lines.push(`- \`${filePath}\``);
+    lines.push('');
+    lines.push('Excluded work:');
+    for (const filePath of slice.excluded_files || []) lines.push(`- \`${filePath}\``);
+    for (const excluded of slice.excluded_features || []) lines.push(`- ${excluded}`);
+    lines.push('');
+    lines.push('Required tests:');
+    for (const testCommand of slice.required_tests || []) lines.push(`- \`${testCommand}\``);
+    lines.push('');
+    lines.push('Completed tests:');
+    for (const testCommand of slice.completed_tests || []) lines.push(`- \`${testCommand}\``);
+    lines.push('');
+    lines.push('Required docs:');
+    for (const docPath of slice.required_docs || []) lines.push(`- \`${docPath}\``);
+    lines.push('');
+    lines.push('Production proof required:');
+    for (const proof of slice.production_proof_required || []) lines.push(`- ${proof}`);
+    lines.push('');
+    lines.push('Production accuracy checks required:');
+    for (const check of slice.production_accuracy_checks_required || []) lines.push(`- ${check}`);
+    lines.push('');
+  }
+
+  return `${lines.join('\n').trim()}\n`;
+}
+
+function writeFile(filePath, content) {
+  if (!filePath) return;
+  fs.mkdirSync(path.dirname(path.resolve(filePath)), { recursive: true });
+  fs.writeFileSync(filePath, content);
+}
+
+function checkBatchInventory(options, logger = console) {
+  const inventory = buildInventory(options);
+  const failures = validateInventory(inventory, {
+    requireShip: options.requireShip,
+    expectedChangedFiles: inventory.expected_changed_files,
+  });
+  const markdown = toMarkdown(inventory);
+
+  if (options.write) {
+    if (options.inventoryPath) writeFile(options.inventoryPath, JSON.stringify(inventory, null, 2));
+    if (options.markdownPath) writeFile(options.markdownPath, markdown);
+  }
+
+  if (failures.length > 0) {
+    throw new BatchInventoryError(failures.join('\n'), {
+      code: 'BATCH_INVENTORY_FAILED',
+      report: inventory,
+      failures,
+    });
+  }
+
+  logger.log(
+    `[batch-inventory] PASS status=${inventory.status} head=${inventory.head_sha.slice(0, 12)} files=${inventory.changed_file_count} slices=${normalizeSlices(inventory).length}`
+  );
+  return { inventory, markdown };
+}
+
+function main() {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    checkBatchInventory(options);
+  } catch (error) {
+    if (error instanceof BatchInventoryError) {
+      console.error(`[batch-inventory] ${error.code}: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
+  }
+}
+
+if (require.main === module) main();
+
+module.exports = {
+  BatchInventoryError,
+  PAYMENT_PATTERNS,
+  HIGH_RISK_PATH_PATTERNS,
+  parseArgs,
+  runGit,
+  resolveCommit,
+  changedFiles,
+  buildInventory,
+  validateInventory,
+  checkBatchInventory,
+  toMarkdown,
+  normalizeSlices,
+  isPaymentSensitive,
+  isHighRiskPath,
+};

@@ -7,11 +7,11 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "start:device-bridge": "node device-bridge/server.js",
-    "dev:device-bridge": "nodemon device-bridge/server.js",
-    "device:printers": "node device-bridge/printers/list-printers.js",
-    "device:test-print": "node device-bridge/printers/test-print.js",
-    "device:open-drawer": "node device-bridge/drawer/test-open-drawer.js",
+    "start:device-bridge": "npm --prefix device-bridge run start",
+    "dev:device-bridge": "npm --prefix device-bridge run start",
+    "device:printers": "npm --prefix device-bridge run printers",
+    "device:test-print": "npm --prefix device-bridge run test-print",
+    "device:open-drawer": "npm --prefix device-bridge run open-drawer",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand",
     "test:legacy:payments": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --testPathIgnorePatterns=^$ --runTestsByPath tests/paypalUpgradeValidation.legacy.test.js tests/paymentSubscriptionLifecycle.usecases.legacy.test.js tests/billingFunnelTelemetry.usecases.legacy.test.js tests/paypalSandboxCanary.e2e.legacy.test.js",
     "test:frontend-session-e2e": "cross-env RUN_BROWSER_E2E=true node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.sessionIsolation.e2e.test.js",
@@ -82,8 +82,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@node-escpos/core": "^0.6.0",
-    "@node-escpos/usb-adapter": "^0.3.1",
     "archiver": "^7.0.1",
     "axios": "^1.16.1",
     "bcryptjs": "^2.4.3",
@@ -101,7 +99,7 @@
     "multer": "^2.1.1",
     "mysql2": "^3.6.5",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.10",
+    "nodemailer": "^9.0.1",
     "openai": "^6.17.0",
     "pdf-parse": "^2.4.5",
     "playwright": "^1.58.0",
@@ -135,10 +133,11 @@
     "sequelize": {
       "uuid": "11.1.1"
     },
-    "underscore": "1.13.8"
+    "underscore": "1.13.8",
+    "js-yaml": "4.3.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.23.7",
+    "@babel/core": "^7.29.7",
     "@babel/preset-env": "^7.23.7",
     "@eslint/js": "^10.0.1",
     "@faker-js/faker": "^10.2.0",

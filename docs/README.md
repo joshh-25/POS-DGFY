@@ -16,7 +16,7 @@ Start here for all planning and implementation work:
 ## High-Value Sections
 - `docs/architecture`: architecture boundaries, governance, ADRs
 - `docs/api`: API specs and integration guides
-- `docs/ops`: production runbooks, hosting profile guidance, no-staging hard-gate policy, developer deployment handoff, and release checklists
+- `docs/ops`: production runbooks, development-to-production workflow, hosting profile guidance, no-staging hard-gate policy, developer deployment handoff, and release checklists
   - shared/VPS hosting profile runbook: `docs/ops/HOSTING_PROFILES.md`
   - production observability and AI-safe incident handoff: `docs/ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md`
   - current production release state: `docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md`
@@ -87,6 +87,7 @@ Start here for all planning and implementation work:
 7. POS and storefront checkout transactions are source-separated (`in_store` vs `online_store`) across POS history, Orders mode, and unified sales reporting contracts.
 8. Weighted average cost valuation is additive and exposed across inventory, purchasing, dashboard, and reporting flows (ADR 0010).
 9. Production release policy is no-staging hard-gated by QA evidence (`docs/ops/NO_STAGING_RELEASE_STANDARD.md`) before deploy. PR/branch adoption releases must also use the merge-adoption manifest gate (`docs/ops/MERGE_ADOPTION_GATE.md`) when final conflict resolution needs to prove new branch behavior and preserved master behavior both survived.
+   - Development-to-production promotion is governed by `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`: developers use feature branches and PRs into `staging`, owner direct-staging is the only exception, `master` is production-only, and production deploys only the exact `origin/master` SHA after batch inventory, QA proof, staging-to-master PR review, master requalification, and deployed-change accuracy review.
 10. POS terminal location safety now includes audited shift-location remediation and strict-binding readiness guardrails before enabling `pos_terminal_location_binding_enforced=true`.
    - POS terminal identity remains required for shift and checkout operations. In warn mode, first-use tenants without an active registry or stored terminal default to `COUNTER-01` as the actual terminal identity; enforce mode still blocks until an admin configures an active terminal registry entry.
 11. POS offline operations (including checkout replay) use a durable queue contract with explicit statuses (`queued`, `replaying`, `replayed`, `failed_manual_resolution_required`) and operator-facing Sync Queue controls.

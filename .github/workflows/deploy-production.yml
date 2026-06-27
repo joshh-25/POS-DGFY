@@ -1,0 +1,106 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: [ "Exact Master SHA Qualification" ]
+    types: [ completed ]
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      release_target_sha:
+        description: Exact origin/master SHA to deploy
+        required: true
+        type: string
+      dry_run:
+        description: Run all local CI deploy gates and skip the production SSH mutation
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event_name == 'workflow_dispatch' || (vars.ENABLE_AUTO_PRODUCTION_DEPLOY == '1' && github.event.workflow_run.conclusion == 'success')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Resolve deploy target SHA
+        id: target
+        shell: bash
+        run: |
+          git fetch origin master
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TARGET_SHA="${{ inputs.release_target_sha }}"
+          else
+            TARGET_SHA="${{ github.event.workflow_run.head_sha }}"
+          fi
+          test "$(git rev-parse origin/master)" = "$TARGET_SHA"
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Recreate and validate deployment inventory
+        run: |
+          npm run check:batch-inventory -- --base origin/master~1 --head "${{ steps.target.outputs.sha }}" --write --require-ship --inventory ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.md"
+          npm run validate:batch-inventory -- --inventory ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.json" --base origin/master~1 --head "${{ steps.target.outputs.sha }}" --require-ship
+
+      - name: Deploy exact origin/master SHA
+        env:
+          RELEASE_TARGET_SHA: ${{ steps.target.outputs.sha }}
+          PRODUCTION_DEPLOY_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
+          DEPLOY_PROD_REMOTE_HOST: ${{ secrets.DEPLOY_PROD_REMOTE_HOST }}
+          DEPLOY_PROD_REMOTE_PORT: ${{ secrets.DEPLOY_PROD_REMOTE_PORT }}
+          DEPLOY_PROD_REMOTE_USER: ${{ secrets.DEPLOY_PROD_REMOTE_USER }}
+          DEPLOY_PROD_REMOTE_DIR: ${{ secrets.DEPLOY_PROD_REMOTE_DIR }}
+          QA_BASE_URL: ${{ secrets.QA_BASE_URL }}
+          QA_SSH_HOST: ${{ secrets.QA_SSH_HOST }}
+          QA_SSH_PORT: ${{ secrets.QA_SSH_PORT }}
+          QA_SSH_USER: ${{ secrets.QA_SSH_USER }}
+          QA_APP_DIR: ${{ secrets.QA_APP_DIR }}
+          QA_COMPANY_TOKEN: ${{ secrets.QA_COMPANY_TOKEN }}
+          QA_AUTH_JWT: ${{ secrets.QA_AUTH_JWT }}
+          QA_RUNTIME_MARKER: ${{ secrets.QA_RUNTIME_MARKER }}
+          QA_DATABASE_MARKER: ${{ secrets.QA_DATABASE_MARKER }}
+          QA_TENANT_DATA_MARKER: ${{ secrets.QA_TENANT_DATA_MARKER }}
+          QA_DISPOSABLE_TEST_DATA: ${{ secrets.QA_DISPOSABLE_TEST_DATA }}
+        run: npm run deploy:prod:ci
+
+      - name: Write deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Production Deploy"
+            echo ""
+            echo "- Target SHA: \`${{ steps.target.outputs.sha }}\`"
+            echo "- Dry run: \`${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}\`"
+            echo "- Source: exact \`origin/master\` only"
+            echo "- Emergency bypass: not automatic and not used by this workflow"
+            echo "- Accuracy report: \`.tmp/release-gates/${{ steps.target.outputs.sha }}/deployed_change_accuracy.json\` after live deploy"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload production deployment artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-production-${{ steps.target.outputs.sha }}
+          path: .tmp/release-gates/${{ steps.target.outputs.sha }}/**
+          if-no-files-found: error
+          retention-days: 90

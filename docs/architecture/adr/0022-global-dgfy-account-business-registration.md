@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-06-16
+last_reviewed: 2026-06-27
 applies_to: dgfy_accounts, tenant_registration, storefront_account, tenant_user_invitations
 topic: global_dgfy_account_business_registration
 ---
@@ -46,6 +46,9 @@ Introduce a landlord-scoped DGFY account identity.
 27. Every platform-admin DGFY account mutation writes a landlord-scoped `dgfy_account_admin_audit_logs` record with safe before/after snapshots, actor username, reason when applicable, request metadata, and no secrets such as password hashes, tokens, or OTPs.
 28. Platform admin may create admin-provisioned DGFY accounts for merchant onboarding without public OTP. These accounts are active and may use a temporary password for platform-led DGFY, IMS, and POS setup, but they must be marked `provisioning_status='admin_provisioned'`, `temporary_password_active=true`, and `email_verification_source='platform_admin_provisioned'`. Phone remains unverified. Temporary passwords are returned only in the creation response and must never be written to audit snapshots.
 29. Admin-provisioned accounts are a privileged platform-admin path only. Public DGFY registration still requires `dgfy_account_verification` OTP and legal acknowledgement before account creation. Admin provisioning evidence is not a substitute for merchant-facing legal acknowledgement; merchant terms acceptance remains distinct and must be captured before owner-authorized self-service or sensitive business actions depend on it.
+30. Platform-admin tenant provisioning is fail-closed and retryable. A tenant remains `pending` until database provisioning completes. Retrying the same company may reuse only an exact pending `platform_admin` record with the same ownership shape; active completed companies and mismatched identities remain conflicts. Retry rotates the submitted temporary credential and records `provisioning_attempt=retry` in audit metadata.
+31. Combined DGFY-plus-company reconciliation may reuse an exact admin-provisioned account and linked tenant only when tenant provisioning is still pending, or when the tenant is active but the linked account still lacks an accepted membership. The active case must skip database reprovisioning and reconcile the tenant-local master-admin profile and accepted membership. Responses after post-commit failure must identify the failed phase and state that the retained partial state is retryable; they must not return generic success.
+32. The authenticated assisted-provisioning transports allow up to 180 seconds for synchronous first-time tenant migration while the global server timeout remains 30 seconds. This route-scoped transport allowance prevents a completed provisioning operation from appearing as a network failure to the Platform Admin UI; it does not relax authentication, validation, or database activation rules.
 
 ## Consequences
 

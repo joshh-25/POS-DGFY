@@ -1,0 +1,156 @@
+name: Exact Master SHA Qualification
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      release_target_sha:
+        description: Exact origin/master SHA to qualify
+        required: false
+        type: string
+
+concurrency:
+  group: exact-master-sha-qualification-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: sku_inventory_manager_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Resolve exact master SHA
+        id: target
+        shell: bash
+        run: |
+          git fetch origin master
+          if [[ -n "${{ inputs.release_target_sha }}" ]]; then
+            TARGET_SHA="${{ inputs.release_target_sha }}"
+          else
+            TARGET_SHA="${{ github.sha }}"
+          fi
+          test "$(git rev-parse origin/master)" = "$TARGET_SHA"
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Validate deploy source contract
+        run: npm run check:deploy-source-contract -- --target-sha "${{ steps.target.outputs.sha }}" --remote-ref origin/master --require-remote-match --report ".tmp/release-gates/${{ steps.target.outputs.sha }}/deploy_source_contract.master.json"
+
+      - name: Generate and validate final batch inventory
+        run: |
+          npm run check:batch-inventory -- --base origin/master~1 --head "${{ steps.target.outputs.sha }}" --write --require-ship --inventory ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.md"
+          npm run validate:batch-inventory -- --inventory ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.json" --base origin/master~1 --head "${{ steps.target.outputs.sha }}" --require-ship
+
+      - name: Lint governed docs
+        run: npm run lint:docs
+
+      - name: Check architecture
+        run: npm run check:architecture
+
+      - name: Check compliance
+        run: npm run check:compliance
+
+      - name: Validate production env fixtures
+        run: npm run check:production-env
+
+      - name: Audit dependency trees
+        run: |
+          npm run audit:dependencies:prod
+          npm run audit:dependencies
+
+      - name: Prepare backend test schema
+        working-directory: ./backend
+        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+      - name: Run backend test matrix
+        run: npm run test:backend:matrix
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+      - name: Run frontend tests and builds
+        run: |
+          npm run test:frontend
+          npm --prefix frontend run build:all
+          npm run check:frontend-budgets
+
+      - name: Run development-to-production script tests
+        run: npm run test:development-to-production
+
+      - name: Check merge-adoption requirement against final tree
+        run: npm run check:merge-adoption-required -- --base origin/master~1 --head "${{ steps.target.outputs.sha }}"
+
+      - name: Write exact master qualification summary
+        if: always()
+        run: |
+          {
+            echo "## Exact Master SHA Qualification"
+            echo ""
+            echo "- Qualified SHA: \`${{ steps.target.outputs.sha }}\`"
+            echo "- Required before production deployment: yes"
+            echo "- Batch inventory: \`.tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.json\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact master qualification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-master-sha-qualification-${{ steps.target.outputs.sha }}
+          path: .tmp/release-gates/${{ steps.target.outputs.sha }}/**
+          if-no-files-found: error
+          retention-days: 30

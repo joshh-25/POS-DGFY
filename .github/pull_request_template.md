@@ -34,6 +34,20 @@
 - [ ] Manual verification performed (if applicable)
 - Key test command outputs:
 
+## Batch Inventory And Promotion
+- [ ] Batch inventory generated for this candidate
+- Inventory artifact:
+- [ ] Every changed file belongs to exactly one release batch
+- [ ] Excluded work and non-goals are listed
+- [ ] Slice name, plain-English purpose, implementation summary, owner/source branch or PR reference, affected surfaces, risk level, tests/docs, rollback notes, production proof, and accuracy checks are complete for every slice
+- [ ] All batches are `ship`, or non-ship batches are removed from this PR
+- [ ] Payment-sensitive changes are absent, or explicit payment-release approval is linked
+- Required command:
+```bash
+npm run check:batch-inventory -- --base origin/master --head HEAD --write --require-ship
+npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<sha>/batch_inventory.json" --base origin/master --head HEAD --require-ship
+```
+
 ## Telemetry And Observability
 - [ ] New behavior emits required events/metrics
 - [ ] Event schema changes documented
@@ -43,6 +57,8 @@
 - [ ] Migration and rollback steps documented
 - [ ] Feature flag/gradual rollout strategy documented (if needed)
 - [ ] Backward compatibility validated
+- [ ] If this is a `staging -> master` promotion PR, exact staging SHA qualification evidence is linked
+- [ ] Production deployment is not claimed complete until exact `origin/master` SHA proof and deployed-change accuracy review are complete
 
 ## Merge Adoption Evidence
 - [ ] This PR does not require merge-adoption proof

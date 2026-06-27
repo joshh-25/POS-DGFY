@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-26
+last_reviewed: 2026-06-27
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -317,6 +317,10 @@ Production email delivery is closed for the SMTP path. DGFY in-account invitatio
 ## Admin Interface
 
 Located at `/admin/tenants`.
+
+Platform-admin assisted provisioning exposes only `Company only` and `DGFY + Company` on this route; the redundant legacy `+ Add Tenant` control is removed. `Company only` remains operationally provisioned but cannot use DGFY login, company switching, owner actions, or POS access until owner assignment creates an accepted membership.
+
+Assisted provisioning retries are identity-bound and fail-closed. A matching pending platform-admin tenant may resume database provisioning without creating a second tenant or database. For combined provisioning, an active tenant with the exact linked admin-provisioned account may resume only when accepted membership assignment is incomplete; this reconciliation skips database provisioning and repairs the tenant-local master-admin/membership link. Other duplicates remain conflicts. Partial failures return the failed phase, retained record identifiers, and `retryable=true` instead of a generic success response.
 
 **Features:**
 - **List View**: Filter by status (Pending, Active, etc.).

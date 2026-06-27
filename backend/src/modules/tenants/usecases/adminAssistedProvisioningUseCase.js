@@ -49,7 +49,7 @@ const buildTenantAuditPayload = ({ tenantId, action, actor, reason, metadata = {
     metadata: metadata.extra || {}
 });
 
-const validateAccountInput = async ({ body, dgfyAccountRepository }) => {
+const validateAccountInput = async ({ body, dgfyAccountRepository, allowRetry = false }) => {
     const firstName = normalizeName(body.first_name || body.firstName);
     const middleName = normalizeName(body.middle_name || body.middleName || '');
     const lastName = normalizeName(body.last_name || body.lastName);
@@ -69,14 +69,61 @@ const validateAccountInput = async ({ body, dgfyAccountRepository }) => {
     if (temporaryPassword.length < 8) {
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Temporary password must be at least 8 characters.', { statusCode: 400 });
     }
-    if (await dgfyAccountRepository.findByEmail(email)) {
+    const existingByEmail = await dgfyAccountRepository.findByEmail(email);
+    const existingByPhone = await dgfyAccountRepository.findByPhone(phone);
+    const retryAccount = allowRetry
+        && existingByEmail
+        && existingByEmail.id === existingByPhone?.id
+        && existingByEmail.provisioning_status === 'admin_provisioned'
+        && !existingByEmail.deleted_at
+        ? existingByEmail
+        : null;
+    if (existingByEmail && !retryAccount) {
         throw new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this email address.', { statusCode: 409 });
     }
-    if (await dgfyAccountRepository.findByPhone(phone)) {
+    if (existingByPhone && !retryAccount) {
         throw new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this phone number.', { statusCode: 409 });
     }
 
-    return { firstName, middleName, lastName, email, phone, temporaryPassword };
+    return { firstName, middleName, lastName, email, phone, temporaryPassword, retryAccount };
+};
+
+const isRetryableTenant = ({ tenant, ownerAccountId = null, ownershipStatus }) => (
+    tenant
+    && tenant.status === 'pending'
+    && tenant.provisioning_source === 'platform_admin'
+    && String(tenant.owner_dgfy_account_id || '') === String(ownerAccountId || '')
+    && tenant.ownership_status === ownershipStatus
+);
+
+const refreshRetryCredentials = async ({
+    tenant,
+    tenantInput,
+    account = null,
+    accountTemporaryPassword = null,
+    tenantAdminRepository,
+    dgfyAccountRepository,
+    hashPassword,
+    transaction
+}) => {
+    const passwordHash = await hashPassword(tenantInput.temporaryPassword);
+    await tenantAdminRepository.updateTenant(tenant, {
+        admin_email: tenantInput.adminEmail,
+        admin_phone: tenantInput.adminPhone,
+        admin_password_hash: passwordHash,
+        settings: {
+            ...(tenant.settings || {}),
+            workflow_mode: tenantInput.workflowMode
+        }
+    }, { transaction });
+    if (account) {
+        const accountPasswordHash = await hashPassword(accountTemporaryPassword || tenantInput.temporaryPassword);
+        await dgfyAccountRepository.updateAdminProfile(account, {
+            password_hash: accountPasswordHash,
+            temporary_password_active: true,
+            is_active: true
+        }, { transaction });
+    }
 };
 
 const createAdminProvisionedAccount = async ({ input, dgfyAccountRepository, hashPassword, transaction }) => (
@@ -224,33 +271,53 @@ export const buildCreateAdminProvisionedTenantUseCase = ({
     idGenerator,
     logger
 }) => async ({ body = {}, actor = {}, metadata = {} } = {}) => {
+    let persistedTenant = null;
     try {
         const reason = requireReason(body.reason);
         const tenantInput = validateTenantInput({ body });
-        if (await tenantAdminRepository.findTenantByName(tenantInput.name)) {
+        const existingTenant = await tenantAdminRepository.findTenantByName(tenantInput.name);
+        if (existingTenant && !isRetryableTenant({
+            tenant: existingTenant,
+            ownerAccountId: null,
+            ownershipStatus: 'unassigned'
+        })) {
             throw new DomainError(DomainErrorCode.CONFLICT, 'A company with this name already exists.', { statusCode: 409 });
         }
 
         const tenant = await tenantAdminRepository.transaction(async (transaction) => {
-            const created = await createTenantRecord({
-                tenantInput,
-                tenantAdminRepository,
-                hashPassword,
-                idGenerator,
-                ownerDgfyAccountId: null,
-                ownershipStatus: 'unassigned',
-                transaction
-            });
+            const created = existingTenant || await createTenantRecord({
+                    tenantInput,
+                    tenantAdminRepository,
+                    hashPassword,
+                    idGenerator,
+                    ownerDgfyAccountId: null,
+                    ownershipStatus: 'unassigned',
+                    transaction
+                });
+            if (existingTenant) {
+                await refreshRetryCredentials({
+                    tenant: created,
+                    tenantInput,
+                    tenantAdminRepository,
+                    dgfyAccountRepository: null,
+                    hashPassword,
+                    transaction
+                });
+            }
             await tenantAdminRepository.createTenantAdminAuditLog(buildTenantAuditPayload({
                 tenantId: created.id,
                 action: 'admin_create_tenant',
                 actor,
                 reason,
-                metadata,
-                afterSnapshot: buildSafeTenantSnapshot(created)
+                afterSnapshot: buildSafeTenantSnapshot(created),
+                metadata: {
+                    ...metadata,
+                    extra: { ...(metadata.extra || {}), provisioning_attempt: existingTenant ? 'retry' : 'initial' }
+                }
             }), { transaction });
             return created;
         });
+        persistedTenant = tenant;
         const provisioned = await provisionCreatedTenant({ provisionTenant, tenant, tenantInput });
         const reloaded = await tenantAdminRepository.findTenantById(tenant.id);
         return ok({
@@ -267,6 +334,21 @@ export const buildCreateAdminProvisionedTenantUseCase = ({
         });
     } catch (error) {
         logger?.error?.('[AdminProvisioning] Tenant provisioning failed', error);
+        if (persistedTenant && !(error instanceof DomainError)) {
+            return fail(new DomainError(
+                DomainErrorCode.INTERNAL_ERROR,
+                'Company record was retained in pending state after provisioning failed. Correct the provisioning issue and submit the same company again to retry safely.',
+                {
+                    statusCode: 500,
+                    details: {
+                        partial_state: true,
+                        retryable: true,
+                        phase: 'tenant_provisioning',
+                        tenant_id: persistedTenant.id
+                    }
+                }
+            ));
+        }
         return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message || 'Admin company provisioning failed.', { statusCode: error.statusCode || 500, cause: error }));
     }
 };
@@ -275,28 +357,66 @@ export const buildCreateAdminProvisionedAccountAndTenantUseCase = ({
     tenantAdminRepository,
     dgfyAccountRepository,
     provisionTenant,
+    tenantConnector,
+    getTenantModels = getTenantModelsDefault,
     hashPassword,
     idGenerator,
     logger
 }) => async ({ body = {}, actor = {}, metadata = {} } = {}) => {
+    let persistedAccount = null;
+    let persistedTenant = null;
+    let failurePhase = 'landlord_records';
     try {
         const reason = requireReason(body.reason);
-        const accountInput = await validateAccountInput({ body: body.dgfy_account || body.account || body, dgfyAccountRepository });
+        const accountInput = await validateAccountInput({
+            body: body.dgfy_account || body.account || body,
+            dgfyAccountRepository,
+            allowRetry: true
+        });
         const tenantInput = validateTenantInput({ body: body.company || body.tenant || body, ownerAccount: { email: accountInput.email, phone: accountInput.phone, first_name: accountInput.firstName } });
-        if (await tenantAdminRepository.findTenantByName(tenantInput.name)) {
+        const existingTenant = await tenantAdminRepository.findTenantByName(tenantInput.name);
+        const retryAccount = accountInput.retryAccount;
+        const existingMembership = retryAccount && existingTenant
+            ? await dgfyAccountRepository.findMembershipForAccount({
+                dgfyAccountId: retryAccount.id,
+                tenantId: existingTenant.id
+            })
+            : null;
+        const canRetry = retryAccount
+            && existingTenant
+            && existingTenant.provisioning_source === 'platform_admin'
+            && String(existingTenant.owner_dgfy_account_id || '') === String(retryAccount.id)
+            && existingTenant.ownership_status === 'claimed'
+            && (
+                existingTenant.status === 'pending'
+                || (existingTenant.status === 'active' && existingMembership?.status !== 'accepted')
+            );
+        if ((retryAccount || existingTenant) && !canRetry) {
             throw new DomainError(DomainErrorCode.CONFLICT, 'A company with this name already exists.', { statusCode: 409 });
         }
 
         const { account, tenant } = await tenantAdminRepository.transaction(async (transaction) => {
-            const createdAccount = await createAdminProvisionedAccount({
+            const createdAccount = retryAccount || await createAdminProvisionedAccount({
                 input: accountInput,
                 dgfyAccountRepository,
                 hashPassword,
                 transaction
             });
+            if (canRetry) {
+                await refreshRetryCredentials({
+                    tenant: existingTenant,
+                    tenantInput,
+                    account: createdAccount,
+                    accountTemporaryPassword: accountInput.temporaryPassword,
+                    tenantAdminRepository,
+                    dgfyAccountRepository,
+                    hashPassword,
+                    transaction
+                });
+            }
             await dgfyAccountRepository.createAdminAuditLog({
                 dgfy_account_id: createdAccount.id,
-                action: 'admin_create_dgfy_account',
+                action: canRetry ? 'temporary_password_rotated' : 'admin_create_dgfy_account',
                 actor_username: buildPlatformActor(actor),
                 reason,
                 request_id: metadata.request_id || null,
@@ -311,7 +431,7 @@ export const buildCreateAdminProvisionedAccountAndTenantUseCase = ({
                     temporary_password_active: true
                 }
             }, { transaction });
-            const createdTenant = await createTenantRecord({
+            const createdTenant = existingTenant || await createTenantRecord({
                 tenantInput,
                 tenantAdminRepository,
                 hashPassword,
@@ -325,17 +445,32 @@ export const buildCreateAdminProvisionedAccountAndTenantUseCase = ({
                 action: 'admin_create_account_and_tenant',
                 actor,
                 reason,
-                metadata,
+                metadata: {
+                    ...metadata,
+                    extra: { ...(metadata.extra || {}), provisioning_attempt: canRetry ? 'retry' : 'initial' }
+                },
                 afterSnapshot: buildSafeTenantSnapshot(createdTenant)
             }), { transaction });
             return { account: createdAccount, tenant: createdTenant };
         });
+        persistedAccount = account;
+        persistedTenant = tenant;
 
-        const provisioned = await provisionCreatedTenant({ provisionTenant, tenant, tenantInput });
+        failurePhase = 'tenant_provisioning';
+        const provisioned = tenant.status === 'active'
+            ? { id: tenant.id, status: tenant.status, resumed_after_provisioning: true }
+            : await provisionCreatedTenant({ provisionTenant, tenant, tenantInput });
+        const tenantUser = await createOrUpdateTenantMasterAdminForAccount({
+            tenantConnector,
+            getTenantModels,
+            tenant,
+            account
+        });
+        failurePhase = 'ownership_assignment';
         const membership = await dgfyAccountRepository.forceAssignTenantOwnership({
             tenant,
             toAccountId: account.id,
-            tenantUserId: provisioned?.admin_user_id || null,
+            tenantUserId: tenantUser?.user_id || provisioned?.admin_user_id || null,
             role: 'admin',
             actorAccountId: null
         });
@@ -367,6 +502,24 @@ export const buildCreateAdminProvisionedAccountAndTenantUseCase = ({
         });
     } catch (error) {
         logger?.error?.('[AdminProvisioning] Account and tenant provisioning failed', error);
+        if (persistedAccount && persistedTenant && !(error instanceof DomainError)) {
+            return fail(new DomainError(
+                DomainErrorCode.INTERNAL_ERROR,
+                failurePhase === 'ownership_assignment'
+                    ? 'Account and company were provisioned, but ownership assignment failed. Submit the same account and company again to reconcile membership safely.'
+                    : 'Account and company records were retained after tenant provisioning failed. Correct the provisioning issue and submit the same account and company again to retry safely.',
+                {
+                    statusCode: 500,
+                    details: {
+                        partial_state: true,
+                        retryable: true,
+                        phase: failurePhase,
+                        dgfy_account_id: persistedAccount.id,
+                        tenant_id: persistedTenant.id
+                    }
+                }
+            ));
+        }
         return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message || 'Admin account and company provisioning failed.', { statusCode: error.statusCode || 500, cause: error }));
     }
 };
