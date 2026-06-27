@@ -11,6 +11,7 @@ Last updated: 2026-06-26
 4. Current open audit package: `System_Audit/README.md`.
 5. Current release blockers from the June 2 audit remain open until remediated. Local release gate, frontend contract suite failures, missing current green backend full-test evidence, and frontend budget artifact self-containment are remediated as of June 4, 2026 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
 6. Production deployment status must not be advanced from this checklist alone for future releases; refresh no-staging parity, local release gate or approved targeted release evidence, production contract smoke, and required human or scripted UAT evidence before the next production promotion.
+7. Development-to-production promotion now requires the authoritative workflow in `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`: feature branches PR into `staging`, `staging` qualification pins the candidate SHA, batch inventory is required before promotion, `staging -> master` PR is the governed release phase, and production deploys only the exact `origin/master` SHA after master requalification.
 7. June 5, 2026 tenant browser-session hardening is live at code SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`: `/api/v1/auth/refresh-token` can recover strict tenant context from the signed HttpOnly refresh cookie's tenant binding when the companion tenant-context cookie/header is missing, and login/refresh responses include `data.company.token` so the frontend can rehydrate both access and tenant context after hard reload.
 8. DGFY signup OTP requests are production-deployed as landlord-global for `dgfy_account_verification`: they do not require a company token, ignore stale tenant context, and match the global `/api/v1/dgfy/auth/register` verifier.
 9. Tenant-visible platform capability messaging is included in the deployed commit chain. It adds reactive in-app copy for `TENANT_CAPABILITY_DISABLED` and `CUSTOMER_ACCESS_MODE_BLOCKED`, tenant-wide IMS/POS disabled notices, Storefront access-mode blocked-action copy, and Tenant Manager capability-change impact previews.
@@ -47,6 +48,24 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
    - `MERGE_ADOPTION_MANIFEST=<manifest> RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging`
 20. No-staging QA parity must be created before production promotion, not repaired afterward. `scripts/deploy-remote.sh` promotes the pushed target SHA to QA by default when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`, fetches fresh QA deploy summary evidence every run, and refuses automatic QA promotion when `QA_SSH_HOST` plus `QA_APP_DIR` match the production host/app dir. Production-as-QA evidence mode must set `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` intentionally and cannot claim pre-production parity.
 21. PayMongo live QR Ph split checkout must remain disabled until the PayMongo parent/platform merchant ID and live split-payment marketplace capability are externally confirmed and represented by `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`. Current provider evidence is negative: PayMongo support confirmed on June 25, 2026 that Linked Accounts is not configured for the account and self-service onboarding is still under development.
+22. Batch inventory gate must pass for every promotion candidate:
+   ```bash
+   npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --write --require-ship
+   npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --base origin/master --head <candidate_sha> --require-ship
+   ```
+23. CI-safe production deployment, when enabled, must use:
+   ```bash
+   RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
+   ```
+   Dry-run first:
+   ```bash
+   PRODUCTION_DEPLOY_DRY_RUN=1 RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
+   ```
+   Automatic production deployment remains blocked until branch protection, exact master SHA qualification, failure simulations, and distinct QA proof are configured.
+24. QA target proof must pass before automatic deployment:
+   ```bash
+   RELEASE_TARGET_SHA=<candidate_sha> npm run check:qa-target-proof -- --target-sha <candidate_sha> --summary ".tmp/release-gates/<candidate_sha>/qa_deploy_summary.txt" --report ".tmp/release-gates/<candidate_sha>/qa_target_proof.json"
+   ```
 
 ## Latest Technical Evidence (2026-06-18)
 

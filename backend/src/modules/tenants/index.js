@@ -98,6 +98,7 @@ export const createAdminProvisionedAccountAndTenantUseCase = buildCreateAdminPro
     tenantAdminRepository,
     dgfyAccountRepository,
     provisionTenant,
+    tenantConnector,
     hashPassword: (password) => bcrypt.hash(password, 10),
     idGenerator: uuidv4,
     logger

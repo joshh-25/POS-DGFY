@@ -190,6 +190,8 @@ export const provisionNewTenant = async (req, res) => {
 };
 
 export const createAdminProvisionedTenant = async (req, res) => {
+    req.setTimeout?.(180000);
+    res.setTimeout?.(180000);
     const result = await createAdminProvisionedTenantUseCase({
         body: req.body || {},
         actor: buildPlatformAdminActor(req),
@@ -209,6 +211,8 @@ export const createAdminProvisionedTenant = async (req, res) => {
 };
 
 export const createAdminProvisionedAccountAndTenant = async (req, res) => {
+    req.setTimeout?.(180000);
+    res.setTimeout?.(180000);
     const result = await createAdminProvisionedAccountAndTenantUseCase({
         body: req.body || {},
         actor: buildPlatformAdminActor(req),

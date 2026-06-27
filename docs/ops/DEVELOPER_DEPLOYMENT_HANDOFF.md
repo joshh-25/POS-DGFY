@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: operations
-last_reviewed: 2026-06-19
+last_reviewed: 2026-06-27
 applies_to: developer_deployment_setup
 topic: developer_deployment_handoff
 ---
@@ -16,9 +16,10 @@ This guide is for developers who need to set up deployment access for SKUperviso
 The intended workflow is:
 
 1. Developer finishes code locally.
-2. Developer commits and pushes changes to `master`.
-3. Developer tells the repository owner or Codex agent: `Deploy to production`.
-4. The deployment is performed through the existing SSH-based guarded deployment workflow.
+2. Developer commits changes on a feature branch.
+3. Developer opens a PR into `staging`.
+4. The `staging` candidate is qualified, promoted through a governed `staging -> master` PR, and deployed only after the exact `origin/master` SHA is proven.
+5. Developers never push directly to `master`; production-current claims require runtime proof and deployed-change accuracy review, not green CI alone.
 
 Developers should not manually upload changed source files to production with WinSCP. WinSCP is only for first-time access setup, server inspection, and emergency file review.
 
@@ -33,6 +34,7 @@ Read these before changing the deployment system:
 5. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
 6. `docs/ops/PRODUCTION_CHECKLIST.md`
 7. `docs/guides/SCRIPTS_GUIDE.md`
+8. `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`
 
 This setup does not create a new architecture boundary. It uses the existing SSH/PM2 VPS deploy path.
 
@@ -98,11 +100,11 @@ These files are local-only and must stay uncommitted.
 
 There are three different access paths:
 
-1. GitHub access: allows the developer to push committed code to `master`.
+1. GitHub access: allows the developer to push committed feature branches and open PRs into `staging`.
 2. SSH/SFTP access: allows server login, deployment script execution, and log inspection.
 3. MySQL access through an SSH tunnel: optional database inspection using HeidiSQL.
 
-Normal production deployment uses GitHub plus SSH. The server pulls the pushed commit and records deployment evidence.
+Normal production deployment uses GitHub plus SSH after governed promotion to `master`. The server pulls the exact `origin/master` SHA and records deployment evidence.
 
 ## One-Time GitHub Setup
 
@@ -253,13 +255,19 @@ Developers do this:
 git status --short
 npm run check:architecture
 npm run lint:docs
+git switch -c <feature-branch> origin/staging
 git add <changed-files>
 git commit -m "<clear commit message>"
-git pull --rebase origin master
-git push origin master
+git fetch origin staging
+git rebase origin/staging
+git push origin <feature-branch>
 ```
 
-After the push, they can tell the owner or Codex agent:
+Then open a PR from `<feature-branch>` into `staging`. Direct developer pushes to `master` are not part of the governed workflow.
+
+The PR must include or link batch/slice documentation, included and excluded work, affected surfaces, risk, required tests/docs/compliance evidence, and merge-adoption proof when high-risk customer-flow paths changed.
+
+After the `staging -> master` promotion PR merges and the owner is ready to deploy, they can tell the owner or Codex agent:
 
 ```text
 Deploy to production
@@ -361,6 +369,8 @@ Stop and ask the owner before proceeding when:
 9. PM2 shows a repeated restart loop.
 10. `/api/v1/health` is healthy but runtime SHA is missing or mismatched.
 11. The deploy requires an emergency bypass.
+12. Batch inventory is missing or marks any batch as `split`, `fix first`, `defer`, or `blocked`.
+13. Branch protection or distinct QA proof is missing for automatic production deployment.
 
 Emergency bypass requires explicit owner approval and these values:
 
@@ -370,7 +380,7 @@ RELEASE_EMERGENCY_REASON=<reason>
 RELEASE_EMERGENCY_ACTOR=<name_or_id>
 ```
 
-Emergency bypass cannot override dirty deploy source, missing high-risk merge-adoption proof, stale frontend asset parity, or production runtime SHA mismatch.
+Emergency bypass cannot override dirty deploy source, missing high-risk merge-adoption proof, stale frontend asset parity, production runtime SHA mismatch, payment uncertainty, missing batch inventory, or unknown QA target.
 
 ## What To Tell Developers
 
@@ -380,6 +390,6 @@ Use this short version:
 Install Git for Windows, Node LTS, PowerShell, WinSCP, and optionally HeidiSQL.
 Set up GitHub access, WinSCP/SFTP access, SSH key login, and local QA/prod env files.
 If you need database access, open the SSH tunnel first and connect HeidiSQL to 127.0.0.1:3307.
-When your code is ready, commit it, push it to master, and say: Deploy to production.
-Do not upload source files manually with WinSCP. The deploy system pulls master over SSH and runs the full guarded deployment workflow.
+When your code is ready, commit it on a feature branch, push that branch, and open a PR into staging.
+Do not push directly to master. Do not upload source files manually with WinSCP. The deploy system promotes qualified staging changes into master, then production pulls the exact origin/master SHA over SSH and runs the full guarded deployment workflow.
 ```

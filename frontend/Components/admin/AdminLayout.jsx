@@ -42,7 +42,17 @@ export default function AdminLayout() {
     const [sessionExpired, setSessionExpired] = useState(false);
 
     // Sidebar state
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
+        typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches
+    ));
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+        const media = window.matchMedia('(max-width: 767px)');
+        const syncMobileSidebar = (event) => setSidebarCollapsed(event.matches);
+        media.addEventListener?.('change', syncMobileSidebar);
+        return () => media.removeEventListener?.('change', syncMobileSidebar);
+    }, []);
 
     // Check authentication on mount and register auth failure callback
     useEffect(() => {
@@ -183,7 +193,7 @@ export default function AdminLayout() {
         <div className="min-h-screen bg-slate-50 flex">
             {/* Sidebar */}
             <aside className={cn(
-                "bg-slate-900 text-white transition-all duration-300 flex flex-col",
+                "sticky top-0 h-screen shrink-0 bg-slate-900 text-white transition-all duration-300 flex flex-col",
                 sidebarCollapsed ? "w-16" : "w-64"
             )}>
                 {/* Logo */}
@@ -192,6 +202,7 @@ export default function AdminLayout() {
                         <h1 className="text-lg font-bold">Admin Portal</h1>
                     )}
                     <button
+                        aria-label={sidebarCollapsed ? 'Expand admin navigation' : 'Collapse admin navigation'}
                         onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                         className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
                     >
@@ -242,7 +253,7 @@ export default function AdminLayout() {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 p-6 overflow-auto">
+            <main className="min-w-0 flex-1 overflow-auto p-3 sm:p-6">
                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     Admin access is on temporary credential mode during hardening. Avoid sharing credentials and report unexpected login activity immediately.
                 </div>
