@@ -6,6 +6,7 @@ const path = require('path');
 const {
   BatchInventoryError,
   changedFiles,
+  resolveCommit,
   validateInventory,
   normalizeSlices,
 } = require('./check-batch-inventory');
@@ -43,6 +44,9 @@ function parseArgs(argv) {
   if (!options.inventoryPath) {
     throw new BatchInventoryError('Missing --inventory', { code: 'INVALID_ARGS' });
   }
+  if (options.requireShip && (!options.base || !options.head)) {
+    throw new BatchInventoryError('Strict inventory validation requires --base and --head', { code: 'INVALID_ARGS' });
+  }
   return options;
 }
 
@@ -66,6 +70,17 @@ function validateBatchInventoryFile(options, logger = console) {
   let expectedChangedFiles = inventory.expected_changed_files || [];
   if (options.base && options.head) {
     expectedChangedFiles = changedFiles(options.projectRoot, options.base, options.head).sort();
+    const resolvedHead = resolveCommit(options.projectRoot, options.head);
+    const resolvedBase = resolveCommit(options.projectRoot, options.base);
+    if (inventory.head_sha !== resolvedHead) {
+      throw new BatchInventoryError(`Inventory head SHA mismatch: expected=${resolvedHead} actual=${inventory.head_sha || '<missing>'}`, { code: 'INVENTORY_SHA_MISMATCH' });
+    }
+    if (inventory.base_sha !== resolvedBase) {
+      throw new BatchInventoryError(`Inventory base SHA mismatch: expected=${resolvedBase} actual=${inventory.base_sha || '<missing>'}`, { code: 'INVENTORY_SHA_MISMATCH' });
+    }
+    if (inventory.changed_file_count !== expectedChangedFiles.length) {
+      throw new BatchInventoryError(`Inventory changed_file_count mismatch: expected=${expectedChangedFiles.length} actual=${inventory.changed_file_count}`, { code: 'INVENTORY_FILE_COUNT_MISMATCH' });
+    }
   }
 
   const failures = validateInventory(inventory, {

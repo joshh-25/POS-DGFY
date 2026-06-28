@@ -39,6 +39,7 @@
     "check:frontend-budgets": "node scripts/check-frontend-budgets.js",
     "check:batch-inventory": "node scripts/check-batch-inventory.js",
     "validate:batch-inventory": "node scripts/validate-batch-inventory.js",
+    "find:reviewed-batch-manifest": "node scripts/find-reviewed-batch-manifest.js",
     "check:qa-target-proof": "node scripts/check-qa-target-proof.js",
     "check:deploy-source-contract": "node scripts/check-deploy-source-contract.js",
     "check:merge-adoption": "node scripts/check-merge-adoption.js",
