@@ -34,17 +34,35 @@ export const fetchPosTransactionById = async (id) => {
     return response.data?.data;
 };
 
+export const createPosSetupCashier = async (payload = {}) => {
+    const response = await api.post('/pos/setup/cashiers', payload);
+    return response.data?.data;
+};
+
+export const fetchPosSetupCashiers = async () => {
+    const response = await api.get('/pos/setup/cashiers');
+    return response.data?.data?.cashiers || [];
+};
+
+export const verifyPosTerminal = async (payload = {}) => {
+    const response = await api.post('/pos/terminal/verify', payload);
+    return response.data?.data;
+};
+
+export const fetchPairedPosTerminal = async () => {
+    const response = await api.get('/pos/terminal/paired', {
+        skipGlobalErrorToast: true
+    });
+    return response.data?.data;
+};
+
 export const fetchPosDeviceStatus = async () => {
-    try {
-        const response = await api.get('/pos/device/status', {
-            // Device status is a background capability probe. In tablet/APK deployments
-            // the local HTTP bridge can be absent, so this should fail quietly.
-            skipGlobalErrorToast: true
-        });
-        return response.data?.data;
-    } catch (error) {
-        throw error;
-    }
+    const response = await api.get('/pos/device/status', {
+        // Device status is a background capability probe. In tablet/APK deployments
+        // the local HTTP bridge can be absent, so this should fail quietly.
+        skipGlobalErrorToast: true
+    });
+    return response.data?.data;
 };
 
 export const printPosReceipt = async (payload = {}) => {

@@ -1,4 +1,9 @@
 import {
+    createPosSetupCashierUseCase,
+    listPosSetupCashiersUseCase,
+    loginPosCashierUseCase,
+    verifyPosTerminalUseCase,
+    getPairedPosTerminalUseCase,
     listPosCatalogUseCase,
     scanPosBarcodeUseCase,
     checkoutPosUseCase,
@@ -41,6 +46,14 @@ import {
 } from '../index.js';
 import { resolveDomainFailure, sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
+import {
+    SESSION_COOKIE_NAMES,
+    clearSessionCookie,
+    getCookie,
+    setBearerSessionCookie,
+    setTenantSessionCookies
+} from '../../../utils/browserSessionCookies.js';
+import { maxAgeMs as terminalPairingMaxAgeMs } from '../services/posTerminalPairingService.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -54,6 +67,126 @@ const defaultErrorPayload = (req, res, failure) => ({
     request_id: requestId(req, res),
     timestamp: timestamp()
 });
+
+export const createSetupCashier = async (req, res, next) => {
+    try {
+        const result = await createPosSetupCashierUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cashier created',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listSetupCashiers = async (req, res, next) => {
+    try {
+        const result = await listPosSetupCashiersUseCase({ user: req.user });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cashiers retrieved',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const loginCashier = async (req, res, next) => {
+    try {
+        const result = await loginPosCashierUseCase({
+            payload: req.validatedData || req.body || {}
+        });
+        if (result?.success) {
+            setTenantSessionCookies(res, {
+                refreshToken: result.data?.refreshToken,
+                tenantToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null
+            });
+        }
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cashier login successful',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const verifyTerminal = async (req, res, next) => {
+    try {
+        const result = await verifyPosTerminalUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        if (result?.success && result.data?.pairing_token) {
+            setBearerSessionCookie(
+                res,
+                SESSION_COOKIE_NAMES.posTerminalPairing,
+                result.data.pairing_token,
+                { maxAgeMs: terminalPairingMaxAgeMs }
+            );
+        }
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: {
+                    terminal_identity_policy: result.data?.terminal_identity_policy
+                },
+                message: 'Terminal verified',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getPairedTerminal = async (req, res, next) => {
+    try {
+        const result = await getPairedPosTerminalUseCase({
+            pairingToken: getCookie(req, SESSION_COOKIE_NAMES.posTerminalPairing),
+            user: req.user
+        });
+        if (!result?.success) {
+            clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+        }
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Paired terminal verified',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
 export const listCatalog = async (req, res, next) => {
     try {
@@ -1006,6 +1139,11 @@ export const deleteCatalogImage = async (req, res, next) => {
 };
 
 export default {
+    createSetupCashier,
+    listSetupCashiers,
+    loginCashier,
+    verifyTerminal,
+    getPairedTerminal,
     listCatalog,
     scanBarcode,
     checkout,

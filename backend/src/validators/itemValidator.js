@@ -32,6 +32,10 @@ export const createItemSchema = Joi.object({
   product_folder: Joi.string().max(100).allow(null, '').messages({
     'string.max': 'Product folder must not exceed 100 characters'
   }),
+  folder_id: Joi.number().integer().positive().allow(null).messages({
+    'number.integer': 'Folder ID must be an integer',
+    'number.positive': 'Folder ID must be a positive number'
+  }),
   description: Joi.string().allow(null, '').messages({
     'string.base': 'Description must be a string'
   }),
@@ -174,6 +178,7 @@ export const createItemDraftSchema = Joi.object({
   }),
   mode_item_preset: Joi.string().max(64).allow(null, ''),
   product_folder: Joi.string().max(100).allow(null, ''),
+  folder_id: Joi.number().integer().positive().allow(null),
   description: Joi.string().allow(null, ''),
   max_capacity: Joi.number().positive().allow(null, '').messages({
     'number.positive': 'Max capacity must be a positive number'
@@ -283,6 +288,7 @@ export const updateItemSchema = Joi.object({
   }),
   mode_item_preset: Joi.string().max(64).allow(null, ''),
   product_folder: Joi.string().max(100).allow(null, ''),
+  folder_id: Joi.number().integer().positive().allow(null),
   description: Joi.string().allow(null, ''),
   max_capacity: Joi.number().positive().messages({
     'number.positive': 'Max capacity must be a positive number'

@@ -8,6 +8,24 @@ export const sanitizeTerminalId = (value) => String(value || '')
   .replace(/[^A-Za-z0-9._-]/g, '')
   .toUpperCase();
 
+export const createSuggestedTerminalId = (entries = [], prefix = 'COUNTER') => {
+  const normalizedPrefix = sanitizeTerminalId(prefix).replace(/[-_.]+$/g, '') || 'COUNTER';
+  const usedIds = new Set(
+    (Array.isArray(entries) ? entries : [])
+      .map((entry) => sanitizeTerminalId(entry?.terminal_id))
+      .filter(Boolean)
+  );
+
+  for (let index = 1; index <= 999; index += 1) {
+    const candidate = `${normalizedPrefix}-${String(index).padStart(2, '0')}`;
+    if (!usedIds.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return `${normalizedPrefix}-${Date.now()}`;
+};
+
 export const normalizeTerminalRegistry = (rawRegistry) => {
   let parsed = rawRegistry;
   if (typeof parsed === 'string') {
@@ -77,9 +95,11 @@ export const resolvePreferredTerminalId = (
     return normalizedPreferred;
   }
 
-  const defaultEntry = activeEntries.find((entry) => entry.is_default === true);
+  const passwordReadyEntries = activeEntries.filter((entry) => entry?.has_password === true);
+  const preferredPool = passwordReadyEntries.length > 0 ? passwordReadyEntries : activeEntries;
+  const defaultEntry = preferredPool.find((entry) => entry.is_default === true);
   if (defaultEntry?.terminal_id) return defaultEntry.terminal_id;
-  return activeEntries[0]?.terminal_id || '';
+  return preferredPool[0]?.terminal_id || '';
 };
 
 export const resolveLoginTerminalId = ({
@@ -89,7 +109,16 @@ export const resolveLoginTerminalId = ({
   registryMode = 'warn'
 } = {}) => {
   const normalizedSelected = sanitizeTerminalId(selectedTerminalId);
-  if (registryEnforced) return normalizedSelected;
+  if (registryEnforced) {
+    if (
+      normalizedSelected
+      && Array.isArray(registryEntries)
+      && registryEntries.some((entry) => entry?.is_active !== false && entry?.terminal_id === normalizedSelected)
+    ) {
+      return normalizedSelected;
+    }
+    return resolvePreferredTerminalId(registryEntries, '', { registryMode: 'enforce' });
+  }
   if (normalizedSelected) return normalizedSelected;
   return resolvePreferredTerminalId(registryEntries, '', { registryMode });
 };

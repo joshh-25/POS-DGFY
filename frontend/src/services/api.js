@@ -71,6 +71,7 @@ const isAlreadyOnPhoneCompletionRoute = () => {
 };
 
 const shouldAttemptTenantRefresh = (requestConfig = {}) => {
+  if (requestConfig?.skipAuthRefresh === true) return false;
   const requestUrl = String(requestConfig?.url || '');
   if (/\/dgfy(\/|$)/i.test(requestUrl)) return false;
   if (/\/auth\/(login|register|refresh-token|logout|email-otp|validate-invite|accept-invite)\b/i.test(requestUrl)) return false;
@@ -190,23 +191,30 @@ if (typeof window !== 'undefined') {
 // Request interceptor - Add JWT token to headers
 api.interceptors.request.use(
   async (config) => {
+    const skipTenantAuthHeaders = config?.skipTenantAuthHeaders === true;
     const method = String(config.method || 'get').toLowerCase();
-    if (!getAccessToken() && shouldAttemptTenantRefresh(config)) {
+    if (!skipTenantAuthHeaders && !getAccessToken() && shouldAttemptTenantRefresh(config)) {
       await refreshBrowserSession().catch(() => '');
     }
 
-    const sessionHeaders = getAuthHeaders({
-      includeCsrf: !['get', 'head', 'options'].includes(method)
-    });
+    if (!config.headers) {
+      config.headers = {};
+    }
 
-    if (sessionHeaders.Authorization && !config.headers.Authorization) {
-      config.headers.Authorization = sessionHeaders.Authorization;
-    }
-    if (sessionHeaders['x-company-token'] && !config.headers['x-company-token']) {
-      config.headers['x-company-token'] = sessionHeaders['x-company-token'];
-    }
-    if (sessionHeaders['x-csrf-token'] && !config.headers['x-csrf-token']) {
-      config.headers['x-csrf-token'] = sessionHeaders['x-csrf-token'];
+    if (!skipTenantAuthHeaders) {
+      const sessionHeaders = getAuthHeaders({
+        includeCsrf: !['get', 'head', 'options'].includes(method)
+      });
+
+      if (sessionHeaders.Authorization && !config.headers.Authorization) {
+        config.headers.Authorization = sessionHeaders.Authorization;
+      }
+      if (sessionHeaders['x-company-token'] && !config.headers['x-company-token']) {
+        config.headers['x-company-token'] = sessionHeaders['x-company-token'];
+      }
+      if (sessionHeaders['x-csrf-token'] && !config.headers['x-csrf-token']) {
+        config.headers['x-csrf-token'] = sessionHeaders['x-csrf-token'];
+      }
     }
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];

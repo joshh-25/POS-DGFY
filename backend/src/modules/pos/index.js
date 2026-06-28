@@ -2,7 +2,15 @@ import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
 import { createStockMovement } from '../../services/stockMovementService.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
+import * as userService from '../../services/userService.js';
+import * as authService from '../../services/authService.js';
+import * as terminalPairingService from './services/posTerminalPairingService.js';
 import {
+    buildCreatePosSetupCashierUseCase,
+    buildListPosSetupCashiersUseCase,
+    buildLoginPosCashierUseCase,
+    buildVerifyPosTerminalUseCase,
+    buildGetPairedPosTerminalUseCase,
     buildListPosCatalogUseCase,
     buildScanPosBarcodeUseCase,
     buildCheckoutPosUseCase,
@@ -57,6 +65,11 @@ import {
 
 const stockMovementService = { createStockMovement };
 
+export const createPosSetupCashierUseCase = buildCreatePosSetupCashierUseCase({ userService });
+export const listPosSetupCashiersUseCase = buildListPosSetupCashiersUseCase({ userService });
+export const loginPosCashierUseCase = buildLoginPosCashierUseCase({ authService });
+export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({ posRepository, terminalPairingService });
+export const getPairedPosTerminalUseCase = buildGetPairedPosTerminalUseCase({ posRepository, terminalPairingService });
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
 export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });

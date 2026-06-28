@@ -47,6 +47,7 @@ export default function TerminalWorkspaceSidebar({
   terminalUser = null,
   currentViewMode = 'checkout',
   canViewPos = false,
+  allowAdminNavigationWithoutShift = false,
   canAdjustCashDrawer = false,
   canCloseDay = false,
   shiftState = { shift: null },
@@ -63,9 +64,12 @@ export default function TerminalWorkspaceSidebar({
   const incomingCount = canViewPos && Array.isArray(incomingOrdersState?.orders)
     ? incomingOrdersState.orders.length
     : 0;
+  const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
+  const isCashierRole = normalizedRole === 'cashier';
   const showIncomingQueue = !isMsmeMode;
-  const showAdvancedOps = !isMsmeMode;
+  const showAdvancedOps = !isMsmeMode && !isCashierRole;
   const hasActiveShift = Boolean(shiftState?.shift);
+  const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
   const onboardingCaption = 'Finish onboarding in Settings first';
 
@@ -113,45 +117,47 @@ export default function TerminalWorkspaceSidebar({
             icon={ShoppingCart}
             active={sellWorkspaceModes.has(currentViewMode)}
             onClick={() => onSelectViewMode('checkout')}
-            disabled={locked || onboardingRestricted || !hasActiveShift}
-            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? 'Open shift first to continue' : 'Live selling and cart management'))}
+            disabled={locked || onboardingRestricted || !navigationShiftReady}
+            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened')))}
           />
           <NavButton
             label="History"
             icon={History}
             active={currentViewMode === 'history'}
             onClick={() => onSelectViewMode('history')}
-            disabled={locked || onboardingRestricted || !canViewPos || !hasActiveShift}
+            disabled={locked || onboardingRestricted || !canViewPos || !navigationShiftReady}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Invoice lookups and audit trail')))
+                : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Invoice lookups and audit trail' : 'Admin review available without an active shift'))))
             }
             testId="pos-nav-history"
           />
-          <NavButton
-            label="Report"
-            icon={BarChart3}
-            active={currentViewMode === 'reports'}
-            onClick={() => onSelectViewMode('reports')}
-            disabled={locked || onboardingRestricted || !canViewPos || !hasActiveShift}
-            caption={
-              locked
-                ? 'Unlock terminal to continue'
-                : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions')))
-            }
-            testId="pos-nav-reports"
-          />
+          {!isCashierRole && (
+            <NavButton
+              label="Report"
+              icon={BarChart3}
+              active={currentViewMode === 'reports'}
+              onClick={() => onSelectViewMode('reports')}
+              disabled={locked || onboardingRestricted || !canViewPos}
+              caption={
+                locked
+                  ? 'Unlock terminal to continue'
+                  : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (!navigationShiftReady ? 'Protected by POS access PIN' : 'Daily totals, popular items, and transactions')))
+              }
+              testId="pos-nav-reports"
+            />
+          )}
           <NavButton
             label="Items"
             icon={ClipboardList}
             active={currentViewMode === 'items'}
             onClick={() => onSelectViewMode('items')}
-            disabled={locked || onboardingRestricted || !canViewPos || !hasActiveShift}
+            disabled={locked || onboardingRestricted || !canViewPos}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Edit SKUpervisor item price and cost')))
+                : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (!navigationShiftReady ? 'Protected by POS access PIN' : (isCashierRole ? 'View store items only' : 'Edit SKUpervisor item price and cost'))))
             }
             testId="pos-nav-items"
           />
@@ -161,11 +167,11 @@ export default function TerminalWorkspaceSidebar({
               icon={Truck}
               active={currentViewMode === 'incoming_queue'}
               onClick={() => onSelectViewMode('incoming_queue')}
-               disabled={locked || onboardingRestricted || !canViewPos || !hasActiveShift}
+               disabled={locked || onboardingRestricted || !canViewPos || !navigationShiftReady}
                caption={
                  locked
                    ? 'Unlock terminal to continue'
-                 : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress online orders')))
+                 : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Accept, reject, and progress online orders' : 'Admin queue review available without an active shift'))))
                }
              />
            )}
@@ -175,7 +181,7 @@ export default function TerminalWorkspaceSidebar({
             active={currentViewMode === 'shift_controls' || currentViewMode === 'close_shift' || currentViewMode === 'cash_drawer'}
             onClick={() => onSelectViewMode('shift_controls')}
             disabled={locked || onboardingRestricted}
-            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? 'Open shift to unlock POS selling' : 'Open, monitor, and close the active shift'))}
+            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? (allowAdminNavigationWithoutShift ? 'Open or close shifts in admin navigation mode' : 'Open shift to unlock POS selling') : 'Open, monitor, and close the active shift'))}
           />
         </div>
 

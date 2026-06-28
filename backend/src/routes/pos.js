@@ -1,13 +1,16 @@
 import express from 'express';
 import * as posController from '../controllers/posController.js';
 import { authenticate, checkPermission, requirePremium } from '../middleware/auth.js';
-import { posLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { posCatalogBulkImageUpload, posCatalogImageUpload } from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
     validatePosCatalogQuery,
     validatePosScan,
+    validateVerifyTerminal,
+    validatePosCashierLogin,
+    validateSetupCashier,
     validatePosCatalogOverridesQuery,
     validatePosCatalogOverrideParam,
     validateUpdatePosCatalogOverride,
@@ -39,10 +42,16 @@ import {
 
 const router = express.Router();
 
+router.post('/auth/cashier-login', authLimiter, validatePosCashierLogin, posController.loginCashier);
+
 router.use(authenticate);
 router.use(requirePremium);
 router.use(posLimiter);
 
+router.get('/setup/cashiers', checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), posController.listSetupCashiers);
+router.post('/setup/cashiers', checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateSetupCashier, posController.createSetupCashier);
+router.post('/terminal/verify', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateVerifyTerminal, posController.verifyTerminal);
+router.get('/terminal/paired', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getPairedTerminal);
 router.get('/catalog', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogQuery, posController.listCatalog);
 router.post('/scan', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosScan, posController.scanBarcode);
 router.get('/catalog-overrides', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogOverridesQuery, posController.listCatalogOverrides);

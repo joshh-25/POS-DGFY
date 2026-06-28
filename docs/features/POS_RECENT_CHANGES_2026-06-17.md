@@ -147,6 +147,7 @@ This document only lists the important changes recently made to the POS, Storefr
   - strict shift location binding
 - Terminal registry entries now support terminal-level passwords used by POS unlock.
 - Active terminal registry entries are now limited to one active terminal per store location.
+- Terminal registry save now surfaces the conflicting store name when a second active terminal is assigned to the same store.
 - Saving from the terminal registry header now persists only terminal-registry settings:
   - `pos_terminal_registry`
   - `pos_terminal_registry_mode`
@@ -191,6 +192,8 @@ This document only lists the important changes recently made to the POS, Storefr
     - configured terminal password
 - POS Setup readiness no longer requires business address; the business name comes from registration.
 - If no registered terminal exists yet, POS does not show the open-shift modal during onboarding. The tenant must create/configure a terminal in `Settings > POS Setup` first.
+- If tenant onboarding is still incomplete, the onboarding modal now takes precedence over any saved terminal-unlock restoration state.
+- Company creation handoff now clears stale saved terminal lock and saved terminal identity before entering POS onboarding, so a newly created tenant cannot land on the old unlock-terminal resume flow first.
 - The onboarding modal exposes the required fields inside the modal itself:
   - Storefront step: cover image and profile icon uploads backed by shared Storefront settings
   - POS Setup step: terminal registry creation/update with store assignment and terminal password
@@ -226,11 +229,15 @@ This document only lists the important changes recently made to the POS, Storefr
 - The shift-start terminal unlock step requires:
   - a registered terminal from POS Setup
   - the terminal password configured for that terminal
+  - the terminal must already be assigned to a store location
+  - cashier email and cashier password
   - opening cash for the shift
 - Terminal unlock now validates against the shared POS terminal registry before the POS session starts.
 - Terminal password hashes are stored in shared tenant settings and are not sent back to the POS UI in plaintext.
 - POS unlock now opens the shift immediately using the terminal's assigned store location, so the terminal starts in a ready-to-sell state after successful unlock.
 - When more than one active registered terminal exists, the unlock UI now makes it explicit that multiple terminals are available and the cashier can switch the selected terminal before unlock.
+- Registered terminal selection now prefers an active terminal that already has a password configured, and enforce-mode unlock falls back to the best active registered terminal instead of leaving a stale manual ID in place.
+- Terminal unlock dropdown entries now show the assigned store/location beside the terminal label so the cashier can confirm they are unlocking the correct POS unit.
 - Terminal unlock diagnostics now distinguish DGFY credential failure from terminal-password failure more clearly:
   - DGFY login failure remains an account-auth error
   - terminal password failure is now surfaced as a terminal unlock error instead of a generic email/password error
@@ -238,12 +245,25 @@ This document only lists the important changes recently made to the POS, Storefr
   - DGFY sign-in
   - select accessible company
   - continue to terminal unlock
+  - choose the registered terminal for that POS/store
   - enter terminal password
+  - sign in the cashier
   - if no active shift exists, enter opening cash and open the shift
   - if an active shift was only relocked, resume with terminal password only
 - POS UI smoke coverage was updated to validate the current DGFY-first terminal login surface instead of the older direct-terminal-login copy.
 
 ## Onboarding And Unlock Separation
+
+### Paired Cashier Opening Flow (June 28, 2026)
+
+- Successful Terminal Unlock now pairs that browser to the verified terminal using a signed HttpOnly cookie.
+- On later cashier username/email login, the backend revalidates the tenant, active terminal, password-hash/location fingerprint, and cashier location grant.
+- A valid pairing opens the Opening Cash form directly without asking for Terminal ID or Terminal Password again.
+- Missing or invalid pairing falls back to the existing one-time Terminal Unlock form.
+- Changing the terminal password or assigned store invalidates existing pairing automatically.
+- Relocking an open shift still requires the terminal password.
+- Regular POS Settings > POS Setup now includes Add Cashier for authorized administrators, with username/email/password and one required active-store assignment.
+- DGFY tenant master-admin/admin login now bypasses Terminal Unlock and Opening Cash for navigation only. Sales and cash mutations still require a real cashier shift, and refresh returns to POS login.
 
 - Tenant onboarding and cashier terminal unlock are now treated as separate responsibilities.
 - Tenant onboarding is the tenant-master-admin setup sequence for shared tenant readiness.

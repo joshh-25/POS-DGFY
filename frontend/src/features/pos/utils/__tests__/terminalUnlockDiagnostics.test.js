@@ -67,6 +67,14 @@ describe('terminal unlock diagnostics', () => {
     expect(resolveTerminalLoginErrorMessage(apiError({ status: 429 }))).toBe(
       'Too many terminal login attempts. Wait a moment, then try again.'
     );
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 403,
+      data: {
+        error_code: 'CSRF_TOKEN_REQUIRED',
+        message: 'CSRF token is required for cookie-authenticated requests.'
+      },
+      url: '/dgfy/auth/tenant-session'
+    }))).toBe('CSRF token is required for cookie-authenticated requests.');
     expect(resolveTerminalLoginErrorMessage(apiErrorWithHeaders({
       status: 429,
       data: { retryAfterSeconds: 125 }

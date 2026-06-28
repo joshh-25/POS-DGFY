@@ -10,13 +10,34 @@ import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRo
 import { getPageNameFromPath } from '../utils.js'
 import { refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
 import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
+import { resolvePosTerminalUrl } from './features/dgfyRouteHelpers.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
+import NotFoundPage from './components/common/NotFoundPage.jsx'
 import { Toaster } from '@/components/ui/sonner'
 import './index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
+const enableDevAutoLogin = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTO_LOGIN === 'true'
+const devAutoLoginCompanyToken = String(import.meta.env.VITE_DEV_COMPANY_TOKEN || '').trim()
+const devAutoLoginEmail = String(import.meta.env.VITE_DEV_EMAIL || 'admin@test.com').trim()
+const devAutoLoginPassword = String(import.meta.env.VITE_DEV_PASSWORD || 'Admin123!').trim()
+const devAutoLoginTerminalId = String(import.meta.env.VITE_DEV_TERMINAL_ID || 'COUNTER-01').trim()
+
+const shouldSkipDevAutoLoginForRoute = () => {
+  if (typeof window === 'undefined') return false
+  const pathname = String(window.location?.pathname || '').trim().toLowerCase()
+  return [
+    '/login',
+    '/register',
+    '/dgfy/auth',
+    '/dgfy/reset-password',
+    '/register-company',
+    '/accept-invite',
+    '/reactivate'
+  ].includes(pathname)
+}
 
 const isPrivateIpv4Host = (hostname = '') => {
   const value = String(hostname || '').trim()
@@ -93,16 +114,24 @@ const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
 const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
 const DispatchOrders = lazy(() => import('../Pages/DispatchOrders.jsx'))
 const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
-const POSPage = lazy(() => import('./features/pos/pages/SkupervisorPOSPage.jsx'))
-const TerminalPage = lazy(() => import('./features/pos/pages/TerminalPage.jsx'))
+const IntegratedPOSPage = lazy(() => import('./features/pos/pages/SkupervisorPOSPage.jsx'))
 const SalesPage = lazy(() => import('./features/sales/pages/SalesPage.jsx'))
-const FeedbackViewer = lazy(() => import('../Pages/FeedbackViewer.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
 const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.jsx'))
 const PaymentOperations = lazy(() => import('../Pages/admin/PaymentOperations.jsx'))
 const AdminPricing = lazy(() => import('../Pages/admin/AdminPricing.jsx'))
 const HostingStatus = lazy(() => import('../Pages/admin/HostingStatus.jsx'))
+
+function PosTerminalRedirect() {
+  const location = useLocation()
+
+  useEffect(() => {
+    window.location.replace(resolvePosTerminalUrl(location.search))
+  }, [location.search])
+
+  return <div className="min-h-screen bg-slate-50 p-6 text-sm text-slate-600">Opening DGFY POS...</div>
+}
 
 function App() {
   const location = useLocation()
@@ -206,7 +235,8 @@ function App() {
         <Route path="/pos" element={
           <ProtectedRoute>
             <Layout currentPageName={currentPageName}>
-              <POSPage />
+              {/* Integrated POS inside the authenticated SKUpervisor application shell. */}
+              <IntegratedPOSPage />
             </Layout>
           </ProtectedRoute>
         } />
@@ -237,7 +267,8 @@ function App() {
             </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
-        <Route path="/terminal" element={<TerminalPage />} />
+        {/* Dedicated POS application surface; intentionally leaves the IMS shell. */}
+        <Route path="/terminal" element={<PosTerminalRedirect />} />
         <Route path="/sales" element={
           <ProtectedRoute>
             <Layout currentPageName={currentPageName}>
@@ -272,7 +303,8 @@ function App() {
         </Route>
 
         {/* Legacy route - redirect to new admin portal */}
-        <Route path="/admin/feedback-old" element={<FeedbackViewer />} />
+        <Route path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
   )
@@ -305,32 +337,25 @@ const mountApp = () => {
   registerAdminServiceWorker()
 }
 
-// Dev-only auto-login: when running locally, seed a valid tenant + auth session
-// so the POS UI opens unlocked without manual sign-in. This is intentionally
-// gated to development builds only.
-if (import.meta.env.DEV) {
+// Dev-only auto-login is opt-in and must not contaminate public auth flows.
+if (enableDevAutoLogin && devAutoLoginCompanyToken && !shouldSkipDevAutoLoginForRoute()) {
   (async () => {
     try {
-      const AUTO_EMAIL = 'admin@test.com';
-      const AUTO_PASSWORD = 'Admin123!';
-      const COMPANY_TOKEN = 'token-original';
-      const TERMINAL_ID = 'COUNTER-01';
-
       // Attempt to login and store tokens; backend will validate tenant context
       const resp = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-company-token': COMPANY_TOKEN
+          'x-company-token': devAutoLoginCompanyToken
         },
-        body: JSON.stringify({ email: AUTO_EMAIL, password: AUTO_PASSWORD })
+        body: JSON.stringify({ email: devAutoLoginEmail, password: devAutoLoginPassword })
       });
 
       const body = await resp.json().catch(() => null);
       if (resp.ok && body?.success && body?.data?.token) {
         try {
-          setBrowserSession({ token: body.data.token, companyToken: COMPANY_TOKEN });
-          localStorage.setItem('pos_terminal_identity_v1', TERMINAL_ID);
+          setBrowserSession({ token: body.data.token, companyToken: devAutoLoginCompanyToken });
+          localStorage.setItem('pos_terminal_identity_v1', devAutoLoginTerminalId);
           // dispatch auth event so PermissionContext picks up new session
           window.dispatchEvent(new CustomEvent('auth:login'))
         } catch (e) {

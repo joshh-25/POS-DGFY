@@ -38,10 +38,10 @@ describe('TerminalLockDrawer contract', () => {
   it('shows terminal ID as required for shift and checkout in warn mode', () => {
     render(<TerminalLockDrawer {...buildProps()} />);
 
-    expect(screen.getByLabelText('DGFY Email')).toBeTruthy();
+    expect(screen.getByLabelText('Email or Cashier Username')).toBeTruthy();
     expect(screen.getByLabelText('DGFY Password')).toBeTruthy();
     expect(screen.queryByText('Terminal ID')).toBeNull();
-    expect(screen.getByText(/Sign in with your DGFY account first/i)).toBeTruthy();
+    expect(screen.getByText(/Sign in with your DGFY admin account first/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
   });
 
@@ -61,9 +61,9 @@ describe('TerminalLockDrawer contract', () => {
 
     expect(screen.getByLabelText('Company')).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Front Counter Foods' })).toBeTruthy();
-    expect(screen.getByText(/Choose the business to unlock/i)).toBeTruthy();
-    expect(screen.getByText(/After company selection, POS will ask for a registered terminal/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Continue to Terminal Unlock' })).toBeTruthy();
+    expect(screen.getByText(/Choose the company to continue/i)).toBeTruthy();
+    expect(screen.getByText(/POS will continue to onboarding or terminal unlock based on company setup/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue to POS' })).toBeTruthy();
   });
 
   it('keeps company selection disabled while companies are still loading', () => {
@@ -83,6 +83,6 @@ describe('TerminalLockDrawer contract', () => {
 
     expect(screen.getByLabelText('Company').disabled).toBe(true);
     expect(screen.getByRole('option', { name: /Loading companies/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Continue to Terminal Unlock' }).disabled).toBe(false);
+    expect(screen.getByRole('button', { name: 'Continue to POS' }).disabled).toBe(false);
   });
 });

@@ -62,28 +62,53 @@ export const resolveProfileSetupReadiness = (companyPayload = {}, settingsPayloa
   };
 };
 
-export const resolvePosSetupReadiness = (settingsPayload = {}) => {
+export const resolvePosSetupReadiness = (settingsPayload = {}, usersPayload = null) => {
   const terminalRegistry = normalizeTerminalRegistry(settingsPayload?.pos_terminal_registry?.value || []);
   const hasReadyTerminal = terminalRegistry.some((entry) => (
     entry?.is_active !== false
     && Number(entry?.location_id || 0) > 0
     && entry?.has_password === true
   ));
+  const cashierCheckRequired = Array.isArray(usersPayload);
+  const hasActiveCashier = !cashierCheckRequired || usersPayload.some((user) => (
+    user?.is_active !== false
+    && String(user?.role || '').trim().toLowerCase() === 'cashier'
+  ));
 
   return {
-    ready: hasReadyTerminal,
-    terminalRegistryReady: hasReadyTerminal
+    ready: hasReadyTerminal && hasActiveCashier,
+    terminalRegistryReady: hasReadyTerminal,
+    cashierReady: hasActiveCashier
   };
 };
 
-export const resolveStorefrontSetupReadiness = (settingsPayload = {}) => {
+const isValidCoordinate = (value, min, max) => {
+  if (value === null || value === undefined || String(value).trim() === '') return false;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max;
+};
+
+export const resolveStorefrontSetupReadiness = (settingsPayload = {}, locationsPayload = null) => {
   const storefrontCoverImageUrl = String(settingsPayload?.storefront_cover_image_url?.value || '').trim();
   const storefrontProfileImageUrl = String(settingsPayload?.storefront_profile_image_url?.value || '').trim();
+  const locationCheckRequired = Array.isArray(locationsPayload);
+  const primaryLocation = locationCheckRequired
+    ? locationsPayload.find((location) => (
+      location?.is_active !== false
+      && location?.is_primary_storefront === true
+      && isValidCoordinate(location?.latitude, -90, 90)
+      && isValidCoordinate(location?.longitude, -180, 180)
+      && String(location?.address_line || '').trim().length >= 3
+    ))
+    : null;
+  const locationReady = !locationCheckRequired || Boolean(primaryLocation);
 
   return {
-    ready: Boolean(storefrontCoverImageUrl && storefrontProfileImageUrl),
+    ready: Boolean(storefrontCoverImageUrl && storefrontProfileImageUrl && locationReady),
     coverImageReady: Boolean(storefrontCoverImageUrl),
     profileImageReady: Boolean(storefrontProfileImageUrl),
+    locationReady,
+    primaryLocationId: Number(primaryLocation?.location_id || 0) || null,
     coverImageUrl: storefrontCoverImageUrl,
     profileImageUrl: storefrontProfileImageUrl
   };

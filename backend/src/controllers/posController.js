@@ -3,6 +3,11 @@
  */
 
 export {
+    createSetupCashier,
+    listSetupCashiers,
+    loginCashier,
+    verifyTerminal,
+    getPairedTerminal,
     listCatalog,
     scanBarcode,
     checkout,
@@ -45,6 +50,11 @@ export {
 } from '../modules/pos/controllers/posHandlers.js';
 
 import {
+    createSetupCashier,
+    listSetupCashiers,
+    loginCashier,
+    verifyTerminal,
+    getPairedTerminal,
     listCatalog,
     scanBarcode,
     checkout,
@@ -87,6 +97,11 @@ import {
 } from '../modules/pos/controllers/posHandlers.js';
 
 export default {
+    createSetupCashier,
+    listSetupCashiers,
+    loginCashier,
+    verifyTerminal,
+    getPairedTerminal,
     listCatalog,
     scanBarcode,
     checkout,

@@ -18,6 +18,20 @@ const registerPosServiceWorker = async () => {
   if (import.meta.env.DEV) return;
   if (!('serviceWorker' in navigator)) return;
   try {
+    let hasReloadedForServiceWorkerUpdate = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hasReloadedForServiceWorkerUpdate) return;
+      hasReloadedForServiceWorkerUpdate = true;
+      window.location.reload();
+    });
+
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map(async (registration) => {
+      const scriptUrl = String(registration.active?.scriptURL || registration.waiting?.scriptURL || registration.installing?.scriptURL || '');
+      if (scriptUrl && !scriptUrl.endsWith('/sw.js')) return;
+      await registration.update().catch(() => {});
+    }));
+
     const probe = await fetch(serviceWorkerUrl, { method: 'GET', cache: 'no-store' });
     const contentType = String(probe.headers.get('content-type') || '').toLowerCase();
     const scriptLike = contentType.includes('javascript') || contentType.includes('ecmascript');
@@ -26,9 +40,16 @@ const registerPosServiceWorker = async () => {
     const registration = await navigator.serviceWorker.register(serviceWorkerUrl, {
       scope: appBasePath === '/' ? '/' : `${appBasePath}/`
     });
+    await registration.update().catch(() => {});
     if (registration?.waiting) {
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
     }
+    registration?.installing?.addEventListener('statechange', (event) => {
+      const nextWorker = event?.target;
+      if (nextWorker?.state === 'installed') {
+        nextWorker.postMessage({ type: 'SKIP_WAITING' });
+      }
+    });
   } catch {
     // Service worker support is optional for local development.
   }

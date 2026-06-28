@@ -15,7 +15,6 @@ import {
   KeyRound,
   MapPin,
   Pencil,
-  Info,
   MapPinned,
   Package,
   Plus,
@@ -32,13 +31,25 @@ import {
   Truck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCreateItem, useDeleteItem, useUpdateItem } from '@/hooks/useItems.js';
 import {
+  createFolder,
   generateItemBarcode,
+  getFolders,
   getItems,
-  listItemBarcodes
+  listItemBarcodes,
+  updateFolder
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride, uploadPosCatalogImage } from '@/services/posCatalogService.js';
 import { updateStorefrontCatalogOverride, uploadStorefrontCatalogImage } from '@/services/storefrontCatalogService.js';
@@ -46,17 +57,19 @@ import { deleteStorefrontAsset, getCompanyInfo, getAllSettings, updateSettings, 
 import { updateProfile } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
-import { normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
+import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
+import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
-import { normalizeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
+import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
 import {
-  FULFILLMENT_STATUS_LABELS,
-  ORDER_METHOD_LABELS,
-  PAYMENT_TYPE_LABELS,
-  getNextStatusActions
-} from './orderFulfillmentUi.js';
-import { fetchPosCatalog, fetchPosTransactions, fetchTerminalTodayDashboard } from '../services/posService.js';
+  createPosSetupCashier,
+  fetchPosSetupCashiers,
+  fetchPosCatalog,
+  fetchPosTransactions,
+  fetchTerminalTodayDashboard
+} from '../services/posService.js';
 import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
 import { toast } from 'sonner';
 
@@ -120,9 +133,58 @@ const MODE_META = {
   },
 };
 
+const SETTINGS_FIELD_LABELS = {
+  name: 'Location Name',
+  address_line: 'Location Address',
+  latitude: 'Latitude',
+  longitude: 'Longitude',
+  store_is_visible: 'Storefront Visible',
+  store_has_no_location: 'Searchable Without Map Pin',
+  customer_access_mode: 'Customer Access Mode',
+  storefront_tagline: 'Storefront Tagline',
+  storefront_about: 'Storefront About',
+  storefront_phone: 'Storefront Phone',
+  storefront_email: 'Storefront Email',
+  storefront_hours: 'Storefront Hours',
+  storefront_why_choose_us: 'Storefront Why Choose Us',
+  storefront_social_links: 'Storefront Social Links',
+  storefront_review_highlights: 'Storefront Review Highlights',
+  storefront_review_summary: 'Storefront Review Summary',
+  storefront_promo: 'Storefront Promo',
+  storefront_ui_v2_enabled: 'Storefront UI V2',
+  storefront_categories: 'Storefront Categories',
+  storefront_gallery_images: 'Storefront Gallery Images',
+  storefront_delivery_partners: 'Storefront Delivery Partners',
+  storefront_follow_enabled: 'Show Follow Button',
+  storefront_share_enabled: 'Show Share Button',
+  'storefront_locations.primary_location': 'Primary Storefront Location'
+};
+
 const money = (value) => Number(value || 0).toFixed(2);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
+const CUSTOMER_ACCESS_MODE_OPTIONS = [
+  { value: 'ghost', label: 'Ghost', description: 'Profile and contact only; catalog, cart, checkout, and booking are hidden.' },
+  { value: 'catalog', label: 'Catalog Only', description: 'Customers can browse catalog, prices, and inventory labels only.' },
+  { value: 'inquiry', label: 'Inquiry', description: 'Customers can browse and contact you through existing channels.' },
+  { value: 'transaction', label: 'Transaction', description: 'Customers can quote, checkout, and book services online.' }
+];
+const CUSTOMER_ACCESS_MODE_RANK = { ghost: 0, catalog: 1, inquiry: 2, transaction: 3 };
+const normalizeCustomerAccessMode = (value, fallback = 'catalog') => (
+  CUSTOMER_ACCESS_MODE_OPTIONS.some((option) => option.value === String(value || '').trim().toLowerCase())
+    ? String(value || '').trim().toLowerCase()
+    : fallback
+);
+const mapCustomerAccessRuntimeSettings = (systemSettings = {}) => ({
+  customerAccessMode: normalizeCustomerAccessMode(systemSettings.customer_access_mode?.value || 'catalog'),
+  customerAccessEffectiveMode: normalizeCustomerAccessMode(systemSettings.effective_customer_access_mode?.value || systemSettings.customer_access_mode?.value || 'catalog'),
+  customerAccessMaxMode: normalizeCustomerAccessMode(systemSettings.max_customer_access_mode?.value || 'transaction', 'transaction'),
+  customerAccessPlatformMaxMode: normalizeCustomerAccessMode(systemSettings.platform_max_customer_access_mode?.value || 'transaction', 'transaction'),
+  customerAccessRegistrationStageMaxMode: normalizeCustomerAccessMode(systemSettings.registration_stage_max_customer_access_mode?.value || 'transaction', 'transaction'),
+  customerAccessLimitationReason: String(systemSettings.customer_access_limitation_reason?.value || ''),
+  customerAccessRegistrationStage: String(systemSettings.customer_access_registration_stage?.value || 'registered').trim().toLowerCase() || 'registered',
+  customerAccessFlagStatus: systemSettings.customer_access_modes_enabled?.value === false ? 'rollback' : 'enabled'
+});
 
 const normalizeStringList = (raw, maxItems = 8, maxLen = 120) => {
   const source = Array.isArray(raw) ? raw : [];
@@ -173,6 +235,25 @@ const sanitizeDiscountProfile = (profile) => ({
   percentage: Number(profile?.percentage ?? 0),
   active: profile?.active !== false
 });
+
+const resolveUserPermissionList = (user) => {
+  if (Array.isArray(user?.permissions)) return user.permissions;
+  if (typeof user?.permissions !== 'string') return [];
+  try {
+    const parsed = JSON.parse(user.permissions);
+    if (Array.isArray(parsed)) return parsed;
+    if (!parsed || typeof parsed !== 'object') return [];
+    return Object.entries(parsed).flatMap(([entity, actions]) => (
+      actions && typeof actions === 'object'
+        ? Object.entries(actions)
+          .filter(([, allowed]) => allowed === true)
+          .map(([action]) => `${entity}:${action}`)
+        : []
+    ));
+  } catch {
+    return [];
+  }
+};
 
 const normalizeDiscountProfiles = (rawProfiles) => {
   let parsed = rawProfiles;
@@ -249,6 +330,103 @@ const normalizeStorefrontReviewSummarySettings = (raw) => {
   };
 };
 
+const serializeStorefrontGallerySettings = (raw) => {
+  const source = Array.isArray(raw) ? raw : [];
+  return source
+    .map((entry, index) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const url = String(entry.url || '').trim().slice(0, 500);
+      const path = String(entry.path || '').trim().slice(0, 500);
+      if (!url && !path) return null;
+      return {
+        url,
+        path,
+        caption: String(entry.caption || '').trim().slice(0, 140),
+        alt: String(entry.alt || '').trim().slice(0, 140),
+        sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 24)
+    .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0));
+};
+
+const serializeStorefrontReviewSummary = (form = {}) => {
+  const starDistribution = {};
+  [
+    ['1', form.storefrontReviewSummaryStar1],
+    ['2', form.storefrontReviewSummaryStar2],
+    ['3', form.storefrontReviewSummaryStar3],
+    ['4', form.storefrontReviewSummaryStar4],
+    ['5', form.storefrontReviewSummaryStar5]
+  ].forEach(([star, value]) => {
+    const parsed = parseNullableNumberInput(value, { integer: true, min: 0 });
+    if (parsed !== null) {
+      starDistribution[star] = parsed;
+    }
+  });
+
+  const summary = {
+    score: parseNullableNumberInput(form.storefrontReviewSummaryScore, { min: 0, max: 5, precision: 1 }),
+    total_count: parseNullableNumberInput(form.storefrontReviewSummaryTotalCount, { integer: true, min: 0 })
+  };
+
+  if (Object.keys(starDistribution).length > 0) {
+    summary.star_distribution = starDistribution;
+  }
+
+  return summary;
+};
+
+const formatFirstValidationError = (error, fallbackMessage) => {
+  const primaryError = Array.isArray(error?.response?.data?.errors)
+    ? error.response.data.errors.find((entry) => String(entry?.message || '').trim())
+    : null;
+
+  if (primaryError) {
+    const field = String(primaryError.field || '').trim();
+    const message = String(primaryError.message || '').trim();
+    return field ? `${field}: ${message}` : message;
+  }
+
+  return error?.response?.data?.message || fallbackMessage;
+};
+
+const getReadableFieldName = (field) => SETTINGS_FIELD_LABELS[field] || field;
+
+const formatValidationErrorDescription = (apiErrors) => {
+  if (!Array.isArray(apiErrors) || apiErrors.length === 0) {
+    return '';
+  }
+
+  return apiErrors
+    .slice(0, 5)
+    .map((entry) => `${getReadableFieldName(entry.field)}: ${entry.message}`)
+    .join(' | ');
+};
+
+const collectValidationErrors = (error, fallbackMessage = 'Validation failed') => {
+  const responseErrors = Array.isArray(error?.response?.data?.errors)
+    ? error.response.data.errors
+      .map((entry) => ({
+        field: String(entry?.field || '').trim(),
+        message: String(entry?.message || '').trim()
+      }))
+      .filter((entry) => entry.message)
+    : [];
+
+  if (responseErrors.length > 0) {
+    return responseErrors;
+  }
+
+  const responseMessage = String(error?.response?.data?.message || error?.message || fallbackMessage).trim();
+  return responseMessage ? [{ field: '', message: responseMessage }] : [];
+};
+
+const formatValidationModalTitle = (contextLabel) => `${contextLabel} Error`;
+
+const RequiredMark = () => <span className="ml-1 text-rose-600">*</span>;
+
 const createDefaultLocationForm = () => ({
   name: '',
   address_line: '',
@@ -278,440 +456,6 @@ const parseIsoDateTime = (value) => {
   if (!Number.isFinite(date.getTime())) return '-';
   return date.toLocaleString();
 };
-const parseDeliveryCoords = (order = {}) => {
-  if (
-    order?.delivery_latitude === null
-    || order?.delivery_latitude === undefined
-    || order?.delivery_latitude === ''
-    || order?.delivery_longitude === null
-    || order?.delivery_longitude === undefined
-    || order?.delivery_longitude === ''
-  ) {
-    return null;
-  }
-  const lat = Number(order?.delivery_latitude);
-  const lng = Number(order?.delivery_longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return {
-    latitude: lat,
-    longitude: lng
-  };
-};
-
-const QUEUE_STATUS_LABELS = {
-  queued: 'Queued',
-  replaying: 'Replaying',
-  replayed: 'Replayed',
-  failed_manual_resolution_required: 'Manual Resolution Required'
-};
-
-const QUEUE_STATUS_CLASSES = {
-  queued: 'border-sky-200 bg-sky-50 text-sky-800',
-  replaying: 'border-indigo-200 bg-indigo-50 text-indigo-800',
-  replayed: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  failed_manual_resolution_required: 'border-rose-200 bg-rose-50 text-rose-800'
-};
-
-const QUEUE_OPERATION_LABELS = {
-  checkout: 'Checkout',
-  shift_open: 'Shift Open',
-  shift_close: 'Shift Close',
-  cash_event: 'Cash Drawer Event',
-  order_status_update: 'Order Status Update'
-};
-
-function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
-  const isIncomingQueue = title === MODE_META.incoming_queue.title;
-
-  if (isIncomingQueue) {
-    return (
-      <section className="space-y-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/80">
-          {children}
-          {locked && (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-              Terminal is locked. Unlock to run protected operational actions.
-            </div>
-          )}
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className={`rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70 ${className}`}>
-      {children}
-    </section>
-  );
-}
-
-function IncomingQueueWorkspace({
-  canViewPos,
-  canTransactPos,
-  shiftState = { shift: null },
-  incomingOrdersState,
-  incomingOrderActionState,
-  handleIncomingOrderStatusChange,
-  handleOpenIncomingOrderReceipt,
-  incomingReceiptOpeningId,
-  handleOpenIncomingOrderHistory,
-  incomingHistoryOpeningId,
-  refreshIncomingOrders,
-  locationsState,
-  queueLocationScopeId,
-  locked,
-  sectionId
-}) {
-  const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
-  const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
-  const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
-  const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
-  const selectedLocationName = !queueLocationScopeId
-    ? 'Not selected'
-    : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
-
-  return (
-    <div id={sectionId} className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-50 text-[#1A4E8D]">
-            <MapPinned className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-sm leading-5 text-[#475569]">Location scope:</p>
-            <p className="text-lg font-black leading-6 text-[#0F172A]">{selectedLocationName}</p>
-          </div>
-        </div>
-        <Button
-          type="button"
-          onClick={() => refreshIncomingOrders?.()}
-          disabled={incomingOrdersState?.loading || locked}
-          className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
-        >
-          <RefreshCcw className="mr-2 h-4 w-4" />
-          {incomingOrdersState?.loading ? 'Refreshing...' : 'Refresh Queue'}
-        </Button>
-      </div>
-      <div className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-3 text-sm leading-5 text-[#334155]">
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
-          <Info className="h-4 w-4" />
-        </span>
-        <p>
-          Completed or cancelled online orders move to History/Receipt Preview.
-          <br />
-          Incoming Queue shows active fulfillment statuses only.
-        </p>
-      </div>
-
-      {!canViewPos || incomingOrdersAccessState === 'forbidden' ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          {incomingOrdersErrorMessage || 'You need POS view permission to access incoming online orders.'}
-        </p>
-      ) : incomingOrdersAccessState === 'error' ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {incomingOrdersErrorMessage || 'Failed to load incoming online orders. Try refreshing.'}
-        </p>
-      ) : incomingOrdersState?.loading && incomingOrders.length === 0 ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading incoming orders...</p>
-      ) : incomingOrders.length === 0 ? (
-        <div className="grid min-h-[11rem] grid-cols-1 items-center gap-5 rounded-lg border border-slate-200 bg-white px-5 py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
-          <div className="flex justify-center md:border-r md:border-slate-200">
-            <div className="relative grid h-32 w-40 place-items-end">
-              <div className="absolute inset-x-4 bottom-1 h-3 rounded-full bg-blue-100/70 blur-sm" />
-              <div className="relative h-16 w-28 rounded-b-lg rounded-t-xl border-2 border-blue-300 bg-blue-50 shadow-inner">
-                <div className="absolute -top-4 left-8 h-5 w-12 rounded-b-lg border-x-2 border-b-2 border-blue-300 bg-white" />
-                <div className="absolute -top-12 left-11 h-10 w-8 rounded-md border border-blue-200 bg-white shadow-sm">
-                  <span className="mx-auto mt-2 block h-1 w-4 rounded bg-blue-200" />
-                  <span className="mx-auto mt-2 block h-1 w-5 rounded bg-blue-100" />
-                  <span className="mx-auto mt-2 block h-1 w-3 rounded bg-blue-100" />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div>
-            <p className="text-xl font-black tracking-tight text-[#0F172A]">No online orders in active queue.</p>
-            <p className="mt-2 text-sm leading-5 text-[#475569]">New online orders will appear here once they are received.</p>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {incomingOrders.map((order) => {
-            const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
-            const nextActions = getNextStatusActions(order);
-            const deliveryCoords = parseDeliveryCoords(order);
-            const mapLink = deliveryCoords
-              ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
-              : '';
-            return (
-              <div key={`incoming-workspace-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
-                  <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
-                    {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
-                  </span>
-                </div>
-                <div className="mt-2 space-y-1 text-xs text-slate-600">
-                  <p>PIN: <span className="font-semibold text-slate-900">{order.tracking_pin || '-'}</span></p>
-                  <p>{ORDER_METHOD_LABELS[order.order_method] || order.order_method} / {PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type}</p>
-                  {order.delivery_address ? <p>{order.delivery_address}</p> : null}
-                  {deliveryCoords ? <p>Coords: {deliveryCoords.latitude.toFixed(6)}, {deliveryCoords.longitude.toFixed(6)}</p> : null}
-                  {deliveryCoords ? (
-                    <a
-                      href={mapLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    className="font-semibold text-[#1A4E8D] underline"
-                    >
-                      Open pin in map
-                    </a>
-                  ) : null}
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {nextActions.map((status) => (
-                    <Button
-                      key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}
-                      type="button"
-                      size="sm"
-                      variant={status === 'rejected' ? 'destructive' : 'outline'}
-                      disabled={Boolean(actionLoading) || !canTransactPos || locked || !shiftState.shift}
-                      onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
-                    >
-                      {actionLoading === status ? 'Saving...' : (FULFILLMENT_STATUS_LABELS[status] || status)}
-                    </Button>
-                  ))}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
-                    onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id)}
-                  >
-                    {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Receipt'}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={locked || !canViewPos || incomingHistoryOpeningId !== null}
-                    onClick={() => handleOpenIncomingOrderHistory?.(order)}
-                  >
-                    {incomingHistoryOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open in History'}
-                  </Button>
-                </div>
-                {!canTransactPos && (
-                  <p className="mt-2 text-[11px] text-slate-500">You need POS transact permission to update order statuses.</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LocationScopeWorkspace({
-  canViewPos,
-  locationsState,
-  queueLocationScopeId,
-  setQueueLocationScopeId,
-  incomingOrdersState,
-  refreshIncomingOrders,
-  locked,
-  sectionId
-}) {
-  const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
-  const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
-
-  return (
-    <div id={sectionId} className="space-y-3">
-      {!canViewPos ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          You need POS view permission to manage location scope for online orders.
-        </p>
-      ) : (
-        <>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <Label className="text-xs">Queue Location Scope</Label>
-            <select
-              className="mt-1 w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
-              value={queueLocationScopeId || ''}
-              onChange={(event) => {
-                const nextValue = event.target.value ? Number(event.target.value) : null;
-                setQueueLocationScopeId(nextValue);
-              }}
-            >
-              <option value="" disabled>Select queue location</option>
-              {locations.map((location) => (
-                <option key={`workspace-location-${location.location_id}`} value={location.location_id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
-            <p className="mt-2 text-xs text-slate-600">
-              This filters incoming queue results and status actions to the selected fulfillment location.
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-3">
-            <p className="text-sm font-semibold text-slate-900">Live Queue Snapshot</p>
-            <p className="mt-1 text-xs text-slate-600">Current visible queue count: {incomingOrders.length}</p>
-            <Button type="button" variant="outline" className="mt-3" onClick={() => refreshIncomingOrders?.()} disabled={incomingOrdersState?.loading || locked}>
-              {incomingOrdersState?.loading ? 'Refreshing Queue...' : 'Refresh Incoming Queue'}
-            </Button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function SyncQueueWorkspace({
-  queuedTerminalOperations = [],
-  queueStatusFilter = 'all',
-  setQueueStatusFilter = () => {},
-  queueSummary = {},
-  replayingQueuedTerminalOperations = false,
-  handleReplayQueuedTerminalOperations = () => {},
-  handleRetryQueuedOperation = () => {},
-  handleResolveQueuedOperation = () => {},
-  isOnline = true,
-  locked = false,
-  sectionId
-}) {
-  const entries = Array.isArray(queuedTerminalOperations) ? queuedTerminalOperations : [];
-  const pendingCount = Number(queueSummary?.pending || 0);
-  const blockedCount = Number(queueSummary?.blocked || 0);
-  const totalCount = Number(queueSummary?.total || entries.length);
-
-  return (
-    <div id={sectionId} className="space-y-3">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500">Total</p>
-            <p className="text-sm font-semibold text-slate-900">{totalCount}</p>
-          </div>
-          <div className="rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5">
-            <p className="text-[11px] uppercase tracking-wide text-sky-700">Pending</p>
-            <p className="text-sm font-semibold text-sky-900">{pendingCount}</p>
-          </div>
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5">
-            <p className="text-[11px] uppercase tracking-wide text-rose-700">Blocked</p>
-            <p className="text-sm font-semibold text-rose-900">{blockedCount}</p>
-          </div>
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5">
-            <p className="text-[11px] uppercase tracking-wide text-emerald-700">Replayed</p>
-            <p className="text-sm font-semibold text-emerald-900">{Number(queueSummary?.replayed || 0)}</p>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Label className="text-xs">Filter</Label>
-            <select
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
-              value={queueStatusFilter}
-              onChange={(event) => setQueueStatusFilter(event.target.value)}
-            >
-              <option value="all">All statuses</option>
-              <option value="queued">Queued</option>
-              <option value="replaying">Replaying</option>
-              <option value="replayed">Replayed</option>
-              <option value="failed_manual_resolution_required">Manual resolution</option>
-            </select>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleReplayQueuedTerminalOperations({ toastIfEmpty: true })}
-            disabled={!isOnline || replayingQueuedTerminalOperations || locked}
-          >
-            {replayingQueuedTerminalOperations ? 'Replaying...' : 'Replay queued'}
-          </Button>
-        </div>
-        {!isOnline && (
-          <p className="mt-2 text-xs text-amber-700">
-            Offline mode detected. Replays will resume automatically once connectivity returns.
-          </p>
-        )}
-      </div>
-
-      {entries.length === 0 ? (
-        <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
-          No queue entries for this filter.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {entries.map((entry) => {
-            const statusKey = String(entry?.status || '').trim() || 'queued';
-            const lastError = entry?.last_error && typeof entry.last_error === 'object' ? entry.last_error : null;
-            const canRetry = statusKey === 'failed_manual_resolution_required' || statusKey === 'queued';
-            const canResolve = statusKey === 'failed_manual_resolution_required';
-            const operationLabel = QUEUE_OPERATION_LABELS[entry?.operation] || entry?.operation || 'Unknown operation';
-            return (
-              <div key={entry.intent_id} className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{operationLabel}</p>
-                    <p className="text-xs text-slate-500">Intent: {entry.intent_id}</p>
-                  </div>
-                  <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${QUEUE_STATUS_CLASSES[statusKey] || 'border-slate-200 bg-slate-50 text-slate-700'}`}>
-                    {QUEUE_STATUS_LABELS[statusKey] || statusKey}
-                  </span>
-                </div>
-                <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-slate-600 md:grid-cols-2">
-                  <p>Queued: <span className="font-semibold text-slate-900">{parseIsoDateTime(entry?.queued_at)}</span></p>
-                  <p>Updated: <span className="font-semibold text-slate-900">{parseIsoDateTime(entry?.updated_at)}</span></p>
-                  <p>Attempts: <span className="font-semibold text-slate-900">{Number(entry?.attempt_count || 0)}</span></p>
-                  <p>Next retry: <span className="font-semibold text-slate-900">{entry?.next_retry_at ? parseIsoDateTime(entry.next_retry_at) : '-'}</span></p>
-                </div>
-                {lastError?.message ? (
-                  <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-800">
-                    <div className="flex items-center gap-1 font-semibold">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      Last error
-                    </div>
-                    <p className="mt-1">{lastError.message}</p>
-                    {(lastError.code || lastError.status) && (
-                      <p className="mt-1 text-[11px]">
-                        {lastError.code ? `Code: ${lastError.code}` : ''}{lastError.code && lastError.status ? ' | ' : ''}{lastError.status ? `HTTP: ${lastError.status}` : ''}
-                      </p>
-                    )}
-                  </div>
-                ) : null}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {canRetry && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={locked}
-                      onClick={() => handleRetryQueuedOperation(entry.intent_id)}
-                    >
-                      Retry now
-                    </Button>
-                  )}
-                  {canResolve && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={locked}
-                      onClick={() => handleResolveQueuedOperation(entry.intent_id)}
-                    >
-                      Mark resolved
-                    </Button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ShiftControlsWorkspace({
   shiftState,
   terminalMeta,
@@ -726,6 +470,7 @@ function ShiftControlsWorkspace({
   shiftActionLoading,
   canTransactPos,
   canCloseDay,
+  canAdminBypassShiftPrompt = false,
   closeShiftForm,
   setCloseShiftForm,
   handleCloseShift,
@@ -753,6 +498,7 @@ function ShiftControlsWorkspace({
   const activeShift = shiftState?.shift || null;
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
+  const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;
   const SHIFT_TABS = [
     { id: 'shift_location', label: 'Shift Location', icon: MapPinned },
     { id: 'close_shift', label: 'Close Shift', icon: ShieldCheck },
@@ -896,11 +642,11 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canTransactPos || !canSubmitOpenShift}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !canSubmitOpenShift}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
-            {!canTransactPos && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+            {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
           </div>
         </div>
       );
@@ -1045,8 +791,39 @@ function ShiftControlsWorkspace({
   const renderCloseShiftPane = () => {
     if (!activeShift) {
       return (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-700 shadow-sm shadow-amber-100/70">
-          Open a shift first before using close shift controls.
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+          <p className="text-[13px] font-black text-[#0F172A]">Open Shift</p>
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
+            No active shift is open. Start a shift here before using cashier-only actions.
+          </p>
+          <div className="mt-4 space-y-3">
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Cash ({terminalMeta.pettyCashSymbol})</Label>
+            <Input
+              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+              type="number"
+              min="0"
+              step="0.01"
+              value={openShiftForm.openingFloatAmount}
+              onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
+              placeholder="0.00"
+            />
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Note (Optional)</Label>
+            <Input
+              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+              value={openShiftForm.openingNote}
+              onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
+              placeholder="Opening shift cash note"
+            />
+            <Button
+              type="button"
+              className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+              onClick={handleOpenShift}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !canSubmitOpenShift}
+            >
+              {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
+            </Button>
+            {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+          </div>
         </div>
       );
     }
@@ -1202,604 +979,77 @@ function ShiftControlsWorkspace({
   );
 }
 
-const REPORT_TABS = [
-  { id: 'daily_total', label: 'Daily Total Reports' },
-  { id: 'popular_item', label: 'Popular Item' },
-  { id: 'transaction', label: 'Transaction' }
-];
-
-const POPULAR_ITEM_CHART_COLORS = ['#2F8CA3', '#C37A65', '#6FA586', '#C78150', '#1F7F85'];
-
-const getReportMetricNumber = (value) => {
-  const numeric = Number(value || 0);
-  return Number.isFinite(numeric) ? numeric : 0;
-};
-
-const formatShortReportDate = (date) => {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
-};
-
-const parseBusinessDateLocal = (value) => {
-  const normalized = String(value || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
-  const [year, month, day] = normalized.split('-').map((part) => Number.parseInt(part, 10));
-  const date = new Date(year, month - 1, day);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const formatBusinessDateLocal = (date) => {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const formatReportDate = (value) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
-const formatReportTime = (value) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-};
-
-const downloadCsvFile = (filename, rows = []) => {
-  if (typeof window === 'undefined') return;
-  const csv = rows.map((row) => (
-    row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')
-  )).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
-};
-
-const buildDailyReportBars = (dailyTotals = [], reportEndBusinessDate = '', selectedBusinessDate = '') => {
-  const rows = Array.isArray(dailyTotals) ? dailyTotals : [];
-  const totalsByDate = new Map(rows.map((row) => [
-    String(row?.business_date || '').slice(0, 10),
-    row
-  ]));
-  const endDateValue = String(reportEndBusinessDate || '').slice(0, 10);
-  const selectedDateValue = String(selectedBusinessDate || endDateValue || '').slice(0, 10);
-  const endDate = parseBusinessDateLocal(endDateValue) || new Date();
-  const normalizedRows = Array.from({ length: 11 }, (_, index) => {
-    const date = new Date(endDate);
-    date.setDate(endDate.getDate() - (10 - index));
-    const businessDate = formatBusinessDateLocal(date);
-    const row = totalsByDate.get(businessDate) || {
-      business_date: businessDate,
-      total_amount: 0,
-      transaction_count: 0,
-      discount_amount: 0,
-      item_count: 0,
-      discount_item_count: 0,
-      total_cost: 0,
-      refund_amount: 0,
-      refunded_item_count: 0,
-      net_profit: 0
-    };
-    return row;
-  });
-  const maxAmount = Math.max(...normalizedRows.map((row) => getReportMetricNumber(row?.total_amount)), 0);
-  return normalizedRows.map((row, index) => {
-    const businessDate = String(row?.business_date || '').slice(0, 10);
-    const date = parseBusinessDateLocal(businessDate);
-    const amount = getReportMetricNumber(row?.total_amount);
-    const height = amount > 0 && maxAmount > 0 ? Math.min(100, Math.max(12, (amount / maxAmount) * 100)) : 2;
-    return {
-      key: `${businessDate || 'report-date'}-${index}`,
-      businessDate,
-      label: formatShortReportDate(date),
-      amount,
-      transactionCount: Number.parseInt(row?.transaction_count || 0, 10),
-      discountAmount: getReportMetricNumber(row?.discount_amount),
-      itemCount: getReportMetricNumber(row?.item_count || row?.total_item_count),
-      discountItemCount: getReportMetricNumber(row?.discount_item_count),
-      totalCost: getReportMetricNumber(row?.total_cost || row?.cost_amount),
-      refundAmount: getReportMetricNumber(row?.refund_amount),
-      refundedItemCount: getReportMetricNumber(row?.refunded_item_count),
-      netProfit: getReportMetricNumber(row?.net_profit),
-      height,
-      isActive: businessDate === selectedDateValue
-    };
-  });
-};
-
-function ReportMetricCard({ value, label, emphasize = false }) {
-  return (
-    <div className="grid min-h-[7rem] place-items-center rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center shadow-sm shadow-slate-200/60">
-      <div>
-        <p className={`text-[18px] font-black tracking-tight ${emphasize ? 'text-[#1A4E8D]' : 'text-[#0F172A]'}`}>{value}</p>
-        <p className="mt-2 text-[11px] font-semibold leading-4 text-[#64748B]">{label}</p>
-      </div>
-    </div>
-  );
-}
-
-const buildPopularItemChart = (items = []) => {
-  const topItems = (Array.isArray(items) ? items : [])
-    .slice(0, 5)
-    .map((item, index) => ({
-      key: `popular-chart-${item?.item_id || index}`,
-      label: String(item?.item_name || `Item #${item?.item_id || index + 1}`).trim(),
-      amount: getReportMetricNumber(item?.amount),
-      quantity: getReportMetricNumber(item?.quantity),
-      color: POPULAR_ITEM_CHART_COLORS[index % POPULAR_ITEM_CHART_COLORS.length]
-    }));
-  const totalAmount = topItems.reduce((sum, item) => sum + item.amount, 0);
-  const totalQuantity = topItems.reduce((sum, item) => sum + item.quantity, 0);
-  const basis = totalAmount > 0 ? 'amount' : 'quantity';
-  const totalBasis = basis === 'amount' ? totalAmount : totalQuantity;
-  let current = 0;
-  const gradientStops = totalBasis > 0
-    ? topItems.map((item) => {
-      const size = ((basis === 'amount' ? item.amount : item.quantity) / totalBasis) * 100;
-      const start = current;
-      const end = current + size;
-      current = end;
-      return `${item.color} ${start}% ${end}%`;
-    })
-    : ['#CBD5E1 0% 100%'];
-
-  return {
-    topItems,
-    totalAmount,
-    totalQuantity,
-    gradient: `conic-gradient(${gradientStops.join(', ')})`
-  };
-};
-
-function ReportWorkspace({ todayDashboard, terminalMeta, activeTerminalId = '', operatingLocationId = null, reportRefreshKey = 0, sectionId }) {
-  const [activeTab, setActiveTab] = useState('daily_total');
-  const [slideDirection, setSlideDirection] = useState('forward');
-  const [selectedDailyDate, setSelectedDailyDate] = useState('');
-  const [selectedDateSummary, setSelectedDateSummary] = useState(null);
-  const [selectedDateSummaryLoading, setSelectedDateSummaryLoading] = useState(false);
-  const [transactionDateFrom, setTransactionDateFrom] = useState('');
-  const [transactionDateTo, setTransactionDateTo] = useState('');
-  const [reportTransactions, setReportTransactions] = useState([]);
-  const [reportTransactionsLoading, setReportTransactionsLoading] = useState(false);
-  const activeTabIndex = Math.max(0, REPORT_TABS.findIndex((tab) => tab.id === activeTab));
-  const salesSummary = todayDashboard?.salesSummary || {};
-  const selectedDailyBusinessDate = selectedDailyDate || String(todayDashboard.businessDate || '').slice(0, 10);
-  const todayBusinessDate = String(todayDashboard.businessDate || '').slice(0, 10);
-  const selectedDateSalesSummary = selectedDateSummary?.sales_summary || null;
-  const popularItemsSource = selectedDailyBusinessDate && selectedDailyBusinessDate !== todayBusinessDate
-    ? (selectedDateSalesSummary || {})
-    : salesSummary;
-  const popularItems = Array.isArray(popularItemsSource.popular_items) ? popularItemsSource.popular_items : [];
-  const popularItemChart = buildPopularItemChart(popularItems);
-  const transactionDefaultDate = selectedDailyBusinessDate || String(todayDashboard.businessDate || '').slice(0, 10);
-  const dailyBars = buildDailyReportBars(salesSummary.daily_totals, todayDashboard.businessDate, selectedDailyBusinessDate);
-  const selectedDailyBar = dailyBars.find((bar) => bar.businessDate === selectedDailyBusinessDate) || dailyBars[dailyBars.length - 1] || null;
-  const amountCharged = getReportMetricNumber(selectedDailyBar?.amount ?? salesSummary.total_amount);
-  const discountAmount = getReportMetricNumber(selectedDailyBar?.discountAmount ?? salesSummary.discount_amount);
-  const transactionCount = getReportMetricNumber(selectedDailyBar?.transactionCount ?? salesSummary.transaction_count);
-  const itemCount = getReportMetricNumber(selectedDailyBar?.itemCount ?? salesSummary.item_count ?? salesSummary.total_item_count);
-  const totalCost = getReportMetricNumber(selectedDailyBar?.totalCost ?? salesSummary.total_cost ?? salesSummary.cost_amount);
-  const refundAmount = getReportMetricNumber(selectedDailyBar?.refundAmount ?? salesSummary.refund_amount);
-  const netProfit = getReportMetricNumber(selectedDailyBar?.netProfit ?? salesSummary.net_profit);
-  const discountItemCount = getReportMetricNumber(selectedDailyBar?.discountItemCount ?? salesSummary.discount_item_count);
-  const refundedItemCount = getReportMetricNumber(selectedDailyBar?.refundedItemCount ?? salesSummary.refunded_item_count);
-  const handleReportTabSelect = (nextTabId) => {
-    const nextTabIndex = Math.max(0, REPORT_TABS.findIndex((tab) => tab.id === nextTabId));
-    if (nextTabIndex === activeTabIndex) return;
-    setSlideDirection(nextTabIndex > activeTabIndex ? 'forward' : 'backward');
-    setActiveTab(nextTabId);
-  };
-
-  const handleTransactionDateFromChange = (event) => {
-    const nextDate = event.target.value;
-    setTransactionDateFrom(nextDate);
-    setTransactionDateTo((previousDate) => (
-      previousDate && nextDate && previousDate < nextDate ? nextDate : previousDate
-    ));
-  };
-
-  const handleTransactionDateToChange = (event) => {
-    const nextDate = event.target.value;
-    setTransactionDateTo(nextDate);
-    setTransactionDateFrom((previousDate) => (
-      previousDate && nextDate && previousDate > nextDate ? nextDate : previousDate
-    ));
-  };
-
-  useEffect(() => {
-    if (!todayBusinessDate) return;
-    setSelectedDailyDate((previous) => (
-      previous && previous !== todayBusinessDate ? todayBusinessDate : previous
-    ));
-  }, [reportRefreshKey, todayBusinessDate]);
-
-  useEffect(() => {
-    if (!transactionDefaultDate) return;
-    setTransactionDateFrom(transactionDefaultDate);
-    setTransactionDateTo(transactionDefaultDate);
-  }, [transactionDefaultDate]);
-
-  const transactionRows = useMemo(() => reportTransactions.map((row) => {
-    const totalAmount = getReportMetricNumber(row?.total_amount);
-    const serviceAmount = getReportMetricNumber(row?.service_fee_amount) + getReportMetricNumber(row?.restaurant_service_charge_amount);
-    const costAmount = getReportMetricNumber(row?.total_cost ?? row?.cost_amount);
-    return {
-      id: row?.pos_transaction_id || row?.invoice_number || row?.created_at,
-      createdAt: row?.created_at,
-      totalAmount,
-      serviceAmount,
-      costAmount,
-      profitAmount: totalAmount - serviceAmount - costAmount
-    };
-  }), [reportTransactions]);
-  const transactionReportTotals = useMemo(() => transactionRows.reduce((totals, row) => ({
-    totalAmount: totals.totalAmount + row.totalAmount,
-    serviceAmount: totals.serviceAmount + row.serviceAmount,
-    costAmount: totals.costAmount + row.costAmount,
-    profitAmount: totals.profitAmount + row.profitAmount
-  }), {
-    totalAmount: 0,
-    serviceAmount: 0,
-    costAmount: 0,
-    profitAmount: 0
-  }), [transactionRows]);
-  const downloadTransactionReport = () => {
-    const rows = [
-      ['Date', 'Time', 'Total', 'Service Amount', 'Cost', 'Profit'],
-      ...transactionRows.map((row) => [
-        formatReportDate(row.createdAt),
-        formatReportTime(row.createdAt),
-        money(row.totalAmount),
-        money(row.serviceAmount),
-        money(row.costAmount),
-        money(row.profitAmount)
-      ])
-    ];
-    const reportRangeName = transactionDateFrom && transactionDateTo
-      ? `${transactionDateFrom}-to-${transactionDateTo}`
-      : 'report';
-    downloadCsvFile(`dgfy-transactions-${reportRangeName}.csv`, rows);
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    const terminalId = String(activeTerminalId || '').trim();
-
-    if (activeTab !== 'popular_item' || !selectedDailyBusinessDate || !terminalId) {
-      setSelectedDateSummary(null);
-      setSelectedDateSummaryLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    if (selectedDailyBusinessDate === todayBusinessDate) {
-      setSelectedDateSummary(null);
-      setSelectedDateSummaryLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const loadSelectedDateSummary = async () => {
-      setSelectedDateSummaryLoading(true);
-      try {
-        const result = await fetchTerminalTodayDashboard({
-          business_date: selectedDailyBusinessDate,
-          terminal_id: terminalId,
-          location_id: operatingLocationId || undefined
-        }, { skipGlobalErrorToast: true });
-        if (!cancelled) {
-          setSelectedDateSummary(result || null);
-        }
-      } catch {
-        if (!cancelled) {
-          setSelectedDateSummary(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setSelectedDateSummaryLoading(false);
-        }
-      }
-    };
-
-    loadSelectedDateSummary();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, activeTerminalId, operatingLocationId, reportRefreshKey, selectedDailyBusinessDate, todayDashboard.businessDate]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadReportTransactions = async () => {
-      if (activeTab !== 'transaction' || !transactionDateFrom || !transactionDateTo) {
-        setReportTransactions([]);
-        setReportTransactionsLoading(false);
-        return;
-      }
-      setReportTransactionsLoading(true);
-      try {
-        const result = await fetchPosTransactions({
-          date_from: transactionDateFrom,
-          date_to: transactionDateTo,
-          location_id: operatingLocationId || undefined,
-          status: 'completed',
-          limit: 100
-        });
-        if (!cancelled) {
-          setReportTransactions(Array.isArray(result?.transactions) ? result.transactions : []);
-        }
-      } catch {
-        if (!cancelled) {
-          setReportTransactions([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setReportTransactionsLoading(false);
-        }
-      }
-    };
-    loadReportTransactions();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, operatingLocationId, reportRefreshKey, transactionDateFrom, transactionDateTo]);
-
-  return (
-    <div id={sectionId} className="space-y-4 overflow-hidden">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-        <div className="relative grid grid-cols-3">
-          <span
-            className="absolute inset-y-1 left-0 rounded-lg bg-[#1A4E8D] shadow-sm shadow-blue-900/20 transition-transform duration-300 ease-out"
-            style={{ width: '33.333333%', transform: `translateX(${activeTabIndex * 100}%)` }}
-            aria-hidden="true"
-          />
-          {REPORT_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleReportTabSelect(tab.id)}
-              className={`relative z-10 min-h-11 rounded-lg px-2 py-2 text-center text-[12px] font-extrabold leading-4 transition-colors duration-200 ${
-                activeTab === tab.id ? 'text-white' : 'text-[#334155] hover:text-[#1A4E8D]'
-              }`}
-              aria-pressed={activeTab === tab.id}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {todayDashboard.loading ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Refreshing reports...</p>
-      ) : (
-        <div
-          className="flex transition-transform duration-300 ease-out"
-          data-slide-direction={slideDirection}
-          style={{ width: '300%', transform: `translateX(-${activeTabIndex * 33.333333}%)` }}
-        >
-          <section className="w-1/3 shrink-0 pr-3">
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60">
-                <div className="relative mb-3 flex min-h-8 items-center justify-between gap-3">
-                  <h3 className="text-[15px] font-black text-[#0F172A]">Daily Totals</h3>
-                  <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-xl bg-cyan-600 px-4 py-2 text-center text-sm font-black text-white shadow-lg shadow-cyan-900/20">
-                    {selectedDailyBar?.label || formatShortReportDate(todayDashboard.businessDate ? new Date(`${todayDashboard.businessDate}T00:00:00`) : new Date())}
-                  </span>
-                  <span className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-extrabold text-[#1A4E8D]">
-                    {selectedDailyBar?.businessDate || todayDashboard.businessDate || 'Today'}
-                  </span>
-                </div>
-                <div className="relative min-h-[10rem] rounded-xl bg-slate-50 px-3 pb-3 pt-4">
-                  <div className="absolute left-3 right-3 top-1/2 border-t border-slate-200" />
-                  <div className="relative flex min-h-[8.5rem] items-end justify-between gap-2">
-                    {dailyBars.map((bar) => (
-                      <button
-                        key={bar.key}
-                        type="button"
-                        onClick={() => setSelectedDailyDate(bar.businessDate)}
-                        className="flex min-w-0 flex-1 flex-col items-center gap-2 rounded-md outline-none transition focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30"
-                        aria-pressed={bar.isActive}
-                        aria-label={`Show daily total details for ${bar.label}`}
-                      >
-                        <div className="flex h-24 w-full items-end justify-center">
-                          <div
-                            className={`w-full max-w-[2.5rem] transition-all duration-300 ${bar.amount > 0 ? 'rounded-t-md' : 'rounded-sm'} ${bar.isActive ? 'bg-[#1A4E8D]' : (bar.amount > 0 ? 'bg-cyan-600/75' : 'bg-slate-300')}`}
-                            style={{ height: `${bar.height}%` }}
-                            title={`${bar.label}: ${terminalMeta.pettyCashSymbol}${money(bar.amount)}`}
-                          />
-                        </div>
-                        <span className={`text-[10px] font-semibold leading-3 ${bar.isActive ? 'text-[#1A4E8D]' : 'text-[#475569]'}`}>
-                          {bar.label}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(amountCharged)}`} label="Amount Charged" emphasize />
-                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(discountAmount)}`} label="Discount Amount" />
-                <ReportMetricCard value={transactionCount} label="No. of Transactions" />
-                <ReportMetricCard value={discountItemCount} label="No. of Discount Items" />
-                <ReportMetricCard value={itemCount} label="No. of Items" />
-                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(totalCost)}`} label="Total Cost" />
-                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(refundAmount)}`} label="Refund Amount" />
-                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(netProfit)}`} label="Net Profit" emphasize />
-                <ReportMetricCard value={refundedItemCount} label="No. of Items Refunded" />
-              </div>
-            </div>
-          </section>
-
-          <section className="w-1/3 shrink-0 px-3">
-            <div className="min-h-[24rem] rounded-xl border border-slate-200 bg-white p-4">
-              <div className="mb-4 grid grid-cols-3 items-center gap-3">
-                <p className="text-sm font-black text-[#0F172A]">Popular Item</p>
-                <div className="justify-self-center rounded-full border border-cyan-100 bg-cyan-50 px-4 py-1 text-center text-[11px] font-black text-cyan-700">
-                  {selectedDailyBusinessDate || todayDashboard.businessDate || 'Today'} - Top 5
-                </div>
-                <TrendingUp className="h-5 w-5 justify-self-end text-[#1A4E8D]" />
-              </div>
-              {selectedDateSummaryLoading ? (
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-12 text-center text-xs font-semibold text-[#64748B]">
-                  Loading popular items...
-                </p>
-              ) : popularItemChart.topItems.length > 0 ? (
-                <div className="grid min-h-[18rem] items-center gap-6 lg:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.8fr)]">
-                  <div className="flex flex-col items-center justify-center gap-4">
-                    <div
-                      className="relative h-56 w-56 rounded-full shadow-inner shadow-slate-300"
-                      style={{ background: popularItemChart.gradient }}
-                      aria-label="Top 5 popular items donut chart"
-                    >
-                      <div className="absolute inset-[4.2rem] grid place-items-center rounded-full bg-white shadow-sm shadow-slate-200">
-                        <div className="text-center">
-                          <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Total</p>
-                          <p className="text-sm font-black text-[#0F172A]">{terminalMeta.pettyCashSymbol}{money(popularItemChart.totalAmount)}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-black text-[#0F172A]">Most Popular Items</p>
-                      <p className="mt-1 text-xs font-semibold text-[#64748B]">
-                        Qty {money(popularItemChart.totalQuantity)} / {terminalMeta.pettyCashSymbol}{money(popularItemChart.totalAmount)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {popularItemChart.topItems.map((item) => (
-                      <div key={item.key} className="flex items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
-                          <span className="truncate text-xs font-black uppercase text-[#334155]">{item.label}</span>
-                        </div>
-                        <span className="shrink-0 text-xs font-black text-[#0F172A]">{terminalMeta.pettyCashSymbol}{money(item.amount)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-12 text-center text-xs font-semibold text-[#64748B]">
-                  No item sales data for this date yet.
-                </p>
-              )}
-            </div>
-          </section>
-
-          <section className="w-1/3 shrink-0 pl-3">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="mb-4 grid grid-cols-[minmax(18rem,1fr)_auto] items-start gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-black text-[#0F172A]">Transactions</p>
-                  <div className="mt-1 grid max-w-[22rem] grid-cols-2 gap-2">
-                    <Label className="space-y-0.5">
-                      <span className="block text-[9px] font-bold uppercase tracking-wide text-[#94A3B8]">From</span>
-                      <Input
-                        type="date"
-                        value={transactionDateFrom}
-                        max={transactionDateTo || undefined}
-                        onChange={handleTransactionDateFromChange}
-                        className="h-8 rounded-lg text-xs font-black text-[#0F172A]"
-                      />
-                    </Label>
-                    <Label className="space-y-0.5">
-                      <span className="block text-[9px] font-bold uppercase tracking-wide text-[#94A3B8]">To</span>
-                      <Input
-                        type="date"
-                        value={transactionDateTo}
-                        min={transactionDateFrom || undefined}
-                        onChange={handleTransactionDateToChange}
-                        className="h-8 rounded-lg text-xs font-black text-[#0F172A]"
-                      />
-                    </Label>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  className="justify-self-end bg-emerald-600 text-white hover:bg-emerald-700"
-                  onClick={downloadTransactionReport}
-                  disabled={reportTransactionsLoading || transactionRows.length === 0}
-                >
-                  Download Report
-                </Button>
-              </div>
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-[760px] text-sm">
-                  <thead className="bg-slate-50 text-[12px] font-black uppercase tracking-wide text-[#64748B]">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Date and Time</th>
-                      <th className="px-4 py-3 text-right">Total</th>
-                      <th className="px-4 py-3 text-right">Service Amount</th>
-                      <th className="px-4 py-3 text-right">Cost</th>
-                      <th className="px-4 py-3 text-right">Profit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {reportTransactionsLoading ? (
-                      <tr>
-                        <td colSpan={5} className="px-4 py-10 text-center text-sm font-semibold text-[#64748B]">Loading transactions...</td>
-                      </tr>
-                    ) : transactionRows.length > 0 ? transactionRows.map((row) => (
-                      <tr key={row.id} className="text-[#334155]">
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-[#0F172A]">{formatReportDate(row.createdAt)}</div>
-                          <div className="mt-0.5 text-xs text-[#64748B]">{formatReportTime(row.createdAt)}</div>
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold">{terminalMeta.pettyCashSymbol}{money(row.totalAmount)}</td>
-                        <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(row.serviceAmount)}</td>
-                        <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(row.costAmount)}</td>
-                        <td className="px-4 py-3 text-right font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol}{money(row.profitAmount)}</td>
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={5} className="px-4 py-10 text-center text-sm font-semibold text-[#64748B]">No transactions found.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                  <tfoot className="border-t border-slate-200 bg-slate-50 text-sm font-black text-[#0F172A]">
-                    <tr>
-                      <td className="px-4 py-3">Total</td>
-                      <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(transactionReportTotals.totalAmount)}</td>
-                      <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(transactionReportTotals.serviceAmount)}</td>
-                      <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(transactionReportTotals.costAmount)}</td>
-                      <td className="px-4 py-3 text-right text-[#1A4E8D]">{terminalMeta.pettyCashSymbol}{money(transactionReportTotals.profitAmount)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          </section>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const POS_ITEM_CATEGORY_OPTIONS = Object.freeze([
-  { value: 'product', label: 'Product' },
-  { value: 'supplies', label: 'Supplies' }
+const POS_FOOD_CATEGORY_LABELS = Object.freeze([
+  'Add Ons',
+  'Appetizers',
+  'Burgers And Sandwiches',
+  'Espresso Based Beverages',
+  'Frappe',
+  'Fruit Shakes',
+  'Mains',
+  'Mocktails',
+  'Non Espresso Based Beverages',
+  'Pasta',
+  'Rice Bowls',
+  'Rice Meals',
+  'Space Bar Exclusive',
+  'Waffle'
 ]);
+
+const DEFAULT_POS_FOOD_CATEGORY = 'Mains';
+
+const normalizeFolderNameKey = (value = '') => (
+  String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()
+);
+
+const createFolderFilterValue = (folder = {}) => {
+  const folderId = Number(folder?.folder_id);
+  if (Number.isInteger(folderId) && folderId > 0) return `folder:${folderId}`;
+  return `name:${normalizeFolderNameKey(folder?.name)}`;
+};
+
+const createFoodCategoryOption = (folder = {}) => {
+  const name = String(folder?.name || '').trim();
+  return {
+    value: createFolderFilterValue(folder),
+    label: name,
+    name,
+    folder_id: Number.isInteger(Number(folder?.folder_id)) && Number(folder.folder_id) > 0
+      ? Number(folder.folder_id)
+      : null
+  };
+};
 
 const createEmptyPosItemForm = () => ({
   name: '',
   default_sale_price: '',
   cost_per_unit: '',
   current_stock: '0',
+  pos_always_available: false,
   description: '',
-  sku_code: ''
+  sku_code: '',
+  pos_category: DEFAULT_POS_FOOD_CATEGORY
 });
+
+const resolveSellablePosItemPreset = (workflowMode = '') => {
+  const taxonomy = resolveModeItemTaxonomy(workflowMode);
+  const productPresets = Array.isArray(taxonomy?.presets)
+    ? taxonomy.presets.filter((preset) => preset?.category === 'product')
+    : [];
+  const preferredKeys = ['menu_item', 'finished_product', 'product', 'physical_add_on', 'packaged_beverage', 'minibar_retail_product'];
+  const preset = preferredKeys
+    .map((key) => productPresets.find((entry) => entry.key === key))
+    .find(Boolean) || productPresets[0] || null;
+
+  return preset || {
+    key: 'product',
+    label: 'Product',
+    category: 'product',
+    product_type: 'finished_goods',
+    default_unit: 'pcs',
+    fifo_enabled: true
+  };
+};
 
 function ItemsWorkspace({
   canViewPos,
@@ -1808,6 +1058,7 @@ function ItemsWorkspace({
   canDeleteItems = false,
   stockFilterPreset = '',
   onStockFilterPresetApplied = () => {},
+  workflowMode = '',
   locked,
   operatingLocationId = null,
   sectionId
@@ -1827,7 +1078,9 @@ function ItemsWorkspace({
     current_stock: '0',
     default_sale_price: '',
     cost_per_unit: '',
-    description: ''
+    pos_always_available: false,
+    description: '',
+    pos_category: DEFAULT_POS_FOOD_CATEGORY
   });
   const [editImageFile, setEditImageFile] = useState(null);
   const [editImagePreviewUrl, setEditImagePreviewUrl] = useState('');
@@ -1839,9 +1092,11 @@ function ItemsWorkspace({
   const [stockFilter, setStockFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
+  const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
+  const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
 
   useEffect(() => {
     const normalizedPreset = String(stockFilterPreset || '').trim();
@@ -1908,9 +1163,71 @@ function ItemsWorkspace({
     }
   }, [canViewPos, loadPrimaryBarcodes]);
 
+  const normalizePosFolders = useCallback((rows = []) => (
+    (Array.isArray(rows) ? rows : [])
+      .map((folder) => ({
+        ...folder,
+        folder_id: Number(folder?.folder_id),
+        name: String(folder?.name || '').trim(),
+        show_in_pos_filter: folder?.show_in_pos_filter !== false
+      }))
+      .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
+  ), []);
+
+  const loadPosFolders = useCallback(async ({ seedFoodCategories = false } = {}) => {
+    if (!canViewPos) {
+      setPosFolders([]);
+      return [];
+    }
+
+    try {
+      let folders = normalizePosFolders(await getFolders());
+
+      if (seedFoodCategories && canCreateItems) {
+        const byName = new Map(folders.map((folder) => [normalizeFolderNameKey(folder.name), folder]));
+        let changed = false;
+
+        for (const label of POS_FOOD_CATEGORY_LABELS) {
+          const key = normalizeFolderNameKey(label);
+          const existing = byName.get(key);
+          if (existing) {
+            if (existing.show_in_pos_filter === false) {
+              await updateFolder(existing.folder_id, { show_in_pos_filter: true });
+              changed = true;
+            }
+            continue;
+          }
+
+          await createFolder({
+            name: label,
+            description: 'POS food category'
+          });
+          changed = true;
+        }
+
+        if (changed) {
+          folders = normalizePosFolders(await getFolders());
+        }
+      }
+
+      setPosFolders(folders);
+      return folders;
+    } catch (folderError) {
+      setPosFolders([]);
+      if (seedFoodCategories) {
+        toast.error(folderError?.response?.data?.message || folderError?.message || 'Failed to prepare POS food categories.');
+      }
+      return [];
+    }
+  }, [canCreateItems, canViewPos, normalizePosFolders]);
+
   useEffect(() => {
     loadItems();
   }, [loadItems]);
+
+  useEffect(() => {
+    loadPosFolders({ seedFoodCategories: canCreateItems });
+  }, [canCreateItems, loadPosFolders]);
 
   useEffect(() => {
     if (!showCreateModal || !canCreateItems) return;
@@ -1974,38 +1291,105 @@ function ItemsWorkspace({
     [items]
   );
 
-  const categoryOptions = useMemo(() => {
-    const discovered = new Set(sortedItems.map((item) => String(item?.category || '').trim()).filter(Boolean));
-    POS_ITEM_CATEGORY_OPTIONS.forEach((option) => discovered.add(option.value));
-    return ['all', ...Array.from(discovered)];
-  }, [sortedItems]);
+  const foodCategoryOptions = useMemo(() => {
+    const byName = new Map();
+    POS_FOOD_CATEGORY_LABELS.forEach((label) => {
+      const name = String(label || '').trim();
+      byName.set(normalizeFolderNameKey(name), createFoodCategoryOption({ name }));
+    });
+    posFolders
+      .filter((folder) => folder?.show_in_pos_filter !== false)
+      .forEach((folder) => {
+        byName.set(normalizeFolderNameKey(folder.name), createFoodCategoryOption(folder));
+      });
+    sortedItems.forEach((item) => {
+      const folderName = String(item?.folder?.name || item?.product_folder || '').trim();
+      if (!folderName) return;
+      byName.set(normalizeFolderNameKey(folderName), createFoodCategoryOption({
+        folder_id: item?.folder_id,
+        name: folderName
+      }));
+    });
+    return Array.from(byName.values()).filter((option) => option.name);
+  }, [posFolders, sortedItems]);
+
+  const categoryOptions = useMemo(() => ['all', ...foodCategoryOptions.map((option) => option.value)], [foodCategoryOptions]);
+
+  const categoryOptionLabels = useMemo(() => {
+    const labels = new Map([['all', 'All categories']]);
+    foodCategoryOptions.forEach((option) => labels.set(option.value, option.label));
+    return labels;
+  }, [foodCategoryOptions]);
+
+  const resolveFoodCategorySelection = useCallback((selection = '') => {
+    const normalizedSelection = String(selection || '').trim();
+    const selectionName = normalizedSelection.startsWith('name:')
+      ? normalizedSelection.slice('name:'.length)
+      : normalizedSelection;
+    const selectedOption = foodCategoryOptions.find((option) => option.value === normalizedSelection)
+      || foodCategoryOptions.find((option) => normalizeFolderNameKey(option.name) === normalizeFolderNameKey(selectionName))
+      || createFoodCategoryOption({ name: selectionName || DEFAULT_POS_FOOD_CATEGORY });
+    return selectedOption;
+  }, [foodCategoryOptions]);
+
+  const ensureFoodCategoryFolder = useCallback(async (selection = '') => {
+    const selectedOption = resolveFoodCategorySelection(selection);
+    if (selectedOption.folder_id) return selectedOption;
+
+    const label = String(selectedOption.name || DEFAULT_POS_FOOD_CATEGORY).trim();
+    const key = normalizeFolderNameKey(label);
+    const existing = posFolders.find((folder) => normalizeFolderNameKey(folder.name) === key);
+    if (existing) {
+      return createFoodCategoryOption(existing);
+    }
+
+    if (!canCreateItems) {
+      return selectedOption;
+    }
+
+    const created = await createFolder({
+      name: label,
+      description: 'POS food category'
+    });
+    await loadPosFolders();
+    return createFoodCategoryOption({
+      folder_id: created?.folder_id,
+      name: created?.name || label
+    });
+  }, [canCreateItems, loadPosFolders, posFolders, resolveFoodCategorySelection]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = String(searchQuery || '').trim().toLowerCase();
     return sortedItems.filter((item) => {
-      const category = String(item?.category || '').trim().toLowerCase();
+      const folderId = Number(item?.folder_id);
+      const folderName = String(item?.folder?.name || item?.product_folder || '').trim();
       const barcode = primaryBarcodes[String(item?.item_id)]?.code || '';
       const stockQuantity = Number(item?.current_stock || 0);
+      const isAlwaysAvailable = item?.pos_always_available === true;
       const threshold = Number(item?.min_threshold);
       const lowStockThreshold = Number.isFinite(threshold) && threshold > 0 ? threshold : 5;
       const matchesStock = (() => {
         switch (stockFilter) {
           case 'in_stock':
-            return stockQuantity > lowStockThreshold;
+            return isAlwaysAvailable || stockQuantity > lowStockThreshold;
           case 'low_stock':
             return stockQuantity > 0 && stockQuantity <= lowStockThreshold;
           case 'almost_out':
             return stockQuantity > 0 && stockQuantity <= lowStockThreshold;
           case 'out_of_stock':
-            return stockQuantity <= 0;
+            return !isAlwaysAvailable && stockQuantity <= 0;
           default:
             return true;
         }
       })();
-      const matchesCategory = categoryFilter === 'all' || category === categoryFilter;
+      const matchesCategory = categoryFilter === 'all'
+        || (categoryFilter.startsWith('folder:')
+          ? Number(categoryFilter.replace('folder:', '')) === folderId
+          : normalizeFolderNameKey(folderName) === normalizeFolderNameKey(categoryFilter.replace('name:', '')));
       const haystack = [
         item?.name,
         item?.sku_code,
+        folderName,
         barcode
       ]
         .map((value) => String(value || '').toLowerCase())
@@ -2028,12 +1412,14 @@ function ItemsWorkspace({
       current_stock: String(item?.current_stock ?? '0'),
       default_sale_price: String(item?.default_sale_price ?? ''),
       cost_per_unit: String(item?.cost_per_unit ?? ''),
-      description: String(item?.description || '')
+      pos_always_available: item?.pos_always_available === true,
+      description: String(item?.description || ''),
+      pos_category: String(item?.folder?.name || item?.product_folder || DEFAULT_POS_FOOD_CATEGORY)
     });
   };
 
-  const closeEdit = () => {
-    if (savingItem || persistingEditAssets) return;
+  const closeEdit = ({ force = false } = {}) => {
+    if (!force && (savingItem || persistingEditAssets)) return;
     setEditingItemId(null);
     setPersistingEditAssets(false);
     setEditImageFile(null);
@@ -2042,7 +1428,9 @@ function ItemsWorkspace({
       current_stock: '0',
       default_sale_price: '',
       cost_per_unit: '',
-      description: ''
+      pos_always_available: false,
+      description: '',
+      pos_category: DEFAULT_POS_FOOD_CATEGORY
     });
   };
 
@@ -2052,8 +1440,8 @@ function ItemsWorkspace({
     setShowCreateModal(true);
   };
 
-  const closeCreate = () => {
-    if (creatingItem) return;
+  const closeCreate = ({ force = false } = {}) => {
+    if (creatingItem && !force) return;
     setShowCreateModal(false);
     setCreateForm(createEmptyPosItemForm());
     setSelectedImageFile(null);
@@ -2095,22 +1483,28 @@ function ItemsWorkspace({
     try {
       setPersistingEditAssets(true);
       const resolvedStock = category === 'product' || category === 'supplies' ? stock : 0;
+      const foodCategory = await ensureFoodCategoryFolder(editForm.pos_category);
       await updateItem(activeEditItem.item_id, {
         name,
         category,
         description,
+        product_folder: foodCategory.name,
+        folder_id: foodCategory.folder_id || null,
         current_stock: resolvedStock,
         location_id: Number.isInteger(Number(operatingLocationId)) && Number(operatingLocationId) > 0
           ? Number(operatingLocationId)
           : null,
-        product_type: category === 'product' ? 'finished_goods' : null,
-        mode_item_preset: category === 'product' ? 'menu_item' : undefined,
-        unit_of_measure: category === 'product' ? 'serving' : undefined,
-        fifo_enabled: category === 'product' ? false : undefined,
-        max_capacity: resolvedStock,
+        product_type: category === 'product' ? (posItemPreset.product_type || 'finished_goods') : null,
+        mode_item_preset: category === 'product' ? posItemPreset.key : undefined,
+        unit_of_measure: category === 'product' ? (posItemPreset.default_unit || 'pcs') : undefined,
+        fifo_enabled: category === 'product' ? posItemPreset.fifo_enabled !== false : undefined,
+        max_capacity: Math.max(resolvedStock, 1),
         min_threshold: Math.min(5, Math.max(resolvedStock, 0)),
         default_sale_price: price,
         cost_per_unit: cost
+      });
+      await updatePosCatalogOverride(activeEditItem.item_id, {
+        pos_always_available: editForm.pos_always_available === true
       });
       if (editImageFile) {
         await Promise.all([
@@ -2118,7 +1512,7 @@ function ItemsWorkspace({
           uploadStorefrontCatalogImage(activeEditItem.item_id, editImageFile)
         ]);
       }
-      closeEdit();
+      closeEdit({ force: true });
       await loadItems();
       setSavedMessage({ name, barcode: primaryBarcodes[String(activeEditItem.item_id)]?.code || '', action: 'updated' });
     } catch (updateError) {
@@ -2136,6 +1530,7 @@ function ItemsWorkspace({
     const cost = parseMoneyValue(createForm.cost_per_unit);
     const stock = Number(String(createForm.current_stock || '0').trim());
     const skuCode = String(createForm.sku_code || '').trim();
+    const foodCategory = resolveFoodCategorySelection(createForm.pos_category);
 
     if (!name) {
       toast.error('Item name is required.');
@@ -2167,29 +1562,52 @@ function ItemsWorkspace({
       sku_code: skuCode,
       name,
       category,
-      product_type: category === 'product' ? 'finished_goods' : null,
-      mode_item_preset: category === 'product' ? 'menu_item' : undefined,
+      product_type: category === 'product' ? (posItemPreset.product_type || 'finished_goods') : null,
+      mode_item_preset: category === 'product' ? posItemPreset.key : undefined,
+      product_folder: foodCategory.name,
       description,
       current_stock: resolvedStock,
       location_id: Number.isInteger(Number(operatingLocationId)) && Number(operatingLocationId) > 0
         ? Number(operatingLocationId)
         : null,
-      max_capacity: resolvedStock,
+      max_capacity: Math.max(resolvedStock, 1),
       min_threshold: Math.min(5, Math.max(resolvedStock, 0)),
       purchase_allowance: 0,
-      unit_of_measure: category === 'product' ? 'serving' : 'pcs',
+      unit_of_measure: category === 'product' ? (posItemPreset.default_unit || 'pcs') : 'pcs',
       cost_per_unit: cost,
       default_sale_price: price,
-      fifo_enabled: category === 'product' ? false : true,
+      fifo_enabled: category === 'product' ? posItemPreset.fifo_enabled !== false : true,
       vat_type: 'vatable',
       status: 'active'
     };
 
+    const finalizeCreatedItem = async ({ barcode = '', warningMessage = '' } = {}) => {
+      closeCreate({ force: true });
+      await loadItems();
+      setSavedMessage({ name, barcode, action: 'created' });
+      if (warningMessage) {
+        toast.warning(warningMessage);
+      }
+    };
+
     try {
+      const resolvedFoodCategory = await ensureFoodCategoryFolder(createForm.pos_category);
+      payload.product_folder = resolvedFoodCategory.name;
+      if (resolvedFoodCategory.folder_id) {
+        payload.folder_id = resolvedFoodCategory.folder_id;
+      }
+
       const createdItem = await createItem(payload);
       const itemId = Number(createdItem?.item_id || createdItem?.id || 0);
       if (!Number.isInteger(itemId) || itemId <= 0) {
         throw new Error('Item was created but no valid item ID was returned.');
+      }
+
+      if (resolvedFoodCategory.folder_id && Number(createdItem?.folder_id || 0) !== resolvedFoodCategory.folder_id) {
+        await updateItem(itemId, {
+          product_folder: resolvedFoodCategory.name,
+          folder_id: resolvedFoodCategory.folder_id
+        });
       }
 
       if (selectedImageFile) {
@@ -2205,12 +1623,33 @@ function ItemsWorkspace({
       });
       const barcodeCode = String(generatedBarcode?.code || generatedBarcode?.barcode?.code || '').trim();
 
-      await updateStorefrontCatalogOverride(itemId, { storefront_visible: true });
-      await updatePosCatalogOverride(itemId, { pos_visible: true });
+      let postCreateWarning = '';
 
-      closeCreate();
-      await loadItems();
-      setSavedMessage({ name, barcode: barcodeCode, action: 'created' });
+      try {
+        await updateStorefrontCatalogOverride(itemId, { storefront_visible: true });
+      } catch (overrideError) {
+        postCreateWarning = 'Item created, but storefront visibility could not be enabled automatically.';
+      }
+
+      try {
+        await updatePosCatalogOverride(itemId, {
+          pos_always_available: createForm.pos_always_available === true
+        });
+      } catch (overrideError) {
+        postCreateWarning = 'Item created, but the Always Available setting could not be saved automatically.';
+      }
+
+      try {
+        await updatePosCatalogOverride(itemId, {
+          pos_visible: true
+        });
+      } catch (overrideError) {
+        postCreateWarning = overrideError?.is_pos_readiness_blocked
+          ? 'Item created, but POS visibility is blocked until readiness requirements are completed.'
+          : 'Item created, but POS visibility could not be enabled automatically.';
+      }
+
+      await finalizeCreatedItem({ barcode: barcodeCode, warningMessage: postCreateWarning });
     } catch (createError) {
       toast.error(createError?.response?.data?.message || createError?.message || 'Failed to create item.');
     }
@@ -2269,7 +1708,7 @@ function ItemsWorkspace({
               >
                 {categoryOptions.map((option) => (
                   <option key={option} value={option}>
-                    {option === 'all' ? 'All categories' : option}
+                    {categoryOptionLabels.get(option) || option}
                   </option>
                 ))}
               </select>
@@ -2336,15 +1775,20 @@ function ItemsWorkspace({
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
             const imageUrl = item?.pos_image_url || item?.storefront_image_url || '';
             const stockQuantity = Number(item?.current_stock || 0);
+            const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
             const profitMargin = Number(item?.default_sale_price || 0) > 0
               ? (profit / Number(item.default_sale_price)) * 100
               : 0;
             const threshold = Number(item?.min_threshold);
             const lowStockThreshold = Number.isFinite(threshold) && threshold > 0 ? threshold : 5;
-            const almostOutOfStock = stockQuantity > 0 && stockQuantity <= lowStockThreshold;
-            const stockStatusLabel = stockQuantity <= 0 ? 'Out of Stock' : almostOutOfStock ? 'Almost Out of Stock' : 'In Stock';
-            const stockStatusClassName = stockQuantity <= 0
+            const almostOutOfStock = !isAlwaysAvailable && stockQuantity > 0 && stockQuantity <= lowStockThreshold;
+            const stockStatusLabel = isAlwaysAvailable
+              ? 'Always Available'
+              : stockQuantity <= 0 ? 'Out of Stock' : almostOutOfStock ? 'Almost Out of Stock' : 'In Stock';
+            const stockStatusClassName = isAlwaysAvailable
+              ? 'border-blue-200 bg-blue-50 text-blue-700'
+              : stockQuantity <= 0
               ? 'border-rose-200 bg-rose-50 text-rose-600'
               : almostOutOfStock
                 ? 'border-amber-200 bg-amber-50 text-amber-700'
@@ -2526,7 +1970,7 @@ function ItemsWorkspace({
                 <div>
                   <p id="pos-items-create-modal-title" className="text-lg font-black text-[#0F172A]">Add POS Item</p>
                   <p className="mt-1 text-sm text-[#64748B]">
-                    This creates the item in IMS first, then enables POS and storefront visibility on the same record.
+                    This creates a POS item and enables storefront visibility on the same record.
                   </p>
                 </div>
                 <button
@@ -2577,12 +2021,21 @@ function ItemsWorkspace({
                         placeholder="Classic Milk Tea"
                       />
                     </label>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">POS item defaults</p>
-                      <p className="mt-1 text-sm font-semibold text-[#0F172A]">Category: Product</p>
-                      <p className="mt-1 text-sm font-semibold text-[#0F172A]">Item Type: Menu Item</p>
-                      <p className="mt-1 text-sm font-semibold text-[#0F172A]">Unit Measure: Serving</p>
-                    </div>
+                    <label className="block sm:col-span-2">
+                      <span className="text-[13px] font-semibold text-[#334155]">Food category</span>
+                      <select
+                        value={createForm.pos_category}
+                        onChange={(event) => setCreateForm((current) => ({ ...current, pos_category: event.target.value }))}
+                        className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
+                        disabled={creatingItem}
+                      >
+                        {foodCategoryOptions.map((option) => (
+                          <option key={option.value} value={option.name}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="block">
                       <span className="text-[13px] font-semibold text-[#334155]">Stock quantity</span>
                       <Input
@@ -2595,6 +2048,25 @@ function ItemsWorkspace({
                         disabled={creatingItem}
                       />
                     </label>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={createForm.pos_always_available}
+                      onClick={() => setCreateForm((current) => ({
+                        ...current,
+                        pos_always_available: !current.pos_always_available
+                      }))}
+                      disabled={creatingItem}
+                      className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <span>
+                        <span className="block text-[13px] font-semibold text-[#334155]">Always Available</span>
+                        <span className="block text-[11px] text-[#64748B]">Allow POS sales at zero stock.</span>
+                      </span>
+                      <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${createForm.pos_always_available ? 'bg-[#1A4E8D]' : 'bg-slate-300'}`}>
+                        <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${createForm.pos_always_available ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </span>
+                    </button>
                     <label className="block">
                       <span className="text-[13px] font-semibold text-[#334155]">Selling price</span>
                       <Input
@@ -2620,7 +2092,7 @@ function ItemsWorkspace({
                       />
                     </label>
                     <label className="block sm:col-span-2">
-                      <span className="text-[13px] font-semibold text-[#334155]">SKU (IMS rule)</span>
+                      <span className="text-[13px] font-semibold text-[#334155]">SKU (POS rule)</span>
                       <Input
                         value={createForm.sku_code}
                         className="mt-2 h-11 bg-slate-50 font-mono"
@@ -2631,7 +2103,7 @@ function ItemsWorkspace({
                     <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 sm:col-span-2">
                       <p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Barcode</p>
                       <p className="mt-1 text-sm font-semibold text-[#0F172A]">
-                        IMS will generate the barcode from the saved item ID when you click Save Item.
+                        POS will generate the barcode from the saved item ID when you click Save Item.
                       </p>
                     </div>
                     <label className="block sm:col-span-2">
@@ -2641,7 +2113,7 @@ function ItemsWorkspace({
                         onChange={(event) => setCreateForm((current) => ({ ...current, description: event.target.value }))}
                         className="mt-2 min-h-28 w-full rounded-lg border border-slate-200 px-3 py-3 text-sm text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
                         disabled={creatingItem}
-                        placeholder="Optional notes for the IMS item record"
+                        placeholder="Optional notes for the POS item record"
                       />
                     </label>
                   </div>
@@ -2677,7 +2149,7 @@ function ItemsWorkspace({
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p id="pos-items-edit-modal-title" className="text-lg font-black text-[#0F172A]">Edit Item</p>
-                  <p className="mt-1 text-sm text-[#64748B]">Update the shared IMS item details and image used by POS and storefront.</p>
+                  <p className="mt-1 text-sm text-[#64748B]">Update the shared POS item details and image used by POS and storefront.</p>
                 </div>
                 <button
                   type="button"
@@ -2703,7 +2175,7 @@ function ItemsWorkspace({
                       <div className="px-6 text-center">
                         <ImagePlus className="mx-auto h-8 w-8 text-slate-300" />
                         <p className="mt-3 text-sm font-semibold text-[#334155]">Add item image</p>
-                        <p className="mt-1 text-xs text-[#64748B]">The same image will update the IMS-backed POS and storefront record.</p>
+                        <p className="mt-1 text-xs text-[#64748B]">The same image will update the POS and storefront record.</p>
                       </div>
                     )}
                   </div>
@@ -2730,12 +2202,21 @@ function ItemsWorkspace({
                       disabled={savingItem || persistingEditAssets}
                     />
                   </label>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">POS item defaults</p>
-                    <p className="mt-1 text-sm font-semibold text-[#0F172A]">Category: Product</p>
-                    <p className="mt-1 text-sm font-semibold text-[#0F172A]">Item Type: Menu Item</p>
-                    <p className="mt-1 text-sm font-semibold text-[#0F172A]">Unit Measure: Serving</p>
-                  </div>
+                  <label className="block sm:col-span-2">
+                    <span className="text-[13px] font-semibold text-[#334155]">Food Category</span>
+                    <select
+                      value={editForm.pos_category}
+                      onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
+                      className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
+                      disabled={savingItem || persistingEditAssets}
+                    >
+                      {foodCategoryOptions.map((option) => (
+                        <option key={option.value} value={option.name}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="block">
                     <span className="text-[13px] font-semibold text-[#334155]">Stock Quantity</span>
                     <Input
@@ -2748,6 +2229,25 @@ function ItemsWorkspace({
                       disabled={savingItem || persistingEditAssets}
                     />
                   </label>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={editForm.pos_always_available}
+                    onClick={() => setEditForm((current) => ({
+                      ...current,
+                      pos_always_available: !current.pos_always_available
+                    }))}
+                    disabled={savingItem || persistingEditAssets}
+                    className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span>
+                      <span className="block text-[13px] font-semibold text-[#334155]">Always Available</span>
+                      <span className="block text-[11px] text-[#64748B]">Allow POS sales at zero stock.</span>
+                    </span>
+                    <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${editForm.pos_always_available ? 'bg-[#1A4E8D]' : 'bg-slate-300'}`}>
+                      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${editForm.pos_always_available ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </span>
+                  </button>
                   <label className="block">
                     <span className="text-[13px] font-semibold text-[#334155]">Price</span>
                     <Input
@@ -2779,7 +2279,7 @@ function ItemsWorkspace({
                       onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))}
                       className="mt-2 min-h-[104px] w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
                       disabled={savingItem || persistingEditAssets}
-                      placeholder="Optional notes visible in IMS"
+                      placeholder="Optional notes visible in POS"
                     />
                   </label>
                 </div>
@@ -2950,6 +2450,8 @@ function SettingsWorkspace({
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  const canManageCashiers = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('users:manage');
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -2961,6 +2463,16 @@ function SettingsWorkspace({
   const [loadError, setLoadError] = useState('');
   const [savingTab, setSavingTab] = useState('');
   const [companyInfo, setCompanyInfo] = useState(null);
+  const [cashierUsers, setCashierUsers] = useState([]);
+  const [cashiersLoading, setCashiersLoading] = useState(false);
+  const [cashierCreating, setCashierCreating] = useState(false);
+  const [cashierEditorTerminalIndex, setCashierEditorTerminalIndex] = useState(null);
+  const [cashierDraft, setCashierDraft] = useState({
+    username: '',
+    email: '',
+    phone_number: '',
+    password: ''
+  });
   const [profileForm, setProfileForm] = useState({
     username: '',
     email: '',
@@ -2996,6 +2508,14 @@ function SettingsWorkspace({
   const [storefrontForm, setStorefrontForm] = useState({
     storeIsVisible: false,
     storeHasNoLocation: false,
+    customerAccessMode: 'catalog',
+    customerAccessEffectiveMode: 'catalog',
+    customerAccessMaxMode: 'transaction',
+    customerAccessPlatformMaxMode: 'transaction',
+    customerAccessRegistrationStageMaxMode: 'transaction',
+    customerAccessLimitationReason: '',
+    customerAccessRegistrationStage: 'registered',
+    customerAccessFlagStatus: 'enabled',
     storefrontTagline: '',
     storefrontPhone: '',
     storefrontEmail: '',
@@ -3031,12 +2551,53 @@ function SettingsWorkspace({
   const [storefrontLocations, setStorefrontLocations] = useState([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [locationSaving, setLocationSaving] = useState(false);
+  const [pendingLocationAction, setPendingLocationAction] = useState(null);
   const [editingLocationId, setEditingLocationId] = useState(null);
   const [locationForm, setLocationForm] = useState(createDefaultLocationForm());
+  const [validationModalState, setValidationModalState] = useState({
+    open: false,
+    title: '',
+    description: '',
+    errors: []
+  });
   const animationTimersRef = useRef([]);
   const previousInitialTabRef = useRef(initialTab);
   const readiness = terminalMeta?.locationBindingReadiness || null;
-  const primaryStorefrontLocation = storefrontLocations.find((location) => location?.is_primary_storefront === true) || storefrontLocations[0] || null;
+  const hasActivePrimaryStorefrontLocation = storefrontLocations.some((location) => location?.is_active === true && location?.is_primary_storefront === true);
+  const storefrontLocationRequired = storefrontForm.storeIsVisible === true && storefrontForm.storeHasNoLocation !== true;
+  const requestedCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMode);
+  const effectiveCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessEffectiveMode || requestedCustomerAccessMode);
+  const maxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMaxMode || 'transaction', 'transaction');
+  const platformMaxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessPlatformMaxMode || 'transaction', 'transaction');
+  const customerAccessRollbackActive = storefrontForm.customerAccessFlagStatus === 'rollback';
+  const customerAccessLimitation = CUSTOMER_ACCESS_MODE_RANK[requestedCustomerAccessMode] > CUSTOMER_ACCESS_MODE_RANK[maxCustomerAccessMode]
+    ? (storefrontForm.customerAccessLimitationReason || `Requested mode is currently capped at ${maxCustomerAccessMode}.`)
+    : (storefrontForm.customerAccessLimitationReason || 'Requested mode is currently available.');
+  const activeCashierUsers = useMemo(() => (
+    cashierUsers.filter((user) => String(user?.role || '').toLowerCase() === 'cashier' && user?.is_active !== false && !user?.deleted_at)
+  ), [cashierUsers]);
+  const getCashiersForLocation = useCallback((locationId) => {
+    const normalizedLocationId = toPositiveInt(locationId);
+    if (!normalizedLocationId) return [];
+    return activeCashierUsers.filter((cashier) => (
+      Array.isArray(cashier?.location_ids)
+      && cashier.location_ids.some((entry) => toPositiveInt(entry) === normalizedLocationId)
+    ));
+  }, [activeCashierUsers]);
+  const openValidationModal = useCallback(({ title, description = '', errors = [] }) => {
+    setValidationModalState({
+      open: true,
+      title: String(title || '').trim(),
+      description: String(description || '').trim(),
+      errors: Array.isArray(errors) ? errors : []
+    });
+  }, []);
+  const closeValidationModal = useCallback(() => {
+    setValidationModalState((current) => ({
+      ...current,
+      open: false
+    }));
+  }, []);
   const SETTINGS_TABS = [
     { id: 'profile', label: 'Profile Setting', icon: UserRound },
     { id: 'pos_setup', label: 'POS Setup', icon: Settings2 },
@@ -3092,6 +2653,24 @@ function SettingsWorkspace({
     }
   }, []);
 
+  const loadCashierAccounts = useCallback(async ({ silent = false } = {}) => {
+    if (!canManageCashiers) {
+      setCashierUsers([]);
+      return;
+    }
+    if (!silent) setCashiersLoading(true);
+    try {
+      const rows = await fetchPosSetupCashiers();
+      setCashierUsers(Array.isArray(rows) ? rows : []);
+    } catch (error) {
+      if (!silent) {
+        toast.error(error?.response?.data?.message || 'Failed to load cashier accounts.');
+      }
+    } finally {
+      setCashiersLoading(false);
+    }
+  }, [canManageCashiers]);
+
   const hydrateSettingsWorkspace = useCallback(async () => {
     setLoading(true);
     setLoadError('');
@@ -3103,6 +2682,7 @@ function SettingsWorkspace({
       const storefrontSocialLinks = parseJsonObjectSetting(settingsPayload?.storefront_social_links?.value);
       const storefrontPromo = parseJsonObjectSetting(settingsPayload?.storefront_promo?.value);
       const storefrontReviewSummary = parseJsonObjectSetting(settingsPayload?.storefront_review_summary?.value);
+      const customerAccessRuntime = mapCustomerAccessRuntimeSettings(settingsPayload);
       const storefrontReviewHighlightsRaw = Array.isArray(settingsPayload?.storefront_review_highlights?.value)
         ? settingsPayload.storefront_review_highlights.value
         : [];
@@ -3155,6 +2735,7 @@ function SettingsWorkspace({
       setStorefrontForm({
         storeIsVisible: settingsPayload?.store_is_visible?.value === true,
         storeHasNoLocation: settingsPayload?.store_has_no_location?.value === true,
+        ...customerAccessRuntime,
         storefrontTagline: String(settingsPayload?.storefront_tagline?.value || ''),
         storefrontPhone: String(settingsPayload?.storefront_phone?.value || ''),
         storefrontEmail: String(settingsPayload?.storefront_email?.value || ''),
@@ -3212,6 +2793,45 @@ function SettingsWorkspace({
   useEffect(() => {
     loadStorefrontLocations({ silent: true });
   }, [loadStorefrontLocations]);
+
+  useEffect(() => {
+    loadCashierAccounts({ silent: true });
+  }, [loadCashierAccounts]);
+
+  const handleCreateCashierAccount = useCallback(async (terminal) => {
+    const username = String(cashierDraft.username || '').trim();
+    const email = String(cashierDraft.email || '').trim();
+    const phoneNumber = String(cashierDraft.phone_number || '').trim();
+    const password = String(cashierDraft.password || '');
+    const locationId = toPositiveInt(terminal?.location_id);
+    if (!username || !email || !password || !locationId) {
+      toast.error('Cashier username, email, password, and assigned store are required.');
+      return;
+    }
+    if (password.length < 8) {
+      toast.error('Cashier password must be at least 8 characters.');
+      return;
+    }
+
+    setCashierCreating(true);
+    try {
+      await createPosSetupCashier({
+        username,
+        email,
+        phone_number: phoneNumber || null,
+        password,
+        location_ids: [locationId]
+      });
+      setCashierDraft({ username: '', email: '', phone_number: '', password: '' });
+      setCashierEditorTerminalIndex(null);
+      await loadCashierAccounts({ silent: true });
+      toast.success('Cashier created and assigned to this terminal\'s store.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to create cashier account.');
+    } finally {
+      setCashierCreating(false);
+    }
+  }, [cashierDraft, loadCashierAccounts]);
 
   const handleTabChange = useCallback((nextTab) => {
     if (!nextTab || nextTab === activeTab) return;
@@ -3322,7 +2942,7 @@ function SettingsWorkspace({
         }))
         : [];
       const existing = entries[index] || {
-        terminal_id: '',
+        terminal_id: createSuggestedTerminalId(entries),
         label: '',
         location_id: null,
         is_active: true,
@@ -3382,7 +3002,7 @@ function SettingsWorkspace({
         }))
         : [];
       entries.push({
-        terminal_id: '',
+        terminal_id: createSuggestedTerminalId(entries),
         label: '',
         location_id: null,
         is_active: true,
@@ -3500,7 +3120,14 @@ function SettingsWorkspace({
     }
 
     if (duplicateLocationEntry) {
-      throw new Error('Only one active terminal is allowed per store location.');
+      const duplicateLocationName = locations.find(
+        (location) => Number(location?.location_id || 0) === Number(duplicateLocationEntry?.location_id || 0)
+      )?.name;
+      throw new Error(
+        duplicateLocationName
+          ? `Only one active terminal is allowed for store "${duplicateLocationName}".`
+          : 'Only one active terminal is allowed per store location.'
+      );
     }
 
     return {
@@ -3610,6 +3237,19 @@ function SettingsWorkspace({
   const handleStorefrontSave = useCallback(async () => {
     setSavingTab('storefront');
     try {
+      if (storefrontLocationRequired && !hasActivePrimaryStorefrontLocation) {
+        openValidationModal({
+          title: formatValidationModalTitle('Storefront Save'),
+          description: 'A public storefront without the no-map-pin option still needs one active primary storefront location before it can be saved.',
+          errors: [
+            {
+              field: 'storefront_locations.primary_location',
+              message: 'Add or mark one active location as the primary storefront location.'
+            }
+          ]
+        });
+        return;
+      }
       const storefrontReviewHighlights = (Array.isArray(storefrontForm.storefrontReviewHighlights) ? storefrontForm.storefrontReviewHighlights : [])
         .map((entry) => ({
           reviewer_name: String(entry?.reviewer_name || '').trim().slice(0, 80),
@@ -3620,11 +3260,12 @@ function SettingsWorkspace({
       await updateSettings({
         store_is_visible: storefrontForm.storeIsVisible === true,
         store_has_no_location: storefrontForm.storeHasNoLocation === true,
+        customer_access_mode: normalizeCustomerAccessMode(storefrontForm.customerAccessMode),
         storefront_tagline: String(storefrontForm.storefrontTagline || '').trim(),
         storefront_phone: String(storefrontForm.storefrontPhone || '').trim(),
         storefront_email: String(storefrontForm.storefrontEmail || '').trim(),
         storefront_about: String(storefrontForm.storefrontAbout || '').trim(),
-        storefront_hours: storefrontForm.storefrontHours,
+        storefront_hours: serializeStorefrontBusinessHours(storefrontForm.storefrontHours),
         storefront_why_choose_us: normalizeStringList(storefrontForm.storefrontWhyChooseUs, 6, 120),
         storefront_social_links: {
           messenger: String(storefrontForm.storefrontSocialMessenger || '').trim(),
@@ -3633,20 +3274,10 @@ function SettingsWorkspace({
         },
         storefront_ui_v2_enabled: storefrontForm.storefrontUiV2Enabled === true,
         storefront_categories: normalizeStringList(storefrontForm.storefrontCategories, 12, 60),
-        storefront_gallery_images: normalizeStorefrontGallerySettings(storefrontForm.storefrontGalleryImages),
+        storefront_gallery_images: serializeStorefrontGallerySettings(storefrontForm.storefrontGalleryImages),
         storefront_delivery_partners: normalizeStorefrontDeliveryPartnersSettings(storefrontForm.storefrontDeliveryPartners),
         storefront_review_highlights: storefrontReviewHighlights,
-        storefront_review_summary: {
-          score: parseNullableNumberInput(storefrontForm.storefrontReviewSummaryScore, { min: 0, max: 5, precision: 1 }),
-          total_count: parseNullableNumberInput(storefrontForm.storefrontReviewSummaryTotalCount, { integer: true, min: 0 }),
-          star_distribution: {
-            1: parseNullableNumberInput(storefrontForm.storefrontReviewSummaryStar1, { integer: true, min: 0 }),
-            2: parseNullableNumberInput(storefrontForm.storefrontReviewSummaryStar2, { integer: true, min: 0 }),
-            3: parseNullableNumberInput(storefrontForm.storefrontReviewSummaryStar3, { integer: true, min: 0 }),
-            4: parseNullableNumberInput(storefrontForm.storefrontReviewSummaryStar4, { integer: true, min: 0 }),
-            5: parseNullableNumberInput(storefrontForm.storefrontReviewSummaryStar5, { integer: true, min: 0 })
-          }
-        },
+        storefront_review_summary: serializeStorefrontReviewSummary(storefrontForm),
         storefront_promo: {
           title: String(storefrontForm.storefrontPromoTitle || '').trim(),
           subtitle: String(storefrontForm.storefrontPromoSubtitle || '').trim(),
@@ -3661,11 +3292,21 @@ function SettingsWorkspace({
       await onStorefrontSetupSaved?.();
       toast.success('Storefront settings synced to shared settings.');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to save storefront settings.');
+      const validationErrors = collectValidationErrors(error, 'Failed to save storefront settings.');
+      const validationDescription = formatValidationErrorDescription(validationErrors);
+      openValidationModal({
+        title: formatValidationModalTitle('Storefront Save'),
+        description: 'Review the blocking fields below, then try saving again.',
+        errors: validationErrors
+      });
+      toast.error(
+        formatFirstValidationError(error, 'Failed to save storefront settings.'),
+        validationDescription ? { description: validationDescription } : undefined
+      );
     } finally {
       setSavingTab('');
     }
-  }, [hydrateSettingsWorkspace, onStorefrontSetupSaved, storefrontForm]);
+  }, [hasActivePrimaryStorefrontLocation, hydrateSettingsWorkspace, onStorefrontSetupSaved, openValidationModal, storefrontForm, storefrontLocationRequired]);
 
   const handleStorefrontListChange = useCallback((field, index, value) => {
     setStorefrontForm((current) => {
@@ -3757,12 +3398,27 @@ function SettingsWorkspace({
       supports_pickup: locationForm.supports_pickup !== false,
       supports_dine_in: locationForm.supports_dine_in !== false
     };
-    if (!payload.name || !payload.address_line) {
-      toast.error('Location name and address are required.');
-      return;
+    const localErrors = [];
+    if (!payload.name) {
+      localErrors.push({ field: 'name', message: 'Location name is required.' });
     }
-    if (!Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude)) {
-      toast.error('Latitude and longitude are required.');
+    if (!payload.address_line) {
+      localErrors.push({ field: 'address_line', message: 'Location address is required.' });
+    }
+    if (!Number.isFinite(payload.latitude)) {
+      localErrors.push({ field: 'latitude', message: 'Latitude is required.' });
+    }
+    if (!Number.isFinite(payload.longitude)) {
+      localErrors.push({ field: 'longitude', message: 'Longitude is required.' });
+    }
+
+    if (localErrors.length > 0) {
+      openValidationModal({
+        title: formatValidationModalTitle(editingLocationId ? 'Update Location' : 'Add Location'),
+        description: 'Fill in the required location fields before saving.',
+        errors: localErrors
+      });
+      toast.error(localErrors[0].message);
       return;
     }
     setLocationSaving(true);
@@ -3777,11 +3433,21 @@ function SettingsWorkspace({
       await loadStorefrontLocations({ silent: true });
       resetLocationForm();
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to save storefront location.');
+      const validationErrors = collectValidationErrors(error, 'Failed to save storefront location.');
+      const validationDescription = formatValidationErrorDescription(validationErrors);
+      openValidationModal({
+        title: formatValidationModalTitle(editingLocationId ? 'Update Location' : 'Add Location'),
+        description: 'Review the location errors below, then try again.',
+        errors: validationErrors
+      });
+      toast.error(
+        error?.response?.data?.message || 'Failed to save storefront location.',
+        validationDescription ? { description: validationDescription } : undefined
+      );
     } finally {
       setLocationSaving(false);
     }
-  }, [editingLocationId, loadStorefrontLocations, locationForm, resetLocationForm]);
+  }, [editingLocationId, loadStorefrontLocations, locationForm, openValidationModal, resetLocationForm]);
 
   const handleSetPrimaryLocation = useCallback(async (location) => {
     if (!location?.location_id) return;
@@ -3797,8 +3463,11 @@ function SettingsWorkspace({
     }
   }, [loadStorefrontLocations]);
 
-  const handleDeactivateLocation = useCallback(async (locationId) => {
-    if (!window.confirm('Deactivate this location?')) return;
+  const handleDeactivateLocation = useCallback(async (locationId, { confirmed = false } = {}) => {
+    if (!confirmed) {
+      setPendingLocationAction({ type: 'deactivate', locationId });
+      return true;
+    }
     setLocationSaving(true);
     try {
       await tenantLocationService.deactivateTenantLocation(locationId);
@@ -3807,29 +3476,41 @@ function SettingsWorkspace({
       if (editingLocationId === locationId) {
         resetLocationForm();
       }
+      return true;
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to deactivate tenant location.');
+      const message = error?.response?.data?.message || 'Failed to deactivate tenant location.';
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setLocationSaving(false);
     }
   }, [editingLocationId, loadStorefrontLocations, resetLocationForm]);
 
-  const handleReactivateLocation = useCallback(async (locationId) => {
-    if (!window.confirm('Reactivate this location?')) return;
+  const handleReactivateLocation = useCallback(async (locationId, { confirmed = false } = {}) => {
+    if (!confirmed) {
+      setPendingLocationAction({ type: 'reactivate', locationId });
+      return true;
+    }
     setLocationSaving(true);
     try {
       await tenantLocationService.reactivateTenantLocation(locationId);
       toast.success('Tenant location reactivated.');
       await loadStorefrontLocations({ silent: true });
+      return true;
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to reactivate tenant location.');
+      const message = error?.response?.data?.message || 'Failed to reactivate tenant location.';
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setLocationSaving(false);
     }
   }, [loadStorefrontLocations]);
 
-  const handleDeleteLocation = useCallback(async (locationId) => {
-    if (!window.confirm('Delete this inactive storefront location pin permanently?')) return;
+  const handleDeleteLocation = useCallback(async (locationId, { confirmed = false } = {}) => {
+    if (!confirmed) {
+      setPendingLocationAction({ type: 'delete', locationId });
+      return true;
+    }
     setLocationSaving(true);
     try {
       await tenantLocationService.deleteTenantLocation(locationId);
@@ -3838,8 +3519,11 @@ function SettingsWorkspace({
       if (editingLocationId === locationId) {
         resetLocationForm();
       }
+      return true;
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to delete storefront location pin.');
+      const message = error?.response?.data?.message || 'Failed to delete storefront location pin.';
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setLocationSaving(false);
     }
@@ -4066,7 +3750,7 @@ function SettingsWorkspace({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[13px] font-black text-[#0F172A]">Terminal Registry</p>
-                <p className="mt-1 text-[12px] text-[#475569]">Managed list of terminal identities used in POS unlock and shift-open flows.</p>
+                <p className="mt-1 text-[12px] text-[#475569]">Managed list of POS terminals used in unlock and shift-open flows. Keep one active terminal per store.</p>
               </div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <Button
@@ -4196,6 +3880,22 @@ function SettingsWorkspace({
 
                       <div className="mt-4 border-t border-slate-200/90 pt-4">
                         <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-1.5 md:col-span-2">
+                            <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
+                              <Settings2 className="h-3.5 w-3.5 text-blue-500" />
+                              Terminal ID
+                            </Label>
+                            <Input
+                              className="h-11 rounded-xl border-slate-200 px-3.5 text-[14px] font-semibold text-[#0F172A] shadow-none"
+                              value={terminal.terminal_id || ''}
+                              onChange={(event) => handleTerminalRegistryChange(index, 'terminal_id', event.target.value)}
+                              placeholder="COUNTER-01"
+                              disabled={locked || loading}
+                            />
+                            <p className="text-[11px] text-[#64748B]">
+                              Must stay unique. This ID is what the POS uses to keep the terminal visible after reload.
+                            </p>
+                          </div>
                           <div className="grid gap-1.5">
                             <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
                               <Tags className="h-3.5 w-3.5 text-violet-500" />
@@ -4327,6 +4027,87 @@ function SettingsWorkspace({
                       </div>
                     </div>
                   </div>
+                  {canManageCashiers ? (
+                    <div className="mt-4 border-t border-slate-200 pt-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-[13px] font-black text-[#0F172A]">Cashiers</p>
+                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-[#1A4E8D]">
+                              {cashiersLoading ? 'Loading...' : `${getCashiersForLocation(terminal.location_id).length} assigned`}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] leading-5 text-[#64748B]">
+                            Cashiers created here are automatically bound to the store assigned to this terminal.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 rounded-lg border-blue-200 px-4 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
+                          onClick={() => {
+                            setCashierEditorTerminalIndex((current) => current === index ? null : index);
+                            setCashierDraft({ username: '', email: '', phone_number: '', password: '' });
+                          }}
+                          disabled={locked || loading || cashierCreating || !toPositiveInt(terminal.location_id)}
+                        >
+                          <Plus className="mr-1.5 h-3.5 w-3.5" />
+                          Add Cashier
+                        </Button>
+                      </div>
+
+                      {getCashiersForLocation(terminal.location_id).length > 0 ? (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                          {getCashiersForLocation(terminal.location_id).map((cashier) => (
+                            <div key={cashier.user_id} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                              <p className="truncate text-[12px] font-black text-emerald-900">{cashier.username || cashier.email}</p>
+                              <p className="mt-0.5 truncate text-[10px] font-semibold text-emerald-700">{cashier.email}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-[11px] font-semibold text-slate-500">
+                          {toPositiveInt(terminal.location_id)
+                            ? 'No cashier is assigned to this terminal store yet.'
+                            : 'Assign a store to this terminal before adding a cashier.'}
+                        </p>
+                      )}
+
+                      {cashierEditorTerminalIndex === index ? (
+                        <div className="mt-4 grid gap-3 rounded-xl border border-blue-100 bg-blue-50/40 p-3 md:grid-cols-2 xl:grid-cols-4">
+                          <div className="grid gap-1.5">
+                            <Label className="text-[11px] font-black text-[#0F172A]">Cashier Username</Label>
+                            <Input value={cashierDraft.username} onChange={(event) => setCashierDraft((current) => ({ ...current, username: event.target.value }))} placeholder="john" disabled={locked || cashierCreating} />
+                          </div>
+                          <div className="grid gap-1.5">
+                            <Label className="text-[11px] font-black text-[#0F172A]">Cashier Email</Label>
+                            <Input type="email" value={cashierDraft.email} onChange={(event) => setCashierDraft((current) => ({ ...current, email: event.target.value }))} placeholder="cashier@company.com" disabled={locked || cashierCreating} />
+                          </div>
+                          <div className="grid gap-1.5">
+                            <Label className="text-[11px] font-black text-[#0F172A]">Cashier Phone</Label>
+                            <Input value={cashierDraft.phone_number} onChange={(event) => setCashierDraft((current) => ({ ...current, phone_number: event.target.value }))} placeholder="+63 900 000 0000" disabled={locked || cashierCreating} />
+                          </div>
+                          <div className="grid gap-1.5">
+                            <Label className="text-[11px] font-black text-[#0F172A]">Cashier Password</Label>
+                            <Input type="password" value={cashierDraft.password} onChange={(event) => setCashierDraft((current) => ({ ...current, password: event.target.value }))} placeholder="Minimum 8 characters" disabled={locked || cashierCreating} />
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-4">
+                            <p className="text-[11px] font-semibold text-[#475569]">
+                              Store assignment: {locations.find((location) => toPositiveInt(location?.location_id) === toPositiveInt(terminal.location_id))?.name || `Store ${terminal.location_id}`}
+                            </p>
+                            <Button
+                              type="button"
+                              className="h-10 bg-[#1A4E8D] px-5 text-white hover:bg-[#143F73]"
+                              onClick={() => handleCreateCashierAccount(terminal)}
+                              disabled={locked || cashierCreating}
+                            >
+                              {cashierCreating ? 'Creating Cashier...' : 'Create Cashier'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ))}
               {(Array.isArray(posForm.terminalRegistry) ? posForm.terminalRegistry : []).length === 0 ? (
@@ -4395,12 +4176,80 @@ function SettingsWorkspace({
             </div>
           </label>
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-            <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storeHasNoLocation === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storeHasNoLocation: event.target.checked }))} disabled={locked || loading} />
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-[#1A4E8D]"
+              checked={storefrontForm.storeHasNoLocation === true}
+              onChange={(event) => {
+                const nextHasNoLocation = event.target.checked === true;
+                setStorefrontForm((current) => ({ ...current, storeHasNoLocation: nextHasNoLocation }));
+                if (!nextHasNoLocation && !hasActivePrimaryStorefrontLocation) {
+                  setLocationForm((current) => (
+                    current.is_active === false
+                      ? current
+                      : { ...current, is_primary_storefront: true }
+                  ));
+                }
+              }}
+              disabled={locked || loading}
+            />
             <div>
               <p className="text-[12px] font-black text-[#0F172A]">Searchable without map pin</p>
               <p className="text-[11px] text-[#64748B]">Preserves the same no-location storefront behavior used in IMS.</p>
             </div>
           </label>
+        </div>
+        {storefrontLocationRequired && !hasActivePrimaryStorefrontLocation ? (
+          <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-[12px] text-rose-700">
+            Public Storefront currently requires one active primary storefront location. Add a location below and mark it as <span className="font-bold">Primary</span>, or enable <span className="font-bold">Searchable without map pin</span>.
+          </div>
+        ) : null}
+        <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label className="text-[12px] font-black text-[#0F172A]">Customer Access Mode</Label>
+              <select
+                className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm text-[#0F172A] bg-white"
+                value={requestedCustomerAccessMode}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, customerAccessMode: normalizeCustomerAccessMode(event.target.value) }))}
+                disabled={locked || loading}
+              >
+                {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    disabled={CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[platformMaxCustomerAccessMode]}
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-[#64748B]">
+                Effective mode: <span className="font-bold text-[#0F172A]">{effectiveCustomerAccessMode}</span>. Max allowed now: <span className="font-bold text-[#0F172A]">{maxCustomerAccessMode}</span>.
+              </p>
+              <p className="text-[11px] text-[#64748B]">
+                Platform max: <span className="font-bold text-[#0F172A]">{platformMaxCustomerAccessMode}</span>. Registration stage: <span className="font-bold text-[#0F172A]">{storefrontForm.customerAccessRegistrationStage}</span>.
+              </p>
+              <p className="text-[11px] text-[#64748B]">{customerAccessLimitation}</p>
+            </div>
+            <div className={`rounded-lg border p-3 text-[12px] ${customerAccessRollbackActive ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+              <div className="flex items-center gap-2 font-bold">
+                {customerAccessRollbackActive ? <AlertTriangle className="h-4 w-4" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+                <span>{customerAccessRollbackActive ? 'Customer access runtime is in rollback mode.' : 'Customer access runtime is enabled.'}</span>
+              </div>
+              <p className="mt-2">
+                Choose <span className="font-bold">Transaction</span> here if this storefront should accept online checkout. Store hours only control open/closed status, not checkout permission.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
+              <div key={option.value} className="rounded-lg border border-slate-200 p-3">
+                <p className="text-[12px] font-black text-[#0F172A]">{option.label}</p>
+                <p className="mt-1 text-[11px] text-[#64748B]">{option.description}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -4603,25 +4452,30 @@ function SettingsWorkspace({
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[13px] font-black text-[#0F172A]">Storefront Locations</p>
+          <p className="text-[13px] font-black text-[#0F172A]">Storefront Locations{storefrontLocationRequired ? <RequiredMark /> : null}</p>
           <Button type="button" variant="outline" onClick={() => loadStorefrontLocations()} disabled={locationsLoading || locationSaving}>
             {locationsLoading ? 'Refreshing...' : 'Refresh'}
           </Button>
         </div>
+        <p className="mt-1 text-[12px] text-[#475569]">
+          {storefrontLocationRequired
+            ? 'A public storefront with map publication needs one active primary storefront location before Storefront settings can be saved.'
+            : 'Add and manage storefront map pins here. These locations stay optional while searchable-without-map-pin is enabled.'}
+        </p>
         <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-sm font-semibold text-slate-900">{editingLocationId ? 'Edit Location' : 'Add Location'}</p>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Location Name</Label>
+                <Label className="text-[12px] font-black text-[#0F172A]">Location Name<RequiredMark /></Label>
                 <Input value={locationForm.name} onChange={(event) => setLocationForm((current) => ({ ...current, name: event.target.value }))} placeholder="Main Branch" />
               </div>
               <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Address</Label>
+                <Label className="text-[12px] font-black text-[#0F172A]">Address<RequiredMark /></Label>
                 <Input value={locationForm.address_line} onChange={(event) => setLocationForm((current) => ({ ...current, address_line: event.target.value }))} placeholder="Street, City, Province" />
               </div>
               <div className="grid gap-2 md:col-span-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Map Pin (MapLibre)</Label>
+                <Label className="text-[12px] font-black text-[#0F172A]">Map Pin (MapLibre)<RequiredMark /></Label>
                 <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-white px-3 py-6 text-sm text-slate-500">Loading map picker...</div>}>
                   <MapPinPicker
                     latitude={locationForm.latitude}
@@ -4632,11 +4486,11 @@ function SettingsWorkspace({
                 </Suspense>
               </div>
               <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Latitude</Label>
+                <Label className="text-[12px] font-black text-[#0F172A]">Latitude<RequiredMark /></Label>
                 <Input value={locationForm.latitude} onChange={(event) => setLocationForm((current) => ({ ...current, latitude: event.target.value }))} placeholder="Latitude" />
               </div>
               <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Longitude</Label>
+                <Label className="text-[12px] font-black text-[#0F172A]">Longitude<RequiredMark /></Label>
                 <Input value={locationForm.longitude} onChange={(event) => setLocationForm((current) => ({ ...current, longitude: event.target.value }))} placeholder="Longitude" />
               </div>
               <div className="grid gap-2">
@@ -4751,71 +4605,66 @@ function SettingsWorkspace({
       <div style={paneInlineStyle}>
         {renderPane()}
       </div>
-    </div>
-  );
-}
-
-function TerminalSetupWorkspace({ terminalMeta, sectionId }) {
-  const readiness = terminalMeta?.locationBindingReadiness || null;
-  const unresolvedCount = Number(readiness?.unresolved_count || 0);
-  const lowConfidenceCount = Number(readiness?.low_confidence_count || 0);
-  const strictReady = readiness?.ready_for_strict_mode === true;
-  const readinessStatusLabel = strictReady ? 'Ready' : 'Needs remediation';
-  const readinessStatusClass = strictReady
-    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-    : 'text-amber-700 bg-amber-50 border-amber-200';
-
-  return (
-    <div id={sectionId} className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs text-slate-500">Petty Cash</p>
-          <p className="text-sm font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(terminalMeta.pettyCashAmount)}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs text-slate-500">Active Discounts</p>
-          <p className="text-sm font-semibold text-slate-900">{terminalMeta.activeDiscountCount}</p>
-        </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <p className="text-xs text-slate-500">DGFY Global Fee Policy</p>
-              <p className="text-sm font-semibold text-slate-900">
-                {(Array.isArray(terminalMeta.enabledFeeMethods) && terminalMeta.enabledFeeMethods.length > 0)
-                  ? 'Active'
-                  : 'Inactive'}
-              </p>
+      <Dialog open={validationModalState.open} onOpenChange={(open) => { if (!open) closeValidationModal(); }}>
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl rounded-2xl border border-rose-200 bg-white p-0 shadow-2xl shadow-slate-950/20">
+          <DialogHeader className="border-b border-rose-100 bg-rose-50/70 px-5 py-4">
+            <DialogTitle className="text-lg font-black text-rose-900">{validationModalState.title || 'Validation Error'}</DialogTitle>
+            <DialogDescription className="mt-1 text-sm leading-6 text-rose-800">
+              {validationModalState.description || 'Review the blocking fields below.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-5 py-4">
+            <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-rose-700">Blocking Fields</p>
+              <div className="mt-3 space-y-3">
+                {(Array.isArray(validationModalState.errors) ? validationModalState.errors : []).map((entry, index) => (
+                  <div key={`settings-validation-${index}`} className="rounded-lg border border-rose-100 bg-white px-3 py-3">
+                    <p className="text-[12px] font-black text-slate-900">{entry.field ? getReadableFieldName(entry.field) : `Issue ${index + 1}`}</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-700">{entry.message || 'Unknown validation error.'}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs text-slate-500">Compliance</p>
-          <p className="text-sm font-semibold text-emerald-700">Dual-mode policy</p>
-        </div>
-      </div>
-      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-        Terminal setup values are managed in Settings &gt; POS Setup and applied here as runtime context.
-      </p>
-      {readiness && (
-        <div className={`rounded-lg border px-3 py-3 text-xs ${readinessStatusClass}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-semibold">Location Binding Readiness: {readinessStatusLabel}</p>
-            {readiness?.migration_tag && (
-              <p className="text-[11px] opacity-80">Audit tag: {readiness.migration_tag}</p>
-            )}
           </div>
-          <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-3">
-            <p>Total shifts: <span className="font-semibold">{Number(readiness?.total_shifts || 0)}</span></p>
-            <p>Unresolved: <span className="font-semibold">{unresolvedCount}</span></p>
-            <p>Low confidence: <span className="font-semibold">{lowConfidenceCount}</span></p>
-          </div>
-        </div>
-      )}
-      {terminalMeta.loading && (
-        <p className="text-xs text-slate-500">Refreshing terminal setup context...</p>
-      )}
+          <DialogFooter className="border-t border-slate-200 px-5 py-4">
+            <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={closeValidationModal}>
+              Review Fields
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <ConfirmActionDialog
+        open={Boolean(pendingLocationAction)}
+        onOpenChange={(open) => { if (!open) setPendingLocationAction(null); }}
+        title={pendingLocationAction?.type === 'delete'
+          ? 'Delete Storefront Location Pin'
+          : (pendingLocationAction?.type === 'reactivate' ? 'Reactivate Location' : 'Deactivate Location')}
+        description={pendingLocationAction?.type === 'delete'
+          ? 'This permanently removes the inactive storefront location pin. The action is blocked when operational history still references the location.'
+          : (pendingLocationAction?.type === 'reactivate'
+            ? 'This location will become available again for storefront and operational use.'
+            : 'This location will be removed from active storefront and operational choices while historical records remain intact.')}
+        confirmLabel={pendingLocationAction?.type === 'delete'
+          ? 'Delete Pin'
+          : (pendingLocationAction?.type === 'reactivate' ? 'Reactivate' : 'Deactivate')}
+        variant={pendingLocationAction?.type === 'reactivate' ? 'default' : 'destructive'}
+        onConfirm={() => {
+          if (pendingLocationAction?.type === 'delete') {
+            return handleDeleteLocation(pendingLocationAction.locationId, { confirmed: true });
+          }
+          if (pendingLocationAction?.type === 'reactivate') {
+            return handleReactivateLocation(pendingLocationAction.locationId, { confirmed: true });
+          }
+          return handleDeactivateLocation(pendingLocationAction?.locationId, { confirmed: true });
+        }}
+      />
     </div>
   );
 }
 
 export default function TerminalOperationsWorkspace({
   viewMode,
+  workflowMode = '',
   isMsmeMode = false,
   terminalUser,
   refreshTerminalUser = async () => {},
@@ -4835,6 +4684,7 @@ export default function TerminalOperationsWorkspace({
   itemsStockFilterPreset = '',
   onItemsStockFilterPresetApplied = () => {},
   canTransactPos,
+  canAdminBypassShiftPrompt = false,
   canSwitchPosLocation = false,
   canAdjustCashDrawer,
   canCloseDay,
@@ -4947,6 +4797,7 @@ export default function TerminalOperationsWorkspace({
           shiftActionLoading={shiftActionLoading}
           canTransactPos={canTransactPos}
           canCloseDay={canCloseDay}
+          canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
@@ -4976,6 +4827,7 @@ export default function TerminalOperationsWorkspace({
           shiftActionLoading={shiftActionLoading}
           canTransactPos={canTransactPos}
           canCloseDay={canCloseDay}
+          canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
@@ -5009,6 +4861,7 @@ export default function TerminalOperationsWorkspace({
           canDeleteItems={canDeleteItems}
           stockFilterPreset={itemsStockFilterPreset}
           onStockFilterPresetApplied={onItemsStockFilterPresetApplied}
+          workflowMode={workflowMode}
           locked={locked}
           operatingLocationId={operatingLocationId}
           sectionId={sectionIds.items}
@@ -5023,11 +4876,13 @@ export default function TerminalOperationsWorkspace({
     }
   }, [
     canAdjustCashDrawer,
+    canAdminBypassShiftPrompt,
     canCloseDay,
     canCreateItems,
     canDeleteItems,
     canEditItems,
     itemsStockFilterPreset,
+    workflowMode,
     canSwitchPosLocation,
     canTransactPos,
     canViewPos,
@@ -5055,6 +4910,8 @@ export default function TerminalOperationsWorkspace({
     handleRetryQueuedOperation,
     handleResolveQueuedOperation,
     onItemsStockFilterPresetApplied,
+    onPosSetupSaved,
+    onStorefrontSetupSaved,
     setQueueStatusFilter,
     operatingLocationId,
     openShiftForm,
@@ -5082,8 +4939,10 @@ export default function TerminalOperationsWorkspace({
     shiftActionLoading,
     shiftState,
     terminalMeta,
+    terminalUser,
     todayDashboard,
-    effectiveViewMode
+    effectiveViewMode,
+    viewMode
   ]);
 
   return (

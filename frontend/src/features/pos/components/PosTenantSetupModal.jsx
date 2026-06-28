@@ -13,9 +13,13 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
+import { createTenantLocation, updateTenantLocation } from '@/services/tenantLocationService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
-import { normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
+import { createPosSetupCashier } from '../services/posService.js';
+import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
+
+const MapPinPicker = React.lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
 
 const STEP_CONFIG = {
   [POS_TERMINAL_SETUP_STEPS.PROFILE]: {
@@ -29,7 +33,7 @@ const STEP_CONFIG = {
     title: 'POS Setup',
     icon: Settings2,
     summary: 'Finish the POS setup required before this terminal can operate normally.',
-    description: 'Create at least one active terminal with an assigned store location and terminal password.',
+    description: 'Create at least one active cashier and one active terminal with an assigned store location and terminal password.',
     actionLabel: 'Open POS Setup'
   },
   [POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP]: {
@@ -42,14 +46,21 @@ const STEP_CONFIG = {
 };
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
+let terminalDraftKeySequence = 0;
 
 const toPositiveInt = (value) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const createTerminalDraft = (entry = {}, isFirst = false) => ({
-  terminal_id: sanitizeTerminalId(entry?.terminal_id),
+const createTerminalDraftKey = () => {
+  terminalDraftKeySequence += 1;
+  return `terminal-draft-${terminalDraftKeySequence}`;
+};
+
+const createTerminalDraft = (entry = {}, isFirst = false, existingEntries = []) => ({
+  draft_key: entry?.draft_key || createTerminalDraftKey(),
+  terminal_id: sanitizeTerminalId(entry?.terminal_id) || createSuggestedTerminalId(existingEntries),
   label: String(entry?.label || '').trim(),
   location_id: toPositiveInt(entry?.location_id),
   is_active: entry?.is_active !== false,
@@ -60,11 +71,28 @@ const createTerminalDraft = (entry = {}, isFirst = false) => ({
 });
 
 const normalizeTerminalDrafts = (entries = []) => {
-  const normalized = normalizeTerminalRegistry(entries).map((entry, index) => createTerminalDraft(entry, index === 0));
+  const normalizedEntries = normalizeTerminalRegistry(entries);
+  const normalized = normalizedEntries.map((entry, index) => createTerminalDraft(entry, index === 0, normalizedEntries));
   if (normalized.length === 0) {
     return [createTerminalDraft({ is_active: true, is_default: true }, true)];
   }
   return normalized;
+};
+
+const createLocationDraft = (location = {}, companyName = '') => ({
+  location_id: toPositiveInt(location?.location_id),
+  name: String(location?.name || companyName || 'Main Store').trim(),
+  address_line: String(location?.address_line || '').trim(),
+  latitude: location?.latitude ?? '',
+  longitude: location?.longitude ?? '',
+  delivery_radius_km: Number(location?.delivery_radius_km ?? 5),
+  supports_delivery: location?.supports_delivery !== false,
+  supports_pickup: location?.supports_pickup !== false
+});
+
+const resolvePrimaryLocation = (locations = []) => {
+  const activeLocations = (Array.isArray(locations) ? locations : []).filter((location) => location?.is_active !== false);
+  return activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0] || null;
 };
 
 export default function PosTenantSetupModal({
@@ -76,6 +104,7 @@ export default function PosTenantSetupModal({
   storefrontRequirements = {},
   terminalRegistry = [],
   terminalLocations = [],
+  tenantUsers = [],
   onOpenSettingsStep = () => {},
   onStepSelect = () => {},
   onBack = () => {},
@@ -92,11 +121,29 @@ export default function PosTenantSetupModal({
   const [terminalDrafts, setTerminalDrafts] = useState(() => normalizeTerminalDrafts(terminalRegistry));
   const [terminalSaving, setTerminalSaving] = useState(false);
   const [assetUploadingType, setAssetUploadingType] = useState('');
+  const [locationSaving, setLocationSaving] = useState(false);
+  const [cashierDraft, setCashierDraft] = useState({
+    username: '',
+    email: '',
+    phone_number: '',
+    password: ''
+  });
+  const [cashierLocationIds, setCashierLocationIds] = useState([]);
+  const [cashierCreating, setCashierCreating] = useState(false);
+  const [locationDraft, setLocationDraft] = useState(() => createLocationDraft(
+    resolvePrimaryLocation(terminalLocations),
+    companyName
+  ));
 
   useEffect(() => {
     if (!open) return;
     setTerminalDrafts(normalizeTerminalDrafts(terminalRegistry));
   }, [open, terminalRegistry]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLocationDraft(createLocationDraft(resolvePrimaryLocation(terminalLocations), companyName));
+  }, [companyName, open, terminalLocations]);
 
   const normalizedLocations = useMemo(
     () => (Array.isArray(terminalLocations) ? terminalLocations : []).map((location) => ({
@@ -106,10 +153,49 @@ export default function PosTenantSetupModal({
     [terminalLocations]
   );
 
+  const primaryLocationId = useMemo(
+    () => toPositiveInt(resolvePrimaryLocation(terminalLocations)?.location_id),
+    [terminalLocations]
+  );
+
+  const cashierUsers = useMemo(
+    () => (Array.isArray(tenantUsers) ? tenantUsers : []).filter((user) => (
+      String(user?.role || '').trim().toLowerCase() === 'cashier'
+    )),
+    [tenantUsers]
+  );
+
+  const activeCashiers = useMemo(
+    () => cashierUsers.filter((user) => user?.is_active !== false),
+    [cashierUsers]
+  );
+
+  const pendingCashiers = useMemo(
+    () => cashierUsers.filter((user) => (
+      user?.is_active === false
+      || String(user?.invitation_status || '').trim().toLowerCase() === 'pending'
+    )),
+    [cashierUsers]
+  );
+
+  useEffect(() => {
+    const fallbackLocationId = primaryLocationId || (normalizedLocations.length === 1 ? normalizedLocations[0].location_id : null);
+    if (!fallbackLocationId) return;
+    setCashierLocationIds((current) => (current.length > 0 ? current : [fallbackLocationId]));
+  }, [normalizedLocations, primaryLocationId]);
+
+  useEffect(() => {
+    const fallbackLocationId = primaryLocationId || (normalizedLocations.length === 1 ? normalizedLocations[0].location_id : null);
+    if (!fallbackLocationId) return;
+    setTerminalDrafts((current) => current.map((entry) => (
+      entry.location_id ? entry : { ...entry, location_id: fallbackLocationId }
+    )));
+  }, [normalizedLocations, primaryLocationId]);
+
   const handleTerminalDraftChange = (index, key, value) => {
     setTerminalDrafts((current) => {
       const next = current.map((entry) => ({ ...entry }));
-      const entry = next[index] || createTerminalDraft({}, index === 0);
+      const entry = next[index] || createTerminalDraft({}, index === 0, next);
       entry[key] = key === 'terminal_id'
         ? sanitizeTerminalId(value)
         : (key === 'location_id' ? toPositiveInt(value) : value);
@@ -145,7 +231,7 @@ export default function PosTenantSetupModal({
   const handleAddTerminal = () => {
     setTerminalDrafts((current) => ([
       ...current,
-      createTerminalDraft({}, current.length === 0)
+      createTerminalDraft({}, current.length === 0, current)
     ]));
   };
 
@@ -163,6 +249,70 @@ export default function PosTenantSetupModal({
       }
       return next;
     });
+  };
+
+  const handleToggleCashierLocation = (locationId) => {
+    const normalizedId = toPositiveInt(locationId);
+    if (!normalizedId) return;
+    setCashierLocationIds((current) => (
+      current.includes(normalizedId)
+        ? current.filter((id) => id !== normalizedId)
+        : [...current, normalizedId]
+    ));
+  };
+
+  const handleCashierDraftChange = (key, value) => {
+    setCashierDraft((current) => ({
+      ...current,
+      [key]: value
+    }));
+  };
+
+  const handleCreateCashier = async () => {
+    const username = String(cashierDraft.username || '').trim();
+    const email = String(cashierDraft.email || '').trim();
+    const phoneNumber = String(cashierDraft.phone_number || '').trim();
+    const password = String(cashierDraft.password || '');
+
+    if (username.length < 2) {
+      toast.error('Enter the cashier name.');
+      return;
+    }
+    if (!email) {
+      toast.error('Enter the cashier email.');
+      return;
+    }
+    if (password.length < 8) {
+      toast.error('Cashier password must be at least 8 characters.');
+      return;
+    }
+    if (normalizedLocations.length > 0 && cashierLocationIds.length === 0) {
+      toast.error('Assign at least one store to this cashier.');
+      return;
+    }
+
+    setCashierCreating(true);
+    try {
+      await createPosSetupCashier({
+        username,
+        email,
+        phone_number: phoneNumber || null,
+        password,
+        location_ids: cashierLocationIds
+      });
+      setCashierDraft({
+        username: '',
+        email: '',
+        phone_number: '',
+        password: ''
+      });
+      await onSetupDataChanged();
+      toast.success('Cashier created and assigned to the selected store.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to create cashier.');
+    } finally {
+      setCashierCreating(false);
+    }
   };
 
   const handleSaveTerminals = async () => {
@@ -257,6 +407,57 @@ export default function PosTenantSetupModal({
     }
   };
 
+  const handleLocationPinChange = (pin = {}) => {
+    setLocationDraft((current) => ({
+      ...current,
+      latitude: pin.latitude ?? current.latitude,
+      longitude: pin.longitude ?? current.longitude,
+      address_line: pin.address_line ?? current.address_line
+    }));
+  };
+
+  const handleSaveLocation = async () => {
+    const name = String(locationDraft.name || '').trim();
+    const addressLine = String(locationDraft.address_line || '').trim();
+    const latitude = String(locationDraft.latitude ?? '').trim() === '' ? Number.NaN : Number(locationDraft.latitude);
+    const longitude = String(locationDraft.longitude ?? '').trim() === '' ? Number.NaN : Number(locationDraft.longitude);
+
+    if (name.length < 2) {
+      toast.error('Enter a store name.');
+      return;
+    }
+    if (addressLine.length < 3 || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      toast.error('Search for an address or place the map pin before saving.');
+      return;
+    }
+
+    setLocationSaving(true);
+    try {
+      const payload = {
+        name,
+        address_line: addressLine,
+        latitude,
+        longitude,
+        delivery_radius_km: Number(locationDraft.delivery_radius_km) || 5,
+        is_active: true,
+        is_open: true,
+        is_primary_storefront: true,
+        supports_delivery: locationDraft.supports_delivery !== false,
+        supports_pickup: locationDraft.supports_pickup !== false
+      };
+      const savedLocation = locationDraft.location_id
+        ? await updateTenantLocation(locationDraft.location_id, payload)
+        : await createTenantLocation(payload);
+      setLocationDraft(createLocationDraft(savedLocation, companyName));
+      await onSetupDataChanged();
+      toast.success('Primary store location saved.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to save store location.');
+    } finally {
+      setLocationSaving(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onSkip(); }}>
       <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-[980px]">
@@ -345,8 +546,109 @@ export default function PosTenantSetupModal({
 
               {currentStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP ? (
                 <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-[13px] font-black uppercase tracking-[0.14em] text-slate-500">Cashier Account</p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Create one active cashier account and assign it to a store before terminal unlock can be used.
+                        </p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-[12px] font-black ${
+                        posRequirements.cashierReady ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'
+                      }`}>
+                        {posRequirements.cashierReady ? 'Cashier Ready' : 'Cashier Required'}
+                      </span>
+                    </div>
+
+                    {activeCashiers.length > 0 ? (
+                      <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                        Active cashier: {activeCashiers.map((user) => user.email || user.username).filter(Boolean).join(', ')}
+                      </div>
+                    ) : null}
+
+                    {pendingCashiers.length > 0 ? (
+                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Pending or inactive cashier: {pendingCashiers.map((user) => user.email || user.username).filter(Boolean).join(', ')}.
+                        Activate the cashier before POS unlock is complete.
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1fr_1fr]">
+                      <div className="grid gap-2">
+                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Username</Label>
+                        <Input
+                          value={cashierDraft.username}
+                          onChange={(event) => handleCashierDraftChange('username', event.target.value)}
+                          placeholder="john"
+                          className="h-11 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A]"
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Email</Label>
+                        <Input
+                          type="email"
+                          value={cashierDraft.email}
+                          onChange={(event) => handleCashierDraftChange('email', event.target.value)}
+                          placeholder="cashier@email.com"
+                          className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Phone</Label>
+                        <Input
+                          value={cashierDraft.phone_number}
+                          onChange={(event) => handleCashierDraftChange('phone_number', event.target.value)}
+                          placeholder="+63 900 000 0000"
+                          className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label className="text-[12px] font-black text-[#0F172A]">Assigned Store</Label>
+                        <div className="max-h-28 overflow-y-auto rounded-lg border border-slate-200 bg-white px-3 py-2">
+                          {normalizedLocations.length > 0 ? normalizedLocations.map((location) => (
+                            <label key={location.location_id} className="flex items-center gap-2 py-1 text-[13px] font-semibold text-[#0F172A]">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-[#1A4E8D]"
+                                checked={cashierLocationIds.includes(location.location_id)}
+                                onChange={() => handleToggleCashierLocation(location.location_id)}
+                              />
+                              {location.name}
+                            </label>
+                          )) : (
+                            <p className="text-[12px] text-amber-700">Create the store location first.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Password</Label>
+                        <Input
+                          type="password"
+                          value={cashierDraft.password}
+                          onChange={(event) => handleCashierDraftChange('password', event.target.value)}
+                          placeholder="Minimum 8 characters"
+                          className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
+                        />
+                      </div>
+
+                      <Button
+                        type="button"
+                        className="h-11 self-end bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+                        onClick={handleCreateCashier}
+                        disabled={cashierCreating || normalizedLocations.length === 0}
+                      >
+                        {cashierCreating ? 'Creating...' : 'Create Cashier'}
+                      </Button>
+                    </div>
+                  </div>
+
                   {(Array.isArray(terminalDrafts) ? terminalDrafts : []).map((terminal, index) => (
-                    <div key={`${terminal.terminal_id || 'terminal'}-${index}`} className="rounded-2xl border border-slate-200 p-4">
+                    <div key={terminal.draft_key || `terminal-${index}`} className="rounded-2xl border border-slate-200 p-4">
                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.1fr_1fr_1fr_auto]">
                         <div className="grid gap-2">
                           <Label className="text-[12px] font-black text-[#0F172A]">Terminal ID</Label>
@@ -443,6 +745,9 @@ export default function PosTenantSetupModal({
                     <p className={posRequirements.terminalRegistryReady ? 'text-emerald-700' : 'text-rose-600'}>
                       {posRequirements.terminalRegistryReady ? 'Complete' : 'Required'}: active terminal with store assignment and password
                     </p>
+                    <p className={posRequirements.cashierReady ? 'text-emerald-700' : 'text-rose-600'}>
+                      {posRequirements.cashierReady ? 'Complete' : 'Required'}: active cashier account
+                    </p>
                   </div>
                 </div>
               ) : null}
@@ -503,12 +808,46 @@ export default function PosTenantSetupModal({
                       </div>
                     </div>
                   </div>
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Primary Store Location</Label>
+                      <Input
+                        value={locationDraft.name}
+                        onChange={(event) => setLocationDraft((current) => ({ ...current, name: event.target.value }))}
+                        placeholder="Main Store"
+                        className="h-11 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A]"
+                      />
+                    </div>
+                    <React.Suspense fallback={<div className="mt-4 h-72 animate-pulse rounded-xl bg-slate-100" aria-label="Loading location map" />}>
+                      <MapPinPicker
+                        className="mt-4"
+                        latitude={locationDraft.latitude}
+                        longitude={locationDraft.longitude}
+                        addressLine={locationDraft.address_line}
+                        deliveryRadiusKm={locationDraft.delivery_radius_km}
+                        onChange={handleLocationPinChange}
+                      />
+                    </React.Suspense>
+                    <div className="mt-4 flex justify-end">
+                      <Button
+                        type="button"
+                        className="bg-teal-700 text-white hover:bg-teal-800"
+                        onClick={handleSaveLocation}
+                        disabled={locationSaving}
+                      >
+                        {locationSaving ? 'Saving Location...' : 'Save Store Location'}
+                      </Button>
+                    </div>
+                  </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
                     <p className={storefrontRequirements.profileImageReady ? 'text-emerald-700' : 'text-rose-600'}>
                       {storefrontRequirements.profileImageReady ? 'Complete' : 'Required'}: company icon
                     </p>
                     <p className={`mt-2 ${storefrontRequirements.coverImageReady ? 'text-emerald-700' : 'text-rose-600'}`}>
                       {storefrontRequirements.coverImageReady ? 'Complete' : 'Required'}: company cover image
+                    </p>
+                    <p className={`mt-2 ${locationDraft.location_id ? 'text-emerald-700' : 'text-rose-600'}`}>
+                      {locationDraft.location_id ? 'Complete' : 'Required'}: primary store location and map pin
                     </p>
                   </div>
                 </div>

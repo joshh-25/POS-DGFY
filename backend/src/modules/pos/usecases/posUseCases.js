@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
+import bcrypt from 'bcryptjs';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
@@ -208,6 +209,250 @@ const settingBoolean = (settings = {}, key) => {
 const normalizeOptionalIdempotencyKey = (value) => {
     const normalized = String(value || '').trim();
     return normalized.length >= 8 ? normalized : null;
+};
+
+export const buildCreatePosSetupCashierUseCase = ({ userService }) => {
+    if (!userService || typeof userService.createLocalCashier !== 'function') {
+        throw new Error('buildCreatePosSetupCashierUseCase requires userService.createLocalCashier');
+    }
+
+    return async ({ payload = {}, user = null } = {}) => {
+        try {
+            const actorUserId = parsePositiveInt(user?.user_id);
+            if (!actorUserId) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHENTICATION_FAILED,
+                    'Authenticated user is required',
+                    { statusCode: 401 }
+                );
+            }
+
+            const cashier = await userService.createLocalCashier(actorUserId, {
+                username: payload.username,
+                email: payload.email,
+                phone_number: payload.phone_number,
+                password: payload.password,
+                location_ids: payload.location_ids
+            });
+
+            return ok({ cashier }, 'Cashier created');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to create POS cashier'));
+        }
+    };
+};
+
+export const buildListPosSetupCashiersUseCase = ({ userService }) => {
+    if (!userService || typeof userService.listLocalCashiers !== 'function') {
+        throw new Error('buildListPosSetupCashiersUseCase requires userService.listLocalCashiers');
+    }
+
+    return async ({ user = null } = {}) => {
+        try {
+            const actorUserId = parsePositiveInt(user?.user_id);
+            if (!actorUserId) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHENTICATION_FAILED,
+                    'Authenticated user is required',
+                    { statusCode: 401 }
+                );
+            }
+
+            const cashiers = await userService.listLocalCashiers(actorUserId);
+            return ok({ cashiers }, 'Cashiers retrieved');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list POS cashiers'));
+        }
+    };
+};
+
+export const buildLoginPosCashierUseCase = ({ authService }) => {
+    if (!authService || typeof authService.loginUser !== 'function') {
+        throw new Error('buildLoginPosCashierUseCase requires authService.loginUser');
+    }
+
+    return async ({ payload = {} } = {}) => {
+        try {
+            const session = await authService.loginUser(
+                payload.identifier,
+                payload.password,
+                { allowUsername: true, requiredRole: 'cashier' }
+            );
+            return ok(session, 'Cashier login successful');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Cashier login failed'));
+        }
+    };
+};
+
+export const buildVerifyPosTerminalUseCase = ({ posRepository, terminalPairingService = null }) => {
+    return async ({ payload = {}, user = null } = {}) => {
+        try {
+            const normalizedUserId = parsePositiveInt(user?.user_id);
+            if (!normalizedUserId) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHENTICATION_FAILED,
+                    'Authenticated user is required',
+                    { statusCode: 401 }
+                );
+            }
+
+            const terminalId = sanitizeTerminalId(payload?.terminal_id);
+            const terminalPassword = String(payload?.terminal_password || '');
+            if (!terminalId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'A valid terminal ID is required.',
+                    { statusCode: 422 }
+                );
+            }
+            if (!terminalPassword.trim()) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Terminal password is required.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const policy = typeof posRepository.getTerminalIdentityPolicySecretSettings === 'function'
+                ? await posRepository.getTerminalIdentityPolicySecretSettings()
+                : await resolveTerminalIdentityPolicySettings({ posRepository, settings: {} });
+            const activeRegistry = Array.isArray(policy?.active_registry) ? policy.active_registry : [];
+            const registryEntry = activeRegistry.find((entry) => sanitizeTerminalId(entry?.terminal_id) === terminalId) || null;
+
+            if (activeRegistry.length === 0) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Terminal registry enforcement is active, but no active terminal entries are configured.',
+                    { statusCode: 422 }
+                );
+            }
+            if (!registryEntry) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `terminal_id "${terminalId}" is not an active registry terminal.`,
+                    { statusCode: 422 }
+                );
+            }
+            if (policy?.binding_enforced === true && !parsePositiveInt(registryEntry.location_id)) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Terminal location binding is enforced, but the selected terminal has no home location.',
+                    { statusCode: 422 }
+                );
+            }
+            const terminalPasswordHash = String(registryEntry.terminal_password_hash || '').trim();
+            if (!terminalPasswordHash) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'This terminal has no terminal password configured in POS Setup.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const passwordMatches = await bcrypt.compare(terminalPassword, terminalPasswordHash);
+            if (!passwordMatches) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHENTICATION_FAILED,
+                    'Terminal password is incorrect.',
+                    { statusCode: 401 }
+                );
+            }
+
+            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+            const locationId = parsePositiveInt(registryEntry.location_id);
+            const pairingToken = terminalPairingService?.issue && tenantId && locationId
+                ? terminalPairingService.issue({
+                    tenantId,
+                    terminalId,
+                    terminalPasswordHash,
+                    locationId
+                })
+                : null;
+
+            return ok({
+                pairing_token: pairingToken,
+                terminal_identity_policy: {
+                    mode: policy?.mode || 'warn',
+                    binding_enforced: policy?.binding_enforced === true,
+                    terminal_id: terminalId,
+                    registry_entry: {
+                        terminal_id: terminalId,
+                        label: String(registryEntry.label || '').trim(),
+                        location_id: parsePositiveInt(registryEntry.location_id)
+                    },
+                    reason_code: 'ALLOWED'
+                }
+            }, 'Terminal verified');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to verify POS terminal'));
+        }
+    };
+};
+
+export const buildGetPairedPosTerminalUseCase = ({ posRepository, terminalPairingService }) => {
+    if (!terminalPairingService?.verify || !terminalPairingService?.assertBinding) {
+        throw new Error('buildGetPairedPosTerminalUseCase requires terminalPairingService');
+    }
+
+    return async ({ pairingToken = '', user = null } = {}) => {
+        try {
+            const normalizedUserId = parsePositiveInt(user?.user_id);
+            if (!normalizedUserId) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHENTICATION_FAILED,
+                    'Authenticated user is required',
+                    { statusCode: 401 }
+                );
+            }
+
+            const claims = terminalPairingService.verify(pairingToken);
+            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+            const terminalId = sanitizeTerminalId(claims?.terminal_id);
+            const policy = await posRepository.getTerminalIdentityPolicySecretSettings();
+            const activeRegistry = Array.isArray(policy?.active_registry) ? policy.active_registry : [];
+            const registryEntry = activeRegistry.find((entry) => sanitizeTerminalId(entry?.terminal_id) === terminalId) || null;
+            const locationId = parsePositiveInt(registryEntry?.location_id);
+            const terminalPasswordHash = String(registryEntry?.terminal_password_hash || '').trim();
+
+            if (!registryEntry || !locationId || !terminalPasswordHash) {
+                const error = new Error('This POS device pairing is no longer valid.');
+                error.statusCode = 401;
+                throw error;
+            }
+
+            terminalPairingService.assertBinding({
+                claims,
+                tenantId,
+                terminalId,
+                terminalPasswordHash,
+                locationId
+            });
+
+            await resolveMovementLocation({
+                requestedLocationId: locationId,
+                userId: normalizedUserId,
+                operationLabel: 'paired POS terminal access'
+            });
+
+            return ok({
+                paired: true,
+                terminal_identity_policy: {
+                    mode: policy?.mode || 'warn',
+                    binding_enforced: policy?.binding_enforced === true,
+                    terminal_id: terminalId,
+                    registry_entry: {
+                        terminal_id: terminalId,
+                        label: String(registryEntry.label || '').trim(),
+                        location_id: locationId
+                    },
+                    reason_code: 'PAIRED_DEVICE_ALLOWED'
+                }
+            }, 'Paired terminal verified');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to verify paired POS terminal'));
+        }
+    };
 };
 
 const buildOperationReplayConflictError = () => new DomainError(
@@ -1975,7 +2220,12 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 const isServiceItem = isStockExemptServiceItem(item);
                 const currentStock = Number(item.current_stock) || 0;
                 const lineRecipeMovements = recipePlan.movementsByLineIndex[preparedLines.length] || [];
-                if (!isServiceItem && lineRecipeMovements.length === 0 && currentStock + 0.000001 < quantity) {
+                if (
+                    !isServiceItem
+                    && item.pos_always_available !== true
+                    && lineRecipeMovements.length === 0
+                    && currentStock + 0.000001 < quantity
+                ) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${quantity}`,
@@ -2334,6 +2584,9 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                             notes: `F&B recipe consumption for ${movement.product_name} on POS checkout ${invoiceNumber}`
                         }, normalizedUserId, transaction);
                     }
+                    continue;
+                }
+                if (item?.pos_always_available === true) {
                     continue;
                 }
                 await stockMovementService.createStockMovement({
@@ -3023,7 +3276,7 @@ const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}
     if (hasMissing('SALE_PRICE_MISSING') || Number(item.default_sale_price || 0) <= 0) {
         return { reason_code: 'MISSING_PRICE', message: 'Item is missing a sale price' };
     }
-    if (!isServiceItem && stock <= 0) {
+    if (!isServiceItem && item.pos_always_available !== true && stock <= 0) {
         return { reason_code: 'OUT_OF_STOCK', message: 'Item is out of stock at this location' };
     }
     if (isServiceItem && item.serviceDetail?.visible_in_pos === false) {
@@ -3592,7 +3845,10 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
             }
 
             const data = await posRepository.upsertCatalogOverride(normalizedItemId, {
-                pos_visible: payload.pos_visible
+                ...(typeof payload.pos_visible === 'boolean' ? { pos_visible: payload.pos_visible } : {}),
+                ...(typeof payload.pos_always_available === 'boolean'
+                    ? { pos_always_available: payload.pos_always_available }
+                    : {})
             });
             return ok(toSerializable(data));
         } catch (error) {

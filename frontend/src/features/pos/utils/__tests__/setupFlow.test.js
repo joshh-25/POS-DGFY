@@ -43,12 +43,62 @@ describe('setupFlow', () => {
     expect(readiness.terminalRegistryReady).toBe(true);
   });
 
+  it('keeps POS setup incomplete until an active cashier exists when users are checked', () => {
+    const settings = {
+      pos_terminal_registry: {
+        value: [{
+          terminal_id: 'COUNTER-01',
+          location_id: 1,
+          is_active: true,
+          has_password: true
+        }]
+      }
+    };
+
+    expect(resolvePosSetupReadiness(settings, [{ role: 'admin', is_active: true }])).toEqual({
+      ready: false,
+      terminalRegistryReady: true,
+      cashierReady: false
+    });
+    expect(resolvePosSetupReadiness(settings, [{ role: 'cashier', is_active: true }]).ready).toBe(true);
+    expect(resolvePosSetupReadiness(settings, [{ role: 'cashier', is_active: false }]).ready).toBe(false);
+  });
+
   it('keeps storefront setup incomplete until cover and profile assets exist', () => {
     expect(resolveStorefrontSetupReadiness({}).ready).toBe(false);
     expect(resolveStorefrontSetupReadiness({
       storefront_cover_image_url: { value: 'https://cdn.test/cover.png' },
       storefront_profile_image_url: { value: 'https://cdn.test/icon.png' }
     }).ready).toBe(true);
+  });
+
+  it('requires an active primary map location when locations are checked', () => {
+    const settings = {
+      storefront_cover_image_url: { value: 'https://cdn.test/cover.png' },
+      storefront_profile_image_url: { value: 'https://cdn.test/icon.png' }
+    };
+
+    expect(resolveStorefrontSetupReadiness(settings, []).ready).toBe(false);
+    expect(resolveStorefrontSetupReadiness(settings, [{
+      location_id: 11,
+      address_line: 'Invalid empty coordinates',
+      latitude: '',
+      longitude: null,
+      is_active: true,
+      is_primary_storefront: true
+    }]).ready).toBe(false);
+    expect(resolveStorefrontSetupReadiness(settings, [{
+      location_id: 12,
+      address_line: 'Iloilo City, Western Visayas',
+      latitude: 10.7202,
+      longitude: 122.5621,
+      is_active: true,
+      is_primary_storefront: true
+    }])).toEqual(expect.objectContaining({
+      ready: true,
+      locationReady: true,
+      primaryLocationId: 12
+    }));
   });
 
   it('advances tenant setup from profile to storefront setup to POS setup', () => {

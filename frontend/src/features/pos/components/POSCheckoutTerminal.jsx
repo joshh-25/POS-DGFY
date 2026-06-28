@@ -1502,7 +1502,7 @@ export default function POSCheckoutTerminal({
     };
     const itemStockById = useMemo(
         () => new Map((catalog || []).map((item) => {
-            if (isServiceCatalogItem(item)) {
+            if (isServiceCatalogItem(item) || item?.pos_always_available === true) {
                 return [Number(item?.item_id), Number.POSITIVE_INFINITY];
             }
             const stock = Number(item?.current_stock);
@@ -2315,7 +2315,8 @@ export default function POSCheckoutTerminal({
                     <div ref={catalogGridRef} className={catalogGridClassName}>
                         {visibleCatalogItems.map((item) => {
                             const isServiceItem = isServiceCatalogItem(item);
-                            const isOutOfStock = !isServiceItem && Number(item.current_stock || 0) <= 0;
+                            const isAlwaysAvailable = item?.pos_always_available === true;
+                            const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
                             const configuredPosImageSrc = resolveAssetUrl(item.pos_image_url);
                             const mappedPosImageSrc = resolveAppAssetUrl(resolveMappedPosItemImage(item));
                             const fallbackPosImageSrc = resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE);
@@ -2406,6 +2407,10 @@ export default function POSCheckoutTerminal({
                                                 <span className="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#1A4E8D]">
                                                     Service
                                                 </span>
+                                            ) : isAlwaysAvailable ? (
+                                                <span className="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#1A4E8D]">
+                                                    Always available
+                                                </span>
                                             ) : null}
                                         </div>
                                         <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#64748B]">
@@ -2426,7 +2431,7 @@ export default function POSCheckoutTerminal({
                                         <div className={`${isTabletViewport ? 'mt-1.5' : 'mt-3'} grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B]`}>
                                             <span className="font-semibold">Stock:</span>
                                             <span className="text-right font-bold text-emerald-700 whitespace-nowrap">
-                                                {isServiceItem ? 'Service' : Number(item.current_stock || 0).toFixed(2)}
+                                                {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toFixed(2)}
                                             </span>
                                             <span className="font-semibold">Price:</span>
                                             <span className="text-right font-black text-[#1A4E8D] whitespace-nowrap">

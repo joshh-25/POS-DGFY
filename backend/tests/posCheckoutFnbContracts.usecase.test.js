@@ -134,6 +134,62 @@ describe('POS checkout F&B contracts', () => {
         jest.clearAllMocks();
     });
 
+    it('sells a direct always-available item at zero stock without creating inventory movement', async () => {
+        let createdTransaction = null;
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Always Available Meal',
+                category: 'product',
+                unit_of_measure: 'serving',
+                current_stock: 0,
+                cost_per_unit: 40,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                pos_always_available: true
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-ALWAYS-001'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                createdTransaction = { pos_transaction_id: 501, ...header, lines };
+                return 501;
+            }),
+            createFnbServiceChargeSnapshot: jest.fn(),
+            settleFnbCheck: jest.fn(),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn()
+        };
+        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'always-available-zero-stock',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 2 }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(createdTransaction.lines).toEqual([
+            expect.objectContaining({ item_id: 1, quantity: 2 })
+        ]);
+        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
+    });
+
     it('persists fiscal buyer fields and a server-owned fiscal document snapshot for fiscal invoices', async () => {
         mockGetAllSettingsUseCase.mockResolvedValueOnce({
             success: true,

@@ -12,7 +12,7 @@ const standalonePosMainSource = readFileSync(standalonePosMainPath, 'utf8');
 describe('TerminalPage session contract', () => {
   it('uses browserSession for protected POS auth state instead of persisted privileged tokens', () => {
     expect(terminalPageSource).toContain(
-      "import { getAccessToken, getCompanyToken, refreshBrowserSession } from '@/services/browserSession.js';"
+      "import { clearBrowserSession, getAccessToken, getCompanyToken, refreshBrowserSession } from '@/services/browserSession.js';"
     );
     expect(terminalPageSource).toContain('refreshBrowserSession()');
     expect(terminalPageSource).toContain('getCompanyToken()');
@@ -36,18 +36,39 @@ describe('TerminalPage session contract', () => {
     expect(standalonePosMainSource).not.toContain('if (import.meta.env.DEV) {');
   });
 
-  it('keeps the dedicated POS app locked until an explicit terminal unlock succeeds', () => {
-    expect(terminalPageSource).toContain('if (IS_DGFY_POS_SURFACE && !token) {');
+  it('restores dedicated POS app refresh only when browser session and open shift are present', () => {
+    expect(terminalPageSource).toContain('refreshBrowserSession()');
+    expect(terminalPageSource).toContain('storedReason !== \'shift_closed\'');
+    expect(terminalPageSource).toContain('storedReason !== \'terminal_reunlock\'');
+    expect(terminalPageSource).toContain('const pairedTerminal = await fetchPairedPosTerminal().catch(() => null);');
+    expect(terminalPageSource).toContain('allowWhileLocked: true');
+    expect(terminalPageSource).toContain('if (operationalContext?.shift) {');
     expect(terminalPageSource).toContain('setLocked(true);');
     expect(terminalPageSource).toContain('setDrawerOpen(true);');
-    expect(terminalPageSource).toContain('const shiftOpeningModalOpen = !drawerOpen && requiresOpenShift && canViewPos;');
+    expect(terminalPageSource).toContain('const shiftOpeningModalOpen = (');
+    expect(terminalPageSource).toContain('!drawerOpen');
+    expect(terminalPageSource).toContain('requiresOpenShift');
+    expect(terminalPageSource).toContain('canViewPos');
   });
 
   it('falls back to governed legacy POS unlock when DGFY account login rejects tenant-local credentials', () => {
     expect(terminalPageSource).toContain('performLegacyTerminalUnlock({ email, password, selectedTerminalId })');
-    expect(terminalPageSource).toContain("Number(error?.response?.status || 0) === 401");
+    expect(terminalPageSource).toContain('if (isCompanyTokenResolutionError(error)) {');
     expect(terminalPageSource).not.toContain('Legacy POS access used. Link this account to DGFY before June 17, 2027.');
     expect(terminalPageSource).toContain('loginWithCredentials(');
     expect(terminalPageSource).toContain('lookupCompanyToken(email, currentCompanyToken)');
+  });
+
+  it('redirects DGFY accounts without accessible businesses back to the customer dashboard instead of leaving them in POS', () => {
+    expect(terminalPageSource).toContain("resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';");
+    expect(terminalPageSource).toContain("No registered business was found for this account. Opening your DGFY customer dashboard.");
+    expect(terminalPageSource).toContain('window.location.href = resolveStorefrontAccountUrl();');
+  });
+
+  it('sends onboarding handoff to the dedicated POS app origin when started from IMS', () => {
+    expect(terminalPageSource).toContain('resolvePosTerminalUrl');
+    expect(terminalPageSource).toContain('const posOnboardingUrl = resolvePosTerminalUrl(POS_ONBOARDING_ENTRY_SEARCH);');
+    expect(terminalPageSource).toContain('if (targetUrl.origin !== window.location.origin) {');
+    expect(terminalPageSource).toContain('window.location.assign(targetUrl.toString());');
   });
 });

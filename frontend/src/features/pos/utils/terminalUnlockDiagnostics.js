@@ -124,6 +124,9 @@ export const resolveTerminalLoginErrorMessage = (error) => {
   }
   if (status === 403) {
     const lowerMessage = responseMessage.toLowerCase();
+    if (code === 'CSRF_TOKEN_REQUIRED') {
+      return responseMessage || 'The browser security token is missing. Refresh POS and sign in again.';
+    }
     if (lowerMessage.includes('pos:') || lowerMessage.includes('permission')) {
       return 'Your account does not have permission to unlock or operate this POS terminal.';
     }

@@ -3,6 +3,7 @@ import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 
 vi.mock('../components/POSCheckoutTerminal.jsx', () => ({
   default: () => <div>POSCheckoutTerminal</div>
@@ -19,8 +20,6 @@ vi.mock('../components/TerminalWorkspaceSidebar.jsx', () => ({
 vi.mock('../components/TerminalOperationsWorkspace.jsx', () => ({
   default: () => <div>TerminalOperationsWorkspace</div>
 }));
-
-const { default: TerminalPageLayout } = await import('../components/TerminalPageLayout.jsx');
 
 const baseProps = {
   locked: false,
@@ -51,7 +50,6 @@ const baseProps = {
   queuedTerminalOperationCount: 0,
   queuedTerminalBlockedCount: 0,
   queueSummary: {},
-  complianceBlockerDetails: null,
   modeChangeNotice: null,
   dismissModeChangeNotice: vi.fn(),
   workspacePaneRef: { current: null },

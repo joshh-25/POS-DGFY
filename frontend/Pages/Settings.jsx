@@ -20,6 +20,7 @@ import {
   Wand2
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import ConfirmActionDialog from "@/components/ui/ConfirmActionDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -502,6 +503,27 @@ const normalizeStorefrontGallerySettings = (raw) => {
   return normalized.length > 0 ? normalized : [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }];
 };
 
+const serializeStorefrontGallerySettings = (raw) => {
+  const source = Array.isArray(raw) ? raw : [];
+  return source
+    .map((entry, index) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const url = String(entry.url || '').trim().slice(0, 500);
+      const path = String(entry.path || '').trim().slice(0, 500);
+      if (!url && !path) return null;
+      return {
+        url,
+        path,
+        caption: String(entry.caption || '').trim().slice(0, 140),
+        alt: String(entry.alt || '').trim().slice(0, 140),
+        sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 24)
+    .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0));
+};
+
 const normalizeStorefrontDeliveryPartnersSettings = (raw) => {
   const source = Array.isArray(raw) ? raw : [];
   const normalized = source
@@ -539,6 +561,33 @@ const normalizeStorefrontReviewSummarySettings = (raw) => {
     star4: starDistribution[4] == null ? '' : String(starDistribution[4]),
     star5: starDistribution[5] == null ? '' : String(starDistribution[5])
   };
+};
+
+const serializeStorefrontReviewSummary = (settings = {}) => {
+  const starDistribution = {};
+  [
+    ['1', settings.storefrontReviewSummaryStar1],
+    ['2', settings.storefrontReviewSummaryStar2],
+    ['3', settings.storefrontReviewSummaryStar3],
+    ['4', settings.storefrontReviewSummaryStar4],
+    ['5', settings.storefrontReviewSummaryStar5]
+  ].forEach(([star, value]) => {
+    const parsed = parseNullableNumberInput(value, { integer: true, min: 0 });
+    if (parsed !== null) {
+      starDistribution[star] = parsed;
+    }
+  });
+
+  const summary = {
+    score: parseNullableNumberInput(settings.storefrontReviewSummaryScore, { min: 0, max: 5, precision: 1 }),
+    total_count: parseNullableNumberInput(settings.storefrontReviewSummaryTotalCount, { integer: true, min: 0 })
+  };
+
+  if (Object.keys(starDistribution).length > 0) {
+    summary.star_distribution = starDistribution;
+  }
+
+  return summary;
 };
 
 export default function Settings() {
@@ -596,6 +645,7 @@ export default function Settings() {
   const [editingLocationId, setEditingLocationId] = useState(null);
   const [deleteLocationCandidate, setDeleteLocationCandidate] = useState(null);
   const [deleteLocationErrors, setDeleteLocationErrors] = useState([]);
+  const [confirmationAction, setConfirmationAction] = useState(null);
   const [locationForm, setLocationForm] = useState(createDefaultLocationForm());
   const [storefrontAssets, setStorefrontAssets] = useState({
     cover: '',
@@ -1473,8 +1523,9 @@ export default function Settings() {
   };
 
   const handleDeactivateLocation = async (locationId, { skipConfirm = false } = {}) => {
-    if (!skipConfirm && !window.confirm('Deactivate this location?')) {
-      return;
+    if (!skipConfirm) {
+      setConfirmationAction({ type: 'deactivate-location', locationId });
+      return true;
     }
 
     setLocationSaving(true);
@@ -1489,8 +1540,11 @@ export default function Settings() {
         setDeleteLocationCandidate(null);
         setDeleteLocationErrors([]);
       }
+      return true;
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to deactivate tenant location');
+      const message = error?.response?.data?.message || 'Failed to deactivate tenant location';
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setLocationSaving(false);
     }
@@ -1537,9 +1591,10 @@ export default function Settings() {
     }
   };
 
-  const handleReactivateLocation = async (locationId) => {
-    if (!window.confirm('Reactivate this location?')) {
-      return;
+  const handleReactivateLocation = async (locationId, { skipConfirm = false } = {}) => {
+    if (!skipConfirm) {
+      setConfirmationAction({ type: 'reactivate-location', locationId });
+      return true;
     }
 
     setLocationSaving(true);
@@ -1547,8 +1602,11 @@ export default function Settings() {
       await tenantLocationService.reactivateTenantLocation(locationId);
       toast.success('Tenant location reactivated.');
       await loadTenantLocations();
+      return true;
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to reactivate tenant location');
+      const message = error?.response?.data?.message || 'Failed to reactivate tenant location';
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setLocationSaving(false);
     }
@@ -1861,7 +1919,7 @@ export default function Settings() {
           instagram: String(settings.storefrontSocialInstagram || '').trim()
         },
         storefront_review_highlights: storefrontReviewHighlights,
-        storefront_review_summary: storefrontReviewSummary,
+        storefront_review_summary: serializeStorefrontReviewSummary(settings),
         storefront_promo: {
           title: String(settings.storefrontPromoTitle || '').trim(),
           subtitle: String(settings.storefrontPromoSubtitle || '').trim(),
@@ -1871,7 +1929,7 @@ export default function Settings() {
         },
         storefront_ui_v2_enabled: settings.storefrontUiV2Enabled === true,
         storefront_categories: storefrontCategories,
-        storefront_gallery_images: storefrontGalleryImages,
+        storefront_gallery_images: serializeStorefrontGallerySettings(settings.storefrontGalleryImages),
         storefront_delivery_partners: storefrontDeliveryPartners,
         storefront_follow_enabled: settings.storefrontFollowEnabled === true,
         storefront_share_enabled: settings.storefrontShareEnabled === true
@@ -2003,9 +2061,10 @@ export default function Settings() {
     }
   };
 
-  const handleCancelSubscription = async () => {
-    if (!confirm("Are you sure you want to cancel your Premium subscription? You will retain access until the end of your current billing period.")) {
-      return;
+  const handleCancelSubscription = async ({ skipConfirm = false } = {}) => {
+    if (!skipConfirm) {
+      setConfirmationAction({ type: 'cancel-subscription' });
+      return true;
     }
 
     setIsCancelling(true);
@@ -2014,8 +2073,11 @@ export default function Settings() {
       const updatedUser = await userService.getCurrentUser();
       setCurrentUser(updatedUser);
       toast.success(result.message || "Subscription cancelled successfully.");
+      return true;
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to cancel subscription.");
+      const message = err.response?.data?.message || "Failed to cancel subscription.";
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setIsCancelling(false);
     }
@@ -4277,6 +4339,32 @@ export default function Settings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        open={Boolean(confirmationAction)}
+        onOpenChange={(open) => { if (!open) setConfirmationAction(null); }}
+        title={confirmationAction?.type === 'cancel-subscription'
+          ? 'Cancel Premium Subscription'
+          : (confirmationAction?.type === 'reactivate-location' ? 'Reactivate Location' : 'Deactivate Location')}
+        description={confirmationAction?.type === 'cancel-subscription'
+          ? 'Your Premium subscription will stop renewing. You will retain access until the end of the current billing period.'
+          : (confirmationAction?.type === 'reactivate-location'
+            ? 'This location will become available again for storefront and operational use.'
+            : 'This location will be removed from active operational and storefront choices. Historical records will be preserved.')}
+        confirmLabel={confirmationAction?.type === 'cancel-subscription'
+          ? 'Cancel Subscription'
+          : (confirmationAction?.type === 'reactivate-location' ? 'Reactivate' : 'Deactivate')}
+        variant={confirmationAction?.type === 'reactivate-location' ? 'default' : 'destructive'}
+        onConfirm={() => {
+          if (confirmationAction?.type === 'cancel-subscription') {
+            return handleCancelSubscription({ skipConfirm: true });
+          }
+          if (confirmationAction?.type === 'reactivate-location') {
+            return handleReactivateLocation(confirmationAction.locationId, { skipConfirm: true });
+          }
+          return handleDeactivateLocation(confirmationAction?.locationId, { skipConfirm: true });
+        }}
+      />
 
       {/* User Management Modal */}
       {showUserManagement && (

@@ -178,6 +178,58 @@ const posScanSchema = Joi.object({
     quantity: Joi.number().positive().precision(4).default(1)
 });
 
+const verifyTerminalSchema = Joi.object({
+    terminal_id: Joi.string().trim().min(2).max(100).required().messages({
+        'any.required': 'Terminal ID is required',
+        'string.min': 'Terminal ID must be at least 2 characters'
+    }),
+    terminal_password: Joi.string().trim().min(1).max(128).required().messages({
+        'any.required': 'Terminal password is required',
+        'string.empty': 'Terminal password is required'
+    })
+});
+
+const posCashierLoginSchema = Joi.object({
+    identifier: Joi.string().trim().min(2).max(100).required().messages({
+        'any.required': 'Cashier username or email is required',
+        'string.empty': 'Cashier username or email is required',
+        'string.min': 'Cashier username or email must be at least 2 characters'
+    }),
+    password: Joi.string().min(1).max(128).required().messages({
+        'any.required': 'Cashier password is required',
+        'string.empty': 'Cashier password is required'
+    })
+});
+
+const setupCashierSchema = Joi.object({
+    username: Joi.string().trim().min(2).max(50).required().messages({
+        'any.required': 'Cashier username is required',
+        'string.min': 'Cashier username must be at least 2 characters',
+        'string.max': 'Cashier username must be 50 characters or fewer'
+    }),
+    email: Joi.string().trim().email({ tlds: { allow: false } }).max(100).required().messages({
+        'any.required': 'Cashier email is required',
+        'string.email': 'Cashier email must be valid'
+    }),
+    phone_number: Joi.string().trim().pattern(/^[+0-9().\-\s]{7,40}$/).allow('', null).optional().messages({
+        'string.pattern.base': 'Phone number must be 7-40 characters and may only contain digits, spaces, +, -, parentheses, and periods'
+    }),
+    password: Joi.string().min(8).max(128).required().messages({
+        'any.required': 'Cashier password is required',
+        'string.min': 'Cashier password must be at least 8 characters'
+    }),
+    location_ids: Joi.array()
+        .items(Joi.number().integer().positive())
+        .min(1)
+        .unique()
+        .required()
+        .messages({
+            'any.required': 'At least one cashier store assignment is required',
+            'array.min': 'At least one cashier store assignment is required',
+            'array.unique': 'Cashier store assignments must not contain duplicates'
+        })
+});
+
 const posCatalogOverridesQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
     limit: Joi.number().integer().min(1).max(1000).default(200)
@@ -192,8 +244,9 @@ const posCatalogOverrideParamSchema = Joi.object({
 });
 
 const updatePosCatalogOverrideSchema = Joi.object({
-    pos_visible: Joi.boolean().required()
-});
+    pos_visible: Joi.boolean().optional(),
+    pos_always_available: Joi.boolean().optional()
+}).or('pos_visible', 'pos_always_available');
 
 const zReadingDateParamSchema = Joi.object({
     date: Joi.date().iso().required()
@@ -417,6 +470,9 @@ export const validatePosTransactionsQuery = validateSchema(listTransactionsQuery
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
 export const validateMobilePosCatalogBootstrapQuery = validateSchema(mobilePosCatalogBootstrapQuerySchema, 'query', 'validatedQuery');
 export const validatePosScan = validateSchema(posScanSchema, 'body', 'validatedData');
+export const validateVerifyTerminal = validateSchema(verifyTerminalSchema, 'body', 'validatedData');
+export const validatePosCashierLogin = validateSchema(posCashierLoginSchema, 'body', 'validatedData');
+export const validateSetupCashier = validateSchema(setupCashierSchema, 'body', 'validatedData');
 export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');

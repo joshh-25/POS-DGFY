@@ -234,6 +234,55 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(Number(refreshedItem.current_stock)).toBe(8);
     });
 
+    it('sells an always-available POS item at zero stock without creating a stock movement', async () => {
+        const cashier = await createCashier();
+        const product = await createFinishedGood({ current_stock: 0 });
+        await models.PosCatalogOverride.create({
+            item_id: product.item_id,
+            pos_visible: true,
+            pos_always_available: true
+        });
+
+        const catalogResult = await runInTenantContext(() => listPosCatalogUseCase({
+            query: { search: product.sku_code, limit: 50 },
+            user: { user_id: cashier.user_id }
+        }));
+        expect(catalogResult.success).toBe(true);
+        const catalogItem = catalogResult.data.find((item) => Number(item.item_id) === Number(product.item_id));
+        expect(catalogItem).toEqual(expect.objectContaining({
+            item_id: product.item_id,
+            pos_always_available: true
+        }));
+        expect(Number(catalogItem.current_stock)).toBe(0);
+
+        const idempotencyKey = `idem-always-available-${crypto.randomUUID()}`;
+        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
+            userId: cashier.user_id,
+            payload: {
+                idempotency_key: idempotencyKey,
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                lines: [{ item_id: product.item_id, quantity: 2, sale_price: null }]
+            }
+        }));
+
+        expect(checkoutResult.success).toBe(true);
+        const persistedTx = await models.PosTransaction.findOne({
+            where: { idempotency_key: idempotencyKey }
+        });
+        const movementCount = await models.StockMovement.count({
+            where: {
+                reference_type: 'POS',
+                reference_id: String(persistedTx.pos_transaction_id),
+                item_id: product.item_id
+            }
+        });
+        expect(movementCount).toBe(0);
+
+        const refreshedItem = await models.Item.findByPk(product.item_id);
+        expect(Number(refreshedItem.current_stock)).toBe(0);
+    });
+
     it('requires explicit opt-in for non-finished categories and blocks when pos_visible=false', async () => {
         const cashier = await createCashier();
         const rawMaterial = await createRawMaterial({ current_stock: 10, default_sale_price: 80 });
