@@ -14,6 +14,7 @@
       "implementation_summary": "Adds ADR 0030 and aligns authoritative workflow, QA isolation, production checklist, deployment handoff, script guidance, release checklist, registry, and repository skill with the GitHub Free external-controller boundary.",
       "included_files": [
         "docs/INDEX.md",
+        "docs/README.md",
         "docs/_meta/document-registry.json",
         "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
         "docs/guides/SCRIPTS_GUIDE.md",
@@ -373,6 +374,97 @@
         "GitHub workflow cannot access production credentials or invoke deployment",
         "QA proof rejects production-equivalent targets",
         "Every deployed slice consumes hash-verified API, UI, read-only database, or asset evidence"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    },
+    {
+      "id": "tenant-membership-bridge-auth",
+      "slice_name": "Tenant membership bridge auth recovery",
+      "name": "Tenant membership bridge auth recovery",
+      "plain_english_purpose": "Let DGFY tenant-membership bridge requests recover tenant context from a valid tenant-bound bearer token when the tenant context cookie is missing.",
+      "purpose": "Let DGFY tenant-membership bridge requests recover tenant context from a valid tenant-bound bearer token when the tenant context cookie is missing.",
+      "implementation_summary": "Adds bearer-token tenant context recovery for DGFY tenant-membership bridge requests by verifying the existing JWT access token, resolving its tenant id to the tenant company token, and continuing through the normal tenant database resolver. Adds focused middleware coverage for the missing-cookie bearer-token path.",
+      "included_files": [
+        "backend/src/middleware/tenantHandler.js",
+        "backend/tests/tenantHandler.emailOtp.test.js"
+      ],
+      "included_features": [
+        "DGFY tenant-membership bridge bearer-token fallback",
+        "Tenant handler focused regression coverage"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Preserved PayMongo and payment-channel stashes",
+        "Production credential handling",
+        "New authentication token format"
+      ],
+      "owner_attribution": "BBLabs-Albert owner-directed implementation",
+      "source_branch": "codex/free-tier-signed-release-controller",
+      "source_pr": "owner-direct-staging-2026-06-28",
+      "source_type": "owner_direct_staging",
+      "affected_surfaces": [
+        "backend",
+        "DGFY",
+        "tenant lifecycle"
+      ],
+      "affected_surface_map": {
+        "backend": true,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": false,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": true,
+        "tenant lifecycle": true,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js",
+        "npm run check:architecture",
+        "npm run check:compliance"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: tenantHandler.emailOtp.test.js PASS (6 tests)"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: architecture guardrails PASS after tenant bridge inclusion"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: compliance impact and API contracts PASS after tenant bridge inclusion"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/testing/release-go-no-go-checklist.md"
+      ],
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "Architecture remains inside middleware/tenant resolution behavior; no ADR exception is introduced. Compliance checks report no regulated API contract impact.",
+      "rollback_notes": "Revert the tenantHandler bearer-token fallback and focused test if DGFY tenant-membership bridge requests show tenant-context regression; the previous cookie/header/refresh-cookie recovery paths remain covered.",
+      "production_proof_required": [
+        "Exact production runtime SHA proof",
+        "Read-only production health and deployment summary",
+        "DGFY tenant-membership bridge smoke using existing authenticated tenant context"
+      ],
+      "production_accuracy_checks_required": [
+        "Authenticated DGFY membership bridge request resolves tenant context without tenant context cookie",
+        "Requests without a valid bearer token still fail closed through existing tenant resolution"
       ],
       "can_ship_independently": true,
       "promotion_eligibility": "eligible",
