@@ -97,7 +97,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps incoming queue and location scope sidebar items permission-aware', () => {
-    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !canViewPos || !hasActiveShift}");
+    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !canViewPos || !navigationShiftReady}");
     expect(terminalWorkspaceSidebarContent).toContain('POS view permission required');
   });
 

@@ -49,6 +49,7 @@ export default function TerminalWorkspaceSidebar({
   terminalUser = null,
   currentViewMode = 'checkout',
   canViewPos = false,
+  allowAdminNavigationWithoutShift = false,
   canAdjustCashDrawer = false,
   canCloseDay = false,
   shiftState = { shift: null },
@@ -68,11 +69,14 @@ export default function TerminalWorkspaceSidebar({
     ? 'Not selected'
     : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
   const showIncomingQueue = !isMsmeMode;
-  const showLocationScope = !isMsmeMode;
-  const showAdvancedOps = !isMsmeMode;
+  const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
+  const isCashierRole = normalizedRole === 'cashier';
+  const showLocationScope = !isMsmeMode && !isCashierRole;
+  const showAdvancedOps = !isMsmeMode && !isCashierRole;
   const pendingQueueCount = Number(queueSummary?.pending || 0);
   const blockedQueueCount = Number(queueSummary?.blocked || 0);
   const hasActiveShift = Boolean(shiftState?.shift);
+  const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
 
   return (
@@ -114,59 +118,59 @@ export default function TerminalWorkspaceSidebar({
             icon={ShoppingCart}
             active={sellWorkspaceModes.has(currentViewMode)}
             onClick={() => onSelectViewMode('checkout')}
-            disabled={locked || !hasActiveShift}
-            caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift first to continue' : 'Live selling and cart management')}
+            disabled={locked || !navigationShiftReady}
+            caption={locked ? 'Unlock terminal to continue' : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse; checkout remains blocked'))}
           />
           <NavButton
             label="History"
             icon={History}
             active={currentViewMode === 'history'}
             onClick={() => onSelectViewMode('history')}
-            disabled={locked || !canViewPos || !hasActiveShift}
+            disabled={locked || !canViewPos || !navigationShiftReady}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Invoice lookups and audit trail'))
+                : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Invoice lookups and audit trail'))
             }
             testId="pos-nav-history"
           />
-          <NavButton
+          {!isCashierRole && <NavButton
             label="Report"
             icon={BarChart3}
             active={currentViewMode === 'reports'}
             onClick={() => onSelectViewMode('reports')}
-            disabled={locked || !canViewPos || !hasActiveShift}
+            disabled={locked || !canViewPos || !navigationShiftReady}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions'))
+                : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions'))
             }
             testId="pos-nav-reports"
-          />
-          <NavButton
+          />}
+          {!isCashierRole && <NavButton
             label="Items"
             icon={ClipboardList}
             active={currentViewMode === 'items'}
             onClick={() => onSelectViewMode('items')}
-            disabled={locked || !canViewPos || !hasActiveShift}
+            disabled={locked || !canViewPos || !navigationShiftReady}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Edit SKUpervisor item price and cost'))
+                : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Edit SKUpervisor item price and cost'))
             }
             testId="pos-nav-items"
-          />
+          />}
           {showIncomingQueue && (
             <NavButton
               label={`Orders (${incomingCount})`}
               icon={Truck}
               active={currentViewMode === 'incoming_queue'}
               onClick={() => onSelectViewMode('incoming_queue')}
-              disabled={locked || !canViewPos || !hasActiveShift}
+              disabled={locked || !canViewPos || !navigationShiftReady}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
-                : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress online orders'))
+                  : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress online orders'))
               }
             />
           )}
@@ -189,11 +193,11 @@ export default function TerminalWorkspaceSidebar({
               icon={MapPinned}
               active={currentViewMode === 'location_scope'}
               onClick={() => onSelectViewMode('location_scope')}
-              disabled={locked || !canViewPos || !hasActiveShift}
+              disabled={locked || !canViewPos || !navigationShiftReady}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
-                  : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Filter queue by fulfillment location'))
+                  : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Filter queue by fulfillment location'))
               }
             />
           )}

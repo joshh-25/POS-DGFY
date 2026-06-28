@@ -39,6 +39,7 @@ export default function TerminalPageLayout({
     setMobileNavOpen,
     isDesktopWide,
     canViewPos,
+    allowAdminNavigationWithoutShift = false,
     canAdjustCashDrawer,
     canCloseDay,
     terminalUser,
@@ -354,6 +355,7 @@ export default function TerminalPageLayout({
                         terminalUser={terminalUser}
                         currentViewMode={posViewMode}
                         canViewPos={canViewPos}
+                        allowAdminNavigationWithoutShift={allowAdminNavigationWithoutShift}
                         canAdjustCashDrawer={canAdjustCashDrawer}
                         canCloseDay={canCloseDay}
                         shiftState={shiftState}
@@ -578,6 +580,7 @@ export default function TerminalPageLayout({
                                 terminalUser={terminalUser}
                                 currentViewMode={posViewMode}
                                 canViewPos={canViewPos}
+                                allowAdminNavigationWithoutShift={allowAdminNavigationWithoutShift}
                                 canAdjustCashDrawer={canAdjustCashDrawer}
                                 canCloseDay={canCloseDay}
                                 shiftState={shiftState}
