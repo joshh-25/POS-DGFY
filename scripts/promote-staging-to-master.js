@@ -21,7 +21,6 @@ function parseArgs(argv) {
     inventoryMarkdown: process.env.BATCH_INVENTORY_MARKDOWN || '',
     candidateSha: process.env.STAGING_CANDIDATE_SHA || process.env.GITHUB_SHA || '',
     artifactUrl: process.env.STAGING_QUALIFICATION_ARTIFACT_URL || '',
-    enableAutoMerge: process.env.PROMOTION_ENABLE_AUTO_MERGE === '1',
     dryRun: process.env.PROMOTION_DRY_RUN === '1',
   };
 
@@ -49,7 +48,7 @@ function parseArgs(argv) {
       options.artifactUrl = argv[index + 1] || '';
       index += 1;
     } else if (arg === '--enable-auto-merge') {
-      options.enableAutoMerge = true;
+      throw new PromotionError('GitHub auto-merge is prohibited; use the external signed promotion controller', { code: 'AUTO_MERGE_PROHIBITED' });
     } else if (arg === '--dry-run') {
       options.dryRun = true;
     } else {
@@ -164,17 +163,6 @@ function promote(options, logger = console) {
       });
     }
     logger.log(`[promotion] Updated PR #${prNumber}`);
-    if (options.enableAutoMerge) {
-      const merge = run('gh', ['pr', 'merge', prNumber, '--auto', '--merge'], {
-        cwd: options.projectRoot,
-      });
-      if (!merge.ok) {
-        throw new PromotionError(`Could not enable auto-merge for PR #${prNumber}: ${merge.stderr.trim() || merge.status}`, {
-          code: 'GH_PR_AUTOMERGE_FAILED',
-        });
-      }
-      logger.log(`[promotion] Auto-merge enabled for PR #${prNumber}`);
-    }
     return { prNumber, bodyPath, updated: true };
   }
 
@@ -187,25 +175,6 @@ function promote(options, logger = console) {
     });
   }
   logger.log(`[promotion] Created PR ${created.stdout.trim()}`);
-  if (options.enableAutoMerge) {
-    const createdPrNumber = run('gh', ['pr', 'view', options.head, '--json', 'number', '--jq', '.number'], {
-      cwd: options.projectRoot,
-    });
-    if (!createdPrNumber.ok || !createdPrNumber.stdout.trim()) {
-      throw new PromotionError(`Could not resolve created promotion PR number for auto-merge: ${createdPrNumber.stderr.trim() || createdPrNumber.status}`, {
-        code: 'GH_PR_VIEW_FAILED',
-      });
-    }
-    const merge = run('gh', ['pr', 'merge', createdPrNumber.stdout.trim(), '--auto', '--merge'], {
-      cwd: options.projectRoot,
-    });
-    if (!merge.ok) {
-      throw new PromotionError(`Could not enable auto-merge for PR #${createdPrNumber.stdout.trim()}: ${merge.stderr.trim() || merge.status}`, {
-        code: 'GH_PR_AUTOMERGE_FAILED',
-      });
-    }
-    logger.log(`[promotion] Auto-merge enabled for PR #${createdPrNumber.stdout.trim()}`);
-  }
   return { url: created.stdout.trim(), bodyPath, created: true };
 }
 

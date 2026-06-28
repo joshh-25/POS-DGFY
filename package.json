@@ -80,6 +80,7 @@
     "promote:staging-to-master": "node scripts/promote-staging-to-master.js",
     "review:deployed-change-accuracy": "node scripts/review-deployed-change-accuracy.js",
     "audit:master-promotion": "node scripts/audit-master-promotion.js",
+    "collect:master-promotion-evidence": "node scripts/collect-master-promotion-evidence.js",
     "build:release-candidate-evidence": "node scripts/build-release-candidate-evidence.js",
     "verify:prod:multi-location": "powershell -ExecutionPolicy Bypass -File scripts/verify-prod-multi-location.ps1",
     "verify:qa:multi-location": "powershell -ExecutionPolicy Bypass -File scripts/verify-qa-multi-location.ps1",
