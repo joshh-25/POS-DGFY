@@ -46,6 +46,12 @@
       "expected_authority_level": "authoritative"
     },
     {
+      "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+      "topic": "free_tier_signed_release_authorization",
+      "expected_status": "authoritative",
+      "expected_authority_level": "authoritative"
+    },
+    {
       "path": "docs/templates/IMPLEMENTATION_PLAN_TEMPLATE.md",
       "topic": "implementation_plan_template",
       "expected_status": "authoritative",
