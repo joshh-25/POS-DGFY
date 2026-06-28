@@ -30,6 +30,7 @@ export default function POSSetupStep({
   storefrontConfig,
   showStorefrontCatalogControls = true,
   onTogglePosVisibility,
+  onTogglePosAlwaysAvailable,
   onToggleStorefrontVisibility,
   onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
@@ -162,6 +163,17 @@ export default function POSSetupStep({
                 disabled={!onTogglePosVisibility}
               >
                 {posConfig?.pos_visible !== false ? 'Disable in POS' : 'Enable in POS'}
+              </Button>
+            )}
+            {productItem && (
+              <Button
+                type="button"
+                variant={posConfig?.pos_always_available === true ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onTogglePosAlwaysAvailable && onTogglePosAlwaysAvailable(productItem, posConfig?.pos_always_available !== true)}
+                disabled={!onTogglePosAlwaysAvailable}
+              >
+                {posConfig?.pos_always_available === true ? 'Always Available: On' : 'Always Available: Off'}
               </Button>
             )}
             {onOpenBulkPosSetup && (

@@ -1,6 +1,21 @@
 import api from '@/services/api';
 import { emitPosHardwareMessage } from '../utils/posHardwareMessageBus.js';
 
+export const pairPosTerminal = async (payload = {}) => {
+    const response = await api.post('/pos/terminal/pair', payload);
+    return response.data?.data;
+};
+
+export const fetchPairedPosTerminal = async (requestConfig = {}) => {
+    const response = await api.get('/pos/terminal/paired', requestConfig);
+    return response.data?.data;
+};
+
+export const clearPairedPosTerminal = async () => {
+    const response = await api.delete('/pos/terminal/paired', { skipGlobalErrorToast: true });
+    return response.data?.data;
+};
+
 export const fetchPosCatalog = async (params = {}) => {
     const response = await api.get('/pos/catalog', { params });
     return response.data?.data || [];
@@ -250,6 +265,9 @@ export const fetchFiscalLedgerIntegrity = async (params = {}) => {
 };
 
 export default {
+    pairPosTerminal,
+    fetchPairedPosTerminal,
+    clearPairedPosTerminal,
     fetchPosCatalog,
     scanPosBarcode,
     createPosCheckout,
