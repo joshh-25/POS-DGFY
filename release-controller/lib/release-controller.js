@@ -123,11 +123,12 @@ function validateAuthorizationFields(fields, expected, now = new Date()) {
 
 function verifySignedTag(options) {
   const git = options.gitBin || 'git';
+  const runner = options.runner || run;
   const repoArgs = options.gitDir ? [`--git-dir=${options.gitDir}`] : [];
-  const objectType = requireCommand(run(git, [...repoArgs, 'cat-file', '-t', options.tag], options), 'TAG_NOT_FOUND', `Resolve tag ${options.tag}`);
+  const objectType = requireCommand(runner(git, [...repoArgs, 'cat-file', '-t', options.tag], options), 'TAG_NOT_FOUND', `Resolve tag ${options.tag}`);
   if (objectType !== 'tag') fail('TAG_NOT_ANNOTATED', `Authorization must be an annotated signed tag: ${options.tag}`);
-  const targetSha = requireCommand(run(git, [...repoArgs, 'rev-parse', `${options.tag}^{commit}`], options), 'TAG_TARGET_INVALID', `Resolve tag target ${options.tag}`);
-  const signature = run(git, [...repoArgs, 'verify-tag', '--raw', options.tag], options);
+  const targetSha = requireCommand(runner(git, [...repoArgs, 'rev-parse', `${options.tag}^{commit}`], options), 'TAG_TARGET_INVALID', `Resolve tag target ${options.tag}`);
+  const signature = runner(git, [...repoArgs, 'verify-tag', '--raw', options.tag], options);
   if (!signature.ok) fail('SIGNATURE_INVALID', `Tag signature verification failed for ${options.tag}: ${(signature.stderr || signature.stdout).trim()}`);
   const statusOutput = `${signature.stdout}\n${signature.stderr}`;
   const validSig = statusOutput.match(/\[GNUPG:\]\s+VALIDSIG\s+([0-9A-Fa-f]{40,64})\b/);
@@ -135,7 +136,7 @@ function verifySignedTag(options) {
   const fingerprint = normalizeFingerprint(validSig[1]);
   const allowlist = new Set((options.allowedFingerprints || []).map(normalizeFingerprint));
   if (!allowlist.has(fingerprint)) fail('SIGNER_NOT_ALLOWED', `Signer fingerprint is not allowlisted: ${fingerprint}`);
-  const message = requireCommand(run(git, [...repoArgs, 'for-each-ref', '--format=%(contents)', `refs/tags/${options.tag}`], options), 'TAG_MESSAGE_MISSING', `Read tag message ${options.tag}`);
+  const message = requireCommand(runner(git, [...repoArgs, 'for-each-ref', '--format=%(contents)', `refs/tags/${options.tag}`], options), 'TAG_MESSAGE_MISSING', `Read tag message ${options.tag}`);
   return { targetSha, fingerprint, message };
 }
 

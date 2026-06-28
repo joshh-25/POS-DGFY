@@ -135,6 +135,11 @@ function controllerMain(options) {
     validateAccuracyProofBundle(readJson(options.accuracyProof, 'production accuracy proof'), inventory, options.targetSha);
   }
 
+  if (options.phase === 'production') {
+    // Dry-run validates credential presence and fixed command construction without using the credential.
+    buildRemoteDeployArgs(config, options.targetSha);
+  }
+
   const plan = {
     status: 'authorized_pre_checkout',
     dry_run: options.dryRun,

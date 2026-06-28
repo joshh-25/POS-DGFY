@@ -97,4 +97,3 @@ When the repository plan supports native branch protection, rulesets, private en
 3. Owner authorization occurs after immutable evidence hashes are known, which adds an explicit release ceremony.
 4. Privileged operators with root access remain capable of bypassing any software control; root access must be tightly limited and audited.
 5. The change is cross-boundary because production trust and deployment topology move outside GitHub. It does not add an application architecture allowlist exception.
-

@@ -1,111 +1,79 @@
 ---
 name: sku-development-to-production
-description: Use for SKU Inventory Manager development-to-production promotion work, staging qualification, batch inventory, staging-to-master PR automation, exact-SHA production deployment, and deployed-change accuracy review.
+description: Use for SKU Inventory Manager signed staging promotion, candidate evidence, external production authorization, and deployed-change accuracy review.
 ---
 
 # SKU Development To Production
 
-Use this skill only inside `C:\xampp\htdocs\SKU-Inventory-Manager` or its clean worktrees.
+Use only inside `C:\xampp\htdocs\SKU-Inventory-Manager` or a clean worktree.
 
 ## Mandatory Reading
-
-Read these before planning or implementing release workflow work:
 
 1. `docs/START_HERE.md`
 2. `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 3. `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
-4. `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`
-5. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
-6. `docs/ops/DEPLOYMENT_GUIDE.md`
-7. `docs/ops/WORKSPACE_CLEANUP_AND_BRANCH_POLICY.md`
-8. `docs/testing/release-go-no-go-checklist.md`
+4. `docs/architecture/adr/0030-free-tier-signed-release-authorization.md`
+5. `docs/architecture/adr/0027-paymongo-commerce-qrph-platform-split-settlement.md`
+6. `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`
+7. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
+8. `docs/ops/QA_ISOLATION_PROFILE.md`
+9. `docs/testing/release-go-no-go-checklist.md`
 
-## First Inspection
+## Trust Model
 
-Inspect and report:
+The private GitHub Free repository has no enforceable branch protection, rulesets, private environment secrets, or required deployment reviewers. GitHub is a CI, PR, and candidate-evidence surface only.
 
-1. `git status --short --branch`
-2. `git stash list`
-3. `git rev-parse HEAD`
-4. `git rev-parse origin/staging`
-5. `git rev-parse origin/master`
-6. changed file groups by feature/domain
-7. candidate SHA and whether it is local-only, `staging`, or `master`
+Never place production credentials or signing private keys in GitHub. Never use GitHub auto-merge or a GitHub live deploy. `ENABLE_AUTO_PRODUCTION_DEPLOY` remains `0`.
 
-Never treat local uncommitted files or stashes as deployable. Production pulls pushed `origin/master` only.
+The root-owned external release controller is the only supported promotion and production authority.
 
-## Branch Model
+## Inspection
 
-Use the governed path:
-
-```text
-feature branch -> PR to staging -> exact staging SHA qualification -> distinct QA proof -> staging to master PR -> exact master SHA qualification -> exact origin/master production deploy -> deployed-change accuracy review
-```
-
-Developers open PRs into `staging`. Owner direct-staging work is the only exception, and it still requires complete staging qualification.
-
-## Batch Inventory
-
-Before sliced commits, PR promotion, or deployment, inspect all implementations in the candidate and produce batch-level inventory:
-
-```bash
-npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --write --require-ship --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --markdown ".tmp/release-gates/<candidate_sha>/batch_inventory.md"
-npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --base origin/master --head <candidate_sha> --require-ship
-```
-
-Each batch must identify purpose, included/excluded files, risk, affected surfaces, tests, docs, ADR/compliance need, commit boundary, rollback notes, production proof, independence, and verdict.
-
-Do not allow unrelated implementations to ride along silently.
-
-Read all implementations in the candidate before slicing. Distinguish developer PR work from owner direct-staging work, preserve excluded work, and reject dirty or mixed candidates that cannot map every changed file to exactly one slice.
-
-## Excluded Work
-
-Preserve excluded work, especially the PayMongo stash named:
+Inspect current branch, remote parity, changed files, stash list, candidate SHA, PR evidence, reviewed batch manifest, and payment-sensitive paths. Preserve the PayMongo stash by message:
 
 ```text
 pre-prod-deploy-preserve-paymongo-commerce-work-2026-06-08
 ```
 
-Search by stash message, not by `stash@{n}`.
+## Batch Inventory
 
-Payment-sensitive candidates stop automatic promotion unless explicit payment-release approval exists. Do not infer PayMongo live readiness from source state.
-
-## Promotion And Deployment Rules
-
-1. Enforce staging qualification before promotion.
-2. Treat `staging -> master` PR creation/update as a first-class release phase.
-3. Include batch inventory and evidence in the promotion PR body.
-4. Requalify the resulting `master` SHA after merge.
-5. Deploy only exact `origin/master` SHA.
-6. Use `RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci` only after branch protection, exact master SHA qualification, repeated dry-runs, failure simulations, and distinct QA proof are configured.
-7. Keep the local operator path unchanged: `scripts/deploy-remote.sh --yes`.
-
-Workflow files:
-
-1. `.github/workflows/staging-qualification.yml`
-2. `.github/workflows/promote-staging-to-master.yml`
-3. `.github/workflows/exact-master-sha-qualification.yml`
-4. `.github/workflows/deploy-production.yml`
-
-Dry-run production deployment:
+Draft generation is not approval:
 
 ```bash
-PRODUCTION_DEPLOY_DRY_RUN=1 RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
+npm run check:batch-inventory -- --base <base> --head <sha> --write --inventory <draft.json> --markdown <draft.md>
 ```
 
-## Production Proof And Accuracy
+Strict promotion requires one tracked human-reviewed manifest:
 
-Hand production verification to the existing production-deployer contract. Prove remote `HEAD`, `.deploy-state/last_deployed_commit`, deploy summary, production contract, frontend asset parity, `/api/v1/health` runtime SHA, endpoint health, and feature-specific behavior.
+```bash
+npm run check:batch-inventory -- --base <base> --head <sha> --reviewed-manifest docs/releases/batches/<release>.json --write --require-ship --inventory <inventory.json> --markdown <inventory.md>
+npm run validate:batch-inventory -- --inventory <inventory.json> --base <base> --head <sha> --require-ship
+```
 
-After SHA proof, review whether production accurately reflects each shipped batch. Do not mark complete when the state is only source-current, partially reflected, docs-overclaimed, or deployed but behavior not proven.
+Reject placeholders, unknown attribution, silent files, and completed-test claims without evidence.
 
-## Emergency Bypass
+## Signed Promotion
 
-Never use emergency bypass automatically.
+1. Qualify exact staging SHA.
+2. Prove isolated exact-SHA QA.
+3. Let GitHub create or update the `staging -> master` PR only.
+4. Hash exact reviewed inventory and candidate evidence.
+5. Require owner GPG-signed `phase=promotion` tag with expiry and fresh nonce.
+6. Require separate payment tag when payment-sensitive.
+7. Run installed controller dry-run, then execute the head-SHA-pinned merge.
 
-Emergency bypass is manual, incident-only, and cannot override dirty source, failed checks, missing merge-adoption proof, payment uncertainty, stale asset parity, runtime SHA mismatch, unknown QA target, missing batch inventory, or docs overclaim.
+## Signed Production
 
-## CI Independence
+1. Audit the resulting master merge and exact SHA.
+2. Run exact-master evidence and controller-local qualification.
+3. Require a new `phase=production` tag for the master SHA.
+4. Require a master-SHA payment tag when payment-sensitive.
+5. Run controller dry-run, confirm master has not moved, then execute.
 
-This skill is guidance for agents. CI/CD must depend on tracked scripts, workflows, and docs, not on the skill being installed locally.
+`scripts/deploy-remote.sh` and live `scripts/deploy-master-ci.sh` are disabled.
+
+## Completion
+
+Prove production SHA, deploy state, summary, production contract, health, endpoints, and assets. Then require actual hash-verified API, UI, read-only database, or asset proof for every release slice. Missing or placeholder accuracy evidence fails closed.
+
+There is no unsigned emergency bypass. Failed attempts require corrected evidence and fresh signed tags/nonces.

@@ -1,3 +1,12 @@
+---
+status: authoritative
+authority_level: authoritative
+owner: release
+last_reviewed: 2026-06-28
+applies_to: qa_release_isolation
+topic: qa_release_isolation
+---
+
 # QA Isolation Profile
 
 ## Purpose
@@ -45,6 +54,22 @@ PROD_PM2_NAMES
 ```
 
 Credential IDs are labels used to prove different credential sets; they are not passwords or connection strings.
+
+## Provisioning
+
+Preview the isolated Linux layout without changing host state:
+
+```bash
+sudo -E release-controller/install/provision-isolated-qa.sh
+```
+
+After reviewing all non-secret inputs, apply explicitly:
+
+```bash
+sudo -E release-controller/install/provision-isolated-qa.sh --apply
+```
+
+The apply path requires a root-only MySQL defaults file, creates a dedicated system user and directories, clones a separate QA checkout, creates a QA-only database/user grant, generates credentials and markers on-host, and writes them only to `/etc/skupervisor-qa/qa.env` with mode `0600`. It does not start QA automatically or print generated secrets. Review the checkout, configure QA origins, seed disposable data, and start the distinct PM2 processes before producing QA evidence.
 
 ## QA Deploy Summary
 

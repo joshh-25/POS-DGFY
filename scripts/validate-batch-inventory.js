@@ -51,6 +51,9 @@ function parseArgs(argv) {
 }
 
 function validateBatchInventoryFile(options, logger = console) {
+  if (options.requireShip && (!options.base || !options.head)) {
+    throw new BatchInventoryError('Strict inventory validation requires --base and --head', { code: 'INVALID_ARGS' });
+  }
   const absoluteInventoryPath = path.resolve(options.projectRoot, options.inventoryPath);
   if (!fs.existsSync(absoluteInventoryPath)) {
     throw new BatchInventoryError(`Batch inventory is missing: ${options.inventoryPath}`, {

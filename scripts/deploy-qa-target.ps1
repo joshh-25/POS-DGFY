@@ -78,7 +78,7 @@ if (-not [string]::IsNullOrWhiteSpace($prodRemoteHost) -and
     -not [string]::IsNullOrWhiteSpace($prodRemoteDir) -and
     $qaSshHost.Trim().ToLowerInvariant() -eq $prodRemoteHost.Trim().ToLowerInvariant() -and
     (Normalize-RemotePath $qaAppDir) -eq (Normalize-RemotePath $prodRemoteDir)) {
-  throw 'Configured QA target is production. Refusing QA promotion before production deploy. Configure a distinct QA host/app dir or set DEPLOY_PROMOTE_QA_BEFORE_PROD=off.'
+  throw 'Configured QA target is production. Refusing QA promotion. Configure a distinct isolated QA target.'
 }
 
 $quotedAppDir = Escape-SingleQuotedShellValue $qaAppDir

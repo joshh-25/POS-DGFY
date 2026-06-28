@@ -1,7 +1,9 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-26
+Last updated: 2026-06-28
+
+GitHub branch protection, rulesets, private environment secrets, and required deployment reviewers are unavailable for this private GitHub Free repository. GitHub checks are candidate evidence only. ADR 0030 and the root-owned external signed release controller are the production authorization boundary.
 
 ## Current Release State
 
@@ -46,26 +48,21 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 19. Merge-adoption gate when a release adopts PR/branch work or `merge-docs/` reference behavior:
    - `npm run check:merge-adoption -- --manifest <manifest>`
    - `MERGE_ADOPTION_MANIFEST=<manifest> RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging`
-20. No-staging QA parity must be created before production promotion, not repaired afterward. `scripts/deploy-remote.sh` promotes the pushed target SHA to QA by default when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`, fetches fresh QA deploy summary evidence every run, and refuses automatic QA promotion when `QA_SSH_HOST` plus `QA_APP_DIR` match the production host/app dir. Production-as-QA evidence mode must set `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` intentionally and cannot claim pre-production parity.
+20. Isolated QA parity must be created before promotion. Proof must include the exact SHA and every isolation field in `docs/ops/QA_ISOLATION_PROFILE.md`. Production-as-QA is prohibited.
 21. PayMongo live QR Ph split checkout must remain disabled until the PayMongo parent/platform merchant ID and live split-payment marketplace capability are externally confirmed and represented by `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`. Current provider evidence is negative: PayMongo support confirmed on June 25, 2026 that Linked Accounts is not configured for the account and self-service onboarding is still under development.
 22. Batch inventory gate must pass for every promotion candidate:
    ```bash
-   npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --write --require-ship
+   npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --reviewed-manifest docs/releases/batches/<release>.json --write --require-ship
    npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --base origin/master --head <candidate_sha> --require-ship
    ```
-23. CI-safe production deployment, when enabled, must use:
-   ```bash
-   RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
-   ```
-   Dry-run first:
-   ```bash
-   PRODUCTION_DEPLOY_DRY_RUN=1 RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
-   ```
-   Automatic production deployment remains blocked until branch protection, exact master SHA qualification, failure simulations, and distinct QA proof are configured.
-24. QA target proof must pass before automatic deployment:
+23. GitHub production deployment is permanently disabled under ADR 0030. `.github/workflows/deploy-production.yml` creates a non-secret candidate bundle only; `ENABLE_AUTO_PRODUCTION_DEPLOY=0`.
+24. QA target proof must pass before signed promotion:
    ```bash
    RELEASE_TARGET_SHA=<candidate_sha> npm run check:qa-target-proof -- --target-sha <candidate_sha> --summary ".tmp/release-gates/<candidate_sha>/qa_deploy_summary.txt" --report ".tmp/release-gates/<candidate_sha>/qa_target_proof.json"
    ```
+25. External controller dry-run must verify promotion/production authorization tags, full signer fingerprint, expiration, exact SHA, PR/check evidence, inventory/evidence hashes, unused nonce, and current remote branch.
+26. Payment-sensitive releases require an additional signed payment tag for both the staging promotion target and resulting master target.
+27. Per-slice accuracy review must include `--proof-bundle` and pass with hash-verified API, UI, read-only database, or asset artifacts.
 
 ## Latest Technical Evidence (2026-06-18)
 

@@ -17,12 +17,14 @@
   },
   "qualification_commands": {
     "promotion": [
+      ["npm", "ci"],
       ["npm", "run", "test:development-to-production"],
       ["npm", "run", "lint:docs"],
       ["npm", "run", "check:architecture"],
       ["npm", "run", "check:compliance"]
     ],
     "production": [
+      ["npm", "ci"],
       ["npm", "run", "test:development-to-production"],
       ["npm", "run", "test:deploy-contract"],
       ["npm", "run", "lint:docs"],
