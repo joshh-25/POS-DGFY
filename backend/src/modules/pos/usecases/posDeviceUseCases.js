@@ -284,6 +284,17 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
                 return ok(replay);
             }
 
+            const activeShift = toSerializable(await posRepository.findOpenTerminalShift({
+                cashierId: userId
+            }));
+            if (!activeShift) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Receipt printing requires an open shift',
+                    { statusCode: 422 }
+                );
+            }
+
             const transaction = toSerializable(await posRepository.getTransactionById(transactionId));
             if (!transaction) {
                 throw new DomainError(

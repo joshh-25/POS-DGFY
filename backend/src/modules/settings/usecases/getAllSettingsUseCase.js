@@ -4,6 +4,7 @@ import {
     resolveAccessPolicyFromSettings
 } from '../../shared/utils/customerAccessPolicy.js';
 import { mapSettingsUseCaseError } from './settingsUseCaseError.js';
+import { sanitizeSettingsPayloadForRead } from './posTerminalRegistrySecrets.js';
 
 export const buildGetAllSettingsUseCase = ({
     settingsRepository,
@@ -11,7 +12,7 @@ export const buildGetAllSettingsUseCase = ({
 }) => {
     return async ({ context } = {}) => {
         try {
-            const settings = await settingsRepository.getAllSettings();
+            const settings = sanitizeSettingsPayloadForRead(await settingsRepository.getAllSettings());
             const customerAccessModesEnabled = customerAccessModesEnabledProvider(context);
             const accessPolicy = resolveAccessPolicyFromSettings(settings, {
                 featureEnabled: customerAccessModesEnabled

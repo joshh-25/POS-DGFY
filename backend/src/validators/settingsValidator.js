@@ -106,7 +106,10 @@ const posTerminalRegistryEntrySchema = Joi.object({
   location_id: Joi.number().integer().positive().allow(null).optional(),
   label: Joi.string().trim().max(80).allow('', null).optional(),
   is_active: Joi.boolean().default(true),
-  is_default: Joi.boolean().default(false)
+  is_default: Joi.boolean().default(false),
+  terminal_password: Joi.string().min(8).max(128).allow('').optional(),
+  clear_terminal_password: Joi.boolean().optional(),
+  has_terminal_password: Joi.boolean().optional()
 });
 
 const posTerminalRegistrySchema = Joi.array()

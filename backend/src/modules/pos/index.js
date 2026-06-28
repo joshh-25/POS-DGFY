@@ -2,6 +2,7 @@ import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
 import { inventoryStockCommandService } from '../inventory/index.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
+import * as posTerminalPairingService from './services/posTerminalPairingService.js';
 import {
     buildListPosCatalogUseCase,
     buildScanPosBarcodeUseCase,
@@ -33,7 +34,9 @@ import {
     buildCloseTerminalShiftUseCase,
     buildGetTerminalTodayDashboardUseCase,
     buildListIncomingOnlineOrdersUseCase,
-    buildUpdateOnlineOrderStatusUseCase
+    buildUpdateOnlineOrderStatusUseCase,
+    buildVerifyPosTerminalUseCase,
+    buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
 import {
     buildGetPosDeviceStatusUseCase,
@@ -84,6 +87,9 @@ export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCas
     posRepository,
     inventoryCommandService: inventoryStockCommandService
 });
+export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({ posRepository, terminalPairingService: posTerminalPairingService });
+export const getPairedPosTerminalUseCase = buildGetPairedPosTerminalUseCase({ posRepository, terminalPairingService: posTerminalPairingService });
+export const posTerminalPairingMaxAgeMs = posTerminalPairingService.maxAgeMs;
 export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
     posRepository,
     deviceBridgeService: posDeviceBridgeService
