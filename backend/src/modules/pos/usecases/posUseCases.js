@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
+import bcrypt from 'bcryptjs';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
@@ -31,6 +32,7 @@ import {
 } from '../../shared/utils/stockBearingPolicy.js';
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 
 const VAT_RATE = 0.12;
@@ -891,6 +893,184 @@ const buildShiftClosedError = () => new DomainError(
         }
     }
 );
+
+const resolvePairingIdentityStatus = async ({ tenantId, user }) => {
+    const status = await getDgfyLegacyLinkStatus({ tenantId, user });
+    if (status.dgfy_link_status === 'linked') {
+        const { DgfyAccount } = await import('../../../models/index.js');
+        const account = status.dgfy_account_id
+            ? await DgfyAccount.findByPk(status.dgfy_account_id)
+            : null;
+        if (!account || account.is_active !== true || account.deleted_at) {
+            throw new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'The linked DGFY account is inactive or unavailable.',
+                { statusCode: 403, details: { reason_code: 'POS_PAIRING_DGFY_ACCOUNT_INACTIVE' } }
+            );
+        }
+        return {
+            identity_mode: 'dgfy_membership',
+            membership_id: status.dgfy_membership_id
+        };
+    }
+    if (status.can_legacy_login === true) {
+        return {
+            identity_mode: 'legacy_grace',
+            membership_id: null
+        };
+    }
+    throw new DomainError(
+        DomainErrorCode.AUTHORIZATION_FAILED,
+        'A current DGFY membership or active legacy-grace identity is required for POS pairing.',
+        { statusCode: 403, details: { reason_code: 'POS_PAIRING_IDENTITY_INVALID' } }
+    );
+};
+
+const requirePosPermissionForPairing = (user) => {
+    if (user?.is_master_admin === true) return;
+    const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+    if (permissions.includes('pos:view') || permissions.includes('pos:transact')) return;
+    throw new DomainError(
+        DomainErrorCode.AUTHORIZATION_FAILED,
+        'POS permission is required for terminal pairing.',
+        { statusCode: 403, details: { reason_code: 'POS_PAIRING_PERMISSION_DENIED' } }
+    );
+};
+
+export const buildVerifyPosTerminalUseCase = ({
+    posRepository,
+    terminalPairingService,
+    resolveIdentityStatus = resolvePairingIdentityStatus,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ payload = {}, user = null } = {}) => {
+        try {
+            const userId = parsePositiveInt(user?.user_id);
+            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+            const terminalId = sanitizeTerminalId(payload.terminal_id);
+            const terminalPassword = String(payload.terminal_password || '');
+            if (!userId || !tenantId || tenantId === 'default') {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated tenant user is required.', { statusCode: 401 });
+            }
+            if (!terminalId || !terminalPassword) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Terminal ID and terminal password are required.', { statusCode: 422 });
+            }
+            requirePosPermissionForPairing(user);
+
+            const policy = await posRepository.getTerminalPairingPolicySettings();
+            const entry = (policy.active_registry || []).find((candidate) => candidate.terminal_id === terminalId);
+            if (!entry || entry.is_active === false) {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'The selected terminal is not active.', {
+                    statusCode: 403,
+                    details: { reason_code: 'POS_TERMINAL_INACTIVE_OR_UNKNOWN' }
+                });
+            }
+            if (!parsePositiveInt(entry.location_id)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'The selected terminal has no assigned location.', {
+                    statusCode: 422,
+                    details: { reason_code: 'POS_TERMINAL_LOCATION_REQUIRED' }
+                });
+            }
+            if (!entry.terminal_password_hash) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Configure a terminal password in Settings > POS Setup before pairing.', {
+                    statusCode: 422,
+                    details: { reason_code: 'POS_TERMINAL_PASSWORD_NOT_CONFIGURED' }
+                });
+            }
+            if (!await bcrypt.compare(terminalPassword, entry.terminal_password_hash)) {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Terminal password is incorrect.', {
+                    statusCode: 401,
+                    details: { reason_code: 'POS_TERMINAL_PASSWORD_INVALID' }
+                });
+            }
+
+            await resolveLocationScope({
+                requestedLocationId: entry.location_id,
+                userId,
+                operationLabel: 'POS terminal pairing'
+            });
+            const identity = await resolveIdentityStatus({ tenantId, user });
+            const pairingToken = terminalPairingService.issue({
+                tenantId,
+                terminalId,
+                terminalPasswordHash: entry.terminal_password_hash,
+                locationId: entry.location_id,
+                identityMode: identity.identity_mode,
+                membershipId: identity.membership_id
+            });
+
+            return ok({
+                pairing_token: pairingToken,
+                paired: true,
+                terminal_id: terminalId,
+                location_id: entry.location_id,
+                terminal_label: entry.label || terminalId,
+                identity_mode: identity.identity_mode
+            }, 'Terminal paired');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to pair POS terminal'));
+        }
+    };
+};
+
+export const buildGetPairedPosTerminalUseCase = ({
+    posRepository,
+    terminalPairingService,
+    resolveIdentityStatus = resolvePairingIdentityStatus,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ pairingToken = '', user = null } = {}) => {
+        try {
+            const userId = parsePositiveInt(user?.user_id);
+            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+            if (!userId || !tenantId || tenantId === 'default') {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated tenant user is required.', { statusCode: 401 });
+            }
+            requirePosPermissionForPairing(user);
+            const claims = terminalPairingService.verify(pairingToken);
+            const policy = await posRepository.getTerminalPairingPolicySettings();
+            const entry = (policy.active_registry || []).find((candidate) => candidate.terminal_id === claims.terminal_id);
+            if (!entry || !entry.terminal_password_hash || !parsePositiveInt(entry.location_id)) {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'The paired terminal is no longer active or fully configured.', {
+                    statusCode: 401,
+                    details: { reason_code: 'POS_TERMINAL_PAIRING_INVALID' }
+                });
+            }
+            terminalPairingService.assertBinding({
+                claims,
+                tenantId,
+                terminalId: entry.terminal_id,
+                terminalPasswordHash: entry.terminal_password_hash,
+                locationId: entry.location_id
+            });
+
+            const identity = await resolveIdentityStatus({ tenantId, user });
+            const sameIdentity = claims.identity_mode === identity.identity_mode
+                && (identity.identity_mode !== 'dgfy_membership' || Number(claims.membership_id) === Number(identity.membership_id));
+            if (!sameIdentity) {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'The POS identity binding has changed.', {
+                    statusCode: 403,
+                    details: { reason_code: 'POS_PAIRING_IDENTITY_CHANGED' }
+                });
+            }
+            await resolveLocationScope({
+                requestedLocationId: entry.location_id,
+                userId,
+                operationLabel: 'paired POS terminal use'
+            });
+
+            return ok({
+                paired: true,
+                terminal_id: entry.terminal_id,
+                location_id: entry.location_id,
+                terminal_label: entry.label || entry.terminal_id,
+                identity_mode: identity.identity_mode
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to verify paired POS terminal'));
+        }
+    };
+};
 
 const assertOpenShiftForPosMutation = async ({
     posRepository,
@@ -2006,9 +2186,11 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
                 }
 
                 const isServiceItem = isStockExemptServiceItem(item);
+                const isAlwaysAvailable = item.pos_always_available === true;
+                const isStockExemptLine = isServiceItem || isAlwaysAvailable;
                 const currentStock = Number(item.current_stock) || 0;
                 const lineRecipeMovements = recipePlan.movementsByLineIndex[preparedLines.length] || [];
-                if (!isServiceItem && lineRecipeMovements.length === 0 && currentStock + 0.000001 < quantity) {
+                if (!isStockExemptLine && lineRecipeMovements.length === 0 && currentStock + 0.000001 < quantity) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${quantity}`,
@@ -2059,7 +2241,11 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
                     item_name: item.name,
                     quantity: round4(quantity),
                     unit_of_measure: item.unit_of_measure,
-                    cost_snapshot: isServiceItem ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
+                    cost_snapshot: isStockExemptLine ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
+                    stock_effect_type: isStockExemptLine ? 'stock_exempt' : 'inventory_issue',
+                    stock_exempt_reason: isAlwaysAvailable
+                        ? 'pos_always_available'
+                        : (isServiceItem ? 'service_item' : null),
                     sale_price: round4(resolvedPrice),
                     sale_price_overridden: salePriceOverridden,
                     price_override_reason: salePriceOverridden ? priceOverrideReason : null,
@@ -2351,7 +2537,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
             for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
                 const line = preparedLines[lineIndex];
                 const item = itemMap.get(Number(line.item_id));
-                if (isStockExemptServiceItem(item)) {
+                if (line.stock_effect_type === 'stock_exempt') {
                     continue;
                 }
                 const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
@@ -2998,6 +3184,7 @@ const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}
     const hasMissing = (code) => missing.some((entry) => entry?.code === code);
     const status = String(item.status || '').trim().toLowerCase();
     const isServiceItem = isStockExemptServiceItem(item);
+    const isAlwaysAvailable = item.pos_always_available === true;
     const stock = Number(item.current_stock || 0);
 
     if (status !== 'active') {
@@ -3009,7 +3196,7 @@ const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}
     if (hasMissing('SALE_PRICE_MISSING') || Number(item.default_sale_price || 0) <= 0) {
         return { reason_code: 'MISSING_PRICE', message: 'Item is missing a sale price' };
     }
-    if (!isServiceItem && stock <= 0) {
+    if (!isServiceItem && !isAlwaysAvailable && stock <= 0) {
         return { reason_code: 'OUT_OF_STOCK', message: 'Item is out of stock at this location' };
     }
     if (isServiceItem && item.serviceDetail?.visible_in_pos === false) {
@@ -3578,7 +3765,12 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
             }
 
             const data = await posRepository.upsertCatalogOverride(normalizedItemId, {
-                pos_visible: payload.pos_visible
+                ...(Object.prototype.hasOwnProperty.call(payload, 'pos_visible')
+                    ? { pos_visible: payload.pos_visible }
+                    : {}),
+                ...(Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
+                    ? { pos_always_available: payload.pos_always_available === true }
+                    : {})
             });
             return ok(toSerializable(data));
         } catch (error) {

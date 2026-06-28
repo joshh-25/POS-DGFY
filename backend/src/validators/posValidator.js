@@ -170,6 +170,11 @@ const posScanSchema = Joi.object({
     quantity: Joi.number().positive().precision(4).default(1)
 });
 
+const verifyTerminalSchema = Joi.object({
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    terminal_password: Joi.string().min(8).max(128).required()
+});
+
 const posCatalogOverridesQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
     limit: Joi.number().integer().min(1).max(1000).default(200)
@@ -184,8 +189,9 @@ const posCatalogOverrideParamSchema = Joi.object({
 });
 
 const updatePosCatalogOverrideSchema = Joi.object({
-    pos_visible: Joi.boolean().required()
-});
+    pos_visible: Joi.boolean().optional(),
+    pos_always_available: Joi.boolean().optional()
+}).or('pos_visible', 'pos_always_available');
 
 const zReadingDateParamSchema = Joi.object({
     date: Joi.date().iso().required()
@@ -346,6 +352,7 @@ export const validatePosCheckout = validateSchema(checkoutPosSchema, 'body', 'va
 export const validatePosTransactionsQuery = validateSchema(listTransactionsQuerySchema, 'query', 'validatedQuery');
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
 export const validatePosScan = validateSchema(posScanSchema, 'body', 'validatedData');
+export const validateVerifyTerminal = validateSchema(verifyTerminalSchema, 'body', 'validatedData');
 export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
