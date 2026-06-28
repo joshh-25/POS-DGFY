@@ -1,0 +1,386 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BBLabs-Albert owner-directed Codex review",
+  "reviewed_at": "2026-06-28T03:26:55.061Z",
+  "source_pr": "owner-direct-staging-2026-06-28",
+  "release_slices": [
+    {
+      "id": "docs",
+      "slice_name": "Documentation release slice",
+      "name": "Documentation release slice",
+      "plain_english_purpose": "Define the signed external authorization model and give operators one consistent fail-closed release contract.",
+      "purpose": "Define the signed external authorization model and give operators one consistent fail-closed release contract.",
+      "implementation_summary": "Adds ADR 0030 and aligns authoritative workflow, QA isolation, production checklist, deployment handoff, script guidance, release checklist, registry, and repository skill with the GitHub Free external-controller boundary.",
+      "included_files": [
+        "docs/INDEX.md",
+        "docs/_meta/document-registry.json",
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/guides/SCRIPTS_GUIDE.md",
+        "docs/ops/DEPLOYMENT_GUIDE.md",
+        "docs/ops/DEVELOPER_DEPLOYMENT_HANDOFF.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
+        "docs/ops/PRODUCTION_CHECKLIST.md",
+        "docs/ops/QA_ISOLATION_PROFILE.md",
+        "docs/ops/README.md",
+        "docs/releases/batches/2026-06-28-free-tier-signed-release-controller.json",
+        "docs/templates/REVIEWED_BATCH_MANIFEST_TEMPLATE.json",
+        "docs/testing/release-go-no-go-checklist.md"
+      ],
+      "included_features": [
+        "Signed release authorization ADR",
+        "External-controller operator contract",
+        "Isolated QA and proof documentation"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Preserved PayMongo and payment-channel stashes",
+        "Live production deployment",
+        "Signing private keys and production credentials"
+      ],
+      "owner_attribution": "BBLabs-Albert owner-directed implementation",
+      "source_branch": "codex/free-tier-signed-release-controller",
+      "source_pr": "owner-direct-staging-2026-06-28",
+      "source_type": "owner_direct_staging",
+      "affected_surfaces": [
+        "docs"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "low",
+      "required_tests": [
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: governed docs lint PASS (20 docs)"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: architecture guardrails PASS (36 modules, 325 files, 69 controllers)"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: compliance impact and API contracts PASS"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/QA_ISOLATION_PROFILE.md"
+      ],
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "ADR 0030 records the cross-boundary production trust and deployment topology decision; compliance checks report no regulated runtime behavior change.",
+      "rollback_notes": "Revert this release-controller commit series as one governed candidate; keep production deployment disabled until the previous trusted controller version and contract are restored and requalified.",
+      "production_proof_required": [
+        "Installed controller version and checksum",
+        "Signed tag and nonce ledger record",
+        "Exact remote and deployed runtime SHA",
+        "Production contract and frontend asset parity"
+      ],
+      "production_accuracy_checks_required": [
+        "Controller rejects an invalid or replayed authorization",
+        "GitHub workflow cannot access production credentials or invoke deployment",
+        "QA proof rejects production-equivalent targets",
+        "Every deployed slice consumes hash-verified API, UI, read-only database, or asset evidence"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    },
+    {
+      "id": "release-automation",
+      "slice_name": "Release automation slice",
+      "name": "Release automation slice",
+      "plain_english_purpose": "Make candidate qualification, promotion auditing, QA proof, and deployed accuracy checks fail closed without giving GitHub production authority.",
+      "purpose": "Make candidate qualification, promotion auditing, QA proof, and deployed accuracy checks fail closed without giving GitHub production authority.",
+      "implementation_summary": "Converts GitHub deployment to short-lived candidate evidence, prohibits auto-merge and local remote deployment, requires reviewed inventories, audits master promotions, strengthens QA isolation, and blocks unresolved per-slice production proof.",
+      "included_files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/deploy-production.yml",
+        ".github/workflows/exact-master-sha-qualification.yml",
+        ".github/workflows/nightly-ims-pos-sales-e2e.yml",
+        ".github/workflows/promote-staging-to-master.yml",
+        ".github/workflows/staging-qualification.yml",
+        "scripts/audit-master-promotion.js",
+        "scripts/audit-master-promotion.test.js",
+        "scripts/build-release-candidate-evidence.js",
+        "scripts/check-batch-inventory.js",
+        "scripts/check-batch-inventory.test.js",
+        "scripts/check-no-staging-prereqs.js",
+        "scripts/check-no-staging-prereqs.test.js",
+        "scripts/check-qa-target-proof.js",
+        "scripts/check-qa-target-proof.test.js",
+        "scripts/collect-master-promotion-evidence.js",
+        "scripts/deploy-master-ci.sh",
+        "scripts/deploy-master-ci.test.js",
+        "scripts/deploy-qa-target.ps1",
+        "scripts/deploy-remote.sh",
+        "scripts/find-reviewed-batch-manifest.js",
+        "scripts/promote-staging-to-master.js",
+        "scripts/review-deployed-change-accuracy.js",
+        "scripts/review-deployed-change-accuracy.test.js",
+        "scripts/validate-batch-inventory.js",
+        "scripts/validate-batch-inventory.test.js"
+      ],
+      "included_features": [
+        "Candidate-only GitHub workflows",
+        "Strict reviewed batch inventory",
+        "Master promotion audit",
+        "QA isolation enforcement",
+        "Per-slice accuracy proof enforcement"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Preserved PayMongo and payment-channel stashes",
+        "Live production deployment",
+        "Signing private keys and production credentials"
+      ],
+      "owner_attribution": "BBLabs-Albert owner-directed implementation",
+      "source_branch": "codex/free-tier-signed-release-controller",
+      "source_pr": "owner-direct-staging-2026-06-28",
+      "source_type": "owner_direct_staging",
+      "affected_surfaces": [
+        "scripts/deploy"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": true,
+        "docs": false,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run test:development-to-production",
+        "npm run check:merge-adoption-required"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: governed docs lint PASS (20 docs)"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: architecture guardrails PASS (36 modules, 325 files, 69 controllers)"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: compliance impact and API contracts PASS"
+        },
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: fail-closed workflow tests PASS (19 tests)"
+        },
+        {
+          "command": "npm run check:merge-adoption-required",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: merge-adoption-required PASS, no customer-flow adoption proof required"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/QA_ISOLATION_PROFILE.md"
+      ],
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "ADR 0030 records the cross-boundary production trust and deployment topology decision; compliance checks report no regulated runtime behavior change.",
+      "rollback_notes": "Revert this release-controller commit series as one governed candidate; keep production deployment disabled until the previous trusted controller version and contract are restored and requalified.",
+      "production_proof_required": [
+        "Installed controller version and checksum",
+        "Signed tag and nonce ledger record",
+        "Exact remote and deployed runtime SHA",
+        "Production contract and frontend asset parity"
+      ],
+      "production_accuracy_checks_required": [
+        "Controller rejects an invalid or replayed authorization",
+        "GitHub workflow cannot access production credentials or invoke deployment",
+        "QA proof rejects production-equivalent targets",
+        "Every deployed slice consumes hash-verified API, UI, read-only database, or asset evidence"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": true,
+      "high_risk_files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/deploy-production.yml",
+        ".github/workflows/exact-master-sha-qualification.yml",
+        ".github/workflows/nightly-ims-pos-sales-e2e.yml",
+        ".github/workflows/promote-staging-to-master.yml",
+        ".github/workflows/staging-qualification.yml",
+        "scripts/deploy-master-ci.sh",
+        "scripts/deploy-master-ci.test.js",
+        "scripts/deploy-qa-target.ps1",
+        "scripts/deploy-remote.sh"
+      ]
+    },
+    {
+      "id": "repository-support",
+      "slice_name": "Repository support slice",
+      "name": "Repository support slice",
+      "plain_english_purpose": "Install and test a root-owned controller that verifies standard signed tags before privileged release actions.",
+      "purpose": "Install and test a root-owned controller that verifies standard signed tags before privileged release actions.",
+      "implementation_summary": "Adds the versioned external controller, GPG tag verification, signer allowlist, exact-SHA and live PR checks, atomic nonce ledger, sanitized qualification worktrees, fixed promotion and SSH operations, installer, configuration template, and adversarial tests.",
+      "included_files": [
+        "package.json",
+        "release-controller/README.md",
+        "release-controller/VERSION",
+        "release-controller/bin/skupervisor-release-controller.js",
+        "release-controller/config/controller.example.json",
+        "release-controller/install/install.sh",
+        "release-controller/install/provision-isolated-qa.sh",
+        "release-controller/lib/release-controller.js",
+        "release-controller/package.json",
+        "release-controller/test/release-controller.test.js",
+        "skills/sku-development-to-production/SKILL.md"
+      ],
+      "included_features": [
+        "Root-owned release controller",
+        "GPG signed tag verification",
+        "Replay ledger",
+        "Controller installation and dry-run tests"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Preserved PayMongo and payment-channel stashes",
+        "Live production deployment",
+        "Signing private keys and production credentials"
+      ],
+      "owner_attribution": "BBLabs-Albert owner-directed implementation",
+      "source_branch": "codex/free-tier-signed-release-controller",
+      "source_pr": "owner-direct-staging-2026-06-28",
+      "source_type": "owner_direct_staging",
+      "affected_surfaces": [
+        "scripts/deploy"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": true,
+        "docs": false,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "medium",
+      "required_tests": [
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run test:development-to-production",
+        "npm run test:release-controller",
+        "npm run test:deploy-contract",
+        "bash release-controller/install/provision-isolated-qa.sh"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: governed docs lint PASS (20 docs)"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: architecture guardrails PASS (36 modules, 325 files, 69 controllers)"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: compliance impact and API contracts PASS"
+        },
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: fail-closed workflow tests PASS (19 tests)"
+        },
+        {
+          "command": "npm run test:release-controller",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: signed controller adversarial and dry-run safety tests PASS (12 tests)"
+        },
+        {
+          "command": "npm run test:deploy-contract",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: deploy contract and failure simulation tests PASS (16 tests)"
+        },
+        {
+          "command": "bash release-controller/install/provision-isolated-qa.sh",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-28: isolated QA provisioner dry run PASS with no host mutation"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/QA_ISOLATION_PROFILE.md"
+      ],
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "ADR 0030 records the cross-boundary production trust and deployment topology decision; compliance checks report no regulated runtime behavior change.",
+      "rollback_notes": "Revert this release-controller commit series as one governed candidate; keep production deployment disabled until the previous trusted controller version and contract are restored and requalified.",
+      "production_proof_required": [
+        "Installed controller version and checksum",
+        "Signed tag and nonce ledger record",
+        "Exact remote and deployed runtime SHA",
+        "Production contract and frontend asset parity"
+      ],
+      "production_accuracy_checks_required": [
+        "Controller rejects an invalid or replayed authorization",
+        "GitHub workflow cannot access production credentials or invoke deployment",
+        "QA proof rejects production-equivalent targets",
+        "Every deployed slice consumes hash-verified API, UI, read-only database, or asset evidence"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}

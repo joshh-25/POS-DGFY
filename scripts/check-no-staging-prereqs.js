@@ -121,21 +121,21 @@ function runPreflight(env = process.env, options = {}) {
       /^[0-9]+$/.test(qaSshPort) ? `QA_SSH_PORT=${qaSshPort}` : `Invalid QA_SSH_PORT=${qaSshPort}`
     );
   }
-  if (qaPromotionEnabled && prodRemoteHost.length > 0 && prodRemoteDir.length > 0) {
+  if (prodRemoteHost.length > 0 && prodRemoteDir.length > 0) {
     const sameHost = qaSshHost.toLowerCase() === prodRemoteHost.toLowerCase();
     const sameDir = normalizeRemotePath(qaAppDir) === normalizeRemotePath(prodRemoteDir);
     addCheck(
       checks,
-      'qa.promotion.target_distinct_from_production',
+      'qa.target_distinct_from_production',
       !(sameHost && sameDir),
       sameHost && sameDir
-        ? 'Configured QA target is production; set a distinct QA host/app dir or DEPLOY_PROMOTE_QA_BEFORE_PROD=off'
+        ? 'Configured QA target is production; a distinct isolated QA target is required'
         : `QA target ${qaSshHost || '<missing>'}:${normalizeRemotePath(qaAppDir)} is distinct from production`
     );
   } else if (qaPromotionEnabled) {
     addCheck(
       checks,
-      'qa.promotion.target_distinct_from_production',
+      'qa.target_distinct_from_production',
       true,
       'production target not supplied to preflight; deploy wrapper supplies DEPLOY_PROD_REMOTE_HOST and DEPLOY_PROD_REMOTE_DIR'
     );

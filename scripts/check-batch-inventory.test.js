@@ -5,11 +5,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const {
-  BatchInventoryError,
-  checkBatchInventory,
-} = require('./check-batch-inventory');
-
+const { BatchInventoryError, checkBatchInventory } = require('./check-batch-inventory');
 const silentLogger = { log() {}, warn() {}, error() {} };
 
 function runGit(cwd, args) {
@@ -25,7 +21,7 @@ function writeFile(root, relativePath, content) {
 }
 
 function makeRepo() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-inventory-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-inventory-v2-'));
   runGit(root, ['init']);
   runGit(root, ['config', 'user.email', 'test@example.com']);
   runGit(root, ['config', 'user.name', 'Batch Inventory Test']);
@@ -36,104 +32,101 @@ function makeRepo() {
   return root;
 }
 
-test('generates a ship-ready inventory for non-payment changes', () => {
+function createReviewedManifest(root, mutate = (manifest) => manifest) {
+  const manifestPath = 'docs/releases/batches/test-release.json';
+  writeFile(root, manifestPath, '{}\n');
+  runGit(root, ['add', '.']);
+  runGit(root, ['commit', '--amend', '--no-edit']);
+  const { inventory: draft } = checkBatchInventory({ projectRoot: root, base: 'origin/master', head: 'HEAD', write: false, requireShip: false }, silentLogger);
+  const manifest = mutate({
+    schema: 'sku-reviewed-batch-manifest/v1',
+    review_status: 'reviewed',
+    reviewed_by: 'release-owner',
+    reviewed_at: '2026-06-28T00:00:00.000Z',
+    source_pr: '24',
+    release_slices: draft.release_slices.map((slice) => ({
+      ...slice,
+      implementation_summary: `Reviewed implementation for ${slice.id}`,
+      owner_attribution: 'release-owner',
+      source_branch: 'feature/test',
+      source_pr: '24',
+      source_type: 'developer_pr',
+      completed_tests: slice.required_tests.map((command) => ({ command, status: 'pass', evidence: `https://github.com/owner/repo/actions/runs/123#${encodeURIComponent(command)}` })),
+      can_ship_independently: true,
+      promotion_eligibility: 'eligible',
+      verdict: 'ship',
+    })),
+  });
+  writeFile(root, manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  runGit(root, ['add', '.']);
+  runGit(root, ['commit', '--amend', '--no-edit']);
+  return manifestPath;
+}
+
+test('draft generation never claims review or completed tests', () => {
   const root = makeRepo();
   try {
-    writeFile(root, 'docs/ops/example.md', '# Example\n');
+    writeFile(root, 'scripts/change.js', 'module.exports = true;\n');
     runGit(root, ['add', '.']);
-    runGit(root, ['commit', '-m', 'docs']);
+    runGit(root, ['commit', '-m', 'change']);
+    const { inventory } = checkBatchInventory({ projectRoot: root, base: 'origin/master', head: 'HEAD', write: false, requireShip: false }, silentLogger);
+    assert.equal(inventory.version, 2);
+    assert.equal(inventory.review_status, 'draft');
+    assert.equal(inventory.status, 'blocked');
+    assert.deepEqual(inventory.release_slices[0].completed_tests, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
-    const { inventory, markdown } = checkBatchInventory({
-      projectRoot: root,
-      base: 'origin/master',
-      head: 'HEAD',
-      write: false,
-      requireApprovedPayments: false,
-      requireShip: true,
-    }, silentLogger);
-
+test('strict generation consumes a reviewed manifest with exact file coverage', () => {
+  const root = makeRepo();
+  try {
+    writeFile(root, 'scripts/change.js', 'module.exports = true;\n');
+    runGit(root, ['add', '.']);
+    runGit(root, ['commit', '-m', 'change']);
+    const reviewedManifestPath = createReviewedManifest(root);
+    const { inventory } = checkBatchInventory({ projectRoot: root, base: 'origin/master', head: 'HEAD', reviewedManifestPath, write: false, requireShip: true }, silentLogger);
     assert.equal(inventory.status, 'pass');
-    assert.equal(inventory.release_slices[0].verdict, 'ship');
-    assert.equal(inventory.release_slices[0].payment_sensitive, false);
-    assert.equal(inventory.release_slices[0].high_risk_path, false);
-    assert.deepEqual(inventory.expected_changed_files, ['docs/ops/example.md']);
-    assert.match(markdown, /Batch Inventory/);
+    assert.equal(inventory.review_status, 'reviewed');
+    assert.equal(new Set(inventory.release_slices.flatMap((slice) => slice.included_files)).size, inventory.changed_file_count);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('groups a mixed candidate into multiple release slices', () => {
+test('rejects generated placeholder summaries', () => {
   const root = makeRepo();
   try {
-    writeFile(root, 'backend/src/modules/example/index.js', 'module.exports = {};\n');
-    writeFile(root, 'frontend/apps/store/src/example.js', 'export default true;\n');
+    writeFile(root, 'scripts/change.js', 'module.exports = true;\n');
     runGit(root, ['add', '.']);
-    runGit(root, ['commit', '-m', 'mixed']);
-
-    const { inventory } = checkBatchInventory({
-      projectRoot: root,
-      base: 'origin/master',
-      head: 'HEAD',
-      write: false,
-      requireApprovedPayments: false,
-      requireShip: true,
-    }, silentLogger);
-
-    assert.equal(inventory.release_slices.length, 2);
-    assert.equal(inventory.high_risk_path, true);
-    assert.equal(new Set(inventory.release_slices.flatMap((slice) => slice.included_files)).size, 2);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('blocks payment-sensitive changes without explicit approval', () => {
-  const root = makeRepo();
-  try {
-    writeFile(root, 'docs/features/PAYMONGO_QRPH_COMMERCE_PAYMENTS.md', '# PayMongo\n');
-    runGit(root, ['add', '.']);
-    runGit(root, ['commit', '-m', 'payment']);
-
+    runGit(root, ['commit', '-m', 'change']);
+    const reviewedManifestPath = createReviewedManifest(root, (manifest) => {
+      manifest.release_slices[0].implementation_summary = 'Generated placeholder summary';
+      return manifest;
+    });
     assert.throws(
-      () => checkBatchInventory({
-        projectRoot: root,
-        base: 'origin/master',
-        head: 'HEAD',
-        write: false,
-        requireApprovedPayments: false,
-        requireShip: true,
-      }, silentLogger),
-      (error) => error instanceof BatchInventoryError && /payment-sensitive/.test(error.message)
+      () => checkBatchInventory({ projectRoot: root, base: 'origin/master', head: 'HEAD', reviewedManifestPath, write: false, requireShip: true }, silentLogger),
+      (error) => error instanceof BatchInventoryError && /reviewed implementation_summary/.test(error.message)
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('writes inventory and markdown artifacts', () => {
+test('payment-sensitive inventory remains flagged for separate controller authorization', () => {
   const root = makeRepo();
   try {
-    writeFile(root, 'scripts/example.js', 'console.log("ok");\n');
+    writeFile(root, 'backend/src/modules/payments/example.js', 'module.exports = true;\n');
     runGit(root, ['add', '.']);
-    runGit(root, ['commit', '-m', 'script']);
-
-    const inventoryPath = path.join(root, '.tmp/release-gates/inventory.json');
-    const markdownPath = path.join(root, '.tmp/release-gates/inventory.md');
-    checkBatchInventory({
-      projectRoot: root,
-      base: 'origin/master',
-      head: 'HEAD',
-      inventoryPath,
-      markdownPath,
-      write: true,
-      requireApprovedPayments: false,
-      requireShip: true,
-    }, silentLogger);
-
-    assert.equal(fs.existsSync(inventoryPath), true);
-    assert.equal(fs.existsSync(markdownPath), true);
+    runGit(root, ['commit', '-m', 'payment']);
+    const reviewedManifestPath = createReviewedManifest(root);
+    const { inventory } = checkBatchInventory({ projectRoot: root, base: 'origin/master', head: 'HEAD', reviewedManifestPath, write: false, requireShip: true }, silentLogger);
+    assert.equal(inventory.payment_sensitive, true);
+    assert.equal(inventory.payment_authorization_required, true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+module.exports = { makeRepo, createReviewedManifest, writeFile, runGit, silentLogger };
