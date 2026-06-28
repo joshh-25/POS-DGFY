@@ -6,6 +6,7 @@ const path = require('path');
 
 const VALID_VERDICTS = new Set(['ship', 'split', 'fix first', 'defer', 'blocked']);
 const VALID_RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical']);
+const VALID_SOURCE_TYPES = new Set(['developer_pr', 'owner_direct_staging', 'controller_promotion']);
 const PLACEHOLDER_PATTERN = /(?:^|\b)(unknown|not provided|n\/?a|none|todo|tbd|placeholder|example|generated|replace this)(?:\b|$)/i;
 const REQUIRED_SURFACES = [
   'backend',
@@ -491,6 +492,7 @@ function validateInventory(inventory, options = {}) {
     if (options.requireShip && (!slice.owner_attribution || PLACEHOLDER_PATTERN.test(String(slice.owner_attribution)))) failures.push(`slice ${sliceName} missing owner/source attribution`);
     if (options.requireShip && (!slice.source_branch || PLACEHOLDER_PATTERN.test(String(slice.source_branch)))) failures.push(`slice ${sliceName} missing source_branch`);
     if (options.requireShip && (!slice.source_pr || PLACEHOLDER_PATTERN.test(String(slice.source_pr)))) failures.push(`slice ${sliceName} missing source_pr`);
+    if (options.requireShip && !VALID_SOURCE_TYPES.has(slice.source_type)) failures.push(`slice ${sliceName} has invalid source_type: ${slice.source_type || '<missing>'}`);
     if (!slice.promotion_eligibility) failures.push(`slice ${sliceName} missing promotion_eligibility`);
 
     const computedPaymentSensitive = (slice.included_files || []).some(isPaymentSensitive);

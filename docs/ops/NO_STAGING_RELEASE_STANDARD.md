@@ -6,22 +6,25 @@ Enforce exact-SHA release safety when GitHub branch protection, rulesets, privat
 
 The external controller contract in ADR 0030 supersedes local production triggering. `scripts/deploy-remote.sh` and live `scripts/deploy-master-ci.sh` operation are disabled. GitHub produces candidate evidence only.
 
+This standard does not require every change to originate on `staging`. Developer branches are valid when they are merged into `staging`, the final staging SHA is qualified, and reviewed inventory records the source PR or branch provenance. The controller authorizes that final SHA.
+
 ## Non-Bypassable Gates
 
 The external controller refuses promotion or production unless all applicable evidence agrees on the exact target SHA:
 
 1. A human-reviewed version 2 batch inventory maps every changed file exactly once and contains evidence-backed completed tests.
-2. The owner supplied a valid, unexpired, allowlisted GPG-signed annotated authorization tag.
-3. Promotion and production use separate authorizations and nonces.
-4. Payment-sensitive candidates include a third, separate payment authorization.
-5. The nonce does not exist in the root-owned controller ledger.
-6. Current `origin/staging` or `origin/master` still equals the authorized SHA.
-7. Live PR identity, head/base refs, merge SHA, and required checks match signed evidence.
-8. Controller-local qualification passes without access to production secrets.
-9. QA is isolated and its deploy summary proves the exact SHA plus Unix user, app directory, database, credential identity, runtime/data markers, uploads, PM2 names, and disposable-data status.
-10. Production connection material exists only in the controller OS secret store.
-11. Post-deploy remote HEAD, deploy state, summary, contract, runtime SHA, endpoints, and assets agree.
-12. Each slice has hash-verified API, UI, read-only database, or asset proof.
+2. Every release slice declares classified provenance. `developer_pr` and `owner_direct_staging` are normal staging inputs; direct-master work must be reconciled through `staging` before production authorization.
+3. The owner supplied a valid, unexpired, allowlisted GPG-signed annotated authorization tag.
+4. Promotion and production use separate authorizations and nonces.
+5. Payment-sensitive candidates include a third, separate payment authorization.
+6. The nonce does not exist in the root-owned controller ledger.
+7. Current `origin/staging` or `origin/master` still equals the authorized SHA.
+8. Live PR identity, head/base refs, merge SHA, and required checks match signed evidence.
+9. Controller-local qualification passes without access to production secrets.
+10. QA is isolated and its deploy summary proves the exact SHA plus Unix user, app directory, database, credential identity, runtime/data markers, uploads, PM2 names, and disposable-data status.
+11. Production connection material exists only in the controller OS secret store.
+12. Post-deploy remote HEAD, deploy state, summary, contract, runtime SHA, endpoints, and assets agree.
+13. Each slice has hash-verified API, UI, read-only database, or asset proof.
 
 There is no unsigned emergency bypass. Failed actions require corrected evidence and a fresh signed tag with a new nonce.
 

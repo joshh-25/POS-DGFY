@@ -46,6 +46,7 @@ function fixture() {
       owner_attribution: 'owner',
       source_branch: 'feature/release',
       source_pr: '25',
+      source_type: 'developer_pr',
       completed_tests: slice.required_tests.map((command) => ({ command, status: 'pass', evidence: 'https://github.com/owner/repo/actions/runs/25' })),
       can_ship_independently: true,
       promotion_eligibility: 'eligible',
@@ -74,6 +75,8 @@ test('strict validator accepts reviewed exact-file inventory', () => {
   try {
     const inventory = validateBatchInventoryFile({ projectRoot: root, inventoryPath, base: 'origin/master', head: 'HEAD', requireShip: true }, silentLogger);
     assert.equal(inventory.status, 'pass');
+    assert.equal(inventory.release_slices[0].source_branch, 'feature/release');
+    assert.equal(inventory.release_slices[0].source_type, 'developer_pr');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -103,6 +106,21 @@ test('strict validator rejects completed-test claims without evidence', () => {
     assert.throws(
       () => validateBatchInventoryFile({ projectRoot: root, inventoryPath, base: 'origin/master', head: 'HEAD', requireShip: true }, silentLogger),
       /without passing evidence/
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('strict validator rejects unclassified source provenance', () => {
+  const { root, inventoryPath } = fixture();
+  try {
+    const inventory = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
+    inventory.release_slices[0].source_type = 'direct_master_without_approval';
+    fs.writeFileSync(inventoryPath, JSON.stringify(inventory));
+    assert.throws(
+      () => validateBatchInventoryFile({ projectRoot: root, inventoryPath, base: 'origin/master', head: 'HEAD', requireShip: true }, silentLogger),
+      /invalid source_type/
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

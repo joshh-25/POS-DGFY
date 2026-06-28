@@ -15,6 +15,8 @@ Developers push feature branches, open PRs into `staging`, run local validation,
 
 GitHub branch protection and private deployment environments are unavailable on the current private GitHub Free plan. GitHub CI and PR state are evidence, not production authorization.
 
+Feature branches are not disregarded by the signed-controller flow. They become production candidates when their final resolved changes are present in the exact qualified `staging` SHA and are covered by reviewed batch inventory. Production approval is for that final SHA, not for the original branch name.
+
 ## Required Reading
 
 1. `docs/architecture/adr/0030-free-tier-signed-release-authorization.md`
@@ -30,8 +32,10 @@ GitHub branch protection and private deployment environments are unavailable on 
 3. Record real test artifact paths or immutable run URLs; do not copy required tests into completed tests.
 4. Keep excluded stashes and payment-channel work outside the candidate.
 5. Open a PR into `staging`.
-6. Address CI failures. A direct push or merge does not become deployable merely because it reaches master.
-7. Hand the exact candidate SHA, PR, reviewed manifest, and evidence URLs to the owner/controller operator.
+6. Address CI failures and any conflict-resolution issues on `staging`.
+7. Ensure the reviewed batch manifest records the feature branch or PR provenance for the slice.
+8. A direct push or merge does not become deployable merely because it reaches master.
+9. Hand the exact candidate SHA, PR, reviewed manifest, and evidence URLs to the owner/controller operator.
 
 ## Credential Handling
 
