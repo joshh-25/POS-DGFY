@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-06-27
+last_reviewed: 2026-06-28
 applies_to: development_to_production_release_flow
 topic: development_to_production_workflow
 ---
@@ -11,174 +11,125 @@ topic: development_to_production_workflow
 
 ## Purpose
 
-This is the authoritative workflow for moving SKU Inventory Manager changes from development into production.
+This is the authoritative workflow for moving SKU Inventory Manager changes to production on a private GitHub Free repository.
 
-The governed path is:
+GitHub branch protection, rulesets, private-environment secrets, and required deployment reviewers are unavailable. GitHub therefore provides CI, pull-request creation, and candidate evidence only. Production enforcement occurs at the external signed-authorization boundary defined by ADR 0030.
 
 ```text
-feature branch -> PR to staging -> exact staging SHA qualification -> distinct QA proof -> staging to master PR -> exact master SHA qualification -> exact origin/master production deploy -> deployed-change accuracy review
+feature PR -> staging CI -> reviewed batch document -> isolated QA
+-> GitHub creates staging-to-master PR and candidate bundle
+-> owner signs promotion authorization
+-> external controller verifies and merges exact staging SHA
+-> exact master evidence and local controller qualification
+-> owner signs production authorization
+-> external controller deploys exact master SHA
+-> fail-closed per-slice production accuracy proof
 ```
 
-`staging` is an integration branch. It is not automatically equivalent to a deployed QA/staging environment. Production-current claims require production proof, not source-only state.
-
-## Architecture Classification
-
-Workflow, CI, documentation, and deploy-wrapper changes are normally `no-architecture-impact`.
-
-Create or update an ADR only when a release workflow change also changes application runtime ownership, deployment topology, cross-boundary data contracts, payment behavior, or module boundaries.
-
-Required planning references:
+## Authoritative Inputs
 
 1. `docs/START_HERE.md`
 2. `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 3. `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
-4. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
-5. `docs/ops/DEPLOYMENT_GUIDE.md`
-6. `docs/ops/WORKSPACE_CLEANUP_AND_BRANCH_POLICY.md`
-7. `docs/testing/release-go-no-go-checklist.md`
+4. `docs/architecture/adr/0030-free-tier-signed-release-authorization.md`
+5. `docs/architecture/adr/0027-paymongo-commerce-qrph-platform-split-settlement.md` for payment-sensitive releases
+6. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
+7. `docs/ops/DEPLOYMENT_GUIDE.md`
+8. `docs/testing/release-go-no-go-checklist.md`
 
-## Branch Model
+## Trust Boundaries
 
-1. Developers work on feature branches.
-2. Developers open PRs into `staging`.
-3. The repository owner may push directly to `staging` for local-owner work, but every direct push must pass the same staging qualification workflow.
-4. `staging` is the integration branch and promotion candidate source.
-5. `master` is production-only.
-6. Developers must not push directly to `master`.
-7. Production deploys only the exact pushed `origin/master` SHA.
+1. Candidate code and GitHub Actions are untrusted with respect to production authorization.
+2. GitHub never stores production SSH credentials, signing private keys, production tokens, or controller secret-store material.
+3. The root-owned, version-pinned external controller verifies signatures and evidence before candidate checkout or execution.
+4. Only the external controller may merge a promotion PR or reach production.
+5. `ENABLE_AUTO_PRODUCTION_DEPLOY=0` is permanent while this contract is active.
 
-Required protection intent:
+## Branch And PR Model
 
-1. `master`: direct human pushes blocked, force pushes blocked, deletion blocked, PR required, required checks enforced, unresolved conversations blocked, production secrets scoped to the production environment, and auto-merge limited to promotion automation.
-2. `staging`: developer PRs required, owner direct-staging exception allowed, force pushes blocked, deletion blocked, required checks enforced, and production secrets unavailable to untrusted PR code.
+1. Developers use feature branches and PRs into `staging`.
+2. Owner direct pushes to `staging` still require complete staging qualification and reviewed batch documentation.
+3. GitHub automation may create or update `staging -> master` PRs. It must never merge them.
+4. `master` is production-candidate source only; being on master does not make a commit deployable.
+5. Every master update is audited. Direct pushes and merges without governed promotion evidence are reported and remain undeployable through the controller.
+6. Production uses the exact current `origin/master` SHA. Any movement invalidates the authorization attempt.
 
-Automatic production deployment must remain disabled until branch protection and distinct QA proof are confirmed.
+## Reviewed Batch Inventory
 
-## Batch Inventory
+Draft inventory generation may occur during development. Before promotion authorization, a human-reviewed batch document must provide non-placeholder summaries, exact file coverage, owner and PR attribution, test evidence references, rollback notes, required documentation, payment sensitivity, and production proof requirements.
 
-Every promotion candidate must have a batch inventory before promotion.
+Strict validation rejects:
 
-Command:
+1. `unknown`, `not provided`, generated summaries, or placeholder values.
+2. Changed files not mapped to exactly one slice.
+3. `completed_tests` without corresponding evidence records.
+4. Missing owner, source branch, source PR, reviewer, or review timestamp.
+5. Missing or draft batch documentation.
+6. Payment-sensitive files without separate signed payment authorization.
 
-```bash
-npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --write --require-ship --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --markdown ".tmp/release-gates/<candidate_sha>/batch_inventory.md"
-npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --base origin/master --head <candidate_sha> --require-ship
-```
+The controller hashes the exact reviewed inventory bytes with SHA-256. The owner authorization tag binds that hash.
 
-The inventory records one or more release slices. Each slice must include:
+## Candidate Evidence
 
-1. Slice name and plain-English purpose.
-2. Implementation summary.
-3. Included files/features and excluded files/features.
-4. Owner/source branch or PR reference, including owner direct-staging attribution when applicable.
-5. Affected surfaces: backend, frontend, database, scripts/deploy, docs, compliance, POS, Storefront, DGFY, tenant lifecycle, and payments.
-6. Risk level.
-7. Required tests and completed tests.
-8. Required docs.
-9. ADR/compliance declaration requirement.
-10. Rollback notes.
-11. Production proof required.
-12. Production accuracy checks required.
-13. Payment-sensitive and high-risk path flags.
-14. Promotion eligibility and verdict.
+GitHub candidate workflows publish short-lived evidence bundles containing the exact SHA, base SHA, PR identity, required-check conclusions and URLs, reviewed inventory hash, QA evidence hash, source-contract result, merge-adoption result, and payment-sensitive flag.
 
-No changed file may ride along silently. Every changed file in the candidate diff must belong to exactly one batch.
+The controller independently verifies GitHub PR/check state and recomputes all local hashes. Candidate evidence is rejected when required evidence is absent, failed, stale, malformed, or inconsistent with current remote state.
 
-Payment-sensitive candidates are fail-closed unless explicit payment-release approval is present. PayMongo live split checkout remains blocked unless the PayMongo provider-confirmation contract in ADR 0027 and the PayMongo feature doc is satisfied.
+## Isolated QA
 
-## Staging Qualification
+Promotion requires QA deployed at the exact staging candidate SHA. QA must have a separate app directory, Unix identity, database and database credentials, environment/runtime marker, uploads directory, PM2 names, tenant/data marker, and disposable test data. Production database credentials and production data must be inaccessible to the QA Unix identity.
 
-The `Staging Qualification` workflow runs for PRs targeting `staging` and pushes to `staging`. It must not expose QA or production secrets to untrusted PR code.
+Production-as-QA is prohibited and not bypassable.
 
-Required gates are docs lint, architecture checks, compliance checks, dependency audits, production env fixtures, backend matrix, frontend tests, all frontend builds, frontend budgets, browser journey tests, development-to-production script tests, merge-adoption-required, deploy source contract, and batch inventory completeness.
+## Signed Authorization
 
-A newer push to `staging` cancels the older staging qualification candidate.
+Use standard GPG-signed annotated tags following ADR 0030. Required phases are:
 
-## QA Proof
+1. `promotion`: authorizes merging the exact staging candidate after PR, checks, inventory, and QA proof pass.
+2. `production`: authorizes deploying the exact resulting master SHA after exact-master evidence and controller-local qualification pass.
+3. `payment`: additionally required for any payment-sensitive release.
 
-Automatic promotion beyond staging requires a real QA target.
+Each authorization binds repository, phase, target SHA, expiration, one-time nonce, inventory SHA-256, evidence SHA-256, payment-sensitive flag, and PR number. The controller verifies the tag target and full allowlisted signer fingerprint before checkout and records nonce consumption in its root-owned ledger.
 
-The QA target must prove `QA_SSH_HOST` and `QA_APP_DIR` identify a real QA checkout, QA is not the production host plus production app directory, QA has isolated database/credentials/tenant data/runtime markers/deploy summaries, browser UAT uses disposable data, and the QA deploy summary includes `deployed_head=<candidate_sha>`.
+## Promotion Controller
 
-If no distinct QA target exists, install the workflow in disabled/fail-closed mode. Do not mutate production to create QA evidence.
+The external controller must refuse promotion when:
 
-## Staging To Master Promotion
+1. `origin/staging` moved from the signed target.
+2. The PR head/base or current master base differs from evidence.
+3. Required checks are absent or not successful.
+4. Reviewed inventory, local qualification, merge-adoption, compliance, or QA evidence failed.
+5. Authorization is invalid, expired, replayed, hash-mismatched, or signed by a non-allowlisted key.
+6. A payment-sensitive candidate lacks separate payment authorization.
 
-After staging qualification passes for a push to `staging`, the `Promote Staging To Master` workflow creates or updates the `staging -> master` PR.
+After verification, the controller invokes a head-SHA-pinned PR merge. The merge result is a new SHA and needs separate production authorization.
 
-The PR body must include batch inventory, validation evidence, artifact references, excluded work, non-goals, merge-adoption proof when required, source contract evidence, and payment-sensitive approval status.
+## Production Controller
 
-Auto-merge may be enabled only after required checks, branch protection, unresolved conversation blocking, payment safety, and QA proof are all configured.
+Before candidate checkout, the controller verifies production and any payment authorization. It then performs local qualification in an ephemeral exact-SHA worktree without production credentials. Only after qualification succeeds may the controller use OS-protected production connection material to invoke the fixed remote deploy operation.
 
-After merge, the resulting `master` SHA must be requalified. A green `staging` SHA does not automatically prove the merged `master` SHA.
+Production is refused when master moved, credentials are absent, QA differs from the target, inventory/evidence hashes changed, required checks failed, or any authorization was replayed/expired/invalid.
 
-The `Exact Master SHA Qualification` workflow runs on `master` pushes and must pass before production deployment. It verifies `origin/master`, deploy source contract, final batch inventory, docs, architecture, compliance, dependencies, backend matrix, frontend tests/builds/budgets, development-to-production script tests, and final merge-adoption-required proof.
+The GitHub workflow `.github/workflows/deploy-production.yml` produces a dry-run candidate bundle only. It cannot deploy.
 
-## Production Deployment
+## Production Proof And Accuracy
 
-Production deployment uses the exact `origin/master` SHA only.
+Deployment proof must show target agreement across remote HEAD, `.deploy-state/last_deployed_commit`, deploy summary, production contract, frontend asset parity, runtime health SHA, and public endpoints.
 
-CI entrypoint:
+Every release slice must then consume actual API, UI, read-only database, or asset proof. Proof records must identify the exact target SHA, slice, proof type, command/request identity, capture time, result, and artifact hash. Missing, placeholder, stale, mutating database, or failed proof blocks release completion.
 
-```bash
-RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
-```
+## Actions Cost Policy
 
-The CI wrapper requires `RELEASE_TARGET_SHA`, fetches `origin/master`, requires equality, refuses dirty state, never pushes/merges/rebases/prompts, avoids interactive SSH TTY allocation, validates batch inventory and QA target proof, runs deploy source and no-staging gates, then SSHes to production and runs:
+1. Cancel superseded CI and staging runs.
+2. Avoid running equivalent full matrices in both generic CI and staging qualification.
+3. Use dependency caching and bounded job/step timeouts.
+4. Keep candidate artifacts only as long as needed for controller intake.
+5. Run expensive browser journey matrices weekly or manually. Release-specific browser proof belongs in the exact qualification path only when the affected slice requires it.
 
-```bash
-bash scripts/deploy.sh --branch master --expect-commit <sha>
-```
+## Incident And Recovery
 
-Dry-run mode must pass before live enablement:
+There is no unsigned emergency bypass. Incidents use fresh, explicitly scoped signed authorization and preserved controller evidence. Key compromise follows ADR 0030 revocation and rotation. A failed action never makes a nonce reusable.
 
-```bash
-PRODUCTION_DEPLOY_DRY_RUN=1 RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
-```
+## Current Limitation
 
-The workflow file is `.github/workflows/deploy-production.yml`. Live automatic deployment remains off unless `ENABLE_AUTO_PRODUCTION_DEPLOY=1`, branch protection is configured, a distinct QA target is proven, failure simulations pass, and the production environment approval policy is active.
-
-The existing local operator command remains valid:
-
-```powershell
-& "C:\Program Files\Git\bin\bash.exe" scripts/deploy-remote.sh --yes
-```
-
-## Production Proof And Accuracy Review
-
-After deployment, prove production remote `HEAD`, `.deploy-state/last_deployed_commit`, newest deploy summary, `deployed_head`, `remote_head`, `expected_commit`, production deployment contract, frontend asset parity, `/api/v1/health.services.observability.runtime_sha`, endpoint health, and tenant-store asset integrity all match the target.
-
-Then run a deployed-change accuracy review for every shipped batch. A batch is not complete until production behavior accurately reflects the intended inventory or the discrepancy is fixed, explicitly deferred, or documented as residual risk.
-
-Allowed machine-readable accuracy states are `accurately_reflected`, `partially_reflected`, `deployed_but_behavior_not_proven`, `source_current_only`, `docs_overclaim`, and `deployed_but_inaccurate`.
-
-## Required GitHub Settings
-
-Configure these outside repo files.
-
-`master`:
-
-1. Block direct human pushes.
-2. Block force pushes and deletion.
-3. Require pull requests.
-4. Require required status checks, including CI, staging qualification evidence on the promotion PR, exact master SHA qualification, batch inventory validation, merge-adoption-required, and deploy source contract checks.
-5. Require unresolved conversations to be resolved before merge.
-6. Restrict auto-merge to the promotion automation after required checks pass.
-7. Scope production secrets only to the production deployment environment.
-
-`staging`:
-
-1. Require developer PRs.
-2. Allow only the owner direct-staging exception.
-3. Run full qualification on every push, including owner direct pushes.
-4. Block force pushes and deletion.
-5. Require CI, batch inventory, merge-adoption-required, docs, architecture, compliance, dependencies, backend, frontend, budget, and browser journey checks.
-6. Do not expose production secrets to untrusted PR code.
-
-## Emergency Bypass
-
-Emergency bypass is manual and incident-only.
-
-It may be considered only when stale or unavailable QA parity evidence is the only release blocker, all other governed checks pass, the target SHA and deploy scope are clean, the owner explicitly authorizes the bypass, and bypass metadata is recorded.
-
-Emergency bypass cannot override dirty source, failed tests, failed builds, failed architecture or compliance checks, missing high-risk merge-adoption proof, payment uncertainty, stale frontend asset parity, production runtime SHA mismatch, unknown QA target, unresolved docs overclaim, or branch-protection absence.
+GitHub cannot technically block direct master updates on the current plan. The compensating control is detection plus controller refusal. A user with production root access can bypass software controls and remains an audited operational trust anchor.
