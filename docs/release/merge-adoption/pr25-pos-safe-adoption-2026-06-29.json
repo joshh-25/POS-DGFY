@@ -1,0 +1,719 @@
+{
+  "version": 1,
+  "merge_name": "pr25-pos-safe-adoption-2026-06-29",
+  "target_branch": "staging",
+  "source_refs": [
+    {
+      "ref": "origin/pr/25",
+      "base": "5b443043e30c7366fdecba3bb8ac8492b4acf074"
+    }
+  ],
+  "explicitly_rejected_files": [
+    {
+      "path": "Standalone POS/README.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/build.gradle.kts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/local.properties",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/proguard-rules.pro",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/AndroidManifest.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/assets/index.android.bundle",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/java/com/dgfy/standalonepos/BluetoothEscPosController.kt",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/java/com/dgfy/standalonepos/DrawerController.kt",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/java/com/dgfy/standalonepos/MainActivity.java",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/java/com/dgfy/standalonepos/MainApplication.java",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/java/com/dgfy/standalonepos/StandalonePosHardwareModule.kt",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/java/com/dgfy/standalonepos/StandalonePosPackage.kt",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/java/com/dgfy/standalonepos/StandalonePosSqliteModule.kt",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/java/com/dgfy/standalonepos/StandalonePosSyncModule.kt",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/java/com/dgfy/standalonepos/StandalonePosSyncWorker.kt",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/drawable/dgfy_receipt_logo.png",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/drawable/ic_launcher_background.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/drawable/ic_launcher_foreground.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-anydpi/ic_launcher.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-anydpi/ic_launcher_round.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-hdpi/ic_launcher.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-hdpi/ic_launcher_round.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-mdpi/ic_launcher.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-mdpi/ic_launcher_round.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-xhdpi/ic_launcher.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-xhdpi/ic_launcher_round.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-xxhdpi/ic_launcher.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/values-night/themes.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/values/colors.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/values/strings.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/values/themes.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/xml/backup_rules.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/app/src/main/res/xml/data_extraction_rules.xml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/babel.config.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/build.gradle.kts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/gradle.properties",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/gradle/libs.versions.toml",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/gradle/wrapper/gradle-wrapper.jar",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/gradle/wrapper/gradle-wrapper.properties",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/gradlew",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/gradlew.bat",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/index.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/local.properties",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/metro.config.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/package-lock.json",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/package.json",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/react-native.config.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/settings.gradle.kts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "Standalone POS/tsconfig.json",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/migrations/20260628000001-add-pos-always-available-to-catalog-overrides.cjs",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/src/controllers/mobilePosController.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/src/modules/pos/controllers/mobilePosHandlers.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/src/modules/pos/usecases/mobilePosUseCases.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/src/modules/settings/usecases/posSettingsAccessPinPolicy.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/src/modules/settings/usecases/verifyPosSettingsAccessPinUseCase.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/src/routes/mobilePos.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/tests/mobilePosHandlers.transport.test.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/tests/posCashierLoginRoute.transport.test.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/tests/posReports.repository.test.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "backend/tests/posSetupCashierRoute.transport.test.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "docs/architecture/adr/0029-standalone-native-hardware-pos-runtime.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "docs/architecture/adr/0030-pos-terminal-device-pairing.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "docs/compliance/impact-declarations/2026-06-19-standalone-native-hardware-pos-bootstrap.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "docs/compliance/impact-declarations/2026-06-28-pos-optional-compliance-operation.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "docs/development/SAFE_CROSS_BRANCH_MERGING.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "docs/features/POS_HARDWARE_UI_PARITY_CONTRACT.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "docs/features/STOREFRONT_MERGED_PILOT_PULL_2026-06-18.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "docs/reference/FRONTEND_MIGRATION_MATRIX_2026-06-23.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/Components/ui/ConfirmActionDialog.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/Components/ui/__tests__/ConfirmActionDialog.test.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/apps/pos/src/README.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/apps/pos/src/app/PosApp.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/apps/pos/src/components/PosRouteNotFound.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/apps/pos/src/components/SkupervisorSalesRedirect.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/apps/pos/src/components/TerminalLockDrawer.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/apps/pos/src/components/TerminalPageLayout.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/apps/pos/src/components/TerminalWorkspaceSidebar.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/apps/skupervisor/src/README.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/apps/store/vite.config.js.timestamp-1780566423242-331a3f8d46072.mjs",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/src/features/pos/components/PosReportsAnalyticsWorkspace.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/src/features/pos/components/PosTenantSetupModal.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/src/features/pos/components/TerminalOperationsPanels.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/src/features/pos/pages/PosPageShell.jsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "frontend/src/features/pos/utils/setupFlow.js",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/README.md",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/package-lock.json",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/package.json",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/scripts/export-bundled-catalog.mjs",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/api/hardwarePosAuthClient.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/api/mobilePosClient.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/App.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/bundledCatalog.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/components/PosHeader.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/components/PosQuickActions.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/dependencies.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/mockCatalog.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/AccountManagementScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/BootstrapErrorScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/CartScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/CloseShiftScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/HistoryScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/LoginUnlockScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/ReceiptScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/SellScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/ShiftOpenScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/SplashScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/screens/SyncCenterScreen.tsx",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/app/store.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/db/driver.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/db/migrations.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/db/nativeSqliteDriver.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/db/schema.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/domain/catalog.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/domain/checkout.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/domain/history.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/domain/syncPolicy.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/domain/types.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/native/standalonePosHardware.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/native/standalonePosSqlite.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/native/standalonePosSync.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/repositories/contracts.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/repositories/inMemoryRepositories.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/repositories/sqliteLocalTransactionRepository.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/repositories/sqliteSyncRepositories.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/services/localCheckoutJournalService.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/services/manualSyncService.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/services/pendingHistoryService.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/src/services/runtimeStateService.ts",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "mobile/hardware-pos/tsconfig.json",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "tmp-standalone-pos-late.png",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "tmp-standalone-pos-screen.png",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    },
+    {
+      "path": "update_admin_hash.sql",
+      "reason": "PR #25 source-added file is not part of the reviewed staging-safe POS adoption; see the file disposition manifest."
+    }
+  ],
+  "semantic_conflict_review": {
+    "status": "user-approved",
+    "notes": "The user's attached adoption contract explicitly resolves behavioral conflicts in favor of current staging for identity, shifts, inventory ownership, visibility separation, fiscal/compliance, and governance.",
+    "user_approved_decisions": [
+      {
+        "area": "cashier identity",
+        "question_asked": "Should PR #25 tenant-local cashier credentials replace DGFY identity?",
+        "resolution": "reject",
+        "approved_by": "repository owner request",
+        "rationale": "DGFY remains primary identity and company access authority; local cashier credentials are prohibited."
+      },
+      {
+        "area": "terminal and shift behavior",
+        "question_asked": "Which terminal and shift behavior wins?",
+        "resolution": "combine",
+        "approved_by": "repository owner request",
+        "rationale": "Adopt independent terminal pairing and admin safe navigation while preserving staging shift guards."
+      },
+      {
+        "area": "inventory and visibility",
+        "question_asked": "How should Always Available interact with stock and Storefront?",
+        "resolution": "combine",
+        "approved_by": "repository owner request",
+        "rationale": "Adopt an explicit POS-only stock exemption while preserving Inventory ownership and Storefront separation."
+      }
+    ]
+  },
+  "feature_areas": [
+    {
+      "id": "terminal-pairing-and-role-navigation",
+      "decision": "combine",
+      "intent": "Add independent terminal possession proof and shift-safe administrator navigation without creating a second user credential authority.",
+      "source_refs": [
+        "origin/pr/25"
+      ],
+      "master_behaviors_preserved": [
+        "DGFY membership remains primary identity and company access.",
+        "Open-shift checks continue to protect transactional actions.",
+        "Multiple terminals may remain bound to one location.",
+        "Current POS permissions and terminal location policy remain authoritative."
+      ],
+      "proof": {
+        "required_files_present": [
+          "backend/src/modules/pos/services/posTerminalPairingService.js",
+          "backend/src/modules/settings/usecases/posTerminalRegistrySecrets.js",
+          "frontend/src/features/pos/components/TerminalLockDrawer.jsx",
+          "frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx",
+          "backend/tests/posTerminalPairingUseCase.test.js",
+          "frontend/src/features/pos/__tests__/terminalPairing.contract.test.js"
+        ],
+        "required_strings_present": [
+          {
+            "file": "backend/src/modules/pos/services/posTerminalPairingService.js",
+            "text": "POS_TERMINAL_PAIRING_SECRET"
+          },
+          {
+            "file": "backend/src/routes/pos.js",
+            "text": "requirePairedTerminal"
+          },
+          {
+            "file": "frontend/src/features/pos/pages/TerminalPage.jsx",
+            "text": "allowAdminNavigationWithoutShift"
+          }
+        ],
+        "tests": [
+          "npm --prefix backend test -- --runInBand --runTestsByPath tests/posTerminalPairingService.test.js tests/posTerminalPairingUseCase.test.js tests/posTerminalPairingCookie.test.js",
+          "npm --prefix frontend test -- src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/posDgfyAdminBypass.contract.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js"
+        ],
+        "rendered_evidence": [
+          "Desktop, tablet, and mobile terminal pairing, admin no-shift, and cashier-restriction evidence is required before merge approval."
+        ],
+        "production_evidence_required": [
+          "No production action in this PR; later deployment must prove exact deployed SHA and pairing-secret configuration."
+        ]
+      }
+    },
+    {
+      "id": "pos-always-available-stock-exemption",
+      "decision": "adopt",
+      "intent": "Allow explicitly configured POS items to sell at zero stock without weakening stock controls for any other item.",
+      "source_refs": [
+        "origin/pr/25"
+      ],
+      "proof": {
+        "required_files_present": [
+          "backend/migrations/20260629000001-add-pos-always-available-contract.cjs",
+          "backend/src/models/PosTransactionLine.js",
+          "frontend/src/features/pos/__tests__/posAlwaysAvailable.contract.test.js"
+        ],
+        "required_strings_present": [
+          {
+            "file": "backend/src/modules/pos/usecases/posUseCases.js",
+            "text": "pos_always_available"
+          },
+          {
+            "file": "backend/src/models/PosTransactionLine.js",
+            "text": "stock_effect_type"
+          },
+          {
+            "file": "docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md",
+            "text": "pos_always_available"
+          }
+        ],
+        "tests": [
+          "npm --prefix backend test -- --runInBand --runTestsByPath tests/posCheckoutFnbContracts.usecase.test.js tests/posCheckout.db.integration.test.js",
+          "npm --prefix frontend test -- src/features/pos/__tests__/posAlwaysAvailable.contract.test.js"
+        ],
+        "rendered_evidence": [
+          "Rendered item setup and POS catalog evidence plus read-only stock-movement proof is required before merge approval."
+        ],
+        "production_evidence_required": [
+          "Later deployment must prove exempt lines create no Inventory movement while normal lines still do."
+        ]
+      }
+    },
+    {
+      "id": "staging-owned-pos-dgfy-inventory-contracts",
+      "decision": "preserve-master",
+      "intent": "Preserve current staging DGFY access, fiscal/compliance, location, shift, Inventory, Storefront, and release-governance behavior.",
+      "source_refs": [
+        "origin/staging"
+      ],
+      "proof": {
+        "required_files_present": [
+          "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+          "docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md",
+          "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md"
+        ],
+        "required_strings_absent": [
+          {
+            "file": "backend/src/modules/pos/index.js",
+            "text": "createLocalCashier"
+          },
+          {
+            "file": "backend/src/modules/pos/index.js",
+            "text": "loginCashier"
+          }
+        ],
+        "tests": [
+          "npm run check:architecture",
+          "npm run check:compliance",
+          "npm run check:merge-adoption-required -- --base origin/staging --head HEAD --manifest docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json"
+        ],
+        "rendered_evidence": [
+          "Human UAT must confirm current checkout, receipt, history, location, and DGFY access behavior is retained."
+        ],
+        "production_evidence_required": [
+          "No deployment is authorized by this manifest."
+        ]
+      }
+    },
+    {
+      "id": "pr25-local-cashier-and-unrelated-scope",
+      "decision": "reject",
+      "intent": "Reject unsafe or unrelated PR #25 scope.",
+      "rejection_reason": "Tenant-local cashier credentials conflict with ADR 0028; generated, local-only, mobile, Storefront, onboarding, and unrelated changes are outside this adoption."
+    }
+  ]
+}
