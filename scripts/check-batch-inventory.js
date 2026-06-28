@@ -6,6 +6,7 @@ const path = require('path');
 
 const VALID_VERDICTS = new Set(['ship', 'split', 'fix first', 'defer', 'blocked']);
 const VALID_RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical']);
+const PLACEHOLDER_PATTERN = /(?:^|\b)(unknown|not provided|n\/?a|none|todo|tbd|placeholder|example|generated|replace this)(?:\b|$)/i;
 const REQUIRED_SURFACES = [
   'backend',
   'frontend',
@@ -71,8 +72,8 @@ function parseArgs(argv) {
     head: process.env.BATCH_INVENTORY_HEAD || process.env.RELEASE_TARGET_SHA || process.env.GITHUB_SHA || 'HEAD',
     inventoryPath: process.env.BATCH_INVENTORY_FILE || '',
     markdownPath: process.env.BATCH_INVENTORY_MARKDOWN || '',
+    reviewedManifestPath: process.env.BATCH_REVIEWED_MANIFEST || '',
     write: false,
-    requireApprovedPayments: process.env.PAYMENT_RELEASE_APPROVED === '1',
     requireShip: process.env.BATCH_INVENTORY_REQUIRE_SHIP === '1',
   };
 
@@ -93,12 +94,13 @@ function parseArgs(argv) {
     } else if (arg === '--markdown') {
       options.markdownPath = argv[index + 1] || '';
       index += 1;
+    } else if (arg === '--reviewed-manifest') {
+      options.reviewedManifestPath = argv[index + 1] || '';
+      index += 1;
     } else if (arg === '--write') {
       options.write = true;
     } else if (arg === '--require-ship') {
       options.requireShip = true;
-    } else if (arg === '--payment-approved') {
-      options.requireApprovedPayments = true;
     } else {
       throw new BatchInventoryError(`Unknown argument: ${arg}`, { code: 'INVALID_ARGS' });
     }
@@ -242,20 +244,20 @@ function inferSourceAttribution() {
 
   return {
     source_type: sourceType,
-    source_branch: sourceBranch || 'unknown',
-    source_pr: prNumber || process.env.BATCH_SOURCE_PR || 'not provided',
-    owner_or_author: process.env.GITHUB_ACTOR || process.env.BATCH_OWNER || 'unknown',
+    source_branch: sourceBranch || '',
+    source_pr: prNumber || process.env.BATCH_SOURCE_PR || '',
+    owner_or_author: process.env.GITHUB_ACTOR || process.env.BATCH_OWNER || '',
   };
 }
 
-function buildSlice({ key, files, options, paymentApproved }) {
+function buildSlice({ key, files, options }) {
   const surfaces = unique(files.flatMap(affectedSurfacesForFile)).sort();
   const paymentFiles = files.filter(isPaymentSensitive);
   const highRiskFiles = files.filter(isHighRiskPath);
   const paymentSensitive = paymentFiles.length > 0;
   const highRiskPath = highRiskFiles.length > 0;
   const riskLevel = inferRiskLevel(surfaces, paymentSensitive, highRiskPath);
-  const verdict = paymentSensitive && !paymentApproved ? 'blocked' : 'ship';
+  const verdict = 'blocked';
   const requiredTests = inferTests(surfaces, paymentSensitive, highRiskPath);
   const sourceAttribution = inferSourceAttribution();
   const name = titleForSliceKey(key);
@@ -266,7 +268,7 @@ function buildSlice({ key, files, options, paymentApproved }) {
     name,
     plain_english_purpose: `Promote the ${name.toLowerCase()} in the exact qualified candidate without allowing unrelated work to ride along.`,
     purpose: `Promote the ${name.toLowerCase()} in the exact qualified candidate without allowing unrelated work to ride along.`,
-    implementation_summary: `Generated from changed files between ${options.base} and ${options.head}; reviewers must replace this with a human slice summary before production merge when behavior is non-trivial.`,
+    implementation_summary: `DRAFT generated from changed files between ${options.base} and ${options.head}; replace this summary during review.`,
     included_files: files,
     included_features: [`Files grouped under ${key}`],
     excluded_files: [],
@@ -283,7 +285,7 @@ function buildSlice({ key, files, options, paymentApproved }) {
     affected_surface_map: Object.fromEntries(REQUIRED_SURFACES.map((surface) => [surface, surfaces.includes(surface)])),
     risk_level: riskLevel,
     required_tests: requiredTests,
-    completed_tests: requiredTests,
+    completed_tests: [],
     docs_required: true,
     required_docs: ['docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md'],
     adr_compliance_declaration_required: paymentSensitive || surfaces.includes('compliance'),
@@ -307,8 +309,8 @@ function buildSlice({ key, files, options, paymentApproved }) {
       'docs/current-state wording does not overclaim production state',
       'developer PR or owner direct-staging attribution is reflected accurately',
     ],
-    can_ship_independently: files.length > 0 && verdict === 'ship',
-    promotion_eligibility: verdict === 'ship' ? 'eligible' : 'blocked',
+    can_ship_independently: false,
+    promotion_eligibility: 'blocked',
     verdict,
     payment_sensitive: paymentSensitive,
     payment_sensitive_files: paymentFiles,
@@ -330,8 +332,46 @@ function groupFilesIntoSlices(files, options) {
       key,
       files: groupFiles.sort(),
       options,
-      paymentApproved: options.requireApprovedPayments,
     }));
+}
+
+function readReviewedManifest(projectRoot, manifestPath) {
+  if (!manifestPath) return null;
+  const absolutePath = path.resolve(projectRoot, manifestPath);
+  if (!fs.existsSync(absolutePath)) {
+    throw new BatchInventoryError(`Reviewed batch manifest is missing: ${manifestPath}`, { code: 'REVIEWED_MANIFEST_MISSING' });
+  }
+  try {
+    return JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+  } catch (error) {
+    throw new BatchInventoryError(`Reviewed batch manifest is invalid JSON: ${error.message}`, { code: 'REVIEWED_MANIFEST_INVALID' });
+  }
+}
+
+function applyReviewedManifest(draft, manifest, manifestPath) {
+  if (!manifest) return draft;
+  if (manifest.schema !== 'sku-reviewed-batch-manifest/v1') {
+    throw new BatchInventoryError('Reviewed batch manifest schema must be sku-reviewed-batch-manifest/v1', { code: 'REVIEWED_MANIFEST_INVALID' });
+  }
+  const slices = Array.isArray(manifest.release_slices) ? manifest.release_slices : [];
+  const paymentSensitive = slices.some((slice) => (slice.included_files || []).some(isPaymentSensitive));
+  const highRiskPath = slices.some((slice) => (slice.included_files || []).some(isHighRiskPath));
+  const eligible = slices.length > 0 && slices.every((slice) => slice.verdict === 'ship');
+  return {
+    ...draft,
+    reviewed_manifest: String(manifestPath).replace(/\\/g, '/'),
+    review_status: manifest.review_status,
+    reviewed_by: manifest.reviewed_by,
+    reviewed_at: manifest.reviewed_at,
+    source_pr: manifest.source_pr,
+    payment_sensitive: paymentSensitive,
+    payment_authorization_required: paymentSensitive,
+    high_risk_path: highRiskPath,
+    status: eligible ? 'pass' : 'blocked',
+    promotion_eligibility: eligible ? 'eligible' : 'blocked',
+    release_slices: slices,
+    batches: slices,
+  };
 }
 
 function buildInventory(options) {
@@ -340,12 +380,8 @@ function buildInventory(options) {
   const headSha = resolveCommit(projectRoot, options.head);
   const files = changedFiles(projectRoot, options.base, options.head).sort();
   const slices = groupFilesIntoSlices(files, options);
-  const paymentSensitive = slices.some((slice) => slice.payment_sensitive);
-  const highRiskPath = slices.some((slice) => slice.high_risk_path);
-  const blocked = slices.some((slice) => slice.verdict !== 'ship');
-
-  return {
-    version: 1,
+  const draft = {
+    version: 2,
     generated_at: new Date().toISOString(),
     base_ref: options.base,
     base_sha: baseSha,
@@ -353,14 +389,21 @@ function buildInventory(options) {
     head_sha: headSha,
     expected_changed_files: files,
     changed_file_count: files.length,
-    payment_release_approved: options.requireApprovedPayments,
-    payment_sensitive: paymentSensitive,
-    high_risk_path: highRiskPath,
-    status: blocked ? 'blocked' : 'pass',
-    promotion_eligibility: blocked ? 'blocked' : 'eligible',
+    reviewed_manifest: '',
+    review_status: 'draft',
+    reviewed_by: '',
+    reviewed_at: '',
+    source_pr: '',
+    payment_sensitive: slices.some((slice) => slice.payment_sensitive),
+    payment_authorization_required: slices.some((slice) => slice.payment_sensitive),
+    high_risk_path: slices.some((slice) => slice.high_risk_path),
+    status: 'blocked',
+    promotion_eligibility: 'blocked',
     release_slices: files.length > 0 ? slices : [],
     batches: files.length > 0 ? slices : [],
   };
+  const manifest = readReviewedManifest(projectRoot, options.reviewedManifestPath);
+  return applyReviewedManifest(draft, manifest, options.reviewedManifestPath);
 }
 
 function normalizeSlices(inventory) {
@@ -372,8 +415,20 @@ function normalizeSlices(inventory) {
 function validateInventory(inventory, options = {}) {
   const failures = [];
   if (!inventory || typeof inventory !== 'object') return ['inventory must be a JSON object'];
-  if (inventory.version !== 1) failures.push('inventory.version must be 1');
+  if (inventory.version !== 2) failures.push('inventory.version must be 2');
   if (!inventory.head_sha) failures.push('inventory.head_sha is required');
+  if (options.requireShip) {
+    if (inventory.review_status !== 'reviewed') failures.push('inventory.review_status must be reviewed');
+    for (const [field, value] of Object.entries({
+      reviewed_by: inventory.reviewed_by,
+      reviewed_at: inventory.reviewed_at,
+      source_pr: inventory.source_pr,
+      reviewed_manifest: inventory.reviewed_manifest,
+    })) {
+      if (!value || PLACEHOLDER_PATTERN.test(String(value))) failures.push(`inventory.${field} must be a reviewed non-placeholder value`);
+    }
+    if (!Number.isFinite(Date.parse(inventory.reviewed_at))) failures.push('inventory.reviewed_at must be a valid timestamp');
+  }
 
   const slices = normalizeSlices(inventory);
   if (!Array.isArray(slices)) failures.push('inventory.release_slices or inventory.batches must be an array');
@@ -387,7 +442,9 @@ function validateInventory(inventory, options = {}) {
     const purpose = slice.plain_english_purpose || slice.purpose;
     if (!slice.slice_name && !slice.name) failures.push('slice missing slice_name');
     if (!purpose || String(purpose).trim().length < 12) failures.push(`slice ${sliceName} missing plain-English purpose`);
-    if (!slice.implementation_summary) failures.push(`slice ${sliceName} missing implementation_summary`);
+    if (!slice.implementation_summary || (options.requireShip && PLACEHOLDER_PATTERN.test(String(slice.implementation_summary)))) {
+      failures.push(`slice ${sliceName} missing reviewed implementation_summary`);
+    }
     if (!Array.isArray(slice.included_files) || slice.included_files.length === 0) {
       failures.push(`slice ${sliceName} requires non-empty included_files`);
     }
@@ -402,24 +459,44 @@ function validateInventory(inventory, options = {}) {
     if (!VALID_VERDICTS.has(slice.verdict)) failures.push(`slice ${sliceName} has invalid verdict: ${slice.verdict}`);
     if (options.requireShip && slice.verdict !== 'ship') failures.push(`slice is not ship-ready: ${sliceName}`);
 
-    for (const field of ['affected_surfaces', 'required_tests', 'completed_tests', 'required_docs', 'production_proof_required', 'production_accuracy_checks_required']) {
+    for (const field of ['affected_surfaces', 'required_tests', 'required_docs', 'production_proof_required', 'production_accuracy_checks_required']) {
       if (!Array.isArray(slice[field]) || slice[field].length === 0) {
         failures.push(`slice ${sliceName} requires non-empty ${field}`);
+      }
+    }
+    if (!Array.isArray(slice.completed_tests)) failures.push(`slice ${sliceName} requires completed_tests array`);
+    if (options.requireShip && Array.isArray(slice.completed_tests)) {
+      if (slice.completed_tests.length === 0) failures.push(`slice ${sliceName} requires non-empty completed_tests`);
+      const completedCommands = new Set();
+      for (const test of slice.completed_tests) {
+        if (!test || typeof test !== 'object' || Array.isArray(test)) {
+          failures.push(`slice ${sliceName} completed_tests entries must be evidence objects`);
+          continue;
+        }
+        if (!test.command || test.status !== 'pass' || !test.evidence || PLACEHOLDER_PATTERN.test(String(test.evidence))) {
+          failures.push(`slice ${sliceName} has a completed test claim without passing evidence`);
+        } else {
+          completedCommands.add(test.command);
+        }
+      }
+      for (const command of slice.required_tests || []) {
+        if (!completedCommands.has(command)) failures.push(`slice ${sliceName} missing completed test evidence for: ${command}`);
       }
     }
     if (!slice.adr_or_compliance) failures.push(`slice ${sliceName} missing ADR/compliance declaration`);
     if (typeof slice.adr_compliance_declaration_required !== 'boolean') {
       failures.push(`slice ${sliceName} must declare adr_compliance_declaration_required`);
     }
-    if (!slice.rollback_notes) failures.push(`slice ${sliceName} missing rollback_notes`);
-    if (!slice.owner_attribution) failures.push(`slice ${sliceName} missing owner/source attribution`);
-    if (!slice.source_branch) failures.push(`slice ${sliceName} missing source_branch`);
-    if (!slice.source_pr) failures.push(`slice ${sliceName} missing source_pr`);
+    if (!slice.rollback_notes || (options.requireShip && PLACEHOLDER_PATTERN.test(String(slice.rollback_notes)))) failures.push(`slice ${sliceName} missing rollback_notes`);
+    if (options.requireShip && (!slice.owner_attribution || PLACEHOLDER_PATTERN.test(String(slice.owner_attribution)))) failures.push(`slice ${sliceName} missing owner/source attribution`);
+    if (options.requireShip && (!slice.source_branch || PLACEHOLDER_PATTERN.test(String(slice.source_branch)))) failures.push(`slice ${sliceName} missing source_branch`);
+    if (options.requireShip && (!slice.source_pr || PLACEHOLDER_PATTERN.test(String(slice.source_pr)))) failures.push(`slice ${sliceName} missing source_pr`);
     if (!slice.promotion_eligibility) failures.push(`slice ${sliceName} missing promotion_eligibility`);
 
-    if (slice.payment_sensitive && !inventory.payment_release_approved) {
-      failures.push(`payment-sensitive slice requires PAYMENT_RELEASE_APPROVED=1: ${sliceName}`);
-    }
+    const computedPaymentSensitive = (slice.included_files || []).some(isPaymentSensitive);
+    if (slice.payment_sensitive !== computedPaymentSensitive) failures.push(`slice ${sliceName} payment_sensitive does not match included files`);
+    const computedHighRisk = (slice.included_files || []).some(isHighRiskPath);
+    if (slice.high_risk_path !== computedHighRisk) failures.push(`slice ${sliceName} high_risk_path does not match included files`);
 
     for (const filePath of slice.included_files || []) {
       if (seenFiles.has(filePath)) {
@@ -456,6 +533,9 @@ function toMarkdown(inventory) {
     `- Changed files: ${inventory.changed_file_count}`,
     `- Status: \`${inventory.status}\``,
     `- Promotion eligibility: \`${inventory.promotion_eligibility}\``,
+    `- Review status: \`${inventory.review_status || 'draft'}\``,
+    `- Reviewed by: \`${inventory.reviewed_by || 'pending'}\``,
+    `- Source PR: \`${inventory.source_pr || 'pending'}\``,
     `- Payment sensitive: ${inventory.payment_sensitive ? 'yes' : 'no'}`,
     `- High-risk paths changed: ${inventory.high_risk_path ? 'yes' : 'no'}`,
     '',
@@ -486,7 +566,10 @@ function toMarkdown(inventory) {
     for (const testCommand of slice.required_tests || []) lines.push(`- \`${testCommand}\``);
     lines.push('');
     lines.push('Completed tests:');
-    for (const testCommand of slice.completed_tests || []) lines.push(`- \`${testCommand}\``);
+    for (const testResult of slice.completed_tests || []) {
+      if (typeof testResult === 'string') lines.push(`- \`${testResult}\` (invalid legacy claim; evidence required)`);
+      else lines.push(`- \`${testResult.command}\` -> \`${testResult.status}\` (${testResult.evidence})`);
+    }
     lines.push('');
     lines.push('Required docs:');
     for (const docPath of slice.required_docs || []) lines.push(`- \`${docPath}\``);
@@ -558,6 +641,8 @@ module.exports = {
   runGit,
   resolveCommit,
   changedFiles,
+  readReviewedManifest,
+  applyReviewedManifest,
   buildInventory,
   validateInventory,
   checkBatchInventory,
