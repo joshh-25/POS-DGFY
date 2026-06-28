@@ -27,6 +27,8 @@ Never place production credentials or signing private keys in GitHub. Never use 
 
 The root-owned external release controller is the only supported promotion and production authority.
 
+Developer feature branches are normal release inputs when they land through PRs into `staging`. Do not reject a production candidate merely because a slice originated on `feature/*`, `bugfix/*`, or another developer branch; evaluate the exact final staging SHA, reviewed inventory, QA proof, and signed authorization.
+
 ## Inspection
 
 Inspect current branch, remote parity, changed files, stash list, candidate SHA, PR evidence, reviewed batch manifest, and payment-sensitive paths. Preserve the PayMongo stash by message:
@@ -51,6 +53,7 @@ npm run validate:batch-inventory -- --inventory <inventory.json> --base <base> -
 ```
 
 Reject placeholders, unknown attribution, silent files, and completed-test claims without evidence.
+Accept `developer_pr` provenance when the slice is present in the exact staging candidate and reviewed inventory records the source branch or PR.
 
 ## Signed Promotion
 

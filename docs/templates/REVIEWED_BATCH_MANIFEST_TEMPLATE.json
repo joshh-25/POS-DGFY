@@ -26,6 +26,11 @@
       "source_branch": "feature/branch-name",
       "source_pr": "PR_NUMBER_OR_OWNER_DIRECT_STAGING_REFERENCE",
       "source_type": "developer_pr",
+      "source_type_allowed_values": [
+        "developer_pr",
+        "owner_direct_staging",
+        "controller_promotion"
+      ],
       "affected_surfaces": [
         "scripts/deploy"
       ],

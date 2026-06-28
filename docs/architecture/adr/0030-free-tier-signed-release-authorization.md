@@ -42,7 +42,7 @@ pr_number=<positive integer>
 ```
 
 7. Tag names use `release-authorization/<phase>/<target_sha>/<nonce>`. The tag target, message `target_sha`, current remote branch SHA, PR evidence, inventory SHA-256, and evidence SHA-256 must all agree.
-8. Promotion authorization targets the exact `origin/staging` candidate. The trusted controller validates the `staging -> master` PR, required successful checks, reviewed batch documentation, exact QA proof, and current master base before invoking a head-SHA-pinned merge.
+8. Promotion authorization targets the exact `origin/staging` candidate. `staging` is an aggregate integration branch: developer feature branches, conflict-resolution commits, and owner direct-staging fixes are valid release inputs after they are present in the final staging SHA and covered by reviewed inventory. The trusted controller validates the final `staging -> master` PR, required successful checks, reviewed batch documentation, exact QA proof, and current master base before invoking a head-SHA-pinned merge.
 9. Production authorization targets the resulting exact `origin/master` SHA. A green staging SHA is not production authorization.
 10. Payment-sensitive inventory requires `payment_sensitive=true` in promotion and production tags plus a separate valid `phase=payment` tag bound to the same SHA, inventory hash, evidence hash, PR, expiry rules, and an independent nonce.
 11. The root-owned nonce ledger records signer fingerprint, phase, target SHA, tag, timestamps, and terminal status. A nonce is reserved atomically before a privileged action and is never reusable, including after a failed action. Retrying requires a new signed tag and nonce.
@@ -51,7 +51,7 @@ pr_number=<positive integer>
 14. Production deployment is refused when master moved, qualification failed, QA differs from the target, production credentials are unavailable, deployment evidence is missing, or per-slice production accuracy proof is unresolved.
 15. Controller secrets live only in an OS-protected secret store. The supported Unix installation uses root ownership, `0700` directories, `0600` configuration/key material, a dedicated controller checkout or package version, and a separate bare Git mirror.
 16. Production deploy code may run only after signed authorization and trusted qualification. Candidate code never receives the controller signing key or raw production SSH private key.
-17. Direct master pushes and merges cannot be prevented on this GitHub plan, so they are detected and reported. They remain undeployable until independently governed promotion evidence and production authorization exist.
+17. Direct master pushes and merges cannot be prevented on this GitHub plan, so they are detected and reported. They remain undeployable until they are reconciled through `staging` and governed promotion evidence exists. A future direct-master override would require a separate ADR and controller tests proving equivalent exact-SHA, inventory, QA, local qualification, evidence-hash, payment, and production-authorization controls.
 18. `ENABLE_AUTO_PRODUCTION_DEPLOY` remains `0`. GitHub production workflows only build dry-run candidate bundles.
 19. GitHub may create or update the promotion PR, but only the external promotion controller may merge it.
 

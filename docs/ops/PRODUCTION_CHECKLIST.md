@@ -16,9 +16,11 @@ Use this checklist for every production release under ADR 0030.
 ## Promotion Authorization
 
 - [ ] `origin/staging` equals the intended exact candidate SHA.
+- [ ] Developer feature-branch and conflict-resolution work is present in that final staging SHA; no slice is excluded merely because its source branch is not `staging`.
 - [ ] Staging qualification passed and required checks have immutable URLs.
 - [ ] Exactly one reviewed batch manifest exists in the candidate diff.
 - [ ] Strict version 2 inventory validation passes with exact file coverage.
+- [ ] Every slice has classified provenance: `developer_pr`, `owner_direct_staging`, or `controller_promotion`.
 - [ ] QA summary and isolation proof pass for the exact staging SHA.
 - [ ] Promotion PR is `staging -> master` and its head SHA matches.
 - [ ] Owner signed a `phase=promotion` annotated tag with current inventory/evidence hashes, expiry, PR, payment flag, and fresh nonce.
@@ -28,7 +30,7 @@ Use this checklist for every production release under ADR 0030.
 
 ## Production Authorization
 
-- [ ] Resulting `origin/master` SHA has structural governed-promotion evidence.
+- [ ] Resulting `origin/master` SHA has structural governed-promotion evidence. Direct-master work has been reconciled through `staging` before production authorization.
 - [ ] Exact-master candidate evidence and controller-local qualification pass.
 - [ ] Owner signed a new `phase=production` tag for the resulting master SHA.
 - [ ] Payment-sensitive releases have a separate payment tag bound to the master SHA.

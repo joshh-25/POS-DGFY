@@ -51,12 +51,13 @@ feature PR -> staging CI -> reviewed batch document -> isolated QA
 2. Owner direct pushes to `staging` still require complete staging qualification and reviewed batch documentation.
 3. GitHub automation may create or update `staging -> master` PRs. It must never merge them.
 4. `master` is production-candidate source only; being on master does not make a commit deployable.
-5. Every master update is audited. Direct pushes and merges without governed promotion evidence are reported and remain undeployable through the controller.
-6. Production uses the exact current `origin/master` SHA. Any movement invalidates the authorization attempt.
+5. The controller evaluates the final resolved SHA, not the original source branch names. Feature branches, developer PRs, and conflict-resolution commits are eligible for production when they are included in the exact qualified `origin/staging` SHA and mapped in reviewed batch inventory.
+6. Every master update is audited. Direct pushes and merges without governed promotion evidence are reported and remain undeployable through the controller until the work is reconciled through `staging` and promoted through the governed path.
+7. Production uses the exact current `origin/master` SHA. Any movement invalidates the authorization attempt.
 
 ## Reviewed Batch Inventory
 
-Draft inventory generation may occur during development. Before promotion authorization, a human-reviewed batch document must provide non-placeholder summaries, exact file coverage, owner and PR attribution, test evidence references, rollback notes, required documentation, payment sensitivity, and production proof requirements.
+Draft inventory generation may occur during development. Before promotion authorization, a human-reviewed batch document must provide non-placeholder summaries, exact file coverage, owner and PR attribution, source branch or owner-direct-staging attribution for each slice, test evidence references, rollback notes, required documentation, payment sensitivity, and production proof requirements. The source branch may be a developer feature branch; it does not need to be named `staging` when the slice is present in the final staging candidate.
 
 Strict validation rejects:
 
@@ -66,6 +67,7 @@ Strict validation rejects:
 4. Missing owner, source branch, source PR, reviewer, or review timestamp.
 5. Missing or draft batch documentation.
 6. Payment-sensitive files without separate signed payment authorization.
+7. Unclassified provenance such as a direct-master change pretending to be ordinary developer PR work.
 
 The controller hashes the exact reviewed inventory bytes with SHA-256. The owner authorization tag binds that hash.
 
@@ -103,6 +105,8 @@ The external controller must refuse promotion when:
 6. A payment-sensitive candidate lacks separate payment authorization.
 
 After verification, the controller invokes a head-SHA-pinned PR merge. The merge result is a new SHA and needs separate production authorization.
+
+The promotion controller must not reject a release because a slice originated on `feature/*`, `bugfix/*`, or another developer branch. Branch origin is provenance. The deployable object is the exact qualified staging SHA plus its reviewed inventory.
 
 ## Production Controller
 
