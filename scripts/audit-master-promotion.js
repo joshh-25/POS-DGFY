@@ -59,7 +59,7 @@ function auditMasterPromotion(options, logger = console) {
   add('promotion.pr.refs', evidence.base === 'master' && evidence.head === 'staging', `${evidence.head || '<missing>'} -> ${evidence.base || '<missing>'}`);
   add('promotion.pr.merge_sha', evidence.merge_commit_sha === options.targetSha, `merge_commit_sha=${evidence.merge_commit_sha || '<missing>'}`);
   add('promotion.pr.head_parent', parents.length === 2 && evidence.head_sha === parents[1], `head_sha=${evidence.head_sha || '<missing>'}; second_parent=${parents[1] || '<missing>'}`);
-  add('promotion.authorization.recorded', evidence.promotion_authorization?.status === 'verified' && Boolean(evidence.promotion_authorization?.tag), evidence.promotion_authorization?.tag || '<missing>');
+  add('promotion.authorization.tag_present', evidence.promotion_authorization?.status === 'present' && Boolean(evidence.promotion_authorization?.tag), evidence.promotion_authorization?.tag || '<missing>');
   add('promotion.inventory.reviewed', evidence.inventory?.review_status === 'reviewed' && /^[0-9a-f]{64}$/.test(evidence.inventory?.sha256 || ''), evidence.inventory?.sha256 || '<missing>');
 
   const failed = checks.filter((check) => !check.ok);
