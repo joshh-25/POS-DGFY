@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-06-16
+Last updated: 2026-06-29
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -16,6 +16,7 @@ Overall status: in_progress
 8. Frontend build toolchain requirements are now documented for release: the merged lockfile targets Vite 8 / `@vitejs/plugin-react` 6, so deterministic frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`).
 9. POS terminal-unlock hardening and POS configuration/compliance metadata changes are production-deployed in the current commit chain. Operational UAT still must prove admin approval, cashier login, checkout, receipt/history, and source-separation workflows with real operators.
 10. Item/product modal wizard image upload fixes are production-deployed in the current commit chain. POS Controls no longer has a separate image upload action; Storefront Catalog is the single wizard item-image upload surface, POS terminal catalog rows fall back to the shared primary item image when no legacy POS-only image exists, and Storefront gallery append updates load the primary key so existing galleries can grow beyond one image up to the five-image cap.
+11. PR #25 safe-adoption source work is implemented but not yet staging-approved. Terminal pairing, administrator no-shift navigation, cashier-focused navigation, and POS Always Available require the rendered and seeded UAT rows added to the canonical checklist.
 
 ## 2) Current Behavior Snapshot
 

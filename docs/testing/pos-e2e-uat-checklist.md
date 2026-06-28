@@ -40,6 +40,7 @@ Execution support artifacts:
 7. Admin role has settings + reports/sales visibility permissions.
 8. Terminal identity policy is known for the test tenant (`warn` or `enforce`) and at least one active registry entry exists when `enforce` is enabled.
 9. If testing a DGFY-created company account, confirm `POST /api/v1/auth/lookup` resolves the cashier/admin email to the intended tenant before password validation.
+10. Every active test terminal has a terminal password configured in Settings; the test operator knows one correct and one incorrect value.
 
 ## 3) Admin UAT Scenarios
 
@@ -123,6 +124,44 @@ Expected:
 
 Evidence:
 - Screenshot of cart before checkout
+
+### 4.1B DGFY Terminal Pairing and Role Navigation
+1. Authenticate with DGFY, select an authorized company, select a terminal, and
+   enter its terminal password.
+2. Repeat with a wrong terminal password, inactive terminal, unauthorized
+   location, removed membership, and changed terminal password.
+3. As admin, dismiss the open-shift prompt and open Items and Reports.
+4. As cashier, confirm settings/report/admin navigation is hidden.
+5. With no shift, attempt checkout, drawer opening, and receipt printing.
+
+Expected:
+1. Only the valid identity/company/terminal/password combination pairs.
+2. Binding changes invalidate the pairing without exposing a hash or token.
+3. Admin read/configuration navigation works without opening a shift.
+4. Cashier navigation remains focused and every transactional action remains
+   blocked without a shift.
+
+Evidence:
+- Desktop, tablet, and mobile screenshots of pair, denial, admin, and cashier states
+- Sanitized Network capture for `/pos/terminal/pair` and `/pos/terminal/paired`
+- Backend denial response for a changed terminal or membership binding
+
+### 4.1C POS Always Available
+1. Configure one POS-visible item as Always Available and leave stock at zero.
+2. Keep a second zero-stock item stock-controlled.
+3. Complete a mixed checkout containing a stocked line and the Always Available line.
+
+Expected:
+1. The Always Available row is addable and clearly labelled.
+2. The stock-controlled zero-stock row remains blocked.
+3. The exempt transaction line records `stock_effect_type=stock_exempt` and
+   `stock_exempt_reason=pos_always_available` with no Inventory movement.
+4. The stocked line still creates the normal Inventory goods issue.
+5. Storefront visibility and availability remain unchanged.
+
+Evidence:
+- Item setup and POS catalog screenshots
+- Read-only transaction-line and stock-movement query output
 
 ### 4.1A POS Scroll Behavior (Terminal + IMS Standalone)
 1. In terminal workspace (`/terminal`) on desktop (`>=1536px`), verify `Scroll Zone: Catalog` and `Scroll Zone: Current Sale` badges are shown.
