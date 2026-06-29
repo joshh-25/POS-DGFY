@@ -114,10 +114,25 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).not.toContain('if (!isFnbOrderSubpage) return;');
     expect(source).toContain("const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);");
     expect(source).toContain('const canRefreshBackgroundPins = !isStoreTrackingRoute;');
-    expect(source).toContain('const selectedPollMs = typeof document !==');
-    expect(source).toContain('90000 : 45000');
+    expect(source).toContain('const selectedPollMs = resolveSelectedTrackingPollMs({');
+    expect(source).toContain("visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible'");
+    expect(source).toContain('status: trackingResult?.status');
     expect(source).toContain('300000 : 180000');
     expect(source).toContain('setIsGuestTrackingDrawerOpen(false);');
+  });
+
+  it('keeps signed-in standalone tracking live through SSE with polling repair', () => {
+    const source = appSource();
+
+    expect(source).toContain('const hasVisibleCustomerTrackingSurface = isAccountDrawerOpen');
+    expect(source).toContain('|| isStandaloneTrackingPage');
+    expect(source.match(/if \(!hasVisibleCustomerTrackingSurface\) return undefined;/g)).toHaveLength(2);
+    expect(source).toContain("source.addEventListener('activity.updated'");
+    expect(source).toContain('mergeLiveAccountActivity(payload.activity);');
+    expect(source).toContain('source.onerror = () => {');
+    expect(source).toContain('void handleLoadAccountPanel();');
+    expect(source).toContain('dedupeActiveCustomerOrders(accountPanel.orders)');
+    expect(source).toContain('mergeVisibleTrackingResult(previous, activity)');
   });
 
   it('supports guest-or-account checkout entry while preserving auth draft resume state', () => {
