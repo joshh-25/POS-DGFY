@@ -29,9 +29,10 @@ Production proof refreshed on 2026-06-29 Asia/Manila from live VPS state:
 Staging branch proof refreshed on 2026-06-29:
 
 - `origin/master`: `17bb4cd1bc0abf283b224e30c02f625884e8ffae`
-- `origin/staging`: `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de`
+- Current `origin/staging`: `04eecf32b3801444d22be84984564933b357b768`
 - `origin/staging` contains production commit `17bb4cd1bc0abf283b224e30c02f625884e8ffae`.
 - `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de` is the staging merge commit that preserved staging-only release-governance work and merged the deployed production hotfix stack into staging.
+- `04eecf32b3801444d22be84984564933b357b768` is the docs-only staging head that refreshed this production/staging release-state documentation after the merge.
 
 ## Release Gate Evidence
 
@@ -73,7 +74,7 @@ The repository may be ahead of production after this docs-only cleanup. Treat ne
 
 Production-live runtime remains `17bb4cd1bc0abf283b224e30c02f625884e8ffae` until the next deploy updates remote `HEAD`, `.deploy-state/last_deployed_commit`, and live health runtime SHA.
 
-Staging currently includes production plus staging-only governance history at `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de`. That staging SHA is not itself production-live.
+Staging currently includes production plus staging-only governance history through merge commit `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de`, with docs-only head `04eecf32b3801444d22be84984564933b357b768`. Neither staging SHA is production-live.
 
 ## Remaining Release Caveats
 
