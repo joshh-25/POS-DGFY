@@ -26,6 +26,40 @@ describe('storefront error message normalization', () => {
     expect(message).toContain('Fix required');
   });
 
+  it('maps checkout validation detail arrays to field-specific copy', () => {
+    expect(normalizeStorefrontErrorMessage({
+      errorCode: 'VALIDATION_FAILED',
+      message: 'Validation failed',
+      payload: {
+        errors: [{ field: 'payment_type', message: '"payment_type" must be one of [cash]' }]
+      }
+    })).toBe('Choose a valid payment method before placing the order.');
+
+    expect(normalizeStorefrontErrorMessage({
+      errorCode: 'VALIDATION_FAILED',
+      message: 'Validation failed',
+      details: [{ field: 'customer_email', message: '"customer_email" must be a valid email' }]
+    })).toBe('Enter a valid email address or leave it blank.');
+
+    expect(normalizeStorefrontErrorMessage({
+      errorCode: 'VALIDATION_FAILED',
+      message: 'Validation failed',
+      errors: [{ field: 'lines', message: '"lines" must contain at least 1 items' }]
+    })).toBe('Your cart is empty or contains an invalid item. Review the cart and try again.');
+
+    expect(normalizeStorefrontErrorMessage({
+      errorCode: 'VALIDATION_FAILED',
+      message: 'Validation failed',
+      details: [{ field: 'delivery_address', message: '"delivery_address" is required' }]
+    })).toBe('Delivery address is required for delivery orders.');
+
+    expect(normalizeStorefrontErrorMessage({
+      errorCode: 'VALIDATION_FAILED',
+      message: 'Validation failed',
+      details: [{ field: 'idempotency_key', message: '"idempotency_key" is required' }]
+    })).toBe('Checkout session expired. Refresh the cart and try again.');
+  });
+
   it('maps customer access mode blocks to Storefront mode copy', () => {
     const message = normalizeStorefrontErrorMessage({
       errorCode: 'CUSTOMER_ACCESS_MODE_BLOCKED',
