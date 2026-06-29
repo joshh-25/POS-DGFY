@@ -15,7 +15,7 @@ export const TERMINAL_CUSTOMER_TRACKING_STATUSES = new Set([
 ]);
 
 export const CUSTOMER_TRACKING_POLL_INTERVALS = Object.freeze({
-  visibleActive: 4000,
+  visibleActive: 5000,
   visibleTerminal: 30000,
   hidden: 90000
 });
@@ -33,6 +33,19 @@ const normalizeReference = (order = {}) => String(
 const getOrderTimestamp = (order = {}) => (
   Date.parse(order.occurred_at || order.updated_at || order.created_at || 0) || 0
 );
+
+export const buildTrackingPinKey = (orders = [], {
+  enabled = true,
+  excludePin = ''
+} = {}) => {
+  if (!enabled) return '';
+  const normalizedExcludePin = String(excludePin || '').trim().toUpperCase();
+  return Array.from(new Set(
+    (Array.isArray(orders) ? orders : [])
+      .map((entry) => String(entry?.tracking_pin || '').trim().toUpperCase())
+      .filter((pin) => Boolean(pin) && pin !== normalizedExcludePin)
+  )).sort().join('|');
+};
 
 export const dedupeActiveCustomerOrders = (orders = []) => {
   const newestByReference = new Map();
@@ -76,4 +89,67 @@ export const resolveSelectedTrackingPollMs = ({
     return CUSTOMER_TRACKING_POLL_INTERVALS.visibleTerminal;
   }
   return CUSTOMER_TRACKING_POLL_INTERVALS.visibleActive;
+};
+
+export const resolveTrackingRetryDelayMs = ({
+  error = null,
+  normalDelayMs = CUSTOMER_TRACKING_POLL_INTERVALS.visibleActive
+} = {}) => {
+  const normalizedDelayMs = Math.max(0, Number(normalDelayMs) || 0);
+  const retryAfterSeconds = Number(error?.retryAfterSeconds);
+  if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) return normalizedDelayMs;
+  return Math.max(normalizedDelayMs, Math.ceil(retryAfterSeconds * 1000));
+};
+
+export const createCompletionTrackingScheduler = ({
+  poll,
+  resolveDelayMs,
+  setTimeoutFn = globalThis.setTimeout,
+  clearTimeoutFn = globalThis.clearTimeout
+} = {}) => {
+  if (typeof poll !== 'function') throw new TypeError('poll must be a function');
+  if (typeof resolveDelayMs !== 'function') throw new TypeError('resolveDelayMs must be a function');
+
+  let timerId = null;
+  let stopped = true;
+  let inFlight = false;
+
+  const schedule = (delayMs) => {
+    if (stopped) return;
+    timerId = setTimeoutFn(run, Math.max(0, Number(delayMs) || 0));
+  };
+
+  const run = async () => {
+    if (stopped || inFlight) return;
+    inFlight = true;
+    let result = null;
+    let error = null;
+    try {
+      result = await poll();
+    } catch (pollError) {
+      error = pollError;
+    } finally {
+      inFlight = false;
+    }
+    if (!stopped) schedule(resolveDelayMs({ result, error }));
+  };
+
+  return {
+    start() {
+      if (!stopped) return;
+      stopped = false;
+      void run();
+    },
+    stop() {
+      stopped = true;
+      if (timerId !== null) clearTimeoutFn(timerId);
+      timerId = null;
+    },
+    runNow() {
+      return run();
+    },
+    isInFlight() {
+      return inFlight;
+    }
+  };
 };

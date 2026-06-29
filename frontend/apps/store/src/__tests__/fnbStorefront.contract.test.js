@@ -110,14 +110,23 @@ describe('Food & Beverage storefront contract', () => {
     const source = appSource();
 
     expect(source).toContain('const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;');
+    expect(source).toContain('const isFnbOrderSubpage = isFnbMode && isResolvedOrderSubpage;');
+    expect(source).toContain("const isStandaloneTrackingPage = Boolean(trackingResult) && isResolvedOrderSubpage && checkoutTab === 'track';");
     expect(source).toContain('const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;');
     expect(source).not.toContain('if (!isFnbOrderSubpage) return;');
     expect(source).toContain("const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);");
-    expect(source).toContain('const canRefreshBackgroundPins = !isStoreTrackingRoute;');
-    expect(source).toContain('const selectedPollMs = resolveSelectedTrackingPollMs({');
+    expect(source).toContain('return buildTrackingPinKey(guestTrackedOrders, {');
+    expect(source).toContain('enabled: !isStoreTrackingRoute');
+    expect(source).toContain("guestTrackingBackgroundPinsKey.split('|').filter(Boolean)");
+    expect(source).toContain('createCompletionTrackingScheduler({');
+    expect(source).toContain('resolveTrackingRetryDelayMs({ error, normalDelayMs })');
     expect(source).toContain("visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible'");
-    expect(source).toContain('status: trackingResult?.status');
+    expect(source).not.toContain('window.setInterval(refreshSelectedPin');
+    expect(source).not.toContain('guestTrackedOrders, isFnbOrderSubpage');
+    expect(source).not.toContain('trackingResult?.status]);');
     expect(source).toContain('300000 : 180000');
+    expect(source).toContain('Tracking temporarily unavailable');
+    expect(source).toContain('Automatic tracking will retry after the server wait period.');
     expect(source).toContain('setIsGuestTrackingDrawerOpen(false);');
   });
 

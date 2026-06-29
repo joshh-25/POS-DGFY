@@ -60,4 +60,26 @@ describe('Storefront requestJson CSRF/session helper', () => {
     expect(headers['x-store-slug']).toBe('space-bar');
     expect(headers['x-csrf-token']).toBeUndefined();
   });
+
+  it('exposes retry metadata from a 429 response for completion-based schedulers', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      headers: { get: vi.fn().mockReturnValue('120') },
+      json: async () => ({
+        success: false,
+        message: 'Too many tracking refresh requests.',
+        retryAfterSeconds: 878,
+        limitScope: 'store_tracking_read'
+      })
+    });
+
+    await expect(requestJson('/api/v1/store/track/SK-ORDER01', {
+      storeSlug: 'space-bar'
+    })).rejects.toMatchObject({
+      status: 429,
+      retryAfterSeconds: 878,
+      payload: expect.objectContaining({ limitScope: 'store_tracking_read' })
+    });
+  });
 });

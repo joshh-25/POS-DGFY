@@ -12,7 +12,7 @@ import {
     createPublicReservation as createPublicFnbReservation
 } from '../modules/fnb/controllers/fnbHandlers.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
-import { storeAuthLimiter, storeTrackingLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
+import { storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
 import { validateInventoryPush } from '../validators/geoSearchValidator.js';
 import { enqueueInventoryPush } from '../workers/geoInventoryWorker.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
@@ -101,7 +101,7 @@ router.post('/services/bookings/:public_reference/claim', requireWorkflowCapabil
 router.post('/services/waitlist', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceWaitlistEntry, createPublicServiceWaitlistEntry);
 router.post('/fnb/reservations', requireWorkflowCapability('fnbDining', 'Food & Beverage'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateFnbReservation, createPublicFnbReservation);
 
-router.get('/track/:tracking_pin', storeTrackingLimiter, trackingReadCacheControl, validateStoreTrackingPinParam, storeController.trackOrder);
+router.get('/track/:tracking_pin', storeTrackingReadLimiter, trackingReadCacheControl, validateStoreTrackingPinParam, storeController.trackOrder);
 router.post('/orders/:tracking_pin/claim', setNoStoreCacheControl, storeTrackingLimiter, authenticateStoreCustomer, validateStoreTrackingPinParam, validateStoreClaimOrder, storeController.claimOrder);
 router.patch('/orders/:tracking_pin/cancel', setNoStoreCacheControl, storeTrackingLimiter, optionalStoreCustomer, validateStoreTrackingPinParam, validateStoreCancelOrder, storeController.cancelOrder);
 router.get('/orders', setNoStoreCacheControl, authenticateStoreCustomer, validateStoreOrderHistoryQuery, storeController.listStoreCustomerOrders);
