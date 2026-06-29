@@ -6127,6 +6127,7 @@ export default function StorefrontApp() {
     supporting: supportingSectionModel
   } = pageModel;
   const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
+  const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;
   const isStandaloneTrackingPage = Boolean(trackingResult) && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
@@ -6992,14 +6993,15 @@ export default function StorefrontApp() {
   }, [isAccountDrawerOpen, isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen, isStandaloneAccountPage]);
 
   useEffect(() => {
-    if (!isFnbOrderSubpage) return;
+    const routeWantsTrack = isStoreTrackingRoute;
+    const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;
+    if (!shouldInitializeTrackingRoute) return;
     const resolvedSlug = toSlug(selectedStore?.slug || routeSlug);
     const persistedTrackedOrders = readTrackedOrdersForStore(resolvedSlug).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const persistedTrackingPin = readLastTrackingPinForStore(resolvedSlug);
     const routeTrackingPin = readTrackingPinFromQuery();
-    const routeWantsTrack = routeSubpage === STORE_TRACK_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
     const preferredPin = String(routeTrackingPin || persistedTrackedOrders[0]?.tracking_pin || persistedTrackingPin || '').trim().toUpperCase();
-    const preferredTab = pendingOrderInitialTab || (routeWantsTrack && preferredPin ? 'track' : 'checkout');
+    const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');
     if (!trackingPinInput && preferredPin) {
       setTrackingPinInput(preferredPin);
     }
@@ -7007,7 +7009,7 @@ export default function StorefrontApp() {
     setCheckoutTab(preferredTab);
     setPendingOrderInitialTab('');
     setIsCheckoutOpen(false);
-  }, [currentPathSubpage, isFnbOrderSubpage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
+  }, [isFnbOrderSubpage, isStoreTrackingRoute, pendingOrderInitialTab, routeSlug, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
 
   useEffect(() => {
     const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
@@ -10470,20 +10472,22 @@ export default function StorefrontApp() {
   }, [routeSlug, selectedStore?.slug]);
 
   useEffect(() => {
-    if (!(checkoutTab === 'track' && isFnbOrderSubpage) || !selectedStore?.slug) return;
+    const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);
+    if (!shouldPollTrackingRoute || !selectedStore?.slug) return;
     const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
+    const canRefreshBackgroundPins = !isStoreTrackingRoute;
     const backgroundPins = Array.from(
       new Set(
         guestTrackedOrders
           .map((entry) => String(entry.tracking_pin || '').trim().toUpperCase())
-          .filter((pin) => Boolean(pin) && pin !== selectedPin)
+          .filter((pin) => canRefreshBackgroundPins && Boolean(pin) && pin !== selectedPin)
       )
     );
     if (!selectedPin && backgroundPins.length === 0) return;
 
     let cancelled = false;
-    const selectedPollMs = typeof document !== 'undefined' && document.hidden ? 8000 : 2000;
-    const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 30000 : 12000;
+    const selectedPollMs = typeof document !== 'undefined' && document.hidden ? 90000 : 45000;
+    const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 300000 : 180000;
 
     const refreshSelectedPin = async () => {
       if (!selectedPin) return;
@@ -10525,7 +10529,7 @@ export default function StorefrontApp() {
       if (selectedTimerId) window.clearInterval(selectedTimerId);
       if (backgroundTimerId) window.clearInterval(backgroundTimerId);
     };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
+  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, isStoreTrackingRoute, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
 
   const handleLoadAccountPanel = async () => {
     const dgfyToken = readDgfyAuthToken();
@@ -10803,17 +10807,11 @@ export default function StorefrontApp() {
     }
   }, [isDgfyCustomerSignedIn]);
   useEffect(() => {
-    const routeWantsTrack = routeSubpage === STORE_TRACK_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
-    if (!routeWantsTrack || !isFnbMode || !canOpenTrackingDrawer || trackingResult) return;
-    if (isDgfyCustomerSignedIn) {
-      void handleLoadAccountPanel();
-    }
+    const routeWantsTrack = isStoreTrackingRoute;
+    if (!routeWantsTrack) return;
     setIsCheckoutOpen(false);
-    setIsGuestTrackingDrawerOpen(true);
-    if (!selectedTrackingPin) {
-      setCheckoutTab('checkout');
-    }
-  }, [canOpenTrackingDrawer, currentPathSubpage, isDgfyCustomerSignedIn, isFnbMode, routeSubpage, selectedTrackingPin, trackingResult]);
+    setIsGuestTrackingDrawerOpen(false);
+  }, [isStoreTrackingRoute]);
   useEffect(() => {
     if (typeof window === 'undefined' || hasAppliedCheckoutAuthResume || !isDgfyCustomerSignedIn) return;
     const draft = readCheckoutAuthResumeDraft();
