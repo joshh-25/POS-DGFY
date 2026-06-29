@@ -113,6 +113,12 @@ import {
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
 import {
+  TERMINAL_CUSTOMER_TRACKING_STATUSES,
+  dedupeActiveCustomerOrders,
+  mergeVisibleTrackingResult,
+  resolveSelectedTrackingPollMs
+} from './tracking/customerTrackingRefresh.js';
+import {
   DiscoveryCategoryRail,
   DiscoveryHeader,
   DiscoveryHero,
@@ -1356,7 +1362,7 @@ const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_
 const STOREFRONT_CHECKOUT_AUTH_RESUME_KEY = 'dgfy_store_checkout_auth_resume_v1';
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
-const TERMINAL_TRACKING_STATUSES = new Set(['completed', 'delivered', 'picked_up', 'cancelled', 'rejected']);
+const TERMINAL_TRACKING_STATUSES = TERMINAL_CUSTOMER_TRACKING_STATUSES;
 const DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES = new Set(['order', 'pos_order', 'fnb_order']);
 const DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
 const EMPTY_ACCOUNT_PANEL = Object.freeze({
@@ -6287,12 +6293,14 @@ export default function StorefrontApp() {
     return initials || 'GU';
   }, [accountDisplayName]);
   const activeCustomerOrders = useMemo(() => {
-    const activeStatuses = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']);
-    return (Array.isArray(accountPanel.orders) ? accountPanel.orders : []).filter((order) => (
-      activeStatuses.has(String(order?.status || '').trim().toLowerCase())
-    ));
+    return dedupeActiveCustomerOrders(accountPanel.orders);
   }, [accountPanel.orders]);
   const activeCustomerOrderCount = activeCustomerOrders.length;
+  const hasVisibleCustomerTrackingSurface = isAccountDrawerOpen
+    || isStandaloneAccountPage
+    || isGuestTrackingDrawerOpen
+    || isStandaloneTrackingPage
+    || activeCustomerOrderCount > 0;
   const accountTrackedOrders = useMemo(() => (
     mergeTrackedOrderEntries(
       activeCustomerOrders
@@ -6310,16 +6318,7 @@ export default function StorefrontApp() {
         ? { ...previous, ...activity }
         : previous;
     });
-    setTrackingResult((previous) => {
-      const previousPin = String(previous?.tracking_pin || previous?.order?.tracking_pin || '').trim().toUpperCase();
-      if (!normalizedReference || previousPin !== normalizedReference) return previous;
-      return {
-        ...previous,
-        status: activity.status || previous?.status,
-        status_label: activity.status_label || activity.status || previous?.status_label,
-        updated_at: activity.updated_at || activity.occurred_at || previous?.updated_at
-      };
-    });
+    setTrackingResult((previous) => mergeVisibleTrackingResult(previous, activity));
   }, []);
   const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
   const canOpenTrackingDrawer = (isDgfyCustomerSignedIn || isGuestStorefrontUser) && !isStandaloneTrackingPage;
@@ -7062,11 +7061,7 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
-    const shouldPollAccountOrders = isAccountDrawerOpen
-      || isStandaloneAccountPage
-      || isGuestTrackingDrawerOpen
-      || activeCustomerOrderCount > 0;
-    if (!shouldPollAccountOrders) return undefined;
+    if (!hasVisibleCustomerTrackingSurface) return undefined;
     let cancelled = false;
     const refreshAccountOrders = async () => {
       if (cancelled || accountPanelRefreshInFlightRef.current) return;
@@ -7097,19 +7092,13 @@ export default function StorefrontApp() {
     };
   }, [
     activeCustomerOrderCount,
-    isAccountDrawerOpen,
-    isDgfyCustomerSignedIn,
-    isGuestTrackingDrawerOpen,
-    isStandaloneAccountPage
+    hasVisibleCustomerTrackingSurface,
+    isDgfyCustomerSignedIn
   ]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof EventSource === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
-    const shouldStreamAccountEvents = isAccountDrawerOpen
-      || isStandaloneAccountPage
-      || isGuestTrackingDrawerOpen
-      || activeCustomerOrderCount > 0;
-    if (!shouldStreamAccountEvents) return undefined;
+    if (!hasVisibleCustomerTrackingSurface) return undefined;
 
     let closed = false;
     const source = new EventSource(withApiOrigin('/api/v1/dgfy/customer/events'), { withCredentials: true });
@@ -7182,11 +7171,8 @@ export default function StorefrontApp() {
       source.close();
     };
   }, [
-    activeCustomerOrderCount,
-    isAccountDrawerOpen,
+    hasVisibleCustomerTrackingSurface,
     isDgfyCustomerSignedIn,
-    isGuestTrackingDrawerOpen,
-    isStandaloneAccountPage,
     mergeLiveAccountActivity
   ]);
 
@@ -10486,7 +10472,10 @@ export default function StorefrontApp() {
     if (!selectedPin && backgroundPins.length === 0) return;
 
     let cancelled = false;
-    const selectedPollMs = typeof document !== 'undefined' && document.hidden ? 90000 : 45000;
+    const selectedPollMs = resolveSelectedTrackingPollMs({
+      visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible',
+      status: trackingResult?.status
+    });
     const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 300000 : 180000;
 
     const refreshSelectedPin = async () => {
@@ -10529,7 +10518,7 @@ export default function StorefrontApp() {
       if (selectedTimerId) window.clearInterval(selectedTimerId);
       if (backgroundTimerId) window.clearInterval(backgroundTimerId);
     };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, isStoreTrackingRoute, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
+  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, isStoreTrackingRoute, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput, trackingResult?.status]);
 
   const handleLoadAccountPanel = async () => {
     const dgfyToken = readDgfyAuthToken();
