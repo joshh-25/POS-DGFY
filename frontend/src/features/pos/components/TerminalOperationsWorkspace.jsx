@@ -20,6 +20,7 @@ import {
   Plus,
   Receipt,
   RefreshCcw,
+  Search,
   Settings2,
   ShieldCheck,
   Star,
@@ -28,7 +29,8 @@ import {
   Tags,
   Trash2,
   TrendingUp,
-  Truck
+  Truck,
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -679,7 +681,36 @@ function ShiftControlsWorkspace({
               ))}
             </select>
 
-            <div className="mt-4 border-t border-slate-200 pt-4">
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 md:hidden">
+              <div className="flex flex-col gap-0.5">
+                <p className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[0]?.label}</p>
+                <p className={`${summaryRows[0]?.valueClassName} break-words leading-6`}>{summaryRows[0]?.value}</p>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[1]?.label}</p>
+                  <p className={`${summaryRows[1]?.valueClassName} break-words leading-6`}>{summaryRows[1]?.value}</p>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[2]?.label}</p>
+                  <p className={`${summaryRows[2]?.valueClassName} break-words leading-6`}>{summaryRows[2]?.value}</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                {summaryRows.slice(3, 6).map((row) => (
+                  <div key={`shift-summary-mobile-${row.label}`} className="flex flex-col gap-0.5">
+                    <span className="text-[12px] font-medium text-[#5B6B86]">{row.label}</span>
+                    <span className={`${row.valueClassName} break-words leading-6`}>{row.value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[6]?.label}</span>
+                <span className={`${summaryRows[6]?.valueClassName} break-words leading-6`}>{summaryRows[6]?.value}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 hidden border-t border-slate-200 pt-4 md:block">
               <div className="grid gap-0 md:grid-cols-2">
                 <div className="space-y-0 md:border-r md:border-slate-200 md:pr-4">
                   {summaryRows.slice(0, 4).map((row, index) => {
@@ -943,7 +974,7 @@ function ShiftControlsWorkspace({
     <div id={sectionId} className="space-y-4">
       <h2 className="sr-only">Shift Controls</h2>
       <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70">
-        <div className="grid gap-2 md:grid-cols-3">
+        <div className="hidden gap-2 sm:grid md:grid-cols-3">
           {SHIFT_TABS.map((tab) => {
             const TabIcon = tab.icon;
             const active = activeTab === tab.id;
@@ -960,6 +991,29 @@ function ShiftControlsWorkspace({
               >
                 <TabIcon className="h-4 w-4" />
                 {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 sm:hidden">
+          {SHIFT_TABS.map((tab) => {
+            const TabIcon = tab.icon;
+            const active = activeTab === tab.id;
+            const isShiftLocation = tab.id === 'shift_location';
+            return (
+              <button
+                key={`mobile-${tab.id}`}
+                type="button"
+                onClick={() => handleTabChange(tab.id)}
+                className={`inline-flex min-h-14 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black transition ${isShiftLocation ? 'min-w-0 flex-1' : 'shrink-0'} ${
+                  active
+                    ? 'bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
+                    : 'bg-slate-50 text-[#0F172A] hover:bg-slate-100'
+                }`}
+              >
+                <TabIcon className="h-4 w-4 shrink-0" />
+                <span className="text-center leading-tight">{tab.label}</span>
               </button>
             );
           })}
@@ -1090,6 +1144,7 @@ function ItemsWorkspace({
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
+  const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
   const [posFolders, setPosFolders] = useState([]);
@@ -1687,7 +1742,7 @@ function ItemsWorkspace({
   return (
     <div id={sectionId} className="space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
-        <div className="grid w-full gap-3 xl:w-auto xl:grid-cols-[minmax(18rem,24rem)_12rem_13rem_auto]">
+        <div className="hidden w-full gap-3 sm:grid xl:w-auto xl:grid-cols-[minmax(18rem,24rem)_12rem_13rem_auto]">
             <div>
               <Label htmlFor="pos-items-search" className="text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B]">Search</Label>
               <Input
@@ -1739,6 +1794,75 @@ function ItemsWorkspace({
                 Add Item
               </Button>
             ) : null}
+        </div>
+
+        <div className="sm:hidden">
+          {isMobileSearchActive ? (
+            <div className="flex items-center gap-2">
+              <Input
+                id="pos-items-search-mobile"
+                autoFocus
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search by item name, SKU, or barcode"
+                className="h-11 min-w-0 flex-1 rounded-xl border-slate-200 bg-slate-50/70"
+              />
+              <button
+                type="button"
+                onClick={() => setIsMobileSearchActive(false)}
+                aria-label="Close search"
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsMobileSearchActive(true)}
+                aria-label="Search items"
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50/70 text-[#1A4E8D]"
+              >
+                <Search className="h-5 w-5" />
+              </button>
+              <select
+                id="pos-items-category-filter-mobile"
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+                className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-2 text-xs text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
+              >
+                {categoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'all' ? 'All Filters' : option}
+                  </option>
+                ))}
+              </select>
+              <select
+                id="pos-items-stock-filter-mobile"
+                value={stockFilter}
+                onChange={(event) => setStockFilter(event.target.value)}
+                className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-2 text-xs text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
+              >
+                <option value="all">All Stock</option>
+                <option value="in_stock">In stock</option>
+                <option value="low_stock">Low stock</option>
+                <option value="almost_out">Almost out</option>
+                <option value="out_of_stock">Out of stock</option>
+              </select>
+            </div>
+          )}
+          {canCreateItems ? (
+            <Button
+              type="button"
+              onClick={openCreate}
+              disabled={locked || creatingItem}
+              className="mt-2 h-11 w-full rounded-xl bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15 hover:bg-[#143F73]"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Item
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -4580,7 +4704,7 @@ function SettingsWorkspace({
   return (
     <div id={sectionId} className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
-        <div className="grid gap-2 md:grid-cols-3">
+        <div className="hidden gap-2 sm:grid md:grid-cols-3">
           {SETTINGS_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -4597,6 +4721,28 @@ function SettingsWorkspace({
               >
                 <Icon className="h-4.5 w-4.5" />
                 <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 sm:hidden">
+          {SETTINGS_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={`mobile-${tab.id}`}
+                type="button"
+                onClick={() => handleTabChange(tab.id)}
+                className={`flex min-h-14 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-extrabold transition ${
+                  active
+                    ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
+                    : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="text-center leading-tight">{tab.label}</span>
               </button>
             );
           })}

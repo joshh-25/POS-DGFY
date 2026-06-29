@@ -3,6 +3,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
+  Calendar,
   CalendarRange,
   Download,
   Filter,
@@ -384,29 +385,65 @@ function PosReportsAnalyticsWorkspace({
 
   return (
     <div id={sectionId} className="space-y-4">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:hidden">
+        <div className="flex items-center gap-2">
+          <label className="min-w-0 flex-1 space-y-1.5">
+            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Payment</span>
+            <select className="h-11 w-full rounded-xl border border-slate-200 px-2 text-xs font-semibold text-slate-900" value={paymentType} onChange={(event) => setPaymentType(event.target.value)}>
+              {PAYMENT_OPTIONS.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="min-w-0 flex-1 space-y-1.5">
+            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Source</span>
+            <select className="h-11 w-full rounded-xl border border-slate-200 px-2 text-xs font-semibold text-slate-900" value={source} onChange={(event) => setSource(event.target.value)}>
+              {SOURCE_OPTIONS.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="min-w-0 flex-1 space-y-1.5">
+            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Category</span>
+            <select className="h-11 w-full rounded-xl border border-slate-200 px-2 text-xs font-semibold text-slate-900" value={category} onChange={(event) => setCategory(event.target.value)}>
+              <option value="">All categories</option>
+              {categories.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="flex h-11 w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+          <Filter className="h-4 w-4 text-[#2563EB]" />
+          POS-only reporting with IMS cost data
+        </div>
+      </div>
+      <section className="order-2 md:order-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
         <div className="grid gap-3 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]">
           <label className="space-y-1.5">
             <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Date from</span>
-            <Input type="date" value={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateFrom: event.target.value }))} className="h-11 rounded-xl" />
+            <div className="relative">
+              <Input type="date" value={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateFrom: event.target.value }))} className="pos-report-date-input h-11 rounded-xl pr-9 md:pr-3" />
+              <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 md:hidden" />
+            </div>
           </label>
           <label className="space-y-1.5">
             <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Date to</span>
-            <Input type="date" value={dateRange.dateTo} min={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateTo: event.target.value }))} className="h-11 rounded-xl" />
+            <div className="relative">
+              <Input type="date" value={dateRange.dateTo} min={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateTo: event.target.value }))} className="pos-report-date-input h-11 rounded-xl pr-9 md:pr-3" />
+              <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 md:hidden" />
+            </div>
           </label>
-          <label className="space-y-1.5">
-            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Range</span>
-            <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={granularity} onChange={(event) => setGranularity(event.target.value)}>
-              {GRANULARITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Cashier</span>
-            <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={cashierId} onChange={(event) => setCashierId(event.target.value)}>
-              <option value="">All cashiers</option>
-              {cashiers.map((cashier) => <option key={cashier.cashier_id} value={cashier.cashier_id}>{cashier.cashier_name}</option>)}
-            </select>
-          </label>
+          <div className="grid grid-cols-2 gap-3 sm:contents">
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Range</span>
+              <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={granularity} onChange={(event) => setGranularity(event.target.value)}>
+                {GRANULARITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Cashier</span>
+              <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={cashierId} onChange={(event) => setCashierId(event.target.value)}>
+                <option value="">All cashiers</option>
+                {cashiers.map((cashier) => <option key={cashier.cashier_id} value={cashier.cashier_id}>{cashier.cashier_name}</option>)}
+              </select>
+            </label>
+          </div>
           <Button type="button" variant="outline" className="h-11 rounded-xl border-slate-200 px-4 font-extrabold" onClick={handleExportCsv} disabled={!reportData}>
             <Download className="mr-2 h-4 w-4" />
             Export CSV
@@ -417,7 +454,7 @@ function PosReportsAnalyticsWorkspace({
           </Button>
         </div>
 
-        <div className="mt-3 grid gap-3 lg:grid-cols-4">
+        <div className="mt-3 hidden gap-3 sm:grid lg:grid-cols-4">
           <label className="space-y-1.5">
             <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Payment</span>
             <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={paymentType} onChange={(event) => setPaymentType(event.target.value)}>
@@ -446,7 +483,7 @@ function PosReportsAnalyticsWorkspace({
         </div>
       </section>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="order-1 grid gap-3 md:order-2 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Total Sales" value={money(summaryCards.total_sales, currencySymbol)} />
         <MetricCard label="Transactions" value={Number(summaryCards.total_transactions || 0)} />
         <MetricCard label="Gross Sales" value={money(summaryCards.gross_sales, currencySymbol)} />
@@ -455,6 +492,7 @@ function PosReportsAnalyticsWorkspace({
           value={money(summaryCards.pos_profit_loss, currencySymbol)}
           tone={Number(summaryCards.pos_profit_loss || 0) >= 0 ? 'positive' : 'negative'}
         />
+      </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

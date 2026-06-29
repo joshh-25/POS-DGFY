@@ -42,10 +42,13 @@ function SelectField({ label, value, onChange, children }) {
     );
 }
 
-function IconInput({ icon: Icon, children }) {
+function IconInput({ icon: Icon, children, mobileIconAlign = 'left' }) {
+    const iconPositionClassName = mobileIconAlign === 'right'
+        ? 'right-4 sm:right-auto sm:left-4'
+        : 'left-4';
     return (
         <div className="relative mt-2">
-            <Icon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <Icon className={`pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 ${iconPositionClassName}`} />
             {children}
         </div>
     );
@@ -193,23 +196,24 @@ export default function POSTransactionHistoryPanel({
                             </IconInput>
                         </label>
 
+                        <div className="grid grid-cols-2 gap-3 sm:contents">
                         <label className="block">
                             <span className={fieldLabelClassName}>Date From</span>
-                            <IconInput icon={CalendarDays}>
+                            <IconInput icon={CalendarDays} mobileIconAlign="right">
                                 <Input
                                     type="date"
                                     value={historyDateFrom}
                                     max={historyDateTo || undefined}
                                     onChange={(event) => setHistoryDateFrom(event.target.value)}
                                     placeholder="Date from"
-                                    className="h-11 rounded-xl border-slate-200 bg-white pl-12 pr-4 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100"
+                                    className="pos-report-date-input h-11 w-full rounded-xl border-slate-200 bg-white pl-4 pr-12 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100 sm:pl-12 sm:pr-4"
                                 />
                             </IconInput>
                         </label>
 
                         <label className="block">
                             <span className={fieldLabelClassName}>Date To</span>
-                            <IconInput icon={CalendarDays}>
+                            <IconInput icon={CalendarDays} mobileIconAlign="right">
                                 <Input
                                     type="date"
                                     value={historyDateTo}
@@ -217,10 +221,11 @@ export default function POSTransactionHistoryPanel({
                                     max={toDateInput(new Date())}
                                     onChange={(event) => setHistoryDateTo(event.target.value)}
                                     placeholder="Date to"
-                                    className="h-11 rounded-xl border-slate-200 bg-white pl-12 pr-4 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100"
+                                    className="pos-report-date-input h-11 w-full rounded-xl border-slate-200 bg-white pl-4 pr-12 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100 sm:pl-12 sm:pr-4"
                                 />
                             </IconInput>
                         </label>
+                        </div>
 
                         <div className="flex items-end gap-3 sm:col-span-2 xl:col-span-1 xl:col-start-4">
                             <Button

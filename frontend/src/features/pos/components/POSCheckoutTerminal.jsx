@@ -556,15 +556,16 @@ export default function POSCheckoutTerminal({
         };
     }, [receiptPreviewModalOpen, lastReceipt]);
     const [checkoutConfirmModalOpen, setCheckoutConfirmModalOpen] = useState(false);
+    const [mobileCheckoutPanelOpen, setMobileCheckoutPanelOpen] = useState(false);
 
     useEffect(() => {
         if (typeof document === 'undefined') return undefined;
-        const shouldLockModalScroll = receiptPreviewModalOpen || checkoutConfirmModalOpen;
+        const shouldLockModalScroll = receiptPreviewModalOpen || checkoutConfirmModalOpen || mobileCheckoutPanelOpen;
         document.body.classList.toggle('pos-modal-scroll-lock', shouldLockModalScroll);
         return () => {
             document.body.classList.remove('pos-modal-scroll-lock');
         };
-    }, [checkoutConfirmModalOpen, receiptPreviewModalOpen]);
+    }, [checkoutConfirmModalOpen, mobileCheckoutPanelOpen, receiptPreviewModalOpen]);
 
     const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
@@ -580,7 +581,7 @@ export default function POSCheckoutTerminal({
     const catalogSwipeStartXRef = useRef(null);
     const catalogSwipePointerIdRef = useRef(null);
     const shellClassName = 'space-y-5';
-    const checkoutGridClassName = 'grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_325px] 2xl:gap-6';
+    const checkoutGridClassName = 'grid grid-cols-1 gap-4 pb-24 md:pb-0 md:grid-cols-[minmax(0,1fr)_325px] 2xl:gap-6';
     const catalogGridClassName = useMemo(() => {
         if (isTabletViewport) {
             return IS_DGFY_POS_SURFACE
@@ -594,7 +595,7 @@ export default function POSCheckoutTerminal({
     const catalogViewportClassName = 'min-h-0 flex-1 overflow-visible pr-0 pb-3';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
     const currentSaleBodyClassName = 'min-h-0 flex-1 overflow-hidden pr-1';
-    const currentSaleItemsListClassName = 'h-[17.25rem] overflow-y-auto pr-1';
+    const currentSaleItemsListClassName = 'pr-1 md:h-[17.25rem] md:overflow-y-auto';
     const checkoutPaneClassName = '2xl:min-h-[32rem] 2xl:max-h-none';
     const catalogPaneHeightClassName = isTabletViewport
         ? 'md:max-xl:min-h-[78rem]'
@@ -1480,6 +1481,10 @@ export default function POSCheckoutTerminal({
         () => round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount),
         [netItemsTotal, restaurantServiceChargeAmount, serviceFeeAmount]
     );
+    const cartTotalQuantity = useMemo(
+        () => cart.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
+        [cart]
+    );
     const isCashPayment = paymentType === 'cash';
     const customerPaymentAmount = useMemo(() => {
         const parsed = Number(customerPaymentAmountInput);
@@ -1708,6 +1713,7 @@ export default function POSCheckoutTerminal({
         }
         setCustomerPaymentAmountInput('0');
         setCheckoutConfirmModalOpen(true);
+        setMobileCheckoutPanelOpen(false);
     }, [cart.length, checkoutBlockedReason, normalizedTerminalId]);
 
     const handleCheckout = async () => {
@@ -2096,6 +2102,7 @@ export default function POSCheckoutTerminal({
             )}
 
             {currentViewMode === 'checkout' && (
+                <>
                 <div className={checkoutGridClassName}>
             <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
                     {isTabletViewport && renderViewModeControls()}
@@ -2478,13 +2485,27 @@ export default function POSCheckoutTerminal({
                     )}
             </section>
 
-            <aside className={`space-y-4 ${checkoutPaneClassName}`}>
-            <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${currentSalePaneHeightClassName}`}>
+            {mobileCheckoutPanelOpen && (
+                <div
+                    className="fixed inset-0 z-40 bg-slate-950/45 md:hidden"
+                    onClick={() => setMobileCheckoutPanelOpen(false)}
+                    aria-hidden="true"
+                />
+            )}
+
+            <aside
+                className={`space-y-4 ${checkoutPaneClassName} ${mobileCheckoutPanelOpen
+                    ? 'fixed inset-x-0 bottom-0 z-50 max-h-[88vh] translate-y-0 overflow-y-auto pointer-events-auto'
+                    : 'fixed inset-x-0 bottom-0 z-50 max-h-[88vh] translate-y-full overflow-y-auto pointer-events-none'
+                } transition-transform duration-300 ease-out md:static md:z-auto md:max-h-none md:translate-y-0 md:overflow-visible md:pointer-events-auto md:transition-none`}
+            >
+            <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-t-2xl rounded-b-none border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 md:rounded-xl ${currentSalePaneHeightClassName}`}>
                     <div role="region" aria-label="Current sale contents" className="flex h-full min-h-0 flex-col">
                 <div className={currentSaleBodyClassName}>
                 <div className="relative mb-4">
                     <div className="flex items-center justify-between gap-2">
                         <h2 className="text-[21px] font-black tracking-tight text-[#0F172A]">Current Sale</h2>
+                        <div className="flex items-center gap-1">
                         <button
                             type="button"
                             onClick={() => setCurrentSaleHelpOpen((open) => !open)}
@@ -2494,6 +2515,16 @@ export default function POSCheckoutTerminal({
                         >
                             <AlertCircle className="h-4 w-4" />
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setMobileCheckoutPanelOpen(false)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 md:hidden"
+                            aria-label="Close current sale panel"
+                            title="Close"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                        </div>
                     </div>
                     {currentSaleHelpOpen && (
                         <div className="absolute right-0 top-9 z-20 w-full max-w-[16rem] rounded-lg border border-amber-200 bg-white p-3 text-[12px] leading-5 text-slate-700 shadow-xl shadow-slate-900/10">
@@ -2503,7 +2534,8 @@ export default function POSCheckoutTerminal({
                         </div>
                     )}
                 </div>
-                <div className="space-y-3 mb-4">
+                <div className="flex flex-col">
+                <div className="order-2 md:order-1 space-y-3 mb-4">
                     <label className="text-[11px] text-slate-500 block">
                         Order Method
                         <select
@@ -2534,7 +2566,7 @@ export default function POSCheckoutTerminal({
                         </select>
                     </label>
                 </div>
-                <div className="mb-4 border-b border-slate-200 pb-4">
+                <div className="order-1 md:order-2 mb-4 border-b border-slate-200 pb-4">
                     <div className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
                         {cart.length > 0 ? cart.map((line) => {
                             const lineKey = getLineKey(line);
@@ -2610,6 +2642,7 @@ export default function POSCheckoutTerminal({
                             </div>
                         )}
                     </div>
+                </div>
                 </div>
                 <label className="text-[11px] text-slate-500 block mb-3">
                     Discount Preset
@@ -2838,6 +2871,34 @@ export default function POSCheckoutTerminal({
             </aside>
 
                 </div>
+
+                <div
+                    className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 pt-2.5 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] md:hidden"
+                    style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}
+                    role="region"
+                    aria-label="Current sale summary"
+                >
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                {cartTotalQuantity} item{cartTotalQuantity === 1 ? '' : 's'} selected
+                            </p>
+                            <p className="truncate text-[18px] font-black text-[#1A4E8D]">
+                                PHP {money(cartTotal)}
+                            </p>
+                        </div>
+                        <Button
+                            type="button"
+                            onClick={() => setMobileCheckoutPanelOpen(true)}
+                            disabled={posActionsBlocked || checkoutLoading || cart.length === 0}
+                            className="h-11 shrink-0 rounded-lg bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <Lock size={16} className="mr-1.5" />
+                            {checkoutLoading ? 'Processing...' : 'Checkout'}
+                        </Button>
+                    </div>
+                </div>
+                </>
             )}
 
             {currentViewMode === 'receipt' && (

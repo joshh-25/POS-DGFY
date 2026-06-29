@@ -241,6 +241,12 @@ body {
   border-color: var(--pos-shell-border);
 }
 
+@media (max-width: 767.98px) {
+  .pos-report-date-input::-webkit-calendar-picker-indicator {
+    opacity: 0;
+  }
+}
+
 .wizard-core-typography {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
