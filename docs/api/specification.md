@@ -3644,6 +3644,7 @@ Track online-store order status for public users.
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
+**Rate Limit Contract**: Public reads use a dedicated IP + store context + normalized tracking-PIN bucket sized for state-aware 10-20 second visible polling. Claim and cancellation mutations remain on the stricter Store tracking mutation limiter. `429` responses include `Retry-After` and `retryAfterSeconds`; clients must retain the last successful status, disable manual retry during cooldown, show customer-friendly countdown copy, and delay the next request for at least that duration.
 
 ### VAT Data Placement (Current Contract)
 1. Default item classification: `items.vat_type`

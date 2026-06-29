@@ -149,6 +149,13 @@ export const tenantHandler = async (req, res, next) => {
         const isStrictAuthRoute = STRICT_AUTH_ROUTE_PATTERN.test(path);
         const isGlobalDgfyOtpRequest = isGlobalDgfyAccountOtpRequest(req, path);
 
+        if (isGlobalDgfyOtpRequest) {
+            delete req.headers['x-company-token'];
+            return runDefaultTenantContext(next, {
+                tenantContextFailure: 'dgfy_global_otp'
+            });
+        }
+
         // 1. Identification Strategy:
         // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
         let companyToken = req.headers['x-company-token'];
@@ -230,7 +237,7 @@ export const tenantHandler = async (req, res, next) => {
             } else {
                 logger.debug('[TenantHandler] No company token for webhook route (expected).');
             }
-            if (isStrictAuthRoute && !isGlobalDgfyOtpRequest) {
+            if (isStrictAuthRoute) {
                 return sendTenantContextError(
                     res,
                     400,

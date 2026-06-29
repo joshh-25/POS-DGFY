@@ -97,13 +97,52 @@ describe('Food & Beverage storefront contract', () => {
     const drawerSource = guestTrackingDrawerSource();
 
     expect(source).toContain('const isStandaloneTrackingPage = Boolean(trackingResult)');
-    expect(source).toContain("routeWantsTrack && preferredPin ? 'track' : 'checkout'");
+    expect(source).toContain("const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');");
     expect(source).toContain('setIsGuestTrackingDrawerOpen(true);');
     expect(source).toContain('trackingError={trackingError}');
     expect(source).not.toContain('In-progress orders are tracked automatically on this device.');
     expect(source).not.toContain("key={`guest-track-order-${entry.tracking_pin}`}");
     expect(drawerSource).toContain('Active orders linked to your DGFY account.');
     expect(drawerSource).toContain('trackingError =');
+  });
+
+  it('keeps /track routes mode-independent and limiter-safe', () => {
+    const source = appSource();
+
+    expect(source).toContain('const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;');
+    expect(source).toContain('const isFnbOrderSubpage = isFnbMode && isResolvedOrderSubpage;');
+    expect(source).toContain("const isStandaloneTrackingPage = Boolean(trackingResult) && isResolvedOrderSubpage && checkoutTab === 'track';");
+    expect(source).toContain('const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;');
+    expect(source).not.toContain('if (!isFnbOrderSubpage) return;');
+    expect(source).toContain("const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);");
+    expect(source).toContain('return buildTrackingPinKey(guestTrackedOrders, {');
+    expect(source).toContain('enabled: !isStoreTrackingRoute');
+    expect(source).toContain("guestTrackingBackgroundPinsKey.split('|').filter(Boolean)");
+    expect(source).toContain('createCompletionTrackingScheduler({');
+    expect(source).toContain('resolveTrackingRetryDelayMs({ error, normalDelayMs })');
+    expect(source).toContain("visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible'");
+    expect(source).not.toContain('window.setInterval(refreshSelectedPin');
+    expect(source).not.toContain('guestTrackedOrders, isFnbOrderSubpage');
+    expect(source).not.toContain('trackingResult?.status]);');
+    expect(source).toContain('300000 : 180000');
+    expect(source).toContain('Tracking is refreshing too often');
+    expect(source).toContain("Try again in ${trackingCooldownLabel}");
+    expect(source).toContain('disabled={isTrackingRefreshing || isTrackingCooldownActive}');
+    expect(source).toContain('setIsGuestTrackingDrawerOpen(false);');
+  });
+
+  it('keeps signed-in standalone tracking live through SSE with polling repair', () => {
+    const source = appSource();
+
+    expect(source).toContain('const hasVisibleCustomerTrackingSurface = isAccountDrawerOpen');
+    expect(source).toContain('|| isStandaloneTrackingPage');
+    expect(source.match(/if \(!hasVisibleCustomerTrackingSurface\) return undefined;/g)).toHaveLength(2);
+    expect(source).toContain("source.addEventListener('activity.updated'");
+    expect(source).toContain('mergeLiveAccountActivity(payload.activity);');
+    expect(source).toContain('source.onerror = () => {');
+    expect(source).toContain('void handleLoadAccountPanel();');
+    expect(source).toContain('dedupeActiveCustomerOrders(accountPanel.orders)');
+    expect(source).toContain('mergeVisibleTrackingResult(previous, activity)');
   });
 
   it('supports guest-or-account checkout entry while preserving auth draft resume state', () => {

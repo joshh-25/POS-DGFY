@@ -342,6 +342,85 @@ const SETTINGS_FIELD_LABELS = {
   inventory_low_stock_display_threshold: 'Low Stock Display Threshold'
 };
 
+const POS_RECEIPT_METADATA_SETTING_KEYS = [
+  'pos_registered_name',
+  'pos_business_name',
+  'pos_business_style',
+  'pos_taxpayer_type',
+  'pos_tin_branch',
+  'pos_address',
+  'pos_ptu_number',
+  'pos_min_number',
+  'pos_accreditation_number',
+  'pos_fiscal_buyer_details_required',
+  'pos_receipt_footer_message'
+];
+
+const POS_SETUP_SETTING_KEYS = [
+  ...POS_RECEIPT_METADATA_SETTING_KEYS,
+  'pos_discount_profiles',
+  'pos_terminal_registry',
+  'pos_terminal_registry_mode',
+  'pos_terminal_location_binding_enforced',
+  'pos_petty_cash_symbol',
+  'pos_petty_cash_amount'
+];
+
+const STOREFRONT_SETTING_KEYS = [
+  'store_delivery_fee',
+  'store_tenant_slug',
+  'store_is_visible',
+  'store_has_no_location',
+  'pos_open_status',
+  'pos_wait_time_minutes',
+  'customer_access_mode',
+  'inventory_display_mode',
+  'inventory_low_stock_display_threshold',
+  'storefront_tagline',
+  'storefront_about',
+  'storefront_phone',
+  'storefront_email',
+  'storefront_hours',
+  'storefront_why_choose_us',
+  'storefront_social_links',
+  'storefront_review_highlights',
+  'storefront_review_summary',
+  'storefront_promo',
+  'storefront_ui_v2_enabled',
+  'storefront_categories',
+  'storefront_gallery_images',
+  'storefront_delivery_partners',
+  'storefront_follow_enabled',
+  'storefront_share_enabled'
+];
+
+const SYSTEM_SETTING_KEYS = [
+  'enable_auto_reorder',
+  'min_stock_threshold_percent',
+  'purchase_allowance_percent',
+  'ops_workflow_mode'
+];
+
+const SETTINGS_PAYLOAD_KEYS_BY_TAB = {
+  pos: new Set(POS_SETUP_SETTING_KEYS),
+  storefront: new Set(STOREFRONT_SETTING_KEYS),
+  system: new Set(SYSTEM_SETTING_KEYS)
+};
+
+const filterSettingsPayloadByKeys = (payload, allowedKeys) => (
+  Object.fromEntries(
+    Object.entries(payload || {}).filter(([key]) => allowedKeys.has(key))
+  )
+);
+
+const scopeSettingsPayloadForTab = (payload, tab) => {
+  const allowedKeys = SETTINGS_PAYLOAD_KEYS_BY_TAB[tab];
+  if (!allowedKeys) {
+    return payload;
+  }
+  return filterSettingsPayloadByKeys(payload, allowedKeys);
+};
+
 const SETTINGS_CARD_TITLE_CLASS = 'flex items-start gap-2 text-xl leading-tight sm:items-center sm:text-2xl';
 const CUSTOMER_ACCESS_MODE_OPTIONS = [
   { value: 'ghost', label: 'Ghost', description: 'Profile and contact only; catalog, cart, checkout, and booking are hidden.' },
@@ -1994,8 +2073,10 @@ export default function Settings() {
         updatePayload.ops_workflow_mode = nextWorkflowMode;
       }
 
-      // Save threshold settings to backend
-      const saveResult = await settingsService.updateSettings(updatePayload);
+      // Save only the settings owned by the active tab. This prevents Storefront
+      // saves from carrying POS receipt metadata into the platform approval flow.
+      const scopedUpdatePayload = scopeSettingsPayloadForTab(updatePayload, currentTab);
+      const saveResult = await settingsService.updateSettings(scopedUpdatePayload);
 
       if (currentUser?.is_master_admin === true && nextWorkflowMode !== persistedWorkflowMode) {
         setPersistedWorkflowMode(nextWorkflowMode);

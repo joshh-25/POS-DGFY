@@ -60,11 +60,18 @@ export const requestJson = async (url, {
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.success === false) {
+    const retryAfterSeconds = Number(
+      payload?.retryAfterSeconds
+      ?? response.headers?.get?.('Retry-After')
+    );
     throw buildRequestError(payload?.message || `Request failed (${response.status})`, {
       status: response.status,
       errorCode: payload?.error_code || null,
       details: payload?.errors || payload?.details || null,
       requestId: payload?.request_id || null,
+      retryAfterSeconds: Number.isFinite(retryAfterSeconds)
+        ? retryAfterSeconds
+        : null,
       payload
     });
   }

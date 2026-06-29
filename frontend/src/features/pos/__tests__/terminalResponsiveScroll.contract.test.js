@@ -33,6 +33,13 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).not.toContain('calc(100vh-13.5rem)');
   });
 
+  it('spans checkout catalog and current-sale panes across the 2xl grid instead of compressing into single columns', () => {
+    expect(posCheckoutContent).toContain('2xl:col-span-8');
+    expect(posCheckoutContent).toContain('2xl:col-span-4');
+    expect(posCheckoutContent).toContain('min-w-0 rounded-xl border border-slate-200 bg-white');
+    expect(posCheckoutContent).toContain('min-w-0 space-y-4 2xl:col-span-4');
+  });
+
   it('pins current-sale terminal actions with sticky footer controls', () => {
     expect(posCheckoutContent).toContain('sticky bottom-0 z-20 grid grid-cols-1 gap-2');
     expect(posCheckoutContent).toContain('Checkout');

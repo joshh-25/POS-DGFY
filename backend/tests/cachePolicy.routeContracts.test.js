@@ -57,7 +57,7 @@ describe('cache policy route contracts', () => {
             source: storeRoutes,
             method: 'get',
             routePath: '/track/:tracking_pin',
-            requiredFragments: ['trackingReadCacheControl']
+            requiredFragments: ['storeTrackingReadLimiter', 'trackingReadCacheControl']
         });
         expectRouteContract({
             source: discoveryRoutes,
@@ -102,7 +102,7 @@ describe('cache policy route contracts', () => {
             source: storeRoutes,
             method: 'patch',
             routePath: '/orders/:tracking_pin/cancel',
-            requiredFragments: ['setNoStoreCacheControl']
+            requiredFragments: ['setNoStoreCacheControl', 'storeTrackingLimiter']
         });
     });
 });
