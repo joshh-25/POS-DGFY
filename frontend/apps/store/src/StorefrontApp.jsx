@@ -114,9 +114,12 @@ import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js'
 import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
 import {
   TERMINAL_CUSTOMER_TRACKING_STATUSES,
+  buildTrackingPinKey,
+  createCompletionTrackingScheduler,
   dedupeActiveCustomerOrders,
   mergeVisibleTrackingResult,
-  resolveSelectedTrackingPollMs
+  resolveSelectedTrackingPollMs,
+  resolveTrackingRetryDelayMs
 } from './tracking/customerTrackingRefresh.js';
 import {
   DiscoveryCategoryRail,
@@ -6132,9 +6135,16 @@ export default function StorefrontApp() {
     overview: overviewSectionModel,
     supporting: supportingSectionModel
   } = pageModel;
-  const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
+  const isFnbOrderSubpage = isFnbMode && isResolvedOrderSubpage;
   const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;
-  const isStandaloneTrackingPage = Boolean(trackingResult) && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
+  const guestTrackingBackgroundPinsKey = useMemo(() => {
+    const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
+    return buildTrackingPinKey(guestTrackedOrders, {
+      enabled: !isStoreTrackingRoute,
+      excludePin: selectedPin
+    });
+  }, [guestTrackedOrders, isStoreTrackingRoute, selectedTrackingPin, trackingPinInput]);
+  const isStandaloneTrackingPage = Boolean(trackingResult) && isResolvedOrderSubpage && checkoutTab === 'track';
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
@@ -10461,41 +10471,37 @@ export default function StorefrontApp() {
     const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);
     if (!shouldPollTrackingRoute || !selectedStore?.slug) return;
     const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
-    const canRefreshBackgroundPins = !isStoreTrackingRoute;
-    const backgroundPins = Array.from(
-      new Set(
-        guestTrackedOrders
-          .map((entry) => String(entry.tracking_pin || '').trim().toUpperCase())
-          .filter((pin) => canRefreshBackgroundPins && Boolean(pin) && pin !== selectedPin)
-      )
-    );
+    const backgroundPins = guestTrackingBackgroundPinsKey
+      ? guestTrackingBackgroundPinsKey.split('|').filter(Boolean)
+      : [];
     if (!selectedPin && backgroundPins.length === 0) return;
 
     let cancelled = false;
-    const selectedPollMs = resolveSelectedTrackingPollMs({
-      visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible',
-      status: trackingResult?.status
-    });
     const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 300000 : 180000;
+    let lastSelectedStatus = '';
 
     const refreshSelectedPin = async () => {
-      if (!selectedPin) return;
+      if (!selectedPin || cancelled) return null;
       try {
         setIsTrackingRefreshing(true);
         const trackingPayload = await fetchTrackingPayload(selectedPin);
-        if (cancelled) return;
+        if (cancelled) return null;
+        const trackingViewState = toTrackingViewState(trackingPayload);
+        lastSelectedStatus = trackingViewState?.status || lastSelectedStatus;
         syncTrackedOrderSnapshot(trackingPayload.raw, selectedPin, trackingPayload.normalized);
-        setTrackingResult(toTrackingViewState(trackingPayload));
+        setTrackingResult(trackingViewState);
         setTrackingError('');
+        return trackingViewState;
       } catch (error) {
-        if (cancelled) return;
-        setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+        if (!cancelled) setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+        throw error;
       } finally {
         if (!cancelled) setIsTrackingRefreshing(false);
       }
     };
 
     const refreshBackgroundPins = async () => {
+      let largestRetryAfterSeconds = null;
       for (const pin of backgroundPins) {
         try {
           const trackingPayload = await fetchTrackingPayload(pin);
@@ -10503,22 +10509,51 @@ export default function StorefrontApp() {
           syncTrackedOrderSnapshot(trackingPayload.raw, pin, trackingPayload.normalized);
         } catch (error) {
           if (cancelled) return;
+          const retryAfterSeconds = Number(error?.retryAfterSeconds);
+          if (Number.isFinite(retryAfterSeconds)) {
+            largestRetryAfterSeconds = Math.max(largestRetryAfterSeconds || 0, retryAfterSeconds);
+          }
         }
+      }
+      if (largestRetryAfterSeconds) {
+        const error = new Error('Background tracking refresh rate limited.');
+        error.retryAfterSeconds = largestRetryAfterSeconds;
+        throw error;
       }
     };
 
-    refreshSelectedPin();
-    refreshBackgroundPins();
+    const selectedScheduler = selectedPin
+      ? createCompletionTrackingScheduler({
+        poll: refreshSelectedPin,
+        resolveDelayMs: ({ result, error }) => {
+          const normalDelayMs = resolveSelectedTrackingPollMs({
+            visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible',
+            status: result?.status || lastSelectedStatus
+          });
+          return resolveTrackingRetryDelayMs({ error, normalDelayMs });
+        },
+        setTimeoutFn: window.setTimeout.bind(window),
+        clearTimeoutFn: window.clearTimeout.bind(window)
+      })
+      : null;
+    const backgroundScheduler = backgroundPins.length > 0
+      ? createCompletionTrackingScheduler({
+        poll: refreshBackgroundPins,
+        resolveDelayMs: ({ error }) => resolveTrackingRetryDelayMs({ error, normalDelayMs: backgroundPollMs }),
+        setTimeoutFn: window.setTimeout.bind(window),
+        clearTimeoutFn: window.clearTimeout.bind(window)
+      })
+      : null;
 
-    const selectedTimerId = selectedPin ? window.setInterval(refreshSelectedPin, selectedPollMs) : null;
-    const backgroundTimerId = backgroundPins.length > 0 ? window.setInterval(refreshBackgroundPins, backgroundPollMs) : null;
+    selectedScheduler?.start();
+    backgroundScheduler?.start();
 
     return () => {
       cancelled = true;
-      if (selectedTimerId) window.clearInterval(selectedTimerId);
-      if (backgroundTimerId) window.clearInterval(backgroundTimerId);
+      selectedScheduler?.stop();
+      backgroundScheduler?.stop();
     };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, isStoreTrackingRoute, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput, trackingResult?.status]);
+  }, [checkoutTab, fetchTrackingPayload, guestTrackingBackgroundPinsKey, isFnbOrderSubpage, isStoreTrackingRoute, selectedStore?.slug, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
 
   const handleLoadAccountPanel = async () => {
     const dgfyToken = readDgfyAuthToken();
@@ -21448,6 +21483,17 @@ return (
                     <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
                     <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Loading Order Details...</div>
                     <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>Fetching real-time status for {selectedTrackingPin}</div>
+                  </div>
+                ) : trackingError ? (
+                  <div role="alert" style={{ border: '1px solid #fecaca', borderRadius: 18, padding: isMobileViewport ? 24 : 32, background: '#fff7f7', boxShadow: '0 8px 24px rgba(15,23,42,.04)', maxWidth: 560, margin: '0 auto', textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>Tracking temporarily unavailable</div>
+                    <div style={{ fontSize: 14, lineHeight: 1.6, color: '#7f1d1d', marginTop: 8 }}>{trackingError}</div>
+                    <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
+                      Your order PIN is still saved. Automatic tracking will retry after the server wait period.
+                    </div>
+                    <button type="button" onClick={handleTrack} disabled={isTrackingRefreshing} style={{ marginTop: 18, minHeight: 42, borderRadius: 12, border: '1px solid #b91c1c', background: '#fff', color: '#991b1b', padding: '0 18px', fontWeight: 800, cursor: isTrackingRefreshing ? 'wait' : 'pointer' }}>
+                      {isTrackingRefreshing ? 'Checking status...' : 'Try again'}
+                    </button>
                   </div>
                 ) : null}
               </div>

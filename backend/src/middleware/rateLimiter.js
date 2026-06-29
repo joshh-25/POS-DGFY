@@ -22,6 +22,8 @@ const storeAuthWindowMs = parseInt(process.env.RATE_LIMIT_STORE_AUTH_WINDOW_MS) 
 const storeAuthMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_AUTH_MAX_REQUESTS) || (isDevelopment ? 60 : 10);
 const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const storeTrackingMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
+const storeTrackingReadWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
+const storeTrackingReadMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS) || (isDevelopment ? 360 : 240);
 const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -65,6 +67,7 @@ const rateLimitCounters = {
   email_otp: 0,
   store_auth: 0,
   store_tracking: 0,
+  store_tracking_read: 0,
   storefront_discovery: 0,
   storefront_follow: 0,
   onboarding_events: 0,
@@ -594,6 +597,42 @@ export const storeTrackingLimiter = rateLimit({
   },
 });
 
+// Public tracking reads have a dedicated bucket sized for one visible five-second poller
+// (180 requests per 15 minutes) plus headroom. Claim/cancel mutations remain stricter.
+export const storeTrackingReadLimiter = rateLimit({
+  windowMs: storeTrackingReadWindowMs,
+  max: storeTrackingReadMaxRequests,
+  message: createRateLimitError('Too many tracking refresh requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('store_tracking_read'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const trackingPin = normalizeTrackingPin(req.params?.tracking_pin || '');
+    return trackingPin
+      ? `store_tracking_read:${ip}:${trackingPin}`
+      : `store_tracking_read:${ip}:missing-pin`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many tracking refresh requests. Please wait before trying again.',
+      'store_tracking_read',
+      'ip_tracking_pin'
+    );
+    logRateLimitEvent(req, 'store_tracking_read', response.retryAfterSeconds, 'ip_tracking_pin');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Public storefront discovery limiter (search/list/map/profile lookups).
 export const storefrontDiscoveryLimiter = rateLimit({
   windowMs: storefrontDiscoveryWindowMs,
@@ -946,6 +985,7 @@ export default {
   adminAuth: adminAuthLimiter,
   storeAuth: storeAuthLimiter,
   storeTracking: storeTrackingLimiter,
+  storeTrackingRead: storeTrackingReadLimiter,
   storefrontDiscovery: storefrontDiscoveryLimiter,
   storefrontFollow: storefrontFollowLimiter,
   onboardingEvents: onboardingEventsLimiter,
