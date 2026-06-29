@@ -946,7 +946,7 @@ export default function ItemFormModal({
       production_notes: cleanedData.production_notes || null,
       shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.shelf_life_days) : null,
       opened_shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.opened_shelf_life_days) : null,
-      status: isDraft ? 'draft' : (item?.status || 'active'),
+      status: isDraft ? 'draft' : 'active',
       ...(categoryForSave === 'packaging' ? {
         packaging_specs: cleanedData.packaging_specs ? (() => {
 
