@@ -174,6 +174,12 @@ import {
 import { requestJson } from './services/requestJson.js';
 import { buildFnbCheckoutPayload } from './checkout/buildFnbCheckoutPayload.js';
 import { hasCustomerName, hasPrimaryContact, hasDeliveryAddress, isCustomerStepComplete } from './checkout/checkoutValidation.js';
+import {
+  clearGuestCheckoutDraft,
+  isValidStorePaymentType,
+  readGuestCheckoutDraft,
+  writeGuestCheckoutDraft
+} from './checkout/guestCheckoutDraft.js';
 import { CustomerIdentityCard } from './checkout/components/CustomerIdentityCard.jsx';
 import { CheckoutHeroHeader } from './checkout/components/CheckoutHeroHeader.jsx';
 import { GuestIdentityForm } from './checkout/components/GuestIdentityForm.jsx';
@@ -1367,6 +1373,13 @@ const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_
 const STOREFRONT_CHECKOUT_AUTH_RESUME_KEY = 'dgfy_store_checkout_auth_resume_v1';
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
+const STOREFRONT_CHECKOUT_PAYMENT_OPTIONS = [
+  { value: 'cash', label: 'Cash on delivery/pickup' },
+  { value: 'gcash', label: 'GCash' },
+  { value: 'maya', label: 'Maya' },
+  { value: 'card', label: 'Card' },
+  { value: 'bank_transfer', label: 'Bank transfer' }
+];
 const TERMINAL_TRACKING_STATUSES = TERMINAL_CUSTOMER_TRACKING_STATUSES;
 const DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES = new Set(['order', 'pos_order', 'fnb_order']);
 const DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
@@ -5976,6 +5989,8 @@ export default function StorefrontApp() {
   const [checkoutTab, setCheckoutTab] = useState('checkout');
   const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
   const [hasAppliedCheckoutAuthResume, setHasAppliedCheckoutAuthResume] = useState(false);
+  const [hasAppliedGuestCheckoutDraft, setHasAppliedGuestCheckoutDraft] = useState(false);
+  const [guestCheckoutDraftNotice, setGuestCheckoutDraftNotice] = useState('');
   const [followState, setFollowState] = useState({
     loading: false,
     isFollowing: false,
@@ -6394,8 +6409,13 @@ export default function StorefrontApp() {
   useEffect(() => {
     if (isDgfyCustomerSignedIn) {
       setGuestCheckoutUnlocked(false);
+      clearGuestCheckoutDraft();
     }
   }, [isDgfyCustomerSignedIn]);
+  useEffect(() => {
+    setHasAppliedGuestCheckoutDraft(false);
+    setGuestCheckoutDraftNotice('');
+  }, [selectedStore?.slug, routeSlug]);
   useEffect(() => {
     if (isDgfyCustomerSignedIn || !guestCheckoutUnlocked || !savedCustomerDetails) return;
     const splitName = splitCustomerName(savedCustomerDetails.name || '');
@@ -6430,10 +6450,11 @@ export default function StorefrontApp() {
     savedCustomerDetails
   ]);
   useEffect(() => {
-    if (!selectedStore?.slug) {
+    if (!selectedStore?.slug && !routeSlug) {
       setGuestCheckoutUnlocked(false);
+      clearGuestCheckoutDraft();
     }
-  }, [selectedStore?.slug]);
+  }, [routeSlug, selectedStore?.slug]);
   const renderSavedDetailsCard = () => (
     <SavedCustomerDetailsPanel
       hasSavedCustomerDetails={hasSavedCustomerDetails}
@@ -6497,7 +6518,10 @@ export default function StorefrontApp() {
       </div>
       <button
         type="button"
-        onClick={() => setGuestCheckoutUnlocked(true)}
+        onClick={() => {
+          setGuestCheckoutUnlocked(true);
+          setGuestCheckoutDraftNotice('');
+        }}
         style={{ minHeight: 46, borderRadius: 12, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont }}
       >
         Continue as Guest
@@ -10209,6 +10233,32 @@ export default function StorefrontApp() {
       toast.error(message);
       return;
     }
+    if (isFnbMode && !fnbCustomerStepComplete) {
+      const message = 'Enter the customer name and a phone or email before checkout.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (isFnbMode && !fnbFulfillmentStepComplete) {
+      const message = 'Delivery address is required for delivery orders.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (isSimpleMode && !simpleCustomerStepComplete) {
+      const message = isDeliveryOrder
+        ? 'Enter the customer details and delivery address before checkout.'
+        : 'Enter the customer name and a phone or email before checkout.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (!hasServiceCart && !hasValidCheckoutPaymentType) {
+      const message = 'Choose a valid payment method before placing the order.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
     const cartSnapshot = cart.map((line) => ({ ...line }));
     setCheckoutLoading(true);
     try {
@@ -10322,6 +10372,8 @@ export default function StorefrontApp() {
         }
       }
       clearCheckoutAuthResumeDraft();
+      clearGuestCheckoutDraft();
+      setGuestCheckoutDraftNotice('');
       toast.success(hasServiceCart ? 'Booking created.' : 'Checkout completed.');
     } catch (error) {
       const violation = extractStockViolation(error);
@@ -10922,6 +10974,106 @@ export default function StorefrontApp() {
     routeSlug,
     selectedStore?.slug
   ]);
+  useEffect(() => {
+    if (typeof window === 'undefined' || hasAppliedGuestCheckoutDraft || isDgfyCustomerSignedIn) return;
+    const normalizedCurrentSlug = toSlug(selectedStore?.slug || routeSlug || '');
+    if (!normalizedCurrentSlug) return;
+    const draft = readGuestCheckoutDraft(normalizedCurrentSlug);
+    setHasAppliedGuestCheckoutDraft(true);
+    if (!draft) return;
+
+    setCart(draft.cart);
+    if (draft.selectedLocationId != null) setSelectedLocationId(draft.selectedLocationId);
+    if (draft.selectedSavedLocationId) setSelectedSavedLocationId(draft.selectedSavedLocationId);
+    if (draft.orderMethod) setOrderMethod(draft.orderMethod);
+    if (draft.customerFirstName) setCustomerFirstName(draft.customerFirstName);
+    if (draft.customerLastName) setCustomerLastName(draft.customerLastName);
+    if (draft.customerName) setCustomerName(draft.customerName);
+    if (draft.customerPhone) setCustomerPhone(draft.customerPhone);
+    if (draft.customerEmail) setCustomerEmail(draft.customerEmail);
+    if (draft.customerAddress) setCustomerAddress(draft.customerAddress);
+    if (draft.resolvedDeliveryAddress) setResolvedDeliveryAddress(draft.resolvedDeliveryAddress);
+    if (draft.deliveryLocationAction) setDeliveryLocationAction(draft.deliveryLocationAction);
+    if (draft.customerPin) setCustomerPin(draft.customerPin);
+    if (draft.fnbScheduleMode) setFnbScheduleMode(draft.fnbScheduleMode);
+    if (draft.fnbScheduledFor) setFnbScheduledFor(draft.fnbScheduledFor);
+    if (draft.fnbSpecialInstructions) setFnbSpecialInstructions(draft.fnbSpecialInstructions);
+    if (isValidStorePaymentType(draft.paymentType)) setFnbPaymentType(draft.paymentType);
+    if (Number.isInteger(draft.fnbOrderStep) && draft.fnbOrderStep > 0) setFnbOrderStep(draft.fnbOrderStep);
+    if (Number.isInteger(draft.simpleOrderStep) && draft.simpleOrderStep > 0) setSimpleOrderStep(draft.simpleOrderStep);
+    if (draft.checkoutTab) setCheckoutTab(draft.checkoutTab);
+    setGuestCheckoutUnlocked(true);
+    setQuoteResult(null);
+    setQuoteNeedsRefresh(true);
+    setIsCheckoutOpen(true);
+    setGuestCheckoutDraftNotice('Guest checkout draft restored. Refresh quote to sync totals before checkout.');
+  }, [
+    hasAppliedGuestCheckoutDraft,
+    isDgfyCustomerSignedIn,
+    routeSlug,
+    selectedStore?.slug
+  ]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const normalizedCurrentSlug = toSlug(selectedStore?.slug || routeSlug || '');
+    if (!normalizedCurrentSlug || isDgfyCustomerSignedIn || !guestCheckoutUnlocked) {
+      if (isDgfyCustomerSignedIn) clearGuestCheckoutDraft();
+      return;
+    }
+    if (cart.length === 0) {
+      clearGuestCheckoutDraft();
+      return;
+    }
+    writeGuestCheckoutDraft({
+      routeSlug: normalizedCurrentSlug,
+      checkoutTab,
+      cart,
+      selectedLocationId,
+      orderMethod,
+      simpleOrderStep,
+      fnbOrderStep,
+      customerFirstName,
+      customerLastName,
+      customerName,
+      customerPhone,
+      customerEmail,
+      customerAddress,
+      resolvedDeliveryAddress,
+      deliveryLocationAction,
+      customerPin,
+      selectedSavedLocationId,
+      fnbScheduleMode,
+      fnbScheduledFor,
+      fnbSpecialInstructions,
+      paymentType: fnbPaymentType,
+      savedAt: Date.now()
+    });
+  }, [
+    cart,
+    checkoutTab,
+    customerAddress,
+    customerEmail,
+    customerFirstName,
+    customerLastName,
+    customerName,
+    customerPhone,
+    customerPin,
+    deliveryLocationAction,
+    fnbOrderStep,
+    fnbPaymentType,
+    fnbScheduleMode,
+    fnbScheduledFor,
+    fnbSpecialInstructions,
+    guestCheckoutUnlocked,
+    isDgfyCustomerSignedIn,
+    orderMethod,
+    resolvedDeliveryAddress,
+    routeSlug,
+    selectedLocationId,
+    selectedSavedLocationId,
+    selectedStore?.slug,
+    simpleOrderStep
+  ]);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
     const signedOutEmail = String(accountPanel.me?.email || dgfySessionAccount?.email || '').trim();
@@ -11087,12 +11239,17 @@ export default function StorefrontApp() {
   const fnbHasCustomerIdentity = hasCustomerName(customerName);
   const fnbHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
   const fnbCustomerStepComplete = fnbHasCustomerIdentity && fnbHasPrimaryIdentityContact;
+  const hasValidCheckoutPaymentType = isValidStorePaymentType(fnbPaymentType);
   const fnbFulfillmentStepComplete = hasDeliveryAddress({
     isDeliveryOrder,
     hasPinnedDeliveryLocation,
     activePinnedDeliveryAddress,
     usePinnedAddress: true
   });
+  const fnbCheckoutAllowed = checkoutAllowed
+    && fnbCustomerStepComplete
+    && fnbFulfillmentStepComplete
+    && hasValidCheckoutPaymentType;
   const fnbOrderBrand = '#1A4E8D';
   const fnbOrderBrandDark = '#1A4586';
   const fnbOrderBrandSoft = '#AEE8F4';
@@ -11140,6 +11297,11 @@ export default function StorefrontApp() {
       setShowFnbMobileOrderSummary(false);
     }
   }, [checkoutResult, fnbOrderStep, isFnbOrderResponsiveFlow]);
+  useEffect(() => {
+    if (!isValidStorePaymentType(fnbPaymentType)) {
+      setFnbPaymentType('cash');
+    }
+  }, [fnbPaymentType]);
   const fnbMobileSummaryItemCountLabel = `${cartCount} Item${cartCount === 1 ? '' : 's'}`;
   const fnbSummaryFeeAndTaxes = totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount;
   const fnbScheduleSummaryLabel = fnbScheduleMode === 'schedule' && fnbScheduledFor
@@ -11156,7 +11318,7 @@ export default function StorefrontApp() {
   const simpleHasCustomerIdentity = hasCustomerName(customerName);
   const simpleHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
   const simpleStepOneReady = cart.length > 0;
-  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
+  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete && hasValidCheckoutPaymentType;
   const discoveryResultsPerPage = useMemo(() => {
     if (viewMode === 'list') return 3;
     if (isDiscoveryMobileViewport) return 4;
@@ -17626,6 +17788,7 @@ return (
                 <button type="button" onClick={() => setSimpleOrderStep(2)} style={{ justifySelf: 'start', minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back</button>
                 {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
                 {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                {guestCheckoutDraftNotice && <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>{guestCheckoutDraftNotice}</p>}
                 {requireQuoteForCheckout && !quoteResult && cart.length > 0 && (
                   <div style={{ fontSize: 12, color: '#b45309' }}>Quote the order first so totals and fees are synced before checkout.</div>
                 )}
@@ -19908,10 +20071,7 @@ return (
                         label="Payment Type"
                         value={fnbPaymentType}
                         onChange={setFnbPaymentType}
-                        options={[
-                          { value: 'cash', label: 'Cash on delivery/pickup' },
-                          { value: 'online', label: 'Online payment' }
-                        ]}
+                        options={STOREFRONT_CHECKOUT_PAYMENT_OPTIONS}
                         DropdownComponent={StorefrontDropdown}
                         triggerStyle={isFnbOrderResponsiveFlow
                           ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' }
@@ -19926,11 +20086,12 @@ return (
                       {!isFnbOrderResponsiveFlow && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
 	                          <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: '#fff', color: fnbOrderBrandDark, fontWeight: 800, cursor: 'pointer' }}>Refresh Quote</button>
-	                          <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: checkoutAllowed ? fnbOrderBrand : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: checkoutAllowed ? 'pointer' : 'not-allowed' }}>{checkoutLoading ? 'Processing...' : 'Place Order'}</button>
+	                          <button type="button" onClick={handleCheckout} disabled={!fnbCheckoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: fnbCheckoutAllowed ? fnbOrderBrand : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: fnbCheckoutAllowed ? 'pointer' : 'not-allowed' }}>{checkoutLoading ? 'Processing...' : 'Place Order'}</button>
                         </div>
                       )}
                       {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
                       {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                      {guestCheckoutDraftNotice && <p style={{ margin: 0, fontSize: 13, color: fnbOrderBrandDark }}>{guestCheckoutDraftNotice}</p>}
                       {!isFnbOrderResponsiveFlow && <button type="button" onClick={() => setFnbOrderStep(2)} style={{ justifySelf: 'start', minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back</button>}
                     </section>
                     {isDesktopCheckout && <aside style={{ display: 'grid', gap: 14, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
@@ -19940,7 +20101,7 @@ return (
                         <div style={{ display: 'grid', gap: 10, fontSize: 13, color: '#334155' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}</strong></div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{checkoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields')}</strong></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{fnbCheckoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields')}</strong></div>
                         </div>
                         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'grid', gap: 12 }}>
                           <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>Your Items</div>
@@ -20123,7 +20284,7 @@ return (
                             }}
                             disabled={
                               fnbOrderStep === 3 ? !fnbCustomerStepComplete
-                                : fnbOrderStep === 4 ? !checkoutAllowed
+                                : fnbOrderStep === 4 ? !fnbCheckoutAllowed
                                   : !fnbFulfillmentStepComplete
                             }
                             style={{
@@ -20140,7 +20301,7 @@ return (
                               justifyContent: 'center',
                               gap: 8,
                               boxShadow: `0 12px 24px ${fnbOrderBrandShadowStrong}`,
-                              opacity: (fnbOrderStep === 3 && !fnbCustomerStepComplete) || (fnbOrderStep === 4 && !checkoutAllowed) || (fnbOrderStep === 2 && !fnbFulfillmentStepComplete) ? 0.6 : 1
+                              opacity: (fnbOrderStep === 3 && !fnbCustomerStepComplete) || (fnbOrderStep === 4 && !fnbCheckoutAllowed) || (fnbOrderStep === 2 && !fnbFulfillmentStepComplete) ? 0.6 : 1
                             }}
                           >
                             {fnbOrderStep === 4 ? (
@@ -20841,7 +21002,22 @@ return (
                         {!hasServiceCart && checkoutPermitted && accessCapabilities.quote !== false && (
                           <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>{isFnbMode ? 'Refresh Quote' : 'Quote'}</button>
                         )}
-                        <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.2)', background: '#0b3d3a', color: '#fff', padding: '11px 12px', fontWeight: 800 }}>{checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : (isFnbMode ? 'Place Order' : 'Checkout'))}</button>
+                        <button
+                          type="button"
+                          onClick={handleCheckout}
+                          disabled={!(hasServiceCart ? checkoutAllowed : (isFnbMode ? fnbCheckoutAllowed : (isSimpleMode ? simpleCheckoutAllowed : checkoutAllowed)))}
+                          style={{
+                            borderRadius: 14,
+                            border: '1px solid rgba(255,255,255,.2)',
+                            background: (hasServiceCart ? checkoutAllowed : (isFnbMode ? fnbCheckoutAllowed : (isSimpleMode ? simpleCheckoutAllowed : checkoutAllowed))) ? '#0b3d3a' : '#64748b',
+                            color: '#fff',
+                            padding: '11px 12px',
+                            fontWeight: 800,
+                            cursor: (hasServiceCart ? checkoutAllowed : (isFnbMode ? fnbCheckoutAllowed : (isSimpleMode ? simpleCheckoutAllowed : checkoutAllowed))) ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          {checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : (isFnbMode ? 'Place Order' : 'Checkout'))}
+                        </button>
                       </div>
                     </div>
                     {hasStockViolation && (
@@ -20876,6 +21052,7 @@ return (
                       </p>
                     )}
                     {checkoutError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                    {guestCheckoutDraftNotice && <p style={{ marginTop: 10, fontSize: 13, color: '#0f766e' }}>{guestCheckoutDraftNotice}</p>}
                     {(checkoutResult?.tracking_pin || checkoutResult?.booking?.public_reference) && (
                       <div style={{ marginTop: 10, display: 'grid', gap: 8, border: '1px solid #99f6e4', background: '#ecfeff', borderRadius: 12, padding: '10px 12px' }}>
                         <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>
