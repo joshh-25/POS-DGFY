@@ -229,7 +229,7 @@ describe('Rate limiter behavior', () => {
     const readLimited = await request(app).get('/api/v1/store/track/sk-read01').expect(429);
     expect(readLimited.body).toEqual(expect.objectContaining({
       limitScope: 'store_tracking_read',
-      limitKeyType: 'ip_tracking_pin',
+      limitKeyType: 'ip_store_tracking_pin',
       retryAfterSeconds: expect.any(Number)
     }));
 
@@ -239,5 +239,32 @@ describe('Rate limiter behavior', () => {
       limitKeyType: 'ip_tracking_pin',
       retryAfterSeconds: expect.any(Number)
     }));
+  });
+
+  it('keys public tracking reads by store slug and PIN without sharing mutation buckets', async () => {
+    const app = express();
+    app.use(express.json());
+    app.get('/api/v1/store/track/:tracking_pin', storeTrackingReadLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+    await request(app)
+      .get('/api/v1/store/track/SK-SHARED01')
+      .set('x-store-slug', 'eatery-ni-doe-2e561d')
+      .expect(200);
+
+    const sameStoreSamePin = await request(app)
+      .get('/api/v1/store/track/sk-shared01')
+      .set('x-store-slug', 'eatery-ni-doe-2e561d')
+      .expect(429);
+
+    expect(sameStoreSamePin.body).toEqual(expect.objectContaining({
+      limitScope: 'store_tracking_read',
+      limitKeyType: 'ip_store_tracking_pin',
+      retryAfterSeconds: expect.any(Number)
+    }));
+
+    await request(app)
+      .get('/api/v1/store/track/SK-SHARED01')
+      .set('x-store-slug', 'another-store')
+      .expect(200);
   });
 });

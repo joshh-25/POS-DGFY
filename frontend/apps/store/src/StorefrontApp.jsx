@@ -117,6 +117,8 @@ import {
   buildTrackingPinKey,
   createCompletionTrackingScheduler,
   dedupeActiveCustomerOrders,
+  formatTrackingCooldown,
+  getTrackingRetryAfterSeconds,
   mergeVisibleTrackingResult,
   resolveSelectedTrackingPollMs,
   resolveTrackingRetryDelayMs
@@ -5949,6 +5951,8 @@ export default function StorefrontApp() {
   const [trackingPinInput, setTrackingPinInput] = useState('');
   const [trackingResult, setTrackingResult] = useState(null);
   const [trackingError, setTrackingError] = useState('');
+  const [trackingCooldownUntilMs, setTrackingCooldownUntilMs] = useState(0);
+  const [trackingCooldownNowMs, setTrackingCooldownNowMs] = useState(() => Date.now());
   const [isTrackingRefreshing, setIsTrackingRefreshing] = useState(false);
   const [guestTrackedOrders, setGuestTrackedOrders] = useState([]);
   const [expandedGuestDrawerPin, setExpandedGuestDrawerPin] = useState(null);
@@ -6145,6 +6149,12 @@ export default function StorefrontApp() {
     });
   }, [guestTrackedOrders, isStoreTrackingRoute, selectedTrackingPin, trackingPinInput]);
   const isStandaloneTrackingPage = Boolean(trackingResult) && isResolvedOrderSubpage && checkoutTab === 'track';
+  const trackingCooldownRemainingSeconds = Math.max(
+    0,
+    Math.ceil((Number(trackingCooldownUntilMs || 0) - Number(trackingCooldownNowMs || Date.now())) / 1000)
+  );
+  const isTrackingCooldownActive = trackingCooldownRemainingSeconds > 0;
+  const trackingCooldownLabel = formatTrackingCooldown(trackingCooldownRemainingSeconds);
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
@@ -10428,7 +10438,31 @@ export default function StorefrontApp() {
     writeLastTrackingPinForStore(resolvedSlug, trackingPin);
   }, [routeSlug, selectedStore?.slug, selectedStore?.tenant_name, selectedStore?.name, selectedStore?.storefront_profile_image_url, selectedStore?.profile_image_url]);
 
+  const applyTrackingCooldown = useCallback((error) => {
+    const retryAfterSeconds = getTrackingRetryAfterSeconds(error);
+    if (retryAfterSeconds <= 0) return false;
+    const now = Date.now();
+    setTrackingCooldownNowMs(now);
+    setTrackingCooldownUntilMs(now + (retryAfterSeconds * 1000));
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!trackingCooldownUntilMs) return undefined;
+    const updateCooldownClock = () => {
+      const now = Date.now();
+      setTrackingCooldownNowMs(now);
+      if (now >= trackingCooldownUntilMs) {
+        setTrackingCooldownUntilMs(0);
+      }
+    };
+    updateCooldownClock();
+    const intervalId = window.setInterval(updateCooldownClock, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [trackingCooldownUntilMs]);
+
   const handleTrack = async () => {
+    if (isTrackingCooldownActive) return;
     setTrackingError('');
     setIsTrackingRefreshing(true);
     try {
@@ -10437,8 +10471,10 @@ export default function StorefrontApp() {
       const trackingPayload = await fetchTrackingPayload(pin);
       setTrackingResult(toTrackingViewState(trackingPayload));
       setSelectedTrackingPin(pin);
+      setTrackingCooldownUntilMs(0);
       syncTrackedOrderSnapshot(trackingPayload.raw, pin, trackingPayload.normalized);
     } catch (error) {
+      applyTrackingCooldown(error);
       setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
     } finally {
       setIsTrackingRefreshing(false);
@@ -10491,9 +10527,13 @@ export default function StorefrontApp() {
         syncTrackedOrderSnapshot(trackingPayload.raw, selectedPin, trackingPayload.normalized);
         setTrackingResult(trackingViewState);
         setTrackingError('');
+        setTrackingCooldownUntilMs(0);
         return trackingViewState;
       } catch (error) {
-        if (!cancelled) setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+        if (!cancelled) {
+          applyTrackingCooldown(error);
+          setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+        }
         throw error;
       } finally {
         if (!cancelled) setIsTrackingRefreshing(false);
@@ -10509,7 +10549,7 @@ export default function StorefrontApp() {
           syncTrackedOrderSnapshot(trackingPayload.raw, pin, trackingPayload.normalized);
         } catch (error) {
           if (cancelled) return;
-          const retryAfterSeconds = Number(error?.retryAfterSeconds);
+          const retryAfterSeconds = getTrackingRetryAfterSeconds(error);
           if (Number.isFinite(retryAfterSeconds)) {
             largestRetryAfterSeconds = Math.max(largestRetryAfterSeconds || 0, retryAfterSeconds);
           }
@@ -10553,7 +10593,7 @@ export default function StorefrontApp() {
       selectedScheduler?.stop();
       backgroundScheduler?.stop();
     };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackingBackgroundPinsKey, isFnbOrderSubpage, isStoreTrackingRoute, selectedStore?.slug, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
+  }, [applyTrackingCooldown, checkoutTab, fetchTrackingPayload, guestTrackingBackgroundPinsKey, isFnbOrderSubpage, isStoreTrackingRoute, selectedStore?.slug, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
 
   const handleLoadAccountPanel = async () => {
     const dgfyToken = readDgfyAuthToken();
@@ -21485,14 +21525,18 @@ return (
                     <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>Fetching real-time status for {selectedTrackingPin}</div>
                   </div>
                 ) : trackingError ? (
-                  <div role="alert" style={{ border: '1px solid #fecaca', borderRadius: 18, padding: isMobileViewport ? 24 : 32, background: '#fff7f7', boxShadow: '0 8px 24px rgba(15,23,42,.04)', maxWidth: 560, margin: '0 auto', textAlign: 'center' }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>Tracking temporarily unavailable</div>
-                    <div style={{ fontSize: 14, lineHeight: 1.6, color: '#7f1d1d', marginTop: 8 }}>{trackingError}</div>
-                    <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
-                      Your order PIN is still saved. Automatic tracking will retry after the server wait period.
+                  <div role="alert" style={{ border: isTrackingCooldownActive ? '1px solid #bfdbfe' : '1px solid #fecaca', borderRadius: 18, padding: isMobileViewport ? 24 : 32, background: isTrackingCooldownActive ? '#eff6ff' : '#fff7f7', boxShadow: '0 8px 24px rgba(15,23,42,.04)', maxWidth: 560, margin: '0 auto', textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: isTrackingCooldownActive ? '#1d4ed8' : '#991b1b' }}>
+                      {isTrackingCooldownActive ? 'Tracking is refreshing too often' : 'Tracking temporarily unavailable'}
                     </div>
-                    <button type="button" onClick={handleTrack} disabled={isTrackingRefreshing} style={{ marginTop: 18, minHeight: 42, borderRadius: 12, border: '1px solid #b91c1c', background: '#fff', color: '#991b1b', padding: '0 18px', fontWeight: 800, cursor: isTrackingRefreshing ? 'wait' : 'pointer' }}>
-                      {isTrackingRefreshing ? 'Checking status...' : 'Try again'}
+                    <div style={{ fontSize: 14, lineHeight: 1.6, color: isTrackingCooldownActive ? '#1e3a8a' : '#7f1d1d', marginTop: 8 }}>{trackingError}</div>
+                    <div style={{ fontSize: 13, color: '#475569', marginTop: 8 }}>
+                      {isTrackingCooldownActive
+                        ? `Your order PIN is saved. We'll retry automatically in about ${trackingCooldownLabel}.`
+                        : 'Your order PIN is still saved. Automatic tracking will retry after the server wait period.'}
+                    </div>
+                    <button type="button" onClick={handleTrack} disabled={isTrackingRefreshing || isTrackingCooldownActive} style={{ marginTop: 18, minHeight: 42, borderRadius: 12, border: isTrackingCooldownActive ? '1px solid #93c5fd' : '1px solid #b91c1c', background: '#fff', color: isTrackingCooldownActive ? '#1d4ed8' : '#991b1b', padding: '0 18px', fontWeight: 800, cursor: isTrackingRefreshing ? 'wait' : (isTrackingCooldownActive ? 'not-allowed' : 'pointer'), opacity: isTrackingCooldownActive ? 0.78 : 1 }}>
+                      {isTrackingRefreshing ? 'Checking status...' : (isTrackingCooldownActive ? `Try again in ${trackingCooldownLabel}` : 'Try again')}
                     </button>
                   </div>
                 ) : null}
