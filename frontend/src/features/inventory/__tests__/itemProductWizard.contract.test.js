@@ -103,6 +103,28 @@ describe('Item/Product wizard contracts', () => {
     expect(itemFormSource).not.toContain('max-h-[90vh] max-w-4xl overflow-y-auto pb-6');
   });
 
+  it('hands off from item/product wizards before opening bulk POS setup', () => {
+    const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+
+    const itemHandoffIndex = itemsPageSource.indexOf('const openBulkPosSetupFromItemWizard = useCallback');
+    const productHandoffIndex = itemsPageSource.indexOf('const openBulkPosSetupFromProductWizard = useCallback');
+    expect(itemHandoffIndex).toBeGreaterThan(-1);
+    expect(productHandoffIndex).toBeGreaterThan(-1);
+
+    const itemHandoffSource = itemsPageSource.slice(itemHandoffIndex, productHandoffIndex);
+    expect(itemHandoffSource).toContain('setShowFormModal(false);');
+    expect(itemHandoffSource).toContain('setEditingItem(null);');
+    expect(itemHandoffSource.indexOf('setShowFormModal(false);')).toBeLessThan(itemHandoffSource.indexOf('setShowPosChecklistModal(true);'));
+
+    const productHandoffSource = itemsPageSource.slice(productHandoffIndex, itemsPageSource.indexOf('const checklistNeedsAttentionIds'));
+    expect(productHandoffSource).toContain('setShowProductWizard(false);');
+    expect(productHandoffSource).toContain('setEditingProduct(null);');
+    expect(productHandoffSource.indexOf('setShowProductWizard(false);')).toBeLessThan(productHandoffSource.indexOf('setShowPosChecklistModal(true);'));
+
+    expect(itemsPageSource).toContain('openBulkPosSetupFromItemWizard(editingItem);');
+    expect(itemsPageSource).toContain('openBulkPosSetupFromProductWizard(editingProduct);');
+  });
+
   it('uses expanded dropdown inventory data as SKU suggestion seed for both item and product wizards', () => {
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
 

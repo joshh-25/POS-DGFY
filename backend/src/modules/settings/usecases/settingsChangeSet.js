@@ -17,9 +17,19 @@ const normalizeComparable = (value) => {
 
 const comparableToken = (value) => JSON.stringify(normalizeComparable(value));
 
-const isBlankCreateValue = (value) => {
+const CREATE_DEFAULT_VALUES_BY_KEY = {
+    pos_fiscal_buyer_details_required: false
+};
+
+const isBlankCreateValue = (key, value) => {
     if (value === undefined || value === null) return true;
     if (typeof value === 'string') return value.trim().length === 0;
+    if (
+        Object.prototype.hasOwnProperty.call(CREATE_DEFAULT_VALUES_BY_KEY, key)
+        && comparableToken(CREATE_DEFAULT_VALUES_BY_KEY[key]) === comparableToken(value)
+    ) {
+        return true;
+    }
     return false;
 };
 
@@ -34,7 +44,7 @@ export const resolveChangedSettingKeys = async ({ settingsRepository, settingsDa
         const current = currentSettings?.[key];
         const nextValue = settingsData[key];
         if (!current) {
-            return !isBlankCreateValue(nextValue);
+            return !isBlankCreateValue(key, nextValue);
         }
 
         return comparableToken(current.value) !== comparableToken(nextValue);
