@@ -97,13 +97,27 @@ describe('Food & Beverage storefront contract', () => {
     const drawerSource = guestTrackingDrawerSource();
 
     expect(source).toContain('const isStandaloneTrackingPage = Boolean(trackingResult)');
-    expect(source).toContain("routeWantsTrack && preferredPin ? 'track' : 'checkout'");
+    expect(source).toContain("const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');");
     expect(source).toContain('setIsGuestTrackingDrawerOpen(true);');
     expect(source).toContain('trackingError={trackingError}');
     expect(source).not.toContain('In-progress orders are tracked automatically on this device.');
     expect(source).not.toContain("key={`guest-track-order-${entry.tracking_pin}`}");
     expect(drawerSource).toContain('Active orders linked to your DGFY account.');
     expect(drawerSource).toContain('trackingError =');
+  });
+
+  it('keeps /track routes mode-independent and limiter-safe', () => {
+    const source = appSource();
+
+    expect(source).toContain('const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;');
+    expect(source).toContain('const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;');
+    expect(source).not.toContain('if (!isFnbOrderSubpage) return;');
+    expect(source).toContain("const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);");
+    expect(source).toContain('const canRefreshBackgroundPins = !isStoreTrackingRoute;');
+    expect(source).toContain('const selectedPollMs = typeof document !==');
+    expect(source).toContain('90000 : 45000');
+    expect(source).toContain('300000 : 180000');
+    expect(source).toContain('setIsGuestTrackingDrawerOpen(false);');
   });
 
   it('supports guest-or-account checkout entry while preserving auth draft resume state', () => {
