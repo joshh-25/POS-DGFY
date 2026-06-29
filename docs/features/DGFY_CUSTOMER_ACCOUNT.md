@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-06-26
+last_reviewed: 2026-06-29
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -11,14 +11,14 @@ topic: dgfy_customer_account
 
 ## Current Contract
 
-The public DGFY surface now has one canonical authentication route plus a launcher entry point:
+The public DGFY surface now has one canonical authentication route:
 
-1. **Log in / Sign up** from discovery or storefront opens a lightweight customer-account launcher.
-2. The launcher routes create-account and sign-in actions to the canonical `/dgfy/auth` route.
+1. **Log in / Sign up** from discovery or storefront navigates directly to the canonical `/dgfy/auth` route with `intent=customer`, `mode=sign-in`, and the Storefront `return_to` target.
+2. Signed-in account and profile actions open the existing DGFY customer account page instead of returning the customer to authentication.
 3. **Register Your Business** routes to company registration and must not be used as the general customer login path.
 4. Password recovery lives on the dedicated `/dgfy/reset-password` route and returns the user to the same customer or business intent after completion.
 
-Tenant storefront headers expose **Log in / Sign up** directly so customers can authenticate or create an account without waiting until checkout. On a tenant storefront, **My Account** / profile actions route to the standalone `/:store_tenant_slug/account` page instead of opening the account dashboard as a modal. On the discovery page, signed-in DGFY customers use the global `/map-dgfy/account` page for cross-store orders, bookings, saved locations, loyalty activity, and business registration. Signed-out discovery users still get the authentication dialog.
+Tenant storefront headers expose **Log in / Sign up** directly so customers can authenticate or create an account without waiting until checkout. Signed-out discovery and tenant-storefront account actions navigate directly to `/dgfy/auth`; no discovery authentication dialog is required. On a tenant storefront, **My Account** / profile actions route to the standalone `/:store_tenant_slug/account` page instead of opening the account dashboard as a modal. On the discovery page, signed-in DGFY customers use the global `/map-dgfy/account` page for cross-store orders, bookings, saved locations, loyalty activity, and business registration.
 
 DGFY accounts are landlord-scoped. Tenant-local `store_customers` remain tenant-isolated compatibility rows and can be lazily linked to a DGFY account with `dgfy_account_id`.
 
@@ -45,7 +45,7 @@ Guest users can:
 - Track a known reference.
 - Request tracking recovery with an email or phone lookup. Production responses are always generic and do not expose whether a match or delivery channel exists.
 - Submit a fulfilled-order guest review only when the completed tracking response returns a valid review invite. Guest review invites are token-scoped, single-use, and separate from signed-in DGFY account history.
-- Create or sign in to a DGFY account from the canonical `/dgfy/auth` route after launching from the storefront or discovery customer-account surface. Registration collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password, with password visibility toggles.
+- Create or sign in to a DGFY account from the canonical `/dgfy/auth` route after selecting **Log in / Sign up** on discovery or a tenant storefront. Registration collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password, with password visibility toggles.
 
 ## Signed-In DGFY Users
 
@@ -56,6 +56,7 @@ Signed-in DGFY users can:
 - See cross-store customer activity through `/api/v1/dgfy/customer/dashboard` and the canonical paginated `/api/v1/dgfy/customer/activities` endpoint. The activities endpoint supports `type`, `tenant_id`, `store_slug`, `status`, `payment_status`, `date_from`, `date_to`, `page`, and `limit` filters and returns normalized activity cards with store, reference, status, total, summary lines, allowed actions, and typed review targets. Only activity explicitly linked to the signed-in DGFY account is shown; guest orders or bookings are not adopted into a newly created account by email or phone matching.
 - Operators can run a full historical customer activity backfill with `npm run backfill:dgfy-customer-activity:apply`. Apply mode runs landlord migrations first, then scans customer-facing activity across tenant databases. The dry-run command is `npm run backfill:dgfy-customer-activity -- ...`; it pages all DGFY accounts and tenants without writing activity rows. Historical backfill covers POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations, writes a `dgfy_customer_backfill_runs` audit row in apply mode, and supports `--fail-fast`, `--include-inactive-tenants`, `--tenant-page-size`, `--order-batch-size`, `--account-page-size`, `--transaction-limit-per-tenant`, and `--require-activity-types=order,service_booking,hospitality_booking,fnb_order`. Historical imports preserve explicit `dgfy_account_id` linkage only; they must not infer account ownership from guest email or phone values. Use the required activity type gate in production dry-runs when the release must prove all customer-facing modes are present before apply. Dry-run may continue without a run-log row when the audit table is not present, but apply mode is schema-strict after migration.
 - Track account-linked references through `/api/v1/dgfy/customer/track`.
+- Guest public tracking uses one completion-based request loop per normalized tracking PIN. The visible loop uses state-aware 10-20 second intervals, stops terminal-order polling, backs off for hidden states, honors `Retry-After`/`retryAfterSeconds` on `429`, disables manual retry during cooldown with countdown copy, preserves the last successful status during transient failures, and uses a dedicated read-rate-limit bucket separate from claim/cancel mutations.
 - Cancel eligible account-linked orders while the order is `placed` or `confirmed`.
 - Request reorder cart lines for an eligible prior order. Checkout still revalidates current price, stock, visibility, Customer Access Mode, and fulfillment rules.
 - Submit typed reviews only for eligible paid or completed account activity. Supported targets are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; reviews start as pending approval and duplicate account/activity/target reviews are rejected.
@@ -187,7 +188,7 @@ Current validation must include:
 - `npm run uat:production:dgfy` when controlled production mutation UAT is approved and a dedicated QA account, tenant, item, checkout, POS operator path, inventory record, and cleanup/signoff rule are available.
 - DGFY auth and Storefront checkout/order regression tests.
 - `npm --prefix frontend run build:store`
-- Rendered desktop and mobile storefront smoke checks for the discovery auth dialog, routed account page, recovery panel, address controls, loyalty summary, order actions, and company-registration separation.
+- Rendered desktop and mobile storefront smoke checks proving signed-out account actions navigate directly to canonical DGFY auth with no guest account dialog, while the routed signed-in account page, recovery panel, address controls, loyalty summary, order actions, and company-registration separation remain available.
 - `npm --prefix frontend test -- --run src/features/pos/__tests__/terminalLocationScope.integration.test.jsx`
 - `npm run smoke:dgfy-access-ui` after local IMS, POS, and Storefront dev or preview servers are running
 - Loyalty redemption and phone OTP verification remain deferred UI hardening items. The current routed page manages saved locations, including optional exact map pins, confirms cancellation before mutation, explains unavailable reorder lines when catalog mapping fails, calls existing account order action endpoints, and relies on checkout revalidation for reordered cart lines.

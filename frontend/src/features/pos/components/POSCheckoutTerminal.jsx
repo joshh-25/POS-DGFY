@@ -2095,7 +2095,7 @@ export default function POSCheckoutTerminal({
 
             {currentViewMode === 'checkout' && (
                 <div className={checkoutGridClassName}>
-            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
+            <section ref={catalogSectionRef} className={`min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 2xl:col-span-8 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
                     {isTabletViewport && renderViewModeControls()}
                     {renderQueuedCheckoutsNotice('mb-5')}
                     <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
@@ -2472,7 +2472,7 @@ export default function POSCheckoutTerminal({
                     )}
             </section>
 
-            <aside className={`space-y-4 ${checkoutPaneClassName}`}>
+            <aside className={`min-w-0 space-y-4 2xl:col-span-4 ${checkoutPaneClassName}`}>
             <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${currentSalePaneHeightClassName}`}>
                     <div role="region" aria-label="Current sale contents" className="flex h-full min-h-0 flex-col">
                 <div className={currentSaleBodyClassName}>

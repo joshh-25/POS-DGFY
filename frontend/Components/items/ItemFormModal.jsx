@@ -318,18 +318,21 @@ export default function ItemFormModal({
     }
     return findItemPresetForValues(workflowMode, formData);
   }, [formData, modeItemTaxonomy, workflowMode]);
+  const resolvedModeItemPresetKey = modeItemTaxonomy
+    ? (currentItemPreset?.key || modeItemTaxonomy.default_preset || null)
+    : null;
   const isStockExemptItem = currentItemPreset?.stock_behavior === 'stock_exempt' || formData.category === 'service';
   const financialPolicy = useMemo(() => resolveItemFinancialPolicy({
     workflowMode,
     item: {
       ...formData,
-      mode_item_preset: currentItemPreset?.key || formData.mode_preset || null
+      mode_item_preset: resolvedModeItemPresetKey
     },
     preset: currentItemPreset,
     posVisible: posConfig?.pos_visible === true,
     storefrontVisible: storefrontConfig?.storefront_visible === true,
     serviceCostTrackingEnabled: trackServiceCost
-  }), [currentItemPreset, formData, posConfig?.pos_visible, storefrontConfig?.storefront_visible, trackServiceCost, workflowMode]);
+  }), [currentItemPreset, formData, posConfig?.pos_visible, resolvedModeItemPresetKey, storefrontConfig?.storefront_visible, trackServiceCost, workflowMode]);
   const [stockBaseline, setStockBaseline] = useState(0);
   const itemLocationStockMap = useMemo(() => {
     const rows = Array.isArray(item?.item_location_stocks) ? item.item_location_stocks : [];
@@ -927,7 +930,7 @@ export default function ItemFormModal({
       name: cleanedData.name || '',
       category: categoryForSave,
       product_type: categoryForSave === 'product' ? 'finished_goods' : null,
-      mode_item_preset: modeItemTaxonomy ? (currentItemPreset?.key || cleanedData.mode_preset || null) : null,
+      mode_item_preset: resolvedModeItemPresetKey,
       description: cleanedData.description || '',
       unit_of_measure: cleanedData.unit_of_measure || modeItemDefaults.unit_of_measure || '',
       cost_per_unit: financialPolicy.show_cost ? toNumberOrNull(cleanedData.cost_per_unit) : null,
@@ -946,7 +949,7 @@ export default function ItemFormModal({
       production_notes: cleanedData.production_notes || null,
       shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.shelf_life_days) : null,
       opened_shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.opened_shelf_life_days) : null,
-      status: isDraft ? 'draft' : (item?.status || 'active'),
+      status: isDraft ? 'draft' : 'active',
       ...(categoryForSave === 'packaging' ? {
         packaging_specs: cleanedData.packaging_specs ? (() => {
 

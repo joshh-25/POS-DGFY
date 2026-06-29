@@ -1110,6 +1110,33 @@ export default function Items() {
     setShowPosChecklistModal(true);
   }, []);
 
+  const openBulkPosSetupFromItemWizard = useCallback((item = null) => {
+    setShowFormModal(false);
+    setEditingItem(null);
+    setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
+
+    if (item) {
+      launchPosReadinessFlow(item);
+      return;
+    }
+
+    setGuidedPosReadyItemId(null);
+    setShowPosChecklistModal(true);
+  }, [launchPosReadinessFlow]);
+
+  const openBulkPosSetupFromProductWizard = useCallback((product = null) => {
+    setShowProductWizard(false);
+    setEditingProduct(null);
+
+    if (product) {
+      launchPosReadinessFlow(product);
+      return;
+    }
+
+    setGuidedPosReadyItemId(null);
+    setShowPosChecklistModal(true);
+  }, [launchPosReadinessFlow]);
+
   const checklistNeedsAttentionIds = useMemo(() => (
     posChecklistItems
       .map((item) => item?.item_id || item?.id)
@@ -1400,7 +1427,10 @@ export default function Items() {
 
       let savedItem = null;
       if (isEditingExistingItem) {
-        if (Object.keys(itemPayload).length > 0) {
+        if (editingItem.status === 'draft' && itemPayload.status === 'active') {
+          savedItem = await finalizeItem(editingItem.item_id, itemPayload);
+          toast.success('Item finalized successfully');
+        } else if (Object.keys(itemPayload).length > 0) {
           savedItem = await updateItem(editingItem.item_id, itemPayload);
           toast.success('Item updated successfully');
         } else {
@@ -2692,12 +2722,7 @@ export default function Items() {
           onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
           onDeleteStorefrontImage={handleDeleteStorefrontImage}
           onOpenBulkPosSetup={() => {
-            if (editingItem) {
-              launchPosReadinessFlow(editingItem);
-            } else {
-              setGuidedPosReadyItemId(null);
-              setShowPosChecklistModal(true);
-            }
+            openBulkPosSetupFromItemWizard(editingItem);
           }}
         />
         <MoveToFolderModal
@@ -2733,12 +2758,7 @@ export default function Items() {
             onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
             onDeleteStorefrontImage={handleDeleteStorefrontImage}
             onOpenBulkPosSetup={() => {
-              if (editingProduct) {
-                launchPosReadinessFlow(editingProduct);
-              } else {
-                setGuidedPosReadyItemId(null);
-                setShowPosChecklistModal(true);
-              }
+              openBulkPosSetupFromProductWizard(editingProduct);
             }}
           />
         )}

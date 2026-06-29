@@ -113,6 +113,17 @@ import {
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
 import {
+  TERMINAL_CUSTOMER_TRACKING_STATUSES,
+  buildTrackingPinKey,
+  createCompletionTrackingScheduler,
+  dedupeActiveCustomerOrders,
+  formatTrackingCooldown,
+  getTrackingRetryAfterSeconds,
+  mergeVisibleTrackingResult,
+  resolveSelectedTrackingPollMs,
+  resolveTrackingRetryDelayMs
+} from './tracking/customerTrackingRefresh.js';
+import {
   DiscoveryCategoryRail,
   DiscoveryHeader,
   DiscoveryHero,
@@ -123,7 +134,6 @@ import {
 } from './Components/store/DiscoveryResponsiveLayout.jsx';
 import { SolutionsPage } from './Components/storefront/pages/SolutionsPage.jsx';
 import { FnbProductDetailsPage } from './Components/storefront/pages/FnbProductDetailsPage.jsx';
-import { DgfyCustomerAuthModal } from './Components/storefront/pages/DgfyCustomerAuthModal.jsx';
 import { DgfyCustomerAccountPage } from './Components/storefront/pages/DgfyCustomerAccountPage.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './Components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './Components/storefront/hero/StorefrontHeaderNav.jsx';
@@ -1357,7 +1367,7 @@ const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_
 const STOREFRONT_CHECKOUT_AUTH_RESUME_KEY = 'dgfy_store_checkout_auth_resume_v1';
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
-const TERMINAL_TRACKING_STATUSES = new Set(['completed', 'delivered', 'picked_up', 'cancelled', 'rejected']);
+const TERMINAL_TRACKING_STATUSES = TERMINAL_CUSTOMER_TRACKING_STATUSES;
 const DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES = new Set(['order', 'pos_order', 'fnb_order']);
 const DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
 const EMPTY_ACCOUNT_PANEL = Object.freeze({
@@ -5941,6 +5951,8 @@ export default function StorefrontApp() {
   const [trackingPinInput, setTrackingPinInput] = useState('');
   const [trackingResult, setTrackingResult] = useState(null);
   const [trackingError, setTrackingError] = useState('');
+  const [trackingCooldownUntilMs, setTrackingCooldownUntilMs] = useState(0);
+  const [trackingCooldownNowMs, setTrackingCooldownNowMs] = useState(() => Date.now());
   const [isTrackingRefreshing, setIsTrackingRefreshing] = useState(false);
   const [guestTrackedOrders, setGuestTrackedOrders] = useState([]);
   const [expandedGuestDrawerPin, setExpandedGuestDrawerPin] = useState(null);
@@ -6127,8 +6139,22 @@ export default function StorefrontApp() {
     overview: overviewSectionModel,
     supporting: supportingSectionModel
   } = pageModel;
-  const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
-  const isStandaloneTrackingPage = Boolean(trackingResult) && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
+  const isFnbOrderSubpage = isFnbMode && isResolvedOrderSubpage;
+  const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;
+  const guestTrackingBackgroundPinsKey = useMemo(() => {
+    const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
+    return buildTrackingPinKey(guestTrackedOrders, {
+      enabled: !isStoreTrackingRoute,
+      excludePin: selectedPin
+    });
+  }, [guestTrackedOrders, isStoreTrackingRoute, selectedTrackingPin, trackingPinInput]);
+  const isStandaloneTrackingPage = Boolean(trackingResult) && isResolvedOrderSubpage && checkoutTab === 'track';
+  const trackingCooldownRemainingSeconds = Math.max(
+    0,
+    Math.ceil((Number(trackingCooldownUntilMs || 0) - Number(trackingCooldownNowMs || Date.now())) / 1000)
+  );
+  const isTrackingCooldownActive = trackingCooldownRemainingSeconds > 0;
+  const trackingCooldownLabel = formatTrackingCooldown(trackingCooldownRemainingSeconds);
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
@@ -6286,19 +6312,15 @@ export default function StorefrontApp() {
     const initials = parts.map((part) => part.charAt(0).toUpperCase()).join('');
     return initials || 'GU';
   }, [accountDisplayName]);
-  const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  const accountDrawerTitle = isGuestAccountDrawerState ? 'DGFY Account' : 'My Account';
-  const accountDrawerSubtitle = isGuestAccountDrawerState
-    ? 'Orders, tracking, profile, addresses, loyalty, and company invitations.'
-    : 'Manage your bookings, orders, tickets and more.';
-  const accountPrimaryDescription = 'View and manage your saved bookings, orders, tickets, receipts, and the latest linked transaction.';
   const activeCustomerOrders = useMemo(() => {
-    const activeStatuses = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']);
-    return (Array.isArray(accountPanel.orders) ? accountPanel.orders : []).filter((order) => (
-      activeStatuses.has(String(order?.status || '').trim().toLowerCase())
-    ));
+    return dedupeActiveCustomerOrders(accountPanel.orders);
   }, [accountPanel.orders]);
   const activeCustomerOrderCount = activeCustomerOrders.length;
+  const hasVisibleCustomerTrackingSurface = isAccountDrawerOpen
+    || isStandaloneAccountPage
+    || isGuestTrackingDrawerOpen
+    || isStandaloneTrackingPage
+    || activeCustomerOrderCount > 0;
   const accountTrackedOrders = useMemo(() => (
     mergeTrackedOrderEntries(
       activeCustomerOrders
@@ -6316,16 +6338,7 @@ export default function StorefrontApp() {
         ? { ...previous, ...activity }
         : previous;
     });
-    setTrackingResult((previous) => {
-      const previousPin = String(previous?.tracking_pin || previous?.order?.tracking_pin || '').trim().toUpperCase();
-      if (!normalizedReference || previousPin !== normalizedReference) return previous;
-      return {
-        ...previous,
-        status: activity.status || previous?.status,
-        status_label: activity.status_label || activity.status || previous?.status_label,
-        updated_at: activity.updated_at || activity.occurred_at || previous?.updated_at
-      };
-    });
+    setTrackingResult((previous) => mergeVisibleTrackingResult(previous, activity));
   }, []);
   const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
   const canOpenTrackingDrawer = (isDgfyCustomerSignedIn || isGuestStorefrontUser) && !isStandaloneTrackingPage;
@@ -6999,14 +7012,15 @@ export default function StorefrontApp() {
   }, [isAccountDrawerOpen, isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen, isStandaloneAccountPage]);
 
   useEffect(() => {
-    if (!isFnbOrderSubpage) return;
+    const routeWantsTrack = isStoreTrackingRoute;
+    const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;
+    if (!shouldInitializeTrackingRoute) return;
     const resolvedSlug = toSlug(selectedStore?.slug || routeSlug);
     const persistedTrackedOrders = readTrackedOrdersForStore(resolvedSlug).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const persistedTrackingPin = readLastTrackingPinForStore(resolvedSlug);
     const routeTrackingPin = readTrackingPinFromQuery();
-    const routeWantsTrack = routeSubpage === STORE_TRACK_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
     const preferredPin = String(routeTrackingPin || persistedTrackedOrders[0]?.tracking_pin || persistedTrackingPin || '').trim().toUpperCase();
-    const preferredTab = pendingOrderInitialTab || (routeWantsTrack && preferredPin ? 'track' : 'checkout');
+    const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');
     if (!trackingPinInput && preferredPin) {
       setTrackingPinInput(preferredPin);
     }
@@ -7014,7 +7028,7 @@ export default function StorefrontApp() {
     setCheckoutTab(preferredTab);
     setPendingOrderInitialTab('');
     setIsCheckoutOpen(false);
-  }, [currentPathSubpage, isFnbOrderSubpage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
+  }, [isFnbOrderSubpage, isStoreTrackingRoute, pendingOrderInitialTab, routeSlug, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
 
   useEffect(() => {
     const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
@@ -7067,11 +7081,7 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
-    const shouldPollAccountOrders = isAccountDrawerOpen
-      || isStandaloneAccountPage
-      || isGuestTrackingDrawerOpen
-      || activeCustomerOrderCount > 0;
-    if (!shouldPollAccountOrders) return undefined;
+    if (!hasVisibleCustomerTrackingSurface) return undefined;
     let cancelled = false;
     const refreshAccountOrders = async () => {
       if (cancelled || accountPanelRefreshInFlightRef.current) return;
@@ -7102,19 +7112,13 @@ export default function StorefrontApp() {
     };
   }, [
     activeCustomerOrderCount,
-    isAccountDrawerOpen,
-    isDgfyCustomerSignedIn,
-    isGuestTrackingDrawerOpen,
-    isStandaloneAccountPage
+    hasVisibleCustomerTrackingSurface,
+    isDgfyCustomerSignedIn
   ]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof EventSource === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
-    const shouldStreamAccountEvents = isAccountDrawerOpen
-      || isStandaloneAccountPage
-      || isGuestTrackingDrawerOpen
-      || activeCustomerOrderCount > 0;
-    if (!shouldStreamAccountEvents) return undefined;
+    if (!hasVisibleCustomerTrackingSurface) return undefined;
 
     let closed = false;
     const source = new EventSource(withApiOrigin('/api/v1/dgfy/customer/events'), { withCredentials: true });
@@ -7187,11 +7191,8 @@ export default function StorefrontApp() {
       source.close();
     };
   }, [
-    activeCustomerOrderCount,
-    isAccountDrawerOpen,
+    hasVisibleCustomerTrackingSurface,
     isDgfyCustomerSignedIn,
-    isGuestTrackingDrawerOpen,
-    isStandaloneAccountPage,
     mergeLiveAccountActivity
   ]);
 
@@ -9416,6 +9417,12 @@ export default function StorefrontApp() {
   const openAccountPanel = () => {
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
+
+    if (!isStorefrontAccountAuthenticated) {
+      openCanonicalDgfyAuth('customer', 'sign-in');
+      return;
+    }
+
     setIsAccountDrawerOpen(true);
     handleLoadAccountPanel();
   };
@@ -10431,7 +10438,31 @@ export default function StorefrontApp() {
     writeLastTrackingPinForStore(resolvedSlug, trackingPin);
   }, [routeSlug, selectedStore?.slug, selectedStore?.tenant_name, selectedStore?.name, selectedStore?.storefront_profile_image_url, selectedStore?.profile_image_url]);
 
+  const applyTrackingCooldown = useCallback((error) => {
+    const retryAfterSeconds = getTrackingRetryAfterSeconds(error);
+    if (retryAfterSeconds <= 0) return false;
+    const now = Date.now();
+    setTrackingCooldownNowMs(now);
+    setTrackingCooldownUntilMs(now + (retryAfterSeconds * 1000));
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!trackingCooldownUntilMs) return undefined;
+    const updateCooldownClock = () => {
+      const now = Date.now();
+      setTrackingCooldownNowMs(now);
+      if (now >= trackingCooldownUntilMs) {
+        setTrackingCooldownUntilMs(0);
+      }
+    };
+    updateCooldownClock();
+    const intervalId = window.setInterval(updateCooldownClock, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [trackingCooldownUntilMs]);
+
   const handleTrack = async () => {
+    if (isTrackingCooldownActive) return;
     setTrackingError('');
     setIsTrackingRefreshing(true);
     try {
@@ -10440,8 +10471,10 @@ export default function StorefrontApp() {
       const trackingPayload = await fetchTrackingPayload(pin);
       setTrackingResult(toTrackingViewState(trackingPayload));
       setSelectedTrackingPin(pin);
+      setTrackingCooldownUntilMs(0);
       syncTrackedOrderSnapshot(trackingPayload.raw, pin, trackingPayload.normalized);
     } catch (error) {
+      applyTrackingCooldown(error);
       setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
     } finally {
       setIsTrackingRefreshing(false);
@@ -10471,39 +10504,44 @@ export default function StorefrontApp() {
   }, [routeSlug, selectedStore?.slug]);
 
   useEffect(() => {
-    if (!(checkoutTab === 'track' && isFnbOrderSubpage) || !selectedStore?.slug) return;
+    const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);
+    if (!shouldPollTrackingRoute || !selectedStore?.slug) return;
     const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
-    const backgroundPins = Array.from(
-      new Set(
-        guestTrackedOrders
-          .map((entry) => String(entry.tracking_pin || '').trim().toUpperCase())
-          .filter((pin) => Boolean(pin) && pin !== selectedPin)
-      )
-    );
+    const backgroundPins = guestTrackingBackgroundPinsKey
+      ? guestTrackingBackgroundPinsKey.split('|').filter(Boolean)
+      : [];
     if (!selectedPin && backgroundPins.length === 0) return;
 
     let cancelled = false;
-    const selectedPollMs = typeof document !== 'undefined' && document.hidden ? 8000 : 2000;
-    const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 30000 : 12000;
+    const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 300000 : 180000;
+    let lastSelectedStatus = '';
 
     const refreshSelectedPin = async () => {
-      if (!selectedPin) return;
+      if (!selectedPin || cancelled) return null;
       try {
         setIsTrackingRefreshing(true);
         const trackingPayload = await fetchTrackingPayload(selectedPin);
-        if (cancelled) return;
+        if (cancelled) return null;
+        const trackingViewState = toTrackingViewState(trackingPayload);
+        lastSelectedStatus = trackingViewState?.status || lastSelectedStatus;
         syncTrackedOrderSnapshot(trackingPayload.raw, selectedPin, trackingPayload.normalized);
-        setTrackingResult(toTrackingViewState(trackingPayload));
+        setTrackingResult(trackingViewState);
         setTrackingError('');
+        setTrackingCooldownUntilMs(0);
+        return trackingViewState;
       } catch (error) {
-        if (cancelled) return;
-        setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+        if (!cancelled) {
+          applyTrackingCooldown(error);
+          setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+        }
+        throw error;
       } finally {
         if (!cancelled) setIsTrackingRefreshing(false);
       }
     };
 
     const refreshBackgroundPins = async () => {
+      let largestRetryAfterSeconds = null;
       for (const pin of backgroundPins) {
         try {
           const trackingPayload = await fetchTrackingPayload(pin);
@@ -10511,22 +10549,51 @@ export default function StorefrontApp() {
           syncTrackedOrderSnapshot(trackingPayload.raw, pin, trackingPayload.normalized);
         } catch (error) {
           if (cancelled) return;
+          const retryAfterSeconds = getTrackingRetryAfterSeconds(error);
+          if (Number.isFinite(retryAfterSeconds)) {
+            largestRetryAfterSeconds = Math.max(largestRetryAfterSeconds || 0, retryAfterSeconds);
+          }
         }
+      }
+      if (largestRetryAfterSeconds) {
+        const error = new Error('Background tracking refresh rate limited.');
+        error.retryAfterSeconds = largestRetryAfterSeconds;
+        throw error;
       }
     };
 
-    refreshSelectedPin();
-    refreshBackgroundPins();
+    const selectedScheduler = selectedPin
+      ? createCompletionTrackingScheduler({
+        poll: refreshSelectedPin,
+        resolveDelayMs: ({ result, error }) => {
+          const normalDelayMs = resolveSelectedTrackingPollMs({
+            visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible',
+            status: result?.status || lastSelectedStatus
+          });
+          return resolveTrackingRetryDelayMs({ error, normalDelayMs });
+        },
+        setTimeoutFn: window.setTimeout.bind(window),
+        clearTimeoutFn: window.clearTimeout.bind(window)
+      })
+      : null;
+    const backgroundScheduler = backgroundPins.length > 0
+      ? createCompletionTrackingScheduler({
+        poll: refreshBackgroundPins,
+        resolveDelayMs: ({ error }) => resolveTrackingRetryDelayMs({ error, normalDelayMs: backgroundPollMs }),
+        setTimeoutFn: window.setTimeout.bind(window),
+        clearTimeoutFn: window.clearTimeout.bind(window)
+      })
+      : null;
 
-    const selectedTimerId = selectedPin ? window.setInterval(refreshSelectedPin, selectedPollMs) : null;
-    const backgroundTimerId = backgroundPins.length > 0 ? window.setInterval(refreshBackgroundPins, backgroundPollMs) : null;
+    selectedScheduler?.start();
+    backgroundScheduler?.start();
 
     return () => {
       cancelled = true;
-      if (selectedTimerId) window.clearInterval(selectedTimerId);
-      if (backgroundTimerId) window.clearInterval(backgroundTimerId);
+      selectedScheduler?.stop();
+      backgroundScheduler?.stop();
     };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
+  }, [applyTrackingCooldown, checkoutTab, fetchTrackingPayload, guestTrackingBackgroundPinsKey, isFnbOrderSubpage, isStoreTrackingRoute, selectedStore?.slug, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
 
   const handleLoadAccountPanel = async () => {
     const dgfyToken = readDgfyAuthToken();
@@ -10804,17 +10871,11 @@ export default function StorefrontApp() {
     }
   }, [isDgfyCustomerSignedIn]);
   useEffect(() => {
-    const routeWantsTrack = routeSubpage === STORE_TRACK_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
-    if (!routeWantsTrack || !isFnbMode || !canOpenTrackingDrawer || trackingResult) return;
-    if (isDgfyCustomerSignedIn) {
-      void handleLoadAccountPanel();
-    }
+    const routeWantsTrack = isStoreTrackingRoute;
+    if (!routeWantsTrack) return;
     setIsCheckoutOpen(false);
-    setIsGuestTrackingDrawerOpen(true);
-    if (!selectedTrackingPin) {
-      setCheckoutTab('checkout');
-    }
-  }, [canOpenTrackingDrawer, currentPathSubpage, isDgfyCustomerSignedIn, isFnbMode, routeSubpage, selectedTrackingPin, trackingResult]);
+    setIsGuestTrackingDrawerOpen(false);
+  }, [isStoreTrackingRoute]);
   useEffect(() => {
     if (typeof window === 'undefined' || hasAppliedCheckoutAuthResume || !isDgfyCustomerSignedIn) return;
     const draft = readCheckoutAuthResumeDraft();
@@ -21463,6 +21524,21 @@ return (
                     <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Loading Order Details...</div>
                     <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>Fetching real-time status for {selectedTrackingPin}</div>
                   </div>
+                ) : trackingError ? (
+                  <div role="alert" style={{ border: isTrackingCooldownActive ? '1px solid #bfdbfe' : '1px solid #fecaca', borderRadius: 18, padding: isMobileViewport ? 24 : 32, background: isTrackingCooldownActive ? '#eff6ff' : '#fff7f7', boxShadow: '0 8px 24px rgba(15,23,42,.04)', maxWidth: 560, margin: '0 auto', textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: isTrackingCooldownActive ? '#1d4ed8' : '#991b1b' }}>
+                      {isTrackingCooldownActive ? 'Tracking is refreshing too often' : 'Tracking temporarily unavailable'}
+                    </div>
+                    <div style={{ fontSize: 14, lineHeight: 1.6, color: isTrackingCooldownActive ? '#1e3a8a' : '#7f1d1d', marginTop: 8 }}>{trackingError}</div>
+                    <div style={{ fontSize: 13, color: '#475569', marginTop: 8 }}>
+                      {isTrackingCooldownActive
+                        ? `Your order PIN is saved. We'll retry automatically in about ${trackingCooldownLabel}.`
+                        : 'Your order PIN is still saved. Automatic tracking will retry after the server wait period.'}
+                    </div>
+                    <button type="button" onClick={handleTrack} disabled={isTrackingRefreshing || isTrackingCooldownActive} style={{ marginTop: 18, minHeight: 42, borderRadius: 12, border: isTrackingCooldownActive ? '1px solid #93c5fd' : '1px solid #b91c1c', background: '#fff', color: isTrackingCooldownActive ? '#1d4ed8' : '#991b1b', padding: '0 18px', fontWeight: 800, cursor: isTrackingRefreshing ? 'wait' : (isTrackingCooldownActive ? 'not-allowed' : 'pointer'), opacity: isTrackingCooldownActive ? 0.78 : 1 }}>
+                      {isTrackingRefreshing ? 'Checking status...' : (isTrackingCooldownActive ? `Try again in ${trackingCooldownLabel}` : 'Try again')}
+                    </button>
+                  </div>
                 ) : null}
               </div>
             )}
@@ -21508,29 +21584,7 @@ return (
       )}
     </>
   )}
-      {isAccountDrawerOpen && (isGuestAccountDrawerState ? (
-        <DgfyCustomerAuthModal
-          isMobileViewport={isMobileViewport}
-          onClose={closeAccountDrawer}
-          savedCustomerDetails={savedCustomerDetails}
-          hasSavedCustomerDetails={hasSavedCustomerDetails}
-          onContinueAsGuest={() => {
-            if (hasSavedCustomerDetails) {
-              applySavedCustomerDetails();
-            }
-            closeAccountDrawer();
-          }}
-          onClearSavedDetails={clearSavedCustomerDetailsForDevice}
-          onOpenAuth={() => {
-            closeAccountDrawer();
-            openCanonicalDgfyAuth('customer');
-          }}
-          onOpenRegisterBusiness={() => {
-            closeAccountDrawer();
-            openBusinessRegistrationFlow();
-          }}
-        />
-      ) : (
+      {isAccountDrawerOpen && (
         <DgfyCustomerAccountPage
           isMobileViewport={isMobileViewport}
           onClose={closeAccountDrawer}
@@ -21567,7 +21621,7 @@ return (
           accountAddressActionId={accountAddressActionId}
           onOpenBusinessInventory={handleOpenBusinessInventory}
         />
-      ))}
+      )}
       {isGuestTrackingDrawerOpen && canOpenTrackingDrawer && !isStandaloneTrackingPage && (
         <GuestTrackingDrawer
           isOpen={isGuestTrackingDrawerOpen}

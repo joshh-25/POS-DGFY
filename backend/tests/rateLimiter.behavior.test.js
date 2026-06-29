@@ -9,6 +9,8 @@ let authLimiter;
 let dgfyTenantSessionLimiter;
 let lookupLimiter;
 let tenantRegistrationLimiter;
+let storeTrackingLimiter;
+let storeTrackingReadLimiter;
 let logger;
 
 beforeAll(async () => {
@@ -23,6 +25,8 @@ beforeAll(async () => {
   process.env.RATE_LIMIT_LOOKUP_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS = '1';
+  process.env.RATE_LIMIT_STORE_TRACKING_MAX_REQUESTS = '1';
+  process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_ALERT_THRESHOLD = '999999';
 
   const loggerModule = await import('../src/config/logger.js');
@@ -34,6 +38,8 @@ beforeAll(async () => {
   dgfyTenantSessionLimiter = limiterModule.dgfyTenantSessionLimiter;
   lookupLimiter = limiterModule.lookupLimiter;
   tenantRegistrationLimiter = limiterModule.tenantRegistrationLimiter;
+  storeTrackingLimiter = limiterModule.storeTrackingLimiter;
+  storeTrackingReadLimiter = limiterModule.storeTrackingReadLimiter;
 });
 
 afterAll(() => {
@@ -208,6 +214,57 @@ describe('Rate limiter behavior', () => {
       .post('/api/v1/dgfy/auth/tenant-session')
       .set('x-test-dgfy-account', 'acct-a')
       .send({ tenant_id: 'tenant-b', company_token: 'secret-token-b' })
+      .expect(200);
+  });
+
+  it('keeps public tracking reads separate from claim and cancellation mutation buckets', async () => {
+    const app = express();
+    app.use(express.json());
+    app.get('/api/v1/store/track/:tracking_pin', storeTrackingReadLimiter, (_req, res) => res.status(200).json({ ok: true }));
+    app.patch('/api/v1/store/orders/:tracking_pin/cancel', storeTrackingLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+    await request(app).get('/api/v1/store/track/SK-READ01').expect(200);
+    await request(app).patch('/api/v1/store/orders/SK-READ01/cancel').expect(200);
+
+    const readLimited = await request(app).get('/api/v1/store/track/sk-read01').expect(429);
+    expect(readLimited.body).toEqual(expect.objectContaining({
+      limitScope: 'store_tracking_read',
+      limitKeyType: 'ip_store_tracking_pin',
+      retryAfterSeconds: expect.any(Number)
+    }));
+
+    const mutationLimited = await request(app).patch('/api/v1/store/orders/SK-READ01/cancel').expect(429);
+    expect(mutationLimited.body).toEqual(expect.objectContaining({
+      limitScope: 'store_tracking',
+      limitKeyType: 'ip_tracking_pin',
+      retryAfterSeconds: expect.any(Number)
+    }));
+  });
+
+  it('keys public tracking reads by store slug and PIN without sharing mutation buckets', async () => {
+    const app = express();
+    app.use(express.json());
+    app.get('/api/v1/store/track/:tracking_pin', storeTrackingReadLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+    await request(app)
+      .get('/api/v1/store/track/SK-SHARED01')
+      .set('x-store-slug', 'eatery-ni-doe-2e561d')
+      .expect(200);
+
+    const sameStoreSamePin = await request(app)
+      .get('/api/v1/store/track/sk-shared01')
+      .set('x-store-slug', 'eatery-ni-doe-2e561d')
+      .expect(429);
+
+    expect(sameStoreSamePin.body).toEqual(expect.objectContaining({
+      limitScope: 'store_tracking_read',
+      limitKeyType: 'ip_store_tracking_pin',
+      retryAfterSeconds: expect.any(Number)
+    }));
+
+    await request(app)
+      .get('/api/v1/store/track/SK-SHARED01')
+      .set('x-store-slug', 'another-store')
       .expect(200);
   });
 });
