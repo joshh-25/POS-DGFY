@@ -13,6 +13,7 @@ This standard does not require every change to originate on `staging`. Developer
 The external controller refuses promotion or production unless all applicable evidence agrees on the exact target SHA:
 
 1. A human-reviewed version 2 batch inventory maps every changed file exactly once and contains evidence-backed completed tests.
+1a. A valid Regression Risk Notice exists for every release slice and is reviewed before signed authorization.
 2. Every release slice declares classified provenance. `developer_pr` and `owner_direct_staging` are normal staging inputs; direct-master work must be reconciled through `staging` before production authorization.
 3. The owner supplied a valid, unexpired, allowlisted GPG-signed annotated authorization tag.
 4. Promotion and production use separate authorizations and nonces.
@@ -47,6 +48,12 @@ npm run check:batch-inventory -- --base <base> --head <sha> --reviewed-manifest 
 npm run validate:batch-inventory -- --inventory <inventory.json> --base <base> --head <sha> --require-ship
 ```
 
+Regression Risk Notice:
+
+```bash
+npm run check:regression-risk -- --inventory <inventory.json> --output <regression_risk_notice.json> --markdown <regression_risk_notice.md>
+```
+
 QA proof:
 
 ```bash
@@ -61,7 +68,7 @@ npm run review:deployed-change-accuracy -- --inventory <inventory.json> --deploy
 
 ## GitHub Role
 
-GitHub may run CI, upload five-day evidence artifacts, and create the promotion PR. `.github/workflows/deploy-production.yml` is a candidate-bundle workflow and contains no production secrets or deploy command. `ENABLE_AUTO_PRODUCTION_DEPLOY` remains `0`.
+GitHub may run CI, upload five-day evidence artifacts, create the promotion PR, and preserve `regression_risk_notice.*` with candidate evidence. `.github/workflows/deploy-production.yml` is a candidate-bundle workflow and contains no production secrets or deploy command. `ENABLE_AUTO_PRODUCTION_DEPLOY` remains `0`.
 
 ## References
 

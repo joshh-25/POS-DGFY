@@ -55,6 +55,17 @@ jobs:
       - name: Verify automatic production deployment remains disabled
         run: test "$ENABLE_AUTO_PRODUCTION_DEPLOY" = "0"
 
+      - name: Resolve reviewed batch manifest
+        id: manifest
+        shell: bash
+        run: echo "path=$(npm run --silent find:reviewed-batch-manifest -- --base origin/master~1 --head '${{ steps.target.outputs.sha }}')" >> "$GITHUB_OUTPUT"
+
+      - name: Rebuild candidate inventory and regression notice
+        run: |
+          npm run check:batch-inventory -- --base origin/master~1 --head "${{ steps.target.outputs.sha }}" --reviewed-manifest "${{ steps.manifest.outputs.path }}" --write --require-ship --inventory ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.md"
+          npm run validate:batch-inventory -- --inventory ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.json" --base origin/master~1 --head "${{ steps.target.outputs.sha }}" --require-ship
+          npm run check:regression-risk -- --inventory ".tmp/release-gates/${{ steps.target.outputs.sha }}/batch_inventory.json" --output ".tmp/release-gates/${{ steps.target.outputs.sha }}/regression_risk_notice.json" --markdown ".tmp/release-gates/${{ steps.target.outputs.sha }}/regression_risk_notice.md" --target-sha "${{ steps.target.outputs.sha }}"
+
       - name: Build non-secret candidate handoff
         shell: bash
         run: |
@@ -69,7 +80,8 @@ jobs:
             "workflow_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
             "production_deploy_enabled": false,
             "external_signed_authorization_required": true,
-            "contains_production_credentials": false
+            "contains_production_credentials": false,
+            "regression_risk_notice": "$DIR/regression_risk_notice.json"
           }
           JSON
 
@@ -77,7 +89,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: production-candidate-${{ steps.target.outputs.sha }}
-          path: .tmp/release-gates/${{ steps.target.outputs.sha }}/github_production_candidate.json
+          path: .tmp/release-gates/${{ steps.target.outputs.sha }}/**
           if-no-files-found: error
           retention-days: 5
 
@@ -89,5 +101,6 @@ jobs:
             echo "- Target SHA: \`${{ steps.target.outputs.sha }}\`"
             echo "- Live deployment: disabled"
             echo "- Production credentials: unavailable to GitHub"
+            echo "- Regression risk notice: \`.tmp/release-gates/${{ steps.target.outputs.sha }}/regression_risk_notice.json\`"
             echo "- Next authority: root-owned external signed release controller"
           } >> "$GITHUB_STEP_SUMMARY"

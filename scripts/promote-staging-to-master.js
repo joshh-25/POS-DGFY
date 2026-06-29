@@ -112,6 +112,7 @@ function buildBody(options) {
     '## Required Evidence',
     '- Staging qualification workflow passed for the exact staging SHA.',
     '- Batch inventory is complete and attached above.',
+    '- Regression Risk Notice is complete for every release slice and attached in the qualification artifacts.',
     '- Included and excluded work are documented per release slice.',
     '- Affected surfaces and risk are declared for each slice.',
     '- Merge-adoption proof is present when required.',

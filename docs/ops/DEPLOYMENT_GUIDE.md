@@ -9,7 +9,7 @@ GitHub and developer machines do not deploy production. The root-owned external 
 ## Trust Boundary
 
 1. Owner GPG-signed annotated tags authorize exact SHAs.
-2. Installed controller code verifies signatures, hashes, expiry, nonces, PR/check evidence, QA, and current remote refs before candidate checkout.
+2. Installed controller code verifies signatures, hashes, expiry, nonces, PR/check evidence, Regression Risk Notice, QA, and current remote refs before candidate checkout.
 3. Candidate qualification receives no production or signing secrets.
 4. Controller code invokes SSH using its OS-protected key and a fixed remote command.
 5. The production server runs `scripts/deploy.sh --branch master --expect-commit <sha>` only after controller authorization.
@@ -25,6 +25,12 @@ GitHub and developer machines do not deploy production. The root-owned external 
 ## Controller Dry Run
 
 Follow `release-controller/README.md`. Dry run must report `authorized_pre_checkout` for the exact SHA and evidence hashes. Any moved branch, failed check, stale QA proof, expired/replayed signature, missing credential, or payment authorization failure requires new evidence or a new signed tag.
+
+Before signed authorization, generate and review the Regression Risk Notice from the strict reviewed inventory:
+
+```bash
+npm run check:regression-risk -- --inventory ".tmp/release-gates/<target_sha>/batch_inventory.json" --output ".tmp/release-gates/<target_sha>/regression_risk_notice.json" --markdown ".tmp/release-gates/<target_sha>/regression_risk_notice.md"
+```
 
 ## Server Deploy Operation
 

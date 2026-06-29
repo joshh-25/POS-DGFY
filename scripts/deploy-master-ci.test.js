@@ -11,6 +11,7 @@ test('candidate wrapper requires exact master SHA and reviewed inventory', () =>
   assert.match(script, /BATCH_REVIEWED_MANIFEST is required/);
   assert.match(script, /--reviewed-manifest/);
   assert.match(script, /--require-ship/);
+  assert.match(script, /check:regression-risk/);
 });
 
 test('candidate wrapper cannot perform live production mutation', () => {

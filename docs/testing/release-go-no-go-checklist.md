@@ -55,14 +55,18 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
    npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --reviewed-manifest docs/releases/batches/<release>.json --write --require-ship
    npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --base origin/master --head <candidate_sha> --require-ship
    ```
-23. GitHub production deployment is permanently disabled under ADR 0030. `.github/workflows/deploy-production.yml` creates a non-secret candidate bundle only; `ENABLE_AUTO_PRODUCTION_DEPLOY=0`.
-24. QA target proof must pass before signed promotion:
+23. Regression Risk Notice must be generated and reviewed before signed promotion or production authorization:
+   ```bash
+   npm run check:regression-risk -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --output ".tmp/release-gates/<candidate_sha>/regression_risk_notice.json" --markdown ".tmp/release-gates/<candidate_sha>/regression_risk_notice.md"
+   ```
+24. GitHub production deployment is permanently disabled under ADR 0030. `.github/workflows/deploy-production.yml` creates a non-secret candidate bundle only; `ENABLE_AUTO_PRODUCTION_DEPLOY=0`.
+25. QA target proof must pass before signed promotion:
    ```bash
    RELEASE_TARGET_SHA=<candidate_sha> npm run check:qa-target-proof -- --target-sha <candidate_sha> --summary ".tmp/release-gates/<candidate_sha>/qa_deploy_summary.txt" --report ".tmp/release-gates/<candidate_sha>/qa_target_proof.json"
    ```
-25. External controller dry-run must verify promotion/production authorization tags, full signer fingerprint, expiration, exact SHA, PR/check evidence, inventory/evidence hashes, unused nonce, and current remote branch.
-26. Payment-sensitive releases require an additional signed payment tag for both the staging promotion target and resulting master target.
-27. Per-slice accuracy review must include `--proof-bundle` and pass with hash-verified API, UI, read-only database, or asset artifacts.
+26. External controller dry-run must verify promotion/production authorization tags, full signer fingerprint, expiration, exact SHA, PR/check evidence, inventory/evidence hashes, unused nonce, and current remote branch.
+27. Payment-sensitive releases require an additional signed payment tag for both the staging promotion target and resulting master target.
+28. Per-slice accuracy review must include `--proof-bundle` and pass with hash-verified API, UI, read-only database, or asset artifacts.
 
 ## Latest Technical Evidence (2026-06-18)
 
@@ -179,7 +183,10 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
    - `.tmp/release-gates/<sha>/local_readiness.json`
 2. No-staging release verdict:
    - `.tmp/release-gates/<sha>/release_verdict.json`
-3. Canonical readiness tracking:
+3. Regression Risk Notice:
+   - `.tmp/release-gates/<sha>/regression_risk_notice.json`
+   - `.tmp/release-gates/<sha>/regression_risk_notice.md`
+4. Canonical readiness tracking:
    - `docs/testing/pos-readiness-status.md`
 
 ## Historical Snapshots

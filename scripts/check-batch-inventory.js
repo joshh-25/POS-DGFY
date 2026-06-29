@@ -6,6 +6,7 @@ const path = require('path');
 
 const VALID_VERDICTS = new Set(['ship', 'split', 'fix first', 'defer', 'blocked']);
 const VALID_RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical']);
+const VALID_REGRESSION_RISK_LEVELS = new Set(['none', 'low', 'medium', 'high', 'critical']);
 const VALID_SOURCE_TYPES = new Set(['developer_pr', 'owner_direct_staging', 'controller_promotion']);
 const PLACEHOLDER_PATTERN = /(?:^|\b)(unknown|not provided|n\/?a|none|todo|tbd|placeholder|example|generated|replace this)(?:\b|$)/i;
 const REQUIRED_SURFACES = [
@@ -231,6 +232,149 @@ function inferRiskLevel(surfaces, paymentSensitive, highRiskPath) {
   return 'low';
 }
 
+function inferRegressionRiskLevel({ surfaces, paymentSensitive, highRiskPath, files }) {
+  if (paymentSensitive) return 'critical';
+  if (files.some((file) => /migrations|payment|paymongo|billing|compliance/i.test(file))) return 'critical';
+  if (files.some((file) => /deploy|release|production|workflow/i.test(file))) return 'critical';
+  if (highRiskPath) return 'high';
+  if (files.some((file) => /auth|session|tenant|dgfy|checkout|order|tracking|storefront|discovery|map|pos|fiscal/i.test(file))) {
+    return 'high';
+  }
+  if (surfaces.some((surface) => ['backend', 'database', 'scripts/deploy', 'compliance'].includes(surface))) {
+    return 'medium';
+  }
+  if (surfaces.some((surface) => ['frontend', 'docs'].includes(surface))) return 'low';
+  return 'none';
+}
+
+function inferPotentiallyAffectedBehaviors({ surfaces, paymentSensitive, highRiskPath, files }) {
+  const behaviors = [];
+
+  if (paymentSensitive) behaviors.push('Payment, checkout, billing, webhook, or settlement behavior');
+  if (highRiskPath) behaviors.push('High-risk customer or operator workflow touched by the changed files');
+  if (surfaces.includes('backend')) behaviors.push('API behavior, validation, persistence side effects, or tenant-scoped behavior');
+  if (surfaces.includes('frontend')) behaviors.push('User-facing UI behavior, shared components, routing, or browser interaction');
+  if (surfaces.includes('database')) behaviors.push('Migration, tenant schema, seed, or data compatibility behavior');
+  if (surfaces.includes('scripts/deploy')) behaviors.push('Release, deployment, rollback, or production proof behavior');
+  if (surfaces.includes('compliance')) behaviors.push('Compliance, fiscal, billing, or governed operational behavior');
+
+  if (files.some((file) => /deploy|release|production|workflow/i.test(file))) {
+    behaviors.push('Release, deployment, rollback, production authorization, or production proof behavior');
+  }
+
+  if (files.some((file) => /storefront|discovery|map|checkout|order|tracking/i.test(file))) {
+    behaviors.push('Storefront discovery, checkout, order tracking, or map/search behavior');
+  }
+
+  if (files.some((file) => /auth|session|tenant|dgfy|invite|registration/i.test(file))) {
+    behaviors.push('Authentication, session, DGFY, tenant lifecycle, invitation, or registration behavior');
+  }
+
+  return unique(behaviors);
+}
+
+function inferRegressionEvidenceGaps({ surfaces, paymentSensitive, highRiskPath, files }) {
+  const gaps = [];
+
+  if (paymentSensitive) {
+    gaps.push('Payment-sensitive release requires explicit payment approval and payment-specific verification before production.');
+  }
+
+  if (highRiskPath) {
+    gaps.push('High-risk path requires targeted regression evidence, not only generic build/test success.');
+  }
+
+  if (surfaces.includes('frontend')) {
+    gaps.push('Rendered/browser QA may be required for user-facing UI behavior when practical.');
+  }
+
+  if (surfaces.includes('database')) {
+    gaps.push('Tenant/schema compatibility and rollback evidence must be reviewed.');
+  }
+
+  if (surfaces.includes('scripts/deploy')) {
+    gaps.push('Release automation changes require proof that deploy gates still fail closed and preserve required artifacts.');
+  }
+
+  if (files.some((file) => /storefront|discovery|map/i.test(file))) {
+    gaps.push('Storefront map/search changes should include focused discovery tests and browser or public-route smoke evidence.');
+  }
+
+  if (files.some((file) => /auth|session|tenant|dgfy|registration|invite/i.test(file))) {
+    gaps.push('Auth/session/tenant lifecycle changes should include duplicate/conflict, replay/reuse, and adjacent-flow regression proof.');
+  }
+
+  return unique(gaps);
+}
+
+function buildRegressionWarningSummary({ name, surfaces, paymentSensitive, highRiskPath, files }) {
+  const level = inferRegressionRiskLevel({ surfaces, paymentSensitive, highRiskPath, files });
+
+  if (level === 'none') {
+    return 'No specific regression risk identified from the reviewed diff, affected surfaces, and available evidence.';
+  }
+
+  const affected = inferPotentiallyAffectedBehaviors({ surfaces, paymentSensitive, highRiskPath, files });
+  const affectedText = affected.length > 0 ? affected.join('; ') : 'existing production behavior';
+
+  return `${name} may regress ${affectedText}. Review targeted evidence before approving production deployment.`;
+}
+
+function withRegressionRiskFields(slice) {
+  const files = Array.isArray(slice.included_files) ? slice.included_files : [];
+  const surfaces = unique(
+    Array.isArray(slice.affected_surfaces) && slice.affected_surfaces.length > 0
+      ? slice.affected_surfaces
+      : files.flatMap(affectedSurfacesForFile)
+  ).sort();
+  const paymentSensitive = typeof slice.payment_sensitive === 'boolean'
+    ? slice.payment_sensitive
+    : files.some(isPaymentSensitive);
+  const highRiskPath = typeof slice.high_risk_path === 'boolean'
+    ? slice.high_risk_path
+    : files.some(isHighRiskPath);
+  const regressionRiskLevel = inferRegressionRiskLevel({
+    surfaces,
+    paymentSensitive,
+    highRiskPath,
+    files,
+  });
+  const name = slice.slice_name || slice.name || 'Release slice';
+
+  return {
+    ...slice,
+    affected_surfaces: surfaces,
+    regression_risk_level: regressionRiskLevel,
+    regression_warning_required: regressionRiskLevel !== 'none',
+    regression_warning_summary: buildRegressionWarningSummary({
+      name,
+      surfaces,
+      paymentSensitive,
+      highRiskPath,
+      files,
+    }),
+    potentially_affected_existing_behaviors: inferPotentiallyAffectedBehaviors({
+      surfaces,
+      paymentSensitive,
+      highRiskPath,
+      files,
+    }),
+    evidence_covering_regression_risk: Array.isArray(slice.completed_tests) && slice.completed_tests.length > 0
+      ? slice.completed_tests
+      : (Array.isArray(slice.required_tests) ? slice.required_tests : []),
+    evidence_gaps: inferRegressionEvidenceGaps({
+      surfaces,
+      paymentSensitive,
+      highRiskPath,
+      files,
+    }),
+    rollback_or_monitoring_notes: [
+      'Use the documented rollback path for this release slice.',
+      'Monitor production health, runtime SHA, public endpoints, and feature-specific smoke evidence after deployment.',
+    ],
+  };
+}
+
 function inferSourceAttribution() {
   const eventName = process.env.GITHUB_EVENT_NAME || '';
   const prNumber = process.env.GITHUB_REF_NAME && process.env.GITHUB_REF_NAME.match(/^(\d+)\/merge$/)
@@ -263,7 +407,7 @@ function buildSlice({ key, files, options }) {
   const sourceAttribution = inferSourceAttribution();
   const name = titleForSliceKey(key);
 
-  return {
+  return withRegressionRiskFields({
     id: key.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase(),
     slice_name: name,
     name,
@@ -317,7 +461,7 @@ function buildSlice({ key, files, options }) {
     payment_sensitive_files: paymentFiles,
     high_risk_path: highRiskPath,
     high_risk_files: highRiskFiles,
-  };
+  });
 }
 
 function groupFilesIntoSlices(files, options) {
@@ -354,7 +498,7 @@ function applyReviewedManifest(draft, manifest, manifestPath) {
   if (manifest.schema !== 'sku-reviewed-batch-manifest/v1') {
     throw new BatchInventoryError('Reviewed batch manifest schema must be sku-reviewed-batch-manifest/v1', { code: 'REVIEWED_MANIFEST_INVALID' });
   }
-  const slices = Array.isArray(manifest.release_slices) ? manifest.release_slices : [];
+  const slices = Array.isArray(manifest.release_slices) ? manifest.release_slices.map(withRegressionRiskFields) : [];
   const paymentSensitive = slices.some((slice) => (slice.included_files || []).some(isPaymentSensitive));
   const highRiskPath = slices.some((slice) => (slice.included_files || []).some(isHighRiskPath));
   const eligible = slices.length > 0 && slices.every((slice) => slice.verdict === 'ship');
@@ -457,6 +601,15 @@ function validateInventory(inventory, options = {}) {
     if (typeof slice.high_risk_path !== 'boolean') failures.push(`slice ${sliceName} must declare high_risk_path`);
     if (typeof slice.docs_required !== 'boolean') failures.push(`slice ${sliceName} must declare docs_required`);
     if (!VALID_RISK_LEVELS.has(slice.risk_level)) failures.push(`slice ${sliceName} has invalid risk_level`);
+    if (!VALID_REGRESSION_RISK_LEVELS.has(slice.regression_risk_level)) {
+      failures.push(`slice ${sliceName} has invalid regression_risk_level`);
+    }
+    if (typeof slice.regression_warning_required !== 'boolean') {
+      failures.push(`slice ${sliceName} must declare regression_warning_required`);
+    }
+    if (!slice.regression_warning_summary || typeof slice.regression_warning_summary !== 'string') {
+      failures.push(`slice ${sliceName} missing regression_warning_summary`);
+    }
     if (!VALID_VERDICTS.has(slice.verdict)) failures.push(`slice ${sliceName} has invalid verdict: ${slice.verdict}`);
     if (options.requireShip && slice.verdict !== 'ship') failures.push(`slice is not ship-ready: ${sliceName}`);
 
@@ -466,6 +619,24 @@ function validateInventory(inventory, options = {}) {
       }
     }
     if (!Array.isArray(slice.completed_tests)) failures.push(`slice ${sliceName} requires completed_tests array`);
+    for (const field of [
+      'potentially_affected_existing_behaviors',
+      'evidence_covering_regression_risk',
+      'evidence_gaps',
+      'rollback_or_monitoring_notes',
+    ]) {
+      if (!Array.isArray(slice[field])) {
+        failures.push(`slice ${sliceName} missing ${field}`);
+      }
+    }
+    if (['high', 'critical'].includes(slice.regression_risk_level)) {
+      const hasEvidenceGap = Array.isArray(slice.evidence_gaps) && slice.evidence_gaps.length > 0;
+      const hasTargetedEvidence = Array.isArray(slice.evidence_covering_regression_risk)
+        && slice.evidence_covering_regression_risk.length > 0;
+      if (!hasEvidenceGap && !hasTargetedEvidence) {
+        failures.push(`slice ${sliceName} must disclose regression evidence gaps or targeted evidence for high/critical risk`);
+      }
+    }
     if (options.requireShip && Array.isArray(slice.completed_tests)) {
       if (slice.completed_tests.length === 0) failures.push(`slice ${sliceName} requires non-empty completed_tests`);
       const completedCommands = new Set();
@@ -551,6 +722,8 @@ function toMarkdown(inventory) {
     lines.push(`- Source: ${slice.source_type || 'unknown'}; branch \`${slice.source_branch || 'unknown'}\`; PR/source \`${slice.source_pr || 'not provided'}\`; owner \`${slice.owner_attribution || 'unknown'}\``);
     lines.push(`- Verdict: \`${slice.verdict}\``);
     lines.push(`- Risk: \`${slice.risk_level}\``);
+    lines.push(`- Regression risk: \`${slice.regression_risk_level || 'missing'}\``);
+    lines.push(`- Regression warning: ${slice.regression_warning_summary || 'missing'}`);
     lines.push(`- Surfaces: ${(slice.affected_surfaces || []).join(', ') || 'none'}`);
     lines.push(`- Payment sensitive: ${slice.payment_sensitive ? 'yes' : 'no'}`);
     lines.push(`- High-risk path: ${slice.high_risk_path ? 'yes' : 'no'}`);
@@ -581,6 +754,12 @@ function toMarkdown(inventory) {
     lines.push('');
     lines.push('Production accuracy checks required:');
     for (const check of slice.production_accuracy_checks_required || []) lines.push(`- ${check}`);
+    lines.push('');
+    lines.push('Potentially affected existing behaviors:');
+    for (const behavior of slice.potentially_affected_existing_behaviors || []) lines.push(`- ${behavior}`);
+    lines.push('');
+    lines.push('Regression evidence gaps:');
+    for (const gap of slice.evidence_gaps || []) lines.push(`- ${gap}`);
     lines.push('');
   }
 
@@ -639,6 +818,7 @@ module.exports = {
   BatchInventoryError,
   PAYMENT_PATTERNS,
   HIGH_RISK_PATH_PATTERNS,
+  VALID_REGRESSION_RISK_LEVELS,
   parseArgs,
   runGit,
   resolveCommit,
@@ -652,4 +832,9 @@ module.exports = {
   normalizeSlices,
   isPaymentSensitive,
   isHighRiskPath,
+  inferRegressionRiskLevel,
+  inferPotentiallyAffectedBehaviors,
+  inferRegressionEvidenceGaps,
+  buildRegressionWarningSummary,
+  withRegressionRiskFields,
 };

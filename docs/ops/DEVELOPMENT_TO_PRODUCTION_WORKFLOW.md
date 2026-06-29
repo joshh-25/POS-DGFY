@@ -59,6 +59,8 @@ feature PR -> staging CI -> reviewed batch document -> isolated QA
 
 Draft inventory generation may occur during development. Before promotion authorization, a human-reviewed batch document must provide non-placeholder summaries, exact file coverage, owner and PR attribution, source branch or owner-direct-staging attribution for each slice, test evidence references, rollback notes, required documentation, payment sensitivity, and production proof requirements. The source branch may be a developer feature branch; it does not need to be named `staging` when the slice is present in the final staging candidate.
 
+Every generated and reviewed inventory slice must also include a Regression Risk Notice with `regression_risk_level`, `regression_warning_required`, `regression_warning_summary`, `potentially_affected_existing_behaviors`, `evidence_covering_regression_risk`, `evidence_gaps`, and `rollback_or_monitoring_notes`.
+
 Strict validation rejects:
 
 1. `unknown`, `not provided`, generated summaries, or placeholder values.
@@ -68,12 +70,25 @@ Strict validation rejects:
 5. Missing or draft batch documentation.
 6. Payment-sensitive files without separate signed payment authorization.
 7. Unclassified provenance such as a direct-master change pretending to be ordinary developer PR work.
+8. Missing or invalid regression-risk disclosure fields.
 
 The controller hashes the exact reviewed inventory bytes with SHA-256. The owner authorization tag binds that hash.
 
+## Regression Risk Notice
+
+Every promotion and production candidate must produce a machine-readable and operator-readable Regression Risk Notice before signed authorization:
+
+```bash
+npm run check:regression-risk -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --output ".tmp/release-gates/<candidate_sha>/regression_risk_notice.json" --markdown ".tmp/release-gates/<candidate_sha>/regression_risk_notice.md"
+```
+
+The notice must disclose, for every release slice, the regression risk level, affected existing behaviors, evidence reducing risk, remaining evidence gaps, and rollback or monitoring notes. Low/no-risk releases still require an explicit notice. If no specific regression risk is identified, the warning must say: `No specific regression risk identified from the reviewed diff, affected surfaces, and available evidence.`
+
+The controller and operator must treat a missing or invalid notice as a release blocker. The notice does not automatically block deployment merely because residual risk exists; it makes the risk visible before approval.
+
 ## Candidate Evidence
 
-GitHub candidate workflows publish short-lived evidence bundles containing the exact SHA, base SHA, PR identity, required-check conclusions and URLs, reviewed inventory hash, QA evidence hash, source-contract result, merge-adoption result, and payment-sensitive flag.
+GitHub candidate workflows publish short-lived evidence bundles containing the exact SHA, base SHA, PR identity, required-check conclusions and URLs, reviewed inventory hash, Regression Risk Notice, QA evidence hash, source-contract result, merge-adoption result, and payment-sensitive flag.
 
 The controller independently verifies GitHub PR/check state and recomputes all local hashes. Candidate evidence is rejected when required evidence is absent, failed, stale, malformed, or inconsistent with current remote state.
 

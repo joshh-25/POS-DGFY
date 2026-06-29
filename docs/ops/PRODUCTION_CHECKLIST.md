@@ -20,6 +20,10 @@ Use this checklist for every production release under ADR 0030.
 - [ ] Staging qualification passed and required checks have immutable URLs.
 - [ ] Exactly one reviewed batch manifest exists in the candidate diff.
 - [ ] Strict version 2 inventory validation passes with exact file coverage.
+- [ ] Regression Risk Notice is generated and reviewed before signed promotion authorization:
+  ```bash
+  npm run check:regression-risk -- --inventory ".tmp/release-gates/<target_sha>/batch_inventory.json" --output ".tmp/release-gates/<target_sha>/regression_risk_notice.json" --markdown ".tmp/release-gates/<target_sha>/regression_risk_notice.md"
+  ```
 - [ ] Every slice has classified provenance: `developer_pr`, `owner_direct_staging`, or `controller_promotion`.
 - [ ] QA summary and isolation proof pass for the exact staging SHA.
 - [ ] Promotion PR is `staging -> master` and its head SHA matches.

@@ -74,6 +74,10 @@ test('draft generation never claims review or completed tests', () => {
     assert.equal(inventory.review_status, 'draft');
     assert.equal(inventory.status, 'blocked');
     assert.deepEqual(inventory.release_slices[0].completed_tests, []);
+    assert.equal(inventory.release_slices[0].regression_risk_level, 'medium');
+    assert.equal(inventory.release_slices[0].regression_warning_required, true);
+    assert.match(inventory.release_slices[0].regression_warning_summary, /may regress/);
+    assert.equal(Array.isArray(inventory.release_slices[0].evidence_covering_regression_risk), true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -89,6 +93,7 @@ test('strict generation consumes a reviewed manifest with exact file coverage', 
     const { inventory } = checkBatchInventory({ projectRoot: root, base: 'origin/master', head: 'HEAD', reviewedManifestPath, write: false, requireShip: true }, silentLogger);
     assert.equal(inventory.status, 'pass');
     assert.equal(inventory.review_status, 'reviewed');
+    assert.equal(inventory.release_slices.every((slice) => slice.regression_warning_summary), true);
     assert.equal(new Set(inventory.release_slices.flatMap((slice) => slice.included_files)).size, inventory.changed_file_count);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

@@ -77,12 +77,15 @@ jobs:
             BASE_REF="origin/master"
           fi
           npm run check:batch-inventory -- --base "$BASE_REF" --head "${{ github.sha }}" --write --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
+          npm run check:regression-risk -- --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --output ".tmp/release-gates/${{ github.sha }}/regression_risk_notice.json" --markdown ".tmp/release-gates/${{ github.sha }}/regression_risk_notice.md" --target-sha "${{ github.sha }}"
       - name: Upload batch inventory
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: batch-inventory-${{ github.sha }}
-          path: .tmp/release-gates/${{ github.sha }}/batch_inventory.*
+          path: |
+            .tmp/release-gates/${{ github.sha }}/batch_inventory.*
+            .tmp/release-gates/${{ github.sha }}/regression_risk_notice.*
           if-no-files-found: error
           retention-days: 5
 
