@@ -63,12 +63,19 @@ const normalizePermissionArray = (rawPermissions) => {
 
 const resolveEffectivePermissions = (user) => {
   const parsedPermissions = normalizePermissionArray(user?.permissions);
+  const normalizedRole = String(user?.role || '').trim().toLowerCase();
+  const defaults = DEFAULT_ROLE_PERMISSIONS[normalizedRole];
+
+  // Admin is defined as a full-access role. Preserve any custom entries while
+  // preventing a stale partial permission array from removing core access.
+  if (normalizedRole === 'admin' && Array.isArray(defaults)) {
+    return Array.from(new Set([...defaults, ...parsedPermissions]));
+  }
+
   if (parsedPermissions.length > 0) {
     return parsedPermissions;
   }
 
-  const normalizedRole = String(user?.role || '').trim().toLowerCase();
-  const defaults = DEFAULT_ROLE_PERMISSIONS[normalizedRole];
   return Array.isArray(defaults) ? [...defaults] : [];
 };
 

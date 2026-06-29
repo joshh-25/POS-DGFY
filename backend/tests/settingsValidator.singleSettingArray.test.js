@@ -79,7 +79,26 @@ describe('settings validator single-setting payload', () => {
     expect(Array.isArray(req.validatedData.value)).toBe(true);
   });
 
-  it('rejects storefront_gallery_images entries that have neither url nor path', () => {
+  it('accepts storefront_gallery_images backend-relative upload urls', () => {
+    const req = {
+      params: { key: 'storefront_gallery_images' },
+      body: {
+        value: [
+          { url: '/uploads/storefront-assets/t1/gallery-1.png', caption: 'Featured dish' }
+        ]
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSingleSetting(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.value[0].url).toBe('/uploads/storefront-assets/t1/gallery-1.png');
+  });
+
+  it('drops storefront_gallery_images entries that have neither url nor path', () => {
     const req = {
       params: { key: 'storefront_gallery_images' },
       body: {
@@ -93,9 +112,31 @@ describe('settings validator single-setting payload', () => {
 
     validateUpdateSingleSetting(req, res, next);
 
-    expect(next).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(422);
-    expect(res.json).toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.value).toEqual([]);
+  });
+
+  it('drops blank storefront_gallery_images placeholder rows on the single-setting route', () => {
+    const req = {
+      params: { key: 'storefront_gallery_images' },
+      body: {
+        value: [
+          { url: '', path: '', caption: '' },
+          { url: '/uploads/storefront-assets/t1/gallery-1.png', caption: 'Featured dish' }
+        ]
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSingleSetting(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.value).toEqual([
+      { url: '/uploads/storefront-assets/t1/gallery-1.png', path: '', caption: 'Featured dish' }
+    ]);
   });
 
   it('rejects storefront_gallery_images entries with non-http(s) url values', () => {

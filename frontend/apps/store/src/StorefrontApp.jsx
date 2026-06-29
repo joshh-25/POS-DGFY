@@ -11178,7 +11178,6 @@ export default function StorefrontApp() {
         onRefresh={handleLoadAccountPanel}
         onTrackReference={handleTrackCustomerReference}
         onSignOut={handleStorefrontSignOut}
-        onHelp={() => toast.info('Help center is not connected yet.')}
         onRegisterBusiness={openBusinessRegistrationFlow}
         onClearSavedDetails={clearSavedCustomerDetailsForDevice}
         accountIdentityInitials={accountIdentityInitials}
@@ -20609,7 +20608,6 @@ return (
           onRefresh={handleLoadAccountPanel}
           onTrackReference={handleTrackCustomerReference}
           onSignOut={handleStorefrontSignOut}
-          onHelp={() => toast.info('Help center is not connected yet.')}
           onRegisterBusiness={openBusinessRegistrationFlow}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
           accountIdentityInitials={accountIdentityInitials}

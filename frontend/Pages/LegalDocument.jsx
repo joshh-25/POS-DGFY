@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, Building2, ShieldCheck, Store, UserRound, ChevronRight } from 'lucide-react';
+import NotFoundPage from '../src/components/common/NotFoundPage.jsx';
 
 const providerClause = 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller\'s net settlement.';
 
@@ -105,13 +106,13 @@ const legalDocuments = {
 
 export default function LegalDocument() {
     const location = useLocation();
-    const document = legalDocuments[location.pathname] || legalDocuments['/legal/dgfy-company-terms'];
-    const Icon = document.icon;
+    const document = legalDocuments[location.pathname];
     const returnTo = String(location.state?.returnTo || '/register-company').trim() || '/register-company';
 
     const [activeSection, setActiveSection] = useState('');
 
     useEffect(() => {
+        if (!document) return undefined;
         const handleScroll = () => {
             const sections = document.sections.map(s => s.heading.toLowerCase().replace(/\s+/g, '-'));
             let current = '';
@@ -127,7 +128,20 @@ export default function LegalDocument() {
         };
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
-    }, [document.sections, activeSection]);
+    }, [document?.sections, activeSection]);
+
+    if (!document) {
+        return (
+            <NotFoundPage
+                title="Legal document not found"
+                description="This legal document link is invalid or no longer available. No substitute document has been loaded."
+                homeTo={returnTo}
+                homeLabel="Back to registration"
+            />
+        );
+    }
+
+    const Icon = document.icon;
 
     const scrollToSection = (e, id) => {
         e.preventDefault();

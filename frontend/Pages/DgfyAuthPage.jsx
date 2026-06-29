@@ -552,20 +552,26 @@ export default function DgfyAuthPage() {
     if (accountLegalTermsUnavailable) { toast.error(accountLegalDisabledReason || 'Current DGFY terms must load before creating an account.'); return; }
     setVerificationState({
       requestStatus: 'sending',
-      guidance: 'Requesting your 6-digit verification code now. We will move you straight into email verification.',
+      guidance: 'Requesting your 6-digit verification code now.',
       errorCode: ''
     });
     setVerifyCode('');
     setResendCooldown(0);
-    setMode('verify-email');
     setIsLoading(true);
     try {
-      await requestDgfySignupOtp(authForm.email.trim());
+      const otpRequest = await requestDgfySignupOtp(authForm.email.trim());
+      const fallbackCode = String(otpRequest?.dev_code || '').trim();
       setVerificationState({
         requestStatus: 'sent',
-        guidance: 'We sent a 6-digit verification code to your email. Enter the latest code to finish creating your DGFY account.',
+        guidance: fallbackCode
+          ? `Local development mode is active. Use verification code ${fallbackCode} to finish creating your DGFY account.`
+          : 'We sent a 6-digit verification code to your email. Enter the latest code to finish creating your DGFY account.',
         errorCode: ''
       });
+      setMode('verify-email');
+      if (fallbackCode) {
+        setVerifyCode(fallbackCode);
+      }
       setResendCooldown(60);
       toast.success('Verification code sent.');
     } catch (requestError) {
@@ -578,6 +584,7 @@ export default function DgfyAuthPage() {
         }),
         errorCode: code
       });
+      setMode('create-account');
       toast.error(message || 'Could not send the verification code.');
     }
     finally { setIsLoading(false); }
@@ -604,15 +611,23 @@ export default function DgfyAuthPage() {
         privacy_version: accountLegalSnapshot.privacy_version,
         marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
       });
-      toast.success('Account created successfully. Please sign in to continue.');
+      toast.success('Account created successfully. Sign in to open your DGFY customer account.');
       clearDgfySession();
       setVerificationState({
         requestStatus: 'verified',
         guidance: '',
         errorCode: ''
       });
-      setLoginForm((prev) => ({ ...prev, email: authForm.email, password: '' }));
-      setMode('sign-in');
+      navigate(buildDgfyAuthPath({
+        intent: 'customer',
+        mode: 'sign-in',
+        email: authForm.email
+      }), {
+        replace: true,
+        state: {
+          notice: 'Your DGFY customer account is ready. Sign in first, then start business registration separately when needed.'
+        }
+      });
     } catch (requestError) {
       const { code, message } = extractRequestErrorDetails(requestError);
       setVerificationState({
@@ -628,13 +643,16 @@ export default function DgfyAuthPage() {
   const handleResendCode = async () => {
     if (resendCooldown > 0) return;
     try {
-      await requestDgfySignupOtp(authForm.email.trim());
+      const otpRequest = await requestDgfySignupOtp(authForm.email.trim());
+      const fallbackCode = String(otpRequest?.dev_code || '').trim();
       setVerificationState({
         requestStatus: 'sent',
-        guidance: 'A fresh 6-digit verification code was sent to your email. Use the latest code only; older codes no longer work.',
+        guidance: fallbackCode
+          ? `Local development mode is active. Use the fresh verification code ${fallbackCode}. Older codes no longer work.`
+          : 'A fresh 6-digit verification code was sent to your email. Use the latest code only; older codes no longer work.',
         errorCode: ''
       });
-      setVerifyCode('');
+      setVerifyCode(fallbackCode);
       toast.success('Verification code resent to your email.');
       setResendCooldown(60);
     } catch (requestError) {

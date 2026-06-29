@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../src/services/api.js';
 import {
     clearDgfySession,
@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { AlertTriangle, Building2, CheckCircle2, Eye, EyeOff, LogOut, UserRound } from 'lucide-react';
 import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
-import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY } from '../src/features/dgfyRouteHelpers.js';
+import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY, resolvePosTerminalUrl } from '../src/features/dgfyRouteHelpers.js';
 import {
     buildTenantSetupSearch,
     POS_TERMINAL_SETUP_STEPS
@@ -44,6 +44,16 @@ const hasCompanyLegalVersions = (snapshot = {}) => Boolean(
 const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 const COMPANY_REGISTRATION_TIMEOUT_MS = 120000;
 const POS_ONBOARDING_ENTRY_SEARCH = buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE);
+const POS_TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
+const POS_TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';
+const POS_TERMINAL_LOCK_REASON_STORAGE_KEY = 'pos_terminal_lock_reason_v1';
+
+const clearPosTerminalBootstrapState = () => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.removeItem(POS_TERMINAL_ID_STORAGE_KEY);
+    window.localStorage.removeItem(POS_TERMINAL_LOCK_STORAGE_KEY);
+    window.localStorage.removeItem(POS_TERMINAL_LOCK_REASON_STORAGE_KEY);
+};
 
 const PasswordInput = ({
     id,
@@ -221,6 +231,28 @@ export default function RegisterCompany() {
     const [isLoading, setIsLoading] = useState(false);
     const handoffExchangeStartedRef = useRef(false);
     const dgfySessionGenerationRef = useRef(0);
+
+    const posOnboardingUrl = useMemo(
+        () => resolvePosTerminalUrl(POS_ONBOARDING_ENTRY_SEARCH),
+        []
+    );
+
+    const goToPosOnboarding = useCallback((replace = true) => {
+        clearPosTerminalBootstrapState();
+        try {
+            const targetUrl = new URL(posOnboardingUrl, window.location.origin);
+            if (targetUrl.origin === window.location.origin) {
+                navigate({
+                    pathname: targetUrl.pathname,
+                    search: targetUrl.search
+                }, { replace });
+                return;
+            }
+            window.location.assign(targetUrl.toString());
+        } catch {
+            window.location.assign(posOnboardingUrl);
+        }
+    }, [navigate, posOnboardingUrl]);
 
     const clearHandoffTokenFromUrl = useCallback(() => {
         const nextParams = new URLSearchParams(searchParams);
@@ -543,22 +575,10 @@ export default function RegisterCompany() {
             if (registrationSuccess.data?.company_token && registrationSuccess.data?.status === 'active' && dgfyToken) {
                 try {
                     await startTenantSessionWithRetry(registrationSuccess.data, dgfyToken);
-                    navigate({
-                        pathname: '/terminal',
-                        search: POS_ONBOARDING_ENTRY_SEARCH
-                    }, { replace: true });
+                    goToPosOnboarding(true);
                     return;
                 } catch (sessionError) {
-                    setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
-                    navigate('/login', {
-                        state: {
-                            registration: {
-                                email: dgfyAccount?.email,
-                                companyToken: registrationSuccess.data.company_token,
-                                companyName: registrationSuccess.data.name
-                            }
-                        }
-                    });
+                    setNotice(sessionError.response?.data?.message || 'Company created. Sign in to POS to continue.');
                     return;
                 }
             }
@@ -569,41 +589,30 @@ export default function RegisterCompany() {
         }
     };
 
-    const goToManualSkupervisorLogin = useCallback(() => {
-        navigate('/login', {
-            state: {
-                registration: {
-                    email: dgfyAccount?.email,
-                    companyToken: success?.data?.company_token,
-                    companyName: success?.data?.name
-                }
-            }
-        });
-    }, [dgfyAccount?.email, navigate, success?.data?.company_token, success?.data?.name]);
+    const goToManualPosLogin = useCallback(() => {
+        goToPosOnboarding(true);
+    }, [goToPosOnboarding]);
 
-    const handleProceedToSkupervisor = useCallback(async () => {
+    const handleLoginToPos = useCallback(async () => {
         setError('');
         setNotice('');
 
         if (!success?.data?.company_token || success?.data?.status !== 'active' || !dgfyToken) {
-            goToManualSkupervisorLogin();
+            goToManualPosLogin();
             return;
         }
 
         setIsLoading(true);
         try {
             await startTenantSessionWithRetry(success.data, dgfyToken);
-            navigate({
-                pathname: '/terminal',
-                search: POS_ONBOARDING_ENTRY_SEARCH
-            }, { replace: true });
+            goToPosOnboarding(true);
         } catch (sessionError) {
-            setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
-            goToManualSkupervisorLogin();
+            setNotice(sessionError.response?.data?.message || 'Company created. Sign in to POS to continue.');
+            goToManualPosLogin();
         } finally {
             setIsLoading(false);
         }
-    }, [dgfyToken, goToManualSkupervisorLogin, navigate, startTenantSessionWithRetry, success?.data?.company_token, success?.data?.id, success?.data?.status]);
+    }, [dgfyToken, goToManualPosLogin, goToPosOnboarding, startTenantSessionWithRetry, success?.data?.company_token, success?.data?.id, success?.data?.status]);
 
     const handleSignOutDgfy = async () => {
         dgfySessionGenerationRef.current += 1;
@@ -633,10 +642,10 @@ export default function RegisterCompany() {
                         </div>
                         <Button
                             className="mt-6 w-full bg-[#1f5f9f] hover:bg-[#174f86]"
-                            onClick={handleProceedToSkupervisor}
+                            onClick={handleLoginToPos}
                             disabled={isLoading}
                         >
-                            {isLoading ? 'Opening SKUpervisor...' : 'Proceed to SKUpervisor'}
+                            {isLoading ? 'Logging in to POS...' : 'Login to POS'}
                         </Button>
                     </div>
                 </div>
@@ -771,9 +780,9 @@ export default function RegisterCompany() {
 
                 <div className="mt-6 text-center text-sm text-slate-600">
                     Already have a company?{' '}
-                    <Link to="/login" className="font-medium text-[#1f5f9f] hover:text-[#174f86]">
-                        Sign in to SKUpervisor
-                    </Link>
+                    <a href={posOnboardingUrl} className="font-medium text-[#1f5f9f] hover:text-[#174f86]">
+                        Sign in to POS
+                    </a>
                 </div>
             </div>
         );

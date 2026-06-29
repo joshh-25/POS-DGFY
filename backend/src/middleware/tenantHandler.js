@@ -98,6 +98,8 @@ const isGlobalDgfyAccountOtpRequest = (req, path) => (
     && String(req.body?.purpose || '').trim() === 'dgfy_account_verification'
 );
 
+const isPublicDgfyAccountRoute = (path) => /^\/api\/v1\/dgfy\/auth\/(register|login|password-reset\/request|password-reset\/complete)\b/i.test(path);
+
 export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = null } = {}) => {
     if (companyToken) {
         tenantCache.delete(String(companyToken));
@@ -122,11 +124,12 @@ export const tenantHandler = async (req, res, next) => {
             || path === '/api/v1/commerce-payments/paymongo/webhook';
         const isStrictAuthRoute = STRICT_AUTH_ROUTE_PATTERN.test(path);
         const isGlobalDgfyOtpRequest = isGlobalDgfyAccountOtpRequest(req, path);
+        const ignoreTenantContextCookie = isGlobalDgfyOtpRequest || isPublicDgfyAccountRoute(path);
 
         // 1. Identification Strategy:
         // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
         let companyToken = req.headers['x-company-token'];
-        if (!companyToken && isStrictAuthRoute) {
+        if (!companyToken && isStrictAuthRoute && !ignoreTenantContextCookie) {
             companyToken = getTenantContextToken(req);
             if (companyToken) {
                 req.headers['x-company-token'] = companyToken;

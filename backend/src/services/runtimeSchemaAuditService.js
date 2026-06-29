@@ -36,7 +36,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260429000001-add-storefront-v2-profile-fields-to-discovery-index.cjs',
     '20260429000002-create-storefront-follows.cjs',
     '20260504000001-add-customer-access-fields-to-discovery-index.cjs',
-    '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs'
+    '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs',
+    '20260628000001-add-pos-always-available-to-catalog-overrides.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -60,7 +61,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
     items: ['item_id', 'vat_type'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter'],
-    pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url'],
+    pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_always_available', 'pos_image_url'],
     pos_transactions: [
         'pos_transaction_id',
         'document_type',

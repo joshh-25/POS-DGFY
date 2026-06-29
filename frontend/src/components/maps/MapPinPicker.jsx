@@ -26,6 +26,7 @@ const MIN_ZOOM = 4;
 const MAX_ZOOM = 18;
 const RADIUS_SOURCE = 'delivery-radius';
 const MAP_READY_TIMEOUT_MS = 1500;
+const ADDRESS_SEARCH_LIMIT = 5;
 
 
 const buildPinSvg = ({ highlighted = false } = {}) => {
@@ -106,6 +107,39 @@ const reverseGeocodeMapPin = async ({ latitude, longitude }, { signal } = {}) =>
   return formatReverseGeocodedAddress(await response.json());
 };
 
+const searchMapAddress = async (query, { signal } = {}) => {
+  if (typeof fetch !== 'function') return [];
+  const normalizedQuery = String(query || '').trim();
+  if (normalizedQuery.length < 3) return [];
+
+  const params = new URLSearchParams({
+    q: normalizedQuery,
+    format: 'jsonv2',
+    addressdetails: '1',
+    limit: String(ADDRESS_SEARCH_LIMIT)
+  });
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+    headers: { Accept: 'application/json' },
+    signal
+  });
+  if (!response.ok) throw new Error('Address search is unavailable.');
+
+  const payload = await response.json();
+  if (!Array.isArray(payload)) return [];
+  return payload.map((result) => {
+    const latitude = parseCoordinate(result?.lat);
+    const longitude = parseCoordinate(result?.lon);
+    const addressLine = String(result?.display_name || '').trim();
+    if (latitude == null || longitude == null || !addressLine) return null;
+    return {
+      id: String(result?.place_id || `${latitude}:${longitude}`),
+      address_line: addressLine,
+      latitude: toFixedCoordinate(latitude),
+      longitude: toFixedCoordinate(longitude)
+    };
+  }).filter(Boolean);
+};
+
 const canResizeMapContainer = (container) => {
   if (!container || container.isConnected === false) return false;
   const rect = container.getBoundingClientRect?.();
@@ -139,9 +173,11 @@ export default function MapPinPicker({
   latitude,
   longitude,
   deliveryRadiusKm,
+  addressLine = '',
   onChange,
   className
 }) {
+  const addressSearchId = React.useId();
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -150,6 +186,8 @@ export default function MapPinPicker({
   const onChangeRef = useRef(onChange);
   const reverseGeocodeAbortRef = useRef(null);
   const reverseGeocodeSequenceRef = useRef(0);
+  const addressSearchAbortRef = useRef(null);
+  const addressSearchSequenceRef = useRef(0);
   const loadErrorRef = useRef('');
   const isPinDragModeRef = useRef(false);
   const radiusLayerReadyRef = useRef(false);
@@ -157,6 +195,10 @@ export default function MapPinPicker({
   const [isLocating, setIsLocating] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [isPinDragMode, setIsPinDragMode] = useState(false);
+  const [addressQuery, setAddressQuery] = useState(() => String(addressLine || ''));
+  const [addressResults, setAddressResults] = useState([]);
+  const [addressSearchError, setAddressSearchError] = useState('');
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
 
   const selectedPosition = useMemo(() => {
     const lat = parseCoordinate(latitude);
@@ -173,12 +215,13 @@ export default function MapPinPicker({
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { isPinDragModeRef.current = isPinDragMode; }, [isPinDragMode]);
+  useEffect(() => { setAddressQuery(String(addressLine || '')); }, [addressLine]);
 
-  const emitPinChange = (pin) => {
+  const emitPinChange = (pin, { reverseGeocode = true } = {}) => {
     onChangeRef.current?.(pin);
     const lat = parseCoordinate(pin?.latitude);
     const lng = parseCoordinate(pin?.longitude);
-    if (lat == null || lng == null) return;
+    if (lat == null || lng == null || !reverseGeocode) return;
 
     reverseGeocodeAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -189,6 +232,7 @@ export default function MapPinPicker({
     reverseGeocodeMapPin({ latitude: lat, longitude: lng }, { signal: controller?.signal })
       .then((addressLine) => {
         if (!addressLine || reverseGeocodeSequenceRef.current !== sequence) return;
+        setAddressQuery(addressLine);
         onChangeRef.current?.({
           ...pin,
           address_line: addressLine
@@ -197,6 +241,57 @@ export default function MapPinPicker({
       .catch(() => {
         // Address autofill is best-effort; coordinates remain the source of truth.
       });
+  };
+
+  const selectAddressResult = (result, { preserveResults = false } = {}) => {
+    if (!result) return;
+    reverseGeocodeAbortRef.current?.abort?.();
+    reverseGeocodeSequenceRef.current += 1;
+    setAddressQuery(result.address_line);
+    if (!preserveResults) setAddressResults([]);
+    setAddressSearchError('');
+    emitPinChange({
+      latitude: result.latitude,
+      longitude: result.longitude,
+      address_line: result.address_line
+    }, { reverseGeocode: false });
+  };
+
+  const handleAddressSearch = async (event) => {
+    event.preventDefault();
+    const query = String(addressQuery || '').trim();
+    if (query.length < 3) {
+      setAddressResults([]);
+      setAddressSearchError('Enter at least 3 characters to search for an address.');
+      return;
+    }
+
+    addressSearchAbortRef.current?.abort?.();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    addressSearchAbortRef.current = controller;
+    const sequence = addressSearchSequenceRef.current + 1;
+    addressSearchSequenceRef.current = sequence;
+    setIsSearchingAddress(true);
+    setAddressSearchError('');
+
+    try {
+      const results = await searchMapAddress(query, { signal: controller?.signal });
+      if (addressSearchSequenceRef.current !== sequence) return;
+      setAddressResults(results);
+      if (results.length === 0) {
+        setAddressSearchError('No matching address was found. Add more city or province details.');
+        return;
+      }
+      selectAddressResult(results[0], { preserveResults: true });
+    } catch (error) {
+      if (error?.name === 'AbortError' || addressSearchSequenceRef.current !== sequence) return;
+      setAddressResults([]);
+      setAddressSearchError(error?.message || 'Address search is unavailable.');
+    } finally {
+      if (addressSearchSequenceRef.current === sequence) {
+        setIsSearchingAddress(false);
+      }
+    }
   };
 
   const resetViewport = () => {
@@ -339,6 +434,7 @@ export default function MapPinPicker({
       isCancelled = true;
       clearTimeout(readyTimer);
       reverseGeocodeAbortRef.current?.abort?.();
+      addressSearchAbortRef.current?.abort?.();
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
       try {
@@ -459,6 +555,50 @@ export default function MapPinPicker({
 
   return (
     <div className={cn('space-y-2', className)}>
+      <form className="space-y-2" onSubmit={handleAddressSearch}>
+        <label htmlFor={addressSearchId} className="text-xs font-black text-slate-700">
+          Store Address
+        </label>
+        <div className="flex gap-2">
+          <input
+            id={addressSearchId}
+            type="search"
+            value={addressQuery}
+            onChange={(event) => {
+              setAddressQuery(event.target.value);
+              setAddressResults([]);
+              setAddressSearchError('');
+            }}
+            placeholder="Type the complete street, city, and province"
+            className="h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            autoComplete="street-address"
+          />
+          <Button type="submit" className="h-11 bg-teal-700 text-white hover:bg-teal-800" disabled={isSearchingAddress}>
+            {isSearchingAddress ? 'Searching...' : 'Search'}
+          </Button>
+        </div>
+        {addressSearchError ? <p className="text-xs text-red-600">{addressSearchError}</p> : null}
+        {addressResults.length > 1 ? (
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            {addressResults.map((result) => (
+              <button
+                key={result.id}
+                type="button"
+                onClick={() => selectAddressResult(result)}
+                className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 last:border-b-0 hover:bg-teal-50"
+              >
+                {result.address_line}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <p className="text-xs text-slate-500">
+          Search runs when you submit. The best match is pinned automatically; move the pin to refine the address.
+        </p>
+        <p className="text-[11px] text-slate-400">
+          Search data &copy; OpenStreetMap contributors
+        </p>
+      </form>
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200/60 bg-gradient-to-r from-amber-50 to-teal-50 p-2">
         <Button
           type="button"

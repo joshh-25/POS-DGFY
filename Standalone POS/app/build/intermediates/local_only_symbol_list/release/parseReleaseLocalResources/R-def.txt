@@ -1,0 +1,20 @@
+R_DEF: Internal format may change without notice
+local
+color black
+color standalone_pos_background
+color standalone_pos_border
+color standalone_pos_brand
+color standalone_pos_text_primary
+color standalone_pos_text_secondary
+color white
+drawable dgfy_receipt_logo
+drawable ic_launcher_background
+drawable ic_launcher_foreground
+integer react_native_dev_server_port
+mipmap ic_launcher
+mipmap ic_launcher_round
+string app_name
+style Base.Theme.StandalonePOS
+style Theme.StandalonePOS
+xml backup_rules
+xml data_extraction_rules

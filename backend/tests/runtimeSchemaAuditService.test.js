@@ -36,7 +36,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260429000001-add-storefront-v2-profile-fields-to-discovery-index.cjs' },
         { name: '20260429000002-create-storefront-follows.cjs' },
         { name: '20260504000001-add-customer-access-fields-to-discovery-index.cjs' },
-        { name: '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs' }
+        { name: '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs' },
+        { name: '20260628000001-add-pos-always-available-to-catalog-overrides.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -82,6 +83,7 @@ const buildHealthySequelizeMock = () => ({
                     pos_catalog_override_id: {},
                     item_id: {},
                     pos_visible: {},
+                    pos_always_available: {},
                     pos_image_url: {}
                 },
                 pos_transactions: {

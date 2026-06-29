@@ -1,6 +1,7 @@
 const CACHE_PREFIX = 'sku-admin';
-const SHELL_CACHE_NAME = `${CACHE_PREFIX}-shell-v1`;
-const RUNTIME_CACHE_NAME = `${CACHE_PREFIX}-runtime-v1`;
+const CACHE_VERSION = 'v2';
+const SHELL_CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;
+const RUNTIME_CACHE_NAME = `${CACHE_PREFIX}-runtime-${CACHE_VERSION}`;
 const MAX_RUNTIME_CACHE_ENTRIES = 120;
 const STATIC_CACHEABLE_DESTINATIONS = new Set(['script', 'style', 'image', 'font', 'manifest']);
 const BYPASS_PATH_PREFIXES = ['/api/', '/uploads/'];

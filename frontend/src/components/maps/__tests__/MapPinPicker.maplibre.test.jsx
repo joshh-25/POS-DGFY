@@ -250,6 +250,40 @@ describe('MapPinPicker MapLibre behavior', () => {
     expect(maplibreMocks.Marker).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'bottom' }));
   });
 
+  it('searches a complete address and pins the best result while showing suggestions', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue([
+        {
+          place_id: 101,
+          lat: '10.7202',
+          lon: '122.5621',
+          display_name: 'Iloilo City Hall, Iloilo City, Western Visayas'
+        },
+        {
+          place_id: 102,
+          lat: '10.7131',
+          lon: '122.5513',
+          display_name: 'Iloilo Provincial Capitol, Iloilo City, Western Visayas'
+        }
+      ])
+    });
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={onChange} />);
+
+    await user.type(screen.getByRole('searchbox', { name: /Store Address/i }), 'Iloilo City Hall');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({
+      latitude: 10.7202,
+      longitude: 122.5621,
+      address_line: 'Iloilo City Hall, Iloilo City, Western Visayas'
+    }));
+    expect(screen.getByText('Iloilo Provincial Capitol, Iloilo City, Western Visayas')).toBeTruthy();
+    expect(String(globalThis.fetch.mock.calls[0][0])).toContain('/search?');
+  });
+
   it('keeps coordinate pinning when reverse address lookup fails', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('reverse geocode unavailable'));
     const onChange = vi.fn();

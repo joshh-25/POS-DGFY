@@ -7,10 +7,7 @@ import {
   ChevronRight,
   Clock3,
   Edit,
-  Edit2,
-  Check,
   CheckCircle2,
-  Lock,
   Mail,
   Phone,
   HeadphonesIcon,
@@ -19,84 +16,37 @@ import {
   LogOut,
   MapPin,
   Menu,
-  RotateCcw,
-  Search,
   ShieldCheck,
   ShoppingBag,
   Star,
   Store,
-  Ticket,
   User,
   X,
-  Zap,
   Package,
   Award
 } from 'lucide-react';
-
-// Theme Constants aligned with the DGFY design system
-const THEME = {
-  bg: '#F9FAFB',
-  surface: '#FFFFFF',
-  border: '#EAECF0',
-  primary: '#1A4E8D', // Ocean Blue
-  text: '#101828',
-  muted: '#667085',
-  success: '#16A34A', // Semantic Success
-  successBg: '#ECFDF3',
-  warning: '#F59E0B', // Semantic Warning
-  warningBg: '#FFFAEB',
-  info: '#1A4586', // Deep Blue
-  infoBg: '#AEE8F4', // Ice Blue
-  purple: '#7A5AF8',
-  purpleBg: '#F4F3FF',
-  orange: '#DC2626', // Semantic Error instead of arbitrary orange
-  orangeBg: '#FEF3F2'
-};
-
-const money = (value) => {
-  const amount = Number(value || 0);
-  if (!Number.isFinite(amount)) return 'PHP 0.00';
-  return `PHP ${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
-
-const formatDate = (value) => {
-  if (!value) return 'Recent activity';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Recent activity';
-  return parsed.toLocaleString('en-PH', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
-};
-
-const prettyStatus = (value) => (
-  String(value || '')
-    .trim()
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (match) => match.toUpperCase()) || 'Pending'
-);
+import { EmptyState, StatusBadge, THEME, formatDate, prettyStatus } from '../account/DgfyCustomerAccountUi.jsx';
+import {
+  AccountSection,
+  AddressesSection,
+  BookingsSection,
+  LoyaltySection,
+  OrdersSection
+} from '../account/DgfyCustomerAccountSections.jsx';
 
 export function DgfyCustomerAccountPage({
   isMobileViewport,
   onClose,
-  onRefresh,
   onTrackReference,
   onSignOut,
-  onHelp,
   onRegisterBusiness,
-  onClearSavedDetails,
   accountIdentityInitials,
   accountIdentityName,
   accountIdentityContact,
   accountPanel,
-  hasSavedCustomerDetails,
-  maskedSavedCustomerPreview,
   activeOrders,
   activeOrderCount,
-  trackedCustomerActivity,
   customerTrackLoadingReference,
-  customerTrackError,
   onOpenBusinessInventory
 }) {
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
@@ -108,7 +58,6 @@ export function DgfyCustomerAccountPage({
   const overviewEmail = String(accountPanel?.me?.email || accountContactParts[1] || '').trim();
   
   const loyalty = accountPanel?.loyalty || { balance: 0, transactions: [] };
-  const loyaltyTransactions = Array.isArray(loyalty?.transactions) ? loyalty.transactions.slice(0, 3) : [];
   const businessMemberships = Array.isArray(accountPanel?.memberships)
     ? accountPanel.memberships.filter((membership) => membership?.company)
     : [];
@@ -133,43 +82,6 @@ export function DgfyCustomerAccountPage({
     { id: 'account', label: 'Account', icon: User },
     { id: 'business', label: 'Business', icon: Store }
   ];
-
-  // --- REUSABLE COMPONENTS ---
-
-  const StatusBadge = ({ status }) => {
-    const s = String(status).toLowerCase();
-    let color = THEME.muted;
-    let bg = THEME.border;
-    
-    if (s.includes('active') || s.includes('progress') || s.includes('preparing') || s.includes('confirmed')) {
-      color = THEME.info;
-      bg = THEME.infoBg;
-    } else if (s.includes('deliver') || s.includes('transit')) {
-      color = THEME.success;
-      bg = THEME.successBg;
-    } else if (s.includes('cancel') || s.includes('fail')) {
-      color = THEME.orange;
-      bg = THEME.orangeBg;
-    } else if (s.includes('complete') || s.includes('done')) {
-      color = THEME.success;
-      bg = THEME.successBg;
-    }
-
-    return (
-      <span style={{ 
-        display: 'inline-flex', 
-        alignItems: 'center', 
-        padding: '2px 8px', 
-        borderRadius: 999, 
-        fontSize: 12, 
-        fontWeight: 600, 
-        color: color, 
-        background: bg 
-      }}>
-        {prettyStatus(status)}
-      </span>
-    );
-  };
 
   const renderBusiness = () => {
     const registeredBusinesses = businessMemberships;
@@ -263,13 +175,6 @@ export function DgfyCustomerAccountPage({
       </div>
     );
   };
-
-  const EmptyState = ({ title, desc }) => (
-    <div style={{ padding: '32px 0', textAlign: 'center', color: THEME.muted }}>
-      <div style={{ fontSize: 14, fontWeight: 500 }}>{title}</div>
-      <div style={{ fontSize: 13, marginTop: 4 }}>{desc}</div>
-    </div>
-  );
 
   // --- SECTIONS ---
 
@@ -466,7 +371,7 @@ export function DgfyCustomerAccountPage({
                         <div style={{ fontSize: 12, color: THEME.muted, marginTop: 4 }}>{formatDate(booking.occurred_at)}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <button onClick={() => alert('Booking details will be available soon.')} style={{ background: 'transparent', border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: THEME.primary, cursor: 'pointer' }}>
+                        <button onClick={() => onTrackReference(booking)} style={{ background: 'transparent', border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: THEME.primary, cursor: 'pointer' }}>
                           View Details
                         </button>
                         <ChevronRight size={16} color={THEME.muted} />
@@ -530,22 +435,24 @@ export function DgfyCustomerAccountPage({
             { label: 'Reorder Items', icon: ShoppingBag, color: THEME.success },
             { label: 'Add Address', icon: MapPin, color: THEME.orange },
             { label: 'Update Profile', icon: User, color: THEME.primary },
-            { label: 'Help Center', icon: HelpCircle, color: THEME.purple },
-            { label: 'Contact Support', icon: HeadphonesIcon, color: THEME.info }
+            { label: 'Help Center', icon: HelpCircle, color: THEME.purple, disabled: true },
+            { label: 'Contact Support', icon: HeadphonesIcon, color: THEME.info, disabled: true }
           ].map((action, i) => {
             const Icon = action.icon;
             return (
               <button 
                 key={i} 
-                onClick={
+                type="button"
+                disabled={action.disabled}
+                title={action.disabled ? `${action.label} is not available yet.` : undefined}
+                onClick={action.disabled ? undefined : (
                   action.label === 'Reorder Items' ? () => setActiveNav('orders') :
                   action.label === 'Add Address' ? () => setActiveNav('addresses') :
-                  action.label === 'Update Profile' ? () => setActiveNav('account') :
-                  onHelp
-                }
-                style={{ background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}`, padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer', transition: 'background 200ms' }} 
-                onMouseOver={e => e.currentTarget.style.background = THEME.bg} 
-                onMouseOut={e => e.currentTarget.style.background = THEME.surface}
+                  () => setActiveNav('account')
+                )}
+                style={{ background: action.disabled ? THEME.bg : THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}`, padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: action.disabled ? 'not-allowed' : 'pointer', opacity: action.disabled ? 0.62 : 1, transition: 'background 200ms' }}
+                onMouseOver={e => { if (!action.disabled) e.currentTarget.style.background = THEME.bg; }}
+                onMouseOut={e => { if (!action.disabled) e.currentTarget.style.background = THEME.surface; }}
               >
                 <Icon size={18} color={action.color} />
                 <span style={{ fontSize: 14, fontWeight: 600, color: THEME.text }}>{action.label}</span>
@@ -555,266 +462,6 @@ export function DgfyCustomerAccountPage({
         </div>
       </div>
 
-    </div>
-  );
-
-  const renderOrders = () => (
-    <div style={{ display: 'grid', gap: 24 }}>
-      <h2 style={{ fontSize: 24, fontWeight: 800, color: THEME.text, marginBottom: 8 }}>Orders</h2>
-      <div style={{ display: 'grid', gap: 16 }}>
-        {allOrders.length === 0 ? (
-          <EmptyState title="No orders found" desc="You don't have any past or active orders." />
-        ) : allOrders.map((order) => (
-          <div key={`all-order-${order.reference}`} style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: THEME.infoBg, color: THEME.info, display: 'grid', placeItems: 'center' }}>
-                <Package size={24} />
-              </div>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text, marginBottom: 4 }}>{order.store_name || 'DGFY Store'}</div>
-                <div style={{ fontSize: 13, color: THEME.muted }}>{order.reference} • {formatDate(order.occurred_at)}</div>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: THEME.text, marginBottom: 8 }}>{money(order.total_amount)}</div>
-              <StatusBadge status={order.status_label || order.status} />
-            </div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => onTrackReference(order)} disabled={customerTrackLoadingReference === order.reference} style={{ background: THEME.surface, border: `1px solid ${THEME.border}`, color: THEME.primary, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: customerTrackLoadingReference === order.reference ? 'wait' : 'pointer' }}>
-                {customerTrackLoadingReference === order.reference ? 'Loading...' : 'Track'}
-              </button>
-              <button onClick={() => onTrackReference(order)} style={{ background: THEME.primary, border: 'none', color: '#FFF', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                View Receipt
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderBookings = () => (
-    <div style={{ display: 'grid', gap: 24 }}>
-      <h2 style={{ fontSize: 24, fontWeight: 800, color: THEME.text, marginBottom: 8 }}>Bookings</h2>
-      <div style={{ display: 'grid', gap: 16 }}>
-        {allBookings.length === 0 ? (
-          <EmptyState title="No bookings found" desc="You don't have any appointments scheduled." />
-        ) : allBookings.map((booking) => (
-          <div key={`all-booking-${booking.reference}`} style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: THEME.purpleBg, color: THEME.purple, display: 'grid', placeItems: 'center' }}>
-                <CalendarDays size={24} />
-              </div>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text, marginBottom: 4 }}>{booking.store_name || 'DGFY Service'}</div>
-                <div style={{ fontSize: 13, color: THEME.muted }}>{booking.reference} • {formatDate(booking.occurred_at)}</div>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <StatusBadge status={booking.status_label || booking.status} />
-            </div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => alert('Booking details will be available soon.')} style={{ background: THEME.surface, border: `1px solid ${THEME.border}`, color: THEME.primary, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                View Details
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderAddresses = () => (
-    <div style={{ display: 'grid', gap: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ fontSize: 24, fontWeight: 800, color: THEME.text }}>Addresses</h2>
-        <button onClick={() => alert('Address adding is currently disabled for this demo.')} style={{ background: THEME.primary, border: 'none', color: '#FFF', borderRadius: 8, padding: '8px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <MapPin size={16} /> Add Address
-        </button>
-      </div>
-      <div style={{ display: 'grid', gap: 16 }}>
-        {allAddresses.length === 0 ? (
-          <EmptyState title="No addresses saved" desc="Add an address for faster checkout." />
-        ) : allAddresses.map((address) => (
-          <div key={`addr-${address.address_id}`} style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
-            <div style={{ display: 'flex', gap: 16 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: THEME.orangeBg, color: THEME.orange, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                <MapPin size={24} />
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>{String(address.label || 'Address').trim() || 'Address'}</div>
-                  {address.is_default && (
-                    <span style={{ background: THEME.successBg, color: THEME.success, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>Default</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 14, color: THEME.muted, lineHeight: 1.5, maxWidth: 400 }}>{address.address_line || 'Address details unavailable.'}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => alert('Address editing is currently disabled.')} style={{ background: 'transparent', border: `1px solid ${THEME.border}`, color: THEME.text, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Edit</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderLoyalty = () => (
-    <div style={{ display: 'grid', gap: 24 }}>
-      <h2 style={{ fontSize: 24, fontWeight: 800, color: THEME.text, marginBottom: 8 }}>Loyalty Rewards</h2>
-      <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          <div style={{ width: 80, height: 80, borderRadius: 16, background: THEME.successBg, color: THEME.success, display: 'grid', placeItems: 'center' }}>
-            <Award size={40} />
-          </div>
-          <div>
-            <div style={{ fontSize: 14, color: THEME.muted, fontWeight: 500, marginBottom: 4 }}>Current Balance</div>
-            <div style={{ fontSize: 36, fontWeight: 900, color: THEME.text, lineHeight: 1 }}>{Number(loyalty.balance || 0)} <span style={{ fontSize: 16, color: THEME.muted, fontWeight: 500 }}>Points</span></div>
-          </div>
-        </div>
-        <button onClick={() => alert('Loyalty redemption is available at the physical store.')} style={{ background: THEME.primary, border: 'none', color: '#FFF', borderRadius: 8, padding: '12px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-          Redeem Rewards
-        </button>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <h3 style={{ fontSize: 18, fontWeight: 700, color: THEME.text, marginBottom: 16 }}>Recent Transactions</h3>
-        <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, overflow: 'hidden' }}>
-          {loyaltyTransactions.length === 0 ? (
-            <EmptyState title="No transactions yet" desc="Make a purchase to start earning points." />
-          ) : loyaltyTransactions.map((entry, index) => (
-            <div key={`loy-${index}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: index < loyaltyTransactions.length - 1 ? `1px solid ${THEME.border}` : 'none' }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: THEME.text, marginBottom: 4 }}>{prettyStatus(entry.reason || 'Activity')}</div>
-                <div style={{ fontSize: 13, color: THEME.muted }}>{formatDate(entry.created_at)}</div>
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: Number(entry.points_delta || 0) >= 0 ? THEME.success : THEME.text }}>
-                {Number(entry.points_delta || 0) >= 0 ? '+' : ''}{Number(entry.points_delta || 0)} pts
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderAccount = () => (
-    <div style={{ display: 'grid', gap: 24 }}>
-      <h2 style={{ fontSize: 28, fontWeight: 800, color: THEME.text, marginBottom: 8 }}>Account Settings</h2>
-      
-      {/* Container 1: Profile Overview */}
-      <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>Profile Overview</h3>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-            <div style={{ position: 'relative' }}>
-              <div style={{ width: 100, height: 100, borderRadius: '50%', background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center', fontSize: 36, fontWeight: 800 }}>
-                {accountIdentityInitials}
-              </div>
-              <div style={{ position: 'absolute', bottom: 4, right: 4, width: 28, height: 28, borderRadius: '50%', background: THEME.success, color: '#FFF', display: 'grid', placeItems: 'center', border: '3px solid #FFF' }}>
-                <Check size={16} strokeWidth={4} />
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 24, fontWeight: 700, color: THEME.text }}>{accountIdentityName}</div>
-                {Boolean(accountPanel?.me?.is_email_verified) && (
-                  <div style={{ background: '#E6F4EA', color: '#137333', fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <ShieldCheck size={14} /> Verified Customer
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 4, flexWrap: 'wrap' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: THEME.muted, fontSize: 14 }}>
-                  <Phone size={16} /> {accountIdentityContact?.split(' | ')[0] || '+63 *** *** ****'}
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: THEME.muted, fontSize: 14 }}>
-                  <Mail size={16} /> {accountIdentityContact?.split(' | ')[1] || 'customer@email.com'}
-                </span>
-              </div>
-            </div>
-          </div>
-          <button onClick={() => alert('Editing profile is coming soon.')} style={{ background: 'transparent', border: `1px solid ${THEME.primary}`, color: THEME.primary, borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <Edit2 size={16} /> Edit Profile
-          </button>
-        </div>
-      </div>
-
-      {/* Container 2: Contact Information */}
-      <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>Contact Information</h3>
-        <div style={{ display: 'grid', gap: 16 }}>
-          
-          {/* Email Row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center' }}>
-                <Mail size={24} />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, color: THEME.text, fontWeight: 700, marginBottom: 4 }}>Email Address</div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: THEME.text }}>{accountIdentityContact?.split(' | ')[1] || 'customer@email.com'}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-              {Boolean(accountPanel?.me?.is_email_verified) ? (
-                <span style={{ background: '#E6F4EA', color: '#137333', fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  Verified <CheckCircle2 size={14} />
-                </span>
-              ) : (
-                <span style={{ background: '#FFF3E0', color: '#E65100', fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  Unverified
-                </span>
-              )}
-              <button onClick={() => alert('Change email flow initiated.')} style={{ background: 'transparent', border: 'none', color: THEME.primary, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                Change <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-
-          {/* Phone Row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center' }}>
-                <Phone size={24} />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, color: THEME.text, fontWeight: 700, marginBottom: 4 }}>Phone Number</div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: THEME.text }}>{accountIdentityContact?.split(' | ')[0] || '+63 *** *** ****'}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-              <span style={{ background: '#E6F4EA', color: '#137333', fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                Verified <CheckCircle2 size={14} />
-              </span>
-              <button onClick={() => alert('Change phone flow initiated.')} style={{ background: 'transparent', border: 'none', color: THEME.primary, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                Change <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* Container 3: Security */}
-      <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>Security</h3>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0px 0px 8px 0px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center' }}>
-              <Lock size={24} />
-            </div>
-            <div>
-              <div style={{ fontSize: 13, color: THEME.text, fontWeight: 700 }}>Password</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: THEME.text, marginTop: 4, letterSpacing: 2, lineHeight: 1 }}>••••••••</div>
-            </div>
-          </div>
-          <button onClick={() => alert('Change password flow initiated.')} style={{ background: 'transparent', border: 'none', color: THEME.primary, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-            Change Password <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
     </div>
   );
 
@@ -882,10 +529,10 @@ export function DgfyCustomerAccountPage({
 
           <div style={{ height: 1, background: THEME.border, margin: '16px 0' }} />
 
-          <button style={{ background: 'transparent', border: 'none', color: THEME.muted, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16, fontSize: 15, fontWeight: 500, cursor: 'pointer' }}>
+          <button type="button" disabled title="Help Center is not available yet." style={{ background: THEME.bg, border: 'none', color: THEME.muted, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16, fontSize: 15, fontWeight: 500, cursor: 'not-allowed', opacity: 0.62 }}>
             <HelpCircle size={20} /> Help Center
           </button>
-          <button style={{ background: 'transparent', border: 'none', color: THEME.muted, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16, fontSize: 15, fontWeight: 500, cursor: 'pointer' }}>
+          <button type="button" disabled title="Contact Support is not available yet." style={{ background: THEME.bg, border: 'none', color: THEME.muted, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16, fontSize: 15, fontWeight: 500, cursor: 'not-allowed', opacity: 0.62 }}>
             <HeadphonesIcon size={20} /> Contact Support
           </button>
         </nav>
@@ -917,11 +564,8 @@ export function DgfyCustomerAccountPage({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <button style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer' }}>
+            <button type="button" disabled title="Notifications are not available yet." style={{ position: 'relative', background: 'none', border: 'none', cursor: 'not-allowed', opacity: 0.62 }}>
               <Bell size={20} color={THEME.text} />
-              <div style={{ position: 'absolute', top: -4, right: -4, width: 14, height: 14, background: THEME.orange, color: '#FFF', borderRadius: '50%', fontSize: 9, fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid #FFF' }}>
-                3
-              </div>
             </button>
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 700 }}>
               {accountIdentityInitials}
@@ -934,11 +578,11 @@ export function DgfyCustomerAccountPage({
         {/* Scrollable Page Content */}
         <main style={{ padding: isMobileViewport ? 16 : 40, maxWidth: 1200, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
           {activeNav === 'overview' && renderOverview()}
-          {activeNav === 'orders' && renderOrders()}
-          {activeNav === 'bookings' && renderBookings()}
-          {activeNav === 'addresses' && renderAddresses()}
-          {activeNav === 'loyalty' && renderLoyalty()}
-          {activeNav === 'account' && renderAccount()}
+          {activeNav === 'orders' && <OrdersSection orders={allOrders} onTrackReference={onTrackReference} loadingReference={customerTrackLoadingReference} />}
+          {activeNav === 'bookings' && <BookingsSection bookings={allBookings} onTrackReference={onTrackReference} />}
+          {activeNav === 'addresses' && <AddressesSection addresses={allAddresses} />}
+          {activeNav === 'loyalty' && <LoyaltySection loyalty={loyalty} />}
+          {activeNav === 'account' && <AccountSection initials={accountIdentityInitials} name={accountIdentityName} contact={accountIdentityContact} account={accountPanel?.me} />}
           {activeNav === 'business' && renderBusiness()}
         </main>
 

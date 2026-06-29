@@ -54,6 +54,15 @@ const renderCreateAccount = () => render(
   </MemoryRouter>
 );
 
+const renderBusinessIntentCreateAccount = () => render(
+  <MemoryRouter initialEntries={['/dgfy/auth?intent=register-business&mode=create-account&return_to=%2Fregister-company%23business-registration']}>
+    <Routes>
+      <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
+      <Route path="/register-company" element={<div>Register company screen</div>} />
+    </Routes>
+  </MemoryRouter>
+);
+
 describe('DgfyAuthPage create-account field enhancements', () => {
   beforeEach(() => {
     dgfyAuthMock.clearDgfySession.mockReset();
@@ -124,6 +133,32 @@ describe('DgfyAuthPage create-account field enhancements', () => {
     expect(dgfyAuthMock.registerDgfyAccount).not.toHaveBeenCalled();
   });
 
+  it('stays on create-account when verification code sending fails', async () => {
+    dgfyAuthMock.requestDgfySignupOtp.mockRejectedValueOnce({
+      response: {
+        data: {
+          message: 'Email verification code could not be sent',
+          error_code: 'EMAIL_OTP_DELIVERY_FAILED'
+        }
+      }
+    });
+
+    renderCreateAccount();
+
+    fireEvent.change(await screen.findByLabelText('Last Name'), { target: { value: 'Lovelace' } });
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Ada' } });
+    fireEvent.change(screen.getByLabelText('Email Address'), { target: { value: 'ada@example.test' } });
+    fireEvent.change(screen.getByLabelText('Mobile Number'), { target: { value: '0917-123-4567' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Account Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => expect(dgfyAuthMock.requestDgfySignupOtp).toHaveBeenCalledWith('ada@example.test'));
+    expect(screen.queryByRole('heading', { name: /check your email/i })).toBeNull();
+    expect(screen.getByRole('heading', { name: /create your dgfy account/i })).toBeTruthy();
+  });
+
   it('shows the PH validation message for invalid mobile numbers', async () => {
     renderCreateAccount();
 
@@ -139,5 +174,51 @@ describe('DgfyAuthPage create-account field enhancements', () => {
     expect(await screen.findByText('Enter a valid Philippine mobile number starting with 9.')).toBeTruthy();
     expect(screen.getByLabelText('Mobile Number').getAttribute('aria-invalid')).toBe('true');
     expect(dgfyAuthMock.registerDgfyAccount).not.toHaveBeenCalled();
+  });
+
+  it('keeps signup customer-only even when the entry intent is register-business', async () => {
+    dgfyAuthMock.requestDgfySignupOtp.mockResolvedValueOnce({ dev_code: '123456' });
+    dgfyAuthMock.registerDgfyAccount.mockResolvedValueOnce({
+      token: 'dgfy-token-created',
+      account: { id: 'dgfy-1', email: 'ada@example.test' }
+    });
+    dgfyAuthMock.loginDgfyAccount.mockResolvedValueOnce({
+      token: 'dgfy-token-login',
+      account: { id: 'dgfy-1', email: 'ada@example.test' }
+    });
+    dgfyAuthMock.fetchDgfyMe
+      .mockRejectedValueOnce({ response: { status: 401 } })
+      .mockResolvedValueOnce({
+        token: 'dgfy-token-login',
+        account: { id: 'dgfy-1', email: 'ada@example.test' }
+      });
+
+    renderBusinessIntentCreateAccount();
+
+    fireEvent.change(await screen.findByLabelText('Last Name'), { target: { value: 'Lovelace' } });
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Ada' } });
+    fireEvent.change(screen.getByLabelText('Email Address'), { target: { value: 'ada@example.test' } });
+    fireEvent.change(screen.getByLabelText('Mobile Number'), { target: { value: '0917-123-4567' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Account Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByRole('heading', { name: /check your email/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /verify email/i }));
+
+    expect(await screen.findByRole('button', { name: /^login$/i })).toBeTruthy();
+    expect(screen.getByText(/your dgfy customer account is ready/i)).toBeTruthy();
+    expect(screen.queryByText(/register company screen/i)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Email Address'), { target: { value: 'ada@example.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /^login$/i }));
+
+    await waitFor(() => expect(dgfyAuthMock.loginDgfyAccount).toHaveBeenCalledWith({
+      email: 'ada@example.test',
+      password: 'password123'
+    }));
+    expect(screen.queryByText('Register company screen')).toBeNull();
   });
 });

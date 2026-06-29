@@ -121,6 +121,54 @@ export const resolveStorefrontHomeUrl = () => {
   }
 };
 
+export const resolvePosTerminalUrl = (search = '') => {
+  const isDev = isLocalRuntime();
+  const configuredDevPort = String(import.meta.env?.VITE_POS_DEV_PORT || '5174').trim() || '5174';
+  const configuredUrl = String(
+    import.meta.env?.VITE_POS_TERMINAL_URL
+    || import.meta.env?.VITE_POS_BASE_URL
+    || ''
+  ).trim();
+  const normalizedSearch = String(search || '').trim();
+  const defaultUrl = isDev
+    ? `${resolveLocalOriginForPort(configuredDevPort) || 'http://127.0.0.1:5174'}/terminal`
+    : 'https://pos.dgfy.ph/terminal';
+
+  const withSearch = (target) => {
+    try {
+      const url = new URL(target, resolveCurrentAppOrigin() || defaultUrl);
+      url.pathname = '/terminal';
+      url.search = normalizedSearch
+        ? (normalizedSearch.startsWith('?') ? normalizedSearch : `?${normalizedSearch}`)
+        : '';
+      return url.toString();
+    } catch {
+      return normalizedSearch
+        ? `${target}${normalizedSearch.startsWith('?') ? normalizedSearch : `?${normalizedSearch}`}`
+        : target;
+    }
+  };
+
+  if (configuredUrl) {
+    return withSearch(configuredUrl);
+  }
+
+  if (typeof window !== 'undefined') {
+    const { origin, hostname, port, protocol } = window.location;
+    if (hostname.startsWith('pos.')) {
+      return withSearch(origin);
+    }
+    if (hostname.startsWith('skupervisor.')) {
+      return withSearch(`${protocol}//${hostname.replace(/^skupervisor\./, 'pos.')}`);
+    }
+    if (isDev && isLocalLikeHostname(hostname)) {
+      return withSearch(`${protocol}//${hostname}:${configuredDevPort}`);
+    }
+  }
+
+  return withSearch(defaultUrl);
+};
+
 const isValidStorefrontReturnPath = (pathname = '') => {
   const normalizedPath = String(pathname || '').trim().replace(/\/+$/, '') || '/';
   if (normalizedPath === '/map-dgfy/account') return true;

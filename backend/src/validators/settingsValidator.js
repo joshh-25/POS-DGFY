@@ -234,8 +234,13 @@ const storefrontBusinessHoursSchema = Joi.alternatives().try(
   })
 );
 const storefrontCategoriesSchema = Joi.array().items(Joi.string().trim().min(1).max(60)).max(12).optional();
-const storefrontGalleryUrlSchema = Joi.string().trim().max(500).uri({ scheme: ['http', 'https'] }).allow('', null).optional();
-const storefrontGalleryPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow(null).optional().messages({
+const storefrontGalleryUrlSchema = Joi.alternatives().try(
+  Joi.string().trim().max(500).pattern(/^$|^\/uploads\/storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow('', null),
+  Joi.string().trim().max(500).uri({ scheme: ['http', 'https'] }).allow('', null)
+).optional().messages({
+  'alternatives.match': 'Storefront gallery url must be empty, a backend-relative /uploads/storefront-assets path, or an absolute http(s) URL'
+});
+const storefrontGalleryPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow('', null).optional().messages({
   'string.pattern.base': 'Storefront gallery path must be empty or a storefront-assets relative path'
 });
 const storefrontGalleryImageSchema = Joi.object({
@@ -270,11 +275,11 @@ const storefrontReviewSummarySchema = Joi.object({
   score: Joi.number().min(0).max(5).precision(2).allow(null).optional(),
   total_count: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
   star_distribution: Joi.object({
-    1: Joi.number().integer().min(0).max(1000000).optional(),
-    2: Joi.number().integer().min(0).max(1000000).optional(),
-    3: Joi.number().integer().min(0).max(1000000).optional(),
-    4: Joi.number().integer().min(0).max(1000000).optional(),
-    5: Joi.number().integer().min(0).max(1000000).optional()
+    1: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
+    2: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
+    3: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
+    4: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
+    5: Joi.number().integer().min(0).max(1000000).allow(null).optional()
   }).optional()
 }).optional();
 const customerAccessModeSchema = Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_MODES).messages({
@@ -393,6 +398,90 @@ export const updateSingleSettingSchema = Joi.object({
   })
 });
 
+const normalizeStorefrontGalleryEntry = (entry) => {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    return entry;
+  }
+
+  const url = String(entry.url || '').trim();
+  const path = String(entry.path || '').trim();
+  if (!url && !path) {
+    return null;
+  }
+
+  return {
+    ...entry,
+    url,
+    path
+  };
+};
+
+const sanitizeStorefrontGalleryImagesPayload = (value) => {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  return value
+    .map((entry) => normalizeStorefrontGalleryEntry(entry))
+    .filter(Boolean);
+};
+
+const sanitizeStorefrontReviewSummaryPayload = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value;
+  }
+
+  const nextValue = { ...value };
+  const rawDistribution = value.star_distribution;
+  if (rawDistribution && typeof rawDistribution === 'object' && !Array.isArray(rawDistribution)) {
+    const sanitizedDistribution = { ...rawDistribution };
+    [1, 2, 3, 4, 5].forEach((star) => {
+      const rawStarValue = sanitizedDistribution[star];
+      if (rawStarValue === '' || rawStarValue == null || rawStarValue === 'null') {
+        sanitizedDistribution[star] = null;
+      }
+    });
+    nextValue.star_distribution = sanitizedDistribution;
+  }
+
+  if (nextValue.score === '' || nextValue.score === 'null') {
+    nextValue.score = null;
+  }
+  if (nextValue.total_count === '' || nextValue.total_count === 'null') {
+    nextValue.total_count = null;
+  }
+
+  return nextValue;
+};
+
+const sanitizeStorefrontSettingsPayload = (value, { singleSettingKey = '' } = {}) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    if (singleSettingKey === 'storefront_gallery_images') {
+      return sanitizeStorefrontGalleryImagesPayload(value);
+    }
+    if (singleSettingKey === 'storefront_review_summary') {
+      return sanitizeStorefrontReviewSummaryPayload(value);
+    }
+    return value;
+  }
+
+  if (singleSettingKey === 'storefront_gallery_images') {
+    return sanitizeStorefrontGalleryImagesPayload(value);
+  }
+  if (singleSettingKey === 'storefront_review_summary') {
+    return sanitizeStorefrontReviewSummaryPayload(value);
+  }
+
+  const nextValue = { ...value };
+  if (Object.prototype.hasOwnProperty.call(nextValue, 'storefront_gallery_images')) {
+    nextValue.storefront_gallery_images = sanitizeStorefrontGalleryImagesPayload(nextValue.storefront_gallery_images);
+  }
+  if (Object.prototype.hasOwnProperty.call(nextValue, 'storefront_review_summary')) {
+    nextValue.storefront_review_summary = sanitizeStorefrontReviewSummaryPayload(nextValue.storefront_review_summary);
+  }
+  return nextValue;
+};
+
 // Middleware to validate settings update
 export const validateUpdateSettings = (req, res, next) => {
   const rawOrderMethodFees = req?.body?.pos_order_method_fees;
@@ -411,7 +500,9 @@ export const validateUpdateSettings = (req, res, next) => {
     }
   }
 
-  const { error, value } = updateSettingsSchema.validate(req.body, {
+  const sanitizedBody = sanitizeStorefrontSettingsPayload(req.body);
+
+  const { error, value } = updateSettingsSchema.validate(sanitizedBody, {
     abortEarly: false,
     stripUnknown: true
   });
@@ -455,6 +546,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
   }
 
   const settingKey = String(req?.params?.key || '').trim();
+  const sanitizedValue = sanitizeStorefrontSettingsPayload(value.value, { singleSettingKey: settingKey });
   if (PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS.has(settingKey)) {
     return res.status(422).json({
       success: false,
@@ -550,7 +642,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
 
   const settingValueSchema = singleSettingSchemaByKey[settingKey];
   if (settingValueSchema) {
-    const validation = settingValueSchema.validate(value.value, { abortEarly: false });
+    const validation = settingValueSchema.validate(sanitizedValue, { abortEarly: false });
     if (validation.error) {
       const errors = validation.error.details.map(detail => ({
         field: detail.path.length ? `value.${detail.path.join('.')}` : 'value',
@@ -567,7 +659,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     return next();
   }
 
-  req.validatedData = value;
+  req.validatedData = { ...value, value: sanitizedValue };
   next();
 };
 

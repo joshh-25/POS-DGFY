@@ -84,7 +84,7 @@ describe('DGFY customer account dashboard', () => {
     renderDashboard();
 
     expect(screen.getByText('Back to Discovery')).toBeTruthy();
-    expect(screen.getAllByText('Sam Paul').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('Sam Paul').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Grow your business')).toBeTruthy();
     expect(screen.getByText('Past Orders')).toBeTruthy();
     expect(screen.getByText('Loyalty Points')).toBeTruthy();
@@ -108,6 +108,44 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByText('Confirmed')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'View Receipt' })).toHaveLength(2);
     fireEvent.click(screen.getAllByRole('button', { name: 'Track' })[0]);
-    expect(onTrackReference).toHaveBeenCalledWith('SK-M3SGQA');
+    expect(onTrackReference).toHaveBeenCalledWith(accountPanel.orders[0]);
+  });
+
+  it('uses the real tracking flow for booking details', () => {
+    const booking = {
+      reference: 'BOOK-1001',
+      store_name: 'DGFY Service',
+      occurred_at: '2026-06-18T09:00:00Z',
+      status: 'confirmed'
+    };
+    const onTrackReference = vi.fn();
+    renderDashboard({
+      onTrackReference,
+      accountPanel: { ...accountPanel, bookings: [booking] }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bookings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View Details' }));
+
+    expect(onTrackReference).toHaveBeenCalledWith(booking);
+  });
+
+  it('marks unfinished account actions as disabled instead of exposing placeholder alerts', () => {
+    renderDashboard();
+
+    expect(screen.getAllByRole('button', { name: 'Help Center' }).every((button) => button.disabled)).toBe(true);
+    expect(screen.getAllByRole('button', { name: 'Contact Support' }).every((button) => button.disabled)).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Addresses' }));
+    expect(screen.getByRole('button', { name: 'Add Address' }).disabled).toBe(true);
+    expect(screen.getAllByRole('button', { name: 'Edit' }).every((button) => button.disabled)).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Loyalty' }));
+    expect(screen.getByRole('button', { name: 'Redeem Rewards' }).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Account' }));
+    expect(screen.getByRole('button', { name: 'Edit Profile' }).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Change Password' }).disabled).toBe(true);
+    expect(screen.getByText('Not verified')).toBeTruthy();
   });
 });

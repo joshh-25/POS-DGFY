@@ -2321,6 +2321,33 @@ Gating notes:
 - In billing-paused mode (`PAYMENTS_ENABLED=false`), `requirePremium` is plan-driven (`plan === premium`) and does not block on `subscription_status`.
 - In live billing mode (`PAYMENTS_ENABLED=true`), `requirePremium` also enforces active/grace subscription state.
 
+### GET /pos/setup/cashiers
+List active POS cashier accounts and their assigned store IDs for terminal setup.
+
+**Permission**: `users:manage`
+**Plan Gate**: Premium (`requirePremium`)
+
+The response contains `data.cashiers`. Each cashier includes identity fields, role metadata, and `location_ids`. POS Setup uses `location_ids` to display cashiers under terminal cards with the same assigned store.
+
+### POST /pos/setup/cashiers
+Create an active tenant-local cashier from POS Setup.
+
+**Permission**: `users:manage`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "username": "front-counter",
+  "email": "cashier@example.com",
+  "phone_number": "+63 900 000 0000",
+  "password": "minimum-8-characters",
+  "location_ids": [3]
+}
+```
+
+The POS terminal card supplies exactly one `location_ids` entry from its assigned store. The backend validates the active store, creates the cashier and location grant transactionally, and returns the created cashier under `data.cashier`.
+
 ### GET /pos/catalog
 List sellable POS catalog items.
 
@@ -2414,10 +2441,10 @@ Resolve a barcode scan for the current POS context before cart insertion.
 
 **Rules**
 - Resolution runs through POS use cases, not direct Inventory lookup from the UI.
-- Successful scans may enter cart only after item status, POS visibility, sale price, shift/location scope, stock/service exemption, and compliance readiness pass.
+- Successful scans may enter cart after item status, POS visibility, sale price, shift/location scope, and stock/service exemption pass. Compliance readiness is optional for non-fiscal POS operation and only blocks fiscal/compliant-only output or explicit backend policy denials.
 - Service booking/ticket QR scans return routed metadata and must not add cart lines. Ticket-scope barcodes that are not service booking routes return `TICKET_SCAN_NOT_CARTABLE`.
 - Blocked reason codes include `BARCODE_NOT_FOUND`, `BARCODE_CONFLICT`, `BARCODE_SCOPE_NOT_POS`, `TICKET_SCAN_NOT_CARTABLE`, `NOT_POS_VISIBLE`, `ITEM_INACTIVE`, `MISSING_PRICE`, `OUT_OF_STOCK`, `LOCATION_CONTEXT_REQUIRED`, `UNAUTHORIZED_LOCATION`, `COMPLIANCE_BLOCKED`, and `SERVICE_UNAVAILABLE`.
-- Offline checkout payloads may include `scan_metadata`; replay revalidates barcode mapping, item state, stock/location, and compliance before committing.
+- Offline checkout payloads may include `scan_metadata`; replay revalidates barcode mapping, item state, stock/location, and fiscal/compliant-only policy before committing.
 
 ### GET /pos/catalog-overrides
 List POS catalog overrides for admin inventory/POS configuration screens.
@@ -2557,9 +2584,9 @@ Payment handoff policy (current contract):
 **Permission**: `pos:transact`
 **Plan Gate**: Premium (`requirePremium`)
 
-**Compliance Gate (dual-mode, fail-closed for compliant mode)**
+**Compliance Gate (dual-mode, optional for non-fiscal POS operation)**
 Checkout is evaluated by the compliance policy engine:
-1. `compliance_mode_choice_required=true` blocks checkout and terminal operations (`LEGACY_MODE_SELECTION_REQUIRED`).
+1. `compliance_mode_choice_required=true` no longer blocks POS checkout or terminal operations; POS proceeds as non-compliant/non-fiscal operation until the tenant completes compliance setup. Payment capability enabling may still be blocked by `LEGACY_MODE_SELECTION_REQUIRED`.
 2. `non_compliant_active` allows checkout with non-fiscal receipt contract only (`document_type=non_fiscal_slip`, `document_context=non_fiscal`).
 3. `compliant_pending` allows operations, but fiscal output remains blocked until activation checklist is complete.
 4. `compliant_active` fails closed when checklist controls are unmet:
@@ -2657,6 +2684,20 @@ Get the current open shift and cash summary for a terminal.
 | Name | Type | Description |
 |------|------|-------------|
 | `terminal_id` | string | Terminal identifier (e.g. `COUNTER-01`) |
+
+### POST /pos/terminal/verify
+Verify an authenticated operator's terminal ID and terminal password. A successful response sets the signed `sku_pos_terminal_pairing` HttpOnly cookie and returns only safe terminal policy context; the pairing token and password hash are never returned in JSON.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+### GET /pos/terminal/paired
+Revalidate the current browser's POS pairing after cashier authentication. The backend checks token signature and expiry, tenant, active terminal registry entry, password-hash/location fingerprint, and the cashier's location grant.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+When valid, the response includes `paired: true` and safe `terminal_identity_policy` context. Missing, expired, tampered, changed, or unauthorized pairings return an error and clear the pairing cookie; POS must fall back to one-time Terminal Unlock.
 
 ### POST /pos/terminal/shifts/open
 Open a terminal shift for cashier operations.
@@ -5070,10 +5111,11 @@ Current POS operator flow:
 2. POS loads accessible companies for that DGFY account
 3. cashier selects the company
 4. POS creates the tenant POS session
-5. POS opens the terminal unlock step
-6. cashier enters terminal password
-7. if there is no active shift, cashier also enters opening cash to open the shift
-8. if the terminal was only relocked while a shift remained open, terminal password alone resumes the terminal without asking for opening cash again
+5. POS validates the browser's terminal pairing
+6. on first use or invalid pairing, cashier completes Terminal Unlock with the terminal password, which pairs the browser
+7. with a valid pairing and cashier store grant, POS goes directly to Opening Cash
+8. if there is no active shift, cashier enters opening cash to open the shift
+9. if the terminal was only relocked while a shift remained open, terminal password alone resumes the terminal without asking for opening cash again
 
 ```json
 {

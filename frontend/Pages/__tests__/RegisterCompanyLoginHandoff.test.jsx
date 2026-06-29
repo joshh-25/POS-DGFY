@@ -44,6 +44,7 @@ import RegisterCompany from '../RegisterCompany.jsx';
 import {
   appendDgfyHandoffToken,
   normalizeDgfyReturnTarget,
+  resolvePosTerminalUrl,
   resolveStorefrontAccountUrl
 } from '../../src/features/dgfyRouteHelpers.js';
 
@@ -366,7 +367,24 @@ describe('DGFY auth and business registration routes', () => {
     expect(screen.getByRole('button', { name: /create dgfy account/i })).toBeTruthy();
   });
 
+  it('points the register-company POS sign-in link to the POS app origin', async () => {
+    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
+      token: 'dgfy-token',
+      account: dgfyAccount
+    });
+
+    renderRoutes(['/register-company?source=dgfy&auth=login#business-registration']);
+
+    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
+    expect(screen.getByRole('link', { name: /sign in to pos/i }).getAttribute('href')).toBe(
+      resolvePosTerminalUrl('?setup_flow=tenant_onboarding&setup_step=profile')
+    );
+  });
+
   it('shows business-only registration fields after a valid DGFY session and creates the company', async () => {
+    window.localStorage.setItem('pos_terminal_identity_v1', 'COUNTER-01');
+    window.localStorage.setItem('pos_terminal_locked_v1', '1');
+    window.localStorage.setItem('pos_terminal_lock_reason_v1', 'terminal_reunlock');
     dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
       token: 'dgfy-token',
       account: dgfyAccount
@@ -415,9 +433,12 @@ describe('DGFY auth and business registration routes', () => {
       companyToken: 'token-autofoods-12345678'
     }, 'dgfy-token'));
     expect(await screen.findByText('Terminal screen')).toBeTruthy();
+    expect(window.localStorage.getItem('pos_terminal_identity_v1')).toBeNull();
+    expect(window.localStorage.getItem('pos_terminal_locked_v1')).toBeNull();
+    expect(window.localStorage.getItem('pos_terminal_lock_reason_v1')).toBeNull();
   });
 
-  it('falls back to SKUpervisor login when the automatic IMS session cannot start', async () => {
+  it('keeps the company-created success state and offers a POS login action when the automatic tenant session cannot start', async () => {
     dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
       token: 'dgfy-token',
       account: dgfyAccount
@@ -451,7 +472,6 @@ describe('DGFY auth and business registration routes', () => {
       companyToken: 'token-autofoods-12345678'
     }, 'dgfy-token'));
     expect(await screen.findByText('Company Created')).toBeTruthy();
-    expect(screen.getByText(/company registered and activated successfully/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /opening skupervisor/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /logging in to pos/i })).toBeTruthy();
   });
 });

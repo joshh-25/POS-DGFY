@@ -53,7 +53,7 @@ export const PermissionProvider = ({ children }) => {
                     try {
                         rawPerms = JSON.parse(rawPerms);
                     } catch (e) {
-                        console.warn('PermissionContext: Failed to parse permissions string', e);
+                        if (import.meta.env.DEV) console.warn('PermissionContext: Failed to parse permissions string', e);
                         rawPerms = [];
                     }
                 }
@@ -78,14 +78,16 @@ export const PermissionProvider = ({ children }) => {
                 // Set Tenant Plan
                 if (user.company && user.company.plan) {
                     setTenantPlan(user.company.plan);
-                    console.log('PermissionContext: Tenant Plan', user.company.plan);
+                    if (import.meta.env.DEV) console.debug('PermissionContext: Tenant Plan', user.company.plan);
                 }
 
-                console.log('PermissionContext: Permissions loaded', {
-                    role: user.role,
-                    isMaster: !!user.is_master_admin,
-                    permissionCount: perms.length
-                });
+                if (import.meta.env.DEV) {
+                    console.debug('PermissionContext: Permissions loaded', {
+                        role: user.role,
+                        isMaster: !!user.is_master_admin,
+                        permissionCount: perms.length
+                    });
+                }
             } else {
                 // No user - clear permissions
                 setPermissions([]);
@@ -136,7 +138,7 @@ export const PermissionProvider = ({ children }) => {
     // Listen for custom auth events (login/logout) to reload permissions
     useEffect(() => {
         const handleAuthChange = () => {
-            console.log('PermissionContext: Auth change detected, reloading permissions');
+            if (import.meta.env.DEV) console.debug('PermissionContext: Auth change detected, reloading permissions');
             loadPermissions();
         };
 

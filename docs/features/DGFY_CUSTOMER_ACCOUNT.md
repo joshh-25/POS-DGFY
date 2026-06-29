@@ -18,6 +18,8 @@ The public DGFY surface now has one canonical authentication route plus a launch
 3. **Register Your Business** routes to company registration and must not be used as the general customer login path.
 4. Password recovery lives on the dedicated `/dgfy/reset-password` route and returns the user to the same customer or business intent after completion.
 
+Public DGFY account signup and resend-code requests remain landlord-global even when the browser still carries stale IMS, POS, or Storefront tenant session state. `POST /api/v1/auth/email-otp/request` with purpose `dgfy_account_verification` must not depend on `x-company-token`, tenant refresh recovery, or any previously selected tenant context; signup and resend both verify only the global OTP rows used by `/api/v1/dgfy/auth/register`.
+
 Tenant storefront headers expose **Log in / Sign up** directly so customers can authenticate or create an account without waiting until checkout. On a tenant storefront, **My Account** / profile actions route to the standalone `/:store_tenant_slug/account` page instead of opening the account dashboard as a modal. On the discovery page, signed-in DGFY customers use the global `/map-dgfy/account` page for cross-store orders, bookings, saved locations, loyalty activity, and business registration. Signed-out discovery users still get the authentication dialog.
 
 DGFY accounts are landlord-scoped. Tenant-local `store_customers` remain tenant-isolated compatibility rows and can be lazily linked to a DGFY account with `dgfy_account_id`.

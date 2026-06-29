@@ -34,7 +34,7 @@ import GracePeriodBanner from './Components/common/GracePeriodBanner';
 import TenantCapabilityNotice from './src/components/common/TenantCapabilityNotice.jsx';
 import useStore from './src/store/useStore.js';
 import { useWorkflowMode } from './src/features/settings/WorkflowModeContext.jsx';
-import { getWorkflowModeLabel, isWorkflowPageVisible } from './src/features/settings/workflowMode.js';
+import { getWorkflowModeLabel, isWorkflowPageVisible, modeHasCapability } from './src/features/settings/workflowMode.js';
 import { getAllSettings } from './src/services/settingsService.js';
 import { buildTenantCapabilityNoticeFromSettings } from './src/utils/tenantCapabilityMessages.js';
 import { mergeCurrentCompanyWithMemberships } from './src/utils/companySwitcherRows.js';
@@ -52,9 +52,9 @@ const ALL_NAV_ITEMS = [
   { name: 'Purchase Orders', icon: ClipboardList, page: 'PurchaseOrders', permission: 'po:view' },
   { name: 'Job Orders', icon: Factory, page: 'JobOrders', permission: 'jo:view' },
   { name: 'Dispatch Orders', icon: PackageCheck, page: 'DispatchOrders', permission: 'do:view' },
-  { name: 'Services', icon: CalendarCheck, page: 'Services', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
-  { name: 'Food & Beverage', icon: Utensils, page: 'Fnb', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
-  { name: 'Hospitality', icon: BedDouble, page: 'Hospitality', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
+  { name: 'Services', icon: CalendarCheck, page: 'Services', requiredCapability: 'services', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
+  { name: 'Food & Beverage', icon: Utensils, page: 'Fnb', requiredCapability: 'fnbDining', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
+  { name: 'Hospitality', icon: BedDouble, page: 'Hospitality', requiredCapability: 'hospitalityReservations', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
   { name: 'POS Terminal', icon: ShoppingCart, page: 'POS', permission: 'pos:view' },
   { name: 'Sales', icon: FileText, page: 'Sales', permissionAny: ['reports:view', 'do:view', 'pos:view', 'pos:transact'] },
   { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements', permission: 'stock:view' },
@@ -342,8 +342,8 @@ export default function Layout({ children, currentPageName }) {
   const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
 
   React.useEffect(() => {
-    if (!loading) {
-      console.log('Layout: Permission State', { userRole, loading, canItems: can('items:view') });
+    if (!loading && import.meta.env.DEV) {
+      console.debug('Layout: Permission State', { userRole, loading, canItems: can('items:view') });
     }
   }, [loading, can, userRole]);
 
@@ -406,6 +406,7 @@ export default function Layout({ children, currentPageName }) {
   // During loading, show all items to prevent flash of limited menu
   const navItems = ALL_NAV_ITEMS.filter(item => {
     if (!isWorkflowPageVisible(item.page, workflowMode)) return false;
+    if (item.requiredCapability && !modeHasCapability(workflowMode, item.requiredCapability)) return false;
     if (loading) return true; // Show all during loading to prevent flash
     if (item.permissionAny?.length) {
       return item.permissionAny.some((permission) => can(permission));
