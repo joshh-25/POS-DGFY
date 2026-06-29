@@ -116,6 +116,7 @@ describe('Item/Product wizard contracts', () => {
     const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
     const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+    const useItemsSource = readFrontendFile('src/hooks/useItems.js');
 
     expect(itemFormSource).toContain('const handleSaveAndExit = async () =>');
     expect(itemFormSource).toContain("item?.status === 'draft' || !item");
@@ -135,7 +136,40 @@ describe('Item/Product wizard contracts', () => {
     expect(productWizardSource).toContain('await onSubmit(finalData);');
     expect(itemFormSource).toContain('await onSaveDraft(finalPayload);');
     expect(itemFormSource).toContain('await onSave(finalPayload);');
+    expect(itemFormSource).toContain("status: isDraft ? 'draft' : 'active'");
     expect(itemsPageSource).toContain('throw error;');
+    expect(useItemsSource).toContain('const finalizeItem = useCallback(async (itemId, itemData = {}) =>');
+    expect(useItemsSource).toContain('const item = await itemService.finalizeItem(itemId, itemData);');
+  });
+
+  it('finalizes edited item drafts as active through the item finalizer endpoint', () => {
+    const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
+    const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+
+    expect(itemFormSource).toContain("status: isDraft ? 'draft' : 'active'");
+    expect(itemFormSource).toContain("onClick={() => runSaveAction('submit', () => handleSubmit(false))}");
+    expect(itemFormSource).toContain('Finalize Item');
+    expect(itemFormSource).toContain('await onSave(finalPayload);');
+    expect(itemFormSource).toContain('await onSaveDraft(finalPayload);');
+
+    const finalizeBranchIndex = itemsPageSource.indexOf("editingItem.status === 'draft' && itemPayload.status === 'active'");
+    const updateBranchIndex = itemsPageSource.indexOf('savedItem = await updateItem(editingItem.item_id, itemPayload);');
+
+    expect(finalizeBranchIndex).toBeGreaterThan(-1);
+    expect(updateBranchIndex).toBeGreaterThan(-1);
+    expect(finalizeBranchIndex).toBeLessThan(updateBranchIndex);
+    expect(itemsPageSource).toContain('savedItem = await finalizeItem(editingItem.item_id, itemPayload);');
+    expect(itemsPageSource).toContain("toast.success('Item finalized successfully');");
+  });
+
+  it('passes edited product draft payloads through the finalize hook to the service', () => {
+    const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+    const useItemsSource = readFrontendFile('src/hooks/useItems.js');
+
+    expect(itemsPageSource).toContain("editingProduct.status === 'draft' && productPayload.status === 'active'");
+    expect(itemsPageSource).toContain('savedProduct = await finalizeItem(editingProduct.item_id, productPayload);');
+    expect(useItemsSource).toContain('const finalizeItem = useCallback(async (itemId, itemData = {}) =>');
+    expect(useItemsSource).toContain('const item = await itemService.finalizeItem(itemId, itemData);');
   });
 
   it('uses mode-derived product wizard steps with POS setup second and F&B manufacturing steps removed', () => {
