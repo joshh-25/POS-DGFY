@@ -56,6 +56,7 @@ jobs:
         run: |
           npm run check:batch-inventory -- --base origin/master --head "${{ steps.candidate.outputs.sha }}" --reviewed-manifest "${{ steps.manifest.outputs.path }}" --write --require-ship --inventory ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.md"
           npm run validate:batch-inventory -- --inventory ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.json" --base origin/master --head "${{ steps.candidate.outputs.sha }}" --require-ship
+          npm run check:regression-risk -- --inventory ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.json" --output ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/regression_risk_notice.json" --markdown ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/regression_risk_notice.md" --target-sha "${{ steps.candidate.outputs.sha }}"
 
       - name: Create or update PR without merging
         env:
@@ -78,6 +79,7 @@ jobs:
             echo "## Promotion PR Created"
             echo ""
             echo "- Candidate SHA: \`${{ steps.candidate.outputs.sha }}\`"
+            echo "- Regression risk notice: \`.tmp/release-gates/${{ steps.candidate.outputs.sha }}/regression_risk_notice.json\`"
             echo "- GitHub auto-merge: prohibited"
             echo "- Merge authority: external signed promotion controller"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -57,6 +57,12 @@ npm run validate:batch-inventory -- \
   --head "$RELEASE_TARGET_SHA" \
   --require-ship
 
+npm run check:regression-risk -- \
+  --inventory "${REPORT_DIR}/batch_inventory.json" \
+  --output "${REPORT_DIR}/regression_risk_notice.json" \
+  --markdown "${REPORT_DIR}/regression_risk_notice.md" \
+  --target-sha "$RELEASE_TARGET_SHA"
+
 cat > "${REPORT_DIR}/deploy_ci_plan.json" <<JSON
 {
   "schema": "sku-production-candidate-plan/v1",
