@@ -58,6 +58,7 @@ jobs:
         run: |
           npm run check:batch-inventory -- --base origin/master --head "${{ github.sha }}" --reviewed-manifest "${{ steps.manifest.outputs.path }}" --write --require-ship --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
           npm run validate:batch-inventory -- --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --base origin/master --head "${{ github.sha }}" --require-ship
+          npm run check:documentation-closure -- --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --base origin/master --head "${{ github.sha }}" --output ".tmp/release-gates/${{ github.sha }}/documentation_closure.json" --markdown ".tmp/release-gates/${{ github.sha }}/documentation_closure.md"
           npm run check:regression-risk -- --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --output ".tmp/release-gates/${{ github.sha }}/regression_risk_notice.json" --markdown ".tmp/release-gates/${{ github.sha }}/regression_risk_notice.md" --target-sha "${{ github.sha }}"
 
       - name: Governance and dependency gates

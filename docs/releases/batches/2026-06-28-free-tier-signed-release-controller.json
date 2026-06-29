@@ -2,7 +2,7 @@
   "schema": "sku-reviewed-batch-manifest/v1",
   "review_status": "reviewed",
   "reviewed_by": "BBLabs-Albert owner-directed Codex review",
-  "reviewed_at": "2026-06-28T03:26:55.061Z",
+  "reviewed_at": "2026-06-29T17:19:45.904Z",
   "source_pr": "owner-direct-staging-2026-06-28",
   "release_slices": [
     {
@@ -15,9 +15,15 @@
       "included_files": [
         "docs/INDEX.md",
         "docs/README.md",
+        "System_Audit/README.md",
         "docs/_meta/document-registry.json",
         "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/compliance/impact-declarations/2026-06-29-bulk-pos-setup-modal-handoff-hotfix.md",
+        "docs/compliance/impact-declarations/2026-06-29-pos-terminal-checkout-grid-layout-hotfix.md",
+        "docs/compliance/impact-declarations/2026-06-29-storefront-settings-pos-metadata-scope-hotfix.md",
+        "docs/features/DGFY_CUSTOMER_ACCOUNT.md",
         "docs/guides/SCRIPTS_GUIDE.md",
+        "docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md",
         "docs/ops/DEPLOYMENT_GUIDE.md",
         "docs/ops/DEVELOPER_DEPLOYMENT_HANDOFF.md",
         "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
@@ -25,8 +31,10 @@
         "docs/ops/PRODUCTION_CHECKLIST.md",
         "docs/ops/QA_ISOLATION_PROFILE.md",
         "docs/ops/README.md",
+        "docs/release/merge-adoption/release-documentation-closure-2026-06-30.json",
         "docs/releases/batches/2026-06-28-free-tier-signed-release-controller.json",
         "docs/templates/REVIEWED_BATCH_MANIFEST_TEMPLATE.json",
+        "docs/testing/dgfy-full-flow-e2e-verification-matrix-2026-06-13.md",
         "docs/testing/release-go-no-go-checklist.md"
       ],
       "included_features": [
@@ -70,17 +78,17 @@
         {
           "command": "npm run lint:docs",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: governed docs lint PASS (20 docs)"
+          "evidence": "local-validation-2026-06-30: governed docs lint PASS (20 docs)"
         },
         {
           "command": "npm run check:architecture",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: architecture guardrails PASS (36 modules, 325 files, 69 controllers)"
+          "evidence": "local-validation-2026-06-30: architecture guardrails PASS (36 modules, 325 files, 69 controllers)"
         },
         {
           "command": "npm run check:compliance",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: compliance impact and API contracts PASS"
+          "evidence": "local-validation-2026-06-30: compliance impact and API contracts PASS"
         }
       ],
       "docs_required": true,
@@ -89,6 +97,70 @@
         "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
         "docs/ops/QA_ISOLATION_PROFILE.md"
       ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BBLabs-Albert owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-29T17:19:45.904Z",
+        "rationale": "ADR 0030 and governed operations documents now define mandatory candidate-time closure, two-phase production finalization, and external immutable records without confusing source-current text with production truth.",
+        "documents": [
+          {
+            "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+            "action": "updated",
+            "evidence": "Records the cross-boundary documentation, lifecycle, external-record, and bootstrap trust decisions."
+          },
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "updated",
+            "evidence": "Defines documentation closure and deployed_pending_accuracy versus completed release truth."
+          },
+          {
+            "path": "docs/ops/QA_ISOLATION_PROFILE.md",
+            "action": "updated",
+            "evidence": "Preserves exact-SHA isolated QA as a non-bypassable prerequisite in this candidate."
+          },
+          {
+            "path": "docs/ops/DEPLOYMENT_GUIDE.md",
+            "action": "updated",
+            "evidence": "Documents external records and the separate trusted finalization operation."
+          },
+          {
+            "path": "docs/ops/DEVELOPER_DEPLOYMENT_HANDOFF.md",
+            "action": "updated",
+            "evidence": "Makes documentation closure and separate accuracy finalization part of the developer handoff."
+          },
+          {
+            "path": "docs/guides/SCRIPTS_GUIDE.md",
+            "action": "updated",
+            "evidence": "Marks the legacy bypass aggregator as non-authoritative and documents controller finalization."
+          },
+          {
+            "path": "docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md",
+            "action": "updated",
+            "evidence": "Refreshes runtime SHA truth and explicitly separates historical proof from controller completion."
+          },
+          {
+            "path": "docs/ops/PRODUCTION_CHECKLIST.md",
+            "action": "updated",
+            "evidence": "Adds operator checks for closure, pending accuracy, finalization, bootstrap, and record permissions."
+          },
+          {
+            "path": "docs/release/merge-adoption/release-documentation-closure-2026-06-30.json",
+            "action": "updated",
+            "evidence": "Records preservation of the already-deployed guest-checkout documentation contract in the final staging candidate."
+          },
+          {
+            "path": "docs/templates/REVIEWED_BATCH_MANIFEST_TEMPLATE.json",
+            "action": "updated",
+            "evidence": "Adds the reusable architecture classification and documentation_closure contract."
+          },
+          {
+            "path": "docs/testing/release-go-no-go-checklist.md",
+            "action": "updated",
+            "evidence": "Records current runtime evidence and new mandatory documentation/finalization gates."
+          }
+        ]
+      },
       "adr_compliance_declaration_required": false,
       "adr_or_compliance": "ADR 0030 records the cross-boundary production trust and deployment topology decision; compliance checks report no regulated runtime behavior change.",
       "rollback_notes": "Revert this release-controller commit series as one governed candidate; keep production deployment disabled until the previous trusted controller version and contract are restored and requalified.",
@@ -109,8 +181,10 @@
       "verdict": "ship",
       "payment_sensitive": false,
       "payment_sensitive_files": [],
-      "high_risk_path": false,
-      "high_risk_files": []
+      "high_risk_path": true,
+      "high_risk_files": [
+        "docs/features/DGFY_CUSTOMER_ACCOUNT.md"
+      ]
     },
     {
       "id": "release-automation",
@@ -120,6 +194,7 @@
       "purpose": "Make candidate qualification, promotion auditing, QA proof, and deployed accuracy checks fail closed without giving GitHub production authority.",
       "implementation_summary": "Converts GitHub deployment to short-lived candidate evidence, prohibits auto-merge and local remote deployment, requires reviewed inventories, audits master promotions, strengthens QA isolation, and blocks unresolved per-slice production proof.",
       "included_files": [
+        ".github/pull_request_template.md",
         ".github/workflows/ci.yml",
         ".github/workflows/deploy-production.yml",
         ".github/workflows/exact-master-sha-qualification.yml",
@@ -129,21 +204,28 @@
         "scripts/audit-master-promotion.js",
         "scripts/audit-master-promotion.test.js",
         "scripts/build-release-candidate-evidence.js",
+        "scripts/build-release-candidate-evidence.test.js",
         "scripts/check-batch-inventory.js",
         "scripts/check-batch-inventory.test.js",
+        "scripts/check-documentation-closure.js",
+        "scripts/check-documentation-closure.test.js",
         "scripts/check-no-staging-prereqs.js",
         "scripts/check-no-staging-prereqs.test.js",
         "scripts/check-qa-target-proof.js",
         "scripts/check-qa-target-proof.test.js",
+        "scripts/check-regression-risk.js",
+        "scripts/check-regression-risk.test.js",
         "scripts/collect-master-promotion-evidence.js",
         "scripts/deploy-master-ci.sh",
         "scripts/deploy-master-ci.test.js",
         "scripts/deploy-qa-target.ps1",
         "scripts/deploy-remote.sh",
         "scripts/find-reviewed-batch-manifest.js",
+        "scripts/gate-release-no-staging.js",
         "scripts/promote-staging-to-master.js",
         "scripts/review-deployed-change-accuracy.js",
         "scripts/review-deployed-change-accuracy.test.js",
+        "scripts/run-backend-test-matrix.js",
         "scripts/validate-batch-inventory.js",
         "scripts/validate-batch-inventory.test.js"
       ],
@@ -185,6 +267,7 @@
         "npm run lint:docs",
         "npm run check:architecture",
         "npm run check:compliance",
+        "BACKEND_TEST_MATRIX_CHUNK_SIZE=8 npm run test:backend:matrix",
         "npm run test:development-to-production",
         "npm run check:merge-adoption-required"
       ],
@@ -192,27 +275,32 @@
         {
           "command": "npm run lint:docs",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: governed docs lint PASS (20 docs)"
+          "evidence": "local-validation-2026-06-30: governed docs lint PASS (20 docs)"
         },
         {
           "command": "npm run check:architecture",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: architecture guardrails PASS (36 modules, 325 files, 69 controllers)"
+          "evidence": "local-validation-2026-06-30: architecture guardrails PASS (36 modules, 325 files, 69 controllers)"
         },
         {
           "command": "npm run check:compliance",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: compliance impact and API contracts PASS"
+          "evidence": "local-validation-2026-06-30: compliance impact and API contracts PASS"
+        },
+        {
+          "command": "BACKEND_TEST_MATRIX_CHUNK_SIZE=8 npm run test:backend:matrix",
+          "status": "pass",
+          "evidence": ".tmp/release-gates/925ce7e3858d4f34a6171296c43021eac8407616/backend-test-matrix/backend_test_matrix.json: 307 backend tests PASS with chunk_size=8"
         },
         {
           "command": "npm run test:development-to-production",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: fail-closed workflow tests PASS (19 tests)"
+          "evidence": "local-validation-2026-06-30: development-to-production suite PASS including documentation closure, evidence binding, QA, promotion audit, accuracy, and candidate-only deployment tests"
         },
         {
           "command": "npm run check:merge-adoption-required",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: merge-adoption-required PASS, no customer-flow adoption proof required"
+          "evidence": "local-validation-2026-06-30: merge-adoption-required PASS with docs/release/merge-adoption/release-documentation-closure-2026-06-30.json"
         }
       ],
       "docs_required": true,
@@ -221,6 +309,35 @@
         "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
         "docs/ops/QA_ISOLATION_PROFILE.md"
       ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BBLabs-Albert owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-29T17:19:45.904Z",
+        "rationale": "Release automation now fails closed on exact documentation evidence and cannot equate deployment command success with completed production behavior.",
+        "documents": [
+          {
+            "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+            "action": "updated",
+            "evidence": "Authorizes the cross-boundary controller lifecycle and non-bypassable closure behavior."
+          },
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "updated",
+            "evidence": "Maps documentation closure through staging, promotion, exact-master, and production candidate gates."
+          },
+          {
+            "path": "docs/ops/QA_ISOLATION_PROFILE.md",
+            "action": "updated",
+            "evidence": "Keeps isolated QA proof in the exact candidate contract used by controller evidence."
+          },
+          {
+            "path": "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
+            "action": "updated",
+            "evidence": "Defines documentation closure and production accuracy as non-bypassable gates."
+          }
+        ]
+      },
       "adr_compliance_declaration_required": false,
       "adr_or_compliance": "ADR 0030 records the cross-boundary production trust and deployment topology decision; compliance checks report no regulated runtime behavior change.",
       "rollback_notes": "Revert this release-controller commit series as one governed candidate; keep production deployment disabled until the previous trusted controller version and contract are restored and requalified.",
@@ -321,37 +438,37 @@
         {
           "command": "npm run lint:docs",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: governed docs lint PASS (20 docs)"
+          "evidence": "local-validation-2026-06-30: governed docs lint PASS (20 docs)"
         },
         {
           "command": "npm run check:architecture",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: architecture guardrails PASS (36 modules, 325 files, 69 controllers)"
+          "evidence": "local-validation-2026-06-30: architecture guardrails PASS (36 modules, 325 files, 69 controllers)"
         },
         {
           "command": "npm run check:compliance",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: compliance impact and API contracts PASS"
+          "evidence": "local-validation-2026-06-30: compliance impact and API contracts PASS"
         },
         {
           "command": "npm run test:development-to-production",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: fail-closed workflow tests PASS (19 tests)"
+          "evidence": "local-validation-2026-06-30: development-to-production suite PASS including documentation closure and candidate evidence tests"
         },
         {
           "command": "npm run test:release-controller",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: signed controller adversarial and dry-run safety tests PASS (12 tests)"
+          "evidence": "local-validation-2026-06-30: signed controller lifecycle, accuracy, external record, signature, and replay tests PASS (18 tests)"
         },
         {
           "command": "npm run test:deploy-contract",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: deploy contract and failure simulation tests PASS (16 tests)"
+          "evidence": "local-validation-2026-06-30: deploy contract and failure simulation suites PASS (16 tests)"
         },
         {
           "command": "bash release-controller/install/provision-isolated-qa.sh",
           "status": "pass",
-          "evidence": "local-validation-2026-06-28: isolated QA provisioner dry run PASS with no host mutation"
+          "evidence": "local-validation-2026-06-30: isolated QA provisioner dry run PASS with inert non-secret identifiers and no host mutation"
         }
       ],
       "docs_required": true,
@@ -360,6 +477,35 @@
         "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
         "docs/ops/QA_ISOLATION_PROFILE.md"
       ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BBLabs-Albert owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-29T17:19:45.904Z",
+        "rationale": "The trusted controller package, installation contract, record directory, and finalization command change production authority and therefore require ADR-backed documentation.",
+        "documents": [
+          {
+            "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+            "action": "updated",
+            "evidence": "Defines the trusted controller bootstrap, two-phase lifecycle, and immutable external records."
+          },
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "updated",
+            "evidence": "Defines the controller qualification and finalization sequence from candidate to completion."
+          },
+          {
+            "path": "docs/ops/QA_ISOLATION_PROFILE.md",
+            "action": "updated",
+            "evidence": "Retains isolated QA requirements for trusted controller authorization."
+          },
+          {
+            "path": "docs/ops/DEPLOYMENT_GUIDE.md",
+            "action": "updated",
+            "evidence": "Documents controller commands, release-record paths, and post-deploy completion rules."
+          }
+        ]
+      },
       "adr_compliance_declaration_required": false,
       "adr_or_compliance": "ADR 0030 records the cross-boundary production trust and deployment topology decision; compliance checks report no regulated runtime behavior change.",
       "rollback_notes": "Revert this release-controller commit series as one governed candidate; keep production deployment disabled until the previous trusted controller version and contract are restored and requalified.",
@@ -454,6 +600,30 @@
         "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
         "docs/testing/release-go-no-go-checklist.md"
       ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BBLabs-Albert owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-29T17:19:45.904Z",
+        "rationale": "The tenant middleware behavior remains within the existing authentication boundary and its customer-account and release-state documentation is present in the candidate.",
+        "documents": [
+          {
+            "path": "docs/features/DGFY_CUSTOMER_ACCOUNT.md",
+            "action": "updated",
+            "evidence": "Records the tenant membership bridge behavior included in the current candidate."
+          },
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "reviewed_current",
+            "evidence": "Reviewed the governed flow and confirmed this middleware slice follows the existing boundary."
+          },
+          {
+            "path": "docs/testing/release-go-no-go-checklist.md",
+            "action": "updated",
+            "evidence": "Records the candidate and release evidence obligations for this authentication slice."
+          }
+        ]
+      },
       "adr_compliance_declaration_required": false,
       "adr_or_compliance": "Architecture remains inside middleware/tenant resolution behavior; no ADR exception is introduced. Compliance checks report no regulated API contract impact.",
       "rollback_notes": "Revert the tenantHandler bearer-token fallback and focused test if DGFY tenant-membership bridge requests show tenant-context regression; the previous cookie/header/refresh-cookie recovery paths remain covered.",

@@ -122,7 +122,9 @@ It refuses live mode. `.github/workflows/deploy-production.yml` does not invoke 
 
 ## 2.2 `release-controller/bin/skupervisor-release-controller.js`
 
-Installed outside candidate checkouts under a root-owned versioned path. It verifies standard GPG-signed annotated tags, full signer fingerprints, expiry, hashes, exact PR/SHA evidence, live GitHub checks, QA proof, and one-time nonces before candidate checkout.
+Installed outside candidate checkouts under a root-owned versioned path. It verifies standard GPG-signed annotated tags, full signer fingerprints, expiry, hashes, exact PR/SHA evidence, documentation closure, live GitHub checks, QA proof, and one-time nonces before candidate checkout.
+
+Production `--execute` ends at `deployed_pending_accuracy` and writes immutable external deployment records. A separate `--finalize --execute` invocation verifies current exact-SHA production state and per-slice accuracy artifacts before creating immutable finalization records and transitioning to `completed`.
 
 Use the installation and dry-run instructions in `release-controller/README.md` and ADR 0030.
 
@@ -663,7 +665,7 @@ Output:
 - `.tmp/release-gates/<sha>/restore_drill_result.json`
 
 ## 20. `scripts/gate-release-no-staging.js`
-Hard-blocking release aggregator for environments without staging.
+Legacy evidence aggregator retained for tests and historical recovery analysis. It is not the ADR 0030 production authorization boundary.
 
 Usage:
 ```bash
@@ -675,14 +677,7 @@ Contract:
 - writes aggregated verdict:
   - `.tmp/release-gates/<sha>/release_verdict.json`
 
-Emergency bypass (incident-only):
-- `RELEASE_EMERGENCY_BYPASS=1`
-
-Pre-deploy summary SHA behavior:
-- `qa.deploy.summary.sha_match` is hard-blocking for production deploy.
-- `qa_deploy_summary.txt` must show `deployed_head=<RELEASE_TARGET_SHA>` before the deploy wrapper proceeds to production SSH.
-- `RELEASE_EMERGENCY_REASON=...`
-- `RELEASE_EMERGENCY_ACTOR=...`
+Under ADR 0030 there is no unsigned emergency bypass. Production authorization, documentation closure, QA isolation, exact-SHA evidence, nonce replay protection, external release records, and post-deploy accuracy finalization are enforced by the installed trusted controller. Do not use this legacy script to authorize promotion or production.
 
 ## 21. `scripts/verify-release-verdict.js`
 Validates release verdict artifact contract and SHA consistency.

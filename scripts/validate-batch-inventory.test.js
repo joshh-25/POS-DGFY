@@ -26,6 +26,7 @@ function fixture() {
   git(root, ['config', 'user.email', 'test@example.com']);
   git(root, ['config', 'user.name', 'Inventory Test']);
   write(root, 'README.md', '# base\n');
+  write(root, 'docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md', '# Release workflow\n');
   git(root, ['add', '.']);
   git(root, ['commit', '-m', 'base']);
   git(root, ['branch', 'origin/master']);
@@ -48,6 +49,18 @@ function fixture() {
       source_pr: '25',
       source_type: 'developer_pr',
       completed_tests: slice.required_tests.map((command) => ({ command, status: 'pass', evidence: 'https://github.com/owner/repo/actions/runs/25' })),
+      architecture_classification: 'no-architecture-impact',
+      documentation_closure: {
+        decision: 'no_change_required',
+        reviewed_by: 'release documentation reviewer',
+        reviewed_at: '2026-06-28T00:00:00.000Z',
+        rationale: 'The governed release workflow remains current for this isolated implementation change.',
+        documents: [{
+          path: 'docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md',
+          action: 'reviewed_current',
+          evidence: 'Reviewed the existing workflow and confirmed that no behavior contract changed.',
+        }],
+      },
       can_ship_independently: true,
       promotion_eligibility: 'eligible',
       verdict: 'ship',

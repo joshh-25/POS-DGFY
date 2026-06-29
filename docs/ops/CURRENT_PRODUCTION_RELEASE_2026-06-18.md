@@ -2,12 +2,12 @@
 status: reference
 authority_level: reference
 owner: operations
-last_reviewed: 2026-06-29
+last_reviewed: 2026-06-30
 applies_to: production_release, staging_release, dgfy_company_access, dgfy_customer_account, storefront, pos, observability
 topic: current_production_release_state
 ---
 
-# Current Production Release State - 2026-06-29
+# Current Production Release State - 2026-06-30
 
 This document records the current production and staging state using deploy evidence, live health output, and remote branch proof. Do not use source `HEAD` alone as live-production proof.
 
@@ -15,24 +15,21 @@ Production truth is the deployed runtime SHA. Staging truth is the current `orig
 
 ## Proof Snapshot
 
-Production proof refreshed on 2026-06-29 Asia/Manila from live VPS state:
+Production proof refreshed on 2026-06-30 Asia/Manila:
 
 - Production remote checkout: `/var/www/skupervisor`
-- Production remote `HEAD`: `17bb4cd1bc0abf283b224e30c02f625884e8ffae`
-- Production `.deploy-state/last_deployed_commit`: `17bb4cd1bc0abf283b224e30c02f625884e8ffae`
-- Live production `/api/v1/health` reports `services.observability.runtime_sha=17bb4cd1bc0abf283b224e30c02f625884e8ffae` with source `deploy_state:last_deployed_commit`.
+- `origin/master`: `bf982d4e78f52e67c6575dd2a77037232a6ab4e9`.
+- Live production `/api/v1/health` reports `services.observability.runtime_sha=bf982d4e78f52e67c6575dd2a77037232a6ab4e9`.
 - Live production `/api/v1/health` reports database, Redis, runtime schema, schema indexes, billing telemetry, and observability as healthy.
-- Tenant pool capacity remains an operational warning at 20 active tenants out of 20 capacity.
-- Live Storefront tracking smoke for `GET https://dgfy.ph/api/v1/store/track/SK-2MIBVL` with `x-store-slug: eatery-ni-doe-2e561d` returned `200`, `status=placed`, and `status_label=Order placed`.
-- The production server did not expose a deploy-summary file in `.deploy-state/` for this emergency run; the authoritative proof for this snapshot is remote `HEAD`, `.deploy-state/last_deployed_commit`, live health runtime SHA, and the live Storefront tracking API smoke.
+- Production remote `HEAD`, deploy marker, newest deploy summary, and an external immutable release record were not independently refreshed in this documentation-closure task. Do not invent those proofs from source state.
 
-Staging branch proof refreshed on 2026-06-29:
+Staging branch proof refreshed on 2026-06-30:
 
-- `origin/master`: `17bb4cd1bc0abf283b224e30c02f625884e8ffae`
-- Current `origin/staging` must be checked with `git ls-remote origin staging` because docs-only commits can advance the branch head after this snapshot.
-- `origin/staging` contains production commit `17bb4cd1bc0abf283b224e30c02f625884e8ffae`.
+- `origin/master`: `bf982d4e78f52e67c6575dd2a77037232a6ab4e9`.
+- `origin/staging`: `3624dce8134f9f044882fe4fa2a234e280228600` at implementation start; recheck the moving ref before release decisions.
+- `origin/staging` is 15 commits ahead of `origin/master` and contains the production commit.
 - `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de` is the staging merge commit that preserved staging-only release-governance work and merged the deployed production hotfix stack into staging.
-- Docs-only commits after `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de` may advance the staging branch head without changing production runtime.
+- The signed-controller and ADR 0030 implementation remain source-current on staging only until governed promotion and deployment evidence prove otherwise.
 
 ## Release Gate Evidence
 
@@ -67,12 +64,13 @@ The current production runtime includes the previous June production chain plus 
 - Bulk POS setup modal handoff: opening Bulk POS Setup from item/product create-edit closes the source wizard so the POS setup modal is not hidden behind it.
 - Storefront order tracking route/refresh stabilization: tracking routes are mode-independent, customer tracking refresh is state-aware, and request storms no longer turn normal customer tracking into a repeated hard-error experience.
 - Storefront tracking rate-limit customer-experience improvement: public tracking reads use a dedicated IP + store context + tracking-PIN bucket, manual retry is disabled during server cooldown, the last successful tracking result is preserved when possible, and customer-facing copy explains temporary refresh throttling without losing the order PIN.
+- Storefront guest-checkout draft preservation: contact, delivery, fulfillment, and order-note draft state survives expected navigation and authentication handoffs without retaining sensitive payment credentials.
 
 ## Source-Current Versus Production-Live
 
 The repository may be ahead of production after this docs-only cleanup. Treat new docs/cleanup/branch-maintenance commits as source-current only until a later governed production deployment records matching production proof.
 
-Production-live runtime remains `17bb4cd1bc0abf283b224e30c02f625884e8ffae` until the next deploy updates remote `HEAD`, `.deploy-state/last_deployed_commit`, and live health runtime SHA.
+Production-live runtime is evidenced by live health at `bf982d4e78f52e67c6575dd2a77037232a6ab4e9`. A full release-completion claim still requires refreshed remote/deploy-marker/summary proof and, for future controller-governed releases, successful external accuracy finalization.
 
 Staging currently includes production plus staging-only governance history through merge commit `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de`, plus later docs-only commits. Staging is not production-live.
 
@@ -88,6 +86,7 @@ These items are still not closed by the current production proof:
 6. Tenant index headroom currently runs non-strict in deploy because the report has redundant-index warnings with `critical=0`; keep this as operational database cleanup rather than a release-blocking failure until an accepted-risk decision changes the gate.
 7. The June 29 Storefront tracking deploy used emergency bypass because QA deploy-summary/runtime parity evidence was stale/unusable. A routine release still needs exact isolated QA parity without emergency bypass before closing the stale-QA release-evidence finding.
 8. The live 429 cooldown UI path was not naturally reproduced after the production bucket cleared; focused frontend/backend tests cover the cooldown behavior and live tracking returned normal `200` status for the known PIN.
+9. This deployment predates the two-phase external release-record implementation. It has no `deployed_pending_accuracy` or `completed` record under the new controller contract and must not be retroactively described as controller-finalized without a separately reviewed backfill procedure.
 
 ## Production Data Repair Notes
 

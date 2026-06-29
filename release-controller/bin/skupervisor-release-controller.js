@@ -14,46 +14,120 @@ const {
   verifySignedTag,
   validateTagName,
   validateInventory,
+  validateInventoryDocumentation,
+  validateDocumentationClosureEvidence,
   validateEvidence,
   validateLiveGithubEvidence,
   validateAccuracyProofBundle,
+  validateProductionBaselineProof,
+  ReleaseRecordStore,
   runQualification,
   createWorktree,
   removeWorktree,
   buildRemoteDeployArgs,
+  buildRemoteProofArgs,
+  parseProductionProofOutput,
 } = require('../lib/release-controller');
 
 function parseArgs(argv) {
-  const options = { dryRun: true };
+  const options = { dryRun: true, finalize: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (['--phase', '--target-sha', '--tag', '--payment-tag', '--inventory', '--evidence', '--accuracy-proof', '--config'].includes(arg)) {
+    if (['--phase', '--target-sha', '--tag', '--payment-tag', '--inventory', '--evidence', '--documentation-closure', '--regression-risk-notice', '--accuracy-proof', '--config'].includes(arg)) {
       options[arg.slice(2).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = argv[index + 1] || '';
       index += 1;
     } else if (arg === '--execute') {
       options.dryRun = false;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--finalize') {
+      options.finalize = true;
     } else {
       throw new ReleaseControllerError('INVALID_ARGS', `Unknown argument: ${arg}`);
     }
   }
-  for (const field of ['phase', 'targetSha', 'tag', 'inventory', 'evidence', 'config']) {
+  for (const field of ['phase', 'targetSha', 'tag', 'inventory', 'evidence', 'documentationClosure', 'regressionRiskNotice', 'config']) {
     if (!options[field]) throw new ReleaseControllerError('INVALID_ARGS', `Missing --${field.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)}`);
   }
   if (!['promotion', 'production'].includes(options.phase)) throw new ReleaseControllerError('INVALID_ARGS', '--phase must be promotion or production');
+  if (options.finalize && options.phase !== 'production') throw new ReleaseControllerError('INVALID_ARGS', '--finalize is valid only for production');
+  if (options.finalize && !options.accuracyProof) throw new ReleaseControllerError('INVALID_ARGS', '--finalize requires --accuracy-proof');
+  if (!options.finalize && options.phase === 'production' && options.accuracyProof) {
+    throw new ReleaseControllerError('PREDEPLOY_ACCURACY_FORBIDDEN', 'Production accuracy proof is accepted only by the separate post-deploy --finalize operation');
+  }
   return options;
 }
 
 function loadConfig(filePath) {
   const config = readJson(filePath, 'controller configuration');
-  for (const field of ['repository', 'git_mirror', 'ledger_dir']) {
+  for (const field of ['repository', 'git_mirror', 'ledger_dir', 'release_records_dir']) {
     if (!config[field]) throw new ReleaseControllerError('CONFIG_INVALID', `Controller configuration is missing ${field}`);
   }
   if (!Array.isArray(config.allowed_signer_fingerprints) || config.allowed_signer_fingerprints.length === 0) {
     throw new ReleaseControllerError('CONFIG_INVALID', 'Controller configuration requires allowed_signer_fingerprints');
   }
   return config;
+}
+
+function collectProductionBaselineProof(config, targetSha) {
+  const output = requireCommand(
+    run(config.ssh_bin || 'ssh', buildRemoteProofArgs(config, targetSha), { timeoutMs: Number(config.proof_timeout_ms || 120_000) }),
+    'PRODUCTION_PROOF_COLLECTION_FAILED',
+    'Collect exact-SHA production baseline proof'
+  );
+  return validateProductionBaselineProof(parseProductionProofOutput(output), targetSha);
+}
+
+function buildReleaseRecord({ options, inventory, evidence, documentationClosure, regressionRiskNotice, authorization, paymentAuthorization, qualification, baselineProof, ledgerState, residualRisks = [], accuracyProof = null }) {
+  return {
+    schema: 'sku-external-release-record/v1',
+    version: 1,
+    recorded_at: new Date().toISOString(),
+    target_sha: options.targetSha,
+    branch: options.phase === 'production' ? 'master' : 'staging',
+    inventory_sha256: sha256File(options.inventory),
+    evidence_sha256: sha256File(options.evidence),
+    documentation_closure: {
+      status: documentationClosure.status,
+      report_sha256: sha256File(options.documentationClosure),
+      release_slices: documentationClosure.release_slices,
+    },
+    regression_risk_notice: {
+      status: regressionRiskNotice.status,
+      highest_regression_risk_level: regressionRiskNotice.highest_regression_risk_level,
+      report_sha256: sha256File(options.regressionRiskNotice),
+    },
+    authorization: {
+      tag: authorization.tag,
+      signer_fingerprint: authorization.signerFingerprint,
+      nonce: authorization.auth.nonce,
+      phase: authorization.auth.phase,
+      expires_at: authorization.auth.expires_at,
+    },
+    payment_authorization: paymentAuthorization ? {
+      tag: paymentAuthorization.tag,
+      signer_fingerprint: paymentAuthorization.signerFingerprint,
+      nonce: paymentAuthorization.auth.nonce,
+    } : null,
+    ledger_state: ledgerState,
+    qualification,
+    deployment_proof: baselineProof,
+    release_slices: (inventory.release_slices || []).map((slice) => ({
+      id: slice.id,
+      slice_name: slice.slice_name || slice.name,
+      purpose: slice.plain_english_purpose || slice.purpose,
+      documentation_closure: slice.documentation_closure,
+      regression_risk_level: slice.regression_risk_level,
+      accuracy_state: accuracyProof ? 'accurately_reflected' : 'deployed_pending_accuracy',
+    })),
+    accuracy_proof: accuracyProof ? {
+      status: 'pass',
+      bundle_sha256: sha256File(options.accuracyProof),
+      proof_count: accuracyProof.proofs.length,
+    } : null,
+    residual_risks: residualRisks,
+    evidence_schema: evidence.schema,
+  };
 }
 
 function refreshMirror(config) {
@@ -100,14 +174,26 @@ function controllerMain(options) {
 
   const inventoryHash = sha256File(options.inventory);
   const evidenceHash = sha256File(options.evidence);
+  const documentationClosureHash = sha256File(options.documentationClosure);
+  const regressionRiskNoticeHash = sha256File(options.regressionRiskNotice);
   const inventory = validateInventory(readJson(options.inventory, 'reviewed inventory'), options.targetSha);
   const evidence = readJson(options.evidence, 'candidate evidence');
+  const documentationClosure = validateDocumentationClosureEvidence(
+    readJson(options.documentationClosure, 'documentation closure'),
+    { targetSha: options.targetSha, inventoryHash }
+  );
+  const regressionRiskNotice = readJson(options.regressionRiskNotice, 'Regression Risk Notice');
+  if (regressionRiskNotice.status !== 'pass' || regressionRiskNotice.target_sha !== options.targetSha) {
+    throw new ReleaseControllerError('REGRESSION_RISK_NOTICE_INVALID', 'Regression Risk Notice is missing, failed, or stale');
+  }
   const expected = {
     repository: config.repository,
     phase: options.phase,
     targetSha: options.targetSha,
     inventoryHash,
     evidenceHash,
+    documentationClosureHash,
+    regressionRiskNoticeHash,
     paymentSensitive: Boolean(inventory.payment_sensitive),
     prNumber: evidence.pr?.number,
   };
@@ -115,14 +201,14 @@ function controllerMain(options) {
   // Signature and replay checks intentionally occur before any candidate worktree exists.
   const authorization = verifyAuthorization(options, config, expected, options.tag);
   const ledger = new NonceLedger(config.ledger_dir);
-  ledger.assertUnused(authorization.auth);
+  if (!options.finalize) ledger.assertUnused(authorization.auth);
   validateEvidence(evidence, expected, config.required_checks?.[options.phase] || []);
 
   let paymentAuthorization = null;
   if (inventory.payment_sensitive) {
     if (!options.paymentTag) throw new ReleaseControllerError('PAYMENT_AUTH_REQUIRED', 'Payment-sensitive release requires --payment-tag');
     paymentAuthorization = verifyAuthorization(options, config, { ...expected, phase: 'payment' }, options.paymentTag);
-    ledger.assertUnused(paymentAuthorization.auth);
+    if (!options.finalize) ledger.assertUnused(paymentAuthorization.auth);
   }
 
   const branch = options.phase === 'promotion' ? 'staging' : 'master';
@@ -131,17 +217,13 @@ function controllerMain(options) {
   const live = liveGithubEvidence(config, expected.prNumber, options.targetSha);
   validateLiveGithubEvidence(live, evidence, options.phase);
 
-  if (options.phase === 'production' && options.accuracyProof) {
-    validateAccuracyProofBundle(readJson(options.accuracyProof, 'production accuracy proof'), inventory, options.targetSha);
-  }
-
   if (options.phase === 'production') {
     // Dry-run validates credential presence and fixed command construction without using the credential.
     buildRemoteDeployArgs(config, options.targetSha);
   }
 
   const plan = {
-    status: 'authorized_pre_checkout',
+    status: options.finalize ? 'authorized_for_accuracy_finalization' : 'authorized_pre_checkout',
     dry_run: options.dryRun,
     phase: options.phase,
     target_sha: options.targetSha,
@@ -150,13 +232,57 @@ function controllerMain(options) {
     payment_tag: paymentAuthorization?.tag || null,
     inventory_sha256: inventoryHash,
     evidence_sha256: evidenceHash,
+    documentation_closure_sha256: documentationClosureHash,
+    regression_risk_notice_sha256: regressionRiskNoticeHash,
     pr_number: expected.prNumber,
   };
+  const recordStore = new ReleaseRecordStore(config.release_records_dir);
   if (options.dryRun) return plan;
 
+  if (options.finalize) {
+    const entry = ledger.read(authorization.auth);
+    if (entry.status !== 'deployed_pending_accuracy') throw new ReleaseControllerError('LEDGER_STATE_INVALID', `Finalization requires deployed_pending_accuracy, got ${entry.status}`);
+    const baselineProof = collectProductionBaselineProof(config, options.targetSha);
+    let ledgerCompleted = false;
+    try {
+      const accuracyProof = validateAccuracyProofBundle(
+        readJson(options.accuracyProof, 'production accuracy proof'),
+        inventory,
+        options.targetSha,
+        { notBefore: entry.deployed_at, verifyArtifacts: true }
+      );
+      const completed = ledger.finalize(authorization.auth, {
+        production_proof: baselineProof,
+        accuracy_proof_sha256: sha256File(options.accuracyProof),
+      });
+      if (paymentAuthorization) ledger.finalize(paymentAuthorization.auth, { accuracy_proof_sha256: sha256File(options.accuracyProof) });
+      ledgerCompleted = true;
+      const record = buildReleaseRecord({ options, inventory, evidence, documentationClosure, regressionRiskNotice, authorization, paymentAuthorization, qualification: entry.details?.qualification, baselineProof, ledgerState: completed.status, accuracyProof });
+      const recordPaths = recordStore.writeFinalizationRecord(record);
+      return { ...plan, status: 'completed', completion_state: 'accurately_reflected', release_record: recordPaths };
+    } catch (error) {
+      if (!ledgerCompleted) {
+        ledger.recordAccuracyFailure(authorization.auth, { code: error.code || 'ACCURACY_FINALIZATION_FAILED', message: error.message });
+        if (paymentAuthorization) ledger.recordAccuracyFailure(paymentAuthorization.auth, { code: error.code || 'ACCURACY_FINALIZATION_FAILED' });
+      }
+      throw error;
+    }
+  }
+
   let worktree;
+  let deploymentSucceeded = false;
   try {
     worktree = createWorktree({ gitBin: config.git_bin, gitDir: config.git_mirror, targetSha: options.targetSha, worktreeRoot: config.worktree_root });
+    const changedOutput = requireCommand(
+      run(config.git_bin || 'git', ['diff', '--name-only', `${inventory.base_sha}...${options.targetSha}`, '--'], { cwd: worktree }),
+      'DOCUMENTATION_CLOSURE_INVALID',
+      'Recompute exact candidate diff for documentation closure'
+    );
+    validateInventoryDocumentation(inventory, {
+      worktree,
+      gitBin: config.git_bin,
+      changedFiles: changedOutput.split(/\r?\n/).filter(Boolean),
+    });
     const qualification = runQualification({
       worktree,
       targetSha: options.targetSha,
@@ -174,17 +300,43 @@ function controllerMain(options) {
     } else {
       const result = run(config.ssh_bin || 'ssh', buildRemoteDeployArgs(config, options.targetSha), { timeoutMs: Number(config.deploy_timeout_ms || 1_800_000) });
       requireCommand(result, 'PRODUCTION_DEPLOY_FAILED', 'Execute fixed production deploy command');
+      deploymentSucceeded = true;
     }
 
-    ledger.complete(authorization.auth, 'completed', { qualification });
-    if (paymentAuthorization) ledger.complete(paymentAuthorization.auth, 'completed', { qualification });
-    return { ...plan, status: 'completed', qualification };
+    if (options.phase === 'promotion') {
+      ledger.complete(authorization.auth, 'completed', { qualification });
+      if (paymentAuthorization) ledger.complete(paymentAuthorization.auth, 'completed', { qualification });
+      return { ...plan, status: 'completed', qualification };
+    }
+
+    let baselineProof = null;
+    let proofError = null;
+    try {
+      baselineProof = collectProductionBaselineProof(config, options.targetSha);
+    } catch (error) {
+      proofError = error;
+    }
+    const residualRisks = proofError ? [{ code: proofError.code || 'PRODUCTION_PROOF_FAILED', message: proofError.message }] : ['Per-slice post-deployment accuracy proof is pending trusted finalization.'];
+    const pending = ledger.markDeployedPendingAccuracy(authorization.auth, { qualification, production_proof: baselineProof, residual_risks: residualRisks });
+    if (paymentAuthorization) ledger.markDeployedPendingAccuracy(paymentAuthorization.auth, { qualification, production_proof: baselineProof, residual_risks: residualRisks });
+    const record = buildReleaseRecord({ options, inventory, evidence, documentationClosure, regressionRiskNotice, authorization, paymentAuthorization, qualification, baselineProof, ledgerState: pending.status, residualRisks });
+    const recordPaths = recordStore.writeDeploymentRecord(record);
+    if (proofError) throw proofError;
+    return { ...plan, status: 'deployed_pending_accuracy', qualification, release_record: recordPaths };
   } catch (error) {
     try {
       const ledgerPath = ledger.entryPath(authorization.auth);
-      if (fs.existsSync(ledgerPath)) ledger.complete(authorization.auth, 'failed', { code: error.code || 'UNEXPECTED' });
+      if (fs.existsSync(ledgerPath)) {
+        const current = ledger.read(authorization.auth);
+        if (current.status === 'reserved' && deploymentSucceeded) ledger.markDeployedPendingAccuracy(authorization.auth, { residual_risks: [{ code: error.code || 'UNEXPECTED', message: error.message }] });
+        else if (current.status === 'reserved') ledger.complete(authorization.auth, 'failed', { code: error.code || 'UNEXPECTED' });
+        else if (current.status === 'deployed_pending_accuracy') ledger.recordAccuracyFailure(authorization.auth, { code: error.code || 'UNEXPECTED', message: error.message });
+      }
       if (paymentAuthorization && fs.existsSync(ledger.entryPath(paymentAuthorization.auth))) {
-        ledger.complete(paymentAuthorization.auth, 'failed', { code: error.code || 'UNEXPECTED' });
+        const current = ledger.read(paymentAuthorization.auth);
+        if (current.status === 'reserved' && deploymentSucceeded) ledger.markDeployedPendingAccuracy(paymentAuthorization.auth, { residual_risks: [{ code: error.code || 'UNEXPECTED' }] });
+        else if (current.status === 'reserved') ledger.complete(paymentAuthorization.auth, 'failed', { code: error.code || 'UNEXPECTED' });
+        else if (current.status === 'deployed_pending_accuracy') ledger.recordAccuracyFailure(paymentAuthorization.auth, { code: error.code || 'UNEXPECTED' });
       }
     } catch (_) {
       // Preserve the original failure; ledger repair is an operator incident.
@@ -210,4 +362,14 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { parseArgs, loadConfig, refreshMirror, remoteSha, liveGithubEvidence, verifyAuthorization, controllerMain };
+module.exports = {
+  parseArgs,
+  loadConfig,
+  refreshMirror,
+  remoteSha,
+  liveGithubEvidence,
+  verifyAuthorization,
+  collectProductionBaselineProof,
+  buildReleaseRecord,
+  controllerMain,
+};

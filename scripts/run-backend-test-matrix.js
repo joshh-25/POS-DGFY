@@ -8,7 +8,7 @@ const ROOT = path.resolve(__dirname, '..');
 const BACKEND_DIR = path.join(ROOT, 'backend');
 const JEST_BIN = path.join(BACKEND_DIR, 'node_modules', 'jest', 'bin', 'jest.js');
 const JEST_CONFIG = path.join(BACKEND_DIR, 'jest.config.cjs');
-const DEFAULT_CHUNK_SIZE = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_SIZE || '1', 10);
+const DEFAULT_CHUNK_SIZE = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_SIZE || '8', 10);
 const DEFAULT_CHUNK_TIMEOUT_MS = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_TIMEOUT_MS || '600000', 10);
 const CONTINUE_ON_FAILURE = process.argv.includes('--continue-on-failure') || process.env.BACKEND_TEST_MATRIX_CONTINUE_ON_FAILURE === 'true';
 const SKIP_SCHEMA_PREFLIGHT = process.env.BACKEND_TEST_MATRIX_SKIP_SCHEMA_PREFLIGHT === 'true';

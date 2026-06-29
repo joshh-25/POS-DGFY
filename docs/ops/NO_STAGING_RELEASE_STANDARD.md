@@ -14,6 +14,7 @@ The external controller refuses promotion or production unless all applicable ev
 
 1. A human-reviewed version 2 batch inventory maps every changed file exactly once and contains evidence-backed completed tests.
 1a. A valid Regression Risk Notice exists for every release slice and is reviewed before signed authorization.
+1b. A passing `sku-documentation-closure/v1` artifact proves tracked document paths, actual updated-file coverage, reviewed no-change decisions, and ADR closure for every cross-boundary slice. Documentation closure is non-bypassable.
 2. Every release slice declares classified provenance. `developer_pr` and `owner_direct_staging` are normal staging inputs; direct-master work must be reconciled through `staging` before production authorization.
 3. The owner supplied a valid, unexpired, allowlisted GPG-signed annotated authorization tag.
 4. Promotion and production use separate authorizations and nonces.
@@ -24,8 +25,10 @@ The external controller refuses promotion or production unless all applicable ev
 9. Controller-local qualification passes without access to production secrets.
 10. QA is isolated and its deploy summary proves the exact SHA plus Unix user, app directory, database, credential identity, runtime/data markers, uploads, PM2 names, and disposable-data status.
 11. Production connection material exists only in the controller OS secret store.
-12. Post-deploy remote HEAD, deploy state, summary, contract, runtime SHA, endpoints, and assets agree.
-13. Each slice has hash-verified API, UI, read-only database, or asset proof.
+12. Post-deploy remote HEAD, deploy state, summary, contract, runtime SHA, endpoints, and assets agree before the ledger enters `deployed_pending_accuracy`.
+13. Each slice has hash-verified API, UI, read-only database, or asset proof captured after deployment.
+14. A separate trusted finalization operation recollects exact-SHA production proof before transitioning to `completed`.
+15. Immutable deployment and finalization records are written outside Git under the root-owned configured release-record directory.
 
 There is no unsigned emergency bypass. Failed actions require corrected evidence and a fresh signed tag with a new nonce.
 
@@ -48,6 +51,12 @@ npm run check:batch-inventory -- --base <base> --head <sha> --reviewed-manifest 
 npm run validate:batch-inventory -- --inventory <inventory.json> --base <base> --head <sha> --require-ship
 ```
 
+Documentation closure:
+
+```bash
+npm run check:documentation-closure -- --inventory <inventory.json> --base <base> --head <sha> --output <documentation_closure.json> --markdown <documentation_closure.md>
+```
+
 Regression Risk Notice:
 
 ```bash
@@ -60,11 +69,13 @@ QA proof:
 RELEASE_TARGET_SHA=<sha> npm run check:qa-target-proof -- --target-sha <sha> --summary <qa-summary> --report <qa-proof.json>
 ```
 
-Production accuracy proof:
+Production accuracy proof and separate finalization:
 
 ```bash
 npm run review:deployed-change-accuracy -- --inventory <inventory.json> --deploy-summary <summary.txt> --production-contract <contract.json> --proof-bundle <proof-bundle.json> --output <accuracy.json> --markdown <accuracy.md>
 ```
+
+Successful deploy execution is never release completion. Missing or failed finalization retains `deployed_pending_accuracy`; there is no documentation or accuracy bypass.
 
 ## GitHub Role
 

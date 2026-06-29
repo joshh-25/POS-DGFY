@@ -89,6 +89,7 @@ function validateBatchInventoryFile(options, logger = console) {
   const failures = validateInventory(inventory, {
     requireShip: options.requireShip,
     expectedChangedFiles,
+    projectRoot: path.resolve(options.projectRoot),
   });
 
   if (failures.length > 0) {
