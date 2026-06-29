@@ -216,9 +216,12 @@ describe('discovery header customer account actions', () => {
     await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
     await waitFor(() => {
       expect(window.location.pathname).toBe('/dgfy/auth');
-      expect(window.location.search).toContain('intent=customer');
-      expect(window.location.search).toContain('mode=sign-in');
     });
+    const authParams = new URLSearchParams(window.location.search);
+    expect(authParams.get('intent')).toBe('customer');
+    expect(authParams.get('mode')).toBe('sign-in');
+    expect(authParams.get('return_to')).toContain('dgfy_account=1');
+    expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
   }, 10000);
 
   it('switches discovery header to My Account when a DGFY customer session exists', async () => {
@@ -306,11 +309,14 @@ describe('discovery header customer account actions', () => {
     await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
     await waitFor(() => {
       expect(window.location.pathname).toBe('/dgfy/auth');
-      expect(window.location.search).toContain('intent=customer');
-      expect(window.location.search).toContain('mode=sign-in');
-      expect(window.location.search).toContain('reason=signed-out');
-      expect(window.location.search).toContain('email=old%40example.com');
     });
+    const authParams = new URLSearchParams(window.location.search);
+    expect(authParams.get('intent')).toBe('customer');
+    expect(authParams.get('mode')).toBe('sign-in');
+    expect(authParams.get('reason')).toBe('signed-out');
+    expect(authParams.get('email')).toBe('old@example.com');
+    expect(authParams.get('return_to')).toContain('dgfy_account=1');
+    expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
   }, 10000);
 
   it('does not let a stale stored DGFY token block cookie-backed rehydration', async () => {
@@ -383,7 +389,7 @@ describe('discovery header customer account actions', () => {
       expect(screen.getByRole('button', { name: /handoff/i })).toBeTruthy();
     });
 
-    expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe('dgfy-handoff-session');
+    expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe('');
     expect(window.location.pathname).toBe('/map-dgfy');
     expect(window.location.search).not.toContain('dgfy_account');
 
