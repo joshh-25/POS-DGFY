@@ -331,7 +331,9 @@ describe('Item/Product wizard contracts', () => {
     expect(itemFormSource).toContain('resolveModeItemTaxonomy');
     expect(itemFormSource).toContain("Label>{modeItemTaxonomy ? 'Item Type' : 'Category'}");
     expect(itemFormSource).toContain('allowedGroups={currentItemPreset?.allowed_uom_groups || []}');
-    expect(itemFormSource).toContain('mode_item_preset: modeItemTaxonomy');
+    expect(itemFormSource).toContain('const resolvedModeItemPresetKey = modeItemTaxonomy');
+    expect(itemFormSource).toContain('mode_item_preset: resolvedModeItemPresetKey');
+    expect(itemFormSource).not.toContain('mode_item_preset: modeItemTaxonomy ? (currentItemPreset?.key || cleanedData.mode_preset || null) : null');
     expect(itemFormSource).toContain('This item type is stock-exempt');
     expect(itemFormSource).toContain("if (msmeMode && item)");
     expect(itemFormSource).toContain('setMsmeCategoryTouched(true)');
