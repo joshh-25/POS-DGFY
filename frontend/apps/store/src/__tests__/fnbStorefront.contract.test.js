@@ -125,8 +125,9 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).not.toContain('guestTrackedOrders, isFnbOrderSubpage');
     expect(source).not.toContain('trackingResult?.status]);');
     expect(source).toContain('300000 : 180000');
-    expect(source).toContain('Tracking temporarily unavailable');
-    expect(source).toContain('Automatic tracking will retry after the server wait period.');
+    expect(source).toContain('Tracking is refreshing too often');
+    expect(source).toContain("Try again in ${trackingCooldownLabel}");
+    expect(source).toContain('disabled={isTrackingRefreshing || isTrackingCooldownActive}');
     expect(source).toContain('setIsGuestTrackingDrawerOpen(false);');
   });
 

@@ -5,19 +5,28 @@ import {
   buildTrackingPinKey,
   createCompletionTrackingScheduler,
   dedupeActiveCustomerOrders,
+  formatTrackingCooldown,
+  getTrackingRetryAfterSeconds,
   mergeVisibleTrackingResult,
   resolveSelectedTrackingPollMs,
   resolveTrackingRetryDelayMs
 } from '../tracking/customerTrackingRefresh.js';
 
 describe('customer tracking refresh policy', () => {
-  it('refreshes visible non-terminal tracking within the 3-5 second repair window', () => {
+  it('uses customer-safe visible polling intervals instead of the old 3-5 second loop', () => {
+    expect(resolveSelectedTrackingPollMs({
+      visibilityState: 'visible',
+      status: 'placed'
+    })).toBe(20000);
     expect(resolveSelectedTrackingPollMs({
       visibilityState: 'visible',
       status: 'preparing'
-    })).toBe(5000);
-    expect(CUSTOMER_TRACKING_POLL_INTERVALS.visibleActive).toBeGreaterThanOrEqual(3000);
-    expect(CUSTOMER_TRACKING_POLL_INTERVALS.visibleActive).toBeLessThanOrEqual(5000);
+    })).toBe(15000);
+    expect(resolveSelectedTrackingPollMs({
+      visibilityState: 'visible',
+      status: 'out_for_delivery'
+    })).toBe(10000);
+    expect(CUSTOMER_TRACKING_POLL_INTERVALS.visibleFastActive).toBeGreaterThan(5000);
   });
 
   it('starts once, prevents overlapping requests, and schedules only after completion', async () => {
@@ -31,7 +40,7 @@ describe('customer tracking refresh policy', () => {
           resolvePoll = resolve;
         });
       },
-      resolveDelayMs: () => 5000,
+      resolveDelayMs: () => 15000,
       setTimeoutFn: (callback, delayMs) => {
         scheduled.push({ callback, delayMs });
         return scheduled.length;
@@ -51,7 +60,7 @@ describe('customer tracking refresh policy', () => {
     await Promise.resolve();
     expect(scheduler.isInFlight()).toBe(false);
     expect(scheduled).toHaveLength(1);
-    expect(scheduled[0].delayMs).toBe(5000);
+    expect(scheduled[0].delayMs).toBe(15000);
 
     const nextPoll = scheduled.shift();
     void nextPoll.callback();
@@ -78,7 +87,7 @@ describe('customer tracking refresh policy', () => {
       },
       resolveDelayMs: ({ error: pollError }) => resolveTrackingRetryDelayMs({
         error: pollError,
-        normalDelayMs: 5000
+        normalDelayMs: 15000
       }),
       setTimeoutFn: (callback, delayMs) => {
         scheduled.push({ callback, delayMs });
@@ -91,7 +100,7 @@ describe('customer tracking refresh policy', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(visibleTracking.status).toBe('preparing');
-    expect(scheduled[0].delayMs).toBe(5000);
+    expect(scheduled[0].delayMs).toBe(15000);
 
     await scheduled.shift().callback();
     expect(visibleTracking.status).toBe('preparing');
@@ -119,7 +128,7 @@ describe('customer tracking refresh policy', () => {
     expect(buildTrackingPinKey([{ tracking_pin: 'SK-BG01' }], { enabled: false })).toBe('');
   });
 
-  it('backs off for hidden or terminal tracking views', () => {
+  it('backs off for hidden views and stops terminal tracking views', () => {
     expect(resolveSelectedTrackingPollMs({
       visibilityState: 'hidden',
       status: 'preparing'
@@ -127,7 +136,34 @@ describe('customer tracking refresh policy', () => {
     expect(resolveSelectedTrackingPollMs({
       visibilityState: 'visible',
       status: 'completed'
-    })).toBe(30000);
+    })).toBe(0);
+  });
+
+  it('does not schedule a follow-up request when the resolved delay is zero', async () => {
+    const scheduled = [];
+    const scheduler = createCompletionTrackingScheduler({
+      poll: async () => ({ status: 'completed' }),
+      resolveDelayMs: ({ result }) => resolveSelectedTrackingPollMs({ status: result.status }),
+      setTimeoutFn: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs });
+        return scheduled.length;
+      },
+      clearTimeoutFn: () => {}
+    });
+
+    scheduler.start();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(scheduled).toEqual([]);
+    scheduler.stop();
+  });
+
+  it('extracts retry metadata and formats calm countdown copy', () => {
+    expect(getTrackingRetryAfterSeconds({ retryAfterSeconds: 61 })).toBe(61);
+    expect(getTrackingRetryAfterSeconds({ details: { retryAfterSeconds: 120 } })).toBe(120);
+    expect(getTrackingRetryAfterSeconds({ data: { retryAfterSeconds: 12.2 } })).toBe(13);
+    expect(formatTrackingCooldown(45)).toBe('45 seconds');
+    expect(formatTrackingCooldown(61)).toBe('2 minutes');
   });
 
   it('dedupes active orders by tracking reference and keeps the newest status snapshot', () => {

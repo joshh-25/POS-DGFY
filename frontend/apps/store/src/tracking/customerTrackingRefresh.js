@@ -15,9 +15,11 @@ export const TERMINAL_CUSTOMER_TRACKING_STATUSES = new Set([
 ]);
 
 export const CUSTOMER_TRACKING_POLL_INTERVALS = Object.freeze({
-  visibleActive: 5000,
-  visibleTerminal: 30000,
-  hidden: 90000
+  visiblePlaced: 20000,
+  visibleActive: 15000,
+  visibleFastActive: 10000,
+  hidden: 90000,
+  terminal: 0
 });
 
 const normalizeStatus = (value) => String(value || '').trim().toLowerCase();
@@ -84,9 +86,16 @@ export const resolveSelectedTrackingPollMs = ({
   visibilityState = 'visible',
   status = ''
 } = {}) => {
+  const normalizedStatus = normalizeStatus(status);
+  if (TERMINAL_CUSTOMER_TRACKING_STATUSES.has(normalizedStatus)) {
+    return CUSTOMER_TRACKING_POLL_INTERVALS.terminal;
+  }
   if (visibilityState === 'hidden') return CUSTOMER_TRACKING_POLL_INTERVALS.hidden;
-  if (TERMINAL_CUSTOMER_TRACKING_STATUSES.has(normalizeStatus(status))) {
-    return CUSTOMER_TRACKING_POLL_INTERVALS.visibleTerminal;
+  if (normalizedStatus === 'out_for_delivery' || normalizedStatus === 'ready_for_pickup') {
+    return CUSTOMER_TRACKING_POLL_INTERVALS.visibleFastActive;
+  }
+  if (normalizedStatus === 'placed' || normalizedStatus === 'confirmed') {
+    return CUSTOMER_TRACKING_POLL_INTERVALS.visiblePlaced;
   }
   return CUSTOMER_TRACKING_POLL_INTERVALS.visibleActive;
 };
@@ -96,9 +105,32 @@ export const resolveTrackingRetryDelayMs = ({
   normalDelayMs = CUSTOMER_TRACKING_POLL_INTERVALS.visibleActive
 } = {}) => {
   const normalizedDelayMs = Math.max(0, Number(normalDelayMs) || 0);
-  const retryAfterSeconds = Number(error?.retryAfterSeconds);
+  const retryAfterSeconds = Number(
+    error?.retryAfterSeconds
+    ?? error?.details?.retryAfterSeconds
+    ?? error?.data?.retryAfterSeconds
+  );
   if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) return normalizedDelayMs;
   return Math.max(normalizedDelayMs, Math.ceil(retryAfterSeconds * 1000));
+};
+
+export const getTrackingRetryAfterSeconds = (error = null) => {
+  const retryAfterSeconds = Number(
+    error?.retryAfterSeconds
+    ?? error?.details?.retryAfterSeconds
+    ?? error?.data?.retryAfterSeconds
+  );
+  return Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+    ? Math.ceil(retryAfterSeconds)
+    : 0;
+};
+
+export const formatTrackingCooldown = (seconds = 0) => {
+  const normalizedSeconds = Math.max(0, Math.ceil(Number(seconds) || 0));
+  if (normalizedSeconds <= 0) return '';
+  if (normalizedSeconds < 60) return `${normalizedSeconds} second${normalizedSeconds === 1 ? '' : 's'}`;
+  const minutes = Math.ceil(normalizedSeconds / 60);
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 };
 
 export const createCompletionTrackingScheduler = ({
@@ -116,7 +148,9 @@ export const createCompletionTrackingScheduler = ({
 
   const schedule = (delayMs) => {
     if (stopped) return;
-    timerId = setTimeoutFn(run, Math.max(0, Number(delayMs) || 0));
+    const normalizedDelayMs = Number(delayMs);
+    if (!Number.isFinite(normalizedDelayMs) || normalizedDelayMs <= 0) return;
+    timerId = setTimeoutFn(run, normalizedDelayMs);
   };
 
   const run = async () => {
