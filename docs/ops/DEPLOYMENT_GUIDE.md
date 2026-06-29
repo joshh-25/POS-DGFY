@@ -46,6 +46,8 @@ bash scripts/deploy.sh --branch master --expect-commit <authorized_sha>
 
 Do not run this manually for routine releases. Production/root operators remain an explicit privileged trust anchor and every manual intervention is an incident or recovery action.
 
+The deploy invocation does not complete the release. After SSH succeeds, the controller recollects remote HEAD, deploy marker, newest deploy summary, production contract, frontend asset parity, and live runtime SHA, transitions the nonce to `deployed_pending_accuracy`, and writes immutable external deployment records.
+
 ## Deploy Pipeline
 
 `scripts/deploy.sh` performs deterministic dependency installation, governed docs and architecture checks, frontend builds, migration checks, backup, schema/index audits, tenant sync reporting, PM2 reload, health checks, public endpoint checks, frontend asset parity, deploy summary creation, and production contract proof.
@@ -58,6 +60,20 @@ Do not run this manually for routine releases. Production/root operators remain 
 4. IMS, POS, Storefront, tenant-store, and asset parity pass.
 5. Every inventory slice has hash-verified API, UI, read-only database, or asset proof captured after deployment.
 6. `review:deployed-change-accuracy` exits zero.
+7. The separate controller `--finalize --execute` operation confirms production still runs the exact target and transitions the ledger from `deployed_pending_accuracy` to `completed`.
+8. `/var/lib/skupervisor-release-controller/releases/<sha>/release_record.{json,md}` and `accuracy_finalization.{json,md}` exist with root-only permissions.
+
+## External Release Records
+
+The controller configuration must set:
+
+```json
+"release_records_dir": "/var/lib/skupervisor-release-controller/releases"
+```
+
+Deployment records include target SHA/branch, inventory and evidence hashes, signed tags, signer fingerprint, nonce and ledger state, reviewed slices, documentation closure, Regression Risk Notice, baseline proof, pending per-slice accuracy state, residual risks, timestamps, and artifact hashes. Finalization records add the verified per-slice completed accuracy state. These files are outside Git and must not mutate the deployed checkout.
+
+Repository documentation may later link to or summarize an external record, but that follow-up commit describes an already-deployed SHA and cannot claim its own deployment as self-proof.
 
 ## Recovery
 

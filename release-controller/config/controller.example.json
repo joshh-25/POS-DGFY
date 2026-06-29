@@ -3,6 +3,7 @@
   "remote_url": "git@github.com:BBLabs-Albert/SKU-Inventory-Manager.git",
   "git_mirror": "/var/lib/skupervisor-release-controller/repository.git",
   "ledger_dir": "/var/lib/skupervisor-release-controller/nonce-ledger",
+  "release_records_dir": "/var/lib/skupervisor-release-controller/releases",
   "worktree_root": "/var/lib/skupervisor-release-controller/worktrees",
   "allowed_signer_fingerprints": [
     "REPLACE_WITH_FULL_GPG_FINGERPRINT"
@@ -34,6 +35,7 @@
   },
   "qualification_timeout_ms": 1800000,
   "deploy_timeout_ms": 1800000,
+  "proof_timeout_ms": 120000,
   "production": {
     "host": "production.example.invalid",
     "port": 22,

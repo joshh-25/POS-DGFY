@@ -24,7 +24,7 @@ if [[ -e "$RELEASE_DIR" ]]; then
 fi
 
 install -d -o root -g root -m 0755 "${INSTALL_ROOT}/releases"
-install -d -o root -g root -m 0700 "$STATE_ROOT" "${STATE_ROOT}/nonce-ledger" "${STATE_ROOT}/worktrees"
+install -d -o root -g root -m 0700 "$STATE_ROOT" "${STATE_ROOT}/nonce-ledger" "${STATE_ROOT}/worktrees" "${STATE_ROOT}/releases"
 install -d -o root -g root -m 0700 "$CONFIG_ROOT" "${CONFIG_ROOT}/secrets" "${CONFIG_ROOT}/gnupg"
 install -d -o root -g root -m 0755 "$RELEASE_DIR"
 cp -a "${SOURCE_DIR}/." "$RELEASE_DIR/"

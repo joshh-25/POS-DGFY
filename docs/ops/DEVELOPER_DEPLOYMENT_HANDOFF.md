@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: operations
-last_reviewed: 2026-06-28
+last_reviewed: 2026-06-30
 applies_to: developer_deployment_setup
 topic: developer_deployment_handoff
 ---
@@ -30,12 +30,14 @@ Feature branches are not disregarded by the signed-controller flow. They become 
 1. Work on a feature branch.
 2. Add or update `docs/releases/batches/<release-id>.json` from `docs/templates/REVIEWED_BATCH_MANIFEST_TEMPLATE.json`.
 3. Record real test artifact paths or immutable run URLs; do not copy required tests into completed tests.
-4. Keep excluded stashes and payment-channel work outside the candidate.
-5. Open a PR into `staging`.
-6. Address CI failures and any conflict-resolution issues on `staging`.
-7. Ensure the reviewed batch manifest records the feature branch or PR provenance for the slice.
-8. A direct push or merge does not become deployable merely because it reaches master.
-9. Hand the exact candidate SHA, PR, reviewed manifest, and evidence URLs to the owner/controller operator.
+4. Complete `architecture_classification` and `documentation_closure` for every slice. Updated docs must be in the candidate diff; reviewed-current decisions require a specific reviewer rationale; cross-boundary work must update an ADR.
+5. Generate and review `documentation_closure.json`; missing or failed closure is non-bypassable.
+6. Keep excluded stashes and payment-channel work outside the candidate.
+7. Open a PR into `staging`.
+8. Address CI failures and any conflict-resolution issues on `staging`.
+9. Ensure the reviewed batch manifest records the feature branch or PR provenance for the slice.
+10. A direct push or merge does not become deployable merely because it reaches master.
+11. Hand the exact candidate SHA, PR, reviewed manifest, documentation closure, risk notice, and evidence URLs to the owner/controller operator.
 
 ## Credential Handling
 
@@ -62,6 +64,8 @@ The trusted operator:
 2. Verifies hashes and current GitHub PR/check state.
 3. Runs the installed controller with `--dry-run`.
 4. Reviews the plan and then uses `--execute`.
-5. Collects post-deploy production and per-slice accuracy proof.
+5. Confirms deployment ended at `deployed_pending_accuracy` and preserves the immutable external deployment record.
+6. Collects post-deploy production and per-slice accuracy proof.
+7. Runs the separate trusted `--finalize --execute` operation; only passing exact-SHA proof for every slice may report `completed`.
 
 The repository scripts `scripts/deploy-remote.sh` and live `scripts/deploy-master-ci.sh` are intentionally disabled.

@@ -11,8 +11,12 @@ const {
   validateAuthorizationFields,
   verifySignedTag,
   validateEvidence,
+  validateInventoryDocumentation,
+  validateDocumentationClosureEvidence,
   validateLiveGithubEvidence,
   validateAccuracyProofBundle,
+  validateProductionBaselineProof,
+  ReleaseRecordStore,
   buildRemoteDeployArgs,
 } = require('../lib/release-controller');
 
@@ -102,26 +106,29 @@ test('nonce ledger refuses replay even after a failed action', () => {
 
 test('candidate evidence fails for failed checks and stale QA', () => {
   const evidence = {
-    schema: 'sku-release-evidence/v1',
-    version: 1,
+    schema: 'sku-release-evidence/v2',
+    version: 2,
     repository: 'owner/repo',
     phase: 'production',
     target_sha: SHA,
     pr: { number: 24, base: 'master', head: 'staging' },
     inventory_sha256: HASH_A,
+    documentation_closure: { status: 'pass', target_sha: SHA, inventory_sha256: HASH_A, report_sha256: 'd'.repeat(64), non_bypassable: true },
+    regression_risk_notice: { status: 'pass', target_sha: SHA, report_sha256: 'e'.repeat(64) },
     payment_sensitive: false,
     qa: { status: 'pass', target_sha: SHA, isolated: true },
     local_qualification: { status: 'pass', target_sha: SHA },
     master_audit: { status: 'pass', governed_promotion: true },
     required_checks: [{ name: 'exact-master', conclusion: 'failure', details_url: 'https://github.com/owner/repo/actions/runs/1' }],
   };
-  assert.throws(() => validateEvidence(evidence, expected(), ['exact-master']), (error) => error.code === 'REQUIRED_CHECK_FAILED');
+  const evidenceExpected = expected({ documentationClosureHash: 'd'.repeat(64), regressionRiskNoticeHash: 'e'.repeat(64) });
+  assert.throws(() => validateEvidence(evidence, evidenceExpected, ['exact-master']), (error) => error.code === 'REQUIRED_CHECK_FAILED');
   evidence.required_checks[0].conclusion = 'success';
   evidence.qa.target_sha = 'f'.repeat(40);
-  assert.throws(() => validateEvidence(evidence, expected(), ['exact-master']), (error) => error.code === 'QA_EVIDENCE_INVALID');
+  assert.throws(() => validateEvidence(evidence, evidenceExpected, ['exact-master']), (error) => error.code === 'QA_EVIDENCE_INVALID');
   evidence.qa.target_sha = SHA;
   evidence.local_qualification.status = 'fail';
-  assert.throws(() => validateEvidence(evidence, expected(), ['exact-master']), (error) => error.code === 'LOCAL_QUALIFICATION_FAILED');
+  assert.throws(() => validateEvidence(evidence, evidenceExpected, ['exact-master']), (error) => error.code === 'LOCAL_QUALIFICATION_FAILED');
 });
 
 test('live GitHub evidence rejects moved master merge SHA', () => {
@@ -165,4 +172,107 @@ test('accuracy proof validation rejects missing slice proof', () => {
     () => validateAccuracyProofBundle({ schema: 'sku-deployed-accuracy-proof/v1', target_sha: SHA, proofs: [] }, inventory, SHA),
     (error) => error.code === 'ACCURACY_PROOF_MISSING'
   );
+});
+
+test('external controller rejects missing documentation closure independently', () => {
+  const inventory = { head_sha: SHA, expected_changed_files: ['scripts/change.js'], release_slices: [{ id: 'one', required_docs: [] }] };
+  assert.throws(() => validateInventoryDocumentation(inventory), (error) => error.code === 'DOCUMENTATION_CLOSURE_INVALID');
+  assert.throws(
+    () => validateDocumentationClosureEvidence({ schema: 'sku-documentation-closure/v1', version: 1, status: 'fail' }, { targetSha: SHA, inventoryHash: HASH_A }),
+    (error) => error.code === 'DOCUMENTATION_CLOSURE_INVALID'
+  );
+});
+
+test('production deploy lifecycle cannot complete before accuracy proof', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-ledger-state-'));
+  try {
+    const auth = validateAuthorizationFields(parseAuthorizationMessage(authMessage()), expected());
+    const ledger = new NonceLedger(root);
+    ledger.reserve(auth, { signerFingerprint: FINGERPRINT, tag: 'tag' });
+    assert.throws(() => ledger.finalize(auth), (error) => error.code === 'LEDGER_STATE_INVALID');
+    ledger.markDeployedPendingAccuracy(auth, { production_proof: { status: 'pass' } });
+    assert.equal(ledger.read(auth).status, 'deployed_pending_accuracy');
+    const inventory = { release_slices: [{ id: 'one' }] };
+    assert.throws(
+      () => validateAccuracyProofBundle({ schema: 'sku-deployed-accuracy-proof/v1', target_sha: SHA, proofs: [] }, inventory, SHA),
+      (error) => error.code === 'ACCURACY_PROOF_MISSING'
+    );
+    assert.equal(ledger.read(auth).status, 'deployed_pending_accuracy');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('passing post-deploy proof for every slice permits completed transition', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-ledger-finalize-'));
+  const artifact = path.join(root, 'proof.json');
+  try {
+    fs.writeFileSync(artifact, '{"ok":true}\n');
+    const artifactHash = require('crypto').createHash('sha256').update(fs.readFileSync(artifact)).digest('hex');
+    const auth = validateAuthorizationFields(parseAuthorizationMessage(authMessage()), expected());
+    const ledger = new NonceLedger(path.join(root, 'ledger'));
+    ledger.reserve(auth, { signerFingerprint: FINGERPRINT, tag: 'tag' });
+    const pending = ledger.markDeployedPendingAccuracy(auth, {});
+    const proof = {
+      schema: 'sku-deployed-accuracy-proof/v1',
+      target_sha: SHA,
+      proofs: [{ slice_id: 'one', type: 'api', status: 'pass', target_sha: SHA, subject: 'Read-only health contract verification', captured_at: new Date(Date.now() + 10).toISOString(), artifact_path: artifact, artifact_sha256: artifactHash }],
+    };
+    validateAccuracyProofBundle(proof, { release_slices: [{ id: 'one' }] }, SHA, { notBefore: pending.deployed_at, verifyArtifacts: true });
+    ledger.finalize(auth, { accuracy: 'pass' });
+    assert.equal(ledger.read(auth).status, 'completed');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('stale or wrong-SHA production proof is rejected', () => {
+  const baseline = {
+    remote: { remote_head: 'f'.repeat(40), deploy_state: SHA },
+    deploy_summary: { deployed_head: SHA, remote_head: SHA, expected_commit: SHA, frontend_asset_parity_status: 'pass' },
+    production_contract: { ok: true, target_sha: SHA, git_head: SHA, deploy_state_sha: SHA, health: [{ ok: true, runtime_sha: SHA }] },
+  };
+  assert.throws(() => validateProductionBaselineProof(baseline, SHA), (error) => error.code === 'PRODUCTION_SHA_MISMATCH');
+
+  const staleProof = {
+    schema: 'sku-deployed-accuracy-proof/v1',
+    target_sha: SHA,
+    proofs: [{
+      slice_id: 'one',
+      type: 'api',
+      status: 'pass',
+      target_sha: SHA,
+      subject: 'Read-only API proof',
+      captured_at: '2026-01-01T00:00:00.000Z',
+      artifact_sha256: HASH_A,
+    }],
+  };
+  assert.throws(
+    () => validateAccuracyProofBundle(staleProof, { release_slices: [{ id: 'one' }] }, SHA, { notBefore: '2026-06-30T00:00:00.000Z' }),
+    (error) => error.code === 'ACCURACY_PROOF_STALE'
+  );
+});
+
+test('external release records are write-once with restrictive permissions', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-records-'));
+  try {
+    const store = new ReleaseRecordStore(root);
+    const record = { target_sha: SHA, branch: 'master', ledger_state: 'deployed_pending_accuracy', release_slices: [] };
+    const paths = store.writeDeploymentRecord(record);
+    assert.equal(fs.existsSync(paths.json), true);
+    assert.equal(fs.existsSync(paths.markdown), true);
+    if (process.platform !== 'win32') {
+      assert.equal(fs.statSync(root).mode & 0o777, 0o700);
+      assert.equal(fs.statSync(paths.json).mode & 0o777, 0o600);
+    }
+    assert.throws(() => store.writeDeploymentRecord(record), (error) => error.code === 'RELEASE_RECORD_EXISTS');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('controller source returns deployed_pending_accuracy after production deploy', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'bin', 'skupervisor-release-controller.js'), 'utf8');
+  assert.match(source, /status: 'deployed_pending_accuracy'/);
+  assert.ok(source.indexOf('markDeployedPendingAccuracy') > source.indexOf('PRODUCTION_DEPLOY_FAILED'));
 });
