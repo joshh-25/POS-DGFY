@@ -170,6 +170,19 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain("Your signed-in DGFY account will be used for this booking.");
   });
 
+  it('keeps F&B checkout payment values backend-valid and excludes the old online placeholder', () => {
+    const source = appSource();
+
+    expect(source).toContain('STOREFRONT_CHECKOUT_PAYMENT_OPTIONS');
+    expect(source).toContain("{ value: 'cash', label: 'Cash on delivery/pickup' }");
+    expect(source).toContain("{ value: 'gcash', label: 'GCash' }");
+    expect(source).toContain("{ value: 'maya', label: 'Maya' }");
+    expect(source).toContain("{ value: 'card', label: 'Card' }");
+    expect(source).toContain("{ value: 'bank_transfer', label: 'Bank transfer' }");
+    expect(source).not.toContain("{ value: 'online', label: 'Online payment' }");
+    expect(source).toContain('payment_type: fnbPaymentType');
+  });
+
   it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {
     const source = appSource();
 
