@@ -339,6 +339,37 @@ describe('Settings deep-linking and action wiring', () => {
     expect(latestPayload.store_is_visible).toBe(true);
   });
 
+  it('scopes Storefront saves away from POS receipt metadata review fields', async () => {
+    const user = userEvent.setup();
+    const receiptMetadataKeys = [
+      'pos_registered_name',
+      'pos_business_name',
+      'pos_tin_branch',
+      'pos_ptu_number',
+      'pos_min_number',
+      'pos_accreditation_number',
+      'pos_fiscal_buyer_details_required',
+      'pos_receipt_footer_message'
+    ];
+
+    renderSettings('/settings?tab=storefront');
+
+    const taglineInput = await screen.findByPlaceholderText('Grilled to perfection. Made with love.');
+    await user.type(taglineInput, 'Fresh daily specials');
+    await user.click(screen.getByRole('button', { name: /Save Changes/i }));
+
+    await waitFor(() => {
+      expect(mocks.settingsServiceMock.updateSettings).toHaveBeenCalled();
+    });
+    const latestPayload = mocks.settingsServiceMock.updateSettings.mock.calls.at(-1)?.[0] || {};
+    expect(latestPayload.storefront_tagline).toBe('Fresh daily specials');
+    expect(latestPayload.pos_open_status).toBeDefined();
+    expect(latestPayload.pos_wait_time_minutes).toBeDefined();
+    receiptMetadataKeys.forEach((key) => {
+      expect(latestPayload).not.toHaveProperty(key);
+    });
+  });
+
   it('warns when public visibility is enabled without an active primary storefront pin', async () => {
     mocks.settingsServiceMock.getAllSettings.mockResolvedValueOnce({
       storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
