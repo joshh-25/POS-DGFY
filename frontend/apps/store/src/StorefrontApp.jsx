@@ -123,7 +123,6 @@ import {
 } from './Components/store/DiscoveryResponsiveLayout.jsx';
 import { SolutionsPage } from './Components/storefront/pages/SolutionsPage.jsx';
 import { FnbProductDetailsPage } from './Components/storefront/pages/FnbProductDetailsPage.jsx';
-import { DgfyCustomerAuthModal } from './Components/storefront/pages/DgfyCustomerAuthModal.jsx';
 import { DgfyCustomerAccountPage } from './Components/storefront/pages/DgfyCustomerAccountPage.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './Components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './Components/storefront/hero/StorefrontHeaderNav.jsx';
@@ -6286,12 +6285,6 @@ export default function StorefrontApp() {
     const initials = parts.map((part) => part.charAt(0).toUpperCase()).join('');
     return initials || 'GU';
   }, [accountDisplayName]);
-  const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  const accountDrawerTitle = isGuestAccountDrawerState ? 'DGFY Account' : 'My Account';
-  const accountDrawerSubtitle = isGuestAccountDrawerState
-    ? 'Orders, tracking, profile, addresses, loyalty, and company invitations.'
-    : 'Manage your bookings, orders, tickets and more.';
-  const accountPrimaryDescription = 'View and manage your saved bookings, orders, tickets, receipts, and the latest linked transaction.';
   const activeCustomerOrders = useMemo(() => {
     const activeStatuses = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']);
     return (Array.isArray(accountPanel.orders) ? accountPanel.orders : []).filter((order) => (
@@ -9416,6 +9409,12 @@ export default function StorefrontApp() {
   const openAccountPanel = () => {
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
+
+    if (!isStorefrontAccountAuthenticated) {
+      openCanonicalDgfyAuth('customer', 'sign-in');
+      return;
+    }
+
     setIsAccountDrawerOpen(true);
     handleLoadAccountPanel();
   };
@@ -21508,29 +21507,7 @@ return (
       )}
     </>
   )}
-      {isAccountDrawerOpen && (isGuestAccountDrawerState ? (
-        <DgfyCustomerAuthModal
-          isMobileViewport={isMobileViewport}
-          onClose={closeAccountDrawer}
-          savedCustomerDetails={savedCustomerDetails}
-          hasSavedCustomerDetails={hasSavedCustomerDetails}
-          onContinueAsGuest={() => {
-            if (hasSavedCustomerDetails) {
-              applySavedCustomerDetails();
-            }
-            closeAccountDrawer();
-          }}
-          onClearSavedDetails={clearSavedCustomerDetailsForDevice}
-          onOpenAuth={() => {
-            closeAccountDrawer();
-            openCanonicalDgfyAuth('customer');
-          }}
-          onOpenRegisterBusiness={() => {
-            closeAccountDrawer();
-            openBusinessRegistrationFlow();
-          }}
-        />
-      ) : (
+      {isAccountDrawerOpen && (
         <DgfyCustomerAccountPage
           isMobileViewport={isMobileViewport}
           onClose={closeAccountDrawer}
@@ -21567,7 +21544,7 @@ return (
           accountAddressActionId={accountAddressActionId}
           onOpenBusinessInventory={handleOpenBusinessInventory}
         />
-      ))}
+      )}
       {isGuestTrackingDrawerOpen && canOpenTrackingDrawer && !isStandaloneTrackingPage && (
         <GuestTrackingDrawer
           isOpen={isGuestTrackingDrawerOpen}

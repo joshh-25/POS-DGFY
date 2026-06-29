@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
@@ -190,6 +190,30 @@ const getLastDiscoveryParams = (fetchMock) => {
   return parsed.searchParams;
 };
 
+const installNavigationLocationMock = () => {
+  const originalLocation = window.location;
+  let locationUrl = new URL(originalLocation.href);
+  const mockLocation = {
+    ancestorOrigins: undefined,
+    assign: vi.fn((value) => { locationUrl = new URL(String(value || ''), locationUrl); }),
+    reload: vi.fn(),
+    replace: vi.fn((value) => { locationUrl = new URL(String(value || ''), locationUrl); }),
+    toString: () => locationUrl.toString(),
+    get href() { return locationUrl.toString(); },
+    set href(value) { locationUrl = new URL(String(value || ''), locationUrl); },
+    get origin() { return locationUrl.origin; },
+    get protocol() { return locationUrl.protocol; },
+    get host() { return locationUrl.host; },
+    get hostname() { return locationUrl.hostname; },
+    get port() { return locationUrl.port; },
+    get pathname() { return locationUrl.pathname; },
+    get search() { return locationUrl.search; },
+    get hash() { return locationUrl.hash; }
+  };
+  Object.defineProperty(window, 'location', { configurable: true, writable: true, value: mockLocation });
+  return () => Object.defineProperty(window, 'location', { configurable: true, writable: true, value: originalLocation });
+};
+
 const getMapApis = () => maplibregl.Map.mock.results
   .map((result) => result?.value)
   .filter(Boolean);
@@ -351,6 +375,7 @@ describe('storefront discovery integration flow', () => {
   });
 
   it('keeps account access visible when MapLibre cannot initialize WebGL', async () => {
+    const restoreLocation = installNavigationLocationMock();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     maplibregl.Map.mockImplementationOnce(function MapUnavailable() {
       throw new Error('webgl unavailable');
@@ -375,13 +400,20 @@ describe('storefront discovery integration flow', () => {
 
       fireEvent.click(screen.getByText('Log in / Sign up'));
 
-      expect(await screen.findByText('DGFY Account')).toBeTruthy();
+      await waitFor(() => expect(window.location.pathname).toBe('/dgfy/auth'));
+      const authParams = new URLSearchParams(window.location.search);
+      expect(authParams.get('intent')).toBe('customer');
+      expect(authParams.get('mode')).toBe('sign-in');
+      expect(authParams.get('return_to')).toContain('dgfy_account=1');
+      expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
     } finally {
       warnSpy.mockRestore();
+      restoreLocation();
     }
   });
 
-  it('keeps the storefront account panel as a launcher with guest and DGFY handoff actions', async () => {
+  it('routes the signed-out storefront account action directly to canonical DGFY auth', async () => {
+    const restoreLocation = installNavigationLocationMock();
     const defaultFetch = fetchMock.getMockImplementation();
     fetchMock.mockImplementation(async (url, options = {}) => {
       const normalized = String(url);
@@ -394,16 +426,20 @@ describe('storefront discovery integration flow', () => {
       return defaultFetch(url, options);
     });
 
-    render(<App />);
+    try {
+      render(<App />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: /log in \/ sign up/i })[0]);
+      fireEvent.click(screen.getAllByRole('button', { name: /log in \/ sign up/i })[0]);
 
-    expect(await screen.findByText('DGFY Account')).toBeTruthy();
-    const dialog = screen.getByRole('dialog', { name: 'DGFY Account' });
-    expect(within(dialog).getByRole('button', { name: /continue as guest/i })).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: /sign in \/ create account/i })).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: /^register your business$/i })).toBeTruthy();
-    expect(within(dialog).queryByRole('button', { name: /create dgfy account/i })).toBeNull();
+      await waitFor(() => expect(window.location.pathname).toBe('/dgfy/auth'));
+      const authParams = new URLSearchParams(window.location.search);
+      expect(authParams.get('intent')).toBe('customer');
+      expect(authParams.get('mode')).toBe('sign-in');
+      expect(authParams.get('return_to')).toContain('dgfy_account=1');
+      expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
+    } finally {
+      restoreLocation();
+    }
   });
 
   it('auto-loads signed-in DGFY customer context and exposes saved address checkout actions', async () => {
