@@ -48,8 +48,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Check lightweight merge hygiene
+        run: npm run check:merge-hygiene -- --base "origin/${{ github.base_ref }}" --head "${{ github.sha }}" --target "origin/${{ github.base_ref }}" --report ".tmp/release-gates/${{ github.sha }}/merge_hygiene_report.json"
       - name: Require merge adoption proof for storefront customer-flow PRs
         run: npm run check:merge-adoption-required -- --base "origin/${{ github.base_ref }}" --head "${{ github.sha }}"
+      - name: Upload merge hygiene report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merge-hygiene-${{ github.sha }}
+          path: .tmp/release-gates/${{ github.sha }}/merge_hygiene_report.json
+          if-no-files-found: ignore
+          retention-days: 30
 
   batch-inventory:
     runs-on: ubuntu-latest

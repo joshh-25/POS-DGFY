@@ -64,6 +64,8 @@ npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<sha>/batch_
 - [ ] Production deployment is not claimed complete until exact `origin/master` SHA proof and deployed-change accuracy review are complete
 
 ## Merge Adoption Evidence
+- [ ] Lightweight merge hygiene passed
+- Merge hygiene report:
 - [ ] This PR does not require merge-adoption proof
 - [ ] Merge-adoption manifest prepared for final master/deploy adoption
 - Manifest path:

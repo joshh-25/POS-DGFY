@@ -76,6 +76,7 @@ jobs:
           npm run check:compliance
           npm run test:development-to-production
           npm run test:deploy-contract
+          npm run check:merge-hygiene -- --base origin/master~1 --head "${{ steps.target.outputs.sha }}" --report ".tmp/release-gates/${{ steps.target.outputs.sha }}/merge_hygiene_report.json"
           npm run check:merge-adoption-required -- --base origin/master~1 --head "${{ steps.target.outputs.sha }}"
 
       - name: Upload short-lived exact-master evidence
