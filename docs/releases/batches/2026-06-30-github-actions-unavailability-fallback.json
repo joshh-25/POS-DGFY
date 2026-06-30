@@ -3,7 +3,7 @@
   "review_status": "reviewed",
   "reviewed_by": "BBLabs-Albert owner-directed Codex review",
   "reviewed_at": "2026-06-30T08:50:00.000Z",
-  "source_pr": "governance-pr-codex-github-billing-fallback",
+  "source_pr": "34",
   "release_slices": [
     {
       "id": "billing-fallback-governance",
@@ -31,7 +31,7 @@
       ],
       "owner_attribution": "BBLabs-Albert owner-directed implementation",
       "source_branch": "codex/github-billing-fallback",
-      "source_pr": "governance-pr-codex-github-billing-fallback",
+      "source_pr": "34",
       "source_type": "developer_pr",
       "affected_surfaces": [
         "docs",
@@ -166,7 +166,7 @@
       ],
       "owner_attribution": "BBLabs-Albert owner-directed implementation",
       "source_branch": "codex/github-billing-fallback",
-      "source_pr": "governance-pr-codex-github-billing-fallback",
+      "source_pr": "34",
       "source_type": "developer_pr",
       "affected_surfaces": [
         "scripts/deploy"
