@@ -32,6 +32,8 @@ The external controller refuses promotion or production unless all applicable ev
 
 There is no unsigned emergency bypass. Failed actions require corrected evidence and a fresh signed tag with a new nonce.
 
+The signed emergency QA lane is allowed only for genuine isolated-QA unavailability. It requires a hash-bound `sku-emergency-qa-authorization/v1` report, root-owned `emergency_qa_bypass.enabled=true`, exact-SHA owner approval, no payment-sensitive files, no migrations, all non-QA gates passing, rollback readiness, planned read-only production smoke, and mandatory deployed-change accuracy finalization. Production-as-QA remains prohibited: the report records unavailable QA and does not authorize a QA deploy to production.
+
 ## QA Contract
 
 Use `docs/ops/QA_ISOLATION_PROFILE.md`. Production-as-QA is prohibited. The QA Unix identity must be unable to read production credentials, data, uploads, backups, and controller state.

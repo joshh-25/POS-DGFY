@@ -9,15 +9,26 @@
       "id": "staging-release-governance-packaging-2026-06-30",
       "slice_name": "Current staging release-governance packaging",
       "name": "Current staging release-governance packaging",
-      "plain_english_purpose": "Make the current staging candidate reviewable as one exact batch before any staging-to-master promotion is attempted.",
-      "purpose": "Make the current staging candidate reviewable as one exact batch before any staging-to-master promotion is attempted.",
-      "implementation_summary": "Aggregates the current staging-only release-governance changes relative to origin/master: isolated QA deferral documentation, branch cleanup hardening batch evidence, readable Regression Risk Notice evidence rendering, and the aggregate manifest itself. This does not authorize production deployment; it only fixes candidate evidence so the release gates can evaluate the exact diff.",
+      "plain_english_purpose": "Package the current staging release controls and add a signed, auditable emergency path when isolated QA is genuinely unavailable.",
+      "purpose": "Make the exact staging candidate reviewable and allow degraded-assurance deployment only through owner-signed controller authorization with compensating controls.",
+      "implementation_summary": "Aggregates the current staging release-governance changes relative to origin/master: isolated QA documentation, branch cleanup hardening, readable Regression Risk Notice rendering, and a signed emergency-QA authorization lane in the external controller. The emergency lane remains ineligible for payment-sensitive or migration releases and preserves exact-SHA promotion, local qualification, rollback readiness, production proof, and deployed-change accuracy finalization.",
       "included_files": [
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
         "docs/ops/QA_ISOLATION_PROFILE.md",
         "docs/releases/batches/2026-06-30-isolated-qa-deferral.json",
         "docs/releases/batches/2026-06-30-merged-branch-cleanup-hardening.json",
         "docs/releases/batches/2026-06-30-regression-risk-notice-rendering.json",
         "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json",
+        "docs/templates/EMERGENCY_QA_AUTHORIZATION_EXAMPLE.json",
+        "release-controller/README.md",
+        "release-controller/bin/skupervisor-release-controller.js",
+        "release-controller/config/controller.example.json",
+        "release-controller/lib/release-controller.js",
+        "release-controller/test/release-controller.test.js",
+        "scripts/build-release-candidate-evidence.js",
+        "scripts/build-release-candidate-evidence.test.js",
         "scripts/check-regression-risk.js",
         "scripts/check-regression-risk.test.js"
       ],
@@ -26,12 +37,14 @@
         "Reviewed release-batch evidence for branch cleanup hardening",
         "Documented isolated QA deferral while preserving production promotion as blocked until QA proof exists",
         "Exact aggregate manifest coverage for the current origin/master..origin/staging candidate"
+        ,"Signed emergency-QA authorization for eligible non-payment, no-migration releases"
+        ,"Hash-bound emergency evidence with controller-local enablement and mandatory post-deploy accuracy"
       ],
       "excluded_files": [],
       "excluded_features": [
         "Production deployment",
-        "Staging-to-master promotion before the no-staging gate has real QA evidence",
-        "Production-as-QA bypass",
+        "Unsigned or environment-variable-only emergency deployment",
+        "Executing QA against production or treating production as isolated QA",
         "PayMongo or payment implementation work",
         "Branch deletion or retirement",
         "Dirty local Storefront guest-checkout files in the preserved main checkout",
@@ -65,6 +78,7 @@
         "npm run check:architecture",
         "npm run check:compliance",
         "npm run test:development-to-production",
+        "node --test release-controller/test/*.test.js",
         "npm run check:merge-hygiene -- --base origin/master --head origin/staging",
         "npm run check:merge-adoption-required -- --base origin/master --head origin/staging",
         "npm run check:batch-inventory -- --base origin/master --head origin/staging --write --require-ship",
@@ -98,6 +112,11 @@
           "evidence": "2026-06-30 clean staging worktree validation: development-to-production script tests passed."
         },
         {
+          "command": "node --test release-controller/test/*.test.js",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: 22 signed-controller authorization, replay, QA, payment, proof, and finalization tests passed."
+        },
+        {
           "command": "npm run check:merge-hygiene -- --base origin/master --head origin/staging",
           "status": "pass",
           "evidence": "2026-06-30 clean staging worktree validation: merge hygiene passed."
@@ -129,24 +148,30 @@
         "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
         "docs/ops/DEPLOYMENT_GUIDE.md",
         "docs/ops/QA_ISOLATION_PROFILE.md",
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
         "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json"
       ],
-      "architecture_classification": "no-architecture-impact",
+      "architecture_classification": "cross-boundary",
       "documentation_closure": {
         "decision": "updated",
         "reviewed_by": "BabyBaBab owner-directed Codex documentation review",
         "reviewed_at": "2026-06-30T13:40:00.000Z",
-        "rationale": "This release-governance packaging update changes only candidate evidence and documentation for the current staging diff. It preserves the authoritative production hard stop until real QA/no-staging evidence is available.",
+        "rationale": "This release changes the external production authorization boundary by adding a signed emergency lane for unavailable isolated QA. ADR 0030 and the authoritative operational standards are updated together with controller tests and operator evidence requirements.",
         "documents": [
           {
             "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
-            "action": "reviewed_current",
-            "evidence": "Defines staging-to-master promotion, exact origin/master deployment, Regression Risk Notice, and deployed-change accuracy requirements."
+            "action": "updated",
+            "evidence": "Defines the signed emergency-QA lane while preserving staging-to-master promotion, exact origin/master deployment, Regression Risk Notice, and deployed-change accuracy requirements."
           },
           {
             "path": "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
-            "action": "reviewed_current",
-            "evidence": "Requires exact-SHA QA deploy evidence, QA smoke, rollback, restore, release verdict, and production proof before deployment."
+            "action": "updated",
+            "evidence": "Requires exact-SHA QA evidence normally and defines the narrow signed substitution when isolated QA is unavailable."
+          },
+          {
+            "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+            "action": "updated",
+            "evidence": "Authorizes the hash-bound signed emergency-QA controller lane and enumerates its non-bypassable compensating controls."
           },
           {
             "path": "docs/ops/DEPLOYMENT_GUIDE.md",
@@ -165,9 +190,9 @@
           }
         ]
       },
-      "adr_compliance_declaration_required": false,
-      "adr_or_compliance": "No ADR update is required because this packaging fix does not change runtime ownership, deployment topology, data contracts, payment behavior, or module boundaries. It preserves the existing signed-controller and no-staging QA requirements.",
-      "rollback_notes": "Revert this aggregate manifest update and the whitespace fix if the candidate packaging is rejected. Do not promote to master or deploy production until a new exact candidate has passing reviewed inventory, Regression Risk Notice, and real QA/no-staging evidence.",
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "ADR 0030 is updated because this cross-boundary change modifies the external signed-controller production authorization contract. Payment authorization remains separate and emergency QA is forbidden for payment-sensitive scope.",
+      "rollback_notes": "Disable emergency_qa_bypass in root-owned controller configuration and revert the controller/ADR change if the lane is rejected. Existing normal isolated-QA releases remain valid.",
       "production_proof_required": [
         "origin/master equals the final promoted master SHA",
         "production remote HEAD equals the final promoted master SHA",
@@ -182,6 +207,7 @@
         "QA isolation documentation does not overclaim production approval",
         "Branch cleanup hardening remains documentation/tooling only until production proof and deployed-change accuracy review are complete",
         "Current-state docs do not claim this staging candidate is production-live before deploy proof exists"
+        ,"Signed emergency evidence is accepted only when controller configuration enables it and all compensating controls pass"
       ],
       "regression_risk_level": "critical",
       "regression_warning_required": true,
@@ -191,6 +217,7 @@
         "Batch inventory selection",
         "Regression Risk Notice rendering",
         "No-staging QA proof interpretation",
+        "External signed-controller authorization",
         "Branch cleanup retirement decisions"
       ],
       "evidence_covering_regression_risk": [
@@ -211,18 +238,18 @@
         }
       ],
       "evidence_gaps": [
-        "No real QA deploy summary exists for the current candidate.",
-        "No QA smoke artifact exists for the current candidate.",
-        "QA rollback and restore evidence cannot pass until QA_SSH_HOST and an isolated QA target are configured.",
+        "No isolated QA deploy summary exists for the current candidate; emergency authorization must explicitly record this degraded assurance.",
+        "The installed root-owned controller has not yet been proven upgraded to this candidate version.",
+        "Root-owned emergency_qa_bypass configuration and owner GPG signing availability have not yet been proven.",
         "Production deployment has not been performed."
       ],
       "rollback_or_monitoring_notes": [
-        "Treat this candidate as blocked for production until RELEASE_TARGET_SHA=<final_master_sha> npm run gate:release:no-staging passes with real QA evidence.",
+        "Prefer isolated QA. Use emergency QA only through the installed signed controller with the exact hash-bound report and fresh authorization tags.",
         "If promoted incorrectly, revert the master promotion commit and repeat the exact-SHA release gates for the revert SHA.",
         "After any eventual deployment, verify production runtime SHA, deploy summary, remote HEAD, .deploy-state marker, and deployed-change accuracy before branch retirement."
       ],
       "can_ship_independently": false,
-      "promotion_eligibility": "eligible_for_master_promotion_only_after_no_staging_evidence",
+      "promotion_eligibility": "eligible_after_signed_controller_qualification_and_qa_or_approved_emergency_qa_evidence",
       "verdict": "ship",
       "payment_sensitive": false,
       "payment_sensitive_files": [],
