@@ -5,9 +5,15 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const AUTH_SCHEMA = 'sku-release-authorization/v1';
-const EVIDENCE_SCHEMA = 'sku-release-evidence/v1';
+const EVIDENCE_SCHEMA = 'sku-release-evidence/v2';
 const VALID_PHASES = new Set(['promotion', 'production', 'payment']);
 const ALLOWED_PROOF_TYPES = new Set(['api', 'ui', 'database_readonly', 'asset']);
+const VALID_ARCHITECTURE_CLASSIFICATIONS = new Set(['no-architecture-impact', 'within-existing-boundary', 'cross-boundary']);
+const VALID_DOCUMENTATION_DECISIONS = new Set(['updated', 'no_change_required']);
+const VALID_DOCUMENTATION_ACTIONS = new Set(['updated', 'reviewed_current']);
+const DOCUMENT_PATH_PATTERN = /^docs\/.+\.(?:md|mdx|json|ya?ml)$/i;
+const ADR_PATH_PATTERN = /^docs\/architecture\/adr\/.+\.md$/i;
+const PLACEHOLDER_PATTERN = /(?:placeholder|not provided|todo|tbd|unknown|replace this|example)/i;
 const AUTH_FIELDS = new Set([
   'schema',
   'repository',
@@ -152,17 +158,104 @@ function validateInventory(inventory, expectedSha) {
   if (inventory.review_status !== 'reviewed') fail('INVENTORY_NOT_REVIEWED', 'Inventory review_status must be reviewed');
   if (!inventory.reviewed_by || !inventory.reviewed_at || !inventory.source_pr) fail('INVENTORY_ATTRIBUTION_MISSING', 'Inventory reviewer and PR attribution are required');
   if (!Array.isArray(inventory.release_slices) || inventory.release_slices.length === 0) fail('INVENTORY_SLICES_MISSING', 'Inventory requires release slices');
+  validateInventoryDocumentation(inventory);
   return inventory;
 }
 
+function validateInventoryDocumentation(inventory, options = {}) {
+  const changedFiles = new Set(options.changedFiles || inventory.expected_changed_files || []);
+  for (const slice of inventory.release_slices || []) {
+    const sliceId = slice.id || slice.slice_name || '<unnamed>';
+    if (!VALID_ARCHITECTURE_CLASSIFICATIONS.has(slice.architecture_classification)) {
+      fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} has invalid architecture classification`);
+    }
+    const closure = slice.documentation_closure;
+    if (!closure || !VALID_DOCUMENTATION_DECISIONS.has(closure.decision)) {
+      fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} is missing a valid documentation closure decision`);
+    }
+    if (!closure.reviewed_by || PLACEHOLDER_PATTERN.test(closure.reviewed_by)
+      || !Number.isFinite(Date.parse(closure.reviewed_at || ''))
+      || !closure.rationale || closure.rationale.trim().length < 12 || PLACEHOLDER_PATTERN.test(closure.rationale)) {
+      fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} documentation closure review is missing or placeholder`);
+    }
+    if (!Array.isArray(closure.documents) || closure.documents.length === 0) {
+      fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} documentation closure requires documents`);
+    }
+    let updated = 0;
+    let reviewedCurrent = 0;
+    let updatedAdr = 0;
+    const closurePaths = new Set();
+    for (const document of closure.documents) {
+      const documentPath = String(document?.path || '').replace(/\\/g, '/');
+      if (!DOCUMENT_PATH_PATTERN.test(documentPath) || documentPath.includes('..') || !VALID_DOCUMENTATION_ACTIONS.has(document?.action)) {
+        fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} has an invalid documentation path or action: ${documentPath || '<missing>'}`);
+      }
+      if (!document.evidence || document.evidence.trim().length < 12 || PLACEHOLDER_PATTERN.test(document.evidence)) {
+        fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} has missing or placeholder documentation evidence for ${documentPath}`);
+      }
+      if (closurePaths.has(documentPath)) fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} repeats documentation path ${documentPath}`);
+      closurePaths.add(documentPath);
+      if (document.action === 'updated') {
+        updated += 1;
+        if (changedFiles.size > 0 && !changedFiles.has(documentPath)) fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} claims unchanged documentation was updated: ${documentPath}`);
+        if (ADR_PATH_PATTERN.test(documentPath)) updatedAdr += 1;
+      } else {
+        reviewedCurrent += 1;
+      }
+      if (options.worktree) {
+        const absolute = path.resolve(options.worktree, documentPath);
+        if (!absolute.startsWith(`${path.resolve(options.worktree)}${path.sep}`) || !fs.existsSync(absolute)) {
+          fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} documentation is missing from exact-SHA worktree: ${documentPath}`);
+        }
+        const tracked = run(options.gitBin || 'git', ['cat-file', '-e', `${inventory.head_sha}:${documentPath}`], { cwd: options.worktree });
+        if (!tracked.ok) fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} documentation is not tracked at target SHA: ${documentPath}`);
+      }
+    }
+    if (closure.decision === 'updated' && updated === 0) fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} decision=updated requires an updated document`);
+    if (closure.decision === 'no_change_required' && (updated > 0 || reviewedCurrent === 0 || closure.rationale.trim().length < 24)) {
+      fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} no-change decision lacks a specific reviewed rationale`);
+    }
+    if (slice.architecture_classification === 'cross-boundary' && updatedAdr === 0) {
+      fail('DOCUMENTATION_CLOSURE_INVALID', `Cross-boundary slice ${sliceId} requires an updated ADR`);
+    }
+    for (const required of slice.required_docs || []) {
+      if (!closurePaths.has(required)) fail('DOCUMENTATION_CLOSURE_INVALID', `Slice ${sliceId} required document is absent from documentation closure: ${required}`);
+    }
+  }
+  return inventory;
+}
+
+function validateDocumentationClosureEvidence(report, expected) {
+  if (!report || report.schema !== 'sku-documentation-closure/v1' || report.version !== 1) fail('DOCUMENTATION_CLOSURE_INVALID', 'Documentation closure report schema is invalid');
+  if (report.status !== 'pass' || report.non_bypassable !== true) fail('DOCUMENTATION_CLOSURE_INVALID', 'Documentation closure must pass and be non-bypassable');
+  if (report.target_sha !== expected.targetSha) fail('DOCUMENTATION_CLOSURE_INVALID', 'Documentation closure target SHA mismatch');
+  if (report.inventory_sha256 !== expected.inventoryHash) fail('DOCUMENTATION_CLOSURE_INVALID', 'Documentation closure inventory hash mismatch');
+  if (!Array.isArray(report.release_slices) || report.release_slices.some((slice) => slice.status !== 'pass')) {
+    fail('DOCUMENTATION_CLOSURE_INVALID', 'Every documentation closure slice must pass');
+  }
+  return report;
+}
+
 function validateEvidence(evidence, expected, requiredChecks = []) {
-  if (evidence.schema !== EVIDENCE_SCHEMA || evidence.version !== 1) fail('EVIDENCE_SCHEMA_INVALID', 'Candidate evidence schema is invalid');
+  if (evidence.schema !== EVIDENCE_SCHEMA || evidence.version !== 2) fail('EVIDENCE_SCHEMA_INVALID', 'Candidate evidence schema is invalid');
   if (evidence.repository !== expected.repository) fail('EVIDENCE_REPOSITORY_MISMATCH', 'Evidence repository mismatch');
   if (evidence.phase !== expected.phase) fail('EVIDENCE_PHASE_MISMATCH', 'Evidence phase mismatch');
   if (evidence.target_sha !== expected.targetSha) fail('EVIDENCE_SHA_MISMATCH', 'Evidence target SHA mismatch');
   if (Number(evidence.pr?.number) !== Number(expected.prNumber)) fail('EVIDENCE_PR_MISMATCH', 'Evidence PR number mismatch');
   if (evidence.inventory_sha256 !== expected.inventoryHash) fail('EVIDENCE_INVENTORY_HASH_MISMATCH', 'Evidence inventory hash mismatch');
   if (Boolean(evidence.payment_sensitive) !== expected.paymentSensitive) fail('EVIDENCE_PAYMENT_FLAG_MISMATCH', 'Evidence payment flag mismatch');
+  if (evidence.documentation_closure?.status !== 'pass'
+    || evidence.documentation_closure?.target_sha !== expected.targetSha
+    || evidence.documentation_closure?.inventory_sha256 !== expected.inventoryHash
+    || evidence.documentation_closure?.report_sha256 !== expected.documentationClosureHash
+    || evidence.documentation_closure?.non_bypassable !== true) {
+    fail('DOCUMENTATION_CLOSURE_INVALID', 'Candidate evidence does not bind passing documentation closure');
+  }
+  if (evidence.regression_risk_notice?.status !== 'pass'
+    || evidence.regression_risk_notice?.target_sha !== expected.targetSha
+    || evidence.regression_risk_notice?.report_sha256 !== expected.regressionRiskNoticeHash) {
+    fail('REGRESSION_RISK_NOTICE_INVALID', 'Candidate evidence does not bind a passing Regression Risk Notice');
+  }
   if (evidence.qa?.status !== 'pass' || evidence.qa?.target_sha !== expected.targetSha || evidence.qa?.isolated !== true) {
     fail('QA_EVIDENCE_INVALID', 'Exact-SHA isolated QA evidence is required');
   }
@@ -202,7 +295,7 @@ function validateLiveGithubEvidence(live, evidence, phase) {
   }
 }
 
-function validateAccuracyProofBundle(bundle, inventory, targetSha) {
+function validateAccuracyProofBundle(bundle, inventory, targetSha, options = {}) {
   if (!bundle || bundle.schema !== 'sku-deployed-accuracy-proof/v1') fail('ACCURACY_SCHEMA_INVALID', 'Accuracy proof bundle schema is invalid');
   if (bundle.target_sha !== targetSha) fail('ACCURACY_SHA_MISMATCH', 'Accuracy proof bundle target SHA mismatch');
   const proofs = Array.isArray(bundle.proofs) ? bundle.proofs : [];
@@ -217,9 +310,52 @@ function validateAccuracyProofBundle(bundle, inventory, targetSha) {
       }
       if (!proof.subject || /placeholder|not provided|todo|example/i.test(proof.subject)) fail('ACCURACY_PROOF_PLACEHOLDER', `Accuracy proof subject is a placeholder for slice ${slice.id}`);
       if (proof.type === 'database_readonly' && proof.read_only !== true) fail('ACCURACY_DATABASE_NOT_READONLY', `Database proof must be explicitly read-only for slice ${slice.id}`);
+      const capturedAt = Date.parse(proof.captured_at || '');
+      if (!Number.isFinite(capturedAt) || (options.notBefore && capturedAt < Date.parse(options.notBefore)) || capturedAt > Date.now() + 60_000) {
+        fail('ACCURACY_PROOF_STALE', `Accuracy proof is stale or has an invalid capture time for slice ${slice.id}`);
+      }
+      if (options.verifyArtifacts) {
+        if (!proof.artifact_path || !fs.existsSync(proof.artifact_path)) fail('ACCURACY_ARTIFACT_MISSING', `Accuracy proof artifact is missing for slice ${slice.id}`);
+        if (sha256File(proof.artifact_path) !== proof.artifact_sha256) fail('ACCURACY_ARTIFACT_HASH_MISMATCH', `Accuracy proof artifact hash mismatch for slice ${slice.id}`);
+      }
     }
   }
   return bundle;
+}
+
+function parseKeyValueSummary(text) {
+  const values = {};
+  for (const rawLine of String(text || '').split(/\r?\n/)) {
+    const index = rawLine.indexOf('=');
+    if (index > 0) values[rawLine.slice(0, index)] = rawLine.slice(index + 1);
+  }
+  return values;
+}
+
+function validateProductionBaselineProof(proof, targetSha) {
+  if (!proof || typeof proof !== 'object') fail('PRODUCTION_PROOF_MISSING', 'Production baseline proof is missing');
+  const summary = proof.deploy_summary || {};
+  const contract = proof.production_contract || {};
+  const remote = proof.remote || {};
+  for (const [label, value] of Object.entries({
+    remote_head: remote.remote_head,
+    deploy_state: remote.deploy_state,
+    deployed_head: summary.deployed_head,
+    summary_remote_head: summary.remote_head,
+    expected_commit: summary.expected_commit,
+    contract_target_sha: contract.target_sha,
+    contract_git_head: contract.git_head,
+    contract_deploy_state_sha: contract.deploy_state_sha,
+  })) {
+    if (value !== targetSha) fail('PRODUCTION_SHA_MISMATCH', `${label} does not match production target SHA`);
+  }
+  if (summary.frontend_asset_parity_status !== 'pass') fail('PRODUCTION_ASSET_PARITY_FAILED', 'Frontend asset parity did not pass');
+  if (contract.ok !== true) fail('PRODUCTION_CONTRACT_FAILED', 'Production contract is not successful');
+  if (!Array.isArray(contract.health) || contract.health.length === 0
+    || contract.health.some((entry) => entry.ok !== true || entry.runtime_sha !== targetSha)) {
+    fail('PRODUCTION_RUNTIME_SHA_MISMATCH', 'Live production health does not prove the exact target SHA');
+  }
+  return proof;
 }
 
 class NonceLedger {
@@ -269,6 +405,134 @@ class NonceLedger {
     fs.writeFileSync(temporary, `${JSON.stringify(completed, null, 2)}\n`, { mode: 0o600 });
     fs.renameSync(temporary, target);
     return completed;
+  }
+
+  read(auth) {
+    return readJson(this.entryPath(auth), 'nonce ledger entry');
+  }
+
+  transition(auth, expectedStatus, status, details = {}) {
+    const target = this.entryPath(auth);
+    const entry = readJson(target, 'nonce ledger entry');
+    if (entry.status !== expectedStatus) fail('LEDGER_STATE_INVALID', `Expected nonce ledger state ${expectedStatus}, got ${entry.status}`);
+    const timestamp = new Date().toISOString();
+    const next = {
+      ...entry,
+      status,
+      updated_at: timestamp,
+      ...(status === 'deployed_pending_accuracy' ? { deployed_at: timestamp } : {}),
+      ...(status === 'completed' || status === 'failed' ? { completed_at: timestamp } : {}),
+      details: { ...(entry.details || {}), ...details },
+    };
+    const temporary = `${target}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(temporary, target);
+    if (process.platform !== 'win32') fs.chmodSync(target, 0o600);
+    return next;
+  }
+
+  markDeployedPendingAccuracy(auth, details = {}) {
+    return this.transition(auth, 'reserved', 'deployed_pending_accuracy', details);
+  }
+
+  finalize(auth, details = {}) {
+    return this.transition(auth, 'deployed_pending_accuracy', 'completed', details);
+  }
+
+  recordAccuracyFailure(auth, details = {}) {
+    const target = this.entryPath(auth);
+    const entry = readJson(target, 'nonce ledger entry');
+    if (entry.status !== 'deployed_pending_accuracy') fail('LEDGER_STATE_INVALID', `Accuracy failure requires deployed_pending_accuracy, got ${entry.status}`);
+    const updated = {
+      ...entry,
+      updated_at: new Date().toISOString(),
+      details: {
+        ...(entry.details || {}),
+        residual_risks: [...(entry.details?.residual_risks || []), details],
+      },
+    };
+    const temporary = `${target}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify(updated, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(temporary, target);
+    if (process.platform !== 'win32') fs.chmodSync(target, 0o600);
+    return updated;
+  }
+}
+
+function releaseRecordMarkdown(record) {
+  const lines = [
+    '# Production Release Record',
+    '',
+    `- Target SHA: \`${record.target_sha}\``,
+    `- Branch: \`${record.branch}\``,
+    `- Ledger state: \`${record.ledger_state}\``,
+    `- Authorization tag: \`${record.authorization?.tag || 'missing'}\``,
+    `- Signer fingerprint: \`${record.authorization?.signer_fingerprint || 'missing'}\``,
+    `- Documentation closure: \`${record.documentation_closure?.status || 'missing'}\``,
+    `- Regression risk: \`${record.regression_risk_notice?.status || 'missing'}\``,
+    '',
+    '## Release Slices',
+    '',
+  ];
+  for (const slice of record.release_slices || []) {
+    lines.push(`### ${slice.slice_name || slice.name || slice.id}`);
+    lines.push(`- Documentation decision: \`${slice.documentation_closure?.decision || 'missing'}\``);
+    lines.push(`- Accuracy state: \`${slice.accuracy_state || 'deployed_pending_accuracy'}\``);
+    lines.push('');
+  }
+  if ((record.residual_risks || []).length > 0) {
+    lines.push('## Residual Risks', '');
+    for (const risk of record.residual_risks) lines.push(`- ${typeof risk === 'string' ? risk : JSON.stringify(risk)}`);
+    lines.push('');
+  }
+  return `${lines.join('\n').trim()}\n`;
+}
+
+class ReleaseRecordStore {
+  constructor(directory) {
+    this.directory = directory;
+  }
+
+  targetDirectory(targetSha) {
+    return path.join(this.directory, targetSha);
+  }
+
+  writeOnce(targetSha, basename, value, markdown = false) {
+    if (!/^[0-9a-f]{40}$/.test(targetSha)) fail('RELEASE_RECORD_INVALID', 'Release record target SHA is invalid');
+    fs.mkdirSync(this.directory, { recursive: true, mode: 0o700 });
+    const targetDirectory = this.targetDirectory(targetSha);
+    fs.mkdirSync(targetDirectory, { recursive: true, mode: 0o700 });
+    if (process.platform !== 'win32') {
+      fs.chmodSync(this.directory, 0o700);
+      fs.chmodSync(targetDirectory, 0o700);
+    }
+    const target = path.join(targetDirectory, basename);
+    let descriptor;
+    try {
+      descriptor = fs.openSync(target, 'wx', 0o600);
+      fs.writeFileSync(descriptor, markdown ? value : `${JSON.stringify(value, null, 2)}\n`);
+    } catch (error) {
+      if (error.code === 'EEXIST') fail('RELEASE_RECORD_EXISTS', `Immutable release record already exists: ${target}`);
+      throw error;
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+    }
+    if (process.platform !== 'win32') fs.chmodSync(target, 0o600);
+    return target;
+  }
+
+  writeDeploymentRecord(record) {
+    return {
+      json: this.writeOnce(record.target_sha, 'release_record.json', record),
+      markdown: this.writeOnce(record.target_sha, 'release_record.md', releaseRecordMarkdown(record), true),
+    };
+  }
+
+  writeFinalizationRecord(record) {
+    return {
+      json: this.writeOnce(record.target_sha, 'accuracy_finalization.json', record),
+      markdown: this.writeOnce(record.target_sha, 'accuracy_finalization.md', releaseRecordMarkdown(record), true),
+    };
   }
 }
 
@@ -339,6 +603,67 @@ function buildRemoteDeployArgs(config, targetSha) {
   ];
 }
 
+function buildRemoteProofArgs(config, targetSha) {
+  ensureCredentialFile(config.production?.ssh_key_path, 'Production SSH key');
+  const production = config.production || {};
+  for (const field of ['host', 'user', 'app_dir']) {
+    if (!production[field]) fail('PRODUCTION_CREDENTIALS_ABSENT', `Production configuration is missing ${field}`);
+  }
+  const appDir = String(production.app_dir).replace(/'/g, "'\\''");
+  const remote = [
+    'set -e',
+    `cd '${appDir}'`,
+    `test "$(git rev-parse HEAD)" = "${targetSha}"`,
+    `test "$(cat .deploy-state/last_deployed_commit)" = "${targetSha}"`,
+    'summary=$(ls -1t logs/deploy/deploy_*.summary.txt | head -1)',
+    'contract=$(ls -1t logs/deploy/deploy_*.production_contract.json | head -1)',
+    'printf "remote_head=%s\\n" "$(git rev-parse HEAD)"',
+    'printf "deploy_state=%s\\n" "$(cat .deploy-state/last_deployed_commit)"',
+    'printf "summary_path=%s\\n" "$summary"',
+    'printf "contract_path=%s\\n" "$contract"',
+    'printf "summary_base64=%s\\n" "$(base64 -w0 "$summary")"',
+    'printf "contract_base64=%s\\n" "$(base64 -w0 "$contract")"',
+  ].join('; ');
+  return [
+    '-i', production.ssh_key_path,
+    '-p', String(production.port || 22),
+    '-o', 'BatchMode=yes',
+    '-o', 'IdentitiesOnly=yes',
+    `${production.user}@${production.host}`,
+    remote,
+  ];
+}
+
+function parseProductionProofOutput(output) {
+  const values = parseKeyValueSummary(output);
+  for (const field of ['remote_head', 'deploy_state', 'summary_path', 'contract_path', 'summary_base64', 'contract_base64']) {
+    if (!values[field]) fail('PRODUCTION_PROOF_MISSING', `Production proof output is missing ${field}`);
+  }
+  const deploySummaryText = Buffer.from(values.summary_base64, 'base64').toString('utf8');
+  const productionContractText = Buffer.from(values.contract_base64, 'base64').toString('utf8');
+  let productionContract;
+  try {
+    productionContract = JSON.parse(productionContractText);
+  } catch (error) {
+    fail('PRODUCTION_PROOF_INVALID', `Production contract is invalid JSON: ${error.message}`);
+  }
+  return {
+    captured_at: new Date().toISOString(),
+    remote: {
+      remote_head: values.remote_head,
+      deploy_state: values.deploy_state,
+    },
+    deploy_summary: parseKeyValueSummary(deploySummaryText),
+    production_contract: productionContract,
+    artifacts: {
+      deploy_summary_path: values.summary_path,
+      deploy_summary_sha256: crypto.createHash('sha256').update(deploySummaryText).digest('hex'),
+      production_contract_path: values.contract_path,
+      production_contract_sha256: crypto.createHash('sha256').update(productionContractText).digest('hex'),
+    },
+  };
+}
+
 module.exports = {
   AUTH_SCHEMA,
   EVIDENCE_SCHEMA,
@@ -353,13 +678,21 @@ module.exports = {
   verifySignedTag,
   validateTagName,
   validateInventory,
+  validateInventoryDocumentation,
+  validateDocumentationClosureEvidence,
   validateEvidence,
   validateLiveGithubEvidence,
   validateAccuracyProofBundle,
+  parseKeyValueSummary,
+  validateProductionBaselineProof,
+  ReleaseRecordStore,
+  releaseRecordMarkdown,
   sanitizeQualificationEnv,
   runQualification,
   ensureCredentialFile,
   createWorktree,
   removeWorktree,
   buildRemoteDeployArgs,
+  buildRemoteProofArgs,
+  parseProductionProofOutput,
 };

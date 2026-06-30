@@ -62,6 +62,25 @@
       "required_docs": [
         "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md"
       ],
+      "architecture_classification": "no-architecture-impact",
+      "architecture_classification_allowed_values": [
+        "no-architecture-impact",
+        "within-existing-boundary",
+        "cross-boundary"
+      ],
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "REAL_REVIEWER_IDENTITY",
+        "reviewed_at": "2026-06-30T00:00:00.000Z",
+        "rationale": "Explain why these documents close the implementation contract or why no tracked change is required.",
+        "documents": [
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "updated",
+            "evidence": "Updated the release behavior and validation contract for this slice."
+          }
+        ]
+      },
       "adr_compliance_declaration_required": false,
       "adr_or_compliance": "ADR impact reviewed; identify the governing ADR or explain why none is required.",
       "rollback_notes": "Describe the exact rollback operation and evidence required.",

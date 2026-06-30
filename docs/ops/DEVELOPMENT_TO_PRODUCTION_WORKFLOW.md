@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-06-28
+last_reviewed: 2026-06-30
 applies_to: development_to_production_release_flow
 topic: development_to_production_workflow
 ---
@@ -23,7 +23,9 @@ feature PR -> staging CI -> reviewed batch document -> isolated QA
 -> exact master evidence and local controller qualification
 -> owner signs production authorization
 -> external controller deploys exact master SHA
--> fail-closed per-slice production accuracy proof
+-> deployed_pending_accuracy + immutable external deployment record
+-> separate trusted per-slice production accuracy finalization
+-> completed + immutable external finalization record
 ```
 
 ## Authoritative Inputs
@@ -74,6 +76,8 @@ Strict validation rejects:
 
 The controller hashes the exact reviewed inventory bytes with SHA-256. The owner authorization tag binds that hash.
 
+Each reviewed slice must also declare `architecture_classification` and a `documentation_closure` object. Closure is either `updated` or `no_change_required`; it must identify a real reviewer, review timestamp, specific rationale, governed document paths, action, and evidence. Updated documents must be present in the exact candidate diff. Reviewed-current documents must exist and be tracked. Cross-boundary slices must include an updated ADR. The generated `documentation_closure.json` report is non-bypassable and its SHA-256 is bound into `sku-release-evidence/v2`.
+
 ## Regression Risk Notice
 
 Every promotion and production candidate must produce a machine-readable and operator-readable Regression Risk Notice before signed authorization:
@@ -88,7 +92,7 @@ The controller and operator must treat a missing or invalid notice as a release 
 
 ## Candidate Evidence
 
-GitHub candidate workflows publish short-lived evidence bundles containing the exact SHA, base SHA, PR identity, required-check conclusions and URLs, reviewed inventory hash, Regression Risk Notice, QA evidence hash, source-contract result, merge-adoption result, and payment-sensitive flag.
+GitHub candidate workflows publish short-lived evidence bundles containing the exact SHA, base SHA, PR identity, required-check conclusions and URLs, reviewed inventory hash, documentation-closure status and hash, Regression Risk Notice status and hash, QA evidence hash, source-contract result, merge-adoption result, and payment-sensitive flag.
 
 The controller independently verifies GitHub PR/check state and recomputes all local hashes. Candidate evidence is rejected when required evidence is absent, failed, stale, malformed, or inconsistent with current remote state.
 
@@ -127,15 +131,24 @@ The promotion controller must not reject a release because a slice originated on
 
 Before candidate checkout, the controller verifies production and any payment authorization. It then performs local qualification in an ephemeral exact-SHA worktree without production credentials. Only after qualification succeeds may the controller use OS-protected production connection material to invoke the fixed remote deploy operation.
 
-Production is refused when master moved, credentials are absent, QA differs from the target, inventory/evidence hashes changed, required checks failed, or any authorization was replayed/expired/invalid.
+Production is refused when master moved, credentials are absent, QA differs from the target, inventory/evidence/documentation hashes changed, documentation closure failed, required checks failed, or any authorization was replayed/expired/invalid.
 
 The GitHub workflow `.github/workflows/deploy-production.yml` produces a dry-run candidate bundle only. It cannot deploy.
 
 ## Production Proof And Accuracy
 
-Deployment proof must show target agreement across remote HEAD, `.deploy-state/last_deployed_commit`, deploy summary, production contract, frontend asset parity, runtime health SHA, and public endpoints.
+Deployment proof must show target agreement across remote HEAD, `.deploy-state/last_deployed_commit`, deploy summary, production contract, frontend asset parity, runtime health SHA, and public endpoints. Successful deployment transitions the nonce ledger only to `deployed_pending_accuracy` and creates immutable `release_record.json` plus `release_record.md` under the root-owned external `release_records_dir`.
 
-Every release slice must then consume actual API, UI, read-only database, or asset proof. Proof records must identify the exact target SHA, slice, proof type, command/request identity, capture time, result, and artifact hash. Missing, placeholder, stale, mutating database, or failed proof blocks release completion.
+Every release slice must then consume actual API, UI, read-only database, or asset proof. Proof records must identify the exact target SHA, slice, proof type, command/request identity, capture time, result, and artifact hash. A separate trusted finalization invocation recollects production proof and rejects missing, placeholder, stale, mutating database, wrong-SHA, hash-mismatched, or failed proof. Only a passing proof for every slice transitions the ledger to `completed` and creates immutable `accuracy_finalization.json` plus `.md`.
+
+## Release Truth And Documentation
+
+1. Production runtime truth comes from live runtime SHA plus deploy markers and contract evidence.
+2. Source-current documentation describes repository intent and must not be presented as production-live by itself.
+3. External immutable release records preserve what was deployed, its signed authorization, documentation closure, risk notice, baseline proof, lifecycle state, and final per-slice accuracy.
+4. Follow-up tracked documentation may summarize an external record for operator discovery, but its later commit is not proof of its own deployment.
+5. `deployed_pending_accuracy` means code reached production but the release is not complete.
+6. `completed` means current exact-SHA production proof and every required per-slice accuracy proof passed trusted finalization.
 
 ## Actions Cost Policy
 

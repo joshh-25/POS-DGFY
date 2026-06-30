@@ -8,7 +8,12 @@ const VALID_VERDICTS = new Set(['ship', 'split', 'fix first', 'defer', 'blocked'
 const VALID_RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical']);
 const VALID_REGRESSION_RISK_LEVELS = new Set(['none', 'low', 'medium', 'high', 'critical']);
 const VALID_SOURCE_TYPES = new Set(['developer_pr', 'owner_direct_staging', 'controller_promotion']);
+const VALID_ARCHITECTURE_CLASSIFICATIONS = new Set(['no-architecture-impact', 'within-existing-boundary', 'cross-boundary']);
+const VALID_DOCUMENTATION_DECISIONS = new Set(['updated', 'no_change_required']);
+const VALID_DOCUMENTATION_ACTIONS = new Set(['updated', 'reviewed_current']);
 const PLACEHOLDER_PATTERN = /(?:^|\b)(unknown|not provided|n\/?a|none|todo|tbd|placeholder|example|generated|replace this)(?:\b|$)/i;
+const DOCUMENT_PATH_PATTERN = /^docs\/.+\.(?:md|mdx|json|ya?ml)$/i;
+const ADR_PATH_PATTERN = /^docs\/architecture\/adr\/.+\.md$/i;
 const REQUIRED_SURFACES = [
   'backend',
   'frontend',
@@ -153,6 +158,132 @@ function changedFiles(projectRoot, base, head) {
     });
   }
   return result.stdout.split(/\r?\n/).filter(Boolean).map((filePath) => filePath.replace(/\\/g, '/'));
+}
+
+function isTrackedAtRef(projectRoot, ref, filePath) {
+  if (!projectRoot || !ref || !filePath) return false;
+  return runGit(projectRoot, ['cat-file', '-e', `${ref}:${filePath}`]).ok;
+}
+
+function isReviewedText(value, minimumLength = 12) {
+  return typeof value === 'string'
+    && value.trim().length >= minimumLength
+    && !PLACEHOLDER_PATTERN.test(value);
+}
+
+function validateDocumentationClosure(slice, options = {}) {
+  const failures = [];
+  const sliceName = slice.slice_name || slice.name || '<unnamed>';
+  const classification = slice.architecture_classification;
+  const closure = slice.documentation_closure;
+  const changed = new Set(options.expectedChangedFiles || []);
+
+  if (!VALID_ARCHITECTURE_CLASSIFICATIONS.has(classification)) {
+    failures.push(`slice ${sliceName} has invalid architecture_classification: ${classification || '<missing>'}`);
+  }
+  if (!closure || typeof closure !== 'object' || Array.isArray(closure)) {
+    failures.push(`slice ${sliceName} requires documentation_closure`);
+    return failures;
+  }
+  if (!VALID_DOCUMENTATION_DECISIONS.has(closure.decision)) {
+    failures.push(`slice ${sliceName} has invalid documentation_closure decision: ${closure.decision || '<missing>'}`);
+  }
+  if (!isReviewedText(closure.reviewed_by)) failures.push(`slice ${sliceName} documentation_closure reviewed_by is missing or placeholder`);
+  if (!Number.isFinite(Date.parse(closure.reviewed_at || ''))) failures.push(`slice ${sliceName} documentation_closure reviewed_at must be a valid timestamp`);
+  if (!isReviewedText(closure.rationale, closure.decision === 'no_change_required' ? 24 : 12)) {
+    failures.push(`slice ${sliceName} documentation_closure rationale is missing, placeholder, or too vague`);
+  }
+  if (!Array.isArray(closure.documents) || closure.documents.length === 0) {
+    failures.push(`slice ${sliceName} documentation_closure requires at least one document`);
+    return failures;
+  }
+
+  const seen = new Set();
+  let updatedCount = 0;
+  let reviewedCurrentCount = 0;
+  let updatedAdrCount = 0;
+  for (const document of closure.documents) {
+    if (!document || typeof document !== 'object' || Array.isArray(document)) {
+      failures.push(`slice ${sliceName} documentation_closure document entries must be objects`);
+      continue;
+    }
+    const documentPath = String(document.path || '').replace(/\\/g, '/');
+    if (!DOCUMENT_PATH_PATTERN.test(documentPath) || documentPath.includes('..')) {
+      failures.push(`slice ${sliceName} documentation_closure path is not a governed document: ${documentPath || '<missing>'}`);
+    }
+    if (seen.has(documentPath)) failures.push(`slice ${sliceName} documentation_closure repeats document: ${documentPath}`);
+    seen.add(documentPath);
+    if (!VALID_DOCUMENTATION_ACTIONS.has(document.action)) {
+      failures.push(`slice ${sliceName} documentation_closure has invalid action for ${documentPath || '<missing>'}`);
+    }
+    if (!isReviewedText(document.evidence)) {
+      failures.push(`slice ${sliceName} documentation_closure evidence is missing or placeholder for ${documentPath || '<missing>'}`);
+    }
+    if (options.projectRoot && options.headSha && !isTrackedAtRef(options.projectRoot, options.headSha, documentPath)) {
+      failures.push(`slice ${sliceName} documentation_closure document is missing or untracked at candidate SHA: ${documentPath}`);
+    }
+    if (document.action === 'updated') {
+      updatedCount += 1;
+      if (!changed.has(documentPath)) failures.push(`slice ${sliceName} documentation_closure marks an unchanged document as updated: ${documentPath}`);
+      if (ADR_PATH_PATTERN.test(documentPath)) updatedAdrCount += 1;
+    }
+    if (document.action === 'reviewed_current') reviewedCurrentCount += 1;
+  }
+
+  if (closure.decision === 'updated' && updatedCount === 0) {
+    failures.push(`slice ${sliceName} documentation_closure decision=updated requires at least one updated document`);
+  }
+  if (closure.decision === 'no_change_required') {
+    if (updatedCount > 0) failures.push(`slice ${sliceName} documentation_closure decision=no_change_required cannot contain updated documents`);
+    if (reviewedCurrentCount === 0) failures.push(`slice ${sliceName} documentation_closure decision=no_change_required requires a reviewed_current document`);
+  }
+  if (classification === 'cross-boundary' && updatedAdrCount === 0) {
+    failures.push(`slice ${sliceName} is cross-boundary and requires an updated ADR in documentation_closure`);
+  }
+  for (const requiredDoc of slice.required_docs || []) {
+    const normalized = String(requiredDoc || '').replace(/\\/g, '/');
+    if (!DOCUMENT_PATH_PATTERN.test(normalized) || normalized.includes('..')) {
+      failures.push(`slice ${sliceName} required_docs contains a non-document path: ${normalized || '<missing>'}`);
+    }
+    if (options.projectRoot && options.headSha && !isTrackedAtRef(options.projectRoot, options.headSha, normalized)) {
+      failures.push(`slice ${sliceName} required document is missing or untracked at candidate SHA: ${normalized}`);
+    }
+    if (!seen.has(normalized)) failures.push(`slice ${sliceName} required document is absent from documentation_closure: ${normalized}`);
+  }
+  return failures;
+}
+
+function buildDocumentationClosureReport(inventory, options = {}) {
+  const releaseSlices = normalizeSlices(inventory);
+  const sliceReports = releaseSlices.map((slice) => {
+    const failures = validateDocumentationClosure(slice, {
+      ...options,
+      headSha: options.headSha || inventory.head_sha,
+      expectedChangedFiles: options.expectedChangedFiles || inventory.expected_changed_files || [],
+    });
+    return {
+      slice_id: slice.id,
+      slice_name: slice.slice_name || slice.name,
+      status: failures.length === 0 ? 'pass' : 'fail',
+      architecture_classification: slice.architecture_classification || null,
+      decision: slice.documentation_closure?.decision || null,
+      reviewed_by: slice.documentation_closure?.reviewed_by || null,
+      reviewed_at: slice.documentation_closure?.reviewed_at || null,
+      documents: slice.documentation_closure?.documents || [],
+      failures,
+    };
+  });
+  const failures = sliceReports.flatMap((slice) => slice.failures);
+  return {
+    schema: 'sku-documentation-closure/v1',
+    version: 1,
+    generated_at: new Date().toISOString(),
+    target_sha: inventory.head_sha,
+    status: failures.length === 0 ? 'pass' : 'fail',
+    non_bypassable: true,
+    failures,
+    release_slices: sliceReports,
+  };
 }
 
 function unique(values) {
@@ -433,6 +564,18 @@ function buildSlice({ key, files, options }) {
     completed_tests: [],
     docs_required: true,
     required_docs: ['docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md'],
+    architecture_classification: 'no-architecture-impact',
+    documentation_closure: {
+      decision: 'no_change_required',
+      reviewed_by: 'DRAFT reviewer required',
+      reviewed_at: '',
+      rationale: 'DRAFT documentation closure review required before promotion.',
+      documents: [{
+        path: 'docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md',
+        action: 'reviewed_current',
+        evidence: 'DRAFT reviewer must confirm this document remains current.',
+      }],
+    },
     adr_compliance_declaration_required: paymentSensitive || surfaces.includes('compliance'),
     adr_or_compliance: paymentSensitive
       ? 'Payment-sensitive candidate: explicit payment-release approval plus ADR 0027 and payment-specific gates are required before automatic promotion.'
@@ -666,6 +809,14 @@ function validateInventory(inventory, options = {}) {
     if (options.requireShip && !VALID_SOURCE_TYPES.has(slice.source_type)) failures.push(`slice ${sliceName} has invalid source_type: ${slice.source_type || '<missing>'}`);
     if (!slice.promotion_eligibility) failures.push(`slice ${sliceName} missing promotion_eligibility`);
 
+    if (options.requireShip) {
+      failures.push(...validateDocumentationClosure(slice, {
+        projectRoot: options.projectRoot,
+        headSha: inventory.head_sha,
+        expectedChangedFiles: options.expectedChangedFiles || inventory.expected_changed_files || [],
+      }));
+    }
+
     const computedPaymentSensitive = (slice.included_files || []).some(isPaymentSensitive);
     if (slice.payment_sensitive !== computedPaymentSensitive) failures.push(`slice ${sliceName} payment_sensitive does not match included files`);
     const computedHighRisk = (slice.included_files || []).some(isHighRiskPath);
@@ -728,6 +879,7 @@ function toMarkdown(inventory) {
     lines.push(`- Payment sensitive: ${slice.payment_sensitive ? 'yes' : 'no'}`);
     lines.push(`- High-risk path: ${slice.high_risk_path ? 'yes' : 'no'}`);
     lines.push(`- ADR/compliance: ${slice.adr_or_compliance}`);
+    lines.push(`- Architecture classification: \`${slice.architecture_classification || 'missing'}\``);
     lines.push(`- Rollback: ${slice.rollback_notes}`);
     lines.push('');
     lines.push('Included files:');
@@ -748,6 +900,14 @@ function toMarkdown(inventory) {
     lines.push('');
     lines.push('Required docs:');
     for (const docPath of slice.required_docs || []) lines.push(`- \`${docPath}\``);
+    lines.push('');
+    lines.push('Documentation closure:');
+    lines.push(`- Decision: \`${slice.documentation_closure?.decision || 'missing'}\``);
+    lines.push(`- Reviewer: \`${slice.documentation_closure?.reviewed_by || 'missing'}\``);
+    lines.push(`- Rationale: ${slice.documentation_closure?.rationale || 'missing'}`);
+    for (const document of slice.documentation_closure?.documents || []) {
+      lines.push(`- \`${document.path}\` -> \`${document.action}\` (${document.evidence})`);
+    }
     lines.push('');
     lines.push('Production proof required:');
     for (const proof of slice.production_proof_required || []) lines.push(`- ${proof}`);
@@ -777,6 +937,7 @@ function checkBatchInventory(options, logger = console) {
   const failures = validateInventory(inventory, {
     requireShip: options.requireShip,
     expectedChangedFiles: inventory.expected_changed_files,
+    projectRoot: path.resolve(options.projectRoot),
   });
   const markdown = toMarkdown(inventory);
 
@@ -837,4 +998,9 @@ module.exports = {
   inferRegressionEvidenceGaps,
   buildRegressionWarningSummary,
   withRegressionRiskFields,
+  validateDocumentationClosure,
+  buildDocumentationClosureReport,
+  VALID_ARCHITECTURE_CLASSIFICATIONS,
+  VALID_DOCUMENTATION_DECISIONS,
+  VALID_DOCUMENTATION_ACTIONS,
 };

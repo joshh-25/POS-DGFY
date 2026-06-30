@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-06-28
+last_reviewed: 2026-06-30
 applies_to: development_to_production_release_authorization
 topic: free_tier_signed_release_authorization
 ---
@@ -54,6 +54,14 @@ pr_number=<positive integer>
 17. Direct master pushes and merges cannot be prevented on this GitHub plan, so they are detected and reported. They remain undeployable until they are reconciled through `staging` and governed promotion evidence exists. A future direct-master override would require a separate ADR and controller tests proving equivalent exact-SHA, inventory, QA, local qualification, evidence-hash, payment, and production-authorization controls.
 18. `ENABLE_AUTO_PRODUCTION_DEPLOY` remains `0`. GitHub production workflows only build dry-run candidate bundles.
 19. GitHub may create or update the promotion PR, but only the external promotion controller may merge it.
+20. Every reviewed release slice carries a non-bypassable `documentation_closure` decision. The controller rejects missing, placeholder, untracked, unchanged-as-updated, or cross-boundary-without-ADR documentation claims.
+21. Candidate evidence uses `sku-release-evidence/v2` and hash-binds the passing documentation-closure artifact and Regression Risk Notice to the exact reviewed inventory and target SHA.
+22. Production authorization is a two-phase lifecycle: `authorized -> reserved -> deployed_pending_accuracy -> completed`. Successful SSH deployment never directly produces `completed`.
+23. A failure before production mutation transitions `reserved -> failed`. A missing, failed, stale, or wrong-SHA post-deploy proof leaves the consumed authorization in `deployed_pending_accuracy` and records residual risk; it does not falsely report completion.
+24. A separate trusted finalization operation recollects current production proof, verifies production still runs the exact target SHA, validates hash-verified proof for every release slice, and only then transitions to `completed`.
+25. Every production deployment writes root-owned, mode `0600`, machine-readable and human-readable records beneath `/var/lib/skupervisor-release-controller/releases/<target_sha>/`. These records are outside the deployed checkout and are never committed as proof of their own deployed SHA.
+26. The deployment record is immutable and records `deployed_pending_accuracy`. Successful finalization creates separate immutable accuracy-finalization JSON and Markdown records rather than rewriting the deployment record.
+27. The first trusted controller installation is a bootstrap ceremony. The operator must independently record and approve the controller source SHA, package checksum, installer version, validation evidence, full signer fingerprint, root ownership, and installed version before production authority is enabled.
 
 ## Threat Model
 
@@ -66,6 +74,9 @@ The controls address:
 5. Substitution of inventory, QA, PR, check, or deployment evidence after owner approval.
 6. Payment-channel changes being hidden in a general release approval.
 7. A moved branch being deployed under authorization for an earlier SHA.
+8. A release claiming documentation closure through nonexistent, untracked, unchanged, placeholder, or unreviewed documents.
+9. A successful deploy command being mistaken for verified production behavior.
+10. Post-deploy evidence being committed into a later Git SHA and misrepresented as proof contained by the deployed SHA itself.
 
 The controls do not protect against a fully compromised controller root account, production root account, or owner signing private key. Those are explicit trust anchors requiring host security and incident procedures.
 
@@ -83,8 +94,9 @@ The controls do not protect against a fully compromised controller root account,
 2. Remove or revoke the affected signer fingerprint or production credential.
 3. Preserve the append-only nonce ledger, authorization tags, controller logs, candidate bundles, and production proof.
 4. Compare remote master, deployed markers, runtime SHA, and the last valid ledger completion.
-5. Rotate affected keys/credentials and install a newly pinned controller version.
-6. Resume only with fresh signed tags and nonces. Never delete a ledger entry to make an old authorization reusable.
+5. Preserve the external deployment and finalization records. A `deployed_pending_accuracy` record is an incomplete release, not evidence of completion.
+6. Rotate affected keys/credentials and install a newly pinned controller version.
+7. Resume only with fresh signed tags and nonces. Never delete a ledger entry to make an old authorization reusable.
 
 ## Future Migration
 
@@ -97,3 +109,4 @@ When the repository plan supports native branch protection, rulesets, private en
 3. Owner authorization occurs after immutable evidence hashes are known, which adds an explicit release ceremony.
 4. Privileged operators with root access remain capable of bypassing any software control; root access must be tightly limited and audited.
 5. The change is cross-boundary because production trust and deployment topology move outside GitHub. It does not add an application architecture allowlist exception.
+6. Post-deploy documentation cannot be part of the same deployed Git SHA. Repository follow-up documentation may summarize an external record, but it must identify the already-deployed SHA and cannot serve as self-proof for its own commit.

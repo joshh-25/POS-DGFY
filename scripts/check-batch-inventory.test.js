@@ -26,6 +26,7 @@ function makeRepo() {
   runGit(root, ['config', 'user.email', 'test@example.com']);
   runGit(root, ['config', 'user.name', 'Batch Inventory Test']);
   writeFile(root, 'README.md', '# Test\n');
+  writeFile(root, 'docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md', '# Release workflow\n');
   runGit(root, ['add', '.']);
   runGit(root, ['commit', '-m', 'base']);
   runGit(root, ['branch', 'origin/master']);
@@ -52,6 +53,18 @@ function createReviewedManifest(root, mutate = (manifest) => manifest) {
       source_pr: '24',
       source_type: 'developer_pr',
       completed_tests: slice.required_tests.map((command) => ({ command, status: 'pass', evidence: `https://github.com/owner/repo/actions/runs/123#${encodeURIComponent(command)}` })),
+      architecture_classification: 'no-architecture-impact',
+      documentation_closure: {
+        decision: 'no_change_required',
+        reviewed_by: 'release documentation reviewer',
+        reviewed_at: '2026-06-28T00:00:00.000Z',
+        rationale: 'The governed release workflow remains current for this isolated implementation change.',
+        documents: [{
+          path: 'docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md',
+          action: 'reviewed_current',
+          evidence: 'Reviewed the existing workflow and confirmed that no behavior contract changed.',
+        }],
+      },
       can_ship_independently: true,
       promotion_eligibility: 'eligible',
       verdict: 'ship',
