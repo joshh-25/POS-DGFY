@@ -648,7 +648,7 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
                 </span>
               </div>
               <div style={{ fontSize: '14px', color: '#5F6B7A', flex: '1 1 400px', lineHeight: 1.5 }}>
-                Enterprise-grade procurement, batch-FIFO tracking, and multi-location inventory sync powering DGFY's operational backbone.
+                Enterprise-grade procurement, batch-FIFO tracking, and multi-location inventory sync powering DGFY&apos;s operational backbone.
               </div>
             </div>
           </div>

@@ -53,7 +53,7 @@ const resolveOrCreateCustomerForDgfyAccount = async (account) => {
     const email = String(account?.email || '').trim().toLowerCase();
     if (!email) return null;
 
-    let customer = null;
+    let customer;
     try {
         customer = await StoreCustomer.findOne({ where: { dgfy_account_id: account.id } });
     } catch (error) {

@@ -749,7 +749,7 @@ export function DgfyCustomerAccountPage({
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-              {Boolean(accountPanel?.me?.is_email_verified) ? (
+              {accountPanel?.me?.is_email_verified ? (
                 <span style={{ background: '#E6F4EA', color: '#137333', fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                   Verified <CheckCircle2 size={14} />
                 </span>
