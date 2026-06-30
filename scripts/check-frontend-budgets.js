@@ -15,14 +15,18 @@ const ROUTE_BUDGETS = [
   { app: 'skupervisor', prefix: 'Login-', limitKb: 20 },
   // Rebased 2026-06-02 after ADR 0026 added cookie/CSRF browser session
   // plumbing to POS-authenticated surfaces.
-  { app: 'skupervisor', prefix: 'POSCheckoutTerminal-', limitKb: 66 },
+  // SKUpervisor uses a deliberately separate checkout implementation from the
+  // standalone cashier surface, so its lazy chunk follows the component name.
+  { app: 'skupervisor', prefix: 'SkupervisorPOSCheckoutTerminal-', limitKb: 66 },
   // Standalone POS owns the cashier terminal route. Keep it separately budgeted
-  // so the split app cannot drift behind the admin-only surface.
-  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 68 },
+  // so the split app cannot drift behind the admin-only surface. Rebased after
+  // offline queue, terminal-session, and hardware-runtime controls were added.
+  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 94 },
   // PR #11 renamed the admin POS route chunk from POSPage-* to SkupervisorPOSPage-*.
   { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 59 },
-  // Rebased 2026-05-05 after barcode scan metadata was added to terminal flows.
-  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 35 },
+  // Rebased after terminal auth, shift, and queue orchestration moved into this
+  // route; the checkout UI and operations workspace remain separate lazy chunks.
+  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 53 },
   { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 20 },
 ];
 

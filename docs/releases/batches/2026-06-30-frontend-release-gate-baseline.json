@@ -1,0 +1,182 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-directed Codex review",
+  "reviewed_at": "2026-06-30T03:33:29.091Z",
+  "source_pr": "owner-requested-staging-pr-2026-06-30",
+  "release_slices": [
+    {
+      "id": "frontend-release-gate-baseline",
+      "slice_name": "Frontend release gate baseline repair",
+      "name": "Frontend release gate baseline repair",
+      "plain_english_purpose": "Restore reliable storefront behavior and make the frontend release checks measure the POS bundles that are actually shipped.",
+      "purpose": "Restore reliable storefront behavior and make the frontend release checks measure the POS bundles that are actually shipped.",
+      "implementation_summary": "Restores indexed storefront coordinates and accessible merchant carousel state, restores the customer reorder label, isolates POS checkout and operations chunks with lazy imports, and rebases the route budgets to fresh measured artifacts.",
+      "included_files": [
+        "docs/compliance/impact-declarations/2026-06-30-frontend-release-gate-baseline.md",
+        "docs/releases/batches/2026-06-30-frontend-release-gate-baseline.json",
+        "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+        "frontend/apps/store/src/StorefrontApp.jsx",
+        "frontend/apps/store/src/__tests__/discoveryFlow.integration.test.jsx",
+        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
+        "frontend/src/features/pos/pages/SkupervisorPOSPage.jsx",
+        "frontend/src/features/pos/pages/TerminalPage.jsx",
+        "scripts/check-frontend-budgets.js",
+        "scripts/check-frontend-budgets.test.js"
+      ],
+      "included_features": [
+        "DGFY account reorder quick action",
+        "Storefront indexed-coordinate and no-location pin correctness",
+        "Accessible featured-merchant carousel controls",
+        "Standalone and SKUpervisor POS lazy bundle boundaries",
+        "Fresh route-chunk release budgets"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Backend behavior changes",
+        "Database or migration changes",
+        "Checkout, payment, tax, or fiscal receipt logic changes",
+        "Staging to master promotion",
+        "Production deployment"
+      ],
+      "owner_attribution": "BabyBaBab owner-directed implementation",
+      "source_branch": "codex/fix-frontend-release-gates",
+      "source_pr": "owner-requested-staging-pr-2026-06-30",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "frontend",
+        "POS",
+        "Storefront",
+        "DGFY",
+        "compliance"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": true,
+        "POS": true,
+        "Storefront": true,
+        "DGFY": true,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "npm run test:frontend",
+        "npm run check:frontend-budgets",
+        "npm --prefix frontend run build:all",
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run test:backend:matrix",
+        "npm run test:development-to-production",
+        "npm run check:merge-adoption-required",
+        "npm run test:release-controller"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run test:frontend",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: 129 frontend test files and 710 tests passed"
+        },
+        {
+          "command": "npm run check:frontend-budgets",
+          "status": "pass",
+          "evidence": ".tmp/frontend-budgets/frontend_budget_report.json: fresh three-app build and all six route budgets passed"
+        },
+        {
+          "command": "npm --prefix frontend run build:all",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: SKUpervisor, standalone POS, and Storefront production builds passed"
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: 20 governed documents passed lint"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: 36 modules, 325 code files, and 69 controllers passed architecture checks"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: POS-sensitive paths and 10 compliance API contract rules passed"
+        },
+        {
+          "command": "npm run test:backend:matrix",
+          "status": "pass",
+          "evidence": ".tmp/release-gates/2a9d07ab7962662d71f2b933094c15364645ebba/backend-test-matrix/backend_test_matrix.json: schema preflight and 307 active backend test files passed"
+        },
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: all development-to-production governance test groups passed"
+        },
+        {
+          "command": "npm run check:merge-adoption-required",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: required merge-adoption manifest passed"
+        },
+        {
+          "command": "npm run test:release-controller",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: 18 release-controller tests passed"
+        },
+        {
+          "command": "in-app browser storefront carousel check",
+          "status": "pass",
+          "evidence": "http://127.0.0.1:5188/: nonblank rendered storefront, clean console, and next control moved aria-current to merchant page 2"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/compliance/impact-declarations/2026-06-30-frontend-release-gate-baseline.md"
+      ],
+      "architecture_classification": "no-architecture-impact",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-30T03:33:29.091Z",
+        "rationale": "The implementation stays inside existing Storefront, DGFY account, and POS frontend boundaries; the compliance declaration records the sensitive POS loading-only change and its unchanged fiscal and payment contracts.",
+        "documents": [
+          {
+            "path": "docs/compliance/impact-declarations/2026-06-30-frontend-release-gate-baseline.md",
+            "action": "updated",
+            "evidence": "Declares the POS route changes as loading-only and records the required compliance preconditions, validation, and rollback scope."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "No ADR update is required because ownership and runtime contracts do not cross boundaries; the major compliance declaration covers the POS-sensitive lazy-loading files.",
+      "rollback_notes": "Revert this commit as one unit, rebuild all frontend apps, and rerun frontend tests, route budgets, architecture, and compliance before promotion.",
+      "production_proof_required": [
+        "Exact production runtime SHA equals the promoted origin/master SHA",
+        "Frontend asset parity confirms the deployed Storefront and POS bundles",
+        "Production deploy summary reports healthy IMS, POS, Storefront, and backend checks"
+      ],
+      "production_accuracy_checks_required": [
+        "DGFY account overview shows Reorder Items and opens Orders",
+        "Storefronts with absent coordinates do not render a zero-coordinate pin",
+        "Shared placeholder coordinates render only as a count cluster",
+        "Featured merchant carousel arrows update the active pagination dot",
+        "Standalone POS and SKUpervisor POS load checkout after the lazy boundary without console errors"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": true,
+      "high_risk_files": [
+        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
+        "frontend/src/features/pos/pages/SkupervisorPOSPage.jsx",
+        "frontend/src/features/pos/pages/TerminalPage.jsx"
+      ]
+    }
+  ]
+}
