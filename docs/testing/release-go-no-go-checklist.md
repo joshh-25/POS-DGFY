@@ -1,13 +1,13 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 GitHub branch protection, rulesets, private environment secrets, and required deployment reviewers are unavailable for this private GitHub Free repository. GitHub checks are candidate evidence only. ADR 0030 and the root-owned external signed release controller are the production authorization boundary.
 
 ## Current Release State
 
-1. Latest behavior-bearing production runtime evidence available in this workspace is target SHA `17bb4cd1bc0abf283b224e30c02f625884e8ffae`, deployed/proven on June 29, 2026 from live production health, production remote checkout, production `.deploy-state/last_deployed_commit`, and public Storefront tracking API smoke. Live `/api/v1/health` reports `services.observability.runtime_sha=17bb4cd1bc0abf283b224e30c02f625884e8ffae` from `deploy_state:last_deployed_commit`; database, Redis, runtime schema, schema indexes, billing telemetry, and observability are healthy. Tenant pool capacity is at 20 of 20 and remains an operational warning. Live `GET https://dgfy.ph/api/v1/store/track/SK-2MIBVL` with `x-store-slug: eatery-ni-doe-2e561d` returned `200`, `status=placed`, and `status_label=Order placed`. The production server did not expose a deploy-summary file in `.deploy-state/` for this emergency run; current proof is remote `HEAD`, `.deploy-state/last_deployed_commit`, live runtime SHA, and live tracking API smoke. `origin/staging` contains the production SHA and preserves staging-only release-governance commits through merge commit `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de`; check the moving branch head with `git ls-remote origin staging`.
+1. Latest verified production runtime evidence is live `/api/v1/health.services.observability.runtime_sha=bf982d4e78f52e67c6575dd2a77037232a6ab4e9`, matching `origin/master` on June 30, 2026. The current task did not independently refresh remote HEAD, deploy marker, deploy summary, or an external controller record, so do not overclaim full two-phase completion. `origin/staging` started at `3624dce8134f9f044882fe4fa2a234e280228600`, 15 commits ahead of master; recheck moving refs before release decisions.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
@@ -67,6 +67,9 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 26. External controller dry-run must verify promotion/production authorization tags, full signer fingerprint, expiration, exact SHA, PR/check evidence, inventory/evidence hashes, unused nonce, and current remote branch.
 27. Payment-sensitive releases require an additional signed payment tag for both the staging promotion target and resulting master target.
 28. Per-slice accuracy review must include `--proof-bundle` and pass with hash-verified API, UI, read-only database, or asset artifacts.
+29. Documentation closure must pass for every slice and be hash-bound into `sku-release-evidence/v2`; it cannot be bypassed.
+30. Production deployment success ends at `deployed_pending_accuracy`. Only a separate trusted finalization with current exact-SHA proof for every slice may produce `completed`.
+31. Root-owned JSON and Markdown deployment/finalization records must exist outside Git under the configured `release_records_dir`.
 
 ## Latest Technical Evidence (2026-06-18)
 
