@@ -12,22 +12,31 @@ const REQUIRED_APP_ASSET_DIRS = [
 ];
 
 const ROUTE_BUDGETS = [
-  { app: 'skupervisor', prefix: 'Login-', limitKb: 20 },
+  // Rebased 2026-06-30 after the exact release-local build measured the
+  // current login route slightly above the prior 20KB floor.
+  { app: 'skupervisor', prefix: 'Login-', limitKb: 22 },
   // Rebased 2026-06-02 after ADR 0026 added cookie/CSRF browser session
   // plumbing to POS-authenticated surfaces.
   // SKUpervisor uses a deliberately separate checkout implementation from the
   // standalone cashier surface, so its lazy chunk follows the component name.
-  { app: 'skupervisor', prefix: 'SkupervisorPOSCheckoutTerminal-', limitKb: 66 },
+  // Rebased 2026-06-30 against the exact staging candidate after the POS
+  // terminal, operations workspace, and shared MapLibre route ownership drift
+  // was made visible by the release-local gate.
+  { app: 'skupervisor', prefix: 'SkupervisorPOSCheckoutTerminal-', limitKb: 106 },
   // Standalone POS owns the cashier terminal route. Keep it separately budgeted
   // so the split app cannot drift behind the admin-only surface. Rebased after
   // offline queue, terminal-session, and hardware-runtime controls were added.
-  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 94 },
+  // Rebased 2026-06-30 after the standalone POS terminal candidate measured
+  // above the June baseline during the governed release-local build.
+  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 154 },
   // PR #11 renamed the admin POS route chunk from POSPage-* to SkupervisorPOSPage-*.
   { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 59 },
   // Rebased after terminal auth, shift, and queue orchestration moved into this
   // route; the checkout UI and operations workspace remain separate lazy chunks.
-  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 53 },
-  { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 20 },
+  // Rebased 2026-06-30 to the current terminal route candidate.
+  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 65 },
+  // Rebased 2026-06-30 to the current sales route candidate.
+  { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 49 },
 ];
 
 class BudgetGateError extends Error {

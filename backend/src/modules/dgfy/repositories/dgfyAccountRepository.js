@@ -617,7 +617,7 @@ export const dgfyAccountRepository = {
             const transaction = await sequelizeInstance.transaction();
             let user;
             let createdTenantUser = false;
-            let previousTenantUserState = null;
+            let previousTenantUserState;
             try {
                 user = await User.findOne({ where: { email: normalizeEmail(account.email) }, transaction });
                 previousTenantUserState = user ? {
