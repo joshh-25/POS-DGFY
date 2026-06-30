@@ -92,7 +92,7 @@ The controller and operator must treat a missing or invalid notice as a release 
 
 ## Candidate Evidence
 
-GitHub candidate workflows publish short-lived evidence bundles containing the exact SHA, base SHA, PR identity, required-check conclusions and URLs, reviewed inventory hash, documentation-closure status and hash, Regression Risk Notice status and hash, QA evidence hash, source-contract result, merge-adoption result, and payment-sensitive flag.
+GitHub candidate workflows publish short-lived evidence bundles containing the exact SHA, base SHA, PR identity, required-check conclusions and URLs, reviewed inventory hash, documentation-closure status and hash, Regression Risk Notice status and hash, QA evidence hash, source-contract result, lightweight merge hygiene result, merge-adoption result, and payment-sensitive flag.
 
 The controller independently verifies GitHub PR/check state and recomputes all local hashes. Candidate evidence is rejected when required evidence is absent, failed, stale, malformed, or inconsistent with current remote state.
 
@@ -119,7 +119,7 @@ The external controller must refuse promotion when:
 1. `origin/staging` moved from the signed target.
 2. The PR head/base or current master base differs from evidence.
 3. Required checks are absent or not successful.
-4. Reviewed inventory, local qualification, merge-adoption, compliance, or QA evidence failed.
+4. Reviewed inventory, local qualification, lightweight merge hygiene, merge-adoption, compliance, or QA evidence failed.
 5. Authorization is invalid, expired, replayed, hash-mismatched, or signed by a non-allowlisted key.
 6. A payment-sensitive candidate lacks separate payment authorization.
 
@@ -131,7 +131,7 @@ The promotion controller must not reject a release because a slice originated on
 
 Before candidate checkout, the controller verifies production and any payment authorization. It then performs local qualification in an ephemeral exact-SHA worktree without production credentials. Only after qualification succeeds may the controller use OS-protected production connection material to invoke the fixed remote deploy operation.
 
-Production is refused when master moved, credentials are absent, QA differs from the target, inventory/evidence/documentation hashes changed, documentation closure failed, required checks failed, or any authorization was replayed/expired/invalid.
+Production is refused when master moved, credentials are absent, QA differs from the target, inventory/evidence/documentation hashes changed, documentation closure failed, lightweight merge hygiene failed, required checks failed, or any authorization was replayed/expired/invalid.
 
 The GitHub workflow `.github/workflows/deploy-production.yml` produces a dry-run candidate bundle only. It cannot deploy.
 
