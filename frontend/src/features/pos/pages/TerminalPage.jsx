@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   closeTerminalShift,
@@ -63,7 +63,6 @@ import {
   sanitizeTerminalId
 } from '../utils/terminalIdentity.js';
 
-import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
 import OnboardingSetupModal from '../../onboarding/components/OnboardingSetupModal.jsx';
 import { Button } from '@/components/ui/button';
@@ -79,6 +78,7 @@ import {
 } from '@/components/ui/dialog';
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
+const TerminalPageLayout = lazy(() => import('../components/TerminalPageLayout.jsx'));
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
