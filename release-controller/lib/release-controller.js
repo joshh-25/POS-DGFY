@@ -236,7 +236,54 @@ function validateDocumentationClosureEvidence(report, expected) {
   return report;
 }
 
-function validateEvidence(evidence, expected, requiredChecks = []) {
+function billingFallbackCovers(evidence, name, targetSha) {
+  const fallback = evidence.github_actions_unavailability;
+  return fallback?.status === 'pass'
+    && fallback?.reason === 'billing_allocation_failure'
+    && fallback?.target_sha === targetSha
+    && /^[0-9a-f]{64}$/.test(fallback?.report_sha256 || '')
+    && Array.isArray(fallback?.required_checks)
+    && fallback.required_checks.includes(name);
+}
+
+function isGithubBillingUnavailableCheck(check) {
+  return check?.conclusion === 'failure'
+    && check?.appSlug === 'github-actions'
+    && Number(check?.runnerId || 0) === 0
+    && !check?.runnerName
+    && Array.isArray(check?.steps)
+    && check.steps.length === 0
+    && Array.isArray(check?.annotations)
+    && check.annotations.some((annotation) => /job was not started because recent account payments have failed or your spending limit needs to be increased/i.test(annotation.message || ''));
+}
+
+function validateGithubActionsUnavailabilityReport(report, evidence, expected) {
+  const bound = evidence.github_actions_unavailability;
+  if (!bound) return null;
+  if (report?.schema !== 'sku-github-actions-unavailability/v1'
+    || report?.status !== 'pass'
+    || report?.reason !== 'billing_allocation_failure'
+    || report?.repository !== expected.repository
+    || report?.target_sha !== expected.targetSha) {
+    fail('GITHUB_ACTIONS_UNAVAILABILITY_INVALID', 'GitHub Actions unavailability report is failed, stale, or for another repository');
+  }
+  const names = (report.required_checks || []).map((check) => check.name);
+  if (names.length === 0 || names.some((name) => !bound.required_checks.includes(name)) || bound.required_checks.some((name) => !names.includes(name))) {
+    fail('GITHUB_ACTIONS_UNAVAILABILITY_INVALID', 'GitHub Actions unavailability report does not match the bound required checks');
+  }
+  for (const check of report.required_checks) {
+    if (check.conclusion !== 'failure'
+      || Number(check.runner_id || 0) !== 0
+      || check.runner_name
+      || Number(check.steps) !== 0
+      || !/job was not started because recent account payments have failed or your spending limit needs to be increased/i.test(check.annotation_message || '')) {
+      fail('GITHUB_ACTIONS_UNAVAILABILITY_INVALID', `Invalid billing allocation evidence for ${check.name || '<unknown>'}`);
+    }
+  }
+  return report;
+}
+
+function validateEvidence(evidence, expected, requiredChecks = [], options = {}) {
   if (evidence.schema !== EVIDENCE_SCHEMA || evidence.version !== 2) fail('EVIDENCE_SCHEMA_INVALID', 'Candidate evidence schema is invalid');
   if (evidence.repository !== expected.repository) fail('EVIDENCE_REPOSITORY_MISMATCH', 'Evidence repository mismatch');
   if (evidence.phase !== expected.phase) fail('EVIDENCE_PHASE_MISMATCH', 'Evidence phase mismatch');
@@ -266,7 +313,10 @@ function validateEvidence(evidence, expected, requiredChecks = []) {
   for (const name of requiredChecks) {
     const check = checks.get(name);
     if (!check) fail('REQUIRED_CHECK_MISSING', `Required check is missing: ${name}`);
-    if (check.conclusion !== 'success') fail('REQUIRED_CHECK_FAILED', `Required check did not succeed: ${name}`);
+    if (check.conclusion !== 'success') {
+      const fallbackAllowed = options.allowGithubBillingFallback === true && billingFallbackCovers(evidence, name, expected.targetSha);
+      if (!fallbackAllowed) fail('REQUIRED_CHECK_FAILED', `Required check did not succeed: ${name}`);
+    }
     if (!check.details_url || /^https?:\/\/example\./i.test(check.details_url)) fail('REQUIRED_CHECK_EVIDENCE_INVALID', `Required check lacks a real evidence URL: ${name}`);
   }
   if (expected.phase === 'promotion') {
@@ -282,7 +332,7 @@ function validateEvidence(evidence, expected, requiredChecks = []) {
   return evidence;
 }
 
-function validateLiveGithubEvidence(live, evidence, phase) {
+function validateLiveGithubEvidence(live, evidence, phase, options = {}) {
   if (!live || live.number !== Number(evidence.pr.number)) fail('GITHUB_PR_MISSING', 'Live GitHub PR evidence is missing');
   if (live.base !== evidence.pr.base || live.head !== evidence.pr.head) fail('GITHUB_PR_REF_MISMATCH', 'Live GitHub PR refs differ from signed evidence');
   if (phase === 'promotion' && live.headSha !== evidence.target_sha) fail('GITHUB_PR_SHA_MISMATCH', 'Live PR head SHA differs from authorization');
@@ -291,7 +341,11 @@ function validateLiveGithubEvidence(live, evidence, phase) {
   if (phase === 'production' && live.mergeCommitSha !== evidence.target_sha) fail('GITHUB_MERGE_SHA_MISMATCH', 'Live PR merge SHA differs from production target');
   for (const required of evidence.required_checks || []) {
     const actual = (live.checks || []).find((check) => check.name === required.name);
-    if (!actual || actual.conclusion !== 'success') fail('GITHUB_REQUIRED_CHECK_FAILED', `Live required check is not successful: ${required.name}`);
+    if (actual?.conclusion === 'success') continue;
+    const fallbackAllowed = options.allowGithubBillingFallback === true
+      && billingFallbackCovers(evidence, required.name, evidence.target_sha)
+      && isGithubBillingUnavailableCheck(actual);
+    if (!fallbackAllowed) fail('GITHUB_REQUIRED_CHECK_FAILED', `Live required check is not successful: ${required.name}`);
   }
 }
 
@@ -682,6 +736,8 @@ module.exports = {
   validateDocumentationClosureEvidence,
   validateEvidence,
   validateLiveGithubEvidence,
+  isGithubBillingUnavailableCheck,
+  validateGithubActionsUnavailabilityReport,
   validateAccuracyProofBundle,
   parseKeyValueSummary,
   validateProductionBaselineProof,

@@ -14,6 +14,7 @@ const {
   validateInventoryDocumentation,
   validateDocumentationClosureEvidence,
   validateLiveGithubEvidence,
+  validateGithubActionsUnavailabilityReport,
   validateAccuracyProofBundle,
   validateProductionBaselineProof,
   ReleaseRecordStore,
@@ -129,6 +130,93 @@ test('candidate evidence fails for failed checks and stale QA', () => {
   evidence.qa.target_sha = SHA;
   evidence.local_qualification.status = 'fail';
   assert.throws(() => validateEvidence(evidence, evidenceExpected, ['exact-master']), (error) => error.code === 'LOCAL_QUALIFICATION_FAILED');
+});
+
+test('billing fallback accepts only a hash-bound failed check when explicitly enabled', () => {
+  const evidence = {
+    schema: 'sku-release-evidence/v2',
+    version: 2,
+    repository: 'owner/repo',
+    phase: 'production',
+    target_sha: SHA,
+    pr: { number: 24, base: 'master', head: 'staging' },
+    inventory_sha256: HASH_A,
+    documentation_closure: { status: 'pass', target_sha: SHA, inventory_sha256: HASH_A, report_sha256: 'd'.repeat(64), non_bypassable: true },
+    regression_risk_notice: { status: 'pass', target_sha: SHA, report_sha256: 'e'.repeat(64) },
+    payment_sensitive: false,
+    qa: { status: 'pass', target_sha: SHA, isolated: true },
+    local_qualification: { status: 'pass', target_sha: SHA },
+    master_audit: { status: 'pass', governed_promotion: true },
+    required_checks: [{ name: 'exact-master', conclusion: 'failure', details_url: 'https://github.com/owner/repo/actions/runs/1' }],
+    github_actions_unavailability: {
+      status: 'pass',
+      reason: 'billing_allocation_failure',
+      target_sha: SHA,
+      required_checks: ['exact-master'],
+      report_sha256: 'f'.repeat(64),
+    },
+  };
+  const evidenceExpected = expected({ documentationClosureHash: 'd'.repeat(64), regressionRiskNoticeHash: 'e'.repeat(64) });
+  assert.doesNotThrow(() => validateEvidence(evidence, evidenceExpected, ['exact-master'], { allowGithubBillingFallback: true }));
+  assert.throws(() => validateEvidence(evidence, evidenceExpected, ['exact-master']), (error) => error.code === 'REQUIRED_CHECK_FAILED');
+});
+
+test('live billing fallback requires zero steps, no runner, and the exact allocation annotation', () => {
+  const evidence = {
+    target_sha: SHA,
+    pr: { number: 24, base: 'master', head: 'staging' },
+    required_checks: [{ name: 'exact-master', conclusion: 'failure' }],
+    github_actions_unavailability: { status: 'pass', reason: 'billing_allocation_failure', target_sha: SHA, required_checks: ['exact-master'], report_sha256: 'f'.repeat(64) },
+  };
+  const live = {
+    number: 24,
+    state: 'MERGED',
+    base: 'master',
+    head: 'staging',
+    mergeCommitSha: SHA,
+    checks: [{
+      name: 'exact-master',
+      conclusion: 'failure',
+      appSlug: 'github-actions',
+      runnerId: 0,
+      runnerName: '',
+      steps: [],
+      annotations: [{ message: 'The job was not started because recent account payments have failed or your spending limit needs to be increased.' }],
+    }],
+  };
+  assert.doesNotThrow(() => validateLiveGithubEvidence(live, evidence, 'production', { allowGithubBillingFallback: true }));
+  live.checks[0].steps = [{ name: 'checkout' }];
+  assert.throws(() => validateLiveGithubEvidence(live, evidence, 'production', { allowGithubBillingFallback: true }), (error) => error.code === 'GITHUB_REQUIRED_CHECK_FAILED');
+});
+
+test('bound billing report rejects executed jobs and mismatched required checks', () => {
+  const evidence = {
+    github_actions_unavailability: {
+      status: 'pass',
+      reason: 'billing_allocation_failure',
+      target_sha: SHA,
+      required_checks: ['exact-master'],
+      report_sha256: 'f'.repeat(64),
+    },
+  };
+  const report = {
+    schema: 'sku-github-actions-unavailability/v1',
+    status: 'pass',
+    reason: 'billing_allocation_failure',
+    repository: 'owner/repo',
+    target_sha: SHA,
+    required_checks: [{
+      name: 'exact-master',
+      conclusion: 'failure',
+      runner_id: 0,
+      runner_name: '',
+      steps: 0,
+      annotation_message: 'The job was not started because recent account payments have failed or your spending limit needs to be increased.',
+    }],
+  };
+  assert.doesNotThrow(() => validateGithubActionsUnavailabilityReport(report, evidence, { repository: 'owner/repo', targetSha: SHA }));
+  report.required_checks[0].steps = 1;
+  assert.throws(() => validateGithubActionsUnavailabilityReport(report, evidence, { repository: 'owner/repo', targetSha: SHA }), (error) => error.code === 'GITHUB_ACTIONS_UNAVAILABILITY_INVALID');
 });
 
 test('live GitHub evidence rejects moved master merge SHA', () => {

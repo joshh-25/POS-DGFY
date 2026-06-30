@@ -18,6 +18,7 @@ const {
   validateDocumentationClosureEvidence,
   validateEvidence,
   validateLiveGithubEvidence,
+  validateGithubActionsUnavailabilityReport,
   validateAccuracyProofBundle,
   validateProductionBaselineProof,
   ReleaseRecordStore,
@@ -33,7 +34,7 @@ function parseArgs(argv) {
   const options = { dryRun: true, finalize: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (['--phase', '--target-sha', '--tag', '--payment-tag', '--inventory', '--evidence', '--documentation-closure', '--regression-risk-notice', '--accuracy-proof', '--config'].includes(arg)) {
+    if (['--phase', '--target-sha', '--tag', '--payment-tag', '--inventory', '--evidence', '--documentation-closure', '--regression-risk-notice', '--github-actions-unavailability', '--accuracy-proof', '--config'].includes(arg)) {
       options[arg.slice(2).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = argv[index + 1] || '';
       index += 1;
     } else if (arg === '--execute') {
@@ -143,6 +144,27 @@ function liveGithubEvidence(config, prNumber, targetSha) {
   const repo = config.repository;
   const pr = JSON.parse(requireCommand(run(config.gh_bin || 'gh', ['api', `repos/${repo}/pulls/${prNumber}`]), 'GITHUB_PR_QUERY_FAILED', `Read PR #${prNumber}`));
   const checksResponse = JSON.parse(requireCommand(run(config.gh_bin || 'gh', ['api', '-H', 'Accept: application/vnd.github+json', `repos/${repo}/commits/${targetSha}/check-runs?per_page=100`]), 'GITHUB_CHECK_QUERY_FAILED', `Read checks for ${targetSha}`));
+  const checks = (checksResponse.check_runs || []).map((check) => {
+    const result = {
+      id: check.id,
+      name: check.name,
+      conclusion: check.conclusion,
+      appSlug: check.app?.slug || '',
+      runnerId: null,
+      runnerName: null,
+      steps: null,
+      annotations: [],
+    };
+    if (check.conclusion === 'failure' && result.appSlug === 'github-actions') {
+      const job = JSON.parse(requireCommand(run(config.gh_bin || 'gh', ['api', `repos/${repo}/actions/jobs/${check.id}`]), 'GITHUB_JOB_QUERY_FAILED', `Read job ${check.id}`));
+      const annotations = JSON.parse(requireCommand(run(config.gh_bin || 'gh', ['api', `repos/${repo}/check-runs/${check.id}/annotations`]), 'GITHUB_ANNOTATION_QUERY_FAILED', `Read annotations for ${check.id}`));
+      result.runnerId = job.runner_id;
+      result.runnerName = job.runner_name;
+      result.steps = job.steps;
+      result.annotations = annotations;
+    }
+    return result;
+  });
   return {
     number: pr.number,
     state: pr.merged ? 'MERGED' : String(pr.state || '').toUpperCase(),
@@ -150,7 +172,7 @@ function liveGithubEvidence(config, prNumber, targetSha) {
     head: pr.head?.ref,
     headSha: pr.head?.sha,
     mergeCommitSha: pr.merge_commit_sha,
-    checks: (checksResponse.check_runs || []).map((check) => ({ name: check.name, conclusion: check.conclusion })),
+    checks,
   };
 }
 
@@ -178,6 +200,17 @@ function controllerMain(options) {
   const regressionRiskNoticeHash = sha256File(options.regressionRiskNotice);
   const inventory = validateInventory(readJson(options.inventory, 'reviewed inventory'), options.targetSha);
   const evidence = readJson(options.evidence, 'candidate evidence');
+  if (evidence.github_actions_unavailability) {
+    if (!options.githubActionsUnavailability) throw new ReleaseControllerError('GITHUB_ACTIONS_UNAVAILABILITY_MISSING', 'Candidate evidence requires --github-actions-unavailability');
+    if (sha256File(options.githubActionsUnavailability) !== evidence.github_actions_unavailability.report_sha256) {
+      throw new ReleaseControllerError('GITHUB_ACTIONS_UNAVAILABILITY_HASH_MISMATCH', 'GitHub Actions unavailability report hash differs from candidate evidence');
+    }
+    validateGithubActionsUnavailabilityReport(
+      readJson(options.githubActionsUnavailability, 'GitHub Actions unavailability report'),
+      evidence,
+      { repository: config.repository, targetSha: options.targetSha }
+    );
+  }
   const documentationClosure = validateDocumentationClosureEvidence(
     readJson(options.documentationClosure, 'documentation closure'),
     { targetSha: options.targetSha, inventoryHash }
@@ -202,7 +235,8 @@ function controllerMain(options) {
   const authorization = verifyAuthorization(options, config, expected, options.tag);
   const ledger = new NonceLedger(config.ledger_dir);
   if (!options.finalize) ledger.assertUnused(authorization.auth);
-  validateEvidence(evidence, expected, config.required_checks?.[options.phase] || []);
+  const allowGithubBillingFallback = config.github_actions_billing_fallback?.enabled === true;
+  validateEvidence(evidence, expected, config.required_checks?.[options.phase] || [], { allowGithubBillingFallback });
 
   let paymentAuthorization = null;
   if (inventory.payment_sensitive) {
@@ -215,7 +249,7 @@ function controllerMain(options) {
   const currentRemoteSha = remoteSha(config, branch);
   if (currentRemoteSha !== options.targetSha) throw new ReleaseControllerError('REMOTE_MOVED', `origin/${branch} moved: expected=${options.targetSha} actual=${currentRemoteSha}`);
   const live = liveGithubEvidence(config, expected.prNumber, options.targetSha);
-  validateLiveGithubEvidence(live, evidence, options.phase);
+  validateLiveGithubEvidence(live, evidence, options.phase, { allowGithubBillingFallback });
 
   if (options.phase === 'production') {
     // Dry-run validates credential presence and fixed command construction without using the credential.
