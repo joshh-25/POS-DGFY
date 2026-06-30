@@ -60,6 +60,12 @@ Use this checklist for every production release under ADR 0030.
 - [ ] Only passing per-slice proof transitions the controller ledger to terminal `completed` and creates immutable accuracy-finalization records.
 - [ ] Missing or failed proof leaves `deployed_pending_accuracy` with residual risk. Failed entries remain preserved and nonces are never reused.
 
+## Post-Deploy Retained Branch Review
+
+- [ ] Release, evidence, payment, safety, rollback, and manually preserved branches are reviewed after deployed-change accuracy finalization.
+- [ ] Ordinary short-lived PR source branches already handled by the merged-branch cleanup workflow are not treated as production proof and do not need to wait for this post-deploy checklist unless they were explicitly retained.
+- [ ] Any retained branch deletion has a reviewed reason, no open PR dependency, no local worktree/stash/evidence dependency, and no rollback or incident dependency.
+
 ## Incident Stop Conditions
 
 Stop and rotate/re-authorize when any signer, controller root account, production root account, GitHub/controller token, or production SSH key may be compromised. Preserve tags, ledger entries, evidence bundles, controller logs, and production proof. Never delete a ledger record to retry.
