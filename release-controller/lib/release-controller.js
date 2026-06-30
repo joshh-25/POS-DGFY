@@ -303,7 +303,15 @@ function validateEvidence(evidence, expected, requiredChecks = [], options = {})
     || evidence.regression_risk_notice?.report_sha256 !== expected.regressionRiskNoticeHash) {
     fail('REGRESSION_RISK_NOTICE_INVALID', 'Candidate evidence does not bind a passing Regression Risk Notice');
   }
-  if (evidence.qa?.status !== 'pass' || evidence.qa?.target_sha !== expected.targetSha || evidence.qa?.isolated !== true) {
+  const isolatedQaPassed = evidence.qa?.status === 'pass'
+    && evidence.qa?.target_sha === expected.targetSha
+    && evidence.qa?.isolated === true;
+  const emergencyQaAllowed = options.allowEmergencyQaBypass === true
+    && evidence.emergency_qa?.status === 'approved'
+    && evidence.emergency_qa?.reason_code === 'isolated_qa_unavailable'
+    && evidence.emergency_qa?.target_sha === expected.targetSha
+    && /^[0-9a-f]{64}$/.test(evidence.emergency_qa?.report_sha256 || '');
+  if (!isolatedQaPassed && !emergencyQaAllowed) {
     fail('QA_EVIDENCE_INVALID', 'Exact-SHA isolated QA evidence is required');
   }
   if (evidence.local_qualification?.status !== 'pass' || evidence.local_qualification?.target_sha !== expected.targetSha) {
@@ -330,6 +338,28 @@ function validateEvidence(evidence, expected, requiredChecks = [], options = {})
     }
   }
   return evidence;
+}
+
+function validateEmergencyQaReport(report, evidence, expected) {
+  if (report?.schema !== 'sku-emergency-qa-authorization/v1'
+    || report?.status !== 'approved'
+    || report?.reason_code !== 'isolated_qa_unavailable'
+    || report?.target_sha !== expected.targetSha
+    || report?.owner_approved !== true
+    || !report?.actor
+    || !report?.reason
+    || report?.payment_sensitive !== false
+    || report?.migrations_changed !== false
+    || report?.compensating_controls?.local_qualification !== true
+    || report?.compensating_controls?.rollback_ready !== true
+    || report?.compensating_controls?.production_readonly_smoke_planned !== true
+    || report?.compensating_controls?.post_deploy_accuracy_required !== true) {
+    fail('EMERGENCY_QA_AUTHORIZATION_INVALID', 'Emergency QA report is incomplete, stale, or ineligible');
+  }
+  if (evidence.emergency_qa?.report_sha256 !== sha256File(expected.reportPath)) {
+    fail('EMERGENCY_QA_AUTHORIZATION_HASH_MISMATCH', 'Emergency QA report hash differs from signed candidate evidence');
+  }
+  return report;
 }
 
 function validateLiveGithubEvidence(live, evidence, phase, options = {}) {
@@ -735,6 +765,7 @@ module.exports = {
   validateInventoryDocumentation,
   validateDocumentationClosureEvidence,
   validateEvidence,
+  validateEmergencyQaReport,
   validateLiveGithubEvidence,
   isGithubBillingUnavailableCheck,
   validateGithubActionsUnavailabilityReport,

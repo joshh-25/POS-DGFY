@@ -19,6 +19,9 @@
   "github_actions_billing_fallback": {
     "enabled": true
   },
+  "emergency_qa_bypass": {
+    "enabled": false
+  },
   "qualification_commands": {
     "promotion": [
       ["npm", "ci"],

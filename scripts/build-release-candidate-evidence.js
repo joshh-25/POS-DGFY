@@ -16,7 +16,7 @@ function parseArgs(argv) {
   const options = { projectRoot: process.cwd() };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (['--phase', '--target-sha', '--inventory', '--documentation-closure', '--regression-risk-notice', '--pr-evidence', '--qa-proof', '--local-qualification', '--master-audit', '--github-actions-unavailability', '--output'].includes(arg)) {
+    if (['--phase', '--target-sha', '--inventory', '--documentation-closure', '--regression-risk-notice', '--pr-evidence', '--qa-proof', '--local-qualification', '--master-audit', '--github-actions-unavailability', '--emergency-qa-report', '--output'].includes(arg)) {
       options[arg.slice(2).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = argv[++index] || '';
     } else if (arg === '--project-root') {
       options.projectRoot = path.resolve(argv[++index] || '');
@@ -54,6 +54,9 @@ function buildCandidateEvidence(options) {
   const actionsUnavailability = options.githubActionsUnavailability
     ? readJson(options.projectRoot, options.githubActionsUnavailability, 'GitHub Actions unavailability')
     : null;
+  const emergencyQa = options.emergencyQaReport
+    ? readJson(options.projectRoot, options.emergencyQaReport, 'emergency QA report')
+    : null;
   if (inventory.head_sha !== options.targetSha) throw new CandidateEvidenceError('INVENTORY_SHA_MISMATCH', 'Inventory target does not match candidate');
   if (inventory.review_status !== 'reviewed') throw new CandidateEvidenceError('INVENTORY_NOT_REVIEWED', 'Candidate evidence requires reviewed inventory');
   const inventoryHash = hashFile(options.projectRoot, options.inventory);
@@ -67,7 +70,26 @@ function buildCandidateEvidence(options) {
   if (regressionRiskNotice.status !== 'pass' || regressionRiskNotice.target_sha !== options.targetSha) {
     throw new CandidateEvidenceError('REGRESSION_RISK_NOTICE_INVALID', 'Candidate evidence requires a passing Regression Risk Notice for the exact target');
   }
-  if (qa.status !== 'pass' || qa.target_sha !== options.targetSha) throw new CandidateEvidenceError('QA_PROOF_INVALID', 'QA proof is missing, failed, or stale');
+  const qaPassed = qa.status === 'pass' && qa.target_sha === options.targetSha && qa.isolated === true;
+  if (!qaPassed) {
+    if (!emergencyQa
+      || emergencyQa.schema !== 'sku-emergency-qa-authorization/v1'
+      || emergencyQa.status !== 'approved'
+      || emergencyQa.reason_code !== 'isolated_qa_unavailable'
+      || emergencyQa.target_sha !== options.targetSha
+      || emergencyQa.owner_approved !== true
+      || !emergencyQa.actor
+      || !emergencyQa.reason
+      || emergencyQa.payment_sensitive !== false
+      || inventory.payment_sensitive === true
+      || emergencyQa.migrations_changed !== false
+      || emergencyQa.compensating_controls?.local_qualification !== true
+      || emergencyQa.compensating_controls?.rollback_ready !== true
+      || emergencyQa.compensating_controls?.production_readonly_smoke_planned !== true
+      || emergencyQa.compensating_controls?.post_deploy_accuracy_required !== true) {
+      throw new CandidateEvidenceError('EMERGENCY_QA_AUTHORIZATION_INVALID', 'Failed isolated QA requires an approved, exact-SHA emergency QA report with all compensating controls');
+    }
+  }
   if (localQualification.status !== 'pass' || localQualification.target_sha !== options.targetSha) throw new CandidateEvidenceError('LOCAL_QUALIFICATION_INVALID', 'Local qualification is missing, failed, or stale');
   if (options.phase === 'production' && (masterAudit.status !== 'pass' || masterAudit.target_sha !== options.targetSha)) {
     throw new CandidateEvidenceError('MASTER_AUDIT_INVALID', 'Production evidence requires a passing exact-SHA master audit');
@@ -119,6 +141,13 @@ function buildCandidateEvidence(options) {
     },
     payment_sensitive: Boolean(inventory.payment_sensitive),
     qa: { status: qa.status, target_sha: qa.target_sha, isolated: qa.isolated === true, report_sha256: hashFile(options.projectRoot, options.qaProof) },
+    emergency_qa: emergencyQa ? {
+      status: emergencyQa.status,
+      reason_code: emergencyQa.reason_code,
+      target_sha: emergencyQa.target_sha,
+      actor: emergencyQa.actor,
+      report_sha256: hashFile(options.projectRoot, options.emergencyQaReport),
+    } : null,
     local_qualification: { status: localQualification.status, target_sha: localQualification.target_sha, report_sha256: hashFile(options.projectRoot, options.localQualification) },
     github_actions_unavailability: actionsUnavailability ? {
       status: actionsUnavailability.status,
