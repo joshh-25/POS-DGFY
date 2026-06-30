@@ -62,6 +62,10 @@ pr_number=<positive integer>
 25. Every production deployment writes root-owned, mode `0600`, machine-readable and human-readable records beneath `/var/lib/skupervisor-release-controller/releases/<target_sha>/`. These records are outside the deployed checkout and are never committed as proof of their own deployed SHA.
 26. The deployment record is immutable and records `deployed_pending_accuracy`. Successful finalization creates separate immutable accuracy-finalization JSON and Markdown records rather than rewriting the deployment record.
 27. The first trusted controller installation is a bootstrap ceremony. The operator must independently record and approve the controller source SHA, package checksum, installer version, validation evidence, full signer fingerprint, root ownership, and installed version before production authority is enabled.
+28. GitHub Actions billing or spending-limit exhaustion may substitute controller-local exact-SHA qualification for a required GitHub check only when the controller independently proves all of the following from GitHub APIs: the check belongs to GitHub Actions, the job received no runner, the job executed zero steps, the conclusion is `failure`, and the check annotation explicitly identifies failed account payments or a spending-limit allocation denial.
+29. The billing fallback must be explicitly enabled in root-owned controller configuration, hash-bound into the signed candidate evidence, and covered by the same fresh owner authorization. The controller still reruns its configured qualification commands in an ephemeral exact-SHA worktree.
+30. The billing fallback never substitutes for a check that started, a missing check, a code or test failure, local qualification, reviewed inventory, documentation closure, Regression Risk Notice, merge-adoption proof, isolated QA, human review, payment authorization, production proof, or deployed-change accuracy finalization.
+31. Feature PRs into `staging` may use the same machine-readable billing-unavailability proof plus an exact-head clean-worktree qualification and explicit human approval. The merge must remain head-SHA-pinned; any branch movement invalidates the evidence. The resulting staging SHA must still pass the complete staging qualification and isolated QA requirements before signed promotion.
 
 ## Threat Model
 
@@ -77,6 +81,7 @@ The controls address:
 8. A release claiming documentation closure through nonexistent, untracked, unchanged, placeholder, or unreviewed documents.
 9. A successful deploy command being mistaken for verified production behavior.
 10. Post-deploy evidence being committed into a later Git SHA and misrepresented as proof contained by the deployed SHA itself.
+11. A generic GitHub check failure being mislabeled as billing unavailability to avoid running tests.
 
 The controls do not protect against a fully compromised controller root account, production root account, or owner signing private key. Those are explicit trust anchors requiring host security and incident procedures.
 
