@@ -1,289 +1,233 @@
 {
   "schema": "sku-reviewed-batch-manifest/v1",
   "review_status": "reviewed",
-  "reviewed_by": "BabyBaBab owner-approved manual promotion review",
-  "reviewed_at": "2026-06-30T07:35:00.000Z",
-  "source_pr": "PR32-staging-to-master",
+  "reviewed_by": "BabyBaBab owner-directed Codex review",
+  "reviewed_at": "2026-06-30T13:40:00.000Z",
+  "source_pr": "current-origin-staging-to-master-manual-candidate",
   "release_slices": [
     {
-      "id": "staging-to-master-aggregate-2026-06-30",
-      "slice_name": "Staging aggregate release-governance and frontend baseline promotion",
-      "name": "Staging aggregate release-governance and frontend baseline promotion",
-      "plain_english_purpose": "Promote the currently staged release-governance repairs, frontend release-gate baseline fixes, and tenant/DGFY support changes to master through a reviewed manual path while GitHub Actions billing prevents hosted checks from running.",
-      "purpose": "Promote the currently staged release-governance repairs, frontend release-gate baseline fixes, and tenant/DGFY support changes to master through a reviewed manual path while GitHub Actions billing prevents hosted checks from running.",
-      "implementation_summary": "Adds and hardens the external release-controller and release evidence gates, teaches the reviewed-manifest finder to select a full aggregate manifest when staging contains multiple source manifests, records release documentation and compliance evidence, restores Storefront/DGFY/POS frontend release-gate behavior, and carries the staged tenant bearer-token bridge recovery into the master promotion candidate.",
+      "id": "staging-release-governance-packaging-2026-06-30",
+      "slice_name": "Current staging release-governance packaging",
+      "name": "Current staging release-governance packaging",
+      "plain_english_purpose": "Make the current staging candidate reviewable as one exact batch before any staging-to-master promotion is attempted.",
+      "purpose": "Make the current staging candidate reviewable as one exact batch before any staging-to-master promotion is attempted.",
+      "implementation_summary": "Aggregates the current staging-only release-governance changes relative to origin/master: isolated QA deferral documentation, branch cleanup hardening batch evidence, readable Regression Risk Notice evidence rendering, and the aggregate manifest itself. This does not authorize production deployment; it only fixes candidate evidence so the release gates can evaluate the exact diff.",
       "included_files": [
-        ".github/pull_request_template.md",
-        ".github/workflows/ci.yml",
-        ".github/workflows/deploy-production.yml",
-        ".github/workflows/exact-master-sha-qualification.yml",
-        ".github/workflows/nightly-ims-pos-sales-e2e.yml",
-        ".github/workflows/promote-staging-to-master.yml",
-        ".github/workflows/staging-qualification.yml",
-        "AGENTS.md",
-        "System_Audit/README.md",
-        "backend/src/middleware/tenantHandler.js",
-        "backend/tests/tenantHandler.emailOtp.test.js",
-        "docs/INDEX.md",
-        "docs/README.md",
-        "docs/_meta/document-registry.json",
-        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
-        "docs/compliance/impact-declarations/2026-06-29-bulk-pos-setup-modal-handoff-hotfix.md",
-        "docs/compliance/impact-declarations/2026-06-29-pos-terminal-checkout-grid-layout-hotfix.md",
-        "docs/compliance/impact-declarations/2026-06-29-storefront-settings-pos-metadata-scope-hotfix.md",
-        "docs/compliance/impact-declarations/2026-06-30-frontend-release-gate-baseline.md",
-        "docs/features/DGFY_CUSTOMER_ACCOUNT.md",
-        "docs/guides/SCRIPTS_GUIDE.md",
-        "docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md",
-        "docs/ops/DEPLOYMENT_GUIDE.md",
-        "docs/ops/DEVELOPER_DEPLOYMENT_HANDOFF.md",
-        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
-        "docs/ops/MERGE_ADOPTION_GATE.md",
-        "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
-        "docs/ops/PRODUCTION_CHECKLIST.md",
         "docs/ops/QA_ISOLATION_PROFILE.md",
-        "docs/ops/README.md",
-        "docs/release/merge-adoption/release-documentation-closure-2026-06-30.json",
-        "docs/releases/batches/2026-06-28-free-tier-signed-release-controller.json",
-        "docs/releases/batches/2026-06-30-frontend-release-gate-baseline.json",
+        "docs/releases/batches/2026-06-30-isolated-qa-deferral.json",
+        "docs/releases/batches/2026-06-30-merged-branch-cleanup-hardening.json",
+        "docs/releases/batches/2026-06-30-regression-risk-notice-rendering.json",
         "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json",
-        "docs/templates/REVIEWED_BATCH_MANIFEST_TEMPLATE.json",
-        "docs/testing/dgfy-full-flow-e2e-verification-matrix-2026-06-13.md",
-        "docs/testing/release-go-no-go-checklist.md",
-        "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
-        "frontend/apps/store/src/StorefrontApp.jsx",
-        "frontend/apps/store/src/__tests__/discoveryFlow.integration.test.jsx",
-        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
-        "frontend/src/features/pos/pages/SkupervisorPOSPage.jsx",
-        "frontend/src/features/pos/pages/TerminalPage.jsx",
-        "package.json",
-        "release-controller/README.md",
-        "release-controller/VERSION",
-        "release-controller/bin/skupervisor-release-controller.js",
-        "release-controller/config/controller.example.json",
-        "release-controller/install/install.sh",
-        "release-controller/install/provision-isolated-qa.sh",
-        "release-controller/lib/release-controller.js",
-        "release-controller/package.json",
-        "release-controller/test/release-controller.test.js",
-        "scripts/audit-master-promotion.js",
-        "scripts/audit-master-promotion.test.js",
-        "scripts/build-release-candidate-evidence.js",
-        "scripts/build-release-candidate-evidence.test.js",
-        "scripts/check-batch-inventory.js",
-        "scripts/check-batch-inventory.test.js",
-        "scripts/check-documentation-closure.js",
-        "scripts/check-documentation-closure.test.js",
-        "scripts/check-frontend-budgets.js",
-        "scripts/check-frontend-budgets.test.js",
-        "scripts/check-merge-hygiene.js",
-        "scripts/check-merge-hygiene.test.js",
-        "scripts/check-no-staging-prereqs.js",
-        "scripts/check-no-staging-prereqs.test.js",
-        "scripts/check-qa-target-proof.js",
-        "scripts/check-qa-target-proof.test.js",
         "scripts/check-regression-risk.js",
-        "scripts/check-regression-risk.test.js",
-        "scripts/collect-master-promotion-evidence.js",
-        "scripts/deploy-master-ci.sh",
-        "scripts/deploy-master-ci.test.js",
-        "scripts/deploy-qa-target.ps1",
-        "scripts/deploy-remote.sh",
-        "scripts/find-reviewed-batch-manifest.js",
-        "scripts/find-reviewed-batch-manifest.test.js",
-        "scripts/gate-release-no-staging.js",
-        "scripts/promote-staging-to-master.js",
-        "scripts/review-deployed-change-accuracy.js",
-        "scripts/review-deployed-change-accuracy.test.js",
-        "scripts/run-backend-test-matrix.js",
-        "scripts/validate-batch-inventory.js",
-        "scripts/validate-batch-inventory.test.js",
-        "skills/sku-development-to-production/SKILL.md"
+        "scripts/check-regression-risk.test.js"
       ],
       "included_features": [
-        "Signed external release authorization and release-controller scaffolding",
-        "Reviewed batch inventory, regression risk, merge hygiene, documentation closure, and deployed accuracy gates",
-        "Aggregate reviewed-manifest selection for staging promotions that contain multiple source manifests",
-        "Tenant bearer-token bridge recovery",
-        "DGFY account, Storefront map/carousel, and POS lazy-loading release-gate baseline repairs"
+        "Readable operator evidence in Regression Risk Notice Markdown",
+        "Reviewed release-batch evidence for branch cleanup hardening",
+        "Documented isolated QA deferral while preserving production promotion as blocked until QA proof exists",
+        "Exact aggregate manifest coverage for the current origin/master..origin/staging candidate"
       ],
       "excluded_files": [],
       "excluded_features": [
-        "PayMongo live split checkout enablement",
-        "Uncommitted local Storefront guest-checkout work in the main checkout",
-        "Open PR #25 and PR #26 POS terminal pairing work",
         "Production deployment",
-        "Branch deletion or retirement"
+        "Staging-to-master promotion before the no-staging gate has real QA evidence",
+        "Production-as-QA bypass",
+        "PayMongo or payment implementation work",
+        "Branch deletion or retirement",
+        "Dirty local Storefront guest-checkout files in the preserved main checkout",
+        "PR #25 or PR #26 application behavior"
       ],
-      "owner_attribution": "BabyBaBab owner-approved manual staging promotion",
-      "source_branch": "staging",
-      "source_pr": "PR32-staging-to-master",
+      "owner_attribution": "BabyBaBab owner-directed staging candidate review",
+      "source_branch": "origin/staging",
+      "source_pr": "current-origin-staging-to-master-manual-candidate",
       "source_type": "owner_direct_staging",
       "affected_surfaces": [
-        "backend",
-        "frontend",
         "scripts/deploy",
-        "docs",
-        "compliance",
-        "POS",
-        "Storefront",
-        "DGFY",
-        "tenant lifecycle"
+        "docs"
       ],
       "affected_surface_map": {
-        "backend": true,
-        "frontend": true,
+        "backend": false,
+        "frontend": false,
         "database": false,
         "scripts/deploy": true,
         "docs": true,
-        "compliance": true,
-        "POS": true,
-        "Storefront": true,
-        "DGFY": true,
-        "tenant lifecycle": true,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
         "payments": false
       },
       "risk_level": "high",
       "required_tests": [
+        "git diff --check origin/master..origin/staging",
         "npm run lint:docs",
         "npm run check:architecture",
         "npm run check:compliance",
         "npm run test:development-to-production",
-        "npm run check:merge-adoption-required",
-        "npm run test:frontend",
-        "npm --prefix frontend run build:all",
-        "npm run check:frontend-budgets",
-        "npm run test:backend:matrix"
+        "npm run check:merge-hygiene -- --base origin/master --head origin/staging",
+        "npm run check:merge-adoption-required -- --base origin/master --head origin/staging",
+        "npm run check:batch-inventory -- --base origin/master --head origin/staging --write --require-ship",
+        "npm run validate:batch-inventory",
+        "npm run check:regression-risk"
       ],
       "completed_tests": [
         {
+          "command": "git diff --check origin/master..origin/staging",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation verified zero whitespace errors for the corrected candidate; exact origin/staging check must be repeated after the staging ref update."
+        },
+        {
           "command": "npm run lint:docs",
           "status": "pass",
-          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+          "evidence": "2026-06-30 clean staging worktree validation: governed docs lint passed."
         },
         {
           "command": "npm run check:architecture",
           "status": "pass",
-          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+          "evidence": "2026-06-30 clean staging worktree validation: architecture guardrails and controller boundaries passed."
         },
         {
           "command": "npm run check:compliance",
           "status": "pass",
-          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+          "evidence": "2026-06-30 clean staging worktree validation: no compliance-sensitive runtime behavior changed and API contracts passed."
         },
         {
           "command": "npm run test:development-to-production",
           "status": "pass",
-          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+          "evidence": "2026-06-30 clean staging worktree validation: development-to-production script tests passed."
         },
         {
-          "command": "npm run check:merge-adoption-required",
+          "command": "npm run check:merge-hygiene -- --base origin/master --head origin/staging",
           "status": "pass",
-          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+          "evidence": "2026-06-30 clean staging worktree validation: merge hygiene passed."
         },
         {
-          "command": "npm run test:frontend",
+          "command": "npm run check:merge-adoption-required -- --base origin/master --head origin/staging",
           "status": "pass",
-          "evidence": "PR31 local validation: 129 frontend files and 710 tests passed before staging merge"
+          "evidence": "2026-06-30 clean staging worktree validation: no high-risk Storefront/customer-flow files changed."
         },
         {
-          "command": "npm --prefix frontend run build:all",
+          "command": "npm run check:batch-inventory -- --base origin/master --head origin/staging --write --require-ship",
           "status": "pass",
-          "evidence": "PR31 local validation: SKUpervisor, standalone POS, and Storefront production builds passed before staging merge"
+          "evidence": "2026-06-30 clean staging worktree validation: current aggregate manifest covers the exact origin/master..origin/staging diff."
         },
         {
-          "command": "npm run check:frontend-budgets",
+          "command": "npm run validate:batch-inventory",
           "status": "pass",
-          "evidence": "PR31 local validation: fresh frontend budget check passed before staging merge"
+          "evidence": "2026-06-30 clean staging worktree validation: strict reviewed inventory validation passed."
         },
         {
-          "command": "npm run test:backend:matrix",
+          "command": "npm run check:regression-risk",
           "status": "pass",
-          "evidence": "PR31 local validation: schema preflight and 307 active backend test files passed before staging merge"
+          "evidence": "2026-06-30 clean staging worktree validation: Regression Risk Notice passed for the reviewed aggregate manifest."
         }
       ],
       "docs_required": true,
       "required_docs": [
         "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
         "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
-        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
-        "docs/compliance/impact-declarations/2026-06-30-frontend-release-gate-baseline.md"
+        "docs/ops/DEPLOYMENT_GUIDE.md",
+        "docs/ops/QA_ISOLATION_PROFILE.md",
+        "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json"
       ],
       "architecture_classification": "no-architecture-impact",
       "documentation_closure": {
         "decision": "updated",
-        "reviewed_by": "BabyBaBab owner-approved documentation review",
-        "reviewed_at": "2026-06-30T07:35:00.000Z",
-        "rationale": "The staging batch changes release governance, evidence generation, and user-facing frontend baseline behavior, so the authoritative workflow, no-staging standard, release docs, ADR, compliance declaration, and aggregate reviewed manifest are all part of the closure evidence.",
+        "reviewed_by": "BabyBaBab owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-30T13:40:00.000Z",
+        "rationale": "This release-governance packaging update changes only candidate evidence and documentation for the current staging diff. It preserves the authoritative production hard stop until real QA/no-staging evidence is available.",
         "documents": [
           {
             "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
-            "action": "updated",
-            "evidence": "Defines the governed feature branch to staging to master to exact origin/master production path and manual equivalent requirements when GitHub Actions cannot run."
+            "action": "reviewed_current",
+            "evidence": "Defines staging-to-master promotion, exact origin/master deployment, Regression Risk Notice, and deployed-change accuracy requirements."
           },
           {
             "path": "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
-            "action": "updated",
-            "evidence": "Keeps production blocked unless exact-SHA evidence, batch inventory, regression risk notice, production proof, and accuracy review are present."
+            "action": "reviewed_current",
+            "evidence": "Requires exact-SHA QA deploy evidence, QA smoke, rollback, restore, release verdict, and production proof before deployment."
           },
           {
-            "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
-            "action": "updated",
-            "evidence": "Records why GitHub Free cannot be the sole production trust root and why signed external authorization is required."
+            "path": "docs/ops/DEPLOYMENT_GUIDE.md",
+            "action": "reviewed_current",
+            "evidence": "Confirms local/manual deployment remains branch-reflection and no-staging gated."
           },
           {
-            "path": "docs/compliance/impact-declarations/2026-06-30-frontend-release-gate-baseline.md",
+            "path": "docs/ops/QA_ISOLATION_PROFILE.md",
             "action": "updated",
-            "evidence": "Declares the POS-sensitive frontend loading change and confirms fiscal/payment behavior is unchanged."
+            "evidence": "Records that isolated QA is deferred and production promotion remains blocked until QA proof exists."
           },
           {
             "path": "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json",
             "action": "updated",
-            "evidence": "Provides exact reviewed file coverage for the full staging-to-master promotion candidate."
+            "evidence": "Provides exact reviewed file coverage for the current staging-to-master candidate."
           }
         ]
       },
-      "adr_compliance_declaration_required": true,
-      "adr_or_compliance": "ADR 0030 governs the release authorization changes; the June 30 compliance declaration covers POS-sensitive frontend loading changes. No payment contract or database migration is introduced.",
-      "rollback_notes": "Revert the final master merge commit, regenerate strict batch inventory and regression-risk artifacts for the revert SHA, re-run exact-master qualification, and deploy only the reverted origin/master SHA if production has already been updated.",
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No ADR update is required because this packaging fix does not change runtime ownership, deployment topology, data contracts, payment behavior, or module boundaries. It preserves the existing signed-controller and no-staging QA requirements.",
+      "rollback_notes": "Revert this aggregate manifest update and the whitespace fix if the candidate packaging is rejected. Do not promote to master or deploy production until a new exact candidate has passing reviewed inventory, Regression Risk Notice, and real QA/no-staging evidence.",
       "production_proof_required": [
-        "origin/master equals the promoted master SHA",
-        "production remote HEAD equals the promoted master SHA",
-        ".deploy-state/last_deployed_commit equals the promoted master SHA",
-        "newest production deploy summary records deployed_head, remote_head, and expected_commit equal to the promoted master SHA",
+        "origin/master equals the final promoted master SHA",
+        "production remote HEAD equals the final promoted master SHA",
+        ".deploy-state/last_deployed_commit equals the final promoted master SHA",
+        "newest production deploy summary records deployed_head, remote_head, and expected_commit equal to the final promoted master SHA",
         "production deployment contract passes",
         "frontend asset parity passes",
-        "/api/v1/health services.observability.runtime_sha equals the promoted master SHA"
+        "/api/v1/health services.observability.runtime_sha equals the final promoted master SHA"
       ],
       "production_accuracy_checks_required": [
-        "Release-controller and deploy wrappers preserve exact-SHA and reviewed-manifest requirements",
-        "DGFY account overview still shows the intended reorder label and opens the Orders surface",
-        "Storefront map does not render absent coordinates as a zero-coordinate pin",
-        "Featured merchant carousel controls update active pagination state",
-        "Standalone POS and SKUpervisor POS lazy-loaded checkout surfaces load without console/runtime errors",
-        "Tenant bearer-token bridge recovery remains covered by backend tenant handler tests",
-        "Current-state docs do not claim production-live status before deploy proof exists"
+        "Regression Risk Notice Markdown renders readable evidence fields instead of object-string output",
+        "QA isolation documentation does not overclaim production approval",
+        "Branch cleanup hardening remains documentation/tooling only until production proof and deployed-change accuracy review are complete",
+        "Current-state docs do not claim this staging candidate is production-live before deploy proof exists"
+      ],
+      "regression_risk_level": "critical",
+      "regression_warning_required": true,
+      "regression_warning_summary": "This release-governance packaging candidate affects production authorization evidence and could cause unsafe deployment decisions if the aggregate manifest or QA-deferral wording is wrong.",
+      "potentially_affected_existing_behaviors": [
+        "Staging-to-master promotion review",
+        "Batch inventory selection",
+        "Regression Risk Notice rendering",
+        "No-staging QA proof interpretation",
+        "Branch cleanup retirement decisions"
+      ],
+      "evidence_covering_regression_risk": [
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "Release-gate script tests passed in a clean staging worktree."
+        },
+        {
+          "command": "npm run check:batch-inventory -- --base origin/master --head origin/staging --write --require-ship",
+          "status": "pass",
+          "evidence": "Strict reviewed batch inventory passed for the exact current staging candidate."
+        },
+        {
+          "command": "npm run check:regression-risk",
+          "status": "pass",
+          "evidence": "Regression Risk Notice passed for the reviewed aggregate manifest."
+        }
+      ],
+      "evidence_gaps": [
+        "No real QA deploy summary exists for the current candidate.",
+        "No QA smoke artifact exists for the current candidate.",
+        "QA rollback and restore evidence cannot pass until QA_SSH_HOST and an isolated QA target are configured.",
+        "Production deployment has not been performed."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Treat this candidate as blocked for production until RELEASE_TARGET_SHA=<final_master_sha> npm run gate:release:no-staging passes with real QA evidence.",
+        "If promoted incorrectly, revert the master promotion commit and repeat the exact-SHA release gates for the revert SHA.",
+        "After any eventual deployment, verify production runtime SHA, deploy summary, remote HEAD, .deploy-state marker, and deployed-change accuracy before branch retirement."
       ],
       "can_ship_independently": false,
-      "promotion_eligibility": "eligible",
+      "promotion_eligibility": "eligible_for_master_promotion_only_after_no_staging_evidence",
       "verdict": "ship",
       "payment_sensitive": false,
       "payment_sensitive_files": [],
-      "high_risk_path": true,
-      "high_risk_files": [
-        ".github/workflows/deploy-production.yml",
-        ".github/workflows/exact-master-sha-qualification.yml",
-        ".github/workflows/promote-staging-to-master.yml",
-        ".github/workflows/staging-qualification.yml",
-        "backend/src/middleware/tenantHandler.js",
-        "frontend/apps/store/src/StorefrontApp.jsx",
-        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
-        "frontend/src/features/pos/pages/SkupervisorPOSPage.jsx",
-        "frontend/src/features/pos/pages/TerminalPage.jsx",
-        "scripts/deploy-master-ci.sh",
-        "scripts/deploy-remote.sh",
-        "scripts/gate-release-no-staging.js"
-      ]
+      "high_risk_path": false,
+      "high_risk_files": []
     }
   ]
 }
