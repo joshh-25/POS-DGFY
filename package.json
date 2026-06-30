@@ -44,6 +44,7 @@
     "find:reviewed-batch-manifest": "node scripts/find-reviewed-batch-manifest.js",
     "check:qa-target-proof": "node scripts/check-qa-target-proof.js",
     "check:deploy-source-contract": "node scripts/check-deploy-source-contract.js",
+    "check:merge-hygiene": "node scripts/check-merge-hygiene.js",
     "check:merge-adoption": "node scripts/check-merge-adoption.js",
     "check:merge-adoption-required": "node scripts/check-merge-adoption-required.js",
     "check:docs": "npm run lint:docs",
@@ -103,7 +104,7 @@
     "verify:release-verdict": "node scripts/verify-release-verdict.js",
     "verify:production-deploy-contract": "node scripts/verify-production-deploy-contract.js",
     "test:deploy-contract": "node scripts/check-deploy-source-contract.test.js && node scripts/check-no-staging-prereqs.test.js && node scripts/verify-production-deploy-contract.test.js",
-    "test:merge-adoption": "node scripts/check-merge-adoption.test.js && node scripts/check-merge-adoption-required.test.js",
+    "test:merge-adoption": "node scripts/check-merge-adoption.test.js && node scripts/check-merge-adoption-required.test.js && node scripts/check-merge-hygiene.test.js",
     "test:development-to-production": "node scripts/check-batch-inventory.test.js && node scripts/check-documentation-closure.test.js && node scripts/validate-batch-inventory.test.js && node scripts/check-regression-risk.test.js && node scripts/check-qa-target-proof.test.js && node scripts/audit-master-promotion.test.js && node scripts/review-deployed-change-accuracy.test.js && node scripts/build-release-candidate-evidence.test.js && node scripts/deploy-master-ci.test.js",
     "test:release-controller": "node --test release-controller/test/*.test.js"
   },
