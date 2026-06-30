@@ -108,6 +108,7 @@ import {
   buildUserLocationSourceData,
   ensureDiscoveryMapLayers,
   ensureMapImage,
+  isKnownProvisionedPlaceholderCoordinate,
   setGeoJsonSourceData
 } from './discoveryMapLayers.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
@@ -958,8 +959,57 @@ const STORE_SERVICE_SUBPAGE = 'service';
 const STORE_ITEM_SUBPAGE = 'item';
 const storePath = (slug, subpage = null, query = '') => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${query || ''}`;
 const toNumberOrNull = (value) => {
+  if (value == null || String(value).trim() === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+const getIndexedDiscoveryCoordinate = (store = {}) => {
+  const latitude = toNumberOrNull(store?.latitude);
+  const longitude = toNumberOrNull(store?.longitude);
+  if (latitude == null || longitude == null) return null;
+  if (isKnownProvisionedPlaceholderCoordinate(latitude, longitude)) return null;
+  return { latitude, longitude };
+};
+const coordinatesMatch = (left = {}, right = {}, tolerance = 0.00001) => {
+  const leftLatitude = toNumberOrNull(left?.latitude);
+  const leftLongitude = toNumberOrNull(left?.longitude);
+  const rightLatitude = toNumberOrNull(right?.latitude);
+  const rightLongitude = toNumberOrNull(right?.longitude);
+  if (leftLatitude == null || leftLongitude == null || rightLatitude == null || rightLongitude == null) return false;
+  return Math.abs(leftLatitude - rightLatitude) <= tolerance
+    && Math.abs(leftLongitude - rightLongitude) <= tolerance;
+};
+const getLocationMatchingIndexedRow = (store = {}, locations = []) => {
+  const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+  const indexedLocationId = Number(store?.location_id);
+  if (!Number.isInteger(indexedLocationId) || indexedLocationId <= 0) return null;
+  const match = (Array.isArray(locations) ? locations : [])
+    .find((location) => Number(location?.location_id) === indexedLocationId) || null;
+  if (!match) return null;
+  if (indexedCoordinate && !coordinatesMatch(indexedCoordinate, match)) return null;
+  return match;
+};
+const buildIndexedDiscoveryPin = ({ store = {}, slug = '', markerSuffix = 'indexed', location = null, distanceKm = null } = {}) => {
+  const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+  if (!indexedCoordinate) return null;
+  const numericLocationId = Number(store?.location_id ?? location?.location_id);
+  const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
+    ? numericLocationId
+    : `${indexedCoordinate.latitude.toFixed(6)}:${indexedCoordinate.longitude.toFixed(6)}`;
+  return {
+    ...store,
+    marker_key: `${slug || toSlug(store?.slug || store?.tenant_name) || 'store'}:${markerSuffix}:${stableLocationId}`,
+    latitude: indexedCoordinate.latitude,
+    longitude: indexedCoordinate.longitude,
+    location_id: Number.isInteger(numericLocationId) && numericLocationId > 0 ? numericLocationId : null,
+    location_name: location?.name || store?.location_name || store?.nearest_location_name || 'Main',
+    address_line: location?.address_line || store?.address_line || '',
+    is_primary_storefront: location?.is_primary_storefront === true || store?.is_primary_storefront === true,
+    branch_label: location?.is_primary_storefront === false ? 'Branch' : 'Storefront pin',
+    distance_km: Number.isFinite(Number(distanceKm))
+      ? Number(distanceKm)
+      : (Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null)
+  };
 };
 const isPublicMapDisabled = (entry = {}) => (
   entry?.store_has_no_location === true
@@ -5767,6 +5817,7 @@ export default function StorefrontApp() {
   const [discoveryAvailabilityFilter, setDiscoveryAvailabilityFilter] = useState('all');
   const [activeDiscoveryFilterDropdown, setActiveDiscoveryFilterDropdown] = useState(null);
   const [featuredCategoryFilter, setFeaturedCategoryFilter] = useState('all');
+  const [featuredCarouselPage, setFeaturedCarouselPage] = useState(0);
   const [featuredBaseStores, setFeaturedBaseStores] = useState([]);
   const [renderDiscoveryResetButton, setRenderDiscoveryResetButton] = useState(false);
   const [showDiscoveryResetButton, setShowDiscoveryResetButton] = useState(false);
@@ -7567,11 +7618,13 @@ export default function StorefrontApp() {
         const primaryLocation = pins.find((location) => Number(location.location_id) === Number(locationBundle.primary_location_id))
           || pins.find((location) => location?.is_primary_storefront === true)
           || null;
-        const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
+        const indexedCoordinate = mapDisabled ? null : getIndexedDiscoveryCoordinate(store);
+        const indexedLocation = getLocationMatchingIndexedRow(store, pins);
+        const fallbackLocation = indexedLocation || nearestMatchingLocation || primaryLocation || pins[0] || null;
         const fallbackLat = mapDisabled ? null : toNumberOrNull(store?.latitude);
         const fallbackLng = mapDisabled ? null : toNumberOrNull(store?.longitude);
-        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? null;
-        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? null;
+        const anchorLatitude = indexedCoordinate?.latitude ?? fallbackLocation?.latitude ?? fallbackLat ?? null;
+        const anchorLongitude = indexedCoordinate?.longitude ?? fallbackLocation?.longitude ?? fallbackLng ?? null;
         const nearestPinWithDistance = hasDiscoveryLocation
           ? pins
             .map((location) => ({
@@ -7723,6 +7776,24 @@ export default function StorefrontApp() {
       const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
         ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
         : null;
+      const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+      const indexedLocation = getLocationMatchingIndexedRow(store, activeWithCoords);
+      const indexedDistanceKm = hasDiscoveryLocation && indexedCoordinate
+        ? haversineDistanceKm(discoveryLat, discoveryLng, indexedCoordinate.latitude, indexedCoordinate.longitude)
+        : null;
+      const shouldUseIndexedPrimaryPin = Boolean(indexedCoordinate)
+        && (discoveryPinScope === 'tenant_primary' || (!hasSearchQuery && !indexedLocation));
+      if (shouldUseIndexedPrimaryPin) {
+        const indexedPin = buildIndexedDiscoveryPin({
+          store,
+          slug,
+          markerSuffix: 'indexed',
+          location: indexedLocation,
+          distanceKm: indexedDistanceKm
+        });
+        if (indexedPin) pins.push(indexedPin);
+        if (discoveryPinScope === 'tenant_primary') return;
+      }
       if (activeWithCoords.length === 0) {
         if (mapDisabled) return;
         const lat = toNumberOrNull(store?.latitude);
@@ -7881,6 +7952,22 @@ export default function StorefrontApp() {
           longitude: toNumberOrNull(location?.longitude)
         }))
         .filter((location) => location.latitude != null && location.longitude != null);
+
+      const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+      if (indexedCoordinate) {
+        const indexedLocation = getLocationMatchingIndexedRow(store, activeLocations);
+        const indexedPin = buildIndexedDiscoveryPin({
+          store,
+          slug,
+          markerSuffix: 'hero-indexed',
+          location: indexedLocation,
+          distanceKm: hasDiscoveryLocation
+            ? haversineDistanceKm(discoveryLat, discoveryLng, indexedCoordinate.latitude, indexedCoordinate.longitude)
+            : null
+        });
+        if (indexedPin) pins.push(indexedPin);
+        return;
+      }
 
       if (activeLocations.length === 0) {
         if (mapDisabled) return;
@@ -11229,6 +11316,39 @@ export default function StorefrontApp() {
       })
       .slice(0, 10);
   }, [featuredBaseStores, featuredCategoryFilter]);
+  const featuredCarouselStep = 304;
+  const featuredCarouselPageCount = useMemo(
+    () => Math.max(1, Math.min(5, Math.ceil(featuredVisibleStores.length / 2))),
+    [featuredVisibleStores.length]
+  );
+  const getFeaturedCarouselPageForScroll = useCallback((scrollLeft = 0) => {
+    const rawPage = Math.round(Number(scrollLeft || 0) / featuredCarouselStep);
+    return Math.max(0, Math.min(featuredCarouselPageCount - 1, rawPage));
+  }, [featuredCarouselPageCount]);
+  const scrollFeaturedCarouselToPage = useCallback((page) => {
+    const nextPage = Math.max(0, Math.min(featuredCarouselPageCount - 1, Number(page || 0)));
+    setFeaturedCarouselPage(nextPage);
+    featuredCarouselRef.current?.scrollTo?.({ left: nextPage * featuredCarouselStep, behavior: 'smooth' });
+  }, [featuredCarouselPageCount]);
+  const scrollFeaturedCarouselByPage = useCallback((direction) => {
+    const currentPage = getFeaturedCarouselPageForScroll(featuredCarouselRef.current?.scrollLeft || 0);
+    scrollFeaturedCarouselToPage(currentPage + direction);
+  }, [getFeaturedCarouselPageForScroll, scrollFeaturedCarouselToPage]);
+  useEffect(() => {
+    setFeaturedCarouselPage(0);
+    featuredCarouselRef.current?.scrollTo?.({ left: 0, behavior: 'auto' });
+  }, [featuredCategoryFilter, featuredVisibleStores.length]);
+  useEffect(() => {
+    const carousel = featuredCarouselRef.current;
+    if (!carousel) return undefined;
+    const syncFeaturedCarouselPage = () => {
+      const nextPage = getFeaturedCarouselPageForScroll(carousel.scrollLeft);
+      setFeaturedCarouselPage((currentPage) => (currentPage === nextPage ? currentPage : nextPage));
+    };
+    syncFeaturedCarouselPage();
+    carousel.addEventListener('scroll', syncFeaturedCarouselPage, { passive: true });
+    return () => carousel.removeEventListener('scroll', syncFeaturedCarouselPage);
+  }, [getFeaturedCarouselPageForScroll, featuredVisibleStores.length]);
   const discoveryBusinessModeOptions = useMemo(() => ([
     ['all', 'Category: All'],
     ...WORKFLOW_MODE_SELECT_VALUES.map((modeKey) => [
@@ -13473,15 +13593,14 @@ export default function StorefrontApp() {
 
                       {/* Carousel Controls */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 16 }}>
-                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: -304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#94a3b8', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>e.currentTarget.style.color='#1a4e8d'} onMouseOut={(e)=>e.currentTarget.style.color='#94a3b8'}><ChevronLeft size={20} /></div>
+                        <button type="button" onClick={() => scrollFeaturedCarouselByPage(-1)} disabled={featuredCarouselPage === 0} aria-label="Show previous featured merchants" style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: featuredCarouselPage === 0 ? '#cbd5e1' : '#94a3b8', cursor: featuredCarouselPage === 0 ? 'not-allowed' : 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronLeft size={20} /></button>
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1a4e8d' }} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 304, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 608, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 912, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 1216, behavior: 'smooth' })} />
+                          {Array.from({ length: featuredCarouselPageCount }, (_, pageIndex) => {
+                            const isActivePage = featuredCarouselPage === pageIndex;
+                            return <button key={pageIndex} type="button" onClick={() => scrollFeaturedCarouselToPage(pageIndex)} aria-label={`Show featured merchants page ${pageIndex + 1}`} aria-current={isActivePage ? 'page' : undefined} style={{ width: 8, height: 8, borderRadius: '50%', border: 0, padding: 0, background: isActivePage ? '#1a4e8d' : '#e2e8f0', cursor: 'pointer' }} />;
+                          })}
                         </div>
-                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: 304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#1a4e8d', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>{e.currentTarget.style.background='#f8fafc'}} onMouseOut={(e)=>{e.currentTarget.style.background='#fff'}}><ChevronRight size={20} /></div>
+                        <button type="button" onClick={() => scrollFeaturedCarouselByPage(1)} disabled={featuredCarouselPage >= featuredCarouselPageCount - 1} aria-label="Show next featured merchants" style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: featuredCarouselPage >= featuredCarouselPageCount - 1 ? '#cbd5e1' : '#1a4e8d', cursor: featuredCarouselPage >= featuredCarouselPageCount - 1 ? 'not-allowed' : 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronRight size={20} /></button>
                       </div>
                     </section>
 

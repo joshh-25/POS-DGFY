@@ -1,6 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import POSCheckoutTerminal from '../components/SkupervisorPOSCheckoutTerminal';
 import { usePermission } from '@/hooks/usePermission';
 import { CalendarCheck, CheckCircle2, Clock, UserCheck, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,6 +9,7 @@ import { listServiceBookings, updateServiceBookingStatus } from '../../services/
 
 const FnbDiningPanel = lazy(() => import('../../fnb/components/FnbDiningPanel.jsx'));
 const HospitalityPosPanel = lazy(() => import('../components/HospitalityPosPanel.jsx'));
+const POSCheckoutTerminal = lazy(() => import('../components/SkupervisorPOSCheckoutTerminal.jsx'));
 
 const servicePosActions = [
     { status: 'confirmed', label: 'Confirm', icon: CalendarCheck },
@@ -148,7 +148,9 @@ export default function POSPage() {
                     <FnbDiningPanel onSelectCheckoutContext={setFnbCheckoutContext} />
                 </Suspense>
             )}
-            <POSCheckoutTerminal canViewHistory={canViewPos} fnbContext={fnbCheckoutContext} />
+            <Suspense fallback={<section className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS terminal...</section>}>
+                <POSCheckoutTerminal canViewHistory={canViewPos} fnbContext={fnbCheckoutContext} />
+            </Suspense>
         </div>
     );
 }
