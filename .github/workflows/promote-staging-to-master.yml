@@ -59,6 +59,9 @@ jobs:
           npm run check:documentation-closure -- --inventory ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.json" --base origin/master --head "${{ steps.candidate.outputs.sha }}" --output ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/documentation_closure.json" --markdown ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/documentation_closure.md"
           npm run check:regression-risk -- --inventory ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/batch_inventory.json" --output ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/regression_risk_notice.json" --markdown ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/regression_risk_notice.md" --target-sha "${{ steps.candidate.outputs.sha }}"
 
+      - name: Check lightweight merge hygiene
+        run: npm run check:merge-hygiene -- --base origin/master --head "${{ steps.candidate.outputs.sha }}" --target origin/master --report ".tmp/release-gates/${{ steps.candidate.outputs.sha }}/merge_hygiene_report.json"
+
       - name: Create or update PR without merging
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,6 +84,7 @@ jobs:
             echo ""
             echo "- Candidate SHA: \`${{ steps.candidate.outputs.sha }}\`"
             echo "- Documentation closure: \`.tmp/release-gates/${{ steps.candidate.outputs.sha }}/documentation_closure.json\`"
+            echo "- Merge hygiene report: \`.tmp/release-gates/${{ steps.candidate.outputs.sha }}/merge_hygiene_report.json\`"
             echo "- Regression risk notice: \`.tmp/release-gates/${{ steps.candidate.outputs.sha }}/regression_risk_notice.json\`"
             echo "- GitHub auto-merge: prohibited"
             echo "- Merge authority: external signed promotion controller"
