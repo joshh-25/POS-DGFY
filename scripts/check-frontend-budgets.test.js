@@ -31,7 +31,7 @@ function writeAsset(projectRoot, app, name, sizeBytes, mtime = new Date()) {
 
 function writePassingAssets(projectRoot, mtime = new Date()) {
   writeAsset(projectRoot, 'skupervisor', 'Login-test.js', 9 * 1024, mtime);
-  writeAsset(projectRoot, 'skupervisor', 'POSCheckoutTerminal-test.js', 60 * 1024, mtime);
+  writeAsset(projectRoot, 'skupervisor', 'SkupervisorPOSCheckoutTerminal-test.js', 60 * 1024, mtime);
   writeAsset(projectRoot, 'skupervisor', 'SkupervisorPOSPage-test.js', 50 * 1024, mtime);
   writeAsset(projectRoot, 'skupervisor', 'TerminalPage-test.js', 30 * 1024, mtime);
   writeAsset(projectRoot, 'skupervisor', 'SalesPage-test.js', 10 * 1024, mtime);

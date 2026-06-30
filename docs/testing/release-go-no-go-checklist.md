@@ -1,11 +1,13 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-26
+Last updated: 2026-06-30
+
+GitHub branch protection, rulesets, private environment secrets, and required deployment reviewers are unavailable for this private GitHub Free repository. GitHub checks are candidate evidence only. ADR 0030 and the root-owned external signed release controller are the production authorization boundary.
 
 ## Current Release State
 
-1. Latest behavior-bearing production runtime evidence available in this workspace before this docs-only follow-up is target SHA `546586cffdeb3683d0e66bd31b61412cc9a8aeb1`, deployed/proven on June 26, 2026 from live production health plus deploy summary evidence. Production summary `/var/www/skupervisor/logs/deploy/deploy_20260626_170021.summary.txt`, production remote `HEAD`, production `.deploy-state/last_deployed_commit`, and live `/api/v1/health` all matched the target SHA. The deploy summary records production deploy contract `PASS`, frontend asset parity `pass`, backend/IMS/POS/Store runtime checks, public endpoint checks, tenant-store asset integrity, and PM2 reload success. Live `/api/v1/health` reports `services.observability.runtime_sha=546586cffdeb3683d0e66bd31b61412cc9a8aeb1` from `deploy_state:last_deployed_commit`; database, Redis, runtime schema, schema indexes, billing telemetry, and observability are healthy. Tenant pool capacity is at 20 of 20 and remains an operational warning. This deployment includes platform-admin assisted provisioning, cached workflow mode, DGFY/customer session hardening, F&B/POS/purchase-order workflow alignment, catalog ownership boundaries, auth/settings hardening, the DGFY duplicate-signup preflight endpoint, and Storefront gallery upload hardening on top of the June 22 Storefront map/current-location runtime chain. This docs-only follow-up may advance the final source SHA without adding runtime behavior.
+1. Latest verified production runtime evidence is live `/api/v1/health.services.observability.runtime_sha=bf982d4e78f52e67c6575dd2a77037232a6ab4e9`, matching `origin/master` on June 30, 2026. The current task did not independently refresh remote HEAD, deploy marker, deploy summary, or an external controller record, so do not overclaim full two-phase completion. `origin/staging` started at `3624dce8134f9f044882fe4fa2a234e280228600`, 15 commits ahead of master; recheck moving refs before release decisions.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
@@ -46,26 +48,28 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 19. Merge-adoption gate when a release adopts PR/branch work or `merge-docs/` reference behavior:
    - `npm run check:merge-adoption -- --manifest <manifest>`
    - `MERGE_ADOPTION_MANIFEST=<manifest> RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging`
-20. No-staging QA parity must be created before production promotion, not repaired afterward. `scripts/deploy-remote.sh` promotes the pushed target SHA to QA by default when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`, fetches fresh QA deploy summary evidence every run, and refuses automatic QA promotion when `QA_SSH_HOST` plus `QA_APP_DIR` match the production host/app dir. Production-as-QA evidence mode must set `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` intentionally and cannot claim pre-production parity.
+20. Isolated QA parity must be created before promotion. Proof must include the exact SHA and every isolation field in `docs/ops/QA_ISOLATION_PROFILE.md`. Production-as-QA is prohibited.
 21. PayMongo live QR Ph split checkout must remain disabled until the PayMongo parent/platform merchant ID and live split-payment marketplace capability are externally confirmed and represented by `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`. Current provider evidence is negative: PayMongo support confirmed on June 25, 2026 that Linked Accounts is not configured for the account and self-service onboarding is still under development.
 22. Batch inventory gate must pass for every promotion candidate:
    ```bash
-   npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --write --require-ship
+   npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --reviewed-manifest docs/releases/batches/<release>.json --write --require-ship
    npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --base origin/master --head <candidate_sha> --require-ship
    ```
-23. CI-safe production deployment, when enabled, must use:
+23. Regression Risk Notice must be generated and reviewed before signed promotion or production authorization:
    ```bash
-   RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
+   npm run check:regression-risk -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --output ".tmp/release-gates/<candidate_sha>/regression_risk_notice.json" --markdown ".tmp/release-gates/<candidate_sha>/regression_risk_notice.md"
    ```
-   Dry-run first:
-   ```bash
-   PRODUCTION_DEPLOY_DRY_RUN=1 RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
-   ```
-   Automatic production deployment remains blocked until branch protection, exact master SHA qualification, failure simulations, and distinct QA proof are configured.
-24. QA target proof must pass before automatic deployment:
+24. GitHub production deployment is permanently disabled under ADR 0030. `.github/workflows/deploy-production.yml` creates a non-secret candidate bundle only; `ENABLE_AUTO_PRODUCTION_DEPLOY=0`.
+25. QA target proof must pass before signed promotion:
    ```bash
    RELEASE_TARGET_SHA=<candidate_sha> npm run check:qa-target-proof -- --target-sha <candidate_sha> --summary ".tmp/release-gates/<candidate_sha>/qa_deploy_summary.txt" --report ".tmp/release-gates/<candidate_sha>/qa_target_proof.json"
    ```
+26. External controller dry-run must verify promotion/production authorization tags, full signer fingerprint, expiration, exact SHA, PR/check evidence, inventory/evidence hashes, unused nonce, and current remote branch.
+27. Payment-sensitive releases require an additional signed payment tag for both the staging promotion target and resulting master target.
+28. Per-slice accuracy review must include `--proof-bundle` and pass with hash-verified API, UI, read-only database, or asset artifacts.
+29. Documentation closure must pass for every slice and be hash-bound into `sku-release-evidence/v2`; it cannot be bypassed.
+30. Production deployment success ends at `deployed_pending_accuracy`. Only a separate trusted finalization with current exact-SHA proof for every slice may produce `completed`.
+31. Root-owned JSON and Markdown deployment/finalization records must exist outside Git under the configured `release_records_dir`.
 
 ## Latest Technical Evidence (2026-06-18)
 
@@ -167,6 +171,8 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 96. Production deploy proof refreshed on June 22, 2026 for runtime SHA `eed354686109418e8766be97e05bbc90aa8ef55b`. Production summary `/var/www/skupervisor/logs/deploy/deploy_20260622_165404.summary.txt` records `deployed_head=eed354686109418e8766be97e05bbc90aa8ef55b`, `remote_head=eed354686109418e8766be97e05bbc90aa8ef55b`, `expected_commit=eed354686109418e8766be97e05bbc90aa8ef55b`, frontend asset parity `pass`, tenant schema sync report output, tenant index headroom report output, `tenant_index_headroom_strict=0`, `tenant_schema_sync_require_zero=1`, and `migrations_changed=0`. Live `/api/v1/health` reports `services.observability.runtime_sha=eed354686109418e8766be97e05bbc90aa8ef55b`; `https://dgfy.ph/map-dgfy` returned `200` with the Storefront app shell and assets. Local validation passed the focused Storefront current-location control regression, `discoveryMapLayers` tests, Storefront production build, architecture, and whitespace checks. The no-staging verdict used owner-authorized emergency bypass because QA deploy-summary SHA evidence was stale; post-deploy runtime SHA, deploy summary, `expected_commit`, route smoke, and frontend asset parity match the target. The source tree now contains a guarded QA promotion helper and deploy-wrapper changes intended to eliminate routine stale-QA bypasses once a distinct QA target is configured; current `.env.qa.local` still points at production, so that helper correctly refuses automatic QA promotion under the current local QA config.
 97. Production deploy proof refreshed on June 25, 2026 for runtime SHA `a5e2fc1bf1887279a8dbb6ac569628e0c9427801`. Production summary `/var/www/skupervisor/logs/deploy/deploy_20260625_160129.summary.txt` records `deployed_head=a5e2fc1bf1887279a8dbb6ac569628e0c9427801`, `remote_head=a5e2fc1bf1887279a8dbb6ac569628e0c9427801`, `expected_commit=a5e2fc1bf1887279a8dbb6ac569628e0c9427801`, frontend asset parity `pass`, tenant schema sync report output, tenant index headroom report output, `tenant_index_headroom_strict=0`, `tenant_schema_sync_require_zero=1`, and `migrations_changed=0`. Live `/api/v1/health` reports `services.observability.runtime_sha=a5e2fc1bf1887279a8dbb6ac569628e0c9427801` from `deploy_state:last_deployed_commit`. Production remote `HEAD` and `.deploy-state/last_deployed_commit` matched the same SHA at proof time. This runtime included the DGFY duplicate-signup preflight endpoint and Storefront gallery upload hardening; it is now historical because later June 26 deployments added assisted provisioning, workflow, POS/F&B, catalog, and auth/settings hardening.
 98. Production deploy proof refreshed on June 26, 2026 for runtime SHA `546586cffdeb3683d0e66bd31b61412cc9a8aeb1`. Production summary `/var/www/skupervisor/logs/deploy/deploy_20260626_170021.summary.txt` records production deploy contract `PASS`, frontend asset parity `pass`, backend/IMS/POS/Store runtime checks, public endpoint checks, tenant-store asset integrity, and PM2 reload success. Production remote `HEAD`, production `.deploy-state/last_deployed_commit`, and live `/api/v1/health.services.observability.runtime_sha` all matched `546586cffdeb3683d0e66bd31b61412cc9a8aeb1` at proof time. The no-staging verdict used the documented emergency bypass only for stale pre-deploy QA deploy-summary SHA parity; source contract, docs lint, architecture, QA multi-location smoke, rollback drill, restore drill, targeted non-DB backend/frontend tests, SKUpervisor build, and compliance checks passed before deploy. This runtime includes platform-admin assisted provisioning, cached workflow mode, DGFY/customer session hardening, F&B/POS/purchase-order workflow alignment, catalog ownership boundaries, and auth/settings hardening.
+99. Production deploy proof refreshed on June 29, 2026 for runtime SHA `17bb4cd1bc0abf283b224e30c02f625884e8ffae`. Production remote checkout `/var/www/skupervisor`, production `HEAD`, production `.deploy-state/last_deployed_commit`, and live `/api/v1/health.services.observability.runtime_sha` matched the target. Live Storefront tracking smoke for `GET https://dgfy.ph/api/v1/store/track/SK-2MIBVL` with `x-store-slug: eatery-ni-doe-2e561d` returned `200`, `status=placed`, and `status_label=Order placed`. The deploy used owner-authorized emergency bypass because QA deploy-summary/runtime parity was stale/unusable; focused frontend tracking/Storefront tests, focused backend rate-limiter/cache-policy tests, Storefront build, docs lint, architecture, compliance, whitespace checks, and rendered desktop/mobile local Storefront tracking QA passed before production proof. This runtime includes the June 29 hotfix stack: POS terminal grid width, DGFY signup OTP stale-tenant bypass, F&B item create/finalize preset normalization, Storefront settings POS metadata scoping, bulk POS setup modal handoff, and Storefront order-tracking route/refresh/cooldown hardening.
+100. Staging was synchronized after the June 29 production deploy by merging production commit `17bb4cd1bc0abf283b224e30c02f625884e8ffae` into `origin/staging` as merge commit `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de`, then advancing staging with docs-only release-state refresh commits. This was intentionally a merge, not an overwrite, because staging already contained release-governance commits that are not production runtime. Post-merge validation passed the focused frontend/backend tracking suites, Storefront build, architecture, docs lint, compliance, and whitespace checks.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
@@ -182,7 +188,10 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
    - `.tmp/release-gates/<sha>/local_readiness.json`
 2. No-staging release verdict:
    - `.tmp/release-gates/<sha>/release_verdict.json`
-3. Canonical readiness tracking:
+3. Regression Risk Notice:
+   - `.tmp/release-gates/<sha>/regression_risk_notice.json`
+   - `.tmp/release-gates/<sha>/regression_risk_notice.md`
+4. Canonical readiness tracking:
    - `docs/testing/pos-readiness-status.md`
 
 ## Historical Snapshots

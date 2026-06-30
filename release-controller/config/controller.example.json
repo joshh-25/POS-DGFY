@@ -1,0 +1,46 @@
+{
+  "repository": "BBLabs-Albert/SKU-Inventory-Manager",
+  "remote_url": "git@github.com:BBLabs-Albert/SKU-Inventory-Manager.git",
+  "git_mirror": "/var/lib/skupervisor-release-controller/repository.git",
+  "ledger_dir": "/var/lib/skupervisor-release-controller/nonce-ledger",
+  "release_records_dir": "/var/lib/skupervisor-release-controller/releases",
+  "worktree_root": "/var/lib/skupervisor-release-controller/worktrees",
+  "allowed_signer_fingerprints": [
+    "REPLACE_WITH_FULL_GPG_FINGERPRINT"
+  ],
+  "required_checks": {
+    "promotion": [
+      "staging-qualification"
+    ],
+    "production": [
+      "exact-master-sha-qualification"
+    ]
+  },
+  "qualification_commands": {
+    "promotion": [
+      ["npm", "ci"],
+      ["npm", "run", "test:development-to-production"],
+      ["npm", "run", "lint:docs"],
+      ["npm", "run", "check:architecture"],
+      ["npm", "run", "check:compliance"]
+    ],
+    "production": [
+      ["npm", "ci"],
+      ["npm", "run", "test:development-to-production"],
+      ["npm", "run", "test:deploy-contract"],
+      ["npm", "run", "lint:docs"],
+      ["npm", "run", "check:architecture"],
+      ["npm", "run", "check:compliance"]
+    ]
+  },
+  "qualification_timeout_ms": 1800000,
+  "deploy_timeout_ms": 1800000,
+  "proof_timeout_ms": 120000,
+  "production": {
+    "host": "production.example.invalid",
+    "port": 22,
+    "user": "skupervisor-release",
+    "app_dir": "/var/www/skupervisor",
+    "ssh_key_path": "/etc/skupervisor-release-controller/secrets/production_ed25519"
+  }
+}

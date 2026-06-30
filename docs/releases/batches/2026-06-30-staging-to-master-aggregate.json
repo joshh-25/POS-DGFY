@@ -1,0 +1,289 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-approved manual promotion review",
+  "reviewed_at": "2026-06-30T07:35:00.000Z",
+  "source_pr": "PR32-staging-to-master",
+  "release_slices": [
+    {
+      "id": "staging-to-master-aggregate-2026-06-30",
+      "slice_name": "Staging aggregate release-governance and frontend baseline promotion",
+      "name": "Staging aggregate release-governance and frontend baseline promotion",
+      "plain_english_purpose": "Promote the currently staged release-governance repairs, frontend release-gate baseline fixes, and tenant/DGFY support changes to master through a reviewed manual path while GitHub Actions billing prevents hosted checks from running.",
+      "purpose": "Promote the currently staged release-governance repairs, frontend release-gate baseline fixes, and tenant/DGFY support changes to master through a reviewed manual path while GitHub Actions billing prevents hosted checks from running.",
+      "implementation_summary": "Adds and hardens the external release-controller and release evidence gates, teaches the reviewed-manifest finder to select a full aggregate manifest when staging contains multiple source manifests, records release documentation and compliance evidence, restores Storefront/DGFY/POS frontend release-gate behavior, and carries the staged tenant bearer-token bridge recovery into the master promotion candidate.",
+      "included_files": [
+        ".github/pull_request_template.md",
+        ".github/workflows/ci.yml",
+        ".github/workflows/deploy-production.yml",
+        ".github/workflows/exact-master-sha-qualification.yml",
+        ".github/workflows/nightly-ims-pos-sales-e2e.yml",
+        ".github/workflows/promote-staging-to-master.yml",
+        ".github/workflows/staging-qualification.yml",
+        "AGENTS.md",
+        "System_Audit/README.md",
+        "backend/src/middleware/tenantHandler.js",
+        "backend/tests/tenantHandler.emailOtp.test.js",
+        "docs/INDEX.md",
+        "docs/README.md",
+        "docs/_meta/document-registry.json",
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/compliance/impact-declarations/2026-06-29-bulk-pos-setup-modal-handoff-hotfix.md",
+        "docs/compliance/impact-declarations/2026-06-29-pos-terminal-checkout-grid-layout-hotfix.md",
+        "docs/compliance/impact-declarations/2026-06-29-storefront-settings-pos-metadata-scope-hotfix.md",
+        "docs/compliance/impact-declarations/2026-06-30-frontend-release-gate-baseline.md",
+        "docs/features/DGFY_CUSTOMER_ACCOUNT.md",
+        "docs/guides/SCRIPTS_GUIDE.md",
+        "docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md",
+        "docs/ops/DEPLOYMENT_GUIDE.md",
+        "docs/ops/DEVELOPER_DEPLOYMENT_HANDOFF.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/MERGE_ADOPTION_GATE.md",
+        "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
+        "docs/ops/PRODUCTION_CHECKLIST.md",
+        "docs/ops/QA_ISOLATION_PROFILE.md",
+        "docs/ops/README.md",
+        "docs/release/merge-adoption/release-documentation-closure-2026-06-30.json",
+        "docs/releases/batches/2026-06-28-free-tier-signed-release-controller.json",
+        "docs/releases/batches/2026-06-30-frontend-release-gate-baseline.json",
+        "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json",
+        "docs/templates/REVIEWED_BATCH_MANIFEST_TEMPLATE.json",
+        "docs/testing/dgfy-full-flow-e2e-verification-matrix-2026-06-13.md",
+        "docs/testing/release-go-no-go-checklist.md",
+        "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+        "frontend/apps/store/src/StorefrontApp.jsx",
+        "frontend/apps/store/src/__tests__/discoveryFlow.integration.test.jsx",
+        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
+        "frontend/src/features/pos/pages/SkupervisorPOSPage.jsx",
+        "frontend/src/features/pos/pages/TerminalPage.jsx",
+        "package.json",
+        "release-controller/README.md",
+        "release-controller/VERSION",
+        "release-controller/bin/skupervisor-release-controller.js",
+        "release-controller/config/controller.example.json",
+        "release-controller/install/install.sh",
+        "release-controller/install/provision-isolated-qa.sh",
+        "release-controller/lib/release-controller.js",
+        "release-controller/package.json",
+        "release-controller/test/release-controller.test.js",
+        "scripts/audit-master-promotion.js",
+        "scripts/audit-master-promotion.test.js",
+        "scripts/build-release-candidate-evidence.js",
+        "scripts/build-release-candidate-evidence.test.js",
+        "scripts/check-batch-inventory.js",
+        "scripts/check-batch-inventory.test.js",
+        "scripts/check-documentation-closure.js",
+        "scripts/check-documentation-closure.test.js",
+        "scripts/check-frontend-budgets.js",
+        "scripts/check-frontend-budgets.test.js",
+        "scripts/check-merge-hygiene.js",
+        "scripts/check-merge-hygiene.test.js",
+        "scripts/check-no-staging-prereqs.js",
+        "scripts/check-no-staging-prereqs.test.js",
+        "scripts/check-qa-target-proof.js",
+        "scripts/check-qa-target-proof.test.js",
+        "scripts/check-regression-risk.js",
+        "scripts/check-regression-risk.test.js",
+        "scripts/collect-master-promotion-evidence.js",
+        "scripts/deploy-master-ci.sh",
+        "scripts/deploy-master-ci.test.js",
+        "scripts/deploy-qa-target.ps1",
+        "scripts/deploy-remote.sh",
+        "scripts/find-reviewed-batch-manifest.js",
+        "scripts/find-reviewed-batch-manifest.test.js",
+        "scripts/gate-release-no-staging.js",
+        "scripts/promote-staging-to-master.js",
+        "scripts/review-deployed-change-accuracy.js",
+        "scripts/review-deployed-change-accuracy.test.js",
+        "scripts/run-backend-test-matrix.js",
+        "scripts/validate-batch-inventory.js",
+        "scripts/validate-batch-inventory.test.js",
+        "skills/sku-development-to-production/SKILL.md"
+      ],
+      "included_features": [
+        "Signed external release authorization and release-controller scaffolding",
+        "Reviewed batch inventory, regression risk, merge hygiene, documentation closure, and deployed accuracy gates",
+        "Aggregate reviewed-manifest selection for staging promotions that contain multiple source manifests",
+        "Tenant bearer-token bridge recovery",
+        "DGFY account, Storefront map/carousel, and POS lazy-loading release-gate baseline repairs"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "PayMongo live split checkout enablement",
+        "Uncommitted local Storefront guest-checkout work in the main checkout",
+        "Open PR #25 and PR #26 POS terminal pairing work",
+        "Production deployment",
+        "Branch deletion or retirement"
+      ],
+      "owner_attribution": "BabyBaBab owner-approved manual staging promotion",
+      "source_branch": "staging",
+      "source_pr": "PR32-staging-to-master",
+      "source_type": "owner_direct_staging",
+      "affected_surfaces": [
+        "backend",
+        "frontend",
+        "scripts/deploy",
+        "docs",
+        "compliance",
+        "POS",
+        "Storefront",
+        "DGFY",
+        "tenant lifecycle"
+      ],
+      "affected_surface_map": {
+        "backend": true,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": true,
+        "docs": true,
+        "compliance": true,
+        "POS": true,
+        "Storefront": true,
+        "DGFY": true,
+        "tenant lifecycle": true,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run test:development-to-production",
+        "npm run check:merge-adoption-required",
+        "npm run test:frontend",
+        "npm --prefix frontend run build:all",
+        "npm run check:frontend-budgets",
+        "npm run test:backend:matrix"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+        },
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+        },
+        {
+          "command": "npm run check:merge-adoption-required",
+          "status": "pass",
+          "evidence": "clean-worktree validation for staging-to-master candidate on 2026-06-30"
+        },
+        {
+          "command": "npm run test:frontend",
+          "status": "pass",
+          "evidence": "PR31 local validation: 129 frontend files and 710 tests passed before staging merge"
+        },
+        {
+          "command": "npm --prefix frontend run build:all",
+          "status": "pass",
+          "evidence": "PR31 local validation: SKUpervisor, standalone POS, and Storefront production builds passed before staging merge"
+        },
+        {
+          "command": "npm run check:frontend-budgets",
+          "status": "pass",
+          "evidence": "PR31 local validation: fresh frontend budget check passed before staging merge"
+        },
+        {
+          "command": "npm run test:backend:matrix",
+          "status": "pass",
+          "evidence": "PR31 local validation: schema preflight and 307 active backend test files passed before staging merge"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/compliance/impact-declarations/2026-06-30-frontend-release-gate-baseline.md"
+      ],
+      "architecture_classification": "no-architecture-impact",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-approved documentation review",
+        "reviewed_at": "2026-06-30T07:35:00.000Z",
+        "rationale": "The staging batch changes release governance, evidence generation, and user-facing frontend baseline behavior, so the authoritative workflow, no-staging standard, release docs, ADR, compliance declaration, and aggregate reviewed manifest are all part of the closure evidence.",
+        "documents": [
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "updated",
+            "evidence": "Defines the governed feature branch to staging to master to exact origin/master production path and manual equivalent requirements when GitHub Actions cannot run."
+          },
+          {
+            "path": "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
+            "action": "updated",
+            "evidence": "Keeps production blocked unless exact-SHA evidence, batch inventory, regression risk notice, production proof, and accuracy review are present."
+          },
+          {
+            "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+            "action": "updated",
+            "evidence": "Records why GitHub Free cannot be the sole production trust root and why signed external authorization is required."
+          },
+          {
+            "path": "docs/compliance/impact-declarations/2026-06-30-frontend-release-gate-baseline.md",
+            "action": "updated",
+            "evidence": "Declares the POS-sensitive frontend loading change and confirms fiscal/payment behavior is unchanged."
+          },
+          {
+            "path": "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json",
+            "action": "updated",
+            "evidence": "Provides exact reviewed file coverage for the full staging-to-master promotion candidate."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "ADR 0030 governs the release authorization changes; the June 30 compliance declaration covers POS-sensitive frontend loading changes. No payment contract or database migration is introduced.",
+      "rollback_notes": "Revert the final master merge commit, regenerate strict batch inventory and regression-risk artifacts for the revert SHA, re-run exact-master qualification, and deploy only the reverted origin/master SHA if production has already been updated.",
+      "production_proof_required": [
+        "origin/master equals the promoted master SHA",
+        "production remote HEAD equals the promoted master SHA",
+        ".deploy-state/last_deployed_commit equals the promoted master SHA",
+        "newest production deploy summary records deployed_head, remote_head, and expected_commit equal to the promoted master SHA",
+        "production deployment contract passes",
+        "frontend asset parity passes",
+        "/api/v1/health services.observability.runtime_sha equals the promoted master SHA"
+      ],
+      "production_accuracy_checks_required": [
+        "Release-controller and deploy wrappers preserve exact-SHA and reviewed-manifest requirements",
+        "DGFY account overview still shows the intended reorder label and opens the Orders surface",
+        "Storefront map does not render absent coordinates as a zero-coordinate pin",
+        "Featured merchant carousel controls update active pagination state",
+        "Standalone POS and SKUpervisor POS lazy-loaded checkout surfaces load without console/runtime errors",
+        "Tenant bearer-token bridge recovery remains covered by backend tenant handler tests",
+        "Current-state docs do not claim production-live status before deploy proof exists"
+      ],
+      "can_ship_independently": false,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": true,
+      "high_risk_files": [
+        ".github/workflows/deploy-production.yml",
+        ".github/workflows/exact-master-sha-qualification.yml",
+        ".github/workflows/promote-staging-to-master.yml",
+        ".github/workflows/staging-qualification.yml",
+        "backend/src/middleware/tenantHandler.js",
+        "frontend/apps/store/src/StorefrontApp.jsx",
+        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
+        "frontend/src/features/pos/pages/SkupervisorPOSPage.jsx",
+        "frontend/src/features/pos/pages/TerminalPage.jsx",
+        "scripts/deploy-master-ci.sh",
+        "scripts/deploy-remote.sh",
+        "scripts/gate-release-no-staging.js"
+      ]
+    }
+  ]
+}

@@ -59,6 +59,27 @@ const resolveTenantTokenFromRefreshCookie = async (req) => {
     }
 };
 
+const resolveTenantTokenFromBearerToken = async (req) => {
+    const authHeader = String(req.headers?.authorization || '').trim();
+    if (!authHeader.startsWith('Bearer ')) return '';
+
+    const accessSecret = process.env.JWT_SECRET;
+    if (!accessSecret) return '';
+
+    try {
+        const token = authHeader.substring('Bearer '.length);
+        const decoded = jwt.verify(token, accessSecret);
+        const tenantId = String(decoded?.tenant_id || '').trim();
+        if (!tenantId) return '';
+
+        const tenant = await findTenantById(tenantId);
+        return String(tenant?.company_token || '').trim();
+    } catch (error) {
+        logger.warn(`[TenantHandler] Bearer-token tenant context recovery failed: ${error.message}`);
+        return '';
+    }
+};
+
 const resolveStrictAuthDbFailure = (tenantStatus) => {
     const normalizedStatus = String(tenantStatus || '').trim().toLowerCase();
 
@@ -146,6 +167,9 @@ export const tenantHandler = async (req, res, next) => {
         }
         if (!companyToken && isDgfyTenantMembershipBridgeRequest(req, path)) {
             companyToken = getTenantContextToken(req);
+            if (!companyToken) {
+                companyToken = await resolveTenantTokenFromBearerToken(req);
+            }
             if (companyToken) {
                 req.headers['x-company-token'] = companyToken;
             }

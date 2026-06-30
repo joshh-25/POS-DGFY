@@ -40,6 +40,9 @@
 - [ ] Every changed file belongs to exactly one release batch
 - [ ] Excluded work and non-goals are listed
 - [ ] Slice name, plain-English purpose, implementation summary, owner/source branch or PR reference, affected surfaces, risk level, tests/docs, rollback notes, production proof, and accuracy checks are complete for every slice
+- [ ] Regression Risk Notice is complete for every release slice
+- [ ] Possible regressions, affected existing behaviors, evidence gaps, and rollback/monitoring notes are disclosed
+- Regression risk artifact:
 - [ ] All batches are `ship`, or non-ship batches are removed from this PR
 - [ ] Payment-sensitive changes are absent, or explicit payment-release approval is linked
 - Required command:
@@ -61,6 +64,8 @@ npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<sha>/batch_
 - [ ] Production deployment is not claimed complete until exact `origin/master` SHA proof and deployed-change accuracy review are complete
 
 ## Merge Adoption Evidence
+- [ ] Lightweight merge hygiene passed
+- Merge hygiene report:
 - [ ] This PR does not require merge-adoption proof
 - [ ] Merge-adoption manifest prepared for final master/deploy adoption
 - Manifest path:

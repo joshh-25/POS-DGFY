@@ -1,658 +1,100 @@
 # Deployment Guide - SKU Inventory Manager
 
 ## Purpose
-Canonical production deployment runbook for `/var/www/skupervisor`.
 
-Use this guide for:
-1. Standard deploys via `scripts/deploy.sh`
-2. Recovery from deploy gate failures
-3. Post-deploy verification
+Operational guide for the production deploy operation after ADR 0030 authorization.
 
-Hosting profile reference:
-- `docs/ops/HOSTING_PROFILES.md`
+GitHub and developer machines do not deploy production. The root-owned external controller is the only supported caller. `scripts/deploy-remote.sh` and live `scripts/deploy-master-ci.sh` are disabled.
 
-No-staging release policy reference:
-- `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
+## Trust Boundary
 
-Merge-adoption release proof reference:
-- `docs/ops/MERGE_ADOPTION_GATE.md`
+1. Owner GPG-signed annotated tags authorize exact SHAs.
+2. Installed controller code verifies signatures, hashes, expiry, nonces, PR/check evidence, Regression Risk Notice, QA, and current remote refs before candidate checkout.
+3. Candidate qualification receives no production or signing secrets.
+4. Controller code invokes SSH using its OS-protected key and a fixed remote command.
+5. The production server runs `scripts/deploy.sh --branch master --expect-commit <sha>` only after controller authorization.
 
-## Prerequisites
-- SSH access to server (`root@192.53.116.33 -p 64428`)
-- Prefer key-based SSH auth for non-interactive deploys:
-  ```bash
-  ssh -o BatchMode=yes skupervisor-prod "echo AUTH_OK && hostname"
-  ```
-- Clean local git state for the commit you intend to deploy
-- Required backend env vars present on server in `backend/.env`:
-  - `HOSTING_PROFILE` (`shared` or `vps`)
-  - `DB_HOST`
-  - `DB_USER`
-  - `DB_NAME`
-  - `JWT_SECRET`
-  - `REFRESH_TOKEN_SECRET`
-  - `CORS_ORIGIN`
-  - `SESSION_COOKIE_SECURE=true` for production browser session cookies
-  - `SESSION_COOKIE_DOMAIN=.dgfy.ph` only when the deployment intentionally shares sessions across approved `dgfy.ph` subdomains; otherwise omit it for host-only cookies
-  - `AUTH_BLACKLIST_FAILURE_MODE`
-  - `TEMP_FILE_STORAGE`
-  - `TENANT_REGISTRATION_APPROVAL_MODE` (`auto_standard` by default; `manual` only for explicit admin-review rollback)
-  - `RATE_LIMIT_DGFY_TENANT_SESSION_WINDOW_MS`
-  - `RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS`
-  - `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS`
-  - `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`
-  - `REDIS_URL` when `HOSTING_PROFILE=vps`
-  - Payment-provider config only when `PAYMENTS_ENABLED=true`
-  - `PAYMONGO_WEBHOOK_SECRET` or the correct mode-specific PayMongo webhook secret when `PAYMENTS_ENABLED=true`; production and live-mode deployments must reject unsigned PayMongo webhooks
-- Current production `CORS_ORIGIN` must include every public IMS/POS/storefront domain that calls backend APIs directly:
-  - `https://skupervisor.surebizcorp.com`
-  - `https://surebizcorp.com`
-  - `https://pos.surebizcorp.com`
-  - `https://store.surebizcorp.com`
-  - `https://skupervisor.dgfy.ph`
-  - `https://pos.dgfy.ph`
-  - `https://dgfy.ph`
-  - `https://store.dgfy.ph`
-  - `https://staging.dgfy.ph` (staging IMS — added 2026-05-19)
-- Third-party public map/API consumers must use `PUBLIC_API_CORS_ORIGIN`, not the global authenticated `CORS_ORIGIN`. For MapViu, set `PUBLIC_API_CORS_ORIGIN=https://mapviu.com,https://*.mapviu.com`; this only permits public `GET`/`HEAD`/`OPTIONS` reads for `/api/v1/storefront/discovery`, `/api/v1/storefront/discovery/map-pins`, and `/api/v1/storefront/geo-search`.
-- Optional deploy override:
-  - `DEPLOY_RUN_BILLING_VERIFY=auto|0|1` (default `auto`)
-    - `auto`: billing checks run only when `PAYMENTS_ENABLED=true`
-    - `0`: billing checks always skipped
-    - `1`: force billing checks even if payments are disabled
-  - `DEPLOY_RECONCILE_STOREFRONT_DISCOVERY_INDEX=0|1` (default `1`)
-    - `1`: run the Storefront discovery index reconciliation after migrations, tenant schema sync, tenant index audit, and role backfill, before PM2 reload.
-    - `0`: skip reconciliation only for a controlled incident/rollback window; run `npm run reconcile:storefront-discovery -- --dry-run --json` and then the write reconciliation as soon as the blocker is cleared.
+## Production Host Prerequisites
 
-## Standard Deployment (Simplified)
-Before deploying to a new host type, validate the selected profile:
+1. Clean `/var/www/skupervisor` checkout with `origin` configured.
+2. Required `backend/.env` values and production-only permissions.
+3. PM2 ecosystem configured through root `ecosystem.config.cjs`.
+4. Database backup destination, deploy logs, and `.deploy-state` writable by the deployment identity.
+5. Controller SSH identity restricted to the production operation where practical.
+
+## Controller Dry Run
+
+Follow `release-controller/README.md`. Dry run must report `authorized_pre_checkout` for the exact SHA and evidence hashes. Any moved branch, failed check, stale QA proof, expired/replayed signature, missing credential, or payment authorization failure requires new evidence or a new signed tag.
+
+Before signed authorization, generate and review the Regression Risk Notice from the strict reviewed inventory:
 
 ```bash
-# CI/local fixture guard for required production env shapes
-npm run check:production-env
-
-# Shared hosting without Redis
-npm run preflight:shared
-npm run test:hosting:shared
-
-# Redis-capable VPS
-npm run preflight:vps
-npm run test:hosting:vps
+npm run check:regression-risk -- --inventory ".tmp/release-gates/<target_sha>/batch_inventory.json" --output ".tmp/release-gates/<target_sha>/regression_risk_notice.json" --markdown ".tmp/release-gates/<target_sha>/regression_risk_notice.md"
 ```
 
-Shared hosting uses `backend/.env.shared.example` and `frontend/.env.shared.example` as templates. VPS/Redis hosting uses `backend/.env.vps.example` and `frontend/.env.vps.example` as templates. Do not leave placeholder secrets or `DB_AUTO_SYNC=true` in production.
+## Server Deploy Operation
 
-Production runtime uses the same env validation policy as the hosting preflight scripts. Missing or invalid required values cause startup to exit non-zero before the backend accepts traffic. Failure output must name variables or validation reasons only and must not print secret values.
-
-Tenant registration rollout note:
-1. Keep `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` for the default public company registration flow.
-2. Verify public registration rate limits are present and strict before deploy because accepted registrations provision isolated tenant databases.
-3. Verify active auto-standard registrations request the DGFY account email OTP before account creation and then automatically exchange the accepted founder membership for a normal tenant session after tenant provisioning.
-4. Set `TENANT_REGISTRATION_APPROVAL_MODE=manual` only when intentionally restoring platform-admin review before provisioning; keep `PAYMENTS_ENABLED=false` billing-disabled behavior unchanged unless payment workflows are being intentionally re-enabled.
-
-Run on the production server for a one-command deploy:
+The controller executes the equivalent fixed remote operation:
 
 ```bash
+set -e
 cd /var/www/skupervisor
-npm run deploy:auto
+git fetch origin master
+test "$(git rev-parse origin/master)" = "<authorized_sha>"
+bash scripts/deploy.sh --branch master --expect-commit <authorized_sha>
 ```
 
-Required before production (no-staging hard gate):
-```bash
-# Required QA inputs:
-# export QA_BASE_URL="https://<qa-host>"
-# export QA_DEPLOY_SUMMARY_FILE=".tmp/release-gates/<sha>/qa_deploy_summary.txt"
-RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
+Do not run this manually for routine releases. Production/root operators remain an explicit privileged trust anchor and every manual intervention is an incident or recovery action.
+
+The deploy invocation does not complete the release. After SSH succeeds, the controller recollects remote HEAD, deploy marker, newest deploy summary, production contract, frontend asset parity, and live runtime SHA, transitions the nonce to `deployed_pending_accuracy`, and writes immutable external deployment records.
+
+## Deploy Pipeline
+
+`scripts/deploy.sh` performs deterministic dependency installation, governed docs and architecture checks, frontend builds, migration checks, backup, schema/index audits, tenant sync reporting, PM2 reload, health checks, public endpoint checks, frontend asset parity, deploy summary creation, and production contract proof.
+
+## Required Post-Deploy Evidence
+
+1. Remote HEAD and `.deploy-state/last_deployed_commit` equal the target.
+2. Latest summary `deployed_head`, `remote_head`, and `expected_commit` equal the target.
+3. Production contract is successful and health runtime SHA equals the target.
+4. IMS, POS, Storefront, tenant-store, and asset parity pass.
+5. Every inventory slice has hash-verified API, UI, read-only database, or asset proof captured after deployment.
+6. `review:deployed-change-accuracy` exits zero.
+7. The separate controller `--finalize --execute` operation confirms production still runs the exact target and transitions the ledger from `deployed_pending_accuracy` to `completed`.
+8. `/var/lib/skupervisor-release-controller/releases/<sha>/release_record.{json,md}` and `accuracy_finalization.{json,md}` exist with root-only permissions.
+
+## External Release Records
+
+The controller configuration must set:
+
+```json
+"release_records_dir": "/var/lib/skupervisor-release-controller/releases"
 ```
 
-When the release adopts PR, branch, or `merge-docs/` behavior, include the merge-adoption manifest so the release verdict proves the intended behavior survived final conflict resolution:
+Deployment records include target SHA/branch, inventory and evidence hashes, signed tags, signer fingerprint, nonce and ledger state, reviewed slices, documentation closure, Regression Risk Notice, baseline proof, pending per-slice accuracy state, residual risks, timestamps, and artifact hashes. Finalization records add the verified per-slice completed accuracy state. These files are outside Git and must not mutate the deployed checkout.
 
-```bash
-MERGE_ADOPTION_MANIFEST="path/to/merge-adoption.json" RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
-```
+Repository documentation may later link to or summarize an external record, but that follow-up commit describes an already-deployed SHA and cannot claim its own deployment as self-proof.
 
-Recommended local setup (keeps gate inputs consistent across runs):
-```bash
-cp .env.qa.local.example .env.qa.local
-# fill values, then load them into your shell before deploy/gates
-```
+## Recovery
 
-Explicit process values override `.env.qa.local` defaults. For one-off release validation, pass the intended target directly, for example:
-```bash
-RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging:qa-env
-```
+If deployment fails:
 
-Recommended local secret overlay (gitignored):
-```bash
-cp .env.qa.secrets.local.example .env.qa.secrets.local
-# put QA_COMPANY_TOKEN and optional QA_AUTH_JWT here
-```
+1. Preserve controller log, nonce ledger entry, authorization tags, candidate bundle, server deploy log, backup path, and partial production proof.
+2. Do not remove or reset the consumed nonce.
+3. Restore or revert using a newly qualified SHA.
+4. Produce corrected evidence and fresh signed production/payment tags with new nonces.
+5. Re-run controller dry run before execution.
 
-Recommended local setup for production contract gate inputs:
-```bash
-cp .env.prod.local.example .env.prod.local
-# set PROD_COMPANY_TOKEN to active production tenant token
-```
+If a server deploy lock is stale, first prove no deploy process is active. Clearing a lock is a privileged recovery action and must be recorded.
 
-Production release contract gate (run before and after deploy):
-```bash
-# Optional: avoid auth/login lockouts by reusing an active JWT session
-# export PROD_AUTH_JWT="<valid_jwt>"
-npm run gate:release:prod-contracts
-# or load .env.prod.local first, then run the same gate
-npm run gate:release:prod-contracts:env
-```
+## Secret Handling
 
-This command will:
-1. Auto-detect your current branch.
-2. Auto-detect the latest commit from origin.
-3. Perform all safety audits and deployment steps automatically.
+Production SSH keys, database credentials, tokens, and signing private keys must not appear in GitHub, repository files, workflow inputs, commands, logs, or evidence artifacts. Store them only in the controller/production OS-protected secret stores.
 
-### Automated Verification Mode
-To run a deep AI verification gate after deployment:
+## References
 
-```bash
-npm run deploy:verify
-```
-
-### Remote Deploy Trigger (Local)
-For operator flow via local machine:
-```bash
-bash scripts/deploy-remote.sh
-```
-
-Behavior:
-1. Pushes target commit.
-2. Runs no-staging preflight (`npm run gate:release:no-staging:preflight`) before push when `DEPLOY_ENFORCE_NO_STAGING_GATE=1`.
-3. Promotes the pushed target SHA to QA first when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`.
-4. Refuses QA promotion when the configured QA SSH host and app dir match the production SSH host and app dir.
-5. Fetches fresh QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) every run before the gate.
-6. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
-7. Runs the merge-adoption proof gate when `MERGE_ADOPTION_MANIFEST` is set.
-8. Proceeds to production SSH deploy only when gate verdict is pass/bypassed and QA deploy evidence matches the exact target SHA.
-9. Auto-loads `.env.qa.local` and `.env.qa.secrets.local` if present.
-
-No-staging preflight checks:
-1. `QA_BASE_URL` configured (for QA smoke contract).
-2. `QA_SSH_HOST` configured (for QA drills/evidence fetch).
-3. `QA_COMPANY_TOKEN` configured with a real active tenant token for the same QA environment; placeholder values are blockers.
-4. Local runtime has `ssh` and `powershell`/`pwsh`.
-5. QA deploy summary can be sourced (existing local file or SSH fetch path).
-6. Rollback and restore drill SSH connectivity is valid for the configured `QA_SSH_HOST`, `QA_SSH_PORT`, `QA_SSH_USER`, and `QA_APP_DIR`.
-7. QA promotion mode is reported. When production host/app-dir values are supplied, enabled QA promotion fails if QA points at production.
-
-QA promotion controls:
-1. `DEPLOY_PROMOTE_QA_BEFORE_PROD=auto` is the default wrapper mode.
-2. `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` or `0` disables automatic QA promotion and only fetches existing QA evidence.
-3. `QA_DEPLOY_DRY_RUN=1 npm run deploy:qa:target` validates configuration and remote command construction without SSH mutation.
-4. A production-as-QA evidence configuration cannot create pre-production parity. Configure a distinct QA checkout or disable promotion intentionally.
-
-### QA Gate Input Hygiene (Recommended)
-Before running `gate:release:no-staging` or `deploy-remote.sh`:
-1. Set `QA_COMPANY_TOKEN` to an active tenant token in QA.
-2. Ensure `QA_EMAIL`/`QA_PASSWORD` belongs to that same tenant context.
-3. Refresh deploy summary evidence so `deployed_head` matches your `RELEASE_TARGET_SHA`:
-```bash
-# PowerShell
-powershell -ExecutionPolicy Bypass -File scripts/load-qa-env.ps1 -EnvFile .env.qa.local
-$env:RELEASE_TARGET_SHA="<target_sha>"
-powershell -ExecutionPolicy Bypass -File scripts/fetch-qa-deploy-summary.ps1
-```
-
-Exact QA parity requirement:
-1. `qa_deploy_summary.txt` must show `deployed_head=<RELEASE_TARGET_SHA>`.
-2. A stale QA summary is a hard release failure; refresh QA to the target SHA, fetch a fresh summary, and rerun the gate.
-3. Emergency bypass is incident-only and must not be used as the routine stale-QA path.
-
-Linked worktree warning:
-1. `scripts/deploy-remote.sh` historically pushes `master`. When using a clean linked release worktree while another worktree has local `master` checked out, prove `origin/master` already equals the release SHA or push the release worktree explicitly with `git push origin HEAD:master` before running the wrapper.
-2. Do not deploy from a dirty original worktree to avoid unrelated source or docs files entering the release scope.
-
-## Advanced Deployment (SHA Pinning)
-If you need to ensure a specific commit is deployed (e.g., to prevent race conditions during parallel pushes):
-
-```bash
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-git fetch origin "$BRANCH"
-EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
-bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
-```
-
-On Windows, avoid passing `--expect-commit` through CRLF-corrupted stdin scripts. Use Git Bash for the wrapper or pass a single remote command string through `ssh.exe`. Do not pipe a PowerShell here-string into remote `bash` when the command contains SHA or branch arguments; `\r` can become part of the expected SHA or branch name.
-
-What `deploy.sh` does:
-1. Validates env requirements
-2. Pulls fast-forward only
-3. Installs deterministic dependencies (`npm ci`) with bounded retry/backoff
-4. Runs docs lint and architecture gates
-5. Builds frontend surfaces (`skupervisor`, `pos`, `store`)
-6. Runs DB migrations
-7. Skips legacy maintenance hooks by default
-8. Runs required-index self-heal (`npm run repair:indexes`)
-9. Runs strict index audit (`npm run audit:indexes`)
-10. Runs billing verification/audit only when billing checks are enabled (`DEPLOY_RUN_BILLING_VERIFY` + `PAYMENTS_ENABLED`)
-11. Runs tenant schema sync and emits machine-readable report
-12. Applies tenant schema sync regression gate (`fail on new/mutated failures` vs baseline)
-13. Reconciles the Storefront discovery index so `item_search_snapshot`, branch pins, customer-access metadata, and storefront catalog override visibility are fresh before the app is reloaded
-14. Reloads PM2 and verifies backend + IMS + POS + Store runtime health
-    - Hosting capability status is available at `/health`, `/api/v1/health`, and Admin > Hosting.
-    - In `shared` mode, Redis absence is expected and should be visible as an optional/degraded capability, not a failed deploy by itself.
-    - In `vps` mode, configured but disconnected Redis is a degraded runtime and should block production-ready sign-off.
-15. Verifies public endpoints (unless `DEPLOY_VERIFY_PUBLIC_ENDPOINTS=0`):
-  - `https://skupervisor.surebizcorp.com`
-  - `https://pos.surebizcorp.com`
-  - `https://surebizcorp.com`
-  - `https://surebizcorp.com/map-dgfy`
-  - `https://skupervisor.dgfy.ph`
-  - `https://pos.dgfy.ph`
-  - `https://dgfy.ph`
-  - `https://store.dgfy.ph`
-16. Verifies served frontend entry asset parity against freshly built artifacts for IMS, POS, and Tenant Store
-
-Deployment evidence files:
-- `logs/deploy/deploy_<timestamp>.log`
-- `logs/deploy/deploy_<timestamp>.changed_files.txt`
-- `logs/deploy/deploy_<timestamp>.summary.txt`
-- `logs/deploy/deploy_<timestamp>.tenant_schema_sync.json`
-- `.deploy-state/last_deployed_commit` (runtime marker, not source-controlled)
-
-After PM2 reload, `/health` and `/api/v1/health` must report `services.observability.runtime_sha`. Treat a healthy response with a missing runtime SHA as unproven deployment evidence until the health SHA, `.deploy-state/last_deployed_commit`, and deploy-summary `deployed_head` match the target commit.
-
-Tenant sync baseline file (repo-tracked):
-- `backend/config/deploy/tenant-schema-sync-failure-baseline.json`
-
-Storefront discovery reconciliation:
-```bash
-# Preview impact without writes
-npm run reconcile:storefront-discovery -- --dry-run --json
-
-# Reconcile all active tenants and prune stale inactive index rows
-npm run reconcile:storefront-discovery -- --json
-
-# Reconcile a scoped tenant during incident recovery
-npm run reconcile:storefront-discovery -- --tenant-id <tenant_id> --no-prune --json
-```
-
-Production deploys run the write reconciliation by default. A non-zero `failed` count is a deploy blocker because stale `item_search_snapshot` rows can make public Storefront search disagree with IMS Storefront visibility.
-
-Storefront map/search release proof:
-1. Run the targeted backend and frontend Storefront discovery suites before deploy:
-   ```bash
-   cd backend && npm test -- --runInBand --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js
-   cd ../frontend && npm test -- --run apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx
-   ```
-2. Run `npm run build:store` from the repo root and confirm the generated Storefront bundle succeeds.
-3. Run discovery-index dry-run reconciliation, then the write reconciliation if dry-run is healthy:
-   ```bash
-   cd backend
-   npm run reconcile:storefront-discovery -- --dry-run --json
-   npm run reconcile:storefront-discovery -- --json
-   ```
-4. Perform browser QA before production deploy when a browser automation runtime is available. Minimum scenarios:
-   - Search `aircon` and confirm Storefront discovery does not flash a false no-match state.
-   - Search a one-store item and confirm the map auto-focuses the exact pin and visible preview.
-   - Search a multi-store item and confirm all result pins fit without coordinate spreading.
-   - Click a pin and confirm the Discover Nearby panel remains visible; click the explicit store action to navigate.
-   - Scroll the discovery page and confirm the search shell remains sticky.
-5. After production deploy, smoke the public Storefront endpoint with the same search terms and confirm discovery-index reconciliation completed in the deploy log before PM2 reload.
-
-Tenant schema/index risk controls:
-- `DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter` (default: `report`)
-- `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1` (default: `1`; set `0` only for controlled exception windows)
-- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1`
-  - `scripts/deploy.sh` defaults to strict mode when run directly on the server.
-  - `scripts/deploy-remote.sh` defaults to `0` and forwards report mode to production until redundant index cleanup is complete. Set `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1` for a strict wrapper release.
-  - The June 16, 2026 DGFY company-switching deploy used `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0` because redundant-index warnings remained a tracked cleanup concern while tenant schema sync, health, PM2 reload, public endpoints, and asset parity passed.
-
-Deterministic install retry controls:
-- `DEPLOY_NPM_CI_RETRIES=<n>` (default: `3`)
-- `DEPLOY_NPM_CI_RETRY_DELAY_SECONDS=<n>` (default: `5`)
-
-Frontend asset parity controls:
-- `DEPLOY_FRONTEND_ASSET_PARITY_STRICT=0|1` (default: `1`)
-  - `1`: fail deployment on public/local asset hash mismatch.
-  - `0`: log warning and continue (incident-only override).
-
-Windows lock cleanup controls:
-- `DEPLOY_WINDOWS_LOCK_CLEANUP=auto|0|1` (default: `auto`)
-  - `auto`: enable cleanup only on Windows runtimes.
-  - `0`: disable cleanup.
-  - `1`: force-enable cleanup.
-- `DEPLOY_WINDOWS_LOCK_CLEANUP_DELAY_SECONDS=<n>` (default: `2`)
-  - cooldown after terminating lock-holding `node`/`esbuild` processes before retrying `npm ci`.
-
-Deep verification controls (`--verify`):
-- `DEPLOY_VERIFY_TENANT_NAME=<tenant name>` (default: `Premium Corp`)
-- `DEPLOY_VERIFY_TENANT_TOKEN=<company token>` (optional explicit selector)
-- `DEPLOY_VERIFY_SKIP_IF_MISSING=0|1` (default: `1`, skip deep verify if tenant is absent)
-
-## Legacy Hook Mode (Recovery Only)
-Legacy hooks are intentionally disabled by default.
-
-Enable only for targeted recovery:
-
-```bash
-bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT" --run-legacy-hooks
-```
-
-## If Deploy Stops on Lock Error
-Symptom:
-- `Another deployment appears to be running (lock: /tmp/skupervisor_deploy.lock)`
-
-Recovery:
-
-```bash
-cd /var/www/skupervisor
-ps -ef | grep deploy.sh | grep -v grep
-```
-
-If no deploy process exists:
-
-```bash
-rm -f /tmp/skupervisor_deploy.lock
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-git fetch origin "$BRANCH"
-EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
-DEPLOY_REEXECED=1 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
-```
-
-## If QA Drill Checks Fail Due to SSH Warning Text
-Symptom:
-- `qa.rollback.exception` or `qa.restore.exception` includes a warning banner instead of a real SSH failure.
-
-Current behavior:
-1. QA drill scripts now run SSH with explicit quiet options to suppress warning-only stderr noise.
-2. If you still see this, upgrade OpenSSH and verify host-level SSH policy.
-
-## If `npm ci` Fails with `EPERM` or File Lock
-Common cause:
-- Transient file lock on dependency binaries (for example `esbuild.exe`) in Windows or shared runners.
-
-Recovery:
-1. Re-run deploy; script retries `npm ci` automatically.
-2. If still failing, stop processes that hold `node_modules` binaries, then re-run.
-3. Keep deterministic installs enabled; do not switch to `npm install` during production deploy.
-
-## If Deploy Stops on `Working tree is not clean on server`
-Snapshot and stash server drift before re-running deploy:
-
-```bash
-cd /var/www/skupervisor
-STAMP=$(date +'%Y%m%d_%H%M%S')
-mkdir -p /root/deploy-prep
-git status --short > /root/deploy-prep/status_$STAMP.txt
-git diff > /root/deploy-prep/working_$STAMP.patch || true
-git diff --cached > /root/deploy-prep/index_$STAMP.patch || true
-git stash push -u -m "predeploy-$STAMP"
-```
-
-After deployment, inspect stash entries intentionally before applying anything back:
-```bash
-git stash list
-git stash show -p stash@{0}
-```
-
-## If Deploy Script Fails With `$'\\r': command not found`
-Normalize shell line endings, then re-run:
-```bash
-cd /var/www/skupervisor
-sed -i 's/\r$//' scripts/deploy.sh
-bash scripts/deploy.sh --help
-```
-
-## If Expected SHA Or Branch Looks Correct But Fails
-Symptom:
-- Deploy output shows an expected SHA or branch that visually matches, but `deploy.sh` reports an expected-commit mismatch or `git fetch` rejects a refspec such as `master?`.
-
-Common cause:
-- A Windows CRLF character was appended to an argument during a manual SSH deploy, usually from a PowerShell here-string or piped script.
-
-Recovery:
-1. Stop the deploy attempt and do not use emergency bypass for this condition.
-2. Re-run through Git Bash:
-   ```powershell
-   & "C:\Program Files\Git\bin\bash.exe" scripts/deploy-remote.sh --yes
-   ```
-3. If manual SSH is required, pass one remote command argument instead of piping stdin, and compute `EXPECTED_COMMIT` on the server after `git fetch`.
-4. Confirm the next deploy summary has `expected_commit`, `remote_head`, and `deployed_head` all matching the target SHA.
-
-## If Billing-Funnel Audit Fails With `webhook_without_telemetry`
-Common cause:
-- synthetic rows in `webhook_logs` (for example `test_webhook_*` from old verification flow)
-
-Cleanup:
-
-```bash
-mysql -h localhost -u <DB_USER> -p -D <DB_NAME> -e "DELETE FROM webhook_logs WHERE webhook_id LIKE 'test_webhook_%' AND event_type='PAYMENT.SALE.COMPLETED';"
-cd backend
-npm run audit:billing-funnel
-```
-
-Audit must return healthy (`exit 0`) before deploy can complete when billing checks are enabled.
-
-If your current business model has billing paused, keep `PAYMENTS_ENABLED=false` and leave `DEPLOY_RUN_BILLING_VERIFY=auto` (or set `0` explicitly) so billing hooks are skipped by policy.
-
-PayMongo webhook security rule:
-1. Production, live-mode, and `PAYMENTS_ENABLED=true` deployments must configure `PAYMONGO_WEBHOOK_SECRET`, `PAYMONGO_TEST_WEBHOOK_SECRET`, or `PAYMONGO_LIVE_WEBHOOK_SECRET` as appropriate for the selected mode.
-2. Runtime verification is fail-closed. Missing, unsigned, invalid, or stale PayMongo webhook signatures return `401` before payment or subscription mutation.
-3. `PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS=true` is only for explicit non-production local testing while `PAYMENTS_ENABLED=false`; it must not be set for production, live mode, or payment-enabled deployments.
-4. Before re-enabling payment workflows, run `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js` and confirm unsigned webhook probes are rejected.
-
-## Tenant Schema Sync Regression Gate
-Deploy now fails only when tenant schema sync introduces a new failure signature or mutates an existing baseline signature.
-
-Operational workflow:
-1. Review latest report: `logs/deploy/deploy_<timestamp>.tenant_schema_sync.json`
-2. If failure is known/accepted, update `backend/config/deploy/tenant-schema-sync-failure-baseline.json` in Git with the new normalized fingerprint.
-3. If failure is not expected, fix root cause and redeploy (do not baseline unknown regressions).
-
-## Local-to-Production Safety Rules
-1. Push your commit to GitHub first. Server deploy pulls from remote only.
-2. Do not rely on uncommitted local files.
-3. Prefer commit-pinned deploys (`--expect-commit`) to avoid drift.
-4. Use `tail -f` on latest deploy log if terminal seems idle:
-
-```bash
-cd /var/www/skupervisor
-LOG=$(ls -1t logs/deploy/deploy_*.log | head -1)
-tail -f "$LOG"
-```
-
-## PM2 Notes
-The canonical PM2 entrypoint is the root `ecosystem.config.cjs`. It defines the four production processes and two staging processes:
-
-**Production processes (`--env production`):**
-1. `sku-backend` on port `5000`
-2. `sku-frontend` on port `5173`
-3. `sku-pos-frontend` on port `5174`
-4. `sku-store-frontend` on port `5175`
-
-**Staging processes (`--env staging`, serving `staging.dgfy.ph`):**
-5. `sku-staging-backend` on port `5002`
-6. `sku-staging-frontend` (SKUpervisor IMS) on port `5183`
-
-`ecosystem.config.cjs` includes non-secret production defaults for the VPS profile:
-
-```env
-NODE_ENV=production
-HOSTING_PROFILE=vps
-HOSTING_INSTANCE_COUNT=1
-AUTH_BLACKLIST_FAILURE_MODE=fail_closed
-TEMP_FILE_STORAGE=auto
-STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED=true
-CUSTOMER_ACCESS_MODES_ENABLED=true
-TENANT_REGISTRATION_APPROVAL_MODE=auto_standard
-PAYMENTS_ENABLED=false
-DB_AUTO_SYNC=false
-```
-
-Secrets and host-specific values still belong in `backend/.env`; do not put database passwords, JWT secrets, SMTP credentials, payment credentials, or Redis credentials in the ecosystem file. Generate dotenv-safe secrets without `#` or unquoted shell metacharacters, or quote them explicitly, because dotenv treats inline `#` as comment syntax.
-
-`SESSION_COOKIE_SECURE=true` is required for production browser session cookies. Set `SESSION_COOKIE_DOMAIN` only for an approved shared-session domain such as `.dgfy.ph`; omit it for host-only cookies.
-
-Use ecosystem reload flow (already handled by deploy script):
-
-```bash
-pm2 startOrReload ecosystem.config.cjs --env production --update-env
-pm2 save
-```
-
-Do not use `pm2 restart all` as primary deployment strategy.
-
-After manual PM2 changes, verify production:
-
-```bash
-pm2 list
-pm2 describe sku-backend
-pm2 env sku-backend | grep '^CORS_ORIGIN'
-curl -fsS http://127.0.0.1:5000/health
-curl -fsS http://127.0.0.1:5173
-curl -fsS http://127.0.0.1:5174
-curl -fsS http://127.0.0.1:5175
-curl -fsS -H "Host: dgfy.ph" http://127.0.0.1:5175/ >/dev/null
-```
-
-After staging PM2 changes, verify staging:
-
-```bash
-pm2 describe sku-staging-backend
-pm2 env sku-staging-backend | grep '^CORS_ORIGIN'
-curl -fsS http://127.0.0.1:5002/health
-curl -fsS http://127.0.0.1:5183
-```
-
-If the browser shows `Blocked request. This host ("dgfy.ph") is not allowed. To allow this host, add "dgfy.ph" to preview.allowedHosts in vite.config.js`, Nginx is already reaching Vite but the Storefront preview process is running stale or incomplete config. Verify the deployed checkout is current, confirm `frontend/apps/store/vite.config.js` includes `dgfy.ph` and `store.dgfy.ph` in `allowedHosts`, then restart `sku-store-frontend` with `pm2 restart sku-store-frontend --update-env` and `pm2 save`.
-
-If DGFY browser logins show `404` for `/api/v1/...` while the frontend page itself loads, verify the DGFY Nginx virtual host is proxying `/api` and `/uploads` to the active backend port `127.0.0.1:5001`. A proxy target of `127.0.0.1:5000` can route to the wrong local service and return empty 404s for valid backend routes such as `/api/v1/auth/lookup` and `/api/v1/admin/login`.
-
-If IMS Settings storefront cover/profile uploads fail with `413 Payload Too Large`, verify the active Nginx config includes the deploy-managed upload guard:
-
-```bash
-nginx -T | grep -n "client_max_body_size"
-```
-
-The production deploy writes `/etc/nginx/conf.d/skupervisor-client-body-size.conf` with `client_max_body_size 8m;`. Backend storefront asset validation still enforces the 5 MiB image-file limit; the Nginx value is higher only to allow multipart overhead to reach the backend.
-
-## Hosting Profile Verification
-After every deploy or rollback:
-1. Open `/health` or `/api/v1/health`.
-2. Confirm `capabilities.hostingProfile` matches the intended host.
-3. For shared mode, expected values include:
-   - `redis.configured=false`
-   - `redis.connected=false`
-   - `tokenBlacklist.mode=fail_open`
-   - `tempFileStorage.mode=local`
-   - `rateLimitStore.mode=memory`
-   - `schedulerLock.mode=single_instance`
-4. For VPS mode, expected values include:
-   - `redis.configured=true`
-   - `redis.connected=true`
-   - `tokenBlacklist.mode=fail_closed`
-   - `tempFileStorage.mode=cache` when Redis is connected
-   - `rateLimitStore.mode=redis`
-   - `schedulerLock.mode=distributed`
-5. Open Admin > Hosting and use the readiness checklist, runbook actions, and copyable diagnostics before declaring the environment ready.
-
-## Staging Environment
-
-`staging.dgfy.ph` is a manually-managed VPS environment for pre-production QA. It is **not** part of the automated CI/CD pipeline (see `docs/ops/NO_STAGING_RELEASE_STANDARD.md`).
-
-### Port Assignments
-
-| Service | Production | Staging |
-|---|---|---|
-| Backend API | 5001 (nginx → 5000) | 5002 |
-| IMS (SKUpervisor) frontend | 5173 | 5183 |
-| POS frontend | 5174 | — |
-| Storefront frontend | 5175 | — |
-
-### Starting the Staging Processes
-
-Staging reads secrets from `backend/.env` by default. Override the database by setting `DB_NAME` (and related credentials) in the `env_staging` block of `ecosystem.config.cjs`, or use a separate env file loaded before PM2 start.
-
-```bash
-cd /var/www/skupervisor
-pm2 start ecosystem.config.cjs --only sku-staging-backend,sku-staging-frontend --env staging
-pm2 save
-```
-
-### Nginx
-
-The staging virtual host is defined alongside production in `nginx/dgfy.ph.conf` (server block for `staging.dgfy.ph`). Deploy and reload:
-
-```bash
-sudo cp nginx/dgfy.ph.conf /etc/nginx/sites-available/dgfy.ph
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-### SSL
-
-Add `staging.dgfy.ph` to the certbot renewal:
-
-```bash
-sudo certbot --nginx -d skupervisor.dgfy.ph -d pos.dgfy.ph -d dgfy.ph -d store.dgfy.ph -d staging.dgfy.ph
-```
-
-### What Is NOT Covered by Staging
-
-- POS and Storefront staging subdomains are not configured. Add `sku-staging-pos-frontend` (port 5184) and `sku-staging-store-frontend` (port 5185) to `ecosystem.config.cjs` and a corresponding server block in `nginx/dgfy.ph.conf` if needed.
-- Staging is not verified by `deploy.sh` public endpoint checks. Run manual curl checks after each staging deploy.
-
-## Endpoint Targets
-- IMS: `https://skupervisor.surebizcorp.com`
-- POS: `https://pos.surebizcorp.com`
-- Storefront: `https://surebizcorp.com`
-- Tenant Store discovery: `https://surebizcorp.com/map-dgfy`
-- Staging IMS: `https://staging.dgfy.ph`
-
-## Force Non-Compliant Observability
-Backend now emits structured log signatures for force-mode operations:
-- `"[Compliance][ForceNonCompliant] Blocked request {...}"` with `status_code` and `reason_code`
-- `"[Compliance][ForceNonCompliant] Applied {...}"` on successful downgrade
-
-Recommended alert:
-1. Trigger investigation when repeated `status_code:422` blocked events occur for this operation in a short window (UI/backend state drift signal).
-
-## Multi-Location Production Smoke Contract
-Script: `scripts/verify-prod-multi-location.ps1`
-
-Supported environment variables:
-1. `PROD_COMPANY_TOKEN` (default `token-original`)
-2. `PROD_EMAIL` (default `admin@test.com`)
-3. `PROD_PASSWORD` (default `Admin123!`)
-4. `PROD_AUTH_JWT` (optional; bypasses login to avoid rate limits)
-5. `PROD_VERIFY_OUTPUT` (optional output JSON path; default `.tmp/prod-multi-location-check.result.json`)
-
-Operational note:
-1. `token-original` is a legacy fallback only. If the production tenant token has rotated, set `PROD_COMPANY_TOKEN` explicitly (or use `npm run gate:release:prod-contracts:env`) to avoid `TENANT_TOKEN_INVALID` false negatives.
-
-Pass criteria:
-1. Item detail payload includes `item_location_stocks`.
-2. Stock movement CSV headers include `Location` (or `Movement Location`), `Source Location`, and `Destination Location`.
-3. Expiry report CSV headers include `Location`.
-
-### Nginx Path-Base Requirement (Tenant Store)
-When store is hosted via Vite preview on port `5175`, the canonical Storefront build is rooted at `/` so tenant handles can resolve as `/:store_tenant_slug` and discovery can resolve at `/map-dgfy`.
-
-Required behavior:
-1. `location /map-dgfy` and tenant-handle fallback paths serve the Storefront app shell.
-2. Legacy `/tenant-store/*` and `/store/*` paths continue serving the Storefront app shell for compatibility and are canonicalized by the client.
-
-The Storefront build should not use a `/tenant-store/` asset base for the canonical root-handle deployment; root-scoped assets prevent blank-page + manifest syntax errors on `/:store_tenant_slug`.
-
-## Manual Fallback (Last Resort)
-Use only if deploy script itself is broken:
-
-The `--no-audit` install flags below are deterministic install controls only. They are acceptable for fallback deployment only after explicit dependency audit evidence has passed for the release target:
-1. `npm run audit:dependencies:prod`
-2. `npm run audit:dependencies`
-
-```bash
-cd /var/www/skupervisor
-git pull --ff-only origin master
-npm ci --no-audit --no-fund
-cd backend && npm ci --no-audit --no-fund && npx sequelize-cli db:migrate && npm run repair:indexes && npm run audit:indexes && cd ..
-cd frontend && npm ci --no-audit --no-fund && npm run build && cd ..
-pm2 startOrReload ecosystem.config.cjs --env production --update-env
-pm2 save
-```
+1. `docs/architecture/adr/0030-free-tier-signed-release-authorization.md`
+2. `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`
+3. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
+4. `docs/ops/QA_ISOLATION_PROFILE.md`
+5. `docs/ops/PRODUCTION_CHECKLIST.md`

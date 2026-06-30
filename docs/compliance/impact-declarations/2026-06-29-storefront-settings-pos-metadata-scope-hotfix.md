@@ -5,7 +5,7 @@ last_reviewed: 2026-06-29
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-06-29-storefront-settings-pos-metadata-scope-hotfix
 classification: major
-surfaces: settings,storefront,pos-receipt-metadata
+surfaces: settings,storefront,pos-receipt-metadata,pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.06.29
 verification_evidence: cd backend && npm test -- --runInBand tests/settingsUsecases.applicationResult.test.js tests/settingsComplianceChangedKeys.integration.test.js,cd frontend && npm exec vitest run src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads,npm run check:architecture,npm run check:compliance

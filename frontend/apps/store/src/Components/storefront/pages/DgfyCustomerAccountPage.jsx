@@ -533,7 +533,7 @@ export function DgfyCustomerAccountPage({
         <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text, marginBottom: 16 }}>Quick Actions</div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)', gap: 16 }}>
           {[
-            { label: 'Reorder', icon: ShoppingBag, color: THEME.success },
+            { label: 'Reorder Items', icon: ShoppingBag, color: THEME.success },
             { label: 'Add Address', icon: MapPin, color: THEME.orange },
             { label: 'Update Profile', icon: User, color: THEME.primary },
             { label: 'Help Center', icon: HelpCircle, color: THEME.purple },
@@ -544,7 +544,7 @@ export function DgfyCustomerAccountPage({
               <button 
                 key={i} 
                 onClick={
-                  action.label === 'Reorder' ? () => setActiveNav('orders') :
+                  action.label === 'Reorder Items' ? () => setActiveNav('orders') :
                   action.label === 'Add Address' ? () => setActiveNav('addresses') :
                   action.label === 'Update Profile' ? () => setActiveNav('account') :
                   onHelp
