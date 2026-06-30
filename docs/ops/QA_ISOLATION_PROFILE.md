@@ -89,3 +89,22 @@ pm2_names=<comma-separated QA_PM2_NAMES>
 ```
 
 Missing, stale, or production-equivalent evidence blocks promotion. There is no production-as-QA bypass in the signed-controller flow.
+
+## Deferred Infrastructure Blocker
+
+Current status as of 2026-06-30: isolated QA provisioning is deferred because the available production MySQL account cannot create or grant a separate QA database user, and no pre-existing isolated QA environment is installed on the production host.
+
+Verified absent or unavailable items:
+
+1. `/etc/skupervisor-qa/qa.env` is not present.
+2. Unix user `skupervisor-qa` is not present.
+3. `/srv/skupervisor-qa/app` is not present.
+4. A QA-only MySQL credential set with no production schema grants is not available.
+
+This deferral does not relax the release requirement. A staging candidate may continue to collect source, review, and local evidence, but production promotion remains blocked until one of the following is completed:
+
+1. Hosting or MySQL administration creates a QA-only database user and grants it only to the QA database.
+2. QA moves to a separate host or managed database service where a QA-only credential can be proven.
+3. A new ADR defines an equivalent non-production proof model that keeps production data and production credentials inaccessible to QA.
+
+The reminder `review-isolated-qa-blocker` tracks this long-term follow-up. Before any future production promotion, rerun `npm run check:qa-target-proof` with the exact candidate SHA and a deploy summary whose `deployed_head` matches that SHA.

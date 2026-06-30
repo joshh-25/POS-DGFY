@@ -1,0 +1,182 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BBLabs-Albert owner-directed Codex review",
+  "reviewed_at": "2026-06-30T13:15:00.000Z",
+  "source_pr": "isolated-qa-deferral-staging-pr",
+  "release_slices": [
+    {
+      "id": "isolated-qa-deferral-documentation",
+      "slice_name": "Isolated QA deferral documentation",
+      "name": "Isolated QA deferral documentation",
+      "plain_english_purpose": "Record that isolated QA is intentionally deferred for now while preserving it as a production blocker.",
+      "purpose": "Record that isolated QA is intentionally deferred for now while preserving it as a production blocker.",
+      "implementation_summary": "Updates the QA isolation profile with the current blocker, verified missing QA resources, allowed long-term resolution paths, and the reminder identifier that will revisit the work.",
+      "included_files": [
+        "docs/ops/QA_ISOLATION_PROFILE.md",
+        "docs/releases/batches/2026-06-30-isolated-qa-deferral.json"
+      ],
+      "included_features": [
+        "Documented isolated QA deferral",
+        "Recorded monthly reminder identifier",
+        "Explicit production-promotion hard stop until QA proof passes"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Production deployment",
+        "Staging to master promotion",
+        "Isolated QA provisioning",
+        "Database user or grant creation",
+        "Production-as-QA bypass",
+        "GitHub billing fallback changes",
+        "PR #25 or PR #26 application behavior"
+      ],
+      "owner_attribution": "BBLabs-Albert owner-directed implementation",
+      "source_branch": "codex/document-isolated-qa-deferral",
+      "source_pr": "isolated-qa-deferral-staging-pr",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "docs",
+        "scripts/deploy"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": true,
+        "docs": true,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run check:batch-inventory",
+        "npm run validate:batch-inventory",
+        "npm run check:regression-risk",
+        "git diff --check"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: governed docs lint PASS"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: architecture guardrails PASS"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: no compliance-sensitive runtime behavior changed"
+        },
+        {
+          "command": "npm run check:batch-inventory",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: reviewed manifest covers the QA isolation doc and release-batch manifest"
+        },
+        {
+          "command": "npm run validate:batch-inventory",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: reviewed inventory validation PASS"
+        },
+        {
+          "command": "npm run check:regression-risk",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: regression risk notice records isolated QA as a remaining production blocker"
+        },
+        {
+          "command": "git diff --check",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: no whitespace errors"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/ops/QA_ISOLATION_PROFILE.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/releases/batches/2026-06-30-isolated-qa-deferral.json"
+      ],
+      "architecture_classification": "no-architecture-impact",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BBLabs-Albert owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-30T13:15:00.000Z",
+        "rationale": "The change documents the current infrastructure blocker and preserves the existing production hard stop. It does not alter runtime architecture or authorization boundaries.",
+        "documents": [
+          {
+            "path": "docs/ops/QA_ISOLATION_PROFILE.md",
+            "action": "updated",
+            "evidence": "Records the deferred blocker, verified absent QA resources, long-term resolution paths, and reminder id."
+          },
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "reviewed_current",
+            "evidence": "Already states production-as-QA is prohibited and isolated QA is required before promotion."
+          },
+          {
+            "path": "docs/releases/batches/2026-06-30-isolated-qa-deferral.json",
+            "action": "updated",
+            "evidence": "Records exact scope, excluded work, validation, rollback notes, and production proof requirements for this docs-only deferral slice."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No ADR update is required because this preserves the current signed-controller and isolated-QA requirements. A future alternate QA model would require ADR review.",
+      "rollback_notes": "Revert this documentation slice if the deferral wording is rejected. Reverting the docs does not provision QA or authorize production deployment.",
+      "production_proof_required": [
+        "origin/staging contains the deferral documentation",
+        "origin/master contains the deferral documentation only after governed promotion",
+        "Production deployment remains blocked until a future exact SHA has passing QA target proof"
+      ],
+      "production_accuracy_checks_required": [
+        "QA target proof remains fail-closed when QA equals production",
+        "Production-as-QA remains prohibited",
+        "Reminder `review-isolated-qa-blocker` remains discoverable for long-term follow-up"
+      ],
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "Documenting isolated QA as deferred may regress release readiness expectations if readers mistake the deferral for production approval.",
+      "potentially_affected_existing_behaviors": [
+        "Release readiness interpretation",
+        "Production promotion decisions",
+        "QA target proof review"
+      ],
+      "evidence_covering_regression_risk": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "Governed documentation syntax and metadata remain valid."
+        },
+        {
+          "command": "npm run check:regression-risk",
+          "status": "pass",
+          "evidence": "The release notice keeps isolated QA as a remaining production blocker."
+        }
+      ],
+      "evidence_gaps": [
+        "The infrastructure blocker itself is intentionally not fixed in this slice.",
+        "No isolated QA deploy summary exists yet."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Keep production promotion blocked until `npm run check:qa-target-proof` passes for the exact candidate SHA.",
+        "Use reminder `review-isolated-qa-blocker` to revisit the long-term QA database credential fix."
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}
