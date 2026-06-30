@@ -173,7 +173,27 @@ After every production deployment, record:
 
 The production markers must match before the release is considered complete.
 
-## Cleanup Checklist
+## Remote Merged Branch Cleanup
+
+Remote source branches can be cleaned by `.github/workflows/cleanup-merged-branches.yml` after a successful PR merge into `staging` or `master`.
+
+This cleanup is limited to short-lived same-repository branches allowed by `.github/branch-cleanup-policy.json`. It preserves long-lived, protected, payment-sensitive, release, safety, evidence, and explicitly labeled branches. The script performs a dry-run decision first, verifies that no open PR still uses the branch, verifies that the current remote branch SHA still equals the merged PR head SHA, and deletes with a SHA lease so moved branches are not removed.
+
+Use this local dry-run when GitHub Actions billing or runner availability blocks the workflow:
+
+```powershell
+npm run review:merged-branch-cleanup -- --repository BBLabs-Albert/SKU-Inventory-Manager --pr-number <pr_number> --dry-run
+```
+
+Delete only after reviewing the report:
+
+```powershell
+npm run review:merged-branch-cleanup -- --repository BBLabs-Albert/SKU-Inventory-Manager --pr-number <pr_number> --delete-approved
+```
+
+Do not enable GitHub's global automatic head-branch deletion for this repository while branch protection and rulesets are unavailable. It can apply to any merged PR head branch, including important promotion branches.
+
+## Local Cleanup Checklist
 
 Safe cleanup candidates:
 
@@ -188,3 +208,4 @@ Do not clean:
 3. Local secret files such as `.env.qa.local` and `.env.qa.secrets.local`.
 4. Deploy summaries, `.deploy-state`, or production evidence artifacts unless
    explicitly archived first.
+5. Local worktrees that are dirty, checked out on a protected branch, or still needed for open PR, rollback, incident, or review evidence.
