@@ -16,6 +16,9 @@
       "exact-master-sha-qualification"
     ]
   },
+  "github_actions_billing_fallback": {
+    "enabled": true
+  },
   "qualification_commands": {
     "promotion": [
       ["npm", "ci"],

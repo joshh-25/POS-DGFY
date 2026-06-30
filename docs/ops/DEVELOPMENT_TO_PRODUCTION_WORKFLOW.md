@@ -152,6 +152,33 @@ Every release slice must then consume actual API, UI, read-only database, or ass
 
 ## Actions Cost Policy
 
+### Billing-Unavailable Qualification Lane
+
+GitHub remains the PR and review record when Actions cannot allocate a runner. A failed check is eligible for this lane only when `npm run collect:github-actions-unavailability` proves the exact target SHA, GitHub Actions ownership, zero runner assignment, zero executed steps, and the explicit billing/spending-limit annotation for every substituted check.
+
+For a feature PR into `staging`:
+
+1. Keep the PR open and pin all review to the current head SHA.
+2. Collect the machine-readable billing-unavailability report from GitHub APIs.
+3. Run the PR's complete required qualification in a clean exact-head worktree. A failing command blocks merge.
+4. Require explicit human approval and resolve actionable review findings.
+5. Merge with head-SHA matching. Any movement of the PR head or `staging` base invalidates the qualification and requires a fresh run.
+6. Treat the resulting staging merge SHA as unqualified for promotion until complete staging qualification and isolated QA pass for that exact SHA.
+
+For `staging -> master` promotion or exact-master production qualification, pass the report to `build:release-candidate-evidence` with `--github-actions-unavailability`. The external controller accepts it only when root-owned configuration enables `github_actions_billing_fallback`, the report hash is covered by the signed evidence, live GitHub API data still proves the billing denial, and controller-local exact-SHA qualification passes.
+
+This lane is not an emergency bypass. It substitutes execution location, not acceptance criteria. Missing checks, jobs that started, failed tests, missing isolated QA, unresolved review, stale evidence, payment-sensitive authorization gaps, or branch drift remain hard blockers.
+
+Example collection:
+
+```bash
+npm run collect:github-actions-unavailability -- \
+  --repository BBLabs-Albert/SKU-Inventory-Manager \
+  --target-sha <exact-sha> \
+  --required-check staging-qualification \
+  --output .tmp/release-gates/<exact-sha>/github_actions_unavailability.json
+```
+
 1. Cancel superseded CI and staging runs.
 2. Avoid running equivalent full matrices in both generic CI and staging qualification.
 3. Use dependency caching and bounded job/step timeouts.

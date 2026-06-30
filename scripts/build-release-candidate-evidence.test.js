@@ -48,6 +48,33 @@ function fixture() {
   };
 }
 
+test('candidate evidence hash-binds verified GitHub billing unavailability', () => {
+  const { root, options } = fixture();
+  try {
+    options.githubActionsUnavailability = write(root, 'actions-unavailable.json', {
+      schema: 'sku-github-actions-unavailability/v1',
+      status: 'pass',
+      reason: 'billing_allocation_failure',
+      repository: 'owner/repo',
+      target_sha: SHA,
+      required_checks: [{
+        name: 'staging-qualification',
+        conclusion: 'failure',
+        runner_id: 0,
+        runner_name: '',
+        steps: 0,
+        annotation_message: 'The job was not started because recent account payments have failed or your spending limit needs to be increased.',
+      }],
+    });
+    const evidence = buildCandidateEvidence(options);
+    assert.equal(evidence.github_actions_unavailability.reason, 'billing_allocation_failure');
+    assert.deepEqual(evidence.github_actions_unavailability.required_checks, ['staging-qualification']);
+    assert.match(evidence.github_actions_unavailability.report_sha256, /^[0-9a-f]{64}$/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('candidate evidence binds passing documentation closure and regression risk', () => {
   const { root, options } = fixture();
   try {
