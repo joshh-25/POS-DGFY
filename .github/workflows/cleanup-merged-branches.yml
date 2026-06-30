@@ -1,0 +1,72 @@
+name: Cleanup Merged Branches
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - staging
+      - master
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review for branch cleanup
+        required: true
+      delete_approved:
+        description: Delete the eligible branch after the dry-run report
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: branch-cleanup-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup-merged-branch:
+    name: Review and clean merged source branch
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    steps:
+      - name: Checkout trusted base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dry-run cleanup decision
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: >
+          node scripts/review-merged-branch-cleanup.js
+          --repository "${{ github.repository }}"
+          --pr-number "$PR_NUMBER"
+          --dry-run
+          --report ".tmp/branch-cleanup/pr-$PR_NUMBER.dry-run.json"
+
+      - name: Delete eligible merged source branch
+        if: github.event_name == 'pull_request' || inputs.delete_approved == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: >
+          node scripts/review-merged-branch-cleanup.js
+          --repository "${{ github.repository }}"
+          --pr-number "$PR_NUMBER"
+          --delete-approved
+          --report ".tmp/branch-cleanup/pr-$PR_NUMBER.delete.json"
+
+      - name: Upload cleanup reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-cleanup-${{ github.event.pull_request.number || inputs.pr_number }}
+          path: .tmp/branch-cleanup/*.json
+          if-no-files-found: ignore
