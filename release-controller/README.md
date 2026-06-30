@@ -15,6 +15,8 @@ This package is installed on a trusted Linux host outside all candidate checkout
 9. Clone a bare mirror into `/var/lib/skupervisor-release-controller/repository.git`.
 10. Confirm `/var/lib/skupervisor-release-controller/releases` is `root:root 0700`; immutable per-deployment JSON and Markdown records are written beneath the exact target SHA.
 
+When GitHub Actions runners are unavailable because of account billing or a spending limit, set `github_actions_billing_fallback.enabled` only in the root-owned controller configuration. Before signing, collect the exact-SHA report with `npm run collect:github-actions-unavailability` and bind it into candidate evidence using `--github-actions-unavailability`. Pass the same report path to the controller with `--github-actions-unavailability`; it recomputes the bound hash, independently re-queries the failed job, and accepts only a GitHub Actions job with no runner, zero steps, and the explicit billing allocation annotation. It then runs the normal exact-SHA qualification commands locally. Generic failures, missing checks, and jobs that started are rejected.
+
 The installer does not generate keys, copy credentials, or enable production automatically.
 
 ## Owner Authorization
@@ -76,6 +78,7 @@ Finalization recollects exact-SHA production proof, verifies every slice artifac
 6. Production SSH is invoked by installed controller code, not by a GitHub workflow.
 7. Documentation closure is independently revalidated against the exact-SHA worktree and cannot be bypassed.
 8. Post-deploy records are root-owned, mode `0600`, stored outside the deployed checkout, and never committed as proof of their own deployment SHA.
+9. Billing fallback changes only where qualification runs; it cannot bypass failed tests, isolated QA, review, signed authorization, or production proof.
 
 ## Recovery
 

@@ -16,7 +16,7 @@ function parseArgs(argv) {
   const options = { projectRoot: process.cwd() };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (['--phase', '--target-sha', '--inventory', '--documentation-closure', '--regression-risk-notice', '--pr-evidence', '--qa-proof', '--local-qualification', '--master-audit', '--output'].includes(arg)) {
+    if (['--phase', '--target-sha', '--inventory', '--documentation-closure', '--regression-risk-notice', '--pr-evidence', '--qa-proof', '--local-qualification', '--master-audit', '--github-actions-unavailability', '--output'].includes(arg)) {
       options[arg.slice(2).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = argv[++index] || '';
     } else if (arg === '--project-root') {
       options.projectRoot = path.resolve(argv[++index] || '');
@@ -51,6 +51,9 @@ function buildCandidateEvidence(options) {
   const qa = readJson(options.projectRoot, options.qaProof, 'QA proof');
   const localQualification = readJson(options.projectRoot, options.localQualification, 'local qualification');
   const masterAudit = options.masterAudit ? readJson(options.projectRoot, options.masterAudit, 'master audit') : null;
+  const actionsUnavailability = options.githubActionsUnavailability
+    ? readJson(options.projectRoot, options.githubActionsUnavailability, 'GitHub Actions unavailability')
+    : null;
   if (inventory.head_sha !== options.targetSha) throw new CandidateEvidenceError('INVENTORY_SHA_MISMATCH', 'Inventory target does not match candidate');
   if (inventory.review_status !== 'reviewed') throw new CandidateEvidenceError('INVENTORY_NOT_REVIEWED', 'Candidate evidence requires reviewed inventory');
   const inventoryHash = hashFile(options.projectRoot, options.inventory);
@@ -68,6 +71,22 @@ function buildCandidateEvidence(options) {
   if (localQualification.status !== 'pass' || localQualification.target_sha !== options.targetSha) throw new CandidateEvidenceError('LOCAL_QUALIFICATION_INVALID', 'Local qualification is missing, failed, or stale');
   if (options.phase === 'production' && (masterAudit.status !== 'pass' || masterAudit.target_sha !== options.targetSha)) {
     throw new CandidateEvidenceError('MASTER_AUDIT_INVALID', 'Production evidence requires a passing exact-SHA master audit');
+  }
+  if (actionsUnavailability && (actionsUnavailability.schema !== 'sku-github-actions-unavailability/v1'
+    || actionsUnavailability.status !== 'pass'
+    || actionsUnavailability.reason !== 'billing_allocation_failure'
+    || actionsUnavailability.repository !== pr.repository
+    || actionsUnavailability.target_sha !== options.targetSha)) {
+    throw new CandidateEvidenceError('GITHUB_ACTIONS_UNAVAILABILITY_INVALID', 'GitHub Actions unavailability evidence is failed, stale, or for another repository');
+  }
+  if (actionsUnavailability && (!Array.isArray(actionsUnavailability.required_checks)
+    || actionsUnavailability.required_checks.length === 0
+    || actionsUnavailability.required_checks.some((check) => check.conclusion !== 'failure'
+      || Number(check.runner_id || 0) !== 0
+      || check.runner_name
+      || Number(check.steps) !== 0
+      || !/job was not started because recent account payments have failed or your spending limit needs to be increased/i.test(check.annotation_message || '')))) {
+    throw new CandidateEvidenceError('GITHUB_ACTIONS_UNAVAILABILITY_INVALID', 'GitHub Actions unavailability evidence does not prove an exact zero-runner billing allocation failure');
   }
 
   return {
@@ -101,6 +120,13 @@ function buildCandidateEvidence(options) {
     payment_sensitive: Boolean(inventory.payment_sensitive),
     qa: { status: qa.status, target_sha: qa.target_sha, isolated: qa.isolated === true, report_sha256: hashFile(options.projectRoot, options.qaProof) },
     local_qualification: { status: localQualification.status, target_sha: localQualification.target_sha, report_sha256: hashFile(options.projectRoot, options.localQualification) },
+    github_actions_unavailability: actionsUnavailability ? {
+      status: actionsUnavailability.status,
+      reason: actionsUnavailability.reason,
+      target_sha: actionsUnavailability.target_sha,
+      required_checks: actionsUnavailability.required_checks.map((check) => check.name),
+      report_sha256: hashFile(options.projectRoot, options.githubActionsUnavailability),
+    } : null,
     master_audit: masterAudit ? { status: masterAudit.status, target_sha: masterAudit.target_sha, governed_promotion: masterAudit.governed_promotion === true, report_sha256: hashFile(options.projectRoot, options.masterAudit) } : null,
   };
 }
