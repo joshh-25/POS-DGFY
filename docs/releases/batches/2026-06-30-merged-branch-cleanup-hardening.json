@@ -1,0 +1,166 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BBLabs-Albert owner-directed Codex review",
+  "reviewed_at": "2026-06-30T09:40:00.000Z",
+  "source_pr": "36-follow-up",
+  "release_slices": [
+    {
+      "id": "merged-branch-cleanup-hardening",
+      "slice_name": "Merged branch cleanup hardening documentation",
+      "name": "Merged branch cleanup hardening documentation",
+      "plain_english_purpose": "Document the already-promoted branch cleanup hardening slice so staging and master carry exact reviewed release-batch evidence before any branch retirement decisions.",
+      "purpose": "Document the already-promoted branch cleanup hardening slice so staging and master carry exact reviewed release-batch evidence before any branch retirement decisions.",
+      "implementation_summary": "Adds reviewed release-batch documentation for PR #36, including the branch cleanup policy, dry-run-first workflow, review script, deletion safety tests, protected-branch behavior, rollback notes, and production proof requirements.",
+      "included_files": [
+        "docs/releases/batches/2026-06-30-merged-branch-cleanup-hardening.json"
+      ],
+      "included_features": [
+        "Reviewed release-batch evidence for PR #36",
+        "Documentation closure for branch cleanup hardening",
+        "Production proof and accuracy checks for branch cleanup behavior"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "New branch cleanup behavior beyond PR #36",
+        "Automatic cleanup of active WIP, safety, backup, evidence, PayMongo, payment, production, or release branches",
+        "Production deployment",
+        "Post-deploy branch retirement before production proof and accuracy finalization",
+        "Cleanup of PR #25, PR #26, Storefront pilot branches, or dirty local Storefront guest-checkout work"
+      ],
+      "owner_attribution": "BBLabs-Albert owner-directed implementation",
+      "source_branch": "codex/document-branch-cleanup-hardening",
+      "source_pr": "36-follow-up",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "docs"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "node scripts/review-merged-branch-cleanup.test.js",
+        "npm run check:batch-inventory",
+        "npm run validate:batch-inventory",
+        "npm run check:regression-risk",
+        "git diff --check"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: governed docs lint PASS"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: architecture guardrails PASS"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: no compliance-sensitive changes and API contracts PASS"
+        },
+        {
+          "command": "node scripts/review-merged-branch-cleanup.test.js",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: merged branch cleanup policy and deletion-safety tests PASS"
+        },
+        {
+          "command": "npm run check:batch-inventory",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: strict reviewed manifest covers the documentation follow-up file"
+        },
+        {
+          "command": "npm run validate:batch-inventory",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: reviewed inventory validation PASS"
+        },
+        {
+          "command": "npm run check:regression-risk",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: regression risk notice PASS with high release-cleanup documentation risk"
+        },
+        {
+          "command": "git diff --check",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: no whitespace errors"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/PRODUCTION_CHECKLIST.md",
+        "docs/ops/WORKSPACE_CLEANUP_AND_BRANCH_POLICY.md",
+        "docs/releases/batches/2026-06-30-merged-branch-cleanup-hardening.json"
+      ],
+      "architecture_classification": "no-architecture-impact",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BBLabs-Albert owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-30T09:40:00.000Z",
+        "rationale": "The branch cleanup hardening implementation already updated the governed operations docs; this follow-up adds the missing reviewed release-batch evidence and confirms those docs remain current.",
+        "documents": [
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "reviewed_current",
+            "evidence": "Already records branch retirement as a governed cleanup step after production proof and deployed-change accuracy review."
+          },
+          {
+            "path": "docs/ops/PRODUCTION_CHECKLIST.md",
+            "action": "reviewed_current",
+            "evidence": "Already includes the post-deploy cleanup review expectation for the operator checklist."
+          },
+          {
+            "path": "docs/ops/WORKSPACE_CLEANUP_AND_BRANCH_POLICY.md",
+            "action": "reviewed_current",
+            "evidence": "Already defines protected branches, dry-run-first cleanup, approval rules, and evidence-preserving branch behavior."
+          },
+          {
+            "path": "docs/releases/batches/2026-06-30-merged-branch-cleanup-hardening.json",
+            "action": "updated",
+            "evidence": "Provides exact reviewed file coverage, release scope, tests, rollback notes, and production proof requirements for the branch-cleanup hardening documentation follow-up."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No ADR update is required because this documentation follow-up does not change application runtime boundaries, production trust roots, payment behavior, or database contracts.",
+      "rollback_notes": "Revert this manifest commit if the documentation follow-up is rejected. Branch cleanup behavior remains governed by PR #36 and must not be used for post-deploy retirement until production proof and deployed-change accuracy finalization pass.",
+      "production_proof_required": [
+        "origin/master equals the promoted master SHA after this documentation follow-up is promoted",
+        "production remote HEAD equals the promoted master SHA after deployment",
+        "production deploy summary records deployed_head and expected_commit equal to the promoted SHA",
+        "branch cleanup workflow remains non-production and cannot mutate production runtime state"
+      ],
+      "production_accuracy_checks_required": [
+        "Dry-run branch cleanup reports eligible or preserved decisions without deleting branches",
+        "Protected branches and protected prefixes remain preserved",
+        "Open PR branch dependencies block deletion",
+        "Remote branch movement blocks deletion",
+        "Remote deletion uses a SHA lease only when explicitly approved"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}
+
