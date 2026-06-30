@@ -1,0 +1,38 @@
+{
+  "allowedBaseBranches": ["staging", "master"],
+  "eligibleHeadPrefixes": [
+    "codex/",
+    "feature/",
+    "fix/",
+    "bugfix/",
+    "hotfix/",
+    "docs/",
+    "chore/",
+    "test/"
+  ],
+  "protectedBranches": [
+    "master",
+    "staging",
+    "development",
+    "pr-testing",
+    "codex/storefront-merged-pilot",
+    "codex/storefront-pilot-on-master",
+    "codex/storefront-merged-pilot-on-master"
+  ],
+  "protectedHeadPrefixes": [
+    "release/",
+    "deployment/",
+    "production/",
+    "safety/",
+    "backup/",
+    "wip/",
+    "evidence/",
+    "paymongo/",
+    "payment/",
+    "codex/paymongo-"
+  ],
+  "keepLabels": ["branch-cleanup:keep", "do-not-delete-branch"],
+  "approvalLabels": ["branch-cleanup:approved"],
+  "requireApprovalLabel": false,
+  "deleteRemote": "origin"
+}

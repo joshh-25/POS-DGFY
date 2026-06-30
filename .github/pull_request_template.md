@@ -62,6 +62,7 @@ npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<sha>/batch_
 - [ ] Backward compatibility validated
 - [ ] If this is a `staging -> master` promotion PR, exact staging SHA qualification evidence is linked
 - [ ] Production deployment is not claimed complete until exact `origin/master` SHA proof and deployed-change accuracy review are complete
+- [ ] Source branch may be deleted after merge, or apply `branch-cleanup:keep` with a reason before merge
 
 ## Merge Adoption Evidence
 - [ ] Lightweight merge hygiene passed
