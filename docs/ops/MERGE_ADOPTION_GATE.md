@@ -14,6 +14,47 @@ Prevent a branch or PR from appearing "merged" by commit ancestry while the inte
 
 Use this gate when a release adopts work from another branch, PR, or reference handoff such as `merge-docs/`. This is especially important when conflict resolution must combine both sides rather than replace one side wholesale.
 
+## Tier 0: Lightweight Merge Hygiene
+
+Every PR and staging/master promotion runs lightweight merge hygiene before the full merge-adoption-required check:
+
+```bash
+npm run check:merge-hygiene -- --base <base-ref> --head <head-ref> --target <target-ref> --report .tmp/release-gates/<sha>/merge_hygiene_report.json
+```
+
+The hygiene check is not a replacement for the full manifest. It is an always-on drift screen for low-risk and ordinary PRs. It checks the final head tree for:
+
+1. Unresolved conflict markers or conflict-resolution temporary files.
+2. Files added in the branch history and then dropped before the final head tree.
+3. Final deleted files that do not have an intentional deletion reason.
+4. Target-side changes that are clearly reverted to merge-base content or removed from the final tree.
+
+Intentional low-risk deletions or accepted reversions can be acknowledged with a small JSON justification file passed through `--justification`:
+
+```json
+{
+  "version": 1,
+  "intentional_deletions": [
+    {
+      "path": "docs/obsolete.md",
+      "decision": "reject",
+      "reason": "Superseded by the governed release workflow document."
+    }
+  ],
+  "accepted_reversions": [
+    {
+      "path": "docs/reference/old-flow.md",
+      "decision": "preserve-master",
+      "reason": "The target-side edit was a draft and the final branch keeps the reviewed master wording."
+    }
+  ]
+}
+```
+
+Use the same decision language as full merge adoption where possible: `adopt`, `combine`, `preserve-master`, or `reject`.
+
+Escalate from lightweight hygiene to the full merge-adoption manifest when the finding is behavioral, affects multiple source branches, touches high-risk customer-flow paths, changes UI/routing/API/auth/checkout/customer-dashboard behavior, or cannot be explained as a narrow mechanical deletion/reversion.
+
 ## Required Inputs
 Create a merge adoption manifest from:
 

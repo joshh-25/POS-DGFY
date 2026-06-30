@@ -5,7 +5,7 @@ last_reviewed: 2026-06-29
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-06-29-bulk-pos-setup-modal-handoff-hotfix
 classification: major
-surfaces: ims-items,pos-setup-modal,settings,storefront,pos-receipt-metadata
+surfaces: ims-items,pos-setup-modal,settings,storefront,pos-receipt-metadata,pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.06.29
 verification_evidence: npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js --pool=threads,npm --prefix frontend run build,npm run check:architecture,npm run check:compliance,npm run lint:docs,git diff --check

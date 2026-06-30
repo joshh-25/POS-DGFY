@@ -82,12 +82,12 @@ test('preflight fails when QA promotion target equals production target', () => 
 
   assert.equal(result.ok, false);
   assert.equal(
-    result.failed.some((check) => check.name === 'qa.promotion.target_distinct_from_production'),
+    result.failed.some((check) => check.name === 'qa.target_distinct_from_production'),
     true
   );
 });
 
-test('preflight allows production-as-QA only when QA promotion is disabled', () => {
+test('preflight rejects production-as-QA even when QA promotion is disabled', () => {
   const result = runPreflight(baseEnv({
     QA_SSH_HOST: '192.53.116.33',
     QA_APP_DIR: '/var/www/skupervisor',
@@ -98,6 +98,6 @@ test('preflight allows production-as-QA only when QA promotion is disabled', () 
     skipRuntimeCommands: true,
   });
 
-  assert.equal(result.ok, true);
-  assert.equal(result.failed.length, 0);
+  assert.equal(result.ok, false);
+  assert.equal(result.failed.some((check) => check.name === 'qa.target_distinct_from_production'), true);
 });

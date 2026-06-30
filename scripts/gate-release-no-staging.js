@@ -52,6 +52,9 @@ function main() {
   const qaRollbackResultFile = process.env.QA_ROLLBACK_DRILL_OUTPUT || path.join(evidenceDir, 'rollback_drill_result.json');
   const qaRestoreResultFile = process.env.QA_RESTORE_DRILL_OUTPUT || path.join(evidenceDir, 'restore_drill_result.json');
   const qaDeploySummaryFile = process.env.QA_DEPLOY_SUMMARY_FILE || path.join(evidenceDir, 'qa_deploy_summary.txt');
+  const batchInventoryFile = process.env.BATCH_INVENTORY_FILE || path.join(evidenceDir, 'batch_inventory.json');
+  const regressionRiskNoticeFile = process.env.REGRESSION_RISK_NOTICE_FILE || path.join(evidenceDir, 'regression_risk_notice.json');
+  const regressionRiskNoticeMarkdown = process.env.REGRESSION_RISK_NOTICE_MARKDOWN || path.join(evidenceDir, 'regression_risk_notice.md');
   const verdictFile = process.env.RELEASE_VERDICT_FILE || path.join(evidenceDir, 'release_verdict.json');
   const verdictMirrorFile = process.env.RELEASE_VERDICT_MIRROR_FILE || '';
   const mergeAdoptionManifest = process.env.MERGE_ADOPTION_MANIFEST || process.env.RELEASE_MERGE_ADOPTION_MANIFEST || '';
@@ -73,6 +76,24 @@ function main() {
   );
   addGate(gates, 'docs.lint', runCmd('npm', ['run', 'lint:docs']), 'npm run lint:docs');
   addGate(gates, 'architecture.guardrails', runCmd('npm', ['run', 'check:architecture']), 'npm run check:architecture');
+  addGate(
+    gates,
+    'regression.risk.notice',
+    runCmd('npm', [
+      'run',
+      'check:regression-risk',
+      '--',
+      '--inventory',
+      batchInventoryFile,
+      '--output',
+      regressionRiskNoticeFile,
+      '--markdown',
+      regressionRiskNoticeMarkdown,
+      '--target-sha',
+      targetSha,
+    ]),
+    'npm run check:regression-risk -- --inventory <batch-inventory>'
+  );
   const mergeAdoptionRequiredArgs = ['run', 'check:merge-adoption-required', '--', '--base', mergeAdoptionBase, '--head', targetSha];
   if (mergeAdoptionManifest) {
     mergeAdoptionRequiredArgs.push('--manifest', mergeAdoptionManifest);
@@ -179,6 +200,7 @@ function main() {
       'deploy.source_contract',
       'merge.adoption.required',
       'merge.adoption',
+      'regression.risk.notice',
     ]);
     const nonBypassableFailures = failed.filter((gate) => nonBypassableGateNames.has(gate.name));
     const hasReason = bypassReason.trim().length > 0;
@@ -216,6 +238,9 @@ function main() {
       qa_smoke_result_file: qaSmokeResultFile,
       qa_rollback_drill_file: qaRollbackResultFile,
       qa_restore_drill_file: qaRestoreResultFile,
+      batch_inventory_file: batchInventoryFile,
+      regression_risk_notice_file: regressionRiskNoticeFile,
+      regression_risk_notice_markdown: regressionRiskNoticeMarkdown,
       merge_adoption_report_file: mergeAdoptionManifest ? mergeAdoptionReportFile : null,
       deploy_source_contract_report_file: deploySourceContractReportFile,
       release_verdict_file: verdictFile,

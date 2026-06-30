@@ -5,81 +5,89 @@ const os = require('os');
 const path = require('path');
 
 const { checkQaTargetProof } = require('./check-qa-target-proof');
-
 const silentLogger = { log() {}, warn() {}, error() {} };
-
-function makeSummary(root, sha) {
-  const summaryPath = path.join(root, 'qa_deploy_summary.txt');
-  fs.writeFileSync(summaryPath, `deployed_head=${sha}\nremote_head=${sha}\nexpected_commit=${sha}\n`);
-  return summaryPath;
-}
 
 function baseEnv() {
   return {
     QA_SSH_HOST: 'qa.example.test',
-    QA_APP_DIR: '/var/www/skupervisor-qa',
+    QA_APP_DIR: '/srv/skupervisor-qa/app',
+    QA_UNIX_USER: 'skupervisor-qa',
+    QA_RUNTIME_MARKER: 'qa-runtime-1',
+    QA_DATABASE_MARKER: 'qa-database-marker',
+    QA_DATABASE_NAME: 'skupervisor_qa',
+    QA_DB_CREDENTIAL_ID: 'qa-db-user-v1',
+    QA_TENANT_DATA_MARKER: 'qa-disposable-tenant',
+    QA_UPLOADS_DIR: '/srv/skupervisor-qa/uploads',
+    QA_PM2_NAMES: 'sku-qa-backend,sku-qa-ims,sku-qa-pos,sku-qa-store',
+    QA_DISPOSABLE_TEST_DATA: '1',
+    QA_PRODUCTION_DATA_ACCESS: 'denied',
     DEPLOY_PROD_REMOTE_HOST: 'prod.example.test',
     DEPLOY_PROD_REMOTE_DIR: '/var/www/skupervisor',
-    QA_RUNTIME_MARKER: 'qa-runtime',
-    QA_DATABASE_MARKER: 'sku_qa',
-    QA_TENANT_DATA_MARKER: 'qa-tenant-token',
-    QA_DISPOSABLE_TEST_DATA: '1',
+    DEPLOY_PROD_REMOTE_USER: 'skupervisor-release',
+    PROD_DATABASE_NAME: 'skupervisor_prod',
+    PROD_DB_CREDENTIAL_ID: 'prod-db-user-v1',
+    PROD_UPLOADS_DIR: '/var/www/skupervisor/uploads',
+    PROD_PM2_NAMES: 'sku-backend,sku-frontend,sku-pos-frontend,sku-store-frontend',
   };
 }
 
-test('passes when QA target is distinct, isolated, and summary matches target SHA', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-proof-'));
+function makeSummary(root, sha, env = baseEnv()) {
+  const summaryPath = path.join(root, 'qa_deploy_summary.txt');
+  fs.writeFileSync(summaryPath, [
+    `deployed_head=${sha}`,
+    `remote_head=${sha}`,
+    `expected_commit=${sha}`,
+    `runtime_marker=${env.QA_RUNTIME_MARKER}`,
+    `database_marker=${env.QA_DATABASE_MARKER}`,
+    `unix_user=${env.QA_UNIX_USER}`,
+    `app_dir=${env.QA_APP_DIR}`,
+    `database_name=${env.QA_DATABASE_NAME}`,
+    `uploads_dir=${env.QA_UPLOADS_DIR}`,
+    `pm2_names=${env.QA_PM2_NAMES}`,
+    '',
+  ].join('\n'));
+  return summaryPath;
+}
+
+test('passes exact-SHA fully isolated QA proof', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-proof-v2-'));
   try {
     const sha = '0123456789abcdef0123456789abcdef01234567';
-    const report = checkQaTargetProof({
-      targetSha: sha,
-      summaryPath: makeSummary(root, sha),
-      env: baseEnv(),
-    }, silentLogger);
-
+    const env = baseEnv();
+    const report = checkQaTargetProof({ targetSha: sha, summaryPath: makeSummary(root, sha, env), env }, silentLogger);
     assert.equal(report.status, 'pass');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('fails when QA target equals production host and app dir', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-proof-'));
+test('fails closed for production-as-QA', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-proof-v2-'));
   try {
     const sha = '0123456789abcdef0123456789abcdef01234567';
-    const env = {
-      ...baseEnv(),
-      QA_SSH_HOST: 'prod.example.test',
-      QA_APP_DIR: '/var/www/skupervisor',
-    };
-
-    assert.throws(
-      () => checkQaTargetProof({
-        targetSha: sha,
-        summaryPath: makeSummary(root, sha),
-        env,
-      }, silentLogger),
-      /QA target proof failed closed/
-    );
+    const env = { ...baseEnv(), QA_SSH_HOST: 'prod.example.test', QA_APP_DIR: '/var/www/skupervisor' };
+    assert.throws(() => checkQaTargetProof({ targetSha: sha, summaryPath: makeSummary(root, sha, env), env }, silentLogger), /failed closed/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('fails when QA summary does not match candidate SHA', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-proof-'));
+test('fails closed for stale QA summary', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-proof-v2-'));
   try {
-    const targetSha = '0123456789abcdef0123456789abcdef01234567';
-    const staleSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const sha = '0123456789abcdef0123456789abcdef01234567';
+    assert.throws(() => checkQaTargetProof({ targetSha: sha, summaryPath: makeSummary(root, 'a'.repeat(40)), env: baseEnv() }, silentLogger), /failed closed/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
-    assert.throws(
-      () => checkQaTargetProof({
-        targetSha,
-        summaryPath: makeSummary(root, staleSha),
-        env: baseEnv(),
-      }, silentLogger),
-      /QA target proof failed closed/
-    );
+test('fails when QA database credential identity is absent', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-proof-v2-'));
+  try {
+    const sha = '0123456789abcdef0123456789abcdef01234567';
+    const env = { ...baseEnv(), QA_DB_CREDENTIAL_ID: '' };
+    assert.throws(() => checkQaTargetProof({ targetSha: sha, summaryPath: makeSummary(root, sha, env), env }, silentLogger), /failed closed/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

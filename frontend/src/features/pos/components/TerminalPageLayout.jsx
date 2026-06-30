@@ -1,14 +1,14 @@
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { resolveAppAssetUrl } from '@/src/utils/assetUrl.js';
 
-import POSCheckoutTerminal from './POSCheckoutTerminal.jsx';
 import TenantCapabilityNotice from '@/src/components/common/TenantCapabilityNotice.jsx';
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
-import TerminalOperationsWorkspace from './TerminalOperationsWorkspace.jsx';
+const POSCheckoutTerminal = lazy(() => import('./POSCheckoutTerminal.jsx'));
+const TerminalOperationsWorkspace = lazy(() => import('./TerminalOperationsWorkspace.jsx'));
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 const MAX_NOTIFICATION_ITEMS = 5;

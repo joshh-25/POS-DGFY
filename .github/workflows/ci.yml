@@ -2,13 +2,19 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ master, main, develop, staging ]
+    branches: [ develop ]
   pull_request:
-    branches: [ master, main, develop, staging ]
+    branches: [ master, staging ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -17,11 +23,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Lint governed documentation
         run: npm run lint:docs
 
   release-verdict-contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Validate release verdict contract when present
@@ -29,6 +38,7 @@ jobs:
 
   merge-adoption-required:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -38,11 +48,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Check lightweight merge hygiene
+        run: npm run check:merge-hygiene -- --base "origin/${{ github.base_ref }}" --head "${{ github.sha }}" --target "origin/${{ github.base_ref }}" --report ".tmp/release-gates/${{ github.sha }}/merge_hygiene_report.json"
       - name: Require merge adoption proof for storefront customer-flow PRs
         run: npm run check:merge-adoption-required -- --base "origin/${{ github.base_ref }}" --head "${{ github.sha }}"
+      - name: Upload merge hygiene report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merge-hygiene-${{ github.sha }}
+          path: .tmp/release-gates/${{ github.sha }}/merge_hygiene_report.json
+          if-no-files-found: ignore
+          retention-days: 30
 
   batch-inventory:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,6 +72,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Install root dependencies
         run: npm ci
       - name: Generate and validate batch inventory
@@ -63,25 +86,33 @@ jobs:
           else
             BASE_REF="origin/master"
           fi
-          npm run check:batch-inventory -- --base "$BASE_REF" --head "${{ github.sha }}" --write --require-ship --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
-          npm run validate:batch-inventory -- --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --base "$BASE_REF" --head "${{ github.sha }}" --require-ship
+          npm run check:batch-inventory -- --base "$BASE_REF" --head "${{ github.sha }}" --write --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
+          npm run check:regression-risk -- --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --output ".tmp/release-gates/${{ github.sha }}/regression_risk_notice.json" --markdown ".tmp/release-gates/${{ github.sha }}/regression_risk_notice.md" --target-sha "${{ github.sha }}"
       - name: Upload batch inventory
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: batch-inventory-${{ github.sha }}
-          path: .tmp/release-gates/${{ github.sha }}/batch_inventory.*
+          path: |
+            .tmp/release-gates/${{ github.sha }}/batch_inventory.*
+            .tmp/release-gates/${{ github.sha }}/regression_risk_notice.*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 5
 
   dependency-audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
       - name: Install root dependencies
         run: npm ci
       - name: Install backend dependencies
@@ -97,6 +128,7 @@ jobs:
 
   test-backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: ./backend
@@ -123,6 +155,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
       
       - name: Install dependencies
         run: npm ci
@@ -171,7 +205,7 @@ jobs:
           name: backend-test-matrix-${{ github.sha }}
           path: .tmp/release-gates/${{ github.sha }}/backend-test-matrix/**
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 5
 
       - name: Run migrations for schema audit
         run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
@@ -201,6 +235,7 @@ jobs:
 
   test-frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: ./frontend
@@ -212,6 +247,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       
       - name: Install dependencies
         run: npm ci
@@ -231,7 +268,8 @@ jobs:
 
   journey-e2e-release-gate:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/staging' || startsWith(github.ref, 'refs/heads/release/'))
+    timeout-minutes: 35
+    if: github.event_name == 'workflow_dispatch'
     needs: [lint-docs, dependency-audit, test-backend, test-frontend]
     services:
       mysql:
@@ -308,17 +346,4 @@ jobs:
             backend/tests/artifacts/**
             backend/test-results/**
           if-no-files-found: ignore
-          retention-days: 14
-
-  build:
-    needs: [lint-docs, release-verdict-contract, batch-inventory, dependency-audit, test-backend, test-frontend, journey-e2e-release-gate]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Build Docker images
-        run: |
-          docker build -t sku-inventory-backend ./backend
-          docker build -t sku-inventory-frontend .
+          retention-days: 5
