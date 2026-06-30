@@ -57,6 +57,31 @@ feature PR -> staging CI -> reviewed batch document -> isolated QA
 6. Every master update is audited. Direct pushes and merges without governed promotion evidence are reported and remain undeployable through the controller until the work is reconciled through `staging` and promoted through the governed path.
 7. Production uses the exact current `origin/master` SHA. Any movement invalidates the authorization attempt.
 
+## Merged Source Branch Cleanup
+
+Ordinary short-lived source branches may be cleaned after their PR is merged into `staging` or `master`. This is repository hygiene, not production authorization, and it must not be used as proof that the change is production-live.
+
+The cleanup workflow is `.github/workflows/cleanup-merged-branches.yml`. It runs only from the trusted base checkout and uses `scripts/review-merged-branch-cleanup.js` plus `.github/branch-cleanup-policy.json`.
+
+The cleanup decision must pass all of these checks before a remote branch is deleted:
+
+1. The PR is closed and merged.
+2. The PR base is `staging` or `master`.
+3. The PR head branch is in the same repository, not a fork.
+4. The head branch is not an exact protected branch and does not use a protected prefix.
+5. The head branch uses an eligible short-lived prefix such as `codex/`, `feature/`, `fix/`, `bugfix/`, `hotfix/`, `docs/`, `chore/`, or `test/`.
+6. The PR does not carry a keep label such as `branch-cleanup:keep`.
+7. No open PR still uses the branch as either head or base.
+8. The current remote branch SHA still equals the PR head SHA.
+9. The PR merge commit is reachable from the current base branch tip.
+10. Deletion uses a SHA lease, so the push refuses to delete if the remote branch moved after review.
+
+Protected long-lived and evidence-preserving branches must not be removed by this workflow, including `master`, `staging`, `development`, `pr-testing`, Storefront pilot branches, release/deployment/production/safety/evidence branches, and PayMongo/payment branches.
+
+Do not enable GitHub's repository-wide automatic head-branch deletion while branch protection and rulesets are unavailable. A blanket setting cannot distinguish ordinary feature PRs from `staging -> master` promotion PRs where `staging` is the head branch.
+
+Local worktree cleanup remains separate from remote branch cleanup. A remote branch deletion does not prove a local worktree, stash, evidence directory, or rollback dependency is disposable.
+
 ## Reviewed Batch Inventory
 
 Draft inventory generation may occur during development. Before promotion authorization, a human-reviewed batch document must provide non-placeholder summaries, exact file coverage, owner and PR attribution, source branch or owner-direct-staging attribution for each slice, test evidence references, rollback notes, required documentation, payment sensitivity, and production proof requirements. The source branch may be a developer feature branch; it does not need to be named `staging` when the slice is present in the final staging candidate.
