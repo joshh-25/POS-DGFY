@@ -1,0 +1,180 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BBLabs-Albert owner-directed Codex review",
+  "reviewed_at": "2026-06-30T10:20:00.000Z",
+  "source_pr": "regression-risk-notice-rendering-staging-pr",
+  "release_slices": [
+    {
+      "id": "regression-risk-notice-rendering",
+      "slice_name": "Regression Risk Notice evidence rendering",
+      "name": "Regression Risk Notice evidence rendering",
+      "plain_english_purpose": "Make the operator-facing Regression Risk Notice show readable evidence instead of JavaScript object-string output.",
+      "purpose": "Make the operator-facing Regression Risk Notice show readable evidence instead of JavaScript object-string output.",
+      "implementation_summary": "Adds a formatter for structured notice entries so command, status, evidence, name, and detail fields render in Markdown, and adds a regression test that blocks unreadable object-string output.",
+      "included_files": [
+        "docs/releases/batches/2026-06-30-regression-risk-notice-rendering.json",
+        "scripts/check-regression-risk.js",
+        "scripts/check-regression-risk.test.js"
+      ],
+      "included_features": [
+        "Readable operator evidence in regression risk notices",
+        "Fail-closed unit coverage for structured evidence rendering"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Production deployment",
+        "Isolated QA provisioning",
+        "Staging to master promotion",
+        "GitHub Actions billing fallback authorization changes",
+        "PR #25 or PR #26 application behavior"
+      ],
+      "owner_attribution": "BBLabs-Albert owner-directed implementation",
+      "source_branch": "codex/fix-regression-risk-notice-rendering",
+      "source_pr": "regression-risk-notice-rendering-staging-pr",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "scripts/deploy",
+        "docs"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": true,
+        "docs": true,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "node scripts/check-regression-risk.test.js",
+        "npm run check:batch-inventory",
+        "npm run validate:batch-inventory",
+        "npm run check:regression-risk",
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "git diff --check"
+      ],
+      "completed_tests": [
+        {
+          "command": "node scripts/check-regression-risk.test.js",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: 4 tests PASS including structured, nested, mixed-shape evidence rendering without unreadable object-string output"
+        },
+        {
+          "command": "npm run check:batch-inventory",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: reviewed manifest covers the script, test, and release-batch manifest"
+        },
+        {
+          "command": "npm run validate:batch-inventory",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: reviewed inventory validation PASS"
+        },
+        {
+          "command": "npm run check:regression-risk",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: Markdown notice renders command/status/evidence fields instead of object-string output"
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: governed docs lint PASS"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: architecture guardrails PASS"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: no compliance-sensitive runtime behavior changed"
+        },
+        {
+          "command": "git diff --check",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: no whitespace errors"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/releases/batches/2026-06-30-regression-risk-notice-rendering.json"
+      ],
+      "architecture_classification": "no-architecture-impact",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BBLabs-Albert owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-30T10:20:00.000Z",
+        "rationale": "This is a release-tooling Markdown rendering fix. The authoritative workflow already requires the Regression Risk Notice; this batch document records exact scope and evidence for the operator-facing formatter fix.",
+        "documents": [
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "reviewed_current",
+            "evidence": "Already requires machine-readable and operator-readable Regression Risk Notice artifacts before signed authorization."
+          },
+          {
+            "path": "docs/releases/batches/2026-06-30-regression-risk-notice-rendering.json",
+            "action": "updated",
+            "evidence": "Records exact reviewed file coverage, tests, rollback notes, and production proof expectations for this release-tooling fix."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No ADR update is required because this only changes operator-facing release evidence formatting and does not change runtime boundaries, production trust roots, payment behavior, or database contracts.",
+      "rollback_notes": "Revert the formatter and test commit if the notice output is rejected. The rollback restores previous JSON behavior but may reintroduce unreadable Markdown object-string output.",
+      "production_proof_required": [
+        "origin/staging contains the formatter fix",
+        "origin/master contains the formatter fix after governed promotion",
+        "Regression Risk Notice Markdown for the production candidate contains readable command/status/evidence text",
+        "Production deployment proof matches the exact promoted master SHA if later deployed"
+      ],
+      "production_accuracy_checks_required": [
+        "Generated regression_risk_notice.md does not contain unreadable object-string output",
+        "Structured completed-test evidence renders with command, status, and evidence text",
+        "Machine-readable regression_risk_notice.json remains valid and unchanged in schema intent"
+      ],
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "Regression Risk Notice evidence rendering may regress release evidence readability or operator review if structured evidence is formatted incorrectly.",
+      "potentially_affected_existing_behaviors": [
+        "Regression Risk Notice Markdown generation",
+        "Operator review of release evidence before staging or production authorization",
+        "Release evidence artifact readability"
+      ],
+      "evidence_covering_regression_risk": [
+        {
+          "command": "node scripts/check-regression-risk.test.js",
+          "status": "pass",
+          "evidence": "Structured, nested, and mixed-shape evidence renders as readable text or deterministic JSON, not unreadable object-string output."
+        },
+        {
+          "command": "npm run check:regression-risk",
+          "status": "pass",
+          "evidence": "Generated notice for this slice passes with readable Markdown output."
+        }
+      ],
+      "evidence_gaps": [
+        "This fix does not provision isolated QA or authorize production deployment."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Regenerate regression_risk_notice.md for each release candidate and scan for unreadable object-string output.",
+        "If notice rendering fails, revert this slice and treat operator Markdown evidence as blocked until fixed."
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}
