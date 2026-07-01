@@ -687,6 +687,7 @@ describe('Settings deep-linking and action wiring', () => {
 
     await user.click(screen.getByRole('button', { name: /Add Terminal/i }));
     await user.type(screen.getByPlaceholderText('COUNTER-01'), 'COUNTER-01');
+    await user.type(screen.getByPlaceholderText('At least 8 characters'), 'Terminal123!');
 
     const terminalLocationSelect = await screen.findByLabelText(/Terminal location/i);
     await user.selectOptions(terminalLocationSelect, '11');
