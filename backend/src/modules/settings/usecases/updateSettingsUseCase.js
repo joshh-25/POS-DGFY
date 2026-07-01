@@ -29,6 +29,10 @@ import {
     cleanupOmittedStorefrontGalleryAssets,
     snapshotStorefrontGalleryCleanup
 } from './storefrontGalleryAssetCleanup.js';
+import {
+    hashTerminalRegistrySecrets,
+    sanitizeTerminalRegistryForRead
+} from './posTerminalRegistrySecrets.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -198,6 +202,16 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
                 await assertStrictBindingReadiness({ settingsRepository });
             }
 
+            if (Object.prototype.hasOwnProperty.call(settingsData, POS_TERMINAL_REGISTRY_KEY)) {
+                const current = typeof settingsRepository?.getSettingsByKeys === 'function'
+                    ? await settingsRepository.getSettingsByKeys([POS_TERMINAL_REGISTRY_KEY])
+                    : {};
+                settingsData[POS_TERMINAL_REGISTRY_KEY] = await hashTerminalRegistrySecrets({
+                    incomingEntries: settingsData[POS_TERMINAL_REGISTRY_KEY],
+                    currentEntries: current?.[POS_TERMINAL_REGISTRY_KEY]?.value || []
+                });
+            }
+
             const tenant = getTenantComplianceSnapshot();
             if (tenant?.id) {
                 const changedSettingKeys = await resolveChangedSettingKeys({
@@ -210,7 +224,16 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
                     operation: COMPLIANCE_OPERATION.SETTINGS_UPDATE,
                     context: {
                         setting_keys: changedSettingKeys,
-                        setting_updates: settingsData
+                        setting_updates: {
+                            ...settingsData,
+                            ...(Object.prototype.hasOwnProperty.call(settingsData, POS_TERMINAL_REGISTRY_KEY)
+                                ? {
+                                    [POS_TERMINAL_REGISTRY_KEY]: sanitizeTerminalRegistryForRead(
+                                        settingsData[POS_TERMINAL_REGISTRY_KEY]
+                                    )
+                                }
+                                : {})
+                        }
                     },
                     actorUser
                 });

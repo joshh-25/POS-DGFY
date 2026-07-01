@@ -3,6 +3,10 @@
  */
 
 export {
+    verifyTerminal,
+    getPairedTerminal,
+    clearPairedTerminal,
+    requirePairedTerminal,
     listCatalog,
     scanBarcode,
     checkout,
@@ -40,6 +44,10 @@ export {
 } from '../modules/pos/controllers/posHandlers.js';
 
 import {
+    verifyTerminal,
+    getPairedTerminal,
+    clearPairedTerminal,
+    requirePairedTerminal,
     listCatalog,
     scanBarcode,
     checkout,
@@ -77,6 +85,10 @@ import {
 } from '../modules/pos/controllers/posHandlers.js';
 
 export default {
+    verifyTerminal,
+    getPairedTerminal,
+    clearPairedTerminal,
+    requirePairedTerminal,
     listCatalog,
     scanBarcode,
     checkout,

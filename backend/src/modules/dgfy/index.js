@@ -60,6 +60,9 @@ import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.
 import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
 import { validateDgfyPosTerminalPolicy } from '../../services/dgfyPosTerminalPolicyService.js';
 import { sendEmail } from '../../services/emailService.js';
+import { buildLegacyDgfyLinkStatus } from '../../services/dgfyLegacyAccessPolicy.js';
+
+export const getDgfyLegacyLinkStatus = (input) => buildLegacyDgfyLinkStatus(input);
 
 export const registerDgfyAccountUseCase = buildRegisterDgfyAccountUseCase({
     repository: dgfyAccountRepository,
