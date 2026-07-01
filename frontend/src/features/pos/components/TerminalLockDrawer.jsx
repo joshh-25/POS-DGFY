@@ -29,7 +29,7 @@ export default function TerminalLockDrawer({
         drawerOpen ? 'translate-x-0' : 'translate-x-full'
       }`}
     >
-      <div className="h-full flex flex-col">
+      <div className="h-full overflow-y-auto overscroll-contain">
         <div className="border-b border-[#D8E1EC] bg-white px-5 py-4">
           <div className="flex items-center gap-2.5 text-[#0F172A]">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#BFD2EA] bg-[#EAF2FB]">
@@ -147,6 +147,23 @@ export default function TerminalLockDrawer({
                 </p>
               </>
             )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="dgfy-pos-terminal-password" className="text-[13px] font-bold text-[#0F172A]">Terminal Password</Label>
+            <Input
+              id="dgfy-pos-terminal-password"
+              type="password"
+              value={formData.terminalPassword || ''}
+              onChange={(event) => setFormData((prev) => ({ ...prev, terminalPassword: event.target.value }))}
+              placeholder="Enter the configured terminal password"
+              autoComplete="off"
+              minLength={8}
+              required
+              className="h-10 rounded-lg border-[#B8C7DA] bg-white text-sm text-[#0F172A] shadow-sm shadow-slate-200/60 placeholder:text-[#64748B] focus-visible:border-[#1A4E8D] focus-visible:ring-[#1A4E8D]"
+            />
+            <p className="rounded-lg border border-[#D8E1EC] bg-white px-3 py-2 text-[11px] leading-4 text-[#475569]">
+              This password pairs the browser to the selected active terminal. It is separate from the DGFY account password.
+            </p>
           </div>
           <Button
             type="submit"

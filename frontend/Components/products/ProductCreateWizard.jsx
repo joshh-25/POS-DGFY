@@ -121,6 +121,7 @@ export default function ProductCreateWizard({
   storefrontConfig = null,
   showStorefrontCatalogControls = true,
   onTogglePosVisibility,
+  onTogglePosAlwaysAvailable,
   onUploadPosImage,
   onDeletePosImage,
   onToggleStorefrontVisibility,
@@ -690,6 +691,7 @@ export default function ProductCreateWizard({
               storefrontConfig={storefrontConfig}
               showStorefrontCatalogControls={showStorefrontCatalogControls}
               onTogglePosVisibility={onTogglePosVisibility}
+              onTogglePosAlwaysAvailable={onTogglePosAlwaysAvailable}
               onUploadPosImage={onUploadPosImage}
               onDeletePosImage={onDeletePosImage}
               onToggleStorefrontVisibility={onToggleStorefrontVisibility}

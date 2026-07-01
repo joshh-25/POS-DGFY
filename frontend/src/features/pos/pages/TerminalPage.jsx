@@ -2,12 +2,15 @@ import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useStat
 import { toast } from 'sonner';
 import {
   closeTerminalShift,
+  clearPairedPosTerminal,
   createPosCheckout,
   fetchIncomingOnlineOrders,
   fetchCurrentTerminalShift,
   fetchTerminalTodayDashboard,
+  fetchPairedPosTerminal,
   openPosDeviceDrawer,
   openTerminalShift,
+  pairPosTerminal,
   switchTerminalShiftLocation,
   recordCashDrawerEvent,
   updateOnlineOrderStatus
@@ -300,8 +303,10 @@ export default function TerminalPage() {
     email: '',
     password: '',
     dgfyTenantId: '',
-    terminalId: readInitialTerminalId()
+    terminalId: readInitialTerminalId(),
+    terminalPassword: ''
   });
+  const [adminShiftPromptSkipped, setAdminShiftPromptSkipped] = useState(false);
   const [dgfyPosState, setDgfyPosState] = useState({
     authenticated: false,
     account: null,
@@ -438,6 +443,9 @@ export default function TerminalPage() {
   const canSwitchPosLocation = hasPermission('pos:switch_location');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseDay = hasPermission('pos:close_day');
+  const isCashierRole = String(terminalUser?.role || '').trim().toLowerCase() === 'cashier';
+  const canAdminBypassShiftPrompt = terminalUser?.is_master_admin === true
+    || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
   const onboardingState = String(terminalUser?.onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
   const onboardingProgress = terminalUser?.onboarding?.tenant_onboarding_progress?.checklist_snapshot || null;
   const showOnboardingReminder = !locked && terminalUser?.is_master_admin === true && onboardingState !== 'completed';
@@ -1014,6 +1022,13 @@ export default function TerminalPage() {
         setDrawerOpen(true);
         return;
       }
+      const pairedTerminal = await fetchPairedPosTerminal(
+        suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      );
+      if (!pairedTerminal?.paired) {
+        throw new Error('POS terminal pairing is required.');
+      }
+      setActiveTerminalId(pairedTerminal.terminal_id);
       setTerminalUser(user);
       setLocked(false);
       setDrawerOpen(false);
@@ -1194,6 +1209,9 @@ export default function TerminalPage() {
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
   const requiresOpenShift = !locked && !shiftState.loading && !activeShiftId;
+  useEffect(() => {
+    if (activeShiftId) setAdminShiftPromptSkipped(false);
+  }, [activeShiftId]);
   const showLegacyDgfyLinkBanner = terminalUser
     && terminalUser.dgfy_link_status
     && terminalUser.dgfy_link_status !== 'linked'
@@ -1268,7 +1286,12 @@ export default function TerminalPage() {
       return false;
     }
     if (!registryEnforced && selectedTerminalId && !registryEntry && activeTerminalRegistry.length > 0) {
-      toast.warning(`Terminal ID ${selectedTerminalId} is not in the active registry. Continuing in warn mode.`);
+      toast.error(`Terminal ID ${selectedTerminalId} is not in the active registry. Pairing requires an active configured terminal.`);
+      return false;
+    }
+    if (String(formData.terminalPassword || '').length < 8) {
+      toast.error('Enter the configured terminal password (at least 8 characters).');
+      return false;
     }
     return true;
   };
@@ -1293,7 +1316,7 @@ export default function TerminalPage() {
       }),
       refreshComplianceGate({ suppressGlobalErrors: true })
     ]);
-    setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
+    setFormData((prev) => ({ ...prev, password: '', terminalPassword: '', terminalId: selectedTerminalId }));
     toast.success(selectedTerminalId ? `Terminal unlocked (${selectedTerminalId}).` : 'Terminal unlocked.');
   };
 
@@ -1344,6 +1367,10 @@ export default function TerminalPage() {
         tenantId: selectedTenantId,
         terminalId: selectedTerminalId
       }, token);
+      await pairPosTerminal({
+        terminal_id: selectedTerminalId,
+        terminal_password: formData.terminalPassword
+      });
       await completeTerminalUnlock(selectedTerminalId);
       setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
     } catch (error) {
@@ -1399,11 +1426,13 @@ export default function TerminalPage() {
           { email, password, companyToken: resolvedCompanyToken },
           SUPPRESS_GLOBAL_ERROR_TOAST
         );
+        await pairPosTerminal({ terminal_id: selectedTerminalId, terminal_password: formData.terminalPassword });
         return completeTerminalUnlock(selectedTerminalId);
       }
       throw error;
     }
 
+    await pairPosTerminal({ terminal_id: selectedTerminalId, terminal_password: formData.terminalPassword });
     return completeTerminalUnlock(selectedTerminalId);
   };
 
@@ -1429,7 +1458,8 @@ export default function TerminalPage() {
     }
   };
 
-  const handleLock = useCallback(() => {
+  const handleLock = useCallback(async () => {
+    await clearPairedPosTerminal().catch(() => null);
     setStoredTerminalLock(true);
     clearClientSession({
       reason: 'logout',
@@ -1442,6 +1472,7 @@ export default function TerminalPage() {
     setPosViewMode('checkout');
     setMobileNavOpen(false);
     setTerminalUser(null);
+    setAdminShiftPromptSkipped(false);
   }, []);
 
   const handleOpenShift = async () => {
@@ -1856,7 +1887,13 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    if (requiresOpenShift) {
+    const cashierAllowedModes = new Set(['checkout', 'history', 'receipt', 'incoming_queue', 'shift_controls', 'cash_drawer', 'close_shift', 'sync_queue']);
+    if (isCashierRole && !cashierAllowedModes.has(nextMode)) {
+      toast.error('Cashier access is limited to selling, receipts, orders, and shift operations.');
+      setMobileNavOpen(false);
+      return;
+    }
+    if (requiresOpenShift && !(canAdminBypassShiftPrompt && adminShiftPromptSkipped)) {
       toast.error('You cannot use the POS because the shift is closed.');
       setMobileNavOpen(false);
       return;
@@ -1866,7 +1903,7 @@ export default function TerminalPage() {
       workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setMobileNavOpen(false);
-  }, [activeViewModes, locked, requiresOpenShift]);
+  }, [activeViewModes, adminShiftPromptSkipped, canAdminBypassShiftPrompt, isCashierRole, locked, requiresOpenShift]);
 
   const handleHardwareMessageOpenChange = useCallback((open) => {
     if (!open) {
@@ -1994,7 +2031,10 @@ export default function TerminalPage() {
   const effectiveSidebarCollapsed = isDesktopWide ? sidebarCollapsed : false;
   const isCheckoutWorkspaceMode = CHECKOUT_VIEW_MODES.includes(posViewMode);
   const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
-  const shiftOpeningModalOpen = !drawerOpen && requiresOpenShift && canViewPos;
+  const shiftOpeningModalOpen = !drawerOpen
+    && requiresOpenShift
+    && canViewPos
+    && !(canAdminBypassShiftPrompt && adminShiftPromptSkipped);
   const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
   const openingCashAmountNumber = Number(openingCashAmountText);
   const canSubmitOpenShift = (
@@ -2015,6 +2055,11 @@ export default function TerminalPage() {
     handleLock();
     toast.message('Terminal locked. Unlock again when you are ready to open a shift.');
   }, [handleLock]);
+  const handleSkipShiftOpeningForAdmin = useCallback(() => {
+    setAdminShiftPromptSkipped(true);
+    setPosViewMode('shift_controls');
+    toast.message('Admin navigation mode active. Checkout and cash mutations remain blocked until a shift is open.');
+  }, []);
 
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
@@ -2063,6 +2108,7 @@ export default function TerminalPage() {
                 </div>
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4 sm:justify-between">
+                <div className="flex gap-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -2071,6 +2117,12 @@ export default function TerminalPage() {
                 >
                   Lock Terminal
                 </Button>
+                {canAdminBypassShiftPrompt && (
+                  <Button type="button" variant="outline" onClick={handleSkipShiftOpeningForAdmin} disabled={shiftActionLoading.open}>
+                    Skip for Admin
+                  </Button>
+                )}
+                </div>
                 <Button
                   type="submit"
                   className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
@@ -2205,6 +2257,7 @@ export default function TerminalPage() {
           setMobileNavOpen={setMobileNavOpen}
           isDesktopWide={isDesktopWide}
           canViewPos={canViewPos}
+          allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt && adminShiftPromptSkipped}
           canAdjustCashDrawer={canAdjustCashDrawer}
           canCloseDay={canCloseDay}
           terminalUser={terminalUser}

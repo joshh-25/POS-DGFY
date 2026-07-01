@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-06-26
-last_reviewed: 2026-06-26
+last_reviewed: 2026-06-29
 classification: authoritative
 ---
 
@@ -80,6 +80,12 @@ Only Inventory records stock effects and updates stock balances.
 7. Barcode resolution identifies scan context only. Stock eligibility, POS
    eligibility, Storefront visibility, location grants, and compliance rules
    continue to run in their owning use cases.
+8. `pos_catalog_overrides.pos_always_available` is a POS sales-execution
+   exemption, independent from `pos_visible` and every Storefront visibility
+   setting. Checkout snapshots `stock_effect_type='stock_exempt'` and
+   `stock_exempt_reason='pos_always_available'` for these lines and must not ask
+   Inventory to create a stock movement. All other product lines continue to
+   use Inventory-owned stock validation and movement commands.
 
 ## Rollout Policy
 

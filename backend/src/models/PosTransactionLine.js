@@ -27,6 +27,15 @@ const PosTransactionLine = sequelize.define('PosTransactionLine', {
         type: DataTypes.DECIMAL(10, 4),
         allowNull: true
     },
+    stock_effect_type: {
+        type: DataTypes.ENUM('inventory_issue', 'stock_exempt'),
+        allowNull: false,
+        defaultValue: 'inventory_issue'
+    },
+    stock_exempt_reason: {
+        type: DataTypes.STRING(80),
+        allowNull: true
+    },
     sale_price: {
         type: DataTypes.DECIMAL(10, 4),
         allowNull: false

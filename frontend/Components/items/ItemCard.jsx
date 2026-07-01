@@ -48,9 +48,11 @@ export default function ItemCard({
   posReadiness,
   onOpenInTerminal,
   posVisible = false,
+  posAlwaysAvailable = false,
   showPosVisibilityControl = true,
   canTogglePosVisibility = false,
   onTogglePosVisibility,
+  onTogglePosAlwaysAvailable,
   storefrontVisible = false,
   showStorefrontVisibilityControl = true,
   canToggleStorefrontVisibility = false,
@@ -63,7 +65,7 @@ export default function ItemCard({
   const { canEdit, canDelete } = usePermission();
   const category = getCategoryConfig(item);
   const isDraft = item.status === 'draft';
-  const status = isDraft ? 'draft' : getStockStatus(item);
+  const status = isDraft ? 'draft' : (posAlwaysAvailable ? 'healthy' : getStockStatus(item));
   const statusStyle = statusConfig[status];
   const Icon = category.icon;
   const percentage = isDraft ? 0 : safeStockPercentage(item);
@@ -122,6 +124,11 @@ export default function ItemCard({
   const handleToggleStorefront = (nextValue) => {
     if (!canToggleStorefrontVisibility || typeof onToggleStorefrontVisibility !== 'function') return;
     onToggleStorefrontVisibility(item, nextValue);
+  };
+
+  const handleToggleAlwaysAvailable = (nextValue) => {
+    if (!canTogglePosVisibility || typeof onTogglePosAlwaysAvailable !== 'function') return;
+    onTogglePosAlwaysAvailable(item, nextValue);
   };
 
   return (
@@ -234,6 +241,21 @@ export default function ItemCard({
                   disabled={!canTogglePosVisibility}
                   aria-label={`Toggle POS visibility for ${item.name}`}
                   aria-describedby={catalogPriceMissing ? catalogPriceWarningId : undefined}
+                />
+              </div>
+            )}
+            {showPosVisibilityControl && (
+              <div
+                className="flex min-h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <span className="text-xs font-semibold text-slate-600">Always Available</span>
+                <Switch
+                  checked={Boolean(posAlwaysAvailable)}
+                  onCheckedChange={handleToggleAlwaysAvailable}
+                  disabled={!canTogglePosVisibility}
+                  aria-label={`Toggle Always Available for ${item.name}`}
                 />
               </div>
             )}

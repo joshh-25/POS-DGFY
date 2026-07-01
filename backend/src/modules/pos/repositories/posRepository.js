@@ -95,6 +95,19 @@ const normalizeTerminalRegistry = (rawValue) => {
     });
     return normalized;
 };
+const normalizeTerminalPairingRegistry = (rawValue) => {
+    const parsed = parseJsonLoosely(rawValue);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+        .map((entry) => ({
+            terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
+            label: String(entry?.label || '').trim(),
+            location_id: toPositiveInt(entry?.location_id),
+            is_active: entry?.is_active !== false,
+            terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
+        }))
+        .filter((entry) => entry.is_active && TERMINAL_ID_PATTERN.test(entry.terminal_id));
+};
 const toBoolean = (value, fallback = false) => {
     if (typeof value === 'boolean') return value;
     if (value == null) return fallback;
@@ -118,6 +131,7 @@ const POS_ITEM_ATTRIBUTES_WITH_VAT = [...BASE_POS_ITEM_ATTRIBUTES, 'vat_type'];
 const POS_CATALOG_OVERRIDE_ATTRIBUTES = [
     'item_id',
     'pos_visible',
+    'pos_always_available',
     'pos_image_path',
     'pos_image_url'
 ];
@@ -317,6 +331,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
             return {
                 ...item,
                 pos_visible: posVisible,
+                pos_always_available: override?.pos_always_available === true,
                 pos_image_path: override?.pos_image_path || null,
                 pos_image_url: override?.pos_image_url || storefrontImage?.storefront_image_url || null,
                 storefront_image_path: storefrontImage?.storefront_image_path || null,
@@ -1583,6 +1598,20 @@ export const posRepository = {
         };
     },
 
+    async getTerminalPairingPolicySettings(options = {}) {
+        const SystemSetting = dbStore.get('SystemSetting');
+        if (!SystemSetting) return { active_registry: [] };
+        const row = await SystemSetting.findOne({
+            where: { setting_key: 'pos_terminal_registry' },
+            attributes: ['setting_value', 'data_type'],
+            transaction: options.transaction
+        });
+        const rawRegistry = row?.data_type === 'json'
+            ? parseJsonLoosely(row.setting_value)
+            : row?.setting_value;
+        return { active_registry: normalizeTerminalPairingRegistry(rawRegistry) };
+    },
+
     async getShiftLocationBindingReadinessSummary(options = {}) {
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         if (!sequelize) {
@@ -1817,6 +1846,7 @@ export const posRepository = {
             item: {
                 ...itemWithLocationStock,
                 pos_visible: posVisible,
+                pos_always_available: override?.pos_always_available === true,
                 pos_image_path: override?.pos_image_path || null,
                 pos_image_url: override?.pos_image_url || null,
                 pos_readiness: readiness
@@ -1936,6 +1966,7 @@ export const posRepository = {
             return {
                 ...payload,
                 pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }),
+                pos_always_available: override?.pos_always_available === true,
                 pos_image_url: override?.pos_image_url || null,
                 pos_image_path: override?.pos_image_path || null,
                 has_override: Boolean(override),
@@ -1997,6 +2028,7 @@ export const posRepository = {
         return {
             item_id: payload.item_id,
             pos_visible: resolveCatalogVisibility({ item: payload, override: effectiveOverride, surface: 'pos' }),
+            pos_always_available: effectiveOverride?.pos_always_available === true,
             pos_image_url: effectiveOverride?.pos_image_url || null,
             pos_image_path: effectiveOverride?.pos_image_path || null,
             pos_readiness: readiness,
@@ -2035,6 +2067,9 @@ export const posRepository = {
             pos_visible: Object.prototype.hasOwnProperty.call(payload, 'pos_visible')
                 ? payload.pos_visible !== false
                 : (existing?.pos_visible ?? true),
+            pos_always_available: Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
+                ? payload.pos_always_available === true
+                : (existing?.pos_always_available ?? false),
             pos_image_path: payload.pos_image_path ?? (existing?.pos_image_path ?? null),
             pos_image_url: payload.pos_image_url ?? (existing?.pos_image_url ?? null)
         };

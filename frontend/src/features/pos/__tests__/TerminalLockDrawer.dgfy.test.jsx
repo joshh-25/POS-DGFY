@@ -8,7 +8,8 @@ const baseFormData = {
   email: '',
   password: '',
   dgfyTenantId: '',
-  terminalId: ''
+  terminalId: '',
+  terminalPassword: ''
 };
 
 describe('TerminalLockDrawer DGFY access UI', () => {
@@ -53,7 +54,8 @@ describe('TerminalLockDrawer DGFY access UI', () => {
           email: 'cashier@example.test',
           password: 'password123',
           dgfyTenantId: 'tenant-1',
-          terminalId: 'COUNTER-01'
+          terminalId: 'COUNTER-01',
+          terminalPassword: 'terminal-password'
         }}
         setFormData={setFormData}
         dgfyPosState={{

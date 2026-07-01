@@ -21,6 +21,11 @@ const PosCatalogOverride = sequelize.define('PosCatalogOverride', {
     allowNull: false,
     defaultValue: true
   },
+  pos_always_available: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
   pos_image_path: {
     type: DataTypes.STRING(500),
     allowNull: true
@@ -40,4 +45,3 @@ const PosCatalogOverride = sequelize.define('PosCatalogOverride', {
 });
 
 export default PosCatalogOverride;
-

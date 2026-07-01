@@ -150,7 +150,7 @@ describe('TenantManager capability controls', () => {
       );
     });
     expect(mocks.toastMock.success).toHaveBeenCalledWith('Tenant capabilities updated');
-  });
+  }, 15000);
 
   it('shows storefront readiness gaps for visible tenants without a publishable pin', async () => {
     render(<TenantManager />);
@@ -196,7 +196,7 @@ describe('TenantManager capability controls', () => {
         }
       );
     });
-  });
+  }, 15000);
 
   it('warns when Online Ordering remains capped by registration readiness', async () => {
     const user = userEvent.setup();

@@ -841,6 +841,63 @@ describe('POS checkout F&B contracts', () => {
         }), 12, expect.any(Object));
     });
 
+    it('persists Always Available as an explicit POS-only stock exemption without inventory movement', async () => {
+        let createdTransaction = null;
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 12,
+                name: 'Unlimited Admission',
+                category: 'product',
+                product_type: 'finished_goods',
+                unit_of_measure: 'ticket',
+                current_stock: 0,
+                cost_per_unit: 20,
+                default_sale_price: 250,
+                vat_type: 'vatable',
+                pos_always_available: true
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-000004'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                createdTransaction = { pos_transaction_id: 80, ...header, lines };
+                return 80;
+            }),
+            createFnbServiceChargeSnapshot: jest.fn(),
+            settleFnbCheck: jest.fn(),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        };
+        const stockMovementService = { createStockMovement: jest.fn() };
+        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'pos-always-available-contract',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [{ item_id: 12, quantity: 2 }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(createdTransaction.lines[0]).toEqual(expect.objectContaining({
+            item_id: 12,
+            stock_effect_type: 'stock_exempt',
+            stock_exempt_reason: 'pos_always_available',
+            cost_snapshot: null
+        }));
+        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
+    });
+
     it('does not validate or deduct accidental recipe compositions for pure service F&B lines', async () => {
         let createdTransaction = null;
         const posRepository = {
