@@ -6,7 +6,8 @@ export const SESSION_COOKIE_NAMES = Object.freeze({
   csrf: 'sku_csrf_token',
   dgfy: 'sku_dgfy_session',
   storefront: 'sku_store_session',
-  admin: 'sku_admin_session'
+  admin: 'sku_admin_session',
+  posTerminalPairing: 'sku_pos_terminal_pairing'
 });
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;

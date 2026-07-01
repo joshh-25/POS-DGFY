@@ -374,6 +374,7 @@ export default function Items() {
     const override = posCatalogOverrides[itemId];
     return {
       pos_visible: override ? override.pos_visible !== false : getDefaultPosVisibility(item),
+      pos_always_available: override?.pos_always_available === true,
       pos_image_url: resolveAssetUrl(override?.pos_image_url) || null,
       pos_readiness: override?.pos_readiness || null
     };
@@ -427,6 +428,21 @@ export default function Items() {
         return;
       }
       toast.error(error?.response?.data?.message || error?.message || 'Failed to update POS visibility');
+    }
+  };
+
+  const handleTogglePosAlwaysAvailable = async (item, nextValue) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId) return;
+    try {
+      const updated = await updatePosCatalogOverride(itemId, { pos_always_available: Boolean(nextValue) });
+      setPosCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`Always Available ${nextValue ? 'enabled' : 'disabled'} for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to update Always Available');
     }
   };
 
@@ -1012,7 +1028,7 @@ export default function Items() {
     const posConfig = resolvePosConfig(item);
     const defaultSalePrice = Number(item?.default_sale_price ?? 0);
     const currentStock = Number(item?.current_stock ?? 0);
-    const stockExempt = isPureServiceItem(item);
+    const stockExempt = isPureServiceItem(item) || posConfig.pos_always_available === true;
     const checks = {
       pos_visible: posConfig.pos_visible !== false,
       has_sale_price: Number.isFinite(defaultSalePrice) && defaultSalePrice > 0,
@@ -2043,9 +2059,11 @@ export default function Items() {
                       onMoveToFolder={openMoveModal}
                       posReadiness={posReadinessByItemId[item.item_id || item.id]}
                       posVisible={posConfigResolved.pos_visible !== false}
+                      posAlwaysAvailable={posConfigResolved.pos_always_available === true}
                       showPosVisibilityControl={canViewPosCatalog && hasPremiumFeatureAccess}
                       canTogglePosVisibility={canConfigurePosCatalog}
                       onTogglePosVisibility={handleTogglePosVisibility}
+                      onTogglePosAlwaysAvailable={handleTogglePosAlwaysAvailable}
                       storefrontVisible={storefrontConfigResolved.storefront_visible !== false}
                       showStorefrontVisibilityControl={canConfigureStorefrontCatalog}
                       canToggleStorefrontVisibility={canConfigureStorefrontCatalog}
@@ -2082,9 +2100,11 @@ export default function Items() {
                     onMoveToFolder={openMoveModal}
                     posReadiness={posReadinessByItemId[item.item_id || item.id]}
                     posVisible={posConfigResolved.pos_visible !== false}
+                    posAlwaysAvailable={posConfigResolved.pos_always_available === true}
                     showPosVisibilityControl={canViewPosCatalog && hasPremiumFeatureAccess}
                     canTogglePosVisibility={canConfigurePosCatalog}
                     onTogglePosVisibility={handleTogglePosVisibility}
+                    onTogglePosAlwaysAvailable={handleTogglePosAlwaysAvailable}
                     storefrontVisible={storefrontConfigResolved.storefront_visible !== false}
                     showStorefrontVisibilityControl={canConfigureStorefrontCatalog}
                     canToggleStorefrontVisibility={canConfigureStorefrontCatalog}
@@ -2714,6 +2734,7 @@ export default function Items() {
           storefrontConfig={editingItem ? resolveStorefrontConfig(editingItem) : null}
           showStorefrontCatalogControls={canConfigureStorefrontCatalog}
           onTogglePosVisibility={handleTogglePosVisibility}
+          onTogglePosAlwaysAvailable={handleTogglePosAlwaysAvailable}
           onUploadPosImage={handleUploadPosImage}
           onDeletePosImage={handleDeletePosImage}
           onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
@@ -2750,6 +2771,7 @@ export default function Items() {
             storefrontConfig={editingProduct ? resolveStorefrontConfig(editingProduct) : null}
             showStorefrontCatalogControls={canConfigureStorefrontCatalog}
             onTogglePosVisibility={handleTogglePosVisibility}
+            onTogglePosAlwaysAvailable={handleTogglePosAlwaysAvailable}
             onUploadPosImage={handleUploadPosImage}
             onDeletePosImage={handleDeletePosImage}
             onToggleStorefrontVisibility={handleToggleStorefrontVisibility}

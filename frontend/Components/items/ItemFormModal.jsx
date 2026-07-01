@@ -200,6 +200,7 @@ export default function ItemFormModal({
   storefrontConfig = null,
   showStorefrontCatalogControls = true,
   onTogglePosVisibility,
+  onTogglePosAlwaysAvailable,
   onToggleStorefrontVisibility,
   onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
@@ -1416,6 +1417,17 @@ export default function ItemFormModal({
                       disabled={!onTogglePosVisibility}
                     >
                       {posConfig?.pos_visible !== false ? 'Disable in POS' : 'Enable in POS'}
+                    </Button>
+                  )}
+                  {item && (
+                    <Button
+                      type="button"
+                      variant={posConfig?.pos_always_available === true ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => onTogglePosAlwaysAvailable && onTogglePosAlwaysAvailable(item, posConfig?.pos_always_available !== true)}
+                      disabled={!onTogglePosAlwaysAvailable}
+                    >
+                      {posConfig?.pos_always_available === true ? 'Always Available: On' : 'Always Available: Off'}
                     </Button>
                   )}
                   {onOpenBulkPosSetup && (
