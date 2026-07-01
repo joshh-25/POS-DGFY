@@ -173,7 +173,7 @@
         "documents": [
           {
             "path": "docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md",
-            "action": "added",
+            "action": "updated",
             "evidence": "Compliance declaration records that the POS-sensitive terminal workspace touch is limited to map rendering and lint-safe tab reset scheduling with no fiscal, payment, migration, or lifecycle behavior change."
           },
           {
