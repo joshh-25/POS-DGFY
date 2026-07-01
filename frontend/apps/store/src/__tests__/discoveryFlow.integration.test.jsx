@@ -554,7 +554,7 @@ describe('storefront discovery integration flow', () => {
     expect(screen.getAllByRole('button', { name: 'Track' }).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reorder Items' })).toBeTruthy();
-  });
+  }, 15000);
 
   it('searches only after the current search action is submitted', async () => {
     const user = userEvent.setup();

@@ -2,7 +2,7 @@
   "schema": "sku-reviewed-batch-manifest/v1",
   "review_status": "reviewed",
   "reviewed_by": "Codex implementation agent",
-  "reviewed_at": "2026-07-01T10:55:00.000+08:00",
+  "reviewed_at": "2026-07-01T11:10:00.000+08:00",
   "source_pr": "#25 replacement adoption",
   "release_slices": [
     {
@@ -56,6 +56,7 @@
         "backend/tests/posCashierLoginUseCase.test.js",
         "backend/tests/posCheckoutFnbContracts.usecase.test.js",
         "backend/tests/posDeviceShiftGuard.test.js",
+        "backend/tests/posHandlers.transport.test.js",
         "backend/tests/posSetupCashierUseCase.test.js",
         "backend/tests/posTerminalPairingCookie.test.js",
         "backend/tests/posTerminalPairingService.test.js",
@@ -88,6 +89,26 @@
         "payments": false
       },
       "risk_level": "high",
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "Terminal possession, member binding, stock-effect behavior, settings validation, and additive POS schema fields are sensitive POS contracts; a regression could block checkout, weaken terminal binding, or create incorrect inventory movement.",
+      "potentially_affected_existing_behaviors": [
+        "Existing POS checkout mutations and receipt creation",
+        "Existing terminal shift and device guard behavior",
+        "Inventory movement for sold catalog items",
+        "Settings reads and writes for POS terminal registry data"
+      ],
+      "evidence_covering_regression_risk": [
+        "Focused backend POS pairing, cashier login/setup, terminal cookie, registry secret, shift guard, checkout contract, and migrated DB integration tests passed on 2026-07-01",
+        "Architecture and compliance checks passed on 2026-07-01"
+      ],
+      "evidence_gaps": [
+        "Seeded human/operator UAT for invalidated terminal bindings and stock-exempt Always Available sales remains required before production accuracy completion"
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback backend pairing and stock-exemption fields with the frontend pairing UI before promotion if terminal pairing or checkout mutation behavior regresses",
+        "After deploy, monitor POS checkout errors, terminal pairing failures, and Inventory movement anomalies"
+      ],
       "required_tests": [
         "npm --prefix backend test -- --runInBand --runTestsByPath tests/posCashierLoginUseCase.test.js tests/posSetupCashierUseCase.test.js tests/posTerminalPairingService.test.js tests/posTerminalPairingUseCase.test.js tests/posTerminalPairingCookie.test.js tests/posTerminalRegistrySecrets.test.js tests/posDeviceShiftGuard.test.js tests/posCheckoutFnbContracts.usecase.test.js tests/posCheckout.db.integration.test.js",
         "npm run check:architecture",
@@ -117,6 +138,35 @@
         "docs/api/specification.md",
         "docs/compliance/impact-declarations/2026-06-29-pos-terminal-pairing-always-available.md"
       ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-directed Codex documentation review",
+        "reviewed_at": "2026-07-01T11:10:00.000+08:00",
+        "rationale": "The backend slice changes POS terminal possession, checkout stock-effect, settings validation, and API contracts across backend, database, POS, and compliance surfaces, so ADR, API, and compliance documents were updated with the exact release scope.",
+        "documents": [
+          {
+            "path": "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+            "action": "updated",
+            "evidence": "Adds the POS terminal pairing, shift-safe navigation, and stock-exemption architectural decision for this release."
+          },
+          {
+            "path": "docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md",
+            "action": "updated",
+            "evidence": "Updates the catalog, Inventory, POS, and Storefront ownership boundary contract for the new POS pairing and stock-effect behavior."
+          },
+          {
+            "path": "docs/api/specification.md",
+            "action": "updated",
+            "evidence": "Documents the affected POS terminal pairing and Always Available API contract surfaces."
+          },
+          {
+            "path": "docs/compliance/impact-declarations/2026-06-29-pos-terminal-pairing-always-available.md",
+            "action": "updated",
+            "evidence": "Records compliance impact, required validation, rollback scope, and fiscal/payment non-goals for the backend POS changes."
+          }
+        ]
+      },
       "adr_compliance_declaration_required": true,
       "adr_or_compliance": "ADR 0031, amended ADR 0029, and the 2026-06-29 POS pairing/Always Available compliance declaration govern this slice.",
       "rollback_notes": "Before staging promotion, revert this slice and its additive migration together; do not leave pairing UI or stock-exempt fields partially active.",
@@ -146,8 +196,8 @@
         "controller_promotion"
       ],
       "can_ship_independently": false,
-      "promotion_eligibility": "blocked_pending_rendered_smoke",
-      "verdict": "fix first",
+      "promotion_eligibility": "eligible_for_staging_review",
+      "verdict": "ship",
       "payment_sensitive": false,
       "payment_sensitive_files": [],
       "id": "frontend-pos-operator-workflows",
@@ -155,13 +205,17 @@
       "name": "Frontend POS operator workflows",
       "plain_english_purpose": "Guide DGFY users through company and terminal pairing, keep cashier navigation focused, and let admins navigate safely without a shift.",
       "purpose": "Guide DGFY users through company and terminal pairing, keep cashier navigation focused, and let admins navigate safely without a shift.",
-      "implementation_summary": "Adds company-then-terminal password unlock, pairing lifecycle, admin no-shift navigation, cashier restrictions, Always Available controls and labels, mobile drawer scrolling, and focused UI contracts.",
+      "implementation_summary": "Adds company-then-terminal password unlock, pairing lifecycle, admin no-shift navigation, cashier restrictions, Always Available controls and labels, mobile drawer scrolling, focused UI contracts, and per-app Vite dependency caches so concurrent rendered smoke uses one React instance per app.",
       "included_files": [
         "frontend/Components/items/ItemCard.jsx",
         "frontend/Components/items/ItemFormModal.jsx",
         "frontend/Components/products/ProductCreateWizard.jsx",
         "frontend/Components/products/wizard/POSSetupStep.jsx",
         "frontend/Pages/Settings.jsx",
+        "frontend/apps/pos/vite.config.js",
+        "frontend/apps/skupervisor/vite.config.js",
+        "frontend/apps/store/src/__tests__/discoveryFlow.integration.test.jsx",
+        "frontend/apps/store/vite.config.js",
         "frontend/src/features/inventory/pages/ItemsPage.jsx",
         "frontend/src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
         "frontend/src/features/pos/__tests__/posAlwaysAvailable.contract.test.js",
@@ -178,7 +232,10 @@
         "frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx",
         "frontend/src/features/pos/pages/TerminalPage.jsx",
         "frontend/src/features/pos/services/posService.js",
-        "frontend/src/features/pos/utils/__tests__/setupFlow.test.js"
+        "frontend/src/features/pos/utils/__tests__/setupFlow.test.js",
+        "frontend/src/pages/__tests__/Settings.deepLinking.integration.test.jsx",
+        "frontend/src/pages/__tests__/TenantManager.assistedProvisioning.integration.test.jsx",
+        "frontend/src/pages/__tests__/TenantManager.capabilities.integration.test.jsx"
       ],
       "excluded_features": [
         "Local cashier creation and login",
@@ -204,11 +261,36 @@
         "payments": false
       },
       "risk_level": "high",
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "The POS operator shell, standalone POS app boot path, SKUpervisor POS handoff, and DGFY access surfaces are user-facing; a regression could leave terminals locked, route sales to the wrong app, or break rendered Storefront/DGFY entry points.",
+      "potentially_affected_existing_behaviors": [
+        "Standalone POS terminal route rendering and login drawer behavior",
+        "SKUpervisor sales handoff from the POS shell",
+        "Cashier/admin POS navigation restrictions",
+        "DGFY auth and Storefront account entry surfaces",
+        "Concurrent local Vite rendered smoke for POS, SKUpervisor, and Storefront"
+      ],
+      "evidence_covering_regression_risk": [
+        "Focused POS and item/inventory frontend contract tests passed on 2026-07-01",
+        "POS, SKUpervisor, and Storefront production builds passed on 2026-07-01",
+        "POS terminal rendered smoke passed on desktop, tablet, and mobile after per-app Vite cache isolation",
+        "DGFY access rendered smoke passed on POS, DGFY auth, and Storefront account surfaces after per-app Vite cache isolation"
+      ],
+      "evidence_gaps": [
+        "Seeded human/operator UAT for terminal invalidation, admin no-shift navigation, cashier restriction, and mobile scrolling remains required before production accuracy completion"
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback this frontend slice with the backend terminal pairing contract if terminal unlock or navigation behavior regresses",
+        "After deploy, monitor rendered POS boot, DGFY auth entry, Storefront account route, and cashier/admin support reports"
+      ],
       "required_tests": [
         "npm --prefix frontend test -- <19 affected POS, settings, item, and inventory contract paths>",
         "npm --prefix frontend run build:pos",
         "npm --prefix frontend run build:skupervisor",
         "npm --prefix frontend run build:store",
+        "npm --prefix frontend test",
+        "npm run check:frontend-budgets",
         "npm run smoke:pos-terminal-ui",
         "npm run smoke:dgfy-access-ui"
       ],
@@ -234,14 +316,24 @@
           "evidence": "current validation 2026-07-01: Vite Store regression build passed"
         },
         {
+          "command": "npm --prefix frontend test",
+          "status": "pass",
+          "evidence": "current validation 2026-07-01: full frontend Vitest suite passed after stabilizing slow full-suite tests and valid terminal registry save input"
+        },
+        {
+          "command": "npm run check:frontend-budgets",
+          "status": "pass",
+          "evidence": "current validation 2026-07-01: frontend budget gate rebuilt all apps and passed route chunk budgets"
+        },
+        {
           "command": "npm run smoke:pos-terminal-ui",
-          "status": "fail",
-          "evidence": "current validation 2026-07-01: local dev rendered smoke failed before POS assertions because /terminal rendered the error boundary with React invalid-hook/useRef"
+          "status": "pass",
+          "evidence": "current validation 2026-07-01: desktop, tablet, and mobile terminal rendered smoke passed after per-app Vite cache isolation"
         },
         {
           "command": "npm run smoke:dgfy-access-ui",
-          "status": "fail",
-          "evidence": "current validation 2026-07-01: DGFY smoke failed because the script waits for stale label 'DGFY Email'; Storefront account rendered invalid-hook/useState in this fresh dev server"
+          "status": "pass",
+          "evidence": "current validation 2026-07-01: POS lock drawer, DGFY auth, and Storefront account desktop/mobile rendered smoke passed"
         }
       ],
       "docs_required": true,
@@ -250,6 +342,30 @@
         "docs/testing/pos-readiness-status.md",
         "docs/testing/dgfy-company-access-security-control-matrix.md"
       ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-directed Codex documentation review",
+        "reviewed_at": "2026-07-01T11:10:00.000+08:00",
+        "rationale": "The frontend slice stays within existing POS, SKUpervisor, and Storefront app boundaries. Testing docs were updated for the user-facing pairing and DGFY access behavior, and the Vite cache change is a build/dev-server reliability fix covered by rendered smoke evidence.",
+        "documents": [
+          {
+            "path": "docs/testing/pos-e2e-uat-checklist.md",
+            "action": "updated",
+            "evidence": "Records the POS operator UAT expectations for pairing, terminal invalidation, admin navigation, cashier restrictions, and mobile behavior."
+          },
+          {
+            "path": "docs/testing/pos-readiness-status.md",
+            "action": "updated",
+            "evidence": "Updates POS readiness tracking for the PR 25 safe-adoption scope and remaining UAT obligations."
+          },
+          {
+            "path": "docs/testing/dgfy-company-access-security-control-matrix.md",
+            "action": "updated",
+            "evidence": "Captures the DGFY access and company-context security expectations touched by the frontend POS workflow."
+          }
+        ]
+      },
       "adr_compliance_declaration_required": true,
       "adr_or_compliance": "ADR 0031 and the 2026-06-29 POS pairing/Always Available compliance declaration cover the rendered operator changes.",
       "rollback_notes": "Revert the frontend slice with the backend pairing contract before staging promotion; never leave a pairing-required backend behind an old unlock UI.",
@@ -259,8 +375,10 @@
       "production_accuracy_checks_required": [
         "Run seeded DGFY, terminal invalidation, admin no-shift, cashier restriction, and mobile scrolling UAT."
       ],
-      "high_risk_path": false,
-      "high_risk_files": []
+      "high_risk_path": true,
+      "high_risk_files": [
+        "frontend/apps/store/src/__tests__/discoveryFlow.integration.test.jsx"
+      ]
     },
     {
       "included_features": [
@@ -286,7 +404,7 @@
       "name": "Governance, review, and adoption evidence",
       "plain_english_purpose": "Make every PR #25 decision, retained staging contract, test result, and remaining UAT obligation auditable.",
       "purpose": "Make every PR #25 decision, retained staging contract, test result, and remaining UAT obligation auditable.",
-      "implementation_summary": "Adds the cross-boundary ADR, compliance declaration, API and UAT updates, 281-file disposition, merge-adoption manifest, requirement review, and reviewed three-slice batch map.",
+      "implementation_summary": "Adds the cross-boundary ADR, compliance declaration, API and UAT updates, 281-file disposition, merge-adoption manifest, requirement review, reviewed three-slice batch map, merge-adoption auto-discovery hardening for disposition evidence files, and CI source-ref fetching for PR adoption manifests.",
       "included_files": [
         "docs/api/specification.md",
         "docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md",
@@ -298,7 +416,10 @@
         "docs/releases/batches/2026-06-29-pr25-pos-safe-adoption.json",
         "docs/testing/dgfy-company-access-security-control-matrix.md",
         "docs/testing/pos-e2e-uat-checklist.md",
-        "docs/testing/pos-readiness-status.md"
+        "docs/testing/pos-readiness-status.md",
+        "scripts/check-merge-adoption.js",
+        "scripts/check-merge-adoption-required.js",
+        "scripts/check-merge-adoption-required.test.js"
       ],
       "excluded_features": [
         "Production promotion",
@@ -325,9 +446,33 @@
         "payments": false
       },
       "risk_level": "medium",
+      "regression_risk_level": "medium",
+      "regression_warning_required": true,
+      "regression_warning_summary": "Governance and adoption evidence must remain accurate because incorrect release documentation could authorize the wrong PR 25 scope or overclaim production readiness.",
+      "potentially_affected_existing_behaviors": [
+        "Reviewed batch inventory for staging promotion",
+        "Merge-adoption disposition for PR 25 files",
+        "Operator understanding of excluded PR 25 scope",
+        "Production-readiness and UAT tracking"
+      ],
+      "evidence_covering_regression_risk": [
+        "Docs lint passed on 2026-07-01",
+        "Merge-adoption checks passed on 2026-07-01",
+        "Whitespace validation passed on 2026-07-01"
+      ],
+      "evidence_gaps": [
+        "Final production proof and deployed-change accuracy records cannot exist until the slice is promoted through staging and master and deployed"
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback governance artifacts with the implementation slices they describe if the adoption scope changes before staging promotion",
+        "Before production, compare inventory, regression-risk notice, staging SHA, master SHA, and deployment proof for exact-scope agreement"
+      ],
       "required_tests": [
         "npm run lint:docs",
         "npm run check:merge-adoption -- --manifest docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json",
+        "npm run check:merge-adoption-required -- --base origin/staging --head HEAD",
+        "node scripts/check-merge-adoption.test.js",
+        "node scripts/check-merge-adoption-required.test.js",
         "git diff --check"
       ],
       "completed_tests": [
@@ -342,6 +487,21 @@
           "evidence": "current validation 2026-07-01: 4 feature areas and 166 source-added files validated"
         },
         {
+          "command": "npm run check:merge-adoption-required -- --base origin/staging --head HEAD",
+          "status": "pass",
+          "evidence": "current validation 2026-07-01: auto-discovery selected the true PR 25 merge-adoption manifest and ignored disposition evidence JSON"
+        },
+        {
+          "command": "node scripts/check-merge-adoption.test.js",
+          "status": "pass",
+          "evidence": "current validation 2026-07-01: merge-adoption manifest validation tests passed"
+        },
+        {
+          "command": "node scripts/check-merge-adoption-required.test.js",
+          "status": "pass",
+          "evidence": "current validation 2026-07-01: merge-adoption-required unit coverage passed for manifest discovery and disposition-file filtering"
+        },
+        {
           "command": "git diff --check",
           "status": "pass",
           "evidence": "current validation 2026-07-01: whitespace validation passed"
@@ -354,6 +514,45 @@
         "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json",
         "docs/releases/batches/2026-06-29-pr25-pos-safe-adoption.json"
       ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-directed Codex documentation review",
+        "reviewed_at": "2026-07-01T11:10:00.000+08:00",
+        "rationale": "This governance slice documents the cross-boundary PR 25 adoption decision, excluded scope, batch inventory, and required validation artifacts. The reviewed documents are updated in the candidate diff and are the release authority for what may proceed.",
+        "documents": [
+          {
+            "path": "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+            "action": "updated",
+            "evidence": "Provides the cross-boundary ADR for POS terminal pairing, shift-safe navigation, and stock-exemption adoption."
+          },
+          {
+            "path": "docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md",
+            "action": "updated",
+            "evidence": "Records the updated ownership boundary implications for catalog, Inventory, POS, and Storefront behavior."
+          },
+          {
+            "path": "docs/release/merge-adoption/pr25-pos-safe-adoption-review-2026-06-29.md",
+            "action": "updated",
+            "evidence": "Records the refreshed current-head review of PR 25 adoption decisions, rejected files, and validation posture."
+          },
+          {
+            "path": "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
+            "action": "updated",
+            "evidence": "Maps all 281 PR 25 files to adopted or rejected disposition for auditability."
+          },
+          {
+            "path": "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json",
+            "action": "updated",
+            "evidence": "Provides the governed merge-adoption manifest validated by the merge-adoption gates."
+          },
+          {
+            "path": "docs/releases/batches/2026-06-29-pr25-pos-safe-adoption.json",
+            "action": "updated",
+            "evidence": "Provides the reviewed batch inventory, regression-risk disclosure, documentation closure, test evidence, and production proof requirements."
+          }
+        ]
+      },
       "adr_compliance_declaration_required": true,
       "adr_or_compliance": "The documentation slice records ADR 0031, amended ADR 0029, compliance classification, and merge-adoption proof.",
       "rollback_notes": "Revert governance artifacts only together with the implementation slices they describe before staging promotion.",

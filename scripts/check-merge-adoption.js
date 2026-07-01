@@ -118,6 +118,19 @@ function runGit(projectRoot, args) {
   };
 }
 
+function ensureSourceRefAvailable(projectRoot, ref) {
+  let revCheck = runGit(projectRoot, ['rev-parse', '--verify', `${ref}^{commit}`]);
+  if (revCheck.ok) return revCheck;
+
+  const pullRefMatch = /^origin\/pr\/(\d+)$/.exec(ref);
+  if (pullRefMatch) {
+    runGit(projectRoot, ['fetch', 'origin', `pull/${pullRefMatch[1]}/head:refs/remotes/${ref}`]);
+    revCheck = runGit(projectRoot, ['rev-parse', '--verify', `${ref}^{commit}`]);
+  }
+
+  return revCheck;
+}
+
 function collectAddedFilesFromSourceRefs(projectRoot, sourceRefs, errors) {
   const added = [];
 
@@ -129,7 +142,7 @@ function collectAddedFilesFromSourceRefs(projectRoot, sourceRefs, errors) {
       continue;
     }
 
-    const revCheck = runGit(projectRoot, ['rev-parse', '--verify', `${ref}^{commit}`]);
+    const revCheck = ensureSourceRefAvailable(projectRoot, ref);
     if (!revCheck.ok) {
       errors.push(`source ref is not available locally: ${ref}`);
       continue;

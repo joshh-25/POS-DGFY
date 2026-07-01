@@ -11,6 +11,7 @@ const allowedHosts = true;
 
 export default defineConfig({
   root: __dirname,
+  cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-skupervisor'),
   plugins: [react()],
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
