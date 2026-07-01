@@ -11,6 +11,8 @@ const accountPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/s
 const solutionsPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/SolutionsPage.jsx'), 'utf8');
 const businessRegistrationUrlSource = () => fs.readFileSync(path.join(appRoot, 'businessRegistrationUrl.js'), 'utf8');
 const guestTrackingDrawerSource = () => fs.readFileSync(path.join(appRoot, 'tracking/components/GuestTrackingDrawer.jsx'), 'utf8');
+const promoCodePanelSource = () => fs.readFileSync(path.join(appRoot, 'checkout/components/PromoCodePanel.jsx'), 'utf8');
+const orderSummaryCardSource = () => fs.readFileSync(path.join(appRoot, 'checkout/components/OrderSummaryCard.jsx'), 'utf8');
 
 describe('Food & Beverage storefront contract', () => {
   it('renders restaurant menu metadata and carries modifiers into checkout lines', () => {
@@ -181,6 +183,22 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain("{ value: 'bank_transfer', label: 'Bank transfer' }");
     expect(source).not.toContain("{ value: 'online', label: 'Online payment' }");
     expect(source).toContain('payment_type: fnbPaymentType');
+  });
+
+  it('keeps promo-code checkout UI display-only until backend validation exists', () => {
+    const source = appSource();
+    const promoSource = promoCodePanelSource();
+    const summarySource = orderSummaryCardSource();
+
+    expect(source).toContain("import { PromoCodePanel }");
+    expect(source).toContain('renderPromoCodePanel');
+    expect(source).toContain('code={promoCodeDraft}');
+    expect(promoSource).toContain('data-storefront-promo-code-panel="true"');
+    expect(promoSource).toContain('Code is displayed only; totals are unchanged.');
+    expect(summarySource).toContain('promoSlot');
+    expect(source).not.toContain('promo_code:');
+    expect(source).not.toContain('coupon_code:');
+    expect(source).not.toContain('discount_code:');
   });
 
   it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {

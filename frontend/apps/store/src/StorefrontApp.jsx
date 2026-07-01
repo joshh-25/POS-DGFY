@@ -190,6 +190,7 @@ import { PaymentMethodSelectorBlock } from './checkout/components/PaymentMethodS
 import { CheckoutStepProgressHeader } from './checkout/components/CheckoutStepProgressHeader.jsx';
 import { SavedCustomerDetailsPanel } from './checkout/components/SavedCustomerDetailsPanel.jsx';
 import { SelectableOptionCard } from './checkout/components/SelectableOptionCard.jsx';
+import { PromoCodePanel } from './checkout/components/PromoCodePanel.jsx';
 import { GuestTrackingDrawer } from './tracking/components/GuestTrackingDrawer.jsx';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -6011,6 +6012,7 @@ export default function StorefrontApp() {
 
   const [checkoutError, setCheckoutError] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [promoCodeDraft, setPromoCodeDraft] = useState('');
   const [showOrderSuccessAnimation, setShowOrderSuccessAnimation] = useState(false);
   const orderSuccessAnimationTimerRef = useRef(null);
 
@@ -11363,6 +11365,16 @@ export default function StorefrontApp() {
   const fnbHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
   const fnbCustomerStepComplete = fnbHasCustomerIdentity && fnbHasPrimaryIdentityContact;
   const hasValidCheckoutPaymentType = isValidStorePaymentType(fnbPaymentType);
+  const renderPromoCodePanel = useCallback((options = {}) => (
+    <PromoCodePanel
+      code={promoCodeDraft}
+      onChange={setPromoCodeDraft}
+      onClear={() => setPromoCodeDraft('')}
+      compact={options.compact === true}
+      accentColor={options.accentColor || '#0f766e'}
+      bodyFont={options.bodyFont || servicesBodyFont}
+    />
+  ), [promoCodeDraft, servicesBodyFont]);
   const fnbFulfillmentStepComplete = hasDeliveryAddress({
     isDeliveryOrder,
     hasPinnedDeliveryLocation,
@@ -17740,6 +17752,7 @@ return (
                   { label: 'Contact', value: simpleHasPrimaryIdentityContact ? 'Ready' : 'Needed' },
                   { label: 'Status', value: simpleCustomerStepComplete ? 'Ready for fulfillment' : 'Waiting for details' }
                 ]}
+                promoSlot={renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
                 bodyFont={servicesBodyFont}
                 displayFont={servicesDisplayFont}
               />
@@ -20054,6 +20067,7 @@ return (
                           { label: 'Fees & Taxes', value: money(totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount) },
                           { label: 'Total', value: money(totalsForDisplay.total_amount), emphasis: true, borderTop: true }
                         ]}
+                        promoSlot={renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
                         bodyFont={servicesBodyFont}
                         displayFont={servicesDisplayFont}
                       />
@@ -20207,6 +20221,7 @@ return (
                         cashInfoAccent={fnbOrderBrand}
                         bodyFont={servicesBodyFont}
                       />
+                      {renderPromoCodePanel({ accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
                       {!isFnbOrderResponsiveFlow && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                             <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: '#fff', color: fnbOrderBrandDark, fontWeight: 800, cursor: 'pointer' }}>Refresh Quote</button>
@@ -21122,6 +21137,11 @@ return (
                             ? (quoteNeedsRefresh ? 'Displayed totals are stale. Click Quote again to re-sync and unlock checkout.' : 'Totals are synced from the latest quote and checkout is enabled.')
                             : 'No quote yet. Click Quote to unlock checkout.'}
                       </div>
+                      {!hasServiceCart ? (
+                        <div style={{ marginTop: 12 }}>
+                          {renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
+                        </div>
+                      ) : null}
                       <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         {!hasServiceCart && checkoutPermitted && accessCapabilities.quote !== false && (
                           <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>{isFnbMode ? 'Refresh Quote' : 'Quote'}</button>
