@@ -1,21 +1,6 @@
 import api from '@/services/api';
 import { emitPosHardwareMessage } from '../utils/posHardwareMessageBus.js';
 
-export const pairPosTerminal = async (payload = {}) => {
-    const response = await api.post('/pos/terminal/pair', payload);
-    return response.data?.data;
-};
-
-export const fetchPairedPosTerminal = async (requestConfig = {}) => {
-    const response = await api.get('/pos/terminal/paired', requestConfig);
-    return response.data?.data;
-};
-
-export const clearPairedPosTerminal = async () => {
-    const response = await api.delete('/pos/terminal/paired', { skipGlobalErrorToast: true });
-    return response.data?.data;
-};
-
 export const fetchPosCatalog = async (params = {}) => {
     const response = await api.get('/pos/catalog', { params });
     return response.data?.data || [];
@@ -46,6 +31,28 @@ export const fetchPosTransactions = async (params = {}) => {
 
 export const fetchPosTransactionById = async (id) => {
     const response = await api.get(`/pos/transactions/${id}`);
+    return response.data?.data;
+};
+
+export const createPosSetupCashier = async (payload = {}) => {
+    const response = await api.post('/pos/setup/cashiers', payload);
+    return response.data?.data;
+};
+
+export const fetchPosSetupCashiers = async () => {
+    const response = await api.get('/pos/setup/cashiers');
+    return response.data?.data?.cashiers || [];
+};
+
+export const verifyPosTerminal = async (payload = {}) => {
+    const response = await api.post('/pos/terminal/verify', payload);
+    return response.data?.data;
+};
+
+export const fetchPairedPosTerminal = async () => {
+    const response = await api.get('/pos/terminal/paired', {
+        skipGlobalErrorToast: true
+    });
     return response.data?.data;
 };
 
@@ -168,6 +175,38 @@ export const fetchTerminalTodayDashboard = async (params = {}, requestConfig = {
     return response.data?.data;
 };
 
+export const fetchPosReportsOverview = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/reports/overview', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const fetchPosReportsTopItems = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/reports/top-items', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const fetchPosReportsComparison = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/reports/comparison', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const fetchPosReportsProfitLoss = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/reports/profit-loss', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const exportPosReportCsv = async (params = {}) => {
+    const response = await api.get('/pos/reports/export', {
+        params,
+        responseType: 'blob'
+    });
+    return {
+        blob: response.data,
+        filename: String(response.headers?.['content-disposition'] || '')
+            .match(/filename="?([^"]+)"?$/i)?.[1] || 'pos-report.csv'
+    };
+};
+
 export const fetchIncomingOnlineOrders = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/incoming-orders', {
         params,
@@ -265,9 +304,6 @@ export const fetchFiscalLedgerIntegrity = async (params = {}) => {
 };
 
 export default {
-    pairPosTerminal,
-    fetchPairedPosTerminal,
-    clearPairedPosTerminal,
     fetchPosCatalog,
     scanPosBarcode,
     createPosCheckout,
@@ -286,6 +322,11 @@ export default {
     recordCashDrawerEvent,
     closeTerminalShift,
     fetchTerminalTodayDashboard,
+    fetchPosReportsOverview,
+    fetchPosReportsTopItems,
+    fetchPosReportsComparison,
+    fetchPosReportsProfitLoss,
+    exportPosReportCsv,
     fetchIncomingOnlineOrders,
     updateOnlineOrderStatus,
     fetchFiscalTerminalRegistrations,

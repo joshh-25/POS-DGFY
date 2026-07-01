@@ -4,6 +4,7 @@ import {
   getSettingByKeyUseCase,
   updateSettingsUseCase,
   updateSettingByKeyUseCase,
+  verifyPosSettingsAccessPinUseCase,
   resetSettingsToDefaultUseCase,
   getCompanyInfoUseCase,
   uploadStorefrontAssetUseCase,
@@ -227,6 +228,26 @@ export const updateSettingByKey = async (req, res, next) => {
   }
 };
 
+export const verifyPosSettingsAccessPin = async (req, res, next) => {
+  try {
+    const result = await verifyPosSettingsAccessPinUseCase({
+      pin: req.validatedData?.pin || ''
+    });
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'POS Settings access PIN verified successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * @route   POST /api/v1/settings/reset
  * @desc    Reset all settings to default values
@@ -399,6 +420,7 @@ export default {
   getSettingByKey,
   updateSettings,
   updateSettingByKey,
+  verifyPosSettingsAccessPin,
   resetSettingsToDefault,
   getCompanyInfo,
   uploadStorefrontAsset,

@@ -5,6 +5,7 @@ import { buildGetAllSettingsUseCase } from './usecases/getAllSettingsUseCase.js'
 import { buildGetSettingByKeyUseCase } from './usecases/getSettingByKeyUseCase.js';
 import { buildUpdateSettingsUseCase } from './usecases/updateSettingsUseCase.js';
 import { buildUpdateSettingByKeyUseCase } from './usecases/updateSettingByKeyUseCase.js';
+import { buildVerifyPosSettingsAccessPinUseCase } from './usecases/verifyPosSettingsAccessPinUseCase.js';
 import { buildResetSettingsToDefaultUseCase } from './usecases/resetSettingsToDefaultUseCase.js';
 import { buildApplyThresholdSettingsUseCase } from './usecases/applyThresholdSettingsUseCase.js';
 import {
@@ -27,6 +28,7 @@ export const updateSettingByKeyUseCase = buildUpdateSettingByKeyUseCase({
     settingsRepository,
     storefrontAssetStorage
 });
+export const verifyPosSettingsAccessPinUseCase = buildVerifyPosSettingsAccessPinUseCase({ settingsRepository });
 export const resetSettingsToDefaultUseCase = buildResetSettingsToDefaultUseCase({ settingsRepository });
 export const applyThresholdSettingsUseCase = buildApplyThresholdSettingsUseCase({ settingsRepository });
 export const uploadStorefrontAssetUseCase = buildUploadStorefrontAssetUseCase({

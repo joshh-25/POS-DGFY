@@ -23,6 +23,9 @@ import {
     uploadBulkPosCatalogImagesUseCase,
     deletePosCatalogImageUseCase,
     openTerminalShiftUseCase,
+    createPosSetupCashierUseCase,
+    listPosSetupCashiersUseCase,
+    loginPosCashierUseCase,
     switchTerminalShiftLocationUseCase,
     getCurrentTerminalShiftUseCase,
     recordCashDrawerEventUseCase,
@@ -43,7 +46,8 @@ import {
     SESSION_COOKIE_NAMES,
     clearSessionCookie,
     getCookie,
-    setBearerSessionCookie
+    setBearerSessionCookie,
+    setTenantSessionCookies
 } from '../../../utils/browserSessionCookies.js';
 
 const timestamp = () => new Date().toISOString();
@@ -102,6 +106,71 @@ export const getPairedTerminal = async (req, res, next) => {
 export const clearPairedTerminal = (req, res) => {
     clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
     return res.status(200).json({ success: true, data: { paired: false }, timestamp: timestamp() });
+};
+
+export const createSetupCashier = async (req, res, next) => {
+    try {
+        const result = await createPosSetupCashierUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cashier created',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listSetupCashiers = async (req, res, next) => {
+    try {
+        const result = await listPosSetupCashiersUseCase({ user: req.user });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cashiers retrieved',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const loginCashier = async (req, res, next) => {
+    try {
+        const result = await loginPosCashierUseCase({
+            payload: req.validatedData || req.body || {}
+        });
+        if (result?.success) {
+            setTenantSessionCookies(res, {
+                refreshToken: result.data?.refreshToken,
+                tenantToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null
+            });
+        }
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cashier login successful',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
 };
 
 export const requirePairedTerminal = async (req, res, next) => {
@@ -1010,6 +1079,9 @@ export default {
     getPairedTerminal,
     clearPairedTerminal,
     requirePairedTerminal,
+    createSetupCashier,
+    listSetupCashiers,
+    loginCashier,
     listCatalog,
     scanBarcode,
     checkout,

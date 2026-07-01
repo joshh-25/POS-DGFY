@@ -3,6 +3,8 @@ import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js
 import { inventoryStockCommandService } from '../inventory/index.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
 import * as posTerminalPairingService from './services/posTerminalPairingService.js';
+import * as userService from '../../services/userService.js';
+import * as authService from '../../services/authService.js';
 import {
     buildListPosCatalogUseCase,
     buildScanPosBarcodeUseCase,
@@ -28,6 +30,9 @@ import {
     buildUploadBulkPosCatalogImagesUseCase,
     buildDeletePosCatalogImageUseCase,
     buildOpenTerminalShiftUseCase,
+    buildCreatePosSetupCashierUseCase,
+    buildListPosSetupCashiersUseCase,
+    buildLoginPosCashierUseCase,
     buildSwitchTerminalShiftLocationUseCase,
     buildGetCurrentTerminalShiftUseCase,
     buildRecordCashDrawerEventUseCase,
@@ -77,6 +82,9 @@ export const deletePosCatalogImageUseCase = buildDeletePosCatalogImageUseCase({
     imageStorage: posCatalogImageStorage
 });
 export const openTerminalShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+export const createPosSetupCashierUseCase = buildCreatePosSetupCashierUseCase({ userService });
+export const listPosSetupCashiersUseCase = buildListPosSetupCashiersUseCase({ userService });
+export const loginPosCashierUseCase = buildLoginPosCashierUseCase({ authService });
 export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocationUseCase({ posRepository });
 export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });

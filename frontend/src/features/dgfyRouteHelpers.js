@@ -108,6 +108,27 @@ export const resolveStorefrontAccountUrl = () => {
   return defaultUrl;
 };
 
+export const resolvePosTerminalUrl = (search = '') => {
+  const normalizedSearch = String(search || '').trim();
+  const terminalPath = `/terminal${normalizedSearch && normalizedSearch.startsWith('?') ? normalizedSearch : (normalizedSearch ? `?${normalizedSearch}` : '')}`;
+
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_POS_TERMINAL_URL) {
+    try {
+      const configured = new URL(import.meta.env.VITE_POS_TERMINAL_URL);
+      configured.search = terminalPath.includes('?') ? terminalPath.slice(terminalPath.indexOf('?')) : '';
+      return configured.toString();
+    } catch {
+      return import.meta.env.VITE_POS_TERMINAL_URL;
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${terminalPath}`;
+  }
+
+  return terminalPath;
+};
+
 export const resolveStorefrontHomeUrl = () => {
   const accountUrl = resolveStorefrontAccountUrl();
   try {

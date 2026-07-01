@@ -8,6 +8,7 @@ import {
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
+const POS_SETTINGS_ACCESS_PIN_PATTERN = /^[0-9]{4,12}$/;
 const STOREFRONT_ASSET_TYPES = new Set(['cover', 'profile', 'gallery']);
 const PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS = new Set([
   'pos_software_name',
@@ -356,6 +357,10 @@ export const updateSettingsSchema = Joi.object({
     'any.only': 'Terminal registry mode must be warn or enforce'
   }),
   pos_terminal_location_binding_enforced: Joi.boolean().optional(),
+  pos_settings_access_pin: Joi.string().trim().pattern(POS_SETTINGS_ACCESS_PIN_PATTERN).allow('').optional().messages({
+    'string.pattern.base': 'POS Settings access PIN must be 4 to 12 digits'
+  }),
+  clear_pos_settings_access_pin: Joi.boolean().optional(),
   pos_petty_cash_symbol: Joi.string().trim().max(12).allow('').optional(),
   pos_petty_cash_amount: Joi.number().min(0).precision(4).optional(),
   store_delivery_fee: Joi.number().min(0).precision(4).optional(),
@@ -510,6 +515,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
       'any.only': 'Terminal registry mode must be warn or enforce'
     }),
     pos_terminal_location_binding_enforced: Joi.boolean(),
+    pos_settings_access_pin_hash: Joi.string().trim().allow(''),
     pos_petty_cash_symbol: Joi.string().trim().max(12).allow(''),
     pos_petty_cash_amount: Joi.number().min(0).precision(4),
     store_delivery_fee: Joi.number().min(0).precision(4),
@@ -601,5 +607,36 @@ export const validateStorefrontAssetTypeParam = (req, res, next) => {
   }
 
   req.params.asset_type = assetType;
+  next();
+};
+
+export const validateVerifyPosSettingsAccessPin = (req, res, next) => {
+  const schema = Joi.object({
+    pin: Joi.string().trim().pattern(POS_SETTINGS_ACCESS_PIN_PATTERN).required().messages({
+      'any.required': 'PIN is required',
+      'string.pattern.base': 'PIN must be 4 to 12 digits'
+    })
+  });
+
+  const { error, value } = schema.validate(req.body, {
+    abortEarly: false,
+    stripUnknown: true
+  });
+
+  if (error) {
+    const errors = error.details.map((detail) => ({
+      field: detail.path.join('.'),
+      message: detail.message
+    }));
+
+    return res.status(422).json({
+      success: false,
+      message: 'Validation failed',
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.validatedData = value;
   next();
 };

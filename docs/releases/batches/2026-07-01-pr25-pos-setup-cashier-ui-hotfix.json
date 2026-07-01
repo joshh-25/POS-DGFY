@@ -1,0 +1,263 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-authorized Codex hotfix review",
+  "reviewed_at": "2026-07-01T14:58:00.000+08:00",
+  "source_pr": "https://github.com/BBLabs-Albert/SKU-Inventory-Manager/pull/25",
+  "release_slices": [
+    {
+      "id": "pr25-pos-setup-cashier-ui-hotfix",
+      "slice_name": "PR25 richer POS setup and cashier UI hotfix",
+      "name": "PR25 richer POS setup and cashier UI hotfix",
+      "plain_english_purpose": "Restore the richer POS setup, terminal unlock, and cashier workflow UI from PR #25 while keeping the current production terminal-pairing safety controls.",
+      "purpose": "Adopt the PR #25 POS setup/cashier user experience with matching backend cashier setup, cashier login, and POS Settings PIN APIs without replacing the current production POS terminal-pairing backend.",
+      "implementation_summary": "Selectively restores PR #25 POS terminal UI files, shared POS shell files, setup-flow utilities, and contract tests; adds the missing backend setup-cashier, cashier-login, and POS Settings access-PIN endpoints; preserves existing DGFY tenant context, HttpOnly terminal-pairing cookies, and shift guards; records compliance impact for the major POS/settings change.",
+      "included_files": [
+        "backend/src/controllers/posController.js",
+        "backend/src/controllers/settingsController.js",
+        "backend/src/modules/pos/controllers/posHandlers.js",
+        "backend/src/modules/pos/index.js",
+        "backend/src/modules/pos/usecases/posUseCases.js",
+        "backend/src/modules/settings/controllers/settingsHandlers.js",
+        "backend/src/modules/settings/index.js",
+        "backend/src/modules/settings/usecases/posSettingsAccessPinPolicy.js",
+        "backend/src/modules/settings/usecases/posTerminalRegistrySecrets.js",
+        "backend/src/modules/settings/usecases/updateSettingsUseCase.js",
+        "backend/src/modules/settings/usecases/verifyPosSettingsAccessPinUseCase.js",
+        "backend/src/routes/pos.js",
+        "backend/src/routes/settings.js",
+        "backend/src/services/authService.js",
+        "backend/src/services/userService.js",
+        "backend/src/validators/posValidator.js",
+        "backend/src/validators/settingsValidator.js",
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+        "docs/compliance/impact-declarations/2026-07-01-pr25-pos-setup-cashier-ui-hotfix.md",
+        "docs/release/merge-adoption/pr25-pos-setup-cashier-ui-hotfix-2026-07-01.json",
+        "docs/releases/batches/2026-07-01-pr25-pos-setup-cashier-ui-hotfix.json",
+        "docs/releases/batches/2026-07-01-pr25-pos-setup-cashier-ui-hotfix.md",
+        "frontend/src/features/dgfyRouteHelpers.js",
+        "frontend/src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
+        "frontend/src/features/pos/__tests__/posDgfyAdminBypass.contract.test.js",
+        "frontend/src/features/pos/__tests__/posPageShell.contract.test.js",
+        "frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js",
+        "frontend/src/features/pos/__tests__/terminalPairing.contract.test.js",
+        "frontend/src/features/pos/__tests__/terminalSessionSource.contract.test.js",
+        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js",
+        "frontend/src/features/pos/components/POSCheckoutTerminal.jsx",
+        "frontend/src/features/pos/components/POSTransactionHistoryPanel.jsx",
+        "frontend/src/features/pos/components/PosReportsAnalyticsWorkspace.jsx",
+        "frontend/src/features/pos/components/PosTenantSetupModal.jsx",
+        "frontend/src/features/pos/components/TerminalLockDrawer.jsx",
+        "frontend/src/features/pos/components/TerminalOperationsPanels.jsx",
+        "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
+        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
+        "frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx",
+        "frontend/src/features/pos/pages/POSPage.jsx",
+        "frontend/src/features/pos/pages/PosPageShell.jsx",
+        "frontend/src/features/pos/pages/SkupervisorPOSPage.jsx",
+        "frontend/src/features/pos/pages/TerminalPage.jsx",
+        "frontend/src/features/pos/services/posService.js",
+        "frontend/src/features/pos/utils/__tests__/setupFlow.test.js",
+        "frontend/src/features/pos/utils/setupFlow.js",
+        "frontend/src/features/pos/utils/terminalIdentity.js",
+        "frontend/src/features/pos/utils/terminalUnlockDiagnostics.js",
+        "frontend/src/services/authService.js",
+        "frontend/src/services/settingsService.js"
+      ],
+      "included_features": [
+        "Richer PR #25 POS setup and cashier workspace UI",
+        "Cashier username/email login for POS terminal unlock",
+        "POS setup cashier list/create APIs backed by existing tenant users",
+        "POS Settings access PIN verification and hash-only storage",
+        "Shared POS shell and transaction-history pending-sync affordance",
+        "Focused contract tests for setup flow, terminal pairing, DGFY admin bypass, cashier settings, session source, and terminal view modes"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "PayMongo or payment-channel work",
+        "Android APK/native bundle rebuild",
+        "Database migrations",
+        "Replacing the current production terminal-pairing backend with older PR #25 backend code",
+        "Production deployment before staging and master reflection",
+        "Branch retirement"
+      ],
+      "owner_attribution": "BabyBaBab owner-authorized hotfix request",
+      "source_branch": "codex/hotfix-pr25-pos-ui",
+      "source_pr": "https://github.com/BBLabs-Albert/SKU-Inventory-Manager/pull/25",
+      "source_type": "developer_pr",
+      "source_type_allowed_values": [
+        "developer_pr",
+        "owner_direct_staging",
+        "controller_promotion"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible_for_hotfix_staging_review",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "affected_surfaces": [
+        "frontend",
+        "backend",
+        "POS",
+        "settings",
+        "DGFY",
+        "compliance",
+        "docs"
+      ],
+      "affected_surface_map": {
+        "backend": true,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": true,
+        "POS": true,
+        "Storefront": false,
+        "DGFY": true,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "This hotfix changes POS terminal setup, cashier login, settings PIN verification, and transaction-history UI; regressions could block POS access, weaken cashier role restrictions, or hide terminal setup requirements.",
+      "potentially_affected_existing_behaviors": [
+        "POS terminal first-run setup and DGFY company selection",
+        "Cashier unlock and role-restricted POS login",
+        "POS Settings profile, storefront, and POS setup tabs",
+        "Terminal pairing and open-shift navigation",
+        "POS transaction history receipt viewing and pending offline sync display"
+      ],
+      "evidence_covering_regression_risk": [
+        "Focused POS frontend contracts passed on 2026-07-01: 7 files, 69 tests",
+        "POS production build passed on 2026-07-01",
+        "SKUpervisor production build passed on 2026-07-01",
+        "Backend POS terminal-pairing safety tests passed on 2026-07-01: 4 suites, 9 tests",
+        "Architecture and compliance checks passed on 2026-07-01"
+      ],
+      "evidence_gaps": [
+        "Production deployed-change accuracy still must verify that the live POS bundle contains the richer setup/cashier strings after deployment",
+        "Human UAT should confirm the visible cashier unlock and setup screens with a real tenant account after deployment"
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting this hotfix commit and redeploying the previous production SHA; no migration rollback is required",
+        "After deployment, monitor POS login, /api/v1/pos/setup/cashiers, /api/v1/pos/auth/cashier-login, and /api/v1/settings/verify-pos-access-pin error rates"
+      ],
+      "required_tests": [
+        "npm --prefix frontend test -- --run src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/posDgfyAdminBypass.contract.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/utils/__tests__/setupFlow.test.js",
+        "npm --prefix frontend run build:pos",
+        "npm --prefix frontend run build:skupervisor",
+        "npm --prefix backend test -- --runInBand --runTestsByPath tests/posTerminalPairingService.test.js tests/posTerminalPairingUseCase.test.js tests/posTerminalPairingCookie.test.js tests/posDeviceShiftGuard.test.js",
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run test:development-to-production"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm --prefix frontend test -- --run src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/posDgfyAdminBypass.contract.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/utils/__tests__/setupFlow.test.js",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: 7 POS frontend contract files, 69 tests passed"
+        },
+        {
+          "command": "npm --prefix frontend run build:pos",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: standalone POS production build completed"
+        },
+        {
+          "command": "npm --prefix frontend run build:skupervisor",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: SKUpervisor production build completed"
+        },
+        {
+          "command": "npm --prefix backend test -- --runInBand --runTestsByPath tests/posTerminalPairingService.test.js tests/posTerminalPairingUseCase.test.js tests/posTerminalPairingCookie.test.js tests/posDeviceShiftGuard.test.js",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: 4 backend POS terminal-pairing suites, 9 tests passed"
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: governed docs lint passed"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: architecture guardrails and controller boundaries passed"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: compliance impact and API contract checks passed"
+        },
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: development-to-production workflow tests passed"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+        "docs/compliance/impact-declarations/2026-07-01-pr25-pos-setup-cashier-ui-hotfix.md",
+        "docs/release/merge-adoption/pr25-pos-setup-cashier-ui-hotfix-2026-07-01.json",
+        "docs/releases/batches/2026-07-01-pr25-pos-setup-cashier-ui-hotfix.json",
+        "docs/releases/batches/2026-07-01-pr25-pos-setup-cashier-ui-hotfix.md"
+      ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-authorized Codex documentation review",
+        "reviewed_at": "2026-07-01T14:58:00.000+08:00",
+        "rationale": "This hotfix changes frontend POS UI, backend POS APIs, settings API behavior, auth behavior, and compliance-sensitive POS/settings surfaces. The release manifest and compliance impact declaration document the exact scope and validation.",
+        "documents": [
+          {
+            "path": "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+            "action": "updated",
+            "evidence": "Updates the accepted architecture to allow PR #25 richer cashier setup through existing tenant users while preserving terminal-pairing safety."
+          },
+          {
+            "path": "docs/compliance/impact-declarations/2026-07-01-pr25-pos-setup-cashier-ui-hotfix.md",
+            "action": "updated",
+            "evidence": "Records major POS/settings compliance impact, preflight result, validation, rollback, and affected surfaces."
+          },
+          {
+            "path": "docs/release/merge-adoption/pr25-pos-setup-cashier-ui-hotfix-2026-07-01.json",
+            "action": "updated",
+            "evidence": "Documents the owner-approved decision to combine PR #25 richer UI with the current master terminal-pairing backend."
+          },
+          {
+            "path": "docs/releases/batches/2026-07-01-pr25-pos-setup-cashier-ui-hotfix.json",
+            "action": "updated",
+            "evidence": "Reviewed manifest covers the exact hotfix files and ship/defer/exclusion decisions."
+          },
+          {
+            "path": "docs/releases/batches/2026-07-01-pr25-pos-setup-cashier-ui-hotfix.md",
+            "action": "updated",
+            "evidence": "Plain-English release summary for operator review."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "The 2026-07-01 PR25 POS setup/cashier UI hotfix compliance declaration governs this slice; the implementation preserves the existing ADR 0031 terminal-pairing safety posture.",
+      "rollback_notes": "Revert this hotfix commit and redeploy the previous production SHA; no data migration or payment rollback is needed.",
+      "production_proof_required": [
+        "Production health runtime SHA must equal the final origin/master SHA",
+        "Remote HEAD, .deploy-state/last_deployed_commit, deploy summary, and /api/v1/health runtime SHA must match",
+        "Live POS bundle must include PR #25 setup/cashier UI strings such as Cashier Unlock, Login as Cashier, POS Setup, and POS Settings access PIN"
+      ],
+      "production_accuracy_checks_required": [
+        "Verify production POS assets contain the richer setup/cashier UI",
+        "Verify production exposes /api/v1/pos/setup/cashiers, /api/v1/pos/auth/cashier-login, and /api/v1/settings/verify-pos-access-pin through the deployed backend",
+        "Verify the deployed SHA is the exact origin/master hotfix SHA"
+      ],
+      "high_risk_path": true,
+      "high_risk_files": [
+        "frontend/src/features/pos/pages/TerminalPage.jsx",
+        "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
+        "backend/src/modules/pos/usecases/posUseCases.js",
+        "backend/src/services/authService.js",
+        "backend/src/services/userService.js"
+      ]
+    }
+  ]
+}

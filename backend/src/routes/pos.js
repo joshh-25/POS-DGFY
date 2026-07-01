@@ -33,7 +33,9 @@ import {
     validateGenerateESalesReport,
     validateUpdateESalesReportStatus,
     validateFiscalTerminalRegistration,
-    validateVerifyTerminal
+    validateVerifyTerminal,
+    validatePosCashierLogin,
+    validateSetupCashier
 } from '../validators/posValidator.js';
 
 const router = express.Router();
@@ -46,6 +48,9 @@ router.use(posLimiter);
 router.post('/terminal/pair', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateVerifyTerminal, posController.verifyTerminal);
 router.get('/terminal/paired', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getPairedTerminal);
 router.delete('/terminal/paired', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.clearPairedTerminal);
+router.post('/auth/cashier-login', validatePosCashierLogin, posController.loginCashier);
+router.get('/setup/cashiers', checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), posController.listSetupCashiers);
+router.post('/setup/cashiers', checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateSetupCashier, posController.createSetupCashier);
 
 router.get('/catalog', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogQuery, posController.listCatalog);
 router.post('/scan', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosScan, posController.scanBarcode);
