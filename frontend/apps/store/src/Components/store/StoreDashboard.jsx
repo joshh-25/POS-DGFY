@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import dgfyHeaderLogo from '../../../../../public/dgfy-logo.png';
 import { ArrowLeft, Mail, MapPin, MousePointer2, Search, Share2, ShoppingBag, ShoppingCart, Sparkles, Star } from 'lucide-react';
 import { getStorefrontModeAdapter } from '../../modePresentationRegistry.js';
+import { getDefaultStorefrontPath } from '../../defaultStorefrontRoute.js';
 import { useStorefrontTemplateViewport } from './useStorefrontTemplateViewport.js';
 import './storefrontTemplate.css';
 
@@ -41,7 +42,9 @@ export function StoreDashboard({ pageModel = {}, onNavigate }) {
   const model = React.useMemo(() => buildTemplateModel(pageModel), [pageModel]);
   const [qrCodeDataUrl, setQrCodeDataUrl] = React.useState('');
 
-  const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/store-template` : 'https://dgfy.ph/store-template';
+  const shareUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}${getDefaultStorefrontPath()}`
+    : `https://dgfy.ph${getDefaultStorefrontPath()}`;
 
   React.useEffect(() => {
     let ignore = false;

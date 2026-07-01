@@ -12,6 +12,7 @@ import {
     getPosReportsTopItemsUseCase,
     getPosReportsComparisonUseCase,
     getPosReportsProfitLossUseCase,
+    getPosReportsCashierShiftHistoryUseCase,
     exportPosReportsUseCase,
     getPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase,
@@ -853,6 +854,26 @@ export const getReportsProfitLoss = async (req, res, next) => {
     }
 };
 
+export const getReportsCashierShiftHistory = async (req, res, next) => {
+    try {
+        const result = await getPosReportsCashierShiftHistoryUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const exportReports = async (req, res, next) => {
     try {
         const result = await exportPosReportsUseCase({
@@ -1152,6 +1173,7 @@ export default {
     getReportsTopItems,
     getReportsComparison,
     getReportsProfitLoss,
+    getReportsCashierShiftHistory,
     exportReports,
     getTransactionById,
     closeDayZReading,

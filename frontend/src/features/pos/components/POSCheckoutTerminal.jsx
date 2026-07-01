@@ -2,6 +2,8 @@ import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useStat
 import { createPortal } from 'react-dom';
 import {
     AlertCircle,
+    ChevronLeft,
+    ChevronRight,
     ChevronDown,
     Delete,
     Filter,
@@ -571,7 +573,6 @@ export default function POSCheckoutTerminal({
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
-    const [catalogAutoPageSize, setCatalogAutoPageSize] = useState(16);
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
     const catalogGridRef = useRef(null);
@@ -581,48 +582,40 @@ export default function POSCheckoutTerminal({
     const catalogSwipeStartXRef = useRef(null);
     const catalogSwipePointerIdRef = useRef(null);
     const shellClassName = 'space-y-5';
-    const checkoutGridClassName = 'grid grid-cols-1 gap-4 pb-24 md:pb-0 md:grid-cols-[minmax(0,1fr)_325px] 2xl:gap-6';
+    const checkoutGridClassName = 'grid grid-cols-1 gap-4 pb-24 md:h-[calc(100vh-8rem)] md:max-h-[calc(100vh-8rem)] md:grid-cols-[minmax(0,1fr)_325px] md:overflow-hidden md:pb-0 2xl:gap-6';
     const catalogGridClassName = useMemo(() => {
         if (isTabletViewport) {
             return IS_DGFY_POS_SURFACE
                 ? 'mt-4 grid grid-cols-2 auto-rows-[7rem] gap-2 sm:grid-cols-3'
                 : 'mt-4 grid grid-cols-3 auto-rows-[11rem] gap-1.5';
         }
-        return sidebarCollapsed
-            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
-            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
-    }, [isTabletViewport, sidebarCollapsed]);
-    const catalogViewportClassName = 'min-h-0 flex-1 overflow-visible pr-0 pb-3';
-    const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
-    const currentSaleBodyClassName = 'min-h-0 flex-1 overflow-hidden pr-1';
-    const currentSaleItemsListClassName = 'pr-1 md:h-[17.25rem] md:overflow-y-auto';
-    const checkoutPaneClassName = '2xl:min-h-[32rem] 2xl:max-h-none';
-    const catalogPaneHeightClassName = isTabletViewport
-        ? 'md:max-xl:min-h-[78rem]'
-        : 'min-h-[40rem]';
-    const currentSalePaneHeightClassName = isTabletViewport
-        ? 'md:max-xl:min-h-[78rem]'
-        : 'min-h-[40rem]';
+        return 'mt-4 grid grid-cols-1 auto-rows-[13.25rem] gap-3 sm:grid-cols-2 md:grid-cols-3 md:auto-rows-[11.25rem]';
+    }, [isTabletViewport]);
+    const catalogViewportClassName = 'min-h-0 flex flex-1 flex-col overflow-hidden pr-0 pb-3';
+    const tabletAlignedPaneClassName = '';
+    const currentSaleBodyClassName = 'min-h-0 flex flex-1 flex-col overflow-y-auto overscroll-contain pr-1';
+    const currentSaleItemsListClassName = 'pr-1';
+    const checkoutPaneClassName = 'h-full max-h-full';
+    const catalogPaneHeightClassName = 'h-full max-h-full';
+    const currentSalePaneHeightClassName = 'h-full max-h-full';
     const catalogCardClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
         : isTabletViewport
             ? 'group flex h-[11rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 md:h-[11rem] md:p-1.5 xl:h-full';
+            : 'group flex h-[13.25rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left transition-all shadow-sm shadow-slate-200/70 md:h-[11.25rem]';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
         : isTabletViewport
             ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
-            : 'flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md md:h-16 xl:h-24';
+            : 'flex h-24 w-full shrink-0 items-center justify-center overflow-hidden border-b border-slate-100 bg-slate-100 md:h-24';
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
     const terminalIdentityLabel = normalizedTerminalId
         ? `Terminal ${normalizedTerminalId}`
         : 'No terminal selected';
-    const TABLET_CATALOG_PAGE_SIZE = 18;
-    const DESKTOP_CATALOG_PAGE_SIZE = sidebarCollapsed ? 20 : 16;
-    const fallbackCatalogPageSize = isTabletViewport ? TABLET_CATALOG_PAGE_SIZE : DESKTOP_CATALOG_PAGE_SIZE;
-    const catalogPageSize = Math.max(1, catalogAutoPageSize || fallbackCatalogPageSize);
+    const CATALOG_PAGE_SIZE = 9;
+    const catalogPageSize = CATALOG_PAGE_SIZE;
     const selectedFolder = useMemo(() => (
         posFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
     ), [posFolders, selectedFolderId]);
@@ -633,6 +626,14 @@ export default function POSCheckoutTerminal({
         const pageStart = (catalogPage - 1) * catalogPageSize;
         return catalog.slice(pageStart, pageStart + catalogPageSize);
     }, [catalog, catalogPage, catalogPageSize]);
+    const visibleCatalogRange = useMemo(() => {
+        if (catalog.length === 0 || visibleCatalogItems.length === 0) {
+            return { start: 0, end: 0 };
+        }
+        const start = ((catalogPage - 1) * catalogPageSize) + 1;
+        const end = start + visibleCatalogItems.length - 1;
+        return { start, end };
+    }, [catalog.length, catalogPage, catalogPageSize, visibleCatalogItems.length]);
     const handleCatalogPageChange = useCallback((direction) => {
         setCatalogPage((previous) => {
             if (direction === 'previous') {
@@ -1044,7 +1045,8 @@ export default function POSCheckoutTerminal({
                 pos_software_name: allSettings?.pos_software_name?.value || '',
                 pos_software_version: allSettings?.pos_software_version?.value || '',
                 pos_software_serial_number: allSettings?.pos_software_serial_number?.value || '',
-                pos_receipt_footer_message: allSettings?.pos_receipt_footer_message?.value || ''
+                pos_receipt_footer_message: allSettings?.pos_receipt_footer_message?.value || '',
+                storefront_profile_image_url: allSettings?.storefront_profile_image_url?.value || ''
             });
             setDiscountProfiles(normalizeDiscountProfiles(allSettings?.pos_discount_profiles?.value));
         } catch {
@@ -1228,66 +1230,6 @@ export default function POSCheckoutTerminal({
         tabletMedia.addListener(syncTabletViewport);
         return () => tabletMedia.removeListener(syncTabletViewport);
     }, []);
-
-    useEffect(() => {
-        if (!IS_DGFY_POS_SURFACE || !isTabletViewport) {
-            setCatalogAutoPageSize(TABLET_CATALOG_PAGE_SIZE);
-            return undefined;
-        }
-        if (typeof window === 'undefined') return undefined;
-
-        const viewport = catalogViewportRef.current;
-        const grid = catalogGridRef.current;
-        if (!viewport || !grid) return undefined;
-
-        let frameId = 0;
-        const measurePageSize = () => {
-            frameId = 0;
-            const viewportNode = catalogViewportRef.current;
-            const gridNode = catalogGridRef.current;
-            if (!viewportNode || !gridNode) return;
-
-            const viewportRect = viewportNode.getBoundingClientRect();
-            const gridRect = gridNode.getBoundingClientRect();
-            const availableHeight = Math.max(0, viewportRect.bottom - gridRect.top);
-            const computedStyles = window.getComputedStyle(gridNode);
-            const rowGap = Number.parseFloat(computedStyles.rowGap || computedStyles.gap || '0') || 0;
-            const rowHeight = Number.parseFloat(computedStyles.gridAutoRows || '0') || 128;
-            const columnCount = Math.max(
-                1,
-                computedStyles.gridTemplateColumns
-                    .split(' ')
-                    .map((part) => part.trim())
-                    .filter(Boolean)
-                    .length
-            );
-            const visibleRows = Math.max(1, Math.floor((availableHeight + rowGap) / (rowHeight + rowGap)));
-            const nextPageSize = Math.max(
-                columnCount,
-                Math.min(catalog.length || fallbackCatalogPageSize, visibleRows * columnCount)
-            );
-            setCatalogAutoPageSize((previous) => (previous === nextPageSize ? previous : nextPageSize));
-        };
-        const scheduleMeasure = () => {
-            if (frameId) window.cancelAnimationFrame(frameId);
-            frameId = window.requestAnimationFrame(measurePageSize);
-        };
-
-        scheduleMeasure();
-
-        const resizeObserver = new ResizeObserver(() => {
-            scheduleMeasure();
-        });
-        resizeObserver.observe(viewport);
-        resizeObserver.observe(grid);
-        window.addEventListener('resize', scheduleMeasure);
-
-        return () => {
-            if (frameId) window.cancelAnimationFrame(frameId);
-            resizeObserver.disconnect();
-            window.removeEventListener('resize', scheduleMeasure);
-        };
-    }, [catalog.length, catalogFiltersOpen, fallbackCatalogPageSize, posFolders.length, posFoldersLoading]);
 
     useEffect(() => {
         setCatalogPage(1);
@@ -2291,7 +2233,7 @@ export default function POSCheckoutTerminal({
                 </div>
                 )}
                 <div
-                    className="min-h-0 flex-1 pr-1 touch-pan-y"
+                    className="min-h-0 flex-1 pr-1 touch-pan-y select-none"
                     onTouchStart={(event) => {
                         const touch = event.touches?.[0];
                         if (!touch) return;
@@ -2304,11 +2246,13 @@ export default function POSCheckoutTerminal({
                     }}
                     onPointerDown={(event) => {
                         if (event.pointerType !== 'mouse' && event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+                        event.currentTarget.setPointerCapture?.(event.pointerId);
                         handleCatalogSwipeStart(event.clientX, event.pointerId);
                     }}
                     onPointerUp={(event) => {
                         if (event.pointerType !== 'mouse' && event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
                         handleCatalogSwipeEnd(event.clientX, event.pointerId);
+                        event.currentTarget.releasePointerCapture?.(event.pointerId);
                     }}
                     onPointerCancel={() => {
                         catalogSwipeStartXRef.current = null;
@@ -2355,59 +2299,58 @@ export default function POSCheckoutTerminal({
                                             : 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md'
                                     }`}
                                 >
-                                <div className="mb-1">
-                                    <div
-                                        className={`${catalogCardImageWrapClassName} relative`}
-                                        aria-hidden="true"
-                                    >
-                                        {hasImage ? (
-                                            <img
-                                                src={posImageSrc}
-                                                alt={`${item.name} menu`}
-                                                className="h-full w-full object-cover object-center"
-                                                onError={(event) => {
-                                                    const fallbackSrc = fallbackPosImageSrc;
-                                                    const currentSrc = String(event.currentTarget.src || '');
-                                                    const alreadyFallback = currentSrc.endsWith(fallbackSrc);
-                                                    if (!alreadyFallback) {
-                                                        event.currentTarget.src = fallbackSrc;
-                                                        return;
-                                                    }
-                                                    setCatalogImageErrors((previous) => {
-                                                        const next = new Set(previous);
-                                                        next.add(item.item_id);
-                                                        return next;
-                                                    });
-                                                }}
-                                            />
-                                        ) : (
-                                            <div className="flex h-full w-full items-center justify-center text-center">
-                                                <span className="px-2 text-xs font-semibold text-[#64748B]">No POS Image</span>
+                                <div
+                                    className={`${catalogCardImageWrapClassName} relative`}
+                                    aria-hidden="true"
+                                >
+                                    {hasImage ? (
+                                        <img
+                                            src={posImageSrc}
+                                            alt={`${item.name} menu`}
+                                            draggable="false"
+                                            className="h-full w-full object-cover object-center"
+                                            onError={(event) => {
+                                                const fallbackSrc = fallbackPosImageSrc;
+                                                const currentSrc = String(event.currentTarget.src || '');
+                                                const alreadyFallback = currentSrc.endsWith(fallbackSrc);
+                                                if (!alreadyFallback) {
+                                                    event.currentTarget.src = fallbackSrc;
+                                                    return;
+                                                }
+                                                setCatalogImageErrors((previous) => {
+                                                    const next = new Set(previous);
+                                                    next.add(item.item_id);
+                                                    return next;
+                                                });
+                                            }}
+                                        />
+                                    ) : (
+                                        <div className="flex h-full w-full items-center justify-center text-center">
+                                            <span className="px-2 text-xs font-semibold text-[#64748B]">No POS Image</span>
+                                        </div>
+                                    )}
+                                    {isOutOfStock && (
+                                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border border-rose-200 bg-rose-50/95 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-rose-700">
+                                            Out of stock
+                                        </span>
+                                    )}
+                                    {IS_DGFY_POS_SURFACE && isTabletViewport && (
+                                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/45 to-transparent px-2 py-1.5">
+                                            <div className="flex items-end justify-between gap-2">
+                                                <p className="min-w-0 text-[11px] font-black leading-tight text-white line-clamp-2">
+                                                    {item.name}
+                                                </p>
+                                                {isServiceItem ? (
+                                                    <span className="shrink-0 rounded-md border border-white/30 bg-white/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-white">
+                                                        Service
+                                                    </span>
+                                                ) : null}
                                             </div>
-                                        )}
-                                        {isOutOfStock && (
-                                            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border border-rose-200 bg-rose-50/95 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-rose-700">
-                                                Out of stock
-                                            </span>
-                                        )}
-                                        {IS_DGFY_POS_SURFACE && isTabletViewport && (
-                                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/45 to-transparent px-2 py-1.5">
-                                                <div className="flex items-end justify-between gap-2">
-                                                    <p className="min-w-0 text-[11px] font-black leading-tight text-white line-clamp-2">
-                                                        {item.name}
-                                                    </p>
-                                                    {isServiceItem ? (
-                                                        <span className="shrink-0 rounded-md border border-white/30 bg-white/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-white">
-                                                            Service
-                                                        </span>
-                                                    ) : null}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
                                 </div>
                                 {!(IS_DGFY_POS_SURFACE && isTabletViewport) && (
-                                    <>
+                                    <div className="flex min-h-0 flex-1 flex-col px-3 py-2.5">
                                         <div className="flex items-start justify-between gap-1.5">
                                             <p className="min-w-0 pr-1 text-[13.5px] font-black leading-tight text-[#0F172A] line-clamp-2">{item.name}</p>
                                             {isServiceItem ? (
@@ -2420,22 +2363,10 @@ export default function POSCheckoutTerminal({
                                                 </span>
                                             ) : null}
                                         </div>
-                                        <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#64748B]">
+                                        <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#94A3B8]">
                                             {item.sku_code}
                                         </p>
-                                    </>
-                                )}
-                                {IS_DGFY_POS_SURFACE && isTabletViewport ? (
-                                    <div className="mt-1 flex items-center justify-center rounded-md px-1 py-0.5">
-                                        <span className={`text-[11px] font-black ${isOutOfStock ? 'text-rose-700' : 'text-[#1A4E8D]'}`}>
-                                            {isOutOfStock
-                                                ? 'Unavailable'
-                                                : `PHP ${money(item.default_sale_price)}`}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div className={`${isTabletViewport ? 'mt-1.5' : 'mt-3'} grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B]`}>
+                                        <div className={`${isTabletViewport ? 'mt-1.5' : 'mt-auto'} grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B]`}>
                                             <span className="font-semibold">Stock:</span>
                                             <span className="text-right font-bold text-emerald-700 whitespace-nowrap">
                                                 {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toFixed(2)}
@@ -2452,12 +2383,21 @@ export default function POSCheckoutTerminal({
                                             </span>
                                         </div>
                                         {isOutOfStock && (
-                                            <p className="mt-auto pt-1 text-[10.5px] font-medium text-slate-500">
+                                            <p className="pt-1 text-[10.5px] font-medium text-slate-500">
                                                 Unavailable for checkout.
                                             </p>
                                         )}
-                                    </>
+                                    </div>
                                 )}
+                                {IS_DGFY_POS_SURFACE && isTabletViewport ? (
+                                    <div className="mt-1 flex items-center justify-center rounded-md px-1 py-0.5">
+                                        <span className={`text-[11px] font-black ${isOutOfStock ? 'text-rose-700' : 'text-[#1A4E8D]'}`}>
+                                            {isOutOfStock
+                                                ? 'Unavailable'
+                                                : `PHP ${money(item.default_sale_price)}`}
+                                        </span>
+                                    </div>
+                                ) : null}
                                 </div>
                             );
                         })}
@@ -2476,13 +2416,46 @@ export default function POSCheckoutTerminal({
                 )}
                     </div>
                     </div>
-                    {totalCatalogPages > 1 && (
-                        <div className="mt-auto flex shrink-0 items-center justify-center border-t border-slate-200 pt-3">
-                            <span className="text-xs font-semibold text-[#334155]">
-                                Swipe left or right to browse catalog pages. Page {catalogPage} of {totalCatalogPages}
+                    <div className="mt-auto flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-slate-50/80 px-1 pt-3 pb-1 supports-[backdrop-filter]:bg-white/80">
+                            <div className="flex flex-col items-center justify-between gap-2 sm:flex-row">
+                                <div className="text-center sm:text-left">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#64748B]">Catalog Footer</p>
+                                    <p className="text-xs font-semibold text-[#334155]">
+                                        Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {catalog.length || 0} items
+                                    </p>
+                                </div>
+                                <div className="flex items-center justify-center gap-3">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleCatalogPageChange('previous')}
+                                    disabled={catalogPage <= 1}
+                                    aria-label="Go to previous catalog page"
+                                >
+                                    <ChevronLeft className="mr-1 h-4 w-4" />
+                                    Previous
+                                </Button>
+                                <span className="text-xs font-semibold text-[#334155]">
+                                    Page {catalogPage} of {totalCatalogPages}
+                                </span>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleCatalogPageChange('next')}
+                                    disabled={catalogPage >= totalCatalogPages}
+                                    aria-label="Go to next catalog page"
+                                >
+                                    Next
+                                    <ChevronRight className="ml-1 h-4 w-4" />
+                                </Button>
+                            </div>
+                            </div>
+                            <span className="text-center text-xs font-semibold text-[#334155]">
+                                Showing 9 items per page. Swipe left or right to browse catalog pages.
                             </span>
                         </div>
-                    )}
             </section>
 
             {mobileCheckoutPanelOpen && (
@@ -2494,7 +2467,7 @@ export default function POSCheckoutTerminal({
             )}
 
             <aside
-                className={`space-y-4 ${checkoutPaneClassName} ${mobileCheckoutPanelOpen
+                className={`min-h-0 ${checkoutPaneClassName} ${mobileCheckoutPanelOpen
                     ? 'fixed inset-x-0 bottom-0 z-50 max-h-[88vh] translate-y-0 overflow-y-auto pointer-events-auto'
                     : 'fixed inset-x-0 bottom-0 z-50 max-h-[88vh] translate-y-full overflow-y-auto pointer-events-none'
                 } transition-transform duration-300 ease-out md:static md:z-auto md:max-h-none md:translate-y-0 md:overflow-visible md:pointer-events-auto md:transition-none`}
@@ -2902,7 +2875,7 @@ export default function POSCheckoutTerminal({
             )}
 
             {currentViewMode === 'receipt' && (
-                <div>
+                <div className="flex min-h-0 flex-col">
                     <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
                         <div>
                             <h2 className="text-xl font-bold text-slate-900">Receipt Preview</h2>
@@ -2970,7 +2943,8 @@ export default function POSCheckoutTerminal({
                         </div>
                     </div>
                     {lastReceipt ? (
-                        <div className="space-y-3">
+                        <div className="min-h-0 max-h-[calc(100vh-12rem)] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
+                            <div className="space-y-3">
                             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
                                 <ReceiptPrintView
                                     transaction={lastReceipt}
@@ -2979,6 +2953,7 @@ export default function POSCheckoutTerminal({
                                     paperWidth={receiptPaperWidth}
                                 />
                             </Suspense>
+                            </div>
                         </div>
                     ) : (
                         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">

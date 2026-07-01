@@ -5,7 +5,7 @@ import path from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
+const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:4300';
 const configuredBasePath = process.env.VITE_STORE_BASE_PATH || '/';
 const allowedHosts = true;
 const normalizedBasePath = (() => {

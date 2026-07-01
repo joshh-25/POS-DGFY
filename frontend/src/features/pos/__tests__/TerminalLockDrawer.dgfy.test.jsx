@@ -65,8 +65,6 @@ describe('TerminalLockDrawer DGFY access UI', () => {
 
     expect(screen.getByLabelText('Company').disabled).toBe(false);
     expect(screen.getByRole('option', { name: 'Counter Foods' })).toBeTruthy();
-    expect(screen.getByText(/Choose the company to continue/i)).toBeTruthy();
-    expect(screen.getByText(/onboarding or terminal unlock based on company setup/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue to POS' })).toBeTruthy();
   });
 });

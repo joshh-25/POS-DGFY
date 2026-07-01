@@ -19,10 +19,10 @@ const resolvePairingSecret = () => {
     throw new Error('POS terminal pairing secret is not configured');
 };
 
-const buildBindingFingerprint = ({ terminalPasswordHash, locationId }) => (
+const buildBindingFingerprint = ({ locationId }) => (
     crypto
         .createHash('sha256')
-        .update(`${String(terminalPasswordHash || '').trim()}\u0000${Number(locationId) || 0}`)
+        .update(`${Number(locationId) || 0}`)
         .digest('hex')
 );
 
@@ -32,13 +32,12 @@ const invalidPairingError = () => {
     return error;
 };
 
-export const issue = ({ tenantId, terminalId, terminalPasswordHash, locationId }) => {
+export const issue = ({ tenantId, terminalId, locationId }) => {
     const normalizedTenantId = String(tenantId || '').trim();
     const normalizedTerminalId = String(terminalId || '').trim();
-    const normalizedPasswordHash = String(terminalPasswordHash || '').trim();
     const normalizedLocationId = Number.parseInt(locationId, 10);
-    if (!normalizedTenantId || !normalizedTerminalId || !normalizedPasswordHash || normalizedLocationId <= 0) {
-        throw new Error('Complete tenant, terminal, password, and location context is required for POS pairing');
+    if (!normalizedTenantId || !normalizedTerminalId || normalizedLocationId <= 0) {
+        throw new Error('Complete tenant, terminal, and location context is required for POS pairing');
     }
 
     return jwt.sign({
@@ -47,7 +46,6 @@ export const issue = ({ tenantId, terminalId, terminalPasswordHash, locationId }
         terminal_id: normalizedTerminalId,
         location_id: normalizedLocationId,
         binding_fingerprint: buildBindingFingerprint({
-            terminalPasswordHash: normalizedPasswordHash,
             locationId: normalizedLocationId
         })
     }, resolvePairingSecret(), {
@@ -71,8 +69,8 @@ export const verify = (token) => {
     }
 };
 
-export const assertBinding = ({ claims, tenantId, terminalId, terminalPasswordHash, locationId }) => {
-    const expectedFingerprint = buildBindingFingerprint({ terminalPasswordHash, locationId });
+export const assertBinding = ({ claims, tenantId, terminalId, locationId }) => {
+    const expectedFingerprint = buildBindingFingerprint({ locationId });
     const valid = String(claims?.tenant_id || '') === String(tenantId || '')
         && String(claims?.terminal_id || '') === String(terminalId || '')
         && Number(claims?.location_id) === Number(locationId)

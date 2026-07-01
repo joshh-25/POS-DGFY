@@ -4,6 +4,10 @@ import { Input } from '@/components/ui/input';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
+const formatDiscountDisplay = (value) => {
+    const amount = Number(value || 0);
+    return amount > 0 ? `PHP ${money(amount)}` : '-';
+};
 const ORDER_SOURCE_LABELS = {
     in_store: 'In-Store',
     online_store: 'Online Store'
@@ -120,9 +124,7 @@ export default function POSTransactionHistoryPanel({
                                         <td className="py-2 text-slate-600">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>
                                         <td className="py-2 text-slate-600 capitalize">{row.payment_type}</td>
                                         <td className="py-2 text-slate-600">
-                                            {row.discount_label_snapshot
-                                                ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-                                                : '-'}
+                                            {formatDiscountDisplay(row.discount_amount)}
                                         </td>
                                         <td className="py-2 text-right text-slate-600">PHP {money(row.service_fee_amount)}</td>
                                         <td className="py-2 text-right text-slate-600">PHP {money(row.restaurant_service_charge_amount)}</td>

@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
-import bcrypt from 'bcryptjs';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
@@ -298,18 +297,10 @@ export const buildVerifyPosTerminalUseCase = ({ posRepository, terminalPairingSe
             }
 
             const terminalId = sanitizeTerminalId(payload?.terminal_id);
-            const terminalPassword = String(payload?.terminal_password || '');
             if (!terminalId) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'A valid terminal ID is required.',
-                    { statusCode: 422 }
-                );
-            }
-            if (!terminalPassword.trim()) {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'Terminal password is required.',
                     { statusCode: 422 }
                 );
             }
@@ -341,31 +332,12 @@ export const buildVerifyPosTerminalUseCase = ({ posRepository, terminalPairingSe
                     { statusCode: 422 }
                 );
             }
-            const terminalPasswordHash = String(registryEntry.terminal_password_hash || '').trim();
-            if (!terminalPasswordHash) {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'This terminal has no terminal password configured in POS Setup.',
-                    { statusCode: 422 }
-                );
-            }
-
-            const passwordMatches = await bcrypt.compare(terminalPassword, terminalPasswordHash);
-            if (!passwordMatches) {
-                throw new DomainError(
-                    DomainErrorCode.AUTHENTICATION_FAILED,
-                    'Terminal password is incorrect.',
-                    { statusCode: 401 }
-                );
-            }
-
             const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
             const locationId = parsePositiveInt(registryEntry.location_id);
             const pairingToken = terminalPairingService?.issue && tenantId && locationId
                 ? terminalPairingService.issue({
                     tenantId,
                     terminalId,
-                    terminalPasswordHash,
                     locationId
                 })
                 : null;
@@ -413,9 +385,7 @@ export const buildGetPairedPosTerminalUseCase = ({ posRepository, terminalPairin
             const activeRegistry = Array.isArray(policy?.active_registry) ? policy.active_registry : [];
             const registryEntry = activeRegistry.find((entry) => sanitizeTerminalId(entry?.terminal_id) === terminalId) || null;
             const locationId = parsePositiveInt(registryEntry?.location_id);
-            const terminalPasswordHash = String(registryEntry?.terminal_password_hash || '').trim();
-
-            if (!registryEntry || !locationId || !terminalPasswordHash) {
+            if (!registryEntry || !locationId) {
                 const error = new Error('This POS device pairing is no longer valid.');
                 error.statusCode = 401;
                 throw error;
@@ -425,7 +395,6 @@ export const buildGetPairedPosTerminalUseCase = ({ posRepository, terminalPairin
                 claims,
                 tenantId,
                 terminalId,
-                terminalPasswordHash,
                 locationId
             });
 
@@ -3213,6 +3182,12 @@ export const buildGetPosReportsProfitLossUseCase = ({ posRepository }) => buildR
     posRepository,
     repositoryMethod: posRepository.getReportsProfitLoss,
     failureMessage: 'Failed to load POS profit/loss report'
+});
+
+export const buildGetPosReportsCashierShiftHistoryUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
+    posRepository,
+    repositoryMethod: posRepository.getReportsCashierShiftHistory,
+    failureMessage: 'Failed to load POS cashier shift history report'
 });
 
 export const buildExportPosReportsUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({

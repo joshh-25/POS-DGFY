@@ -14,7 +14,7 @@ export const STORE_DATA = {
     locationLabel: 'Mandurriao, Iloilo City',
     coverImageUrl: 'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?auto=format&fit=crop&w=1600&q=80',
     profileImageUrl: 'https://images.unsplash.com/photo-1612550761236-e813928f7271?auto=format&fit=crop&w=600&q=80',
-    qrValue: 'https://dgfy.ph/store-template',
+    qrValue: 'https://dgfy.ph/tenant-store/dgfy-cafe-demo',
     orderLabel: 'Order Now'
   },
   overview: {

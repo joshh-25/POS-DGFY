@@ -5,6 +5,10 @@ import { Input } from '@/components/ui/input';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
+const formatDiscountDisplay = (value) => {
+    const amount = Number(value || 0);
+    return amount > 0 ? `PHP ${money(amount)}` : '–';
+};
 const ORDER_SOURCE_LABELS = {
     in_store: 'In-Store',
     online_store: 'Online Store'
@@ -306,9 +310,7 @@ export default function POSTransactionHistoryPanel({
                                                 {!isTabletViewport && <td className="px-4 py-4 text-[#334155]">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>}
                                                 {!isTabletViewport && (
                                                     <td className="px-4 py-4 text-[#334155]">
-                                                        {row.discount_label_snapshot
-                                                            ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-                                                            : '–'}
+                                                        {formatDiscountDisplay(row.discount_amount)}
                                                     </td>
                                                 )}
                                                 {!isTabletViewport && <td className="w-[1px] px-2 py-4 text-right text-[#334155] whitespace-nowrap">PHP {money(row.service_fee_amount)}</td>}
@@ -362,9 +364,7 @@ export default function POSTransactionHistoryPanel({
                                                             <div>
                                                                 <span className="font-semibold text-[#0F172A]">Discount</span>
                                                                 <p className="mt-1">
-                                                                    {row.discount_label_snapshot
-                                                                        ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-                                                                        : '–'}
+                                                                    {formatDiscountDisplay(row.discount_amount)}
                                                                 </p>
                                                             </div>
                                                             <div>

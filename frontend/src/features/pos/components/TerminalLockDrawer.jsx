@@ -86,16 +86,8 @@ export default function TerminalLockDrawer({
                   </option>
                 ))}
               </select>
-              <p className="text-[11px] leading-5 text-[#64748B]">
-                Choose the company to continue. POS will open onboarding first when setup is incomplete.
-              </p>
             </div>
           ) : null}
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] leading-5 text-[#64748B]">
-            {dgfyAuthenticated
-              ? 'After company selection, POS will continue to onboarding or terminal unlock based on company setup.'
-              : 'Sign in with your DGFY admin account first. Company selection and terminal unlock appear after login succeeds.'}
-          </div>
           <Button
             type="submit"
             className="h-12 w-full rounded-2xl !bg-[#1A4E8D] text-sm font-extrabold text-white shadow-none hover:!bg-[#143F73] focus-visible:!ring-[#93C5FD]"
@@ -107,9 +99,6 @@ export default function TerminalLockDrawer({
           </Button>
           {onCashierSubmit ? (
             <div className="space-y-3 border-t border-slate-200 pt-4">
-              <p className="text-[11px] leading-5 text-[#64748B]">
-                Cashier account created in POS Setup? Use its username or email with the cashier password above.
-              </p>
               <Button
                 type="button"
                 variant="outline"

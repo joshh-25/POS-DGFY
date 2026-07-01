@@ -52,15 +52,36 @@ describe('StorefrontBusinessHoursScheduler', () => {
 
     await user.clear(screen.getByLabelText(/Close time/i));
     await user.type(screen.getByLabelText(/Close time/i), '17:00');
-    await user.click(screen.getByRole('button', { name: /Apply/i }));
+    await user.click(screen.getByRole('button', { name: /Add Time Set/i }));
 
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       weekly: expect.objectContaining({
-        mon: { enabled: true, open: '09:00', close: '17:00' },
-        fri: { enabled: true, open: '09:00', close: '17:00' },
+        mon: { enabled: true, open: '10:00', close: '17:00' },
+        fri: { enabled: true, open: '10:00', close: '17:00' },
         sat: { enabled: true, open: '09:00', close: '18:00' }
       })
     }));
-    expect(screen.getByLabelText(/Mon schedule block/i)).toBeTruthy();
+    expect(screen.getByText(/10:00 AM - 05:00 PM/i)).toBeTruthy();
+  });
+
+  it('confirms before applying a new all-days time set over existing schedules', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<ControlledScheduler onChange={onChange} />);
+
+    await user.click(screen.getByLabelText(/All Days/i));
+    await user.click(screen.getByRole('button', { name: /Add Time Set/i }));
+
+    expect(screen.getByText(/Apply this time to all days/i)).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /Apply to All Days/i }));
+
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      weekly: expect.objectContaining({
+        sun: { enabled: true, open: '10:00', close: '21:00' },
+        mon: { enabled: true, open: '10:00', close: '21:00' },
+        sat: { enabled: true, open: '10:00', close: '21:00' }
+      })
+    }));
   });
 });

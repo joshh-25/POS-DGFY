@@ -418,12 +418,10 @@ export const startDgfyTenantSession = async ({
 
 export const startDgfyPosSession = async ({
   tenantId,
-  terminalId,
-  terminalPassword
+  terminalId
 } = {}, token = getStoredDgfyToken()) => {
   const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/pos-session`, {
-    terminal_id: terminalId,
-    terminal_password: terminalPassword
+    terminal_id: terminalId
   }, dgfyRequestConfig(token));
   const data = response.data.data;
   setBrowserSession({

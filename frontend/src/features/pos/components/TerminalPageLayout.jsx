@@ -443,6 +443,7 @@ export default function TerminalPageLayout({
                 src={DGFY_POS_LOGO}
                 alt="DGFY"
                 className="h-8 w-auto min-w-0 object-contain"
+                style={{ width: 'auto', maxWidth: '128px', height: '32px' }}
               />
               <button
                 type="button"

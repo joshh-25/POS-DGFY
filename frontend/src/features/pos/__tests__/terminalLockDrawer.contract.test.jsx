@@ -41,7 +41,6 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.getByLabelText('Email or Cashier Username')).toBeTruthy();
     expect(screen.getByLabelText('DGFY Password')).toBeTruthy();
     expect(screen.queryByText('Terminal ID')).toBeNull();
-    expect(screen.getByText(/Sign in with your DGFY admin account first/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
   });
 
@@ -61,8 +60,6 @@ describe('TerminalLockDrawer contract', () => {
 
     expect(screen.getByLabelText('Company')).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Front Counter Foods' })).toBeTruthy();
-    expect(screen.getByText(/Choose the company to continue/i)).toBeTruthy();
-    expect(screen.getByText(/POS will continue to onboarding or terminal unlock based on company setup/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue to POS' })).toBeTruthy();
   });
 

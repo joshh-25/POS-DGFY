@@ -6,7 +6,18 @@ interface HardwareCommandResult {
     [key: string]: unknown;
 }
 
+interface HardwareBitmapPrintOptions {
+    align?: 'left' | 'center' | 'right';
+    maxWidthPx?: number;
+    dither?: boolean;
+    feedAfter?: number;
+}
+
 interface StandalonePosHardwareModule {
+    printBitmap?(
+        imageUriOrBase64: string,
+        options?: HardwareBitmapPrintOptions
+    ): Promise<HardwareCommandResult>;
     printReceipt(receiptText: string, openDrawerAfterPrint: boolean): Promise<HardwareCommandResult>;
     printOrderTicket(ticketText: string): Promise<HardwareCommandResult>;
     openCashDrawer(reason?: string, localTransaction?: Record<string, unknown> | null): Promise<HardwareCommandResult>;
@@ -23,6 +34,16 @@ const unavailableResult = (message: string): HardwareCommandResult => ({
 
 export const standalonePosHardware = {
     available: Boolean(nativeModule),
+    async printBitmap(
+        imageUriOrBase64: string,
+        options: HardwareBitmapPrintOptions = {}
+    ): Promise<HardwareCommandResult> {
+        if (!nativeModule || typeof nativeModule.printBitmap !== 'function') {
+            return unavailableResult('Standalone hardware bitmap bridge is not available in this runtime.');
+        }
+
+        return await nativeModule.printBitmap(imageUriOrBase64, options);
+    },
     async printReceipt(receiptText: string, openDrawerAfterPrint: boolean): Promise<HardwareCommandResult> {
         if (!nativeModule) {
             return unavailableResult('Standalone hardware bridge is not available in this runtime.');

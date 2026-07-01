@@ -382,7 +382,6 @@ export default function TerminalPage() {
   });
   const [terminalUnlockForm, setTerminalUnlockForm] = useState({
     terminalId: readInitialTerminalId(),
-    terminalPassword: '',
     cashierEmail: '',
     cashierPassword: '',
     openingFloatAmount: '',
@@ -527,6 +526,9 @@ export default function TerminalPage() {
   const replayingQueueRef = useRef(false);
   const [isDesktopWide, setIsDesktopWide] = useState(() => {
     if (typeof window === 'undefined') return false;
+    if (typeof window.matchMedia === 'function') {
+      return window.matchMedia(`(min-width: ${DESKTOP_TERMINAL_BREAKPOINT_PX}px)`).matches;
+    }
     return window.innerWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX;
   });
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
@@ -659,7 +661,6 @@ export default function TerminalPage() {
   const openTenantSetupStep = useCallback((step = '') => {
     const normalizedStep = resolveTenantSetupStepValue(step || tenantSetupStep);
     replaceTenantSetupQuery(normalizedStep);
-    setPosViewMode(resolveTenantSetupViewMode(normalizedStep));
   }, [replaceTenantSetupQuery, tenantSetupStep]);
 
   const resumeTenantSetupFlow = useCallback((step = '') => {
@@ -668,7 +669,7 @@ export default function TerminalPage() {
     setTenantSetupModalOpen(true);
   }, [openTenantSetupStep, tenantSetupStep]);
 
-  const hydrateTenantSetupState = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
+  const hydrateTenantSetupState = useCallback(async ({ suppressGlobalErrors = false, silent = false } = {}) => {
     if (locked || terminalUser?.is_master_admin !== true) {
       setSetupFlowState({
         loading: false,
@@ -699,7 +700,9 @@ export default function TerminalPage() {
       return;
     }
 
-    setSetupFlowState((prev) => ({ ...prev, loading: true }));
+    if (!silent) {
+      setSetupFlowState((prev) => ({ ...prev, loading: true }));
+    }
     try {
       const requestConfig = suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {};
       const [settingsPayload, companyPayload, usersPayload, locationsPayload] = await Promise.all([
@@ -721,7 +724,8 @@ export default function TerminalPage() {
         storefrontSetupReady: storefrontRequirements.ready,
         profileRequirements,
         posRequirements,
-        storefrontRequirements
+        storefrontRequirements,
+        tenantUsers: Array.isArray(usersPayload) ? usersPayload : []
       });
     } catch {
       setSetupFlowState((prev) => ({ ...prev, loading: false }));
@@ -1457,6 +1461,11 @@ export default function TerminalPage() {
   }, [locked, openTenantSetupStep, setupFlowActive, setupFlowState.loading, tenantSetupFlowRequested, tenantSetupStep]);
 
   useEffect(() => {
+    if (!setupFlowActive || locked) return;
+    setPosViewMode((current) => (current === 'checkout' ? current : 'checkout'));
+  }, [locked, setupFlowActive]);
+
+  useEffect(() => {
     if (locked || terminalUser?.is_master_admin !== true) return;
     if (!readStoredTerminalLock()) return;
 
@@ -1524,7 +1533,6 @@ export default function TerminalPage() {
     setTerminalUnlockRequired(storedLockReason === 'shift_start_required');
     setTerminalUnlockForm((prev) => ({
       terminalId: sanitizeTerminalId(prev.terminalId) || sanitizeTerminalId(activeTerminalId) || readInitialTerminalId(),
-      terminalPassword: '',
       cashierEmail: storedLockReason === 'shift_start_required' ? prev.cashierEmail : '',
       cashierPassword: '',
       openingFloatAmount: storedLockReason === 'shift_start_required' ? prev.openingFloatAmount : '',
@@ -1762,10 +1770,6 @@ export default function TerminalPage() {
       toast.error('Select an active terminal from the configured registry.');
       return false;
     }
-    if (registryEntry && registryEntry.has_password !== true) {
-      toast.error('This terminal has no terminal password configured in POS Setup.');
-      return false;
-    }
     if (terminalUnlockMode !== 'relock' && registryEntry && Number(registryEntry.location_id || 0) <= 0) {
       toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
       return false;
@@ -1847,7 +1851,6 @@ export default function TerminalPage() {
     setTerminalUnlockMode('shift_start');
     setTerminalUnlockForm({
       terminalId: selectedTerminalId,
-      terminalPassword: '',
       cashierEmail: '',
       cashierPassword: '',
       openingFloatAmount: '',
@@ -2005,7 +2008,7 @@ export default function TerminalPage() {
       }
       if (!selectedTenantSetupState.posSetupReady) {
         setTerminalUnlockModalOpen(false);
-        toast.error('POS setup is incomplete. An active terminal and cashier account are required before terminal unlock.');
+        toast.error('POS setup is incomplete. An active terminal with a store assignment and cashier account are required before terminal unlock.');
         return;
       }
       setTerminalUnlockForm((prev) => ({
@@ -2119,7 +2122,6 @@ export default function TerminalPage() {
       setTerminalUnlockForm((prev) => ({
         ...prev,
         terminalId: selectedTerminalId,
-        terminalPassword: '',
         cashierEmail: String(cashierUser?.email || '').trim(),
         cashierPassword: '',
         openingFloatAmount: '',
@@ -2305,7 +2307,6 @@ export default function TerminalPage() {
     const pairedCashierOpening = Boolean(cashierSessionActive && pairedTerminalUnlock);
     const selectedTenantId = cashierSessionActive ? '' : await resolveTenantIdForTerminalUnlock();
     const selectedTerminalId = sanitizeTerminalId(terminalUnlockForm.terminalId || resolveSelectedLoginTerminalId());
-    const terminalPassword = String(terminalUnlockForm.terminalPassword || '');
     const requiresOpeningCash = terminalUnlockMode !== 'relock';
     const rawOpeningFloat = String(terminalUnlockForm.openingFloatAmount ?? '').trim();
     const openingFloatAmount = Number(rawOpeningFloat);
@@ -2315,10 +2316,6 @@ export default function TerminalPage() {
       return;
     }
     if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
-    if (!pairedTerminalUnlock && !terminalPassword.trim()) {
-      toast.error('Terminal password is required.');
-      return;
-    }
     if (!cashierSessionActive && requiresOpeningCash && !String(terminalUnlockForm.cashierEmail || '').trim()) {
       toast.error('Cashier email is required.');
       return;
@@ -2342,13 +2339,11 @@ export default function TerminalPage() {
         ? pairedTerminalContext
         : cashierSessionActive
         ? await verifyPosTerminal({
-            terminal_id: selectedTerminalId,
-            terminal_password: terminalPassword
+            terminal_id: selectedTerminalId
           })
         : await startDgfyPosSession({
             tenantId: selectedTenantId,
-            terminalId: selectedTerminalId,
-            terminalPassword
+            terminalId: selectedTerminalId
           });
       const resolvedCompanyToken = String(
         cashierUnlockSession?.companyToken
@@ -2516,7 +2511,6 @@ export default function TerminalPage() {
       setTerminalUnlockMode('full_auth');
       setTerminalUnlockForm({
         terminalId: selectedTerminalId,
-        terminalPassword: '',
         cashierEmail: '',
         cashierPassword: '',
         openingFloatAmount: '',
@@ -2564,7 +2558,6 @@ export default function TerminalPage() {
       setTerminalUnlockMode('cashier_resume');
       setTerminalUnlockForm({
         terminalId: selectedTerminalId,
-        terminalPassword: '',
         cashierEmail: '',
         cashierPassword: '',
         openingFloatAmount: '',
@@ -2882,7 +2875,6 @@ export default function TerminalPage() {
       setLocked(true);
       setTerminalUnlockForm({
         terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId(),
-        terminalPassword: '',
         cashierEmail: '',
         cashierPassword: '',
         openingFloatAmount: '',
@@ -2941,7 +2933,6 @@ export default function TerminalPage() {
       setLocked(true);
       setTerminalUnlockForm({
         terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId(),
-        terminalPassword: '',
         cashierEmail: '',
         cashierPassword: '',
         openingFloatAmount: '',
@@ -2982,7 +2973,6 @@ export default function TerminalPage() {
         setLocked(true);
         setTerminalUnlockForm({
           terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId(),
-          terminalPassword: '',
           cashierEmail: '',
           cashierPassword: '',
           openingFloatAmount: '',
@@ -3224,13 +3214,27 @@ export default function TerminalPage() {
     await hydrateTenantSetupState({ suppressGlobalErrors: true });
   }, [hydrateTenantSetupState]);
 
-  const handleTenantSetupDataChanged = useCallback(async () => {
-    await Promise.all([
-      hydrateTenantSetupState({ suppressGlobalErrors: true }),
-      hydrateTerminalMeta({ suppressGlobalErrors: true }),
-      refreshTenantLocations({ suppressGlobalErrors: true }),
-      hydrateUser({ suppressGlobalErrors: true })
-    ]);
+  const handleTenantSetupDataChanged = useCallback(async ({
+    silent = false,
+    refreshTerminalMeta = true,
+    refreshLocations = true,
+    refreshUser = true
+  } = {}) => {
+    const tasks = [
+      hydrateTenantSetupState({ suppressGlobalErrors: true, silent })
+    ];
+
+    if (refreshTerminalMeta) {
+      tasks.push(hydrateTerminalMeta({ suppressGlobalErrors: true }));
+    }
+    if (refreshLocations) {
+      tasks.push(refreshTenantLocations({ suppressGlobalErrors: true }));
+    }
+    if (refreshUser) {
+      tasks.push(hydrateUser({ suppressGlobalErrors: true }));
+    }
+
+    await Promise.all(tasks);
   }, [hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, refreshTenantLocations]);
 
   useEffect(() => {
@@ -3244,12 +3248,23 @@ export default function TerminalPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    const handleResize = () => {
-      setIsDesktopWide(window.innerWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX);
+    const mediaQuery = typeof window.matchMedia === 'function'
+      ? window.matchMedia(`(min-width: ${DESKTOP_TERMINAL_BREAKPOINT_PX}px)`)
+      : null;
+
+    const syncDesktopMode = () => {
+      setIsDesktopWide(mediaQuery ? mediaQuery.matches : window.innerWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX);
     };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+
+    syncDesktopMode();
+
+    if (mediaQuery && typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncDesktopMode);
+      return () => mediaQuery.removeEventListener('change', syncDesktopMode);
+    }
+
+    window.addEventListener('resize', syncDesktopMode);
+    return () => window.removeEventListener('resize', syncDesktopMode);
   }, []);
 
   useEffect(() => {
@@ -3382,13 +3397,13 @@ export default function TerminalPage() {
                   {adminReauthUnlock
                     ? 'Enter the admin credentials to unlock POS. Cashier and terminal credentials are not required.'
                     : cashierResumeUnlock
-                    ? 'Enter the cashier credentials for the open shift. Terminal password is not required.'
+                    ? 'Enter the cashier credentials for the open shift. Terminal selection is not required.'
                     : terminalUnlockMode === 'relock'
-                    ? 'Enter the registered POS terminal password to resume the current shift.'
+                    ? 'Select the registered POS terminal to resume the current shift.'
                     : pairedTerminalUnlock
                     ? 'This POS device is already paired to a terminal. Enter the cashier details and opening cash to start the shift.'
                     : cashierUnlockSession?.email
-                    ? 'Choose the registered POS terminal, enter the terminal password, and start the cashier shift.'
+                    ? 'Choose the registered POS terminal and start the cashier shift.'
                     : 'Choose the registered POS terminal, sign in the cashier, and start the shift.'}
                 </DialogDescription>
               </DialogHeader>
@@ -3474,7 +3489,7 @@ export default function TerminalPage() {
                 ) : pairedTerminalUnlock ? (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-900">
                     <p className="font-extrabold">Paired terminal: {terminalUnlockForm.terminalId}</p>
-                    <p className="mt-1">This POS device is already bound to the terminal. Terminal ID and terminal password are not required here.</p>
+                    <p className="mt-1">This POS device is already bound to the terminal. Terminal selection is not required here.</p>
                   </div>
                 ) : (
                   <>
@@ -3530,20 +3545,6 @@ export default function TerminalPage() {
                   <p className="text-[11px] text-[#64748B]">
                     Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
                   </p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="terminal-unlock-password" className="text-xs font-extrabold text-[#0F172A]">
-                    Terminal Password
-                  </Label>
-                  <Input
-                    id="terminal-unlock-password"
-                    type="password"
-                    value={terminalUnlockForm.terminalPassword}
-                    onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalPassword: event.target.value }))}
-                    placeholder="Enter terminal password"
-                    disabled={submitting}
-                    required
-                  />
                 </div>
                   </>
                 )}
@@ -3716,7 +3717,7 @@ export default function TerminalPage() {
                 ? 'Finish Storefront Setup next. Add the company icon and cover image to continue.'
                 : `Finish POS Setup next. Missing: ${
                   [
-                    setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store',
+                    setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with store assignment',
                     setupFlowState.posRequirements.cashierReady ? null : 'active cashier account'
                   ].filter(Boolean).join(', ')
                 }.`)}
@@ -3802,7 +3803,6 @@ export default function TerminalPage() {
           terminalRegistry={terminalRegistry}
           terminalLocations={locationsState.locations}
           tenantUsers={setupFlowState.tenantUsers}
-          onOpenSettingsStep={openTenantSetupStep}
           onStepSelect={openTenantSetupStep}
           onBack={() => {
             const previousStep = getPreviousTenantSetupStep(tenantSetupStep);
@@ -3836,7 +3836,6 @@ export default function TerminalPage() {
           onSkip={() => {
             setTenantSetupModalOpen(false);
             setTenantSetupDismissedThisSession(true);
-            toast.message('Finish tenant onboarding in POS Settings to unlock the rest of the POS.');
           }}
           onSetupDataChanged={handleTenantSetupDataChanged}
         />

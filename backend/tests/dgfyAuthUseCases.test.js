@@ -918,7 +918,7 @@ describe('dgfyAuthUseCases', () => {
         const result = await useCase({
             account,
             tenantId: 'tenant-pos',
-            body: { terminal_id: 'counter-01', terminal_password: '4321' },
+            body: { terminal_id: 'counter-01' },
             metadata: { request_id: 'req-pos-unlock' }
         });
 
@@ -934,8 +934,7 @@ describe('dgfyAuthUseCases', () => {
         });
         expect(validateTerminalPolicy).toHaveBeenCalledWith({
             tenantId: 'tenant-pos',
-            terminalId: 'COUNTER-01',
-            terminalPassword: '4321'
+            terminalId: 'COUNTER-01'
         });
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: 'pos_unlock_attempted',
@@ -950,7 +949,7 @@ describe('dgfyAuthUseCases', () => {
         expect(result.data.payload.data.pos.terminal_identity_policy.reason_code).toBe('ALLOWED');
     });
 
-    it('fails POS session start when terminal password validation fails', async () => {
+    it('fails POS session start when terminal policy validation fails', async () => {
         const account = createAccount({ id: 'dgfy-pos-3' });
         const membership = {
             id: 53,
@@ -963,13 +962,13 @@ describe('dgfyAuthUseCases', () => {
                 status: 'active'
             }
         };
-        const terminalError = Object.assign(new Error('Terminal password is incorrect.'), {
+        const terminalError = Object.assign(new Error('Terminal is not assigned to a store.'), {
             statusCode: 401,
             code: 'AUTHENTICATION_FAILED',
             details: {
                 terminal_identity_policy: {
                     terminal_id: 'COUNTER-01',
-                    reason_code: 'TERMINAL_PASSWORD_INVALID'
+                    reason_code: 'TERMINAL_LOCATION_REQUIRED'
                 }
             }
         });
@@ -989,13 +988,13 @@ describe('dgfyAuthUseCases', () => {
         const result = await useCase({
             account,
             tenantId: 'tenant-pos',
-            body: { terminal_id: 'COUNTER-01', terminal_password: '0000' },
+            body: { terminal_id: 'COUNTER-01' },
             metadata: { request_id: 'req-pos-password-fail' }
         });
 
         expect(result.success).toBe(false);
         expect(result.error.statusCode).toBe(401);
-        expect(result.error.message).toBe('Terminal password is incorrect.');
+        expect(result.error.message).toBe('Terminal is not assigned to a store.');
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: 'pos_unlock_failed',
             result: 'failure',

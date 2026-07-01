@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   exportPosReportCsv,
+  fetchPosReportsCashierShifts,
   fetchPosReportsOverview
 } from '../services/posService.js';
 
@@ -36,7 +37,8 @@ const REPORT_SECTIONS = [
   { id: 'monthly', label: 'Monthly Report', icon: BarChart3 },
   { id: 'yearly', label: 'Yearly Report', icon: CalendarRange },
   { id: 'comparison', label: 'Sales Comparison', icon: LineChart },
-  { id: 'profit_loss', label: 'POS Profit/Loss', icon: PieChart }
+  { id: 'profit_loss', label: 'POS Profit/Loss', icon: PieChart },
+  { id: 'cashier_shifts', label: 'Cashier Shift History', icon: Calendar }
 ];
 
 const REPORT_SECTION_GRANULARITY = {
@@ -44,7 +46,8 @@ const REPORT_SECTION_GRANULARITY = {
   monthly: 'monthly',
   yearly: 'yearly',
   comparison: 'weekly',
-  profit_loss: 'monthly'
+  profit_loss: 'monthly',
+  cashier_shifts: 'daily'
 };
 
 const PAYMENT_OPTIONS = [
@@ -228,6 +231,16 @@ function PosReportsAnalyticsWorkspace({
     setDateRange(getDefaultRange(nextGranularity));
   };
 
+  const handleCashierFilterChange = (value) => {
+    const nextCashierId = String(value || '').trim();
+    setCashierId(nextCashierId);
+    if (!nextCashierId || activeSection === 'cashier_shifts') return;
+    const nextGranularity = REPORT_SECTION_GRANULARITY.cashier_shifts || 'daily';
+    setActiveSection('cashier_shifts');
+    setGranularity(nextGranularity);
+    setDateRange(getDefaultRange(nextGranularity));
+  };
+
   useEffect(() => {
     setDateRange(getDefaultRange(granularity));
   }, [granularity]);
@@ -239,7 +252,7 @@ function PosReportsAnalyticsWorkspace({
       setLoading(true);
       setError('');
       try {
-        const payload = await fetchPosReportsOverview({
+        const query = {
           granularity,
           date_from: dateRange.dateFrom,
           date_to: dateRange.dateTo,
@@ -247,7 +260,10 @@ function PosReportsAnalyticsWorkspace({
           payment_type: paymentType || undefined,
           source: source || undefined,
           category: category || undefined
-        });
+        };
+        const payload = activeSection === 'cashier_shifts'
+          ? await fetchPosReportsCashierShifts(query)
+          : await fetchPosReportsOverview(query);
         if (!cancelled) {
           setReportData(payload);
         }
@@ -269,7 +285,7 @@ function PosReportsAnalyticsWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [category, cashierId, dateRange.dateFrom, dateRange.dateTo, granularity, paymentType, reportRefreshKey, source]);
+  }, [activeSection, category, cashierId, dateRange.dateFrom, dateRange.dateTo, granularity, paymentType, reportRefreshKey, source]);
 
   const summaryCards = reportData?.summary_cards || {};
   const filterOptions = reportData?.filter_options || {};
@@ -278,8 +294,10 @@ function PosReportsAnalyticsWorkspace({
   const yearlyReport = reportData?.yearly_report || {};
   const comparisonReport = reportData?.sales_comparison || {};
   const profitLoss = reportData?.profit_loss || {};
+  const cashierShiftHistory = reportData?.cashier_shift_history || {};
 
   const trendSeries = useMemo(() => {
+    if (activeSection === 'cashier_shifts') return [];
     if (activeSection === 'monthly') return monthlyReport.sales_trend || [];
     if (activeSection === 'yearly') return yearlyReport.monthly_breakdown || [];
     if (activeSection === 'comparison') return comparisonReport.monthly_trend || [];
@@ -297,9 +315,13 @@ function PosReportsAnalyticsWorkspace({
   const showInlineError = Boolean(error) && Boolean(reportData);
 
   const hasData = Boolean(reportData) && (
-    Number(summaryCards.total_transactions || 0) > 0
-    || Number(summaryCards.total_sales || 0) > 0
-    || (trendSeries || []).length > 0
+    activeSection === 'cashier_shifts'
+      ? (Number(cashierShiftHistory.summary?.total_shifts || 0) > 0 || (cashierShiftHistory.rows || []).length > 0)
+      : (
+        Number(summaryCards.total_transactions || 0) > 0
+        || Number(summaryCards.total_sales || 0) > 0
+        || (trendSeries || []).length > 0
+      )
   );
 
   const handleExportCsv = async () => {
@@ -321,7 +343,20 @@ function PosReportsAnalyticsWorkspace({
     const printWindow = window.open('', '_blank', 'width=1120,height=900');
     if (!printWindow) return;
 
-    const topItems = (dailyReport.top_items || []).slice(0, 10).map((item) => `
+    const printRows = activeSection === 'cashier_shifts'
+      ? (cashierShiftHistory.rows || []).slice(0, 20).map((shift) => `
+      <tr>
+        <td>${shift.business_date || '-'}</td>
+        <td>${shift.cashier_name || '-'}</td>
+        <td>${shift.terminal_id || '-'}</td>
+        <td>${shift.location_name || '-'}</td>
+        <td style="text-align:right">${money(shift.opening_float_amount, currencySymbol)}</td>
+        <td style="text-align:right">${shift.closed_at || '-'}</td>
+        <td style="text-align:right">${money(shift.closing_cash_amount, currencySymbol)}</td>
+        <td style="text-align:right">${money(shift.cash_variance_amount, currencySymbol)}</td>
+      </tr>
+    `).join('')
+      : (dailyReport.top_items || []).slice(0, 10).map((item) => `
       <tr>
         <td>${item.item_name}</td>
         <td>${item.sku_code || '-'}</td>
@@ -350,26 +385,35 @@ function PosReportsAnalyticsWorkspace({
         </head>
         <body>
           <h1>Reports & Analytics</h1>
-          <p>Daily totals, sales comparison, POS profit/loss, top items, and transaction performance.</p>
+          <p>${activeSection === 'cashier_shifts'
+            ? 'Cashier shift open and close history with opening cash, closing cash, and variance.'
+            : 'Daily totals, sales comparison, POS profit/loss, top items, and transaction performance.'}</p>
           <p>Range: ${dateRange.dateFrom} to ${dateRange.dateTo}</p>
           <div class="grid">
-            <div class="card"><div class="label">Total Sales</div><div class="value">${money(summaryCards.total_sales, currencySymbol)}</div></div>
-            <div class="card"><div class="label">Transactions</div><div class="value">${Number(summaryCards.total_transactions || 0)}</div></div>
-            <div class="card"><div class="label">Gross Sales</div><div class="value">${money(summaryCards.gross_sales, currencySymbol)}</div></div>
-            <div class="card"><div class="label">POS Profit/Loss</div><div class="value">${money(summaryCards.pos_profit_loss, currencySymbol)}</div></div>
+            ${activeSection === 'cashier_shifts'
+              ? `
+                <div class="card"><div class="label">Total Shifts</div><div class="value">${Number(cashierShiftHistory.summary?.total_shifts || 0)}</div></div>
+                <div class="card"><div class="label">Open Shifts</div><div class="value">${Number(cashierShiftHistory.summary?.open_shifts || 0)}</div></div>
+                <div class="card"><div class="label">Closed Shifts</div><div class="value">${Number(cashierShiftHistory.summary?.closed_shifts || 0)}</div></div>
+                <div class="card"><div class="label">Cash Variance</div><div class="value">${money(cashierShiftHistory.summary?.total_cash_variance, currencySymbol)}</div></div>
+              `
+              : `
+                <div class="card"><div class="label">Total Sales</div><div class="value">${money(summaryCards.total_sales, currencySymbol)}</div></div>
+                <div class="card"><div class="label">Transactions</div><div class="value">${Number(summaryCards.total_transactions || 0)}</div></div>
+                <div class="card"><div class="label">Gross Sales</div><div class="value">${money(summaryCards.gross_sales, currencySymbol)}</div></div>
+                <div class="card"><div class="label">POS Profit/Loss</div><div class="value">${money(summaryCards.pos_profit_loss, currencySymbol)}</div></div>
+              `}
           </div>
-          <h2>Daily Top Items</h2>
+          <h2>${activeSection === 'cashier_shifts' ? 'Cashier Shift History' : 'Daily Top Items'}</h2>
           <table>
             <thead>
               <tr>
-                <th>Item</th>
-                <th>SKU</th>
-                <th>Qty</th>
-                <th>Net Sales</th>
-                <th>POS Profit/Loss</th>
+                ${activeSection === 'cashier_shifts'
+                  ? '<th>Business Date</th><th>Cashier</th><th>Terminal</th><th>Location</th><th>Opening Cash</th><th>Closed At</th><th>Closing Cash</th><th>Variance</th>'
+                  : '<th>Item</th><th>SKU</th><th>Qty</th><th>Net Sales</th><th>POS Profit/Loss</th>'}
               </tr>
             </thead>
-            <tbody>${topItems || '<tr><td colspan="5">No rows found.</td></tr>'}</tbody>
+            <tbody>${printRows || `<tr><td colspan="${activeSection === 'cashier_shifts' ? 8 : 5}">No rows found.</td></tr>`}</tbody>
           </table>
         </body>
       </html>
@@ -438,7 +482,7 @@ function PosReportsAnalyticsWorkspace({
             </label>
             <label className="space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Cashier</span>
-              <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={cashierId} onChange={(event) => setCashierId(event.target.value)}>
+              <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={cashierId} onChange={(event) => handleCashierFilterChange(event.target.value)}>
                 <option value="">All cashiers</option>
                 {cashiers.map((cashier) => <option key={cashier.cashier_id} value={cashier.cashier_id}>{cashier.cashier_name}</option>)}
               </select>
@@ -484,14 +528,29 @@ function PosReportsAnalyticsWorkspace({
       </section>
 
       <div className="order-1 grid gap-3 md:order-2 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Total Sales" value={money(summaryCards.total_sales, currencySymbol)} />
-        <MetricCard label="Transactions" value={Number(summaryCards.total_transactions || 0)} />
-        <MetricCard label="Gross Sales" value={money(summaryCards.gross_sales, currencySymbol)} />
-        <MetricCard
-          label="POS Profit/Loss"
-          value={money(summaryCards.pos_profit_loss, currencySymbol)}
-          tone={Number(summaryCards.pos_profit_loss || 0) >= 0 ? 'positive' : 'negative'}
-        />
+        {activeSection === 'cashier_shifts' ? (
+          <>
+            <MetricCard label="Total Shifts" value={Number(cashierShiftHistory.summary?.total_shifts || 0)} />
+            <MetricCard label="Open Shifts" value={Number(cashierShiftHistory.summary?.open_shifts || 0)} />
+            <MetricCard label="Closed Shifts" value={Number(cashierShiftHistory.summary?.closed_shifts || 0)} />
+            <MetricCard
+              label="Cash Variance"
+              value={money(cashierShiftHistory.summary?.total_cash_variance, currencySymbol)}
+              tone={Number(cashierShiftHistory.summary?.total_cash_variance || 0) >= 0 ? 'positive' : 'negative'}
+            />
+          </>
+        ) : (
+          <>
+            <MetricCard label="Total Sales" value={money(summaryCards.total_sales, currencySymbol)} />
+            <MetricCard label="Transactions" value={Number(summaryCards.total_transactions || 0)} />
+            <MetricCard label="Gross Sales" value={money(summaryCards.gross_sales, currencySymbol)} />
+            <MetricCard
+              label="POS Profit/Loss"
+              value={money(summaryCards.pos_profit_loss, currencySymbol)}
+              tone={Number(summaryCards.pos_profit_loss || 0) >= 0 ? 'positive' : 'negative'}
+            />
+          </>
+        )}
       </div>
       </div>
 
@@ -537,45 +596,86 @@ function PosReportsAnalyticsWorkspace({
           ) : null}
 
           <div className={isRefreshing ? 'opacity-80 transition-opacity' : 'transition-opacity'}>
-          <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-            <SectionCard title={activeSection === 'comparison' ? 'Comparison Trend' : activeSection === 'yearly' ? 'Yearly Breakdown' : activeSection === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendSeries}>
-                    <defs>
-                      <linearGradient id="reportTrendFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#2563EB" stopOpacity={0.28} />
-                        <stop offset="95%" stopColor="#2563EB" stopOpacity={0.03} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
-                    <XAxis dataKey="label" stroke="#64748B" fontSize={11} />
-                    <YAxis stroke="#64748B" fontSize={11} />
-                    <Tooltip formatter={(value) => money(value, currencySymbol)} />
-                    <Area type="monotone" dataKey="net_sales" stroke="#2563EB" fill="url(#reportTrendFill)" strokeWidth={2.5} />
-                  </AreaChart>
-                </ResponsiveContainer>
+          {activeSection === 'cashier_shifts' ? (
+            <SectionCard title="Cashier Shift History">
+              <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                <MetricCard label="Opening Float" value={money(cashierShiftHistory.summary?.total_opening_float, currencySymbol)} />
+                <MetricCard label="Closing Cash" value={money(cashierShiftHistory.summary?.total_closing_cash, currencySymbol)} />
+                <MetricCard label="Expected Cash" value={money(cashierShiftHistory.summary?.total_expected_cash, currencySymbol)} />
+                <MetricCard label="Cash In" value={money(cashierShiftHistory.summary?.total_cash_in, currencySymbol)} />
+                <MetricCard label="Cash Out" value={money(cashierShiftHistory.summary?.total_cash_out, currencySymbol)} />
+                <MetricCard
+                  label="Net Variance"
+                  value={money(cashierShiftHistory.summary?.total_cash_variance, currencySymbol)}
+                  tone={Number(cashierShiftHistory.summary?.total_cash_variance || 0) >= 0 ? 'positive' : 'negative'}
+                />
               </div>
+              <DataTable
+                columns={[
+                  { key: 'business_date', label: 'Business Date' },
+                  { key: 'cashier_name', label: 'Cashier' },
+                  { key: 'terminal_id', label: 'Terminal' },
+                  { key: 'location_name', label: 'Location' },
+                  { key: 'opened_at', label: 'Opened At' },
+                  { key: 'opening_float_amount', label: 'Opening Cash', align: 'right', render: (row) => money(row.opening_float_amount, currencySymbol) },
+                  { key: 'closed_at', label: 'Closed At', render: (row) => row.closed_at || 'Still open' },
+                  { key: 'closing_cash_amount', label: 'Closing Cash', align: 'right', render: (row) => row.closing_cash_amount != null ? money(row.closing_cash_amount, currencySymbol) : '-' },
+                  { key: 'cash_variance_amount', label: 'Variance', align: 'right', render: (row) => (
+                    <span className={Number(row.cash_variance_amount || 0) >= 0 ? 'font-black text-emerald-700' : 'font-black text-rose-700'}>
+                      {row.cash_variance_amount != null ? money(row.cash_variance_amount, currencySymbol) : '-'}
+                    </span>
+                  ) },
+                  { key: 'status', label: 'Status', render: (row) => (
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${row.status === 'closed' ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+                      {row.status === 'closed' ? 'Closed' : 'Open'}
+                    </span>
+                  ) }
+                ]}
+                rows={cashierShiftHistory.rows || []}
+                emptyMessage="No cashier shift history found for the selected filters."
+              />
             </SectionCard>
+          ) : (
+            <>
+              <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
+                <SectionCard title={activeSection === 'comparison' ? 'Comparison Trend' : activeSection === 'yearly' ? 'Yearly Breakdown' : activeSection === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={trendSeries}>
+                        <defs>
+                          <linearGradient id="reportTrendFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#2563EB" stopOpacity={0.28} />
+                            <stop offset="95%" stopColor="#2563EB" stopOpacity={0.03} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                        <XAxis dataKey="label" stroke="#64748B" fontSize={11} />
+                        <YAxis stroke="#64748B" fontSize={11} />
+                        <Tooltip formatter={(value) => money(value, currencySymbol)} />
+                        <Area type="monotone" dataKey="net_sales" stroke="#2563EB" fill="url(#reportTrendFill)" strokeWidth={2.5} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </SectionCard>
 
-            <SectionCard title="Payment Breakdown">
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={paymentChartRows}>
-                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
-                    <XAxis dataKey="payment_method" stroke="#64748B" fontSize={11} />
-                    <YAxis stroke="#64748B" fontSize={11} />
-                    <Tooltip formatter={(value) => money(value, currencySymbol)} />
-                    <Bar dataKey="net_sales" radius={[8, 8, 0, 0]}>
-                      {paymentChartRows.map((entry) => <Cell key={`payment-cell-${entry.payment_method}`} fill={entry.fill} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <SectionCard title="Payment Breakdown">
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={paymentChartRows}>
+                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                        <XAxis dataKey="payment_method" stroke="#64748B" fontSize={11} />
+                        <YAxis stroke="#64748B" fontSize={11} />
+                        <Tooltip formatter={(value) => money(value, currencySymbol)} />
+                        <Bar dataKey="net_sales" radius={[8, 8, 0, 0]}>
+                          {paymentChartRows.map((entry) => <Cell key={`payment-cell-${entry.payment_method}`} fill={entry.fill} />)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </SectionCard>
               </div>
-            </SectionCard>
-          </div>
 
-          {activeSection === 'daily' ? (
+              {activeSection === 'daily' ? (
             <div className="space-y-4">
               <SectionCard title="Daily Summary">
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -729,29 +829,31 @@ function PosReportsAnalyticsWorkspace({
             </SectionCard>
           ) : null}
 
-          <SectionCard title={activeSection === 'daily' ? 'Top-Selling Items' : activeSection === 'monthly' ? 'Best-Selling Items' : activeSection === 'yearly' ? 'Yearly Best Sellers' : 'Top Items'}>
-            <DataTable
-              columns={[
-                { key: 'item_name', label: 'Item' },
-                { key: 'sku_code', label: 'SKU' },
-                { key: 'category', label: 'Category' },
-                { key: 'quantity', label: 'Qty', align: 'right', render: (row) => Number(row.quantity || 0).toFixed(2) },
-                { key: 'net_sales', label: 'Net Sales', align: 'right', render: (row) => money(row.net_sales, currencySymbol) },
-                { key: 'cogs', label: 'COGS', align: 'right', render: (row) => money(row.cogs, currencySymbol) },
-                { key: 'pos_profit_loss', label: 'POS Profit/Loss', align: 'right', render: (row) => (
-                  <span className={Number(row.pos_profit_loss || 0) >= 0 ? 'font-black text-emerald-700' : 'font-black text-rose-700'}>
-                    {money(row.pos_profit_loss, currencySymbol)}
-                  </span>
-                ) }
-              ]}
-              rows={activeSection === 'yearly'
-                ? (yearlyReport.top_items || [])
-                : activeSection === 'monthly'
-                  ? (monthlyReport.top_items || [])
-                  : (dailyReport.top_items || [])}
-              emptyMessage="No top-item activity found for the selected filters."
-            />
-          </SectionCard>
+              <SectionCard title={activeSection === 'daily' ? 'Top-Selling Items' : activeSection === 'monthly' ? 'Best-Selling Items' : activeSection === 'yearly' ? 'Yearly Best Sellers' : 'Top Items'}>
+                <DataTable
+                  columns={[
+                    { key: 'item_name', label: 'Item' },
+                    { key: 'sku_code', label: 'SKU' },
+                    { key: 'category', label: 'Category' },
+                    { key: 'quantity', label: 'Qty', align: 'right', render: (row) => Number(row.quantity || 0).toFixed(2) },
+                    { key: 'net_sales', label: 'Net Sales', align: 'right', render: (row) => money(row.net_sales, currencySymbol) },
+                    { key: 'cogs', label: 'COGS', align: 'right', render: (row) => money(row.cogs, currencySymbol) },
+                    { key: 'pos_profit_loss', label: 'POS Profit/Loss', align: 'right', render: (row) => (
+                      <span className={Number(row.pos_profit_loss || 0) >= 0 ? 'font-black text-emerald-700' : 'font-black text-rose-700'}>
+                        {money(row.pos_profit_loss, currencySymbol)}
+                      </span>
+                    ) }
+                  ]}
+                  rows={activeSection === 'yearly'
+                    ? (yearlyReport.top_items || [])
+                    : activeSection === 'monthly'
+                      ? (monthlyReport.top_items || [])
+                      : (dailyReport.top_items || [])}
+                  emptyMessage="No top-item activity found for the selected filters."
+                />
+              </SectionCard>
+            </>
+          )}
           </div>
         </div>
       )}

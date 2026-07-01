@@ -1030,6 +1030,63 @@ const buildFilterOptions = (transactions = [], lineRows = []) => {
     };
 };
 
+const buildCashierFilterOptionsFromShifts = (shifts = []) => {
+    const cashierMap = new Map();
+    shifts.forEach((shift) => {
+        const cashierId = toPositiveInt(shift?.cashier?.user_id || shift?.cashier_id);
+        if (!cashierId) return;
+        cashierMap.set(cashierId, {
+            cashier_id: cashierId,
+            cashier_name: shift?.cashier?.username || `Cashier #${cashierId}`
+        });
+    });
+    return Array.from(cashierMap.values()).sort((left, right) => left.cashier_name.localeCompare(right.cashier_name));
+};
+
+const serializeCashierShiftHistory = (shifts = []) => {
+    const rows = (Array.isArray(shifts) ? shifts : []).map((shift) => {
+        const cashEvents = Array.isArray(shift?.cashEvents) ? shift.cashEvents : [];
+        return {
+            shift_id: toPositiveInt(shift?.pos_terminal_shift_id),
+            business_date: shift?.business_date || null,
+            terminal_id: String(shift?.terminal_id || '').trim() || null,
+            location_id: toPositiveInt(shift?.location?.location_id || shift?.location_id),
+            location_name: shift?.location?.name || null,
+            cashier_id: toPositiveInt(shift?.cashier?.user_id || shift?.cashier_id),
+            cashier_name: shift?.cashier?.username || null,
+            opening_float_amount: round4(shift?.opening_float_amount),
+            opening_note: String(shift?.opening_note || '').trim() || null,
+            opened_at: shift?.opened_at || shift?.created_at || null,
+            closing_cash_amount: shift?.closing_cash_amount != null ? round4(shift?.closing_cash_amount) : null,
+            expected_cash_amount: shift?.expected_cash_amount != null ? round4(shift?.expected_cash_amount) : null,
+            cash_variance_amount: shift?.cash_variance_amount != null ? round4(shift?.cash_variance_amount) : null,
+            closing_note: String(shift?.closing_note || '').trim() || null,
+            closed_at: shift?.closed_at || null,
+            closed_by: toPositiveInt(shift?.closed_by),
+            closed_by_name: shift?.closedByUser?.username || null,
+            status: String(shift?.status || 'open').trim().toLowerCase() || 'open',
+            cash_event_count: cashEvents.length,
+            cash_in_total: round4(sumBy(cashEvents.filter((event) => String(event?.event_type || '').trim().toLowerCase() === 'cash_in'), (event) => event?.amount || 0)),
+            cash_out_total: round4(sumBy(cashEvents.filter((event) => String(event?.event_type || '').trim().toLowerCase() === 'cash_out'), (event) => event?.amount || 0))
+        };
+    });
+
+    return {
+        rows,
+        summary: {
+            total_shifts: rows.length,
+            open_shifts: rows.filter((row) => row.status === 'open').length,
+            closed_shifts: rows.filter((row) => row.status === 'closed').length,
+            total_opening_float: round4(sumBy(rows, (row) => row.opening_float_amount || 0)),
+            total_closing_cash: round4(sumBy(rows, (row) => row.closing_cash_amount || 0)),
+            total_expected_cash: round4(sumBy(rows, (row) => row.expected_cash_amount || 0)),
+            total_cash_variance: round4(sumBy(rows, (row) => row.cash_variance_amount || 0)),
+            total_cash_in: round4(sumBy(rows, (row) => row.cash_in_total || 0)),
+            total_cash_out: round4(sumBy(rows, (row) => row.cash_out_total || 0))
+        }
+    };
+};
+
 const normalizeReportLineRows = (transactions = [], filters = {}) => {
     const normalizedCategory = String(filters.category || '').trim().toLowerCase();
     const rows = [];
@@ -1262,6 +1319,39 @@ const buildReportExportRows = (section = 'daily', payload = {}, currencySymbol =
         rows.push(['POS Profit/Loss']);
         rows.push([]);
         pushSummaryRows(payload?.profit_loss || {});
+        return rows;
+    }
+
+    if (normalizedSection === 'cashier_shifts') {
+        rows.push(['Cashier Shift History']);
+        rows.push([]);
+        rows.push(['Metric', 'Value']);
+        rows.push(['Total Shifts', Number.parseInt(payload?.cashier_shift_history?.summary?.total_shifts || 0, 10) || 0]);
+        rows.push(['Open Shifts', Number.parseInt(payload?.cashier_shift_history?.summary?.open_shifts || 0, 10) || 0]);
+        rows.push(['Closed Shifts', Number.parseInt(payload?.cashier_shift_history?.summary?.closed_shifts || 0, 10) || 0]);
+        rows.push(['Opening Float Total', round4(payload?.cashier_shift_history?.summary?.total_opening_float || 0)]);
+        rows.push(['Closing Cash Total', round4(payload?.cashier_shift_history?.summary?.total_closing_cash || 0)]);
+        rows.push(['Expected Cash Total', round4(payload?.cashier_shift_history?.summary?.total_expected_cash || 0)]);
+        rows.push(['Cash Variance Total', round4(payload?.cashier_shift_history?.summary?.total_cash_variance || 0)]);
+        rows.push(['Cash In Total', round4(payload?.cashier_shift_history?.summary?.total_cash_in || 0)]);
+        rows.push(['Cash Out Total', round4(payload?.cashier_shift_history?.summary?.total_cash_out || 0)]);
+        rows.push([]);
+        rows.push(['Business Date', 'Cashier', 'Terminal', 'Location', 'Opened At', 'Opening Cash', 'Closed At', 'Closing Cash', 'Expected Cash', 'Variance', 'Status']);
+        (payload?.cashier_shift_history?.rows || []).forEach((entry) => {
+            rows.push([
+                entry.business_date || '',
+                entry.cashier_name || '',
+                entry.terminal_id || '',
+                entry.location_name || '',
+                entry.opened_at || '',
+                round4(entry.opening_float_amount || 0),
+                entry.closed_at || '',
+                round4(entry.closing_cash_amount || 0),
+                round4(entry.expected_cash_amount || 0),
+                round4(entry.cash_variance_amount || 0),
+                entry.status || ''
+            ]);
+        });
         return rows;
     }
 
@@ -2086,9 +2176,89 @@ export const posRepository = {
         };
     },
 
+    async getReportsCashierShiftHistory(filters = {}, options = {}) {
+        const PosTerminalShift = dbStore.get('PosTerminalShift');
+        const where = {};
+        const dateRange = resolveReportDateRange(filters);
+        if (dateRange.dateFrom && dateRange.dateTo) {
+            where.business_date = {
+                [Op.gte]: dateRange.dateFrom,
+                [Op.lte]: dateRange.dateTo
+            };
+        }
+
+        const cashierId = toPositiveInt(filters.cashier_id);
+        if (cashierId) where.cashier_id = cashierId;
+
+        const locationId = toPositiveInt(filters.location_id);
+        if (locationId) where.location_id = locationId;
+
+        const terminalId = String(filters.terminal_id || '').trim();
+        if (terminalId) where.terminal_id = terminalId;
+
+        const rows = await PosTerminalShift.findAll({
+            where,
+            include: [
+                {
+                    model: dbStore.get('User'),
+                    as: 'cashier',
+                    attributes: ['user_id', 'username'],
+                    required: false
+                },
+                {
+                    model: dbStore.get('User'),
+                    as: 'closedByUser',
+                    attributes: ['user_id', 'username'],
+                    required: false
+                },
+                {
+                    model: dbStore.get('TenantLocation'),
+                    as: 'location',
+                    attributes: ['location_id', 'name'],
+                    required: false
+                },
+                {
+                    model: dbStore.get('PosCashDrawerEvent'),
+                    as: 'cashEvents',
+                    attributes: ['pos_cash_drawer_event_id', 'event_type', 'amount', 'created_at'],
+                    required: false
+                }
+            ],
+            order: [['business_date', 'DESC'], ['opened_at', 'DESC'], ['pos_terminal_shift_id', 'DESC']],
+            transaction: options.transaction
+        });
+
+        const plainRows = rows.map(toPlain);
+        const cashierShiftHistory = serializeCashierShiftHistory(plainRows);
+
+        return {
+            applied_filters: {
+                ...dateRange,
+                cashier_id: cashierId,
+                location_id: locationId,
+                terminal_id: terminalId || null
+            },
+            filter_options: {
+                cashiers: buildCashierFilterOptionsFromShifts(plainRows),
+                categories: [],
+                payment_methods: ['cash', 'gcash', 'maya', 'card', 'bank_transfer'],
+                sources: Object.entries(REPORT_SOURCE_LABELS).map(([value, label]) => ({ value, label }))
+            },
+            summary_cards: {
+                total_shifts: cashierShiftHistory.summary.total_shifts,
+                open_shifts: cashierShiftHistory.summary.open_shifts,
+                closed_shifts: cashierShiftHistory.summary.closed_shifts,
+                total_cash_variance: cashierShiftHistory.summary.total_cash_variance
+            },
+            cashier_shift_history: cashierShiftHistory
+        };
+    },
+
     async exportReports(filters = {}, options = {}) {
-        const payload = await this.getReportsOverview(filters, options);
         const section = String(filters.section || 'daily').trim().toLowerCase() || 'daily';
+        const payload = section === 'cashier_shifts'
+            ? await this.getReportsCashierShiftHistory(filters, options)
+            : await this.getReportsOverview(filters, options);
         const rows = buildReportExportRows(section, payload);
         const content = rows
             .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))

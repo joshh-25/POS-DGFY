@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { describe, expect, it, jest } from '@jest/globals';
 import dbStore from '../src/utils/dbStore.js';
 import {
@@ -9,27 +8,25 @@ import {
 const registryEntry = {
   terminal_id: 'COUNTER-01',
   label: 'Front Counter',
-  location_id: 3,
-  terminal_password_hash: '$2a$10$terminal-password-hash'
+  location_id: 3
 };
 
 describe('POS terminal pairing use cases', () => {
-  it('issues a pairing after terminal password verification', async () => {
-    const passwordHash = await bcrypt.hash('terminal-secret', 4);
+  it('issues a pairing after terminal verification', async () => {
     const issue = jest.fn().mockReturnValue('paired-token');
     const useCase = buildVerifyPosTerminalUseCase({
       posRepository: {
         getTerminalIdentityPolicySecretSettings: jest.fn().mockResolvedValue({
           mode: 'enforce',
           binding_enforced: true,
-          active_registry: [{ ...registryEntry, terminal_password_hash: passwordHash }]
+          active_registry: [registryEntry]
         })
       },
       terminalPairingService: { issue }
     });
 
     const result = await dbStore.run({ tenantId: 'tenant-1' }, () => useCase({
-      payload: { terminal_id: 'COUNTER-01', terminal_password: 'terminal-secret' },
+      payload: { terminal_id: 'COUNTER-01' },
       user: { user_id: 15 }
     }));
 

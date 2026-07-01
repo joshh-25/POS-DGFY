@@ -183,10 +183,7 @@ const verifyTerminalSchema = Joi.object({
         'any.required': 'Terminal ID is required',
         'string.min': 'Terminal ID must be at least 2 characters'
     }),
-    terminal_password: Joi.string().trim().min(1).max(128).required().messages({
-        'any.required': 'Terminal password is required',
-        'string.empty': 'Terminal password is required'
-    })
+    terminal_password: Joi.string().trim().min(1).max(128).allow('', null).optional()
 });
 
 const posCashierLoginSchema = Joi.object({
@@ -291,7 +288,7 @@ const posReportsQuerySchema = Joi.object({
 });
 
 const posReportsExportQuerySchema = posReportsQuerySchema.keys({
-    section: Joi.string().valid('daily', 'monthly', 'yearly', 'comparison', 'profit_loss').default('daily'),
+    section: Joi.string().valid('daily', 'monthly', 'yearly', 'comparison', 'profit_loss', 'cashier_shifts').default('daily'),
     format: Joi.string().valid('csv').default('csv')
 });
 

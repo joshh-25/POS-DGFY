@@ -16,14 +16,15 @@ describe('POS terminal pairing contract', () => {
 
   it('shows opening cash without terminal password for a valid pairing', () => {
     expect(terminalPageSource).toContain('const pairedCashierOpening = Boolean(cashierUnlockSession?.email && pairedTerminalUnlock);');
-    expect(terminalPageSource).toContain('if (!pairedTerminalUnlock && !terminalPassword.trim()) {');
+    expect(terminalPageSource).toContain("await verifyPosTerminal({");
+    expect(terminalPageSource).not.toContain('terminal_password: terminalPassword');
     expect(terminalPageSource).toContain("pairedTerminalUnlock ? 'Open Cashier Shift' : 'Unlock POS'");
   });
 
   it('resumes a locked open shift with cashier credentials instead of terminal password', () => {
     expect(terminalPageSource).toContain("setTerminalUnlockMode('cashier_resume')");
     expect(terminalPageSource).toContain('cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit');
-    expect(terminalPageSource).toContain('Terminal password is not required.');
+    expect(terminalPageSource).toContain('Terminal selection is not required.');
     expect(terminalPageSource).toContain('Only the cashier who owns this open shift can continue it.');
     expect(terminalPageSource).toContain('authenticatedCashierId !== expectedCashierId');
     expect(terminalPageSource).toContain("!cashierResumeUnlock && terminalUnlockMode !== 'relock'");

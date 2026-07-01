@@ -26,22 +26,19 @@ const STEP_CONFIG = {
     title: 'Profile Setting',
     icon: UserRound,
     summary: 'Confirm the registered business identity now used by this POS tenant.',
-    description: 'The registered company details are reused from the business account created during registration.',
-    actionLabel: 'Open Profile Setting'
+    description: 'The registered company details are reused from the business account created during registration.'
   },
   [POS_TERMINAL_SETUP_STEPS.POS_SETUP]: {
     title: 'POS Setup',
     icon: Settings2,
     summary: 'Finish the POS setup required before this terminal can operate normally.',
-    description: 'Create at least one active cashier and one active terminal with an assigned store location and terminal password.',
-    actionLabel: 'Open POS Setup'
+    description: 'Create at least one active cashier and one active terminal with an assigned store location.'
   },
   [POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP]: {
     title: 'Storefront',
     icon: Store,
     summary: 'Complete the storefront branding required for this tenant.',
-    description: 'Upload the company icon and cover image from the existing storefront fields in POS Settings.',
-    actionLabel: 'Open Storefront'
+    description: 'Upload the company icon and cover image from the existing storefront fields in POS Settings.'
   }
 };
 
@@ -64,10 +61,7 @@ const createTerminalDraft = (entry = {}, isFirst = false, existingEntries = []) 
   label: String(entry?.label || '').trim(),
   location_id: toPositiveInt(entry?.location_id),
   is_active: entry?.is_active !== false,
-  is_default: entry?.is_default === true || (isFirst && entry?.is_default !== false),
-  has_password: entry?.has_password === true,
-  terminal_password: '',
-  clear_terminal_password: false
+  is_default: entry?.is_default === true || (isFirst && entry?.is_default !== false)
 });
 
 const normalizeTerminalDrafts = (entries = []) => {
@@ -90,6 +84,10 @@ const createLocationDraft = (location = {}, companyName = '') => ({
   supports_pickup: location?.supports_pickup !== false
 });
 
+const RequiredMark = () => (
+  <span className="ml-1 text-rose-600" aria-hidden="true">*</span>
+);
+
 const resolvePrimaryLocation = (locations = []) => {
   const activeLocations = (Array.isArray(locations) ? locations : []).filter((location) => location?.is_active !== false);
   return activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0] || null;
@@ -105,7 +103,6 @@ export default function PosTenantSetupModal({
   terminalRegistry = [],
   terminalLocations = [],
   tenantUsers = [],
-  onOpenSettingsStep = () => {},
   onStepSelect = () => {},
   onBack = () => {},
   onContinue = () => {},
@@ -165,19 +162,6 @@ export default function PosTenantSetupModal({
     [tenantUsers]
   );
 
-  const activeCashiers = useMemo(
-    () => cashierUsers.filter((user) => user?.is_active !== false),
-    [cashierUsers]
-  );
-
-  const pendingCashiers = useMemo(
-    () => cashierUsers.filter((user) => (
-      user?.is_active === false
-      || String(user?.invitation_status || '').trim().toLowerCase() === 'pending'
-    )),
-    [cashierUsers]
-  );
-
   useEffect(() => {
     const fallbackLocationId = primaryLocationId || (normalizedLocations.length === 1 ? normalizedLocations[0].location_id : null);
     if (!fallbackLocationId) return;
@@ -199,10 +183,6 @@ export default function PosTenantSetupModal({
       entry[key] = key === 'terminal_id'
         ? sanitizeTerminalId(value)
         : (key === 'location_id' ? toPositiveInt(value) : value);
-
-      if (key === 'terminal_password') {
-        entry.clear_terminal_password = false;
-      }
 
       if (key === 'is_default' && value === true) {
         next.forEach((candidate, candidateIndex) => {
@@ -300,13 +280,12 @@ export default function PosTenantSetupModal({
         password,
         location_ids: cashierLocationIds
       });
-      setCashierDraft({
-        username: '',
-        email: '',
-        phone_number: '',
-        password: ''
+      await onSetupDataChanged({
+        silent: true,
+        refreshTerminalMeta: false,
+        refreshLocations: false,
+        refreshUser: false
       });
-      await onSetupDataChanged();
       toast.success('Cashier created and assigned to the selected store.');
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to create cashier.');
@@ -324,10 +303,7 @@ export default function PosTenantSetupModal({
           label: String(entry?.label || '').trim(),
           location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
-          is_default: entry?.is_default === true,
-          has_password: entry?.has_password === true,
-          terminal_password: String(entry?.terminal_password || ''),
-          clear_terminal_password: false
+          is_default: entry?.is_default === true
         }))
         .filter((entry) => entry.terminal_id || entry.label || entry.location_id || entry.is_default || entry.is_active === false);
 
@@ -356,9 +332,6 @@ export default function PosTenantSetupModal({
           if (!entry.location_id) {
             throw new Error(`Assign a store location for ${entry.terminal_id}.`);
           }
-          if (!entry.has_password && !String(entry.terminal_password || '').trim()) {
-            throw new Error(`Enter a terminal password for ${entry.terminal_id}.`);
-          }
           if (activeLocationIds.has(entry.location_id)) {
             throw new Error('Only one active terminal is allowed per store location.');
           }
@@ -375,10 +348,7 @@ export default function PosTenantSetupModal({
         label: entry.label,
         location_id: entry.location_id,
         is_active: entry.is_active !== false,
-        is_default: entry.is_default === true,
-        has_password: entry.has_password === true || Boolean(String(entry.terminal_password || '').trim()),
-        terminal_password: String(entry.terminal_password || ''),
-        clear_terminal_password: false
+        is_default: entry.is_default === true
       }));
 
       await updateSettings({
@@ -459,8 +429,11 @@ export default function PosTenantSetupModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onSkip(); }}>
-      <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-[980px]">
+    <Dialog open={open} onOpenChange={() => {}}>
+      <DialogContent
+        className="border border-slate-200 bg-white shadow-2xl sm:max-w-[980px]"
+        onPointerDownOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader className="border-b border-slate-100 pb-4">
           <DialogTitle className="text-[20px] font-black text-[#0F172A]">Tenant Onboarding Setup</DialogTitle>
           <DialogDescription className="text-sm text-slate-600">
@@ -561,22 +534,9 @@ export default function PosTenantSetupModal({
                       </span>
                     </div>
 
-                    {activeCashiers.length > 0 ? (
-                      <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                        Active cashier: {activeCashiers.map((user) => user.email || user.username).filter(Boolean).join(', ')}
-                      </div>
-                    ) : null}
-
-                    {pendingCashiers.length > 0 ? (
-                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        Pending or inactive cashier: {pendingCashiers.map((user) => user.email || user.username).filter(Boolean).join(', ')}.
-                        Activate the cashier before POS unlock is complete.
-                      </div>
-                    ) : null}
-
-                    <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1fr_1fr]">
+                      <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1fr_1fr]">
                       <div className="grid gap-2">
-                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Username</Label>
+                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Username<RequiredMark /></Label>
                         <Input
                           value={cashierDraft.username}
                           onChange={(event) => handleCashierDraftChange('username', event.target.value)}
@@ -586,7 +546,7 @@ export default function PosTenantSetupModal({
                       </div>
 
                       <div className="grid gap-2">
-                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Email</Label>
+                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Email<RequiredMark /></Label>
                         <Input
                           type="email"
                           value={cashierDraft.email}
@@ -602,12 +562,16 @@ export default function PosTenantSetupModal({
                           value={cashierDraft.phone_number}
                           onChange={(event) => handleCashierDraftChange('phone_number', event.target.value)}
                           placeholder="+63 900 000 0000"
+                          autoComplete="off"
+                          name="cashier_phone_dgfy"
+                          data-form-type="other"
+                          data-lpignore="true"
                           className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
                         />
                       </div>
 
                       <div className="grid gap-2">
-                        <Label className="text-[12px] font-black text-[#0F172A]">Assigned Store</Label>
+                        <Label className="text-[12px] font-black text-[#0F172A]">Assigned Store<RequiredMark /></Label>
                         <div className="max-h-28 overflow-y-auto rounded-lg border border-slate-200 bg-white px-3 py-2">
                           {normalizedLocations.length > 0 ? normalizedLocations.map((location) => (
                             <label key={location.location_id} className="flex items-center gap-2 py-1 text-[13px] font-semibold text-[#0F172A]">
@@ -626,12 +590,16 @@ export default function PosTenantSetupModal({
                       </div>
 
                       <div className="grid gap-2">
-                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Password</Label>
+                        <Label className="text-[12px] font-black text-[#0F172A]">Cashier Password<RequiredMark /></Label>
                         <Input
                           type="password"
                           value={cashierDraft.password}
                           onChange={(event) => handleCashierDraftChange('password', event.target.value)}
                           placeholder="Minimum 8 characters"
+                          autoComplete="new-password"
+                          name="cashier_password_dgfy"
+                          data-form-type="other"
+                          data-lpignore="true"
                           className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
                         />
                       </div>
@@ -651,7 +619,7 @@ export default function PosTenantSetupModal({
                     <div key={terminal.draft_key || `terminal-${index}`} className="rounded-2xl border border-slate-200 p-4">
                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.1fr_1fr_1fr_auto]">
                         <div className="grid gap-2">
-                          <Label className="text-[12px] font-black text-[#0F172A]">Terminal ID</Label>
+                          <Label className="text-[12px] font-black text-[#0F172A]">Terminal ID<RequiredMark /></Label>
                           <Input
                             value={terminal.terminal_id}
                             onChange={(event) => handleTerminalDraftChange(index, 'terminal_id', event.target.value)}
@@ -669,7 +637,7 @@ export default function PosTenantSetupModal({
                           />
                         </div>
                         <div className="grid gap-2">
-                          <Label className="text-[12px] font-black text-[#0F172A]">Store</Label>
+                          <Label className="text-[12px] font-black text-[#0F172A]">Store<RequiredMark /></Label>
                           <select
                             value={terminal.location_id || ''}
                             onChange={(event) => handleTerminalDraftChange(index, 'location_id', event.target.value)}
@@ -693,20 +661,7 @@ export default function PosTenantSetupModal({
                           </Button>
                         </div>
                       </div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-[1.4fr_auto_auto] md:items-end">
-                        <div className="grid gap-2">
-                          <Label className="text-[12px] font-black text-[#0F172A]">Terminal Password</Label>
-                          <Input
-                            type="password"
-                            value={terminal.terminal_password}
-                            onChange={(event) => handleTerminalDraftChange(index, 'terminal_password', event.target.value)}
-                            placeholder={terminal.has_password ? 'Leave blank to keep current password' : 'Create terminal password'}
-                            className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
-                          />
-                          <p className="text-[11px] text-slate-500">
-                            {terminal.has_password ? 'Password already configured for this terminal.' : 'Required for terminal unlock.'}
-                          </p>
-                        </div>
+                      <div className="mt-3 grid gap-3 md:grid-cols-[auto_auto] md:justify-end md:items-end">
                         <label className="flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-[13px] font-semibold text-[#0F172A]">
                           <input
                             type="checkbox"
@@ -741,14 +696,6 @@ export default function PosTenantSetupModal({
                       {terminalSaving ? 'Saving...' : 'Save Terminal Setup'}
                     </Button>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                    <p className={posRequirements.terminalRegistryReady ? 'text-emerald-700' : 'text-rose-600'}>
-                      {posRequirements.terminalRegistryReady ? 'Complete' : 'Required'}: active terminal with store assignment and password
-                    </p>
-                    <p className={posRequirements.cashierReady ? 'text-emerald-700' : 'text-rose-600'}>
-                      {posRequirements.cashierReady ? 'Complete' : 'Required'}: active cashier account
-                    </p>
-                  </div>
                 </div>
               ) : null}
 
@@ -756,7 +703,7 @@ export default function PosTenantSetupModal({
                 <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-2xl border border-slate-200 p-4">
-                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Icon</p>
+                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Icon<RequiredMark /></p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                         {storefrontRequirements.profileImageUrl ? (
                           <img
@@ -782,7 +729,7 @@ export default function PosTenantSetupModal({
                       </div>
                     </div>
                     <div className="rounded-2xl border border-slate-200 p-4">
-                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Cover Image</p>
+                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Cover Image<RequiredMark /></p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                         {storefrontRequirements.coverImageUrl ? (
                           <img
@@ -810,7 +757,7 @@ export default function PosTenantSetupModal({
                   </div>
                   <div className="rounded-2xl border border-slate-200 p-4">
                     <div className="grid gap-2">
-                      <Label className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Primary Store Location</Label>
+                      <Label className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Primary Store Location<RequiredMark /></Label>
                       <Input
                         value={locationDraft.name}
                         onChange={(event) => setLocationDraft((current) => ({ ...current, name: event.target.value }))}
@@ -839,17 +786,6 @@ export default function PosTenantSetupModal({
                       </Button>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                    <p className={storefrontRequirements.profileImageReady ? 'text-emerald-700' : 'text-rose-600'}>
-                      {storefrontRequirements.profileImageReady ? 'Complete' : 'Required'}: company icon
-                    </p>
-                    <p className={`mt-2 ${storefrontRequirements.coverImageReady ? 'text-emerald-700' : 'text-rose-600'}`}>
-                      {storefrontRequirements.coverImageReady ? 'Complete' : 'Required'}: company cover image
-                    </p>
-                    <p className={`mt-2 ${locationDraft.location_id ? 'text-emerald-700' : 'text-rose-600'}`}>
-                      {locationDraft.location_id ? 'Complete' : 'Required'}: primary store location and map pin
-                    </p>
-                  </div>
                 </div>
               ) : null}
             </div>
@@ -863,9 +799,6 @@ export default function PosTenantSetupModal({
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" onClick={onBack} disabled={!hasPreviousStep}>
               Back
-            </Button>
-            <Button type="button" variant="outline" onClick={() => onOpenSettingsStep(currentStep)}>
-              {stepConfig.actionLabel}
             </Button>
             <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={onContinue}>
               {continueLabel}

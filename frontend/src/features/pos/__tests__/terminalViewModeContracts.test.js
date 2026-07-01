@@ -106,7 +106,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('usersPayload: selectedTenantUsers');
     expect(terminalPageContent).toContain("window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);");
     expect(terminalPageContent).toContain("{ registryMode: setupFlowActive ? 'enforce' : 'warn' }");
-    expect(terminalPageContent).toContain("toast.error('POS setup is incomplete. An active terminal and cashier account are required before terminal unlock.');");
+    expect(terminalPageContent).toContain("toast.error('POS setup is incomplete. An active terminal with a store assignment and cashier account are required before terminal unlock.');");
     expect(terminalPageContent).toContain('const posOnboardingUrl = resolvePosTerminalUrl(POS_ONBOARDING_ENTRY_SEARCH);');
     expect(terminalPageContent).toContain('window.location.assign(targetUrl.toString());');
     expect(terminalPageContent).toContain("pathname: '/terminal',");
@@ -384,7 +384,6 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('Terminal ID');
     expect(terminalPageContent).toContain('Select registered terminal');
     expect(terminalPageContent).toContain('Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.');
-    expect(terminalPageContent).toContain('This terminal has no terminal password configured in POS Setup.');
     expect(terminalPageContent).toContain('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');

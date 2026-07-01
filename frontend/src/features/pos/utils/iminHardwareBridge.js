@@ -1,7 +1,7 @@
 import { emitPosHardwareMessage } from './posHardwareMessageBus.js';
+import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
 const RECEIPT_COLUMNS = 42;
-const DGFY_BRAND_NAME = 'DGFY';
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 
@@ -114,6 +114,36 @@ const getIminBridge = () => {
     }
 };
 
+const resolveReceiptLogoSource = (businessSettings = {}) => {
+    const raw = String(
+        businessSettings?.storefront_profile_image_url
+        || businessSettings?.profile_image_url
+        || ''
+    ).trim();
+    return raw ? resolveAssetUrl(raw) : '';
+};
+
+const tryPrintReceiptBitmap = (bridge, businessSettings = {}) => {
+    if (!bridge || typeof bridge.printBitmap !== 'function') {
+        return null;
+    }
+
+    const imageSource = resolveReceiptLogoSource(businessSettings);
+    if (!imageSource) {
+        return null;
+    }
+
+    return parseBridgeResult(
+        bridge.printBitmap(imageSource, {
+            align: 'center',
+            maxWidthPx: 360,
+            dither: true,
+            feedAfter: 1
+        }),
+        'Receipt logo print command sent.'
+    );
+};
+
 const resolveDocumentLabel = (transaction, receiptContract) => {
     const contractType = String(receiptContract?.document_type || '').toLowerCase();
     const transactionType = String(transaction?.document_type || '').toLowerCase();
@@ -185,12 +215,10 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         : {};
     const receiptContractVersion = safeText(contractMetadata?.version, '2026.04.08');
     const restaurantServiceChargeAmount = Number(transaction?.restaurant_service_charge_amount || 0);
-    const receiptRows = [
-        center(businessSettings.pos_business_name || DGFY_BRAND_NAME)
-    ];
+    const receiptRows = [];
 
     if (businessSettings.pos_business_name) {
-        receiptRows.push(center(`Brand: ${DGFY_BRAND_NAME}`));
+        receiptRows.push(center(businessSettings.pos_business_name));
     }
     if (businessSettings.pos_address) {
         pushCenteredWrapped(receiptRows, businessSettings.pos_address);
@@ -314,7 +342,6 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     if (businessSettings.pos_receipt_footer_message) {
         pushCenteredWrapped(receiptRows, businessSettings.pos_receipt_footer_message);
     }
-    receiptRows.push(center('Discover Goods For You'));
 
     return receiptRows.join('\n');
 };
@@ -323,6 +350,21 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
     const bridge = getIminBridge();
     if (!bridge || typeof bridge.printReceipt !== 'function') {
         return { handled: false };
+    }
+
+    const bitmapResult = tryPrintReceiptBitmap(bridge, businessSettings);
+    if (bitmapResult) {
+        emitPosHardwareMessage({
+            title: 'iMin receipt printer',
+            message: bitmapResult.message || 'Receipt logo print command sent.',
+            tone: bitmapResult.success ? 'info' : 'error',
+            source: 'iMin hardware',
+            details: bitmapResult.diagnostics || null
+        });
+
+        if (!bitmapResult.success) {
+            throw new Error(`${bitmapResult.message || 'Failed to print receipt logo on iMin printer.'}${formatDiagnostics(bitmapResult.diagnostics)}`);
+        }
     }
 
     const result = parseBridgeResult(

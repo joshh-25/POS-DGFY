@@ -19,6 +19,7 @@ import {
     buildGetPosReportsTopItemsUseCase,
     buildGetPosReportsComparisonUseCase,
     buildGetPosReportsProfitLossUseCase,
+    buildGetPosReportsCashierShiftHistoryUseCase,
     buildExportPosReportsUseCase,
     buildGetPosTransactionByIdUseCase,
     buildRecordFiscalPrintEventUseCase,
@@ -78,6 +79,7 @@ export const getPosReportsOverviewUseCase = buildGetPosReportsOverviewUseCase({ 
 export const getPosReportsTopItemsUseCase = buildGetPosReportsTopItemsUseCase({ posRepository });
 export const getPosReportsComparisonUseCase = buildGetPosReportsComparisonUseCase({ posRepository });
 export const getPosReportsProfitLossUseCase = buildGetPosReportsProfitLossUseCase({ posRepository });
+export const getPosReportsCashierShiftHistoryUseCase = buildGetPosReportsCashierShiftHistoryUseCase({ posRepository });
 export const exportPosReportsUseCase = buildExportPosReportsUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });

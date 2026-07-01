@@ -149,6 +149,7 @@ import {
 import { requestJson } from './services/requestJson.js';
 import { buildFnbCheckoutPayload } from './checkout/buildFnbCheckoutPayload.js';
 import { hasCustomerName, hasPrimaryContact, hasDeliveryAddress, isCustomerStepComplete } from './checkout/checkoutValidation.js';
+import { DEFAULT_STOREFRONT_SLUG, getDefaultStorefrontPath } from './defaultStorefrontRoute.js';
 import { CustomerIdentityCard } from './checkout/components/CustomerIdentityCard.jsx';
 import { CheckoutHeroHeader } from './checkout/components/CheckoutHeroHeader.jsx';
 import { GuestIdentityForm } from './checkout/components/GuestIdentityForm.jsx';
@@ -917,6 +918,7 @@ const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '
   return availableSlots[0]?.value || '09:00';
 };
 const TENANT_STORE_BASE_PATH = '/tenant-store';
+const TEMPLATE_ENTRY_PATHS = new Set(['/', '/store-template', '/storefront-template']);
 const STORE_BOOKING_SUBPAGE = 'book';
 const STORE_ORDER_SUBPAGE = 'order';
 const STORE_TRACK_SUBPAGE = 'track';
@@ -5488,6 +5490,21 @@ export default function StorefrontApp() {
   const isServiceDetailsSubpage = routeSubpage === STORE_SERVICE_SUBPAGE;
   const isFnbDetailsSubpage = routeSubpage === STORE_ITEM_SUBPAGE;
   const isResolvedOrderSubpage = isOrderSubpage || isTrackSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || routeSlug) return;
+    const normalizedPath = String(window.location.pathname || '').replace(/\/+$/, '') || '/';
+    if (!TEMPLATE_ENTRY_PATHS.has(normalizedPath)) return;
+
+    const target = getDefaultStorefrontPath(window.location.search || '');
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      window.history.replaceState({ storeSlug: DEFAULT_STOREFRONT_SLUG, storeSubpage: null }, '', target);
+    }
+    setRouteSlug(DEFAULT_STOREFRONT_SLUG);
+    setRouteSubpage(null);
+    setRouteServiceItemId(null);
+    setRouteItemId(null);
+  }, [routeSlug]);
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState(null);
   const [selectedFnbDetail, setSelectedFnbDetail] = useState(null);

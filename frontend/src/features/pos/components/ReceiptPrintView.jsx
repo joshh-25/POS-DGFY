@@ -1,10 +1,10 @@
 import React from 'react';
+import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const DGFY_BRAND_NAME = 'DGFY';
 const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const DGFY_ACRONYM = 'Discover Goods For You';
-const DGFY_RECEIPT_LOGO_SRC = './dgfy-logo.png';
 const RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.75rem 1.5rem 3.75rem';
 const RECEIPT_LINE_GRID_COLUMNS_57MM = 'minmax(0, 1fr) 2.75rem 1.25rem 2.75rem';
 const RECEIPT_PAPER_WIDTHS = {
@@ -125,6 +125,12 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
     const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
     const businessName = String(businessSettings.pos_business_name || '').trim();
     const shouldShowBusinessName = businessName && businessName.toLowerCase() !== DGFY_BRAND_NAME.toLowerCase();
+    const businessIconUrl = String(
+        businessSettings.storefront_profile_image_url
+        || businessSettings.profile_image_url
+        || ''
+    ).trim();
+    const resolvedBusinessIconUrl = businessIconUrl ? resolveAssetUrl(businessIconUrl) : '';
     const resolvedPaperWidth = RECEIPT_PAPER_WIDTHS[paperWidth] || RECEIPT_PAPER_WIDTHS['80mm'];
     const receiptLineGridColumns = resolvedPaperWidth === '57mm'
         ? RECEIPT_LINE_GRID_COLUMNS_57MM
@@ -137,11 +143,13 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
             style={{ width: resolvedPaperWidth, maxWidth: '100%' }}
         >
             <div className="text-center border-b border-dashed border-slate-300 pb-3 mb-3 print:pb-2 print:mb-2">
-                <img
-                    src={DGFY_RECEIPT_LOGO_SRC}
-                    alt="DGFY"
-                    className="mx-auto mb-2 h-auto w-28 object-contain print:w-24"
-                />
+                {resolvedBusinessIconUrl ? (
+                    <img
+                        src={resolvedBusinessIconUrl}
+                        alt={businessName ? `${businessName} icon` : 'Business icon'}
+                        className="mx-auto mb-2 h-auto w-28 object-contain print:w-24"
+                    />
+                ) : null}
                 {shouldShowBusinessName && (
                     <p className="font-semibold text-slate-900">{businessName}</p>
                 )}
