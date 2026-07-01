@@ -97,7 +97,6 @@ const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
 const POSPage = lazy(() => import('./features/pos/pages/SkupervisorPOSPage.jsx'))
 const TerminalPage = lazy(() => import('./features/pos/pages/TerminalPage.jsx'))
 const SalesPage = lazy(() => import('./features/sales/pages/SalesPage.jsx'))
-const FeedbackViewer = lazy(() => import('../Pages/FeedbackViewer.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
 const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.jsx'))
@@ -205,6 +204,7 @@ function App() {
             </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
+        {/* Integrated POS inside the authenticated SKUpervisor application shell. */}
         <Route path="/pos" element={
           <ProtectedRoute>
             <Layout currentPageName={currentPageName}>
@@ -239,6 +239,7 @@ function App() {
             </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
+        {/* Dedicated POS application surface; intentionally leaves the IMS shell. */}
         <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/sales" element={
           <ProtectedRoute>
@@ -274,7 +275,7 @@ function App() {
         </Route>
 
         {/* Legacy route - redirect to new admin portal */}
-        <Route path="/admin/feedback-old" element={<FeedbackViewer />} />
+        <Route path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />} />
       </Routes>
     </Suspense>
   )

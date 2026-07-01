@@ -3917,6 +3917,16 @@ function SettingsWorkspace({
                   <p className="text-[11px] text-[#64748B]">When enabled, shift open, checkout, and switch require location-bound terminal policy readiness.</p>
                 </div>
               </label>
+              <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-3">
+                <p className="text-[12px] font-black text-[#0F172A]">
+                  Location Binding Readiness: {readiness?.ready_for_strict_mode ? 'Ready' : 'Needs Review'}
+                </p>
+                <div className="mt-2 grid gap-2 text-[11px] text-[#64748B] md:grid-cols-3">
+                  <p>Migration: <span className="font-semibold text-[#0F172A]">{readiness?.migration_tag || '-'}</span></p>
+                  <p>Unresolved: <span className="font-semibold text-[#0F172A]">{Number(readiness?.unresolved_count || 0)}</span></p>
+                  <p>Low confidence: <span className="font-semibold text-[#0F172A]">{Number(readiness?.low_confidence_count || 0)}</span></p>
+                </div>
+              </div>
             </div>
             {terminalUser?.is_master_admin === true ? (
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
