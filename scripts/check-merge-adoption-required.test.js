@@ -84,6 +84,24 @@ test('finds adoption manifests under docs/release/merge-adoption', () => {
   ]), ['docs/release/merge-adoption/storefront-customer-flow.json']);
 });
 
+test('ignores merge-adoption evidence files that are not adoption manifests', () => {
+  const projectRoot = makeTempProject();
+  try {
+    const manifestPath = writePassingManifest(projectRoot, 'docs/release/merge-adoption/storefront-customer-flow.json');
+    writeFile(
+      projectRoot,
+      'docs/release/merge-adoption/storefront-file-disposition.json',
+      JSON.stringify({ source_head: 'abc123', files: [] }, null, 2)
+    );
+    assert.deepEqual(findManifestCandidates([
+      manifestPath,
+      'docs/release/merge-adoption/storefront-file-disposition.json',
+    ], projectRoot), [manifestPath]);
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test('parses explicit base, head, and manifest arguments', () => {
   const options = parseArgs([
     '--base',

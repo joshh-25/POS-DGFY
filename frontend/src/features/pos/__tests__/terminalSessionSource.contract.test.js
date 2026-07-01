@@ -40,7 +40,9 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('if (IS_DGFY_POS_SURFACE && !token) {');
     expect(terminalPageSource).toContain('setLocked(true);');
     expect(terminalPageSource).toContain('setDrawerOpen(true);');
-    expect(terminalPageSource).toContain('const shiftOpeningModalOpen = !drawerOpen && requiresOpenShift && canViewPos;');
+    expect(terminalPageSource).toMatch(
+      /const shiftOpeningModalOpen = !drawerOpen\s*&& requiresOpenShift\s*&& canViewPos\s*&& !\(canAdminBypassShiftPrompt && adminShiftPromptSkipped\);/
+    );
   });
 
   it('falls back to governed legacy POS unlock when DGFY account login rejects tenant-local credentials', () => {

@@ -29,6 +29,11 @@ import {
     cleanupOmittedStorefrontGalleryAssets,
     snapshotStorefrontGalleryCleanup
 } from './storefrontGalleryAssetCleanup.js';
+import {
+    hashTerminalRegistrySecrets,
+    sanitizeTerminalRegistryForRead,
+    sanitizeSingleSettingForRead
+} from './posTerminalRegistrySecrets.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -159,6 +164,15 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
             if (key === POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY && normalizedValue === true) {
                 await assertStrictBindingReadiness({ settingsRepository });
             }
+            if (key === POS_TERMINAL_REGISTRY_KEY) {
+                const current = typeof settingsRepository?.getSettingsByKeys === 'function'
+                    ? await settingsRepository.getSettingsByKeys([POS_TERMINAL_REGISTRY_KEY])
+                    : {};
+                normalizedValue = await hashTerminalRegistrySecrets({
+                    incomingEntries: normalizedValue,
+                    currentEntries: current?.[POS_TERMINAL_REGISTRY_KEY]?.value || []
+                });
+            }
 
             const tenant = getTenantComplianceSnapshot();
             if (tenant?.id) {
@@ -172,7 +186,11 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                     operation: COMPLIANCE_OPERATION.SETTINGS_UPDATE,
                     context: {
                         setting_keys: changedSettingKeys,
-                        setting_updates: { [key]: normalizedValue }
+                        setting_updates: {
+                            [key]: key === POS_TERMINAL_REGISTRY_KEY
+                                ? sanitizeTerminalRegistryForRead(normalizedValue)
+                                : normalizedValue
+                        }
                     },
                     actorUser
                 });
@@ -182,6 +200,13 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
             }
 
             if (strictBindingRegistryPatch) {
+                const currentRegistry = typeof settingsRepository?.getSettingsByKeys === 'function'
+                    ? await settingsRepository.getSettingsByKeys([POS_TERMINAL_REGISTRY_KEY])
+                    : {};
+                strictBindingRegistryPatch = await hashTerminalRegistrySecrets({
+                    incomingEntries: strictBindingRegistryPatch,
+                    currentEntries: currentRegistry?.[POS_TERMINAL_REGISTRY_KEY]?.value || []
+                });
                 if (typeof settingsRepository?.updateSettings === 'function') {
                     await settingsRepository.updateSettings({
                         [POS_TERMINAL_REGISTRY_KEY]: strictBindingRegistryPatch,
@@ -189,7 +214,7 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                     });
                     if (typeof settingsRepository?.getSettingByKey === 'function') {
                         const setting = await settingsRepository.getSettingByKey(key);
-                        return ok(setting);
+                        return ok(sanitizeSingleSettingForRead({ key, setting }));
                     }
                     return ok({ setting_key: key, value: normalizedValue });
                 }
@@ -207,7 +232,7 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                 omittedPaths: omittedStorefrontGalleryPaths,
                 storefrontAssetStorage
             });
-            return ok(updatedSetting);
+            return ok(sanitizeSingleSettingForRead({ key, setting: updatedSetting }));
         } catch (error) {
             return fail(mapSettingsUseCaseError(error, 'Failed to update setting'));
         }

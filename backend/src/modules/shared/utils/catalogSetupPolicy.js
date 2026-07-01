@@ -48,7 +48,7 @@ export const buildPosReadiness = ({ item, override }) => {
     const currentStock = toNumber(payload.current_stock, 0);
     const defaultSalePrice = toPositiveNumber(payload.default_sale_price);
     const status = normalizeToken(payload.status);
-    const stockExempt = isStockExemptServiceItem(payload);
+    const stockExempt = isStockExemptServiceItem(payload) || override?.pos_always_available === true;
 
     const checks = {
         pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }) !== false,

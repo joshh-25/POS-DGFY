@@ -32,10 +32,19 @@ import {
     updateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase,
     printPosReceiptUseCase,
-    openPosDrawerUseCase
+    openPosDrawerUseCase,
+    verifyPosTerminalUseCase,
+    getPairedPosTerminalUseCase,
+    posTerminalPairingMaxAgeMs
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
+import {
+    SESSION_COOKIE_NAMES,
+    clearSessionCookie,
+    getCookie,
+    setBearerSessionCookie
+} from '../../../utils/browserSessionCookies.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -49,6 +58,100 @@ const defaultErrorPayload = (req, res, failure) => ({
     request_id: requestId(req, res),
     timestamp: timestamp()
 });
+
+export const verifyTerminal = async (req, res, next) => {
+    try {
+        const result = await verifyPosTerminalUseCase({ payload: req.validatedData || req.body || {}, user: req.user });
+        if (result?.success && result.data?.pairing_token) {
+            setBearerSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing, result.data.pairing_token, {
+                maxAgeMs: posTerminalPairingMaxAgeMs
+            });
+        }
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: { ...result.data, pairing_token: undefined },
+                message: 'Terminal paired',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getPairedTerminal = async (req, res, next) => {
+    try {
+        const result = await getPairedPosTerminalUseCase({
+            pairingToken: getCookie(req, SESSION_COOKIE_NAMES.posTerminalPairing),
+            user: req.user
+        });
+        if (!result?.success) clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const clearPairedTerminal = (req, res) => {
+    clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+    return res.status(200).json({ success: true, data: { paired: false }, timestamp: timestamp() });
+};
+
+export const requirePairedTerminal = async (req, res, next) => {
+    try {
+        const result = await getPairedPosTerminalUseCase({
+            pairingToken: getCookie(req, SESSION_COOKIE_NAMES.posTerminalPairing),
+            user: req.user
+        });
+        if (!result?.success) {
+            clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+            const failure = result?.error || {};
+            return res.status(failure.statusCode || 401).json(defaultErrorPayload(req, res, failure));
+        }
+        const requestedTerminalId = String(
+            req.body?.terminal_id
+            || req.headers?.['x-pos-terminal-id']
+            || ''
+        ).trim().toUpperCase();
+        if (requestedTerminalId && requestedTerminalId !== result.data.terminal_id) {
+            clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+            return res.status(403).json({
+                success: false,
+                data: null,
+                message: 'Requested terminal does not match the paired terminal.',
+                error_code: 'POS_PAIRED_TERMINAL_MISMATCH',
+                timestamp: timestamp()
+            });
+        }
+        const requestedLocationId = Number.parseInt(
+            req.body?.location_id || req.body?.target_location_id,
+            10
+        );
+        if (Number.isInteger(requestedLocationId) && requestedLocationId > 0
+            && requestedLocationId !== Number(result.data.location_id)) {
+            return res.status(403).json({
+                success: false,
+                data: null,
+                message: 'Requested location does not match the paired terminal location.',
+                error_code: 'POS_PAIRED_LOCATION_MISMATCH',
+                timestamp: timestamp()
+            });
+        }
+        req.headers['x-pos-terminal-id'] = result.data.terminal_id;
+        req.posTerminalPairing = result.data;
+        return next();
+    } catch (error) {
+        clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+        return next(error);
+    }
+};
 
 export const listCatalog = async (req, res, next) => {
     try {
@@ -903,6 +1006,10 @@ export const deleteCatalogImage = async (req, res, next) => {
 };
 
 export default {
+    verifyTerminal,
+    getPairedTerminal,
+    clearPairedTerminal,
+    requirePairedTerminal,
     listCatalog,
     scanBarcode,
     checkout,
