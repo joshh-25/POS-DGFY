@@ -20,6 +20,8 @@ describe('tenant capability notice shell contract', () => {
     const terminalLayout = read('src/features/pos/components/TerminalPageLayout.jsx');
     expect(terminalLayout).toContain("window.addEventListener('tenant:capability-blocked'");
     expect(terminalLayout).toContain("detail.capability !== 'tenant_pos_enabled'");
-    expect(terminalLayout).toContain('<TenantCapabilityNotice');
+    expect(terminalLayout).toContain('capabilityNotice &&');
+    expect(terminalLayout).toContain('Reason code: {capabilityNotice.code}');
+    expect(terminalLayout).toContain('setCapabilityNotice(null)');
   });
 });

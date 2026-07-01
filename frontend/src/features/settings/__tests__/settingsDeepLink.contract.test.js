@@ -84,8 +84,9 @@ describe('settings deep-link contract', () => {
     expect(settingsContent).toContain('Fiscal Ledger Integrity');
     expect(settingsContent).toContain('eSales Reporting Packages');
     expect(posContent).not.toContain('window.prompt');
-    expect(posContent).toContain('Record Fiscal Print Evidence');
-    expect(posContent).toContain('Confirm Printed');
+    expect(posContent).toContain('Print Last Receipt');
+    expect(posContent).toContain('handlePrintReceipt');
+    expect(posContent).toContain('lastReceiptPendingSync');
   });
 
   it('keeps cross-surface settings targets emitted by policy and POS code resolvable', () => {

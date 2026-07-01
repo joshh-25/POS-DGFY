@@ -16,11 +16,15 @@
         "backend/tests/posCashierLoginUseCase.test.js",
         "backend/tests/posHandlers.transport.test.js",
         "backend/tests/posSetupCashierUseCase.test.js",
+        "backend/tests/reproduce_import_bypass.test.js",
         "docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.md",
+        "frontend/src/components/common/__tests__/tenantCapabilityNotice.contract.test.js",
         "frontend/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
         "frontend/src/components/maps/mapLibreShared.js",
+        "frontend/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js",
+        "frontend/src/features/settings/__tests__/settingsDeepLink.contract.test.js",
         "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx"
       ],
       "included_features": [
@@ -29,7 +33,9 @@
         "Regression tests for POS and non-POS MapLibre routing",
         "POS handler transport test mock alignment for the PR25 cashier/setup use-case exports",
         "Positive backend tests for the accepted POS setup cashier and cashier login use cases",
-        "Frontend lint-safe POS tab reset scheduling"
+        "Frontend lint-safe POS tab reset scheduling",
+        "CI contract test alignment for the accepted PR25 POS layout and inline capability notice",
+        "Import-bypass reproduction test authService mock alignment for the accepted POS cashier login export"
       ],
       "excluded_files": [],
       "excluded_features": [
@@ -90,6 +96,8 @@
         "Focused backend POS handler transport test passed after mock alignment on 2026-07-01",
         "Focused backend POS cashier setup/login tests passed after replacing stale anti-adoption assertions on 2026-07-01",
         "Frontend lint passed after replacing synchronous tab reset effects with scheduled resets on 2026-07-01",
+        "Focused frontend POS source contracts passed after aligning stale literal checks to the accepted PR25 layout on 2026-07-01",
+        "Backend db_integration_scripts CI failure root cause identified as a stale authService mock missing loginUser; mock aligned on 2026-07-01",
         "Governed docs lint, architecture check, and whitespace check passed on 2026-07-01"
       ],
       "evidence_gaps": [
@@ -104,6 +112,7 @@
         "npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
         "npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js --runInBand",
         "npm --prefix backend test -- --runTestsByPath tests/posSetupCashierUseCase.test.js tests/posCashierLoginUseCase.test.js --runInBand",
+        "npm --prefix frontend test -- --run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js src/features/settings/__tests__/settingsDeepLink.contract.test.js src/components/common/__tests__/tenantCapabilityNotice.contract.test.js",
         "npm --prefix frontend run lint",
         "npm --prefix frontend run build:pos",
         "npm run lint:docs",
@@ -131,6 +140,11 @@
           "command": "npm --prefix frontend run lint",
           "status": "pass",
           "evidence": "2026-07-01 hotfix worktree validation: frontend lint passed after scheduled POS tab reset fix"
+        },
+        {
+          "command": "npm --prefix frontend test -- --run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js src/features/settings/__tests__/settingsDeepLink.contract.test.js src/components/common/__tests__/tenantCapabilityNotice.contract.test.js",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: 3 source-contract files, 20 tests passed after aligning stale POS literal checks to the accepted PR25 layout and inline POS capability notice"
         },
         {
           "command": "npm --prefix frontend run build:pos",

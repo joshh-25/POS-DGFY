@@ -13,6 +13,7 @@ This hotfix makes the POS setup and settings maps load real map tiles instead of
 - Positive backend tests for the accepted POS setup cashier and cashier login use cases.
 - Frontend lint-safe POS tab reset scheduling.
 - Compliance impact declaration for the POS-sensitive terminal workspace touch.
+- CI contract test alignment for the accepted PR25 POS layout, inline POS capability notice, and cashier-login auth mock.
 
 ## Excluded
 
@@ -28,7 +29,7 @@ This hotfix makes the POS setup and settings maps load real map tiles instead of
 
 - Level: high
 - Warning: A mistake could keep POS onboarding/settings maps blank or accidentally alter non-POS tile proxy behavior.
-- Evidence reducing risk: focused MapLibre tests, POS handler transport contract test, POS cashier setup/login tests, frontend lint, POS production build, live resource content-type check, docs lint, architecture check, and whitespace check passed.
+- Evidence reducing risk: focused MapLibre tests, POS handler transport contract test, POS cashier setup/login tests, frontend POS source-contract tests, frontend lint, POS production build, live resource content-type check, docs lint, architecture check, and whitespace check passed.
 - Remaining gap: production still needs rendered POS proof after deployment.
 
 ## Compliance Declaration
