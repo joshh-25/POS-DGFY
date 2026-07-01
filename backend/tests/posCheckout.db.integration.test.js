@@ -76,13 +76,21 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
     const createCashier = async () => {
         const suffix = crypto.randomUUID().slice(0, 8);
-        return models.User.create({
+        const cashier = await models.User.create({
             username: `cashier_${suffix}`,
             email: `cashier_${suffix}@pos.test`,
             password_hash: 'test-hash',
             role: 'staff',
             is_active: true
         });
+        await models.PosTerminalShift.create({
+            business_date: new Date().toISOString().slice(0, 10),
+            terminal_id: `POS-TEST-${suffix}`.toUpperCase(),
+            cashier_id: cashier.user_id,
+            opening_float_amount: 0,
+            status: 'open'
+        });
+        return cashier;
     };
 
     const createFinishedGood = async (overrides = {}) => {

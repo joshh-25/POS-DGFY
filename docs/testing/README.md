@@ -38,14 +38,15 @@ Required commands:
 1. `npm --prefix backend test -- --runTestsByPath tests/browserSessionCookies.test.js`
 2. `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js`
 3. `npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
-4. For DGFY-to-SKUpervisor tenant-session handoff or tenant refresh routing changes: `npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js tests/dgfyTenantSession.transport.test.js tests/browserSessionCookies.test.js`
+4. For DGFY-to-SKUpervisor tenant-session handoff, tenant-session rate limiting, or tenant refresh routing changes: `npm --prefix backend test -- --runTestsByPath tests/rateLimiter.behavior.test.js tests/dgfyTenantSession.transport.test.js tests/dgfyAdminAccountRoutes.contract.test.js tests/tenantHandler.emailOtp.test.js tests/browserSessionCookies.test.js`
 5. For DGFY account company switching or invitation Business-tab changes: include backend DGFY company-list/switch/invitation tests, `tests/dgfyAuthMiddleware.test.js` for the IMS tenant-session membership bridge, frontend IMS switcher tests, Storefront account Business-tab tests, and browser storage guards proving DGFY, refresh, tenant, and company tokens are not persisted in browser-readable storage.
+6. For explicit DGFY sign-out or customer-login launcher changes: `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx --testTimeout 30000`. This proves `reason=signed-out` suppresses cookie auto-restore, only the signed-out email is prefilled, the password remains blank for browser password managers, and discovery/storefront **Log in / Sign up** does not reopen the old dashboard.
 
 Evidence semantics:
 1. Backend cookie tests prove refresh/session authority is issued and cleared with the ADR 0026 cookie attributes.
 2. RTR tests prove refresh authority is cookie-only, CSRF-protected, rotated on use, and replay-rejected.
 3. Frontend storage guards prove privileged tenant, refresh, DGFY, storefront, and admin tokens are not persisted in browser-readable storage.
-4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing. `dgfyAuthMiddleware` tests prove direct IMS sessions can load business switching only through an accepted DGFY membership row and cannot infer account ownership from matching email or mobile data.
+4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing. `rateLimiter.behavior.test.js` proves the DGFY tenant-session limiter is scoped to authenticated account plus tenant instead of the generic credential-login bucket. `dgfyAuthMiddleware` tests prove direct IMS sessions can load business switching only through an accepted DGFY membership row and cannot infer account ownership from matching email or mobile data.
 5. Frontend API interceptor tests prove protected requests preflight cookie-backed session refresh after hard reload when the in-memory access token is empty.
 6. Backend auth tests prove login and refresh responses include `data.company.token` when tenant context is available, allowing the frontend to restore the company-token header without browser-readable tenant-token persistence.
 7. These gates do not prove all XSS vectors are impossible; CSP and input/output encoding reviews remain required for UI changes.
@@ -61,7 +62,8 @@ Evidence semantics:
 1. Service-level tests prove PayMongo webhook verification rejects missing secrets, missing signatures, invalid signatures, stale timestamps, and mode-mismatched signatures.
 2. Use-case tests prove invalid PayMongo signatures are rejected before webhook-log creation or payment/subscription mutation.
 3. Replay tests prove already processed PayMongo events return an idempotent response without repeating payment mutation.
-4. These gates do not prove live PayMongo delivery, provider dashboard configuration, child-account webhook registration, or settlement correctness.
+4. These gates do not prove live PayMongo delivery, provider dashboard configuration, child-account webhook registration, parent/platform merchant identity, split-payment marketplace capability, or settlement correctness.
+5. Live QR Ph split checkout must stay disabled unless PayMongo externally confirms the DGFY parent merchant ID plus live split-payment capability and production sets `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`. Current provider evidence is negative: PayMongo support confirmed on June 25, 2026 that Linked Accounts is not configured for the account and self-service onboarding is still under development.
 
 ## Production Env Security Gates
 
@@ -79,7 +81,7 @@ Evidence semantics:
 
 ## DGFY Company Access And Legacy Invitation Gates
 
-DGFY company-access evidence is mandatory for company registration handoff, user-management invitation, Settings, AI user-management, company switching, ownership transfer, legacy linking, and POS unlock changes.
+DGFY company-access evidence is mandatory for company registration handoff, platform-admin assisted provisioning, user-management invitation, Settings, AI user-management, company switching, ownership transfer, legacy linking, and POS unlock changes.
 
 Required commands:
 1. `npm --prefix backend test -- --runTestsByPath tests/settingsCompanyInfo.usecase.test.js tests/settingsHandlers.companyInfo.test.js tests/userManagementToolRegistry.test.js tests/aiTools.test.js tests/emailTemplates.invitation.test.js`
@@ -87,18 +89,22 @@ Required commands:
 3. `npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyLegacyLinkService.test.js tests/dgfyTenantSession.transport.test.js tests/auth.test.js`
 4. `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js`
 5. `npm --prefix frontend test -- --run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx Components/users/__tests__/UserInvitationModal.dgfy.test.jsx src/services/__tests__/dgfyAuthService.cookieSession.test.js --testTimeout 20000`
-6. `npm run smoke:dgfy-access-ui` after local IMS, POS, and Storefront dev or preview servers are running.
-7. `DGFY_ACCESS_STRICT_NETWORK=true npm run smoke:dgfy-access-ui` for seeded local-stack or staging proof; local HTTPS-enforced backend smoke may also set `DGFY_ACCESS_FORWARDED_PROTO=https`.
-8. `npm --prefix frontend run build:skupervisor`, `npm --prefix frontend run build:store`, and `npm --prefix frontend run build:pos`.
+6. For platform-admin assisted provisioning: `npm --prefix backend test -- --runTestsByPath tests/dgfyAdminAccountUseCases.test.js tests/adminAssistedProvisioningUseCase.test.js tests/dgfyAdminAccountRoutes.contract.test.js tests/adminAssistedProvisioningRoutes.contract.test.js tests/tenantAdminAuditLogActions.contract.test.js`
+7. For the Tenant Manager and DGFY Accounts admin panels: `npm --prefix frontend test -- --run src/services/__tests__/adminService.adminOperations.contract.test.js src/pages/__tests__/DgfyAccountManager.integration.test.jsx src/pages/__tests__/TenantManager.capabilities.integration.test.jsx`
+8. `npm run smoke:dgfy-access-ui` after local IMS, POS, and Storefront dev or preview servers are running.
+9. `DGFY_ACCESS_STRICT_NETWORK=true npm run smoke:dgfy-access-ui` for seeded local-stack or staging proof; local HTTPS-enforced backend smoke may also set `DGFY_ACCESS_FORWARDED_PROTO=https`.
+10. `npm --prefix frontend run build:skupervisor`, `npm --prefix frontend run build:store`, and `npm --prefix frontend run build:pos`.
 
 Evidence semantics:
 1. Settings company-info tests prove the API no longer returns `registration_link`.
 2. AI tests prove the retired `get_company_join_link` tool cannot generate company-token registration URLs.
 3. Email-template and user-management tests prove new DGFY invitations do not expose manual links or `company_token`; the old `/accept-invite?token=...` route is compatibility-only and must remain non-mutating for new business onboarding.
 4. Backend DGFY tests prove account search safe fields, DGFY-only invitation creation, accept/reject, leave, ownership transfer, legacy grace, POS session authorization, owner-transfer demotion, and no normal email-fallback tenant-session authentication.
-5. Frontend invitation/POS/service tests prove the IMS invite modal selects registered DGFY accounts, DGFY auth service errors stay scoped away from generic tenant global toasts, development auto-login is opt-in and excluded from DGFY/POS lock entrypoints, and the POS drawer exposes DGFY sign-in, company, terminal, and legacy-grace states.
-6. The rendered smoke writes structured JSON under `.tmp/rendered-qa/dgfy-access/` plus desktop/mobile screenshots. Default mode is frontend-only and records API failures as diagnostics; strict mode fails on 5xx network responses for full-stack evidence.
-7. These gates do not prove all historically issued links have expired or that POS hardware bridges are device-proven after DGFY unlock. Seeded UAT must still cover receipt printing, cash drawer, iMin warnings, shift state, terminal policy denial, and offline queue replay.
+5. Platform-admin assisted provisioning tests prove public OTP rules remain unchanged, admin-created DGFY accounts use temporary-password state, ownerless tenants cannot issue DGFY/POS sessions, combined provisioning creates explicit accepted membership, force assignment targets an active account id, and audit snapshots exclude secrets.
+6. Frontend invitation/POS/service tests prove the IMS invite modal selects registered DGFY accounts, DGFY auth service errors stay scoped away from generic tenant global toasts, development auto-login is opt-in and excluded from DGFY/POS lock entrypoints, and the POS drawer exposes DGFY sign-in, company, terminal, and legacy-grace states.
+7. Admin frontend tests prove Tenant Manager separates Company-only from DGFY+Company provisioning, reason fields are required, DGFY Accounts creation shows temporary-password state, and owner/company/account submit boundaries do not trigger adjacent actions.
+8. The rendered smoke writes structured JSON under `.tmp/rendered-qa/dgfy-access/` plus desktop/mobile screenshots. Default mode is frontend-only and records API failures as diagnostics; strict mode fails on 5xx network responses for full-stack evidence.
+9. These gates do not prove all historically issued links have expired, that POS hardware bridges are device-proven after DGFY unlock, or that every admin-created merchant has accepted current legal terms. Seeded UAT must still cover legal acknowledgement before owner-authorized self-service, receipt printing, cash drawer, iMin warnings, shift state, terminal policy denial, and offline queue replay.
 
 ## Frontend Contract Gates
 
@@ -169,7 +175,7 @@ Use this focused gate when changing the shared IMS MapLibre picker used by onboa
 2. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
 
 Evidence semantics:
-1. The focused MapLibre suite proves the picker initializes with the inline OpenStreetMap raster style contract, preserves click/geolocation/drag coordinate updates, reverse-geocodes selected pins into the editable address field when possible, keeps coordinate updates usable when reverse geocoding fails, disables MapLibre's internal resize tracker for modal/panel teardown safety, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
+1. The focused MapLibre suite proves the picker initializes with the shared Storefront MapLibre basemap over Iloilo City, preserves the Settings locked mode and onboarding first-pin adjust mode, keeps click/geolocation/drag coordinate updates inside the explicit adjust contract, ignores stale reverse-geocode responses, reverse-geocodes selected pins into editable address suggestions when possible, keeps coordinate updates usable when reverse geocoding fails, disables MapLibre's internal resize tracker for modal/panel teardown safety, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
 2. The onboarding and Settings suites prove both user-facing surfaces still wire the shared picker into their location forms.
 3. These gates do not prove live tile-provider availability, browser WebGL support, or production CSP/proxy parity; rendered browser QA remains required before claiming visual map parity.
 
@@ -383,7 +389,7 @@ git diff --check
 
 ## Tenant Registration Auto-Accept Smoke
 
-Use these checks when changing company registration, tenant provisioning, auth login handoff, public registration rate limits, or `TENANT_REGISTRATION_APPROVAL_MODE`.
+Use these checks when changing public company registration, tenant provisioning, auth login handoff, public registration rate limits, admin-assisted tenant provisioning, or `TENANT_REGISTRATION_APPROVAL_MODE`.
 
 Targeted backend suites:
 ```bash
@@ -393,6 +399,11 @@ npm --prefix backend test -- --runTestsByPath tests/registerCompanyRequestUseCas
 Tenant provisioning/model graph suites:
 ```bash
 npm --prefix backend test -- --runTestsByPath tests/tenantModelFactory.contract.test.js tests/tenantProvisioning.test.js
+```
+
+Platform-admin assisted provisioning suites:
+```bash
+npm --prefix backend test -- --runTestsByPath tests/adminAssistedProvisioningUseCase.test.js tests/adminAssistedProvisioningRoutes.contract.test.js
 ```
 
 Fresh-schema proof:

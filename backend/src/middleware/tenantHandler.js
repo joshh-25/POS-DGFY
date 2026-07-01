@@ -98,7 +98,10 @@ const isGlobalDgfyAccountOtpRequest = (req, path) => (
     && String(req.body?.purpose || '').trim() === 'dgfy_account_verification'
 );
 
-const isPublicDgfyAccountRoute = (path) => /^\/api\/v1\/dgfy\/auth\/(register|login|password-reset\/request|password-reset\/complete)\b/i.test(path);
+const isDgfyTenantMembershipBridgeRequest = (req, path) => (
+    /^\/api\/v1\/dgfy\/account\b/i.test(path)
+    && String(req.headers?.['x-dgfy-auth-mode'] || '').trim().toLowerCase() === 'tenant_membership'
+);
 
 export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = null } = {}) => {
     if (companyToken) {
@@ -124,12 +127,24 @@ export const tenantHandler = async (req, res, next) => {
             || path === '/api/v1/commerce-payments/paymongo/webhook';
         const isStrictAuthRoute = STRICT_AUTH_ROUTE_PATTERN.test(path);
         const isGlobalDgfyOtpRequest = isGlobalDgfyAccountOtpRequest(req, path);
-        const ignoreTenantContextCookie = isGlobalDgfyOtpRequest || isPublicDgfyAccountRoute(path);
+
+        if (isGlobalDgfyOtpRequest) {
+            delete req.headers['x-company-token'];
+            return runDefaultTenantContext(next, {
+                tenantContextFailure: 'dgfy_global_otp'
+            });
+        }
 
         // 1. Identification Strategy:
         // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
         let companyToken = req.headers['x-company-token'];
-        if (!companyToken && isStrictAuthRoute && !ignoreTenantContextCookie) {
+        if (!companyToken && isStrictAuthRoute) {
+            companyToken = getTenantContextToken(req);
+            if (companyToken) {
+                req.headers['x-company-token'] = companyToken;
+            }
+        }
+        if (!companyToken && isDgfyTenantMembershipBridgeRequest(req, path)) {
             companyToken = getTenantContextToken(req);
             if (companyToken) {
                 req.headers['x-company-token'] = companyToken;
@@ -198,7 +213,7 @@ export const tenantHandler = async (req, res, next) => {
             } else {
                 logger.debug('[TenantHandler] No company token for webhook route (expected).');
             }
-            if (isStrictAuthRoute && !isGlobalDgfyOtpRequest) {
+            if (isStrictAuthRoute) {
                 return sendTenantContextError(
                     res,
                     400,

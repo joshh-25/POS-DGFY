@@ -5,6 +5,9 @@ const mockListTenantsUseCase = jest.fn();
 const mockApproveTenantUseCase = jest.fn();
 const mockRejectTenantUseCase = jest.fn();
 const mockProvisionNewTenantUseCase = jest.fn();
+const mockCreateAdminProvisionedAccountAndTenantUseCase = jest.fn();
+const mockCreateAdminProvisionedTenantUseCase = jest.fn();
+const mockAssignTenantOwnerByAdminUseCase = jest.fn();
 const mockGetPricingSettingsUseCase = jest.fn();
 const mockUpdatePricingSettingsUseCase = jest.fn();
 const mockUpdateTenantUseCase = jest.fn();
@@ -25,6 +28,9 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   approveTenantUseCase: mockApproveTenantUseCase,
   rejectTenantUseCase: mockRejectTenantUseCase,
   provisionNewTenantUseCase: mockProvisionNewTenantUseCase,
+  createAdminProvisionedAccountAndTenantUseCase: mockCreateAdminProvisionedAccountAndTenantUseCase,
+  createAdminProvisionedTenantUseCase: mockCreateAdminProvisionedTenantUseCase,
+  assignTenantOwnerByAdminUseCase: mockAssignTenantOwnerByAdminUseCase,
   getPricingSettingsUseCase: mockGetPricingSettingsUseCase,
   updatePricingSettingsUseCase: mockUpdatePricingSettingsUseCase,
   updateTenantUseCase: mockUpdateTenantUseCase,
@@ -64,6 +70,8 @@ let updateTenant;
 let getTenantPosMetadata;
 let updateTenantPosMetadata;
 let listTenantPosMetadataAuditLogs;
+let createAdminProvisionedTenant;
+let createAdminProvisionedAccountAndTenant;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/tenants/controllers/adminTenantHandlers.js');
@@ -76,6 +84,8 @@ beforeAll(async () => {
   getTenantPosMetadata = mod.getTenantPosMetadata;
   updateTenantPosMetadata = mod.updateTenantPosMetadata;
   listTenantPosMetadataAuditLogs = mod.listTenantPosMetadataAuditLogs;
+  createAdminProvisionedTenant = mod.createAdminProvisionedTenant;
+  createAdminProvisionedAccountAndTenant = mod.createAdminProvisionedAccountAndTenant;
 });
 
 const createRes = () => {
@@ -116,6 +126,25 @@ describe('adminTenantHandlers transport contracts', () => {
       surface: 'admin_tenants',
       action: 'list_tenants'
     }));
+  });
+
+  it.each([
+    ['company only', () => createAdminProvisionedTenant, mockCreateAdminProvisionedTenantUseCase],
+    ['account and company', () => createAdminProvisionedAccountAndTenant, mockCreateAdminProvisionedAccountAndTenantUseCase]
+  ])('extends the synchronous provisioning timeout for %s', async (_label, getHandler, useCase) => {
+    useCase.mockResolvedValue({ success: true, data: { statusCode: 201, payload: { success: true } } });
+    const req = {
+      body: { reason: 'Local provisioning' },
+      admin: { username: 'platform-admin' },
+      headers: {},
+      setTimeout: jest.fn()
+    };
+    const res = { ...createRes(), setTimeout: jest.fn() };
+
+    await getHandler()(req, res);
+
+    expect(req.setTimeout).toHaveBeenCalledWith(180000);
+    expect(res.setTimeout).toHaveBeenCalledWith(180000);
   });
 
   it('approveTenant keeps stable success payload', async () => {

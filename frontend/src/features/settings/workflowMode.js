@@ -201,6 +201,16 @@ export const HOSPITALITY_ONLY_ROUTE_PREFIXES = Object.freeze([
   '/hospitality'
 ]);
 
+export const MODE_SENSITIVE_NAV_PAGES = Object.freeze(Array.from(new Set([
+  ...MSME_HIDDEN_NAV_PAGES,
+  ...SERVICES_HIDDEN_NAV_PAGES,
+  ...FNB_HIDDEN_NAV_PAGES,
+  ...HOSPITALITY_HIDDEN_NAV_PAGES,
+  ...SERVICES_ONLY_NAV_PAGES,
+  ...FNB_ONLY_NAV_PAGES,
+  ...HOSPITALITY_ONLY_NAV_PAGES
+])));
+
 export const normalizeWorkflowMode = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   if (WORKFLOW_MODE_VALUES.includes(normalized)) {
@@ -237,6 +247,10 @@ export const modeHasCapability = (value, capability) => {
   const capabilities = WORKFLOW_MODE_CAPABILITIES[mode] || [];
   return capabilities.includes(String(capability || '').trim());
 };
+
+export const isWorkflowPageModeSensitive = (pageName) => (
+  MODE_SENSITIVE_NAV_PAGES.includes(String(pageName || '').trim())
+);
 
 export const isWorkflowPageVisible = (pageName, workflowMode) => {
   const normalizedPage = String(pageName || '').trim();

@@ -170,6 +170,17 @@ const getCachedSettingsForTenant = async () => {
     return settings;
 };
 
+/**
+ * Resolve the current workflow mode using the tenant-scoped settings cache (5-minute TTL).
+ * Exported for use by the inventory module composition root to avoid redundant uncached
+ * settings reads per item during bulk operations such as CSV batch imports.
+ */
+export const resolveCachedWorkflowMode = async () => {
+    const settings = await getCachedSettingsForTenant();
+    const configuredMode = settings?.[WORKFLOW_MODE_SETTING_KEY]?.value;
+    return normalizeWorkflowMode(configuredMode ?? DEFAULT_WORKFLOW_MODE);
+};
+
 const calculateThresholds = async (maxCapacity) => {
     const settings = await getCachedSettingsForTenant();
 

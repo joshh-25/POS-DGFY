@@ -8,7 +8,8 @@ import {
     validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
 
-const STOREFRONT_ASSET_TYPES = Object.freeze(['cover', 'profile']);
+const STOREFRONT_ASSET_TYPES = Object.freeze(['cover', 'profile', 'gallery']);
+const PERSISTED_STOREFRONT_ASSET_TYPES = Object.freeze(['cover', 'profile']);
 const STORE_ASSET_TYPE_TO_SETTING_KEYS = Object.freeze({
     cover: {
         url: 'storefront_cover_image_url',
@@ -23,6 +24,22 @@ const STOREFRONT_ASSET_MAX_BYTES = 5 * 1024 * 1024;
 
 const normalizeAssetType = (assetType) => String(assetType || '').trim().toLowerCase();
 const getAssetKeys = (assetType) => STORE_ASSET_TYPE_TO_SETTING_KEYS[normalizeAssetType(assetType)] || null;
+const isSupportedAssetType = (assetType) => STOREFRONT_ASSET_TYPES.includes(normalizeAssetType(assetType));
+const getImageValidationMessage = (validation = {}) => {
+    switch (validation.reason) {
+        case 'file_too_large':
+            return 'Storefront images must be 5 MB or smaller.';
+        case 'unsupported_reported_mime':
+            return 'Only PNG, JPEG, GIF, WebP, BMP, or AVIF images are allowed for storefront assets.';
+        case 'unsupported_file_signature':
+        case 'mime_signature_mismatch':
+            return 'The uploaded file does not match a supported image format.';
+        case 'missing_file_path':
+            return 'image file is required';
+        default:
+            return 'Only image files are allowed for storefront assets.';
+    }
+};
 
 export const buildUploadStorefrontAssetUseCase = ({
     settingsRepository,
@@ -32,7 +49,7 @@ export const buildUploadStorefrontAssetUseCase = ({
     return async ({ assetType, file }) => {
         const normalizedAssetType = normalizeAssetType(assetType);
         const assetKeys = getAssetKeys(normalizedAssetType);
-        if (!assetKeys) {
+        if (!isSupportedAssetType(normalizedAssetType)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 `asset_type must be one of: ${STOREFRONT_ASSET_TYPES.join(', ')}`,
@@ -63,40 +80,44 @@ export const buildUploadStorefrontAssetUseCase = ({
                 });
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Only image files are allowed for storefront assets.',
+                    getImageValidationMessage(fileValidation),
                     { statusCode: 422 }
                 );
             }
 
-            const existing = await settingsRepository.getSettingsByKeys([assetKeys.path, assetKeys.url]);
-            const existingPath = String(existing?.[assetKeys.path]?.value || '').trim();
             const stored = await storefrontAssetStorage.store({
                 assetType: normalizedAssetType,
                 originalName: file.originalname,
                 tempPath: file.path
             });
 
-            try {
-                await settingsRepository.updateSettings({
-                    [assetKeys.path]: stored.path,
-                    [assetKeys.url]: stored.url
-                });
-            } catch (error) {
-                await storefrontAssetStorage.remove({ path: stored.path });
-                throw error;
-            }
+            if (assetKeys) {
+                const existing = await settingsRepository.getSettingsByKeys([assetKeys.path, assetKeys.url]);
+                const existingPath = String(existing?.[assetKeys.path]?.value || '').trim();
 
-            if (existingPath) {
                 try {
-                    await storefrontAssetStorage.remove({ path: existingPath });
-                } catch {
-                    // best-effort cleanup of superseded asset
+                    await settingsRepository.updateSettings({
+                        [assetKeys.path]: stored.path,
+                        [assetKeys.url]: stored.url
+                    });
+                } catch (error) {
+                    await storefrontAssetStorage.remove({ path: stored.path });
+                    throw error;
+                }
+
+                if (existingPath) {
+                    try {
+                        await storefrontAssetStorage.remove({ path: existingPath });
+                    } catch {
+                        // best-effort cleanup of superseded asset
+                    }
                 }
             }
 
             return ok({
                 asset_type: normalizedAssetType,
-                image_url: stored.url
+                image_url: stored.url,
+                path: stored.path
             });
         } catch (error) {
             if (file?.path) {
@@ -115,10 +136,10 @@ export const buildDeleteStorefrontAssetUseCase = ({ settingsRepository, storefro
     return async ({ assetType }) => {
         const normalizedAssetType = normalizeAssetType(assetType);
         const assetKeys = getAssetKeys(normalizedAssetType);
-        if (!assetKeys) {
+        if (!PERSISTED_STOREFRONT_ASSET_TYPES.includes(normalizedAssetType) || !assetKeys) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
-                `asset_type must be one of: ${STOREFRONT_ASSET_TYPES.join(', ')}`,
+                `asset_type must be one of: ${PERSISTED_STOREFRONT_ASSET_TYPES.join(', ')}`,
                 { statusCode: 422 }
             ));
         }

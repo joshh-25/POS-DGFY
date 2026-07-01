@@ -22,6 +22,9 @@ Current frontend surfaces:
 
 ## Local Development Setup
 
+For the complete local startup command set and port map, see
+`docs/setup/LOCAL_APP_RUNBOOK.md`.
+
 ```bash
 # Clone repository
 git clone <repo-url>
@@ -369,6 +372,7 @@ taskkill /PID <PID> /F  # Windows
 
 **Auth Lookup returns 429 (Rate limit exceeded):**
 - `POST /api/v1/auth/lookup` is intentionally rate-limited.
+- The default retry window is 5 minutes; tune it with `RATE_LIMIT_LOOKUP_WINDOW_MS` when a different operator wait time is required.
 - Avoid rapid repeated lookup calls in smoke scripts.
 - Prefer `GET /api/v1/auth/validate-token/:token` for non-rate-limited tenant token smoke checks.
 

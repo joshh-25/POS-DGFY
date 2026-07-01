@@ -2,6 +2,9 @@
 
 This guide will help you run the SKU Inventory Manager project locally.
 
+For the complete local port map and multi-surface startup runbook, see
+`docs/setup/LOCAL_APP_RUNBOOK.md`.
+
 ## Prerequisites Check
 
 Before starting, ensure:
@@ -217,9 +220,13 @@ To stop the application:
 
 | Service | Port | URL | Status Check |
 |---------|------|-----|--------------|
-| Frontend | 5173 | http://localhost:5173 | Open in browser |
+| IMS/SKUpervisor Frontend | 5173 | http://localhost:5173 | Open in browser |
+| POS Frontend | 5174 | http://localhost:5174 | Open in browser |
+| Storefront Frontend | 5175 | http://localhost:5175/map-dgfy | Open in browser |
 | Backend API | 5000 | http://localhost:5000/api/v1 | http://localhost:5000/health |
+| POS Device Bridge | 5101 | http://127.0.0.1:5101 | http://127.0.0.1:5101/health |
 | MySQL | 3306 | localhost:3306 | XAMPP Control Panel |
+| Redis | 6379 | redis://localhost:6379 | Redis CLI/service status |
 | phpMyAdmin | 80 | http://localhost/phpmyadmin | Open in browser |
 
 ---

@@ -6,12 +6,16 @@ import { buildFinalizePurchaseOrderUseCase } from './usecases/finalizePurchaseOr
 import { buildReceivePurchaseOrderUseCase } from './usecases/receivePurchaseOrderUseCase.js';
 import { buildArchivePurchaseOrderUseCase } from './usecases/archivePurchaseOrderUseCase.js';
 import { buildRestorePurchaseOrderUseCase } from './usecases/restorePurchaseOrderUseCase.js';
+import { inventoryStockCommandService } from '../inventory/index.js';
 
 export const getPurchaseOrdersUseCase = buildGetPurchaseOrdersUseCase({ purchaseOrderRepository });
 export const getPurchaseOrderByIdUseCase = buildGetPurchaseOrderByIdUseCase({ purchaseOrderRepository });
 export const createPurchaseOrderUseCase = buildCreatePurchaseOrderUseCase({ purchaseOrderRepository });
 export const finalizePurchaseOrderUseCase = buildFinalizePurchaseOrderUseCase({ purchaseOrderRepository });
-export const receivePurchaseOrderUseCase = buildReceivePurchaseOrderUseCase({ purchaseOrderRepository });
+export const receivePurchaseOrderUseCase = buildReceivePurchaseOrderUseCase({
+  purchaseOrderRepository,
+  inventoryCommandService: inventoryStockCommandService
+});
 export const archivePurchaseOrderUseCase = buildArchivePurchaseOrderUseCase({ purchaseOrderRepository });
 export const restorePurchaseOrderUseCase = buildRestorePurchaseOrderUseCase({ purchaseOrderRepository });
 

@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
 
@@ -78,6 +78,7 @@ const makeErrorResponse = (message = 'DGFY account authentication is required.',
 describe('discovery header customer account actions', () => {
   let fetchMock;
   let dgfyMeResponse;
+  let handoffExchangeResponse;
   let locationUrl;
   let mockLocation;
 
@@ -124,8 +125,10 @@ describe('discovery header customer account actions', () => {
     });
     window.history.pushState({}, '', '/');
     window.localStorage.clear();
+    window.sessionStorage.clear();
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
     dgfyMeResponse = null;
+    handoffExchangeResponse = null;
     fetchMock = vi.fn(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -155,6 +158,17 @@ describe('discovery header customer account actions', () => {
       }
       if (normalized.includes('/api/v1/dgfy/auth/me')) {
         return dgfyMeResponse || makeErrorResponse();
+      }
+      if (normalized.includes('/api/v1/dgfy/auth/handoff/exchange')) {
+        return handoffExchangeResponse || makeJsonResponse({
+          account: {
+            id: 'acct-handoff',
+            first_name: 'Handoff',
+            last_name: 'Customer',
+            email: 'handoff@example.com'
+          },
+          token: 'exchanged-token'
+        });
       }
       if (normalized.includes('/api/v1/dgfy/customer/dashboard')) {
         return makeJsonResponse({
@@ -200,12 +214,14 @@ describe('discovery header customer account actions', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
-
     await waitFor(() => {
       expect(window.location.pathname).toBe('/dgfy/auth');
-      expect(window.location.search).toContain('intent=customer');
-      expect(window.location.search).toContain('mode=sign-in');
     });
+    const authParams = new URLSearchParams(window.location.search);
+    expect(authParams.get('intent')).toBe('customer');
+    expect(authParams.get('mode')).toBe('sign-in');
+    expect(authParams.get('return_to')).toContain('dgfy_account=1');
+    expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
   }, 10000);
 
   it('switches discovery header to My Account when a DGFY customer session exists', async () => {
@@ -270,6 +286,90 @@ describe('discovery header customer account actions', () => {
     expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe('');
   }, 10000);
 
+  it('does not rehydrate the previous DGFY account after explicit sign-out', async () => {
+    window.sessionStorage.setItem('dgfy_customer_explicit_sign_out', String(Date.now()));
+    window.sessionStorage.setItem('dgfy_customer_last_signed_out_email', 'old@example.com');
+    dgfyMeResponse = makeJsonResponse({
+      account: {
+        id: 'acct-old',
+        first_name: 'Old',
+        last_name: 'Customer',
+        email: 'old@example.com'
+      }
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /log in \/ sign up/i })).toBeTruthy();
+    });
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/v1/dgfy/auth/me'))).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/dgfy/auth');
+    });
+    const authParams = new URLSearchParams(window.location.search);
+    expect(authParams.get('intent')).toBe('customer');
+    expect(authParams.get('mode')).toBe('sign-in');
+    expect(authParams.get('reason')).toBe('signed-out');
+    expect(authParams.get('email')).toBe('old@example.com');
+    expect(authParams.get('return_to')).toContain('dgfy_account=1');
+    expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
+  }, 10000);
+
+  it('does not let a stale stored DGFY token block cookie-backed rehydration', async () => {
+    window.sessionStorage.setItem('dgfy_customer_account_token', 'stale-dgfy-token');
+    dgfyMeResponse = makeJsonResponse({
+      account: {
+        id: 'acct-cookie',
+        first_name: 'Cookie',
+        last_name: 'Customer',
+        email: 'cookie@example.com'
+      }
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /cookie/i })).toBeTruthy();
+    });
+
+    const meCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/dgfy/auth/me'));
+    expect(meCall).toBeTruthy();
+    expect(meCall[1]?.headers?.Authorization).toBeUndefined();
+    expect(window.sessionStorage.getItem('dgfy_customer_account_token')).toBeNull();
+  }, 10000);
+
+  it('exchanges a storefront handoff token before loading the signed-in account state', async () => {
+    window.history.pushState({}, '', '/map-dgfy/account?handoff_token=one-time-handoff&dgfy_account=1');
+    dgfyMeResponse = makeJsonResponse({
+      account: {
+        id: 'acct-handoff',
+        first_name: 'Handoff',
+        last_name: 'Customer',
+        email: 'handoff@example.com'
+      }
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/v1/dgfy/auth/handoff/exchange'))).toBe(true);
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/v1/dgfy/auth/me'))).toBe(true);
+    });
+
+    const exchangeCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/dgfy/auth/handoff/exchange'));
+    expect(exchangeCall).toBeTruthy();
+    expect(exchangeCall[1]?.method).toBe('POST');
+    expect(JSON.parse(exchangeCall[1]?.body || '{}')).toEqual({
+      handoff_token: 'one-time-handoff',
+      soft_fail: true
+    });
+    expect(window.location.search).not.toContain('handoff_token');
+  }, 10000);
+
   it('rehydrates the signed-in discovery account surface from a query return without using handoff exchange', async () => {
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-handoff-session';
     window.history.pushState({}, '', '/map-dgfy?dgfy_account=1');
@@ -289,7 +389,7 @@ describe('discovery header customer account actions', () => {
       expect(screen.getByRole('button', { name: /handoff/i })).toBeTruthy();
     });
 
-    expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe('dgfy-handoff-session');
+    expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe('');
     expect(window.location.pathname).toBe('/map-dgfy');
     expect(window.location.search).not.toContain('dgfy_account');
 

@@ -3,8 +3,6 @@ const { URL } = require('url');
 const playwright = require('../backend/node_modules/playwright');
 
 const baseUrl = String(process.env.POS_UI_BASE_URL || 'http://localhost:5174').replace(/\/+$/, '');
-const terminalUrl = `${baseUrl}/#/terminal`;
-const salesUrl = `${baseUrl}/#/sales?source=pos-smoke`;
 const expectedSkupervisorOrigin = String(process.env.POS_UI_EXPECT_SKUPERVISOR_ORIGIN || '').trim()
   || (() => {
     const parsed = new URL(baseUrl);
@@ -37,14 +35,13 @@ const collectTerminalEvidence = async (browser, viewport) => {
     }
   });
 
-  await page.goto(terminalUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-  await page.getByRole('heading', { name: 'Terminal Login Required' }).waitFor({ timeout: 15000 });
+  await page.goto(`${baseUrl}/terminal`, { waitUntil: 'domcontentloaded', timeout: 20000 });
   await page.getByRole('heading', { name: 'POS Catalog' }).waitFor({ timeout: 15000 });
   await page.getByRole('heading', { name: 'Current Sale' }).waitFor({ timeout: 15000 });
-  await page.getByRole('button', { name: 'Sign in' }).waitFor({ timeout: 15000 });
+  await page.getByText('Terminal Login Required').waitFor({ timeout: 15000 });
   const bodyText = await page.locator('body').innerText({ timeout: 10000 });
-  await page.getByLabel('DGFY Email').fill(`cashier-${viewport.name}@example.test`);
-  await page.getByLabel('DGFY Password').fill(`Password-${viewport.name}`);
+  await page.getByPlaceholder('cashier@company.com').fill(`cashier-${viewport.name}@example.test`);
+  await page.getByPlaceholder('COUNTER-01').fill(`COUNTER-${viewport.name.toUpperCase()}`);
 
   const filterButton = page.getByRole('button', { name: /filter/i });
   const lockDrawerBlocksCatalog = await filterButton.evaluate((element) => {
@@ -66,13 +63,12 @@ const collectTerminalEvidence = async (browser, viewport) => {
 
   const evidence = {
     viewport,
-    hasTerminalLogin: bodyText.includes('Terminal Login Required'),
+    hasTerminal: bodyText.includes('Terminal Login Required'),
     hasCatalog: bodyText.includes('POS Catalog'),
     hasCurrentSale: bodyText.includes('Current Sale'),
-    hasDgfyFields: bodyText.includes('DGFY Email') && bodyText.includes('DGFY Password'),
-    hasSignInAction: bodyText.includes('Sign in'),
-    loginFormEditable: (await page.getByLabel('DGFY Email').inputValue()).includes(viewport.name)
-      && (await page.getByLabel('DGFY Password').inputValue()).includes(viewport.name),
+    hasLogin: bodyText.includes('DGFY POS unlock'),
+    loginFormEditable: (await page.getByPlaceholder('cashier@company.com').inputValue()).includes(viewport.name)
+      && (await page.getByPlaceholder('COUNTER-01').inputValue()).includes(viewport.name.toUpperCase()),
     lockDrawerBlocksCatalog,
     errors: visibleConsoleErrors,
     httpErrors: unexpectedHttpErrors,
@@ -89,7 +85,7 @@ const collectSalesRedirectEvidence = async (browser) => {
   const failedRequests = [];
   page.on('requestfailed', (request) => failedRequests.push(request.url()));
   try {
-    await page.goto(salesUrl, { waitUntil: 'domcontentloaded', timeout: 8000 });
+    await page.goto(`${baseUrl}/#/sales?source=pos-smoke`, { waitUntil: 'domcontentloaded', timeout: 8000 });
     await page.waitForURL((url) => {
       const currentUrl = String(url);
       return currentUrl.startsWith(`${expectedSkupervisorOrigin}/sales`)
@@ -128,7 +124,7 @@ const run = async () => {
     const failures = [];
 
     for (const evidence of terminalEvidence) {
-      for (const key of ['hasTerminalLogin', 'hasCatalog', 'hasCurrentSale', 'hasDgfyFields', 'hasSignInAction', 'loginFormEditable', 'lockDrawerBlocksCatalog']) {
+      for (const key of ['hasTerminal', 'hasCatalog', 'hasCurrentSale', 'hasLogin', 'loginFormEditable', 'lockDrawerBlocksCatalog']) {
         if (!evidence[key]) {
           failures.push(`${evidence.viewport.name}.${key}`);
         }
@@ -145,7 +141,7 @@ const run = async () => {
     }
 
     console.log('[pos-terminal-ui-smoke] evidence');
-    console.log(JSON.stringify({ baseUrl, terminalUrl, salesUrl, terminalEvidence, salesRedirect }, null, 2));
+    console.log(JSON.stringify({ baseUrl, terminalEvidence, salesRedirect }, null, 2));
 
     if (failures.length > 0) {
       console.error(`[pos-terminal-ui-smoke] FAIL ${failures.join(', ')}`);

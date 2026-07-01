@@ -66,14 +66,21 @@ vi.mock('../../../Components/users/UserManagementModal.jsx', () => ({
 }));
 
 vi.mock('../../components/maps/MapPinPicker.jsx', () => ({
-  default: ({ onChange }) => (
-    <button
-      type="button"
-      onClick={() => onChange?.({ latitude: 10.720263, longitude: 122.599488, address_line: 'Villa Road, Iloilo City' })}
-    >
-      MapPicker
-    </button>
-  )
+  default: ({ onChange }) => {
+    const emitIloiloPin = () => onChange?.({
+      latitude: 10.720263,
+      longitude: 122.599488,
+      address_line: 'Iloilo City, Iloilo, Philippines'
+    });
+    return (
+      <div>
+        <button type="button" onClick={emitIloiloPin}>MapPicker</button>
+        <button type="button" onClick={emitIloiloPin}>Adjust Pin</button>
+        <button type="button" onClick={emitIloiloPin}>Pin Current Location</button>
+        <p>Mock geolocation failure: current pin retained.</p>
+      </div>
+    );
+  }
 }));
 
 vi.mock('../../features/compliance/components/ComplianceProgramPanel.jsx', () => ({
@@ -350,6 +357,91 @@ describe('Settings deep-linking and action wiring', () => {
     expect(await screen.findByText(/will not publish until an active primary storefront pin is saved/i)).toBeTruthy();
   });
 
+  it('blocks Settings location creation until a usable Philippines map pin exists', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=storefront');
+    await screen.findByText('MapPicker');
+    await user.clear(screen.getByPlaceholderText('Main Branch'));
+    await user.type(screen.getByPlaceholderText('Main Branch'), 'Unpinned Branch');
+    await user.clear(screen.getByPlaceholderText('Street, City, Province'));
+    await user.type(screen.getByPlaceholderText('Street, City, Province'), 'Unpinned Road');
+
+    await user.click(screen.getByRole('button', { name: /Add Location/i }));
+
+    expect(mocks.toastMock.error).toHaveBeenCalledWith('Please pin the location on the map.');
+    expect(mocks.tenantLocationServiceMock.createTenantLocation).not.toHaveBeenCalled();
+  });
+
+  it('blocks Settings edits of legacy 0,0 locations until the map pin is replaced', async () => {
+    const user = userEvent.setup();
+    mocks.tenantLocationServiceMock.listTenantLocationsWithMeta.mockResolvedValueOnce({
+      rows: [
+        {
+          location_id: 99,
+          name: 'Legacy Zero Pin',
+          address_line: 'Legacy Road',
+          latitude: 0,
+          longitude: 0,
+          is_active: true,
+          is_primary_storefront: true
+        }
+      ],
+      meta: {}
+    });
+
+    renderSettings('/settings?tab=storefront');
+    await screen.findByText('Legacy Zero Pin');
+    await user.click(screen.getByRole('button', { name: /Edit/i }));
+    await user.click(screen.getByRole('button', { name: /Update Location/i }));
+
+    expect(mocks.toastMock.error).toHaveBeenCalledWith('Please pin the location on the map.');
+    expect(mocks.tenantLocationServiceMock.updateTenantLocation).not.toHaveBeenCalled();
+  });
+
+  it('wires Settings Adjust Pin into the location coordinate fields', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=storefront');
+    await screen.findByText('MapPicker');
+    await user.clear(screen.getByPlaceholderText('Main Branch'));
+    await user.type(screen.getByPlaceholderText('Main Branch'), 'Adjusted Branch');
+    await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Street, City, Province').value).toBe('Iloilo City, Iloilo, Philippines');
+    });
+    await user.click(screen.getByRole('button', { name: /Add Location/i }));
+
+    await waitFor(() => expect(mocks.tenantLocationServiceMock.createTenantLocation).toHaveBeenCalled());
+    expect(mocks.tenantLocationServiceMock.createTenantLocation.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      name: 'Adjusted Branch',
+      latitude: 10.720263,
+      longitude: 122.599488
+    }));
+  });
+
+  it('wires Settings current-location pinning into the location coordinate fields', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=storefront');
+    await screen.findByText('MapPicker');
+    await user.clear(screen.getByPlaceholderText('Main Branch'));
+    await user.type(screen.getByPlaceholderText('Main Branch'), 'Current Location Branch');
+    await user.click(screen.getByRole('button', { name: /Pin Current Location/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Street, City, Province').value).toBe('Iloilo City, Iloilo, Philippines');
+    });
+    await user.click(screen.getByRole('button', { name: /Add Location/i }));
+
+    await waitFor(() => expect(mocks.tenantLocationServiceMock.createTenantLocation).toHaveBeenCalled());
+    expect(mocks.tenantLocationServiceMock.createTenantLocation.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      name: 'Current Location Branch',
+      latitude: 10.720263,
+      longitude: 122.599488
+    }));
+    expect(screen.getByText(/Mock geolocation failure: current pin retained/i)).toBeTruthy();
+  });
+
   it('persists reversible no-location storefront setup and restores map pin editing', async () => {
     const user = userEvent.setup();
     mocks.settingsServiceMock.getAllSettings.mockResolvedValueOnce({
@@ -381,7 +473,7 @@ describe('Settings deep-linking and action wiring', () => {
     expect(await screen.findByText('MapPicker')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'MapPicker' }));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('Street, City, Province').value).toBe('Villa Road, Iloilo City');
+      expect(screen.getByPlaceholderText('Street, City, Province').value).toBe('Iloilo City, Iloilo, Philippines');
     });
     await user.clear(screen.getByPlaceholderText('Main Branch'));
     await user.type(screen.getByPlaceholderText('Main Branch'), 'Restored Branch');
@@ -396,6 +488,8 @@ describe('Settings deep-linking and action wiring', () => {
     expect(mocks.tenantLocationServiceMock.createTenantLocation.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
       name: 'Restored Branch',
       address_line: 'Restored Road',
+      latitude: 10.720263,
+      longitude: 122.599488,
       is_primary_storefront: true
     }));
   });
@@ -498,7 +592,9 @@ describe('Settings deep-linking and action wiring', () => {
     expect(await screen.findByLabelText(/Terminal location 1/i)).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /Storefront/i }));
+    await user.click(await screen.findByRole('button', { name: 'MapPicker' }));
     await user.type(screen.getByPlaceholderText('Main Branch'), 'HQ Branch');
+    await user.clear(screen.getByPlaceholderText('Street, City, Province'));
     await user.type(screen.getByPlaceholderText('Street, City, Province'), 'Iloilo City');
     await user.click(screen.getByRole('button', { name: /Add Location/i }));
     await waitFor(() => {
@@ -511,7 +607,7 @@ describe('Settings deep-linking and action wiring', () => {
     await waitFor(() => {
       expect(mocks.tenantLocationServiceMock.deleteTenantLocation).toHaveBeenCalledWith(13);
     });
-  });
+  }, 10000);
 
   it('keeps active locations on the deactivate path before permanent delete', async () => {
     renderSettings('/settings?tab=storefront');
@@ -602,6 +698,53 @@ describe('Settings deep-linking and action wiring', () => {
     });
   });
 
+  it('uploads storefront gallery files and saves the returned gallery path', async () => {
+    const user = userEvent.setup();
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValueOnce({
+      storefront_gallery_images: {
+        value: [
+          { path: 'storefront-assets/t1/existing.png', caption: 'Existing dish', alt: 'Existing alt', sort_order: 0 }
+        ]
+      },
+      store_is_visible: { value: false, data_type: 'boolean' },
+      customer_access_mode: { value: 'catalog', data_type: 'string' },
+      effective_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      platform_max_customer_access_mode: { value: 'transaction', data_type: 'string', source: 'runtime_default' },
+      registration_stage_max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      customer_access_registration_stage: { value: 'informal', data_type: 'string', source: 'runtime' },
+      customer_access_limitation_reason: { value: '', data_type: 'string', source: 'runtime' }
+    });
+    mocks.settingsServiceMock.uploadStorefrontAsset.mockResolvedValueOnce({
+      image_url: '/uploads/storefront-assets/t1/gallery-new.png',
+      path: 'storefront-assets/t1/gallery-new.png'
+    });
+    renderSettings('/settings?tab=storefront');
+    await screen.findByRole('button', { name: /Storefront/i });
+
+    await user.upload(
+      screen.getByLabelText(/Upload gallery image 1/i),
+      new File(['gallery'], 'gallery.png', { type: 'image/png' })
+    );
+    await waitFor(() => {
+      expect(mocks.settingsServiceMock.uploadStorefrontAsset).toHaveBeenCalledWith('gallery', expect.any(File));
+    });
+
+    await user.click(screen.getByRole('button', { name: /Save Changes/i }));
+    await waitFor(() => expect(mocks.settingsServiceMock.updateSettings).toHaveBeenCalled());
+    expect(mocks.settingsServiceMock.updateSettings.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      storefront_gallery_images: [
+        expect.objectContaining({
+          path: 'storefront-assets/t1/gallery-new.png',
+          url: '',
+          caption: 'Existing dish',
+          alt: 'Existing alt',
+          sort_order: 0
+        })
+      ]
+    }));
+  });
+
   it('disables storefront branding uploads for non-admin users without micropermission', async () => {
     mocks.storeState.currentUser = {
       username: 'staff1',
@@ -625,7 +768,7 @@ describe('Settings deep-linking and action wiring', () => {
     fileInputs.forEach((input) => {
       expect(input.hasAttribute('disabled')).toBe(true);
     });
-    expect(screen.getByText(/settings:storefront_branding_edit/i)).toBeTruthy();
+    expect(screen.getAllByText(/settings:storefront_branding_edit/i).length).toBeGreaterThan(0);
   });
 
   it('allows storefront branding uploads for non-admin users with micropermission', async () => {

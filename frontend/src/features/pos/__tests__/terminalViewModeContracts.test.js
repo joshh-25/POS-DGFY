@@ -185,9 +185,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('shiftOpeningModalOpen');
     expect(terminalPageContent).toContain('handleShiftOpeningModalOpenChange');
     expect(terminalPageContent).toContain('handleShiftOpeningModalSubmit');
+    expect(terminalPageContent).toContain('handleShiftOpeningModalLock');
     expect(terminalPageContent).toContain('<Dialog open={shiftOpeningModalOpen}');
     expect(terminalPageContent).toContain('canSubmitOpenShift');
     expect(terminalPageContent).toContain('required');
+    expect(terminalPageContent).toContain('Lock Terminal');
+    expect(terminalPageContent).toContain('Terminal locked. Unlock again when you are ready to open a shift.');
     expect(terminalPageContent).not.toContain('openingFloatAmount: configuredPettyCash.toFixed(2)');
     expect(terminalPageContent).toContain('No open shift is active. Enter opening cash to start a new shift before using POS.');
     expect(terminalPageContent).toContain('You cannot use the POS because the shift is closed.');
@@ -259,6 +262,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('aria-label="Close receipt preview"');
     expect(posCheckoutTerminalContent).toContain("onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}");
     expect(posCheckoutTerminalContent).toContain("{receiptPrinting ? 'Printing...' : 'Print'}");
+    expect(posCheckoutTerminalContent).toContain('pos-receipt-print-footer flex shrink-0');
     expect(posCheckoutTerminalContent).not.toContain('<X className="h-5 w-5" />\n                                </button>\n                            </div>\n                        </div>\n                        <div className="pos-receipt-print-content');
   });
 

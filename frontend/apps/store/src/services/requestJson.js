@@ -6,7 +6,7 @@ const buildRequestError = (message, meta = {}) => {
   return error;
 };
 
-const withApiOrigin = (url) => {
+export const withApiOrigin = (url) => {
   const raw = String(url || '').trim();
   if (!raw) return raw;
   if (/^https?:\/\//i.test(raw)) return raw;
@@ -14,7 +14,27 @@ const withApiOrigin = (url) => {
   return new URL(raw, window.location.origin).toString();
 };
 
-export const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', cache = 'default' } = {}) => {
+const resolveStoreContextHeaders = ({ storeSlug, selectedStore, selectedLocationId } = {}) => {
+  const headers = {};
+  const explicitStoreSlug = String(storeSlug || '').trim();
+  if (explicitStoreSlug) headers['x-store-slug'] = explicitStoreSlug;
+  if (selectedStore?.slug) headers['x-store-slug'] = selectedStore.slug;
+  if (selectedStore?.store_slug) headers['x-store-slug'] = selectedStore.store_slug;
+  if (selectedStore?.tenant_slug) headers['x-tenant-slug'] = selectedStore.tenant_slug;
+  if (selectedStore?.tenant_id) headers['x-tenant-id'] = String(selectedStore.tenant_id);
+  if (selectedLocationId) headers['x-location-id'] = String(selectedLocationId);
+  return headers;
+};
+
+export const requestJson = async (url, {
+  method = 'GET',
+  body,
+  storeSlug,
+  selectedStore = null,
+  selectedLocationId = null,
+  authToken = '',
+  cache = 'default'
+} = {}) => {
   let response;
   try {
     const token = String(authToken || '').trim();
@@ -26,7 +46,7 @@ export const requestJson = async (url, { method = 'GET', body, storeSlug, authTo
       cache,
       headers: {
         'Content-Type': 'application/json',
-        ...(storeSlug ? { 'x-store-slug': storeSlug } : {}),
+        ...resolveStoreContextHeaders({ storeSlug, selectedStore, selectedLocationId }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(csrfToken ? { 'x-csrf-token': csrfToken } : {})
       },

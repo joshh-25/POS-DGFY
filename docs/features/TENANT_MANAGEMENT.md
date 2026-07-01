@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-27
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -35,6 +35,17 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 - **Email Mapping**: Manual pending registrations create the founder email-to-tenant mapping at registration time so lookup can show pending status. Auto-provisioned registrations leave mapping creation to the provisioning path so the mapping is written only after tenant activation succeeds.
 - **Abuse Control**: Public company registration is IP rate-limited (`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` per `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` by default in production). Keep this strict because default accepted registrations create tenant databases.
 
+### Platform Admin Assisted Provisioning
+
+Platform admin can create companies and DGFY accounts for merchant onboarding without using the public self-service OTP flow. This is a privileged admin path only:
+
+- **DGFY account only**: creates an active DGFY account with `provisioning_status=admin_provisioned`, `temporary_password_active=true`, `email_verification_source=platform_admin_provisioned`, and a one-time temporary password returned only in the response. Phone remains unverified.
+- **Company only**: creates and immediately provisions the tenant database with `provisioning_source=platform_admin` and `ownership_status=unassigned`. The tenant can be configured by platform staff, but no DGFY tenant session, POS unlock, company switch, or owner action is available until a DGFY owner is assigned.
+- **DGFY + company**: creates the account, tenant, tenant-local master-admin authorization profile, explicit accepted membership, and `owner_dgfy_account_id` in the platform-admin flow.
+- **Owner handover**: platform admin may force-assign ownership to an existing active DGFY account id. Handover must create/update explicit `DgfyAccountTenantMembership` state and audit the reason; tenant settings must not edit DGFY account email or password.
+
+Public registration remains unchanged: public DGFY signup requires OTP and public company registration requires an authenticated DGFY account.
+
 ### Legacy Direct Tenant Login Grace
 
 Direct tenant-local IMS/POS login remains only as a migration grace path for accepted existing users who do not yet have an accepted DGFY membership. The default grace deadline is June 17, 2027 through `LEGACY_TENANT_LOGIN_GRACE_END=2027-06-17` and `LEGACY_TENANT_LOGIN_GRACE_ENABLED=true`. Login, current-user, and Manage Users responses expose `dgfy_link_status`, `legacy_grace_expires_at`, `dgfy_membership_id`, `dgfy_account_id`, `can_legacy_login`, and `legacy_login_block_reason` so IMS/POS can show direct DGFY-linking reminders, admins can report unlinked accounts, and owner-transfer UI can target accepted linked members.
@@ -55,7 +66,7 @@ Legacy link completion is hardened as a repairable landlord transaction after OT
     7.  Keeps approval retryable if provisioning fails before activation.
 - Approval email delivery is non-blocking after successful provisioning. If SMTP fails, the active registration response still succeeds with `email_sent=false`, and the founder can continue from the in-app confirmation page.
 - Tenant-session handoff uses the signed-in DGFY account and returned tenant identity immediately after active provisioning; the tenant master-admin row is seeded from the DGFY account during provisioning. The registration response does not return tenant auth tokens.
-- If the automatic tenant-session handoff fails after activation, the tenant remains active and the UI routes the founder to manual sign-in with DGFY email and company token prefilled.
+- If the automatic tenant-session handoff fails after activation, the tenant remains active and the company-created confirmation stays visible. The UI explains that automatic SKUpervisor session creation failed and offers the manual sign-in path with DGFY email and company token prefilled; the IMS login page is a fallback, not the normal post-registration destination.
 - Tenant schema provisioning is mode-wide. The backend clones tenant-local models from the canonical model registry into each new tenant database while excluding landlord-only models, so Services, F&B, and future modes must add tenant-local tables through the same model graph.
 - Provisioning failure cleanup is retry-safe for approval paths. If schema sync, seed data, storefront bootstrap, or email-adjacent setup fails before activation, the isolated database is dropped and the landlord tenant row is restored to a valid `pending` status instead of an out-of-enum temporary state. Future mode work must preserve this behavior.
 - After first login, the tenant master admin sees the soft-reminder onboarding flow from ADR 0013: optional storefront profile/cover photos, a primary storefront location pin, and mode-aware bulk starter item creation. Onboarding completion is independent from platform approval and does not hard-block IMS/POS access.
@@ -135,10 +146,10 @@ Capability changes require a platform-admin reason, write a landlord `tenant_adm
 
 Tenant-facing UX is reactive in-app messaging only. `TENANT_CAPABILITY_DISABLED` and `CUSTOMER_ACCESS_MODE_BLOCKED` responses normalize to the title `Platform admin changed your permissions` with exact IMS, POS, Storefront checkout, or Storefront mode impact copy. The shared IMS shell can show a tenant-wide notice after settings hydration or a blocked-action event; POS terminal layouts show POS-specific disabled-state copy; Storefront helpers show Map Listing Only, Catalog Only, and Inquiry Mode public-action limits. Tenant Manager confirmation modals preview the tenant/customer impact before the platform admin submits the required audit reason. This UX does not add email, notification-center records, new schema, or new permission semantics.
 
-Current production status as of 2026-06-11:
+Current production status as of 2026-06-26:
 - DGFY OTP-first account signup, global OTP scoping, no-company-token OTP request access, and automatic IMS tenant-session handoff are deployed at SHA `8b03dfea4f9615d665baa14df59a78de5c797a60`.
 - Production remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched that SHA at proof time; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260610_234107.summary.txt` reports backend health, IMS, POS, Storefront, public endpoints, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passing.
-- The June 18, 2026 production proof for SHA `4cf4c372c9eae91c6ead5932e19476f4c1b98e83` passed no-staging SHA parity without emergency bypass after the production summary evidence was refreshed. `System_Audit/7.2-Release_evidence_depends_on_stale_or_bypassable_QA_paths.md` is remediated for this release, while future releases must keep exact QA deployed-head parity deterministic.
+- The June 26, 2026 production runtime proof in this workspace is SHA `c375dd90f2db16d8ed924c0b10ecd653319e8b16`, recorded by `/var/www/skupervisor/logs/deploy/deploy_20260626_161139.summary.txt`, production remote `HEAD`, production `.deploy-state/last_deployed_commit`, and live `/api/v1/health.services.observability.runtime_sha`. That runtime includes platform-admin assisted provisioning: admin-created DGFY accounts, ownerless tenant provisioning, combined account+tenant provisioning, force owner assignment to an active DGFY account id, and Tenant Manager / DGFY Accounts admin UI panels. It also includes the batch registration handoff behavior: active company creation uses the DGFY account session to create an IMS tenant session and falls back to a visible manual-login path only if tenant-session creation fails; founder tenant-user linkage fallback for production raw-insert metadata; unique DGFY session token ids so immediate logout-then-login cannot reuse a blacklisted token; Storefront delivery-map blank-space hardening; canonical side-tracking-drawer cleanup; IMS storefront location map pinning reliability; PH-local reverse-geocode metadata; same-origin `/openfreemap` MapLibre resource routing; multi-interval Storefront business hours; Storefront discovery map pin-stability restore; and Storefront current-location map control restore, with live bundle/source inclusion verified after deployment. Controlled production DGFY business-registration UAT passed with evidence `.tmp/production-uat/dgfy-business-handoff/evidence-20260620054511.json`: the run created a QA DGFY account and company, proved `/api/v1/dgfy/auth/tenant-session` returned an IMS tenant token, proved a second tenant-session call was not rate-limited, verified founder membership/ownership linkage, and cleaned up the QA account, tenant, membership, legal acknowledgement rows, and tenant database. Future releases must keep exact QA deployed-head parity deterministic. The June 26 assisted-provisioning deploy used owner-authorized emergency bypass because QA deploy-summary SHA evidence was stale, then closed runtime parity through deploy summary, production remote `HEAD`, deploy marker, live health proof, and frontend asset parity.
 - Local validation for the latest DGFY OTP hotfix included `npm --prefix backend test -- --runInBand tests/tenantHandler.emailOtp.test.js tests/authEmailOtpTenantScope.test.js tests/emailOtpService.test.js tests/dgfyAuthUseCases.test.js`, `npm run check:architecture`, `npm run check:compliance`, and `git diff --check`.
 - Live proof after deployment showed `POST /api/v1/auth/email-otp/request` with purpose `dgfy_account_verification` and no company token no longer returns `TENANT_TOKEN_REQUIRED`; an intentionally invalid email returns normal request validation instead.
 
@@ -175,7 +186,7 @@ CREATE TABLE Tenants (
 
 The `UserTenantMapping` table in the main DB maps email addresses to tenant IDs. This powers the login pre-screen: users enter their email and the system resolves which company (or companies) they belong to, returning the `company_token` without the user needing to memorize it.
 
-`POST /api/v1/auth/lookup` is a pre-login identification endpoint. It remains rate-limited to reduce tenant enumeration risk, but it must not require CSRF even when the browser still carries stale HttpOnly session cookies from a previous login; otherwise users can be blocked before they can identify their company or enter a manual token. The lookup limiter is scoped by client IP plus normalized email, not IP alone, so shared store networks do not cross-throttle different POS cashiers while repeated lookup attempts for the same email remain controlled.
+`POST /api/v1/auth/lookup` is a pre-login identification endpoint. It remains rate-limited to reduce tenant enumeration risk, but it must not require CSRF even when the browser still carries stale HttpOnly session cookies from a previous login; otherwise users can be blocked before they can identify their company or enter a manual token. The lookup limiter is scoped by client IP plus normalized email, not IP alone, and defaults to a 5-minute retry window so shared store networks do not cross-throttle different POS cashiers while repeated lookup attempts for the same email remain controlled.
 
 ### Endpoint
 ```
@@ -237,7 +248,7 @@ Email ownership checks are required before login identity is created or changed:
 
 OTP rows live in the landlord `email_otps` table. Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed through a conditional update so concurrent accepts cannot reuse the same code. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch. OTP request routes are throttled with `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS`. OTP requests fail closed when configured email delivery cannot actually send the code; manual invitation links do not bypass email ownership verification.
 
-DGFY account sessions are landlord-scoped and separate from tenant-local SKUpervisor JWTs. `/api/v1/dgfy/auth/handoff` issues a short-lived handoff token for redirected account flows; `/api/v1/dgfy/auth/handoff/exchange` converts it back into a normal DGFY JWT. Public DGFY auth and `/register-company` routes must not trigger tenant-session `/auth/refresh-token` recovery; an expired DGFY handoff must remain a DGFY sign-in recovery path, not a SKUpervisor tenant-session failure. `/api/v1/dgfy/auth/logout` blacklists only the DGFY account token.
+DGFY account sessions are landlord-scoped and separate from tenant-local SKUpervisor JWTs. `/api/v1/dgfy/auth/handoff` issues a short-lived handoff token for redirected account flows; `/api/v1/dgfy/auth/handoff/exchange` converts it back into a normal DGFY JWT. Public DGFY auth and `/register-company` routes must not trigger tenant-session `/auth/refresh-token` recovery; an expired DGFY handoff must remain a DGFY sign-in recovery path, not a SKUpervisor tenant-session failure. `/api/v1/dgfy/auth/logout` blacklists only the DGFY account token. Frontend explicit sign-out additionally clears browser-readable DGFY/customer state and records a session-scoped suppression marker so cookie-backed `/dgfy/auth/me` rehydration does not immediately restore the account the user just signed out from.
 
 Phone completion rollout is staged rather than globally forced while historical accounts are still unresolved:
 - `PHONE_COMPLETION_ENFORCEMENT_MODE=observe` is the non-test default. Users see the remediation banner and admins see missing-phone rows, but normal authenticated work is not blocked yet.
@@ -306,6 +317,10 @@ Production email delivery is closed for the SMTP path. DGFY in-account invitatio
 ## Admin Interface
 
 Located at `/admin/tenants`.
+
+Platform-admin assisted provisioning exposes only `Company only` and `DGFY + Company` on this route; the redundant legacy `+ Add Tenant` control is removed. `Company only` remains operationally provisioned but cannot use DGFY login, company switching, owner actions, or POS access until owner assignment creates an accepted membership.
+
+Assisted provisioning retries are identity-bound and fail-closed. A matching pending platform-admin tenant may resume database provisioning without creating a second tenant or database. For combined provisioning, an active tenant with the exact linked admin-provisioned account may resume only when accepted membership assignment is incomplete; this reconciliation skips database provisioning and repairs the tenant-local master-admin/membership link. Other duplicates remain conflicts. Partial failures return the failed phase, retained record identifiers, and `retryable=true` instead of a generic success response.
 
 **Features:**
 - **List View**: Filter by status (Pending, Active, etc.).

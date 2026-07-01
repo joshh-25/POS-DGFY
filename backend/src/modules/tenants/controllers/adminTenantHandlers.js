@@ -3,6 +3,9 @@ import {
     registerCompanyRequestUseCase,
     listTenantsUseCase,
     approveTenantUseCase,
+    assignTenantOwnerByAdminUseCase,
+    createAdminProvisionedAccountAndTenantUseCase,
+    createAdminProvisionedTenantUseCase,
     rejectTenantUseCase,
     provisionNewTenantUseCase,
     getPricingSettingsUseCase,
@@ -49,6 +52,18 @@ const sendPaymentsDisabled = (res) => (
         code: 'PAYMENTS_DISABLED'
     })
 );
+
+const buildPlatformAdminActor = (req) => ({
+    is_platform_admin: true,
+    username: req.admin?.username || 'platform_admin',
+    user_id: req.admin?.admin_id || req.admin?.id || null
+});
+
+const buildRequestMetadata = (req) => ({
+    request_id: req.requestId || req.headers?.['x-request-id'] || null,
+    ip_address: req.ip || null,
+    user_agent: req.get?.('user-agent') || req.headers?.['user-agent'] || null
+});
 
 /**
  * PUBLIC: Register a new company (creates a "pending" request)
@@ -171,6 +186,72 @@ export const provisionNewTenant = async (req, res) => {
     });
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'Provisioning failed'
+    });
+};
+
+export const createAdminProvisionedTenant = async (req, res) => {
+    req.setTimeout?.(180000);
+    res.setTimeout?.(180000);
+    const result = await createAdminProvisionedTenantUseCase({
+        body: req.body || {},
+        actor: buildPlatformAdminActor(req),
+        metadata: buildRequestMetadata(req)
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: buildPlatformAdminActor(req),
+        eventType: 'admin_provisioned_tenant_created',
+        surface: 'admin_tenants',
+        action: 'admin_create_tenant',
+        result
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Admin company provisioning failed'
+    });
+};
+
+export const createAdminProvisionedAccountAndTenant = async (req, res) => {
+    req.setTimeout?.(180000);
+    res.setTimeout?.(180000);
+    const result = await createAdminProvisionedAccountAndTenantUseCase({
+        body: req.body || {},
+        actor: buildPlatformAdminActor(req),
+        metadata: buildRequestMetadata(req)
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: buildPlatformAdminActor(req),
+        eventType: 'admin_provisioned_account_and_tenant_created',
+        surface: 'admin_tenants',
+        action: 'admin_create_account_and_tenant',
+        result
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Admin account and company provisioning failed'
+    });
+};
+
+export const assignTenantOwnerByAdmin = async (req, res) => {
+    const result = await assignTenantOwnerByAdminUseCase({
+        tenantId: req.params?.id,
+        body: req.body || {},
+        actor: buildPlatformAdminActor(req),
+        metadata: buildRequestMetadata(req)
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: buildPlatformAdminActor(req),
+        eventType: 'admin_tenant_owner_assigned',
+        surface: 'admin_tenants',
+        action: req.body?.force === false ? 'admin_assign_owner' : 'admin_force_assign_owner',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            dgfy_account_id: req.body?.dgfy_account_id || req.body?.dgfyAccountId || null
+        })
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Owner assignment failed'
     });
 };
 
@@ -520,12 +601,6 @@ export const adminListComplianceSecurityIncidents = async (req, res) => {
     });
 };
 
-const buildPlatformAdminActor = (req) => ({
-    is_platform_admin: true,
-    user_id: req.admin?.admin_id || req.admin?.id || null,
-    username: req.admin?.username || 'platform_admin'
-});
-
 /**
  * ADMIN: Mark a tenant security incident as acknowledged
  */
@@ -772,6 +847,9 @@ export default {
     approveTenant,
     rejectTenant,
     provisionNewTenant,
+    createAdminProvisionedTenant,
+    createAdminProvisionedAccountAndTenant,
+    assignTenantOwnerByAdmin,
     getPricingSettings,
     updatePricingSettings,
     updateTenant,

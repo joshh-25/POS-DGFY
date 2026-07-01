@@ -1,6 +1,6 @@
 import { Op, QueryTypes } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
-import { createStockMovement } from './stockMovementService.js';
+import { issueStockForDispatch } from '../modules/inventory/commands/stockCommandService.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import { resolveMovementLocation } from './locationInventoryService.js';
 import { requireExplicitSalePrice } from '../modules/shared/utils/itemFinancialPolicy.js';
@@ -528,7 +528,7 @@ export const dispatchLines = async (doId, lineDispatches, userId, locationId = n
                 movementData.use_fefo = true;
             }
 
-            const movement = await createStockMovement(movementData, userId, transaction);
+            const movement = await issueStockForDispatch(movementData, userId, transaction);
 
             // Update line quantities and snapshot the primary batch
             await line.update({

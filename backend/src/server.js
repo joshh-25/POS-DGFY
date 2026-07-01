@@ -51,6 +51,9 @@ import {
 } from './workers/geoInventoryWorker.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
+import productionEnvValidation from './config/productionEnvValidation.cjs';
+
+const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
 
 const app = express();
 
@@ -151,6 +154,12 @@ if (isProduction || trustProxyRequested) {
 
 // Environment validation for Production
 if (isProduction) {
+  const validation = validateProductionEnv({ env: process.env });
+  if (validation.shouldFail) {
+    logger.error(formatValidationFailure(validation));
+    process.exit(1);
+  }
+
   const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET'];
   const missing = requiredEnv.filter(env => !process.env[env]);
   if (missing.length > 0) {
@@ -268,7 +277,11 @@ const corsOptionsDelegate = (req, callback) => {
       path: req.originalUrl || req.url || '',
       request_id: correlationId
     });
-    callback(new Error('Not allowed by CORS'));
+    const error = new Error('Not allowed by CORS');
+    error.statusCode = 403;
+    error.status = 403;
+    error.code = 'CORS_NOT_ALLOWED';
+    callback(error);
     return;
   }
 
@@ -645,8 +658,10 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 
 // Tenant Resolution & Context Middleware (Must be before API routes)
 import dgfyRoutes from './routes/dgfy.js';
+import geoSearchRoutes from './routes/geoSearch.js';
 app.use(csrfProtection);
 app.use('/api/v1/dgfy', dgfyRoutes);
+app.use('/api/v1/geo', geoSearchRoutes);
 
 app.use(tenantHandler);
 
@@ -677,7 +692,6 @@ import salesRoutes from './routes/sales.js';
 import tenantLocationRoutes from './routes/tenantLocations.js';
 import storeRoutes from './routes/store.js';
 import storefrontDiscoveryRoutes from './routes/storefrontDiscovery.js';
-import geoSearchRoutes from './routes/geoSearch.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
 import complianceRoutes from './routes/compliance.js';

@@ -12,7 +12,7 @@ const maxRequests = isDevelopment
   : Math.max(parsedGeneralMax || 100, minProdGeneralMax);
 const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
-const lookupWindowMs = parseInt(process.env.RATE_LIMIT_LOOKUP_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
+const lookupWindowMs = parseInt(process.env.RATE_LIMIT_LOOKUP_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes default
 const lookupMaxRequests = parseInt(process.env.RATE_LIMIT_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const emailOtpWindowMs = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_WINDOW_MS) || 10 * 60 * 1000; // 10 minutes
 const emailOtpMaxRequests = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS) || (isDevelopment ? 12 : 3);
@@ -30,6 +30,10 @@ const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVEN
 const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
+const dgfyTenantSessionWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
+const dgfyTenantSessionMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS) || (isDevelopment ? 50 : 10);
+const dgfyAccountSearchWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_ACCOUNT_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
+const dgfyAccountSearchMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_ACCOUNT_SEARCH_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
 const tenantRegistrationWindowMs = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS) || 60 * 60 * 1000; // 1 hour
 const tenantRegistrationMaxRequests = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const geoSearchWindowMs = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -46,6 +50,13 @@ const createRateLimitError = (message, metadata = {}) => ({
   timestamp: new Date().toISOString(),
 });
 
+const formatWindowMinutes = (durationMs) => {
+  const minutes = Math.max(1, Math.ceil(Number(durationMs || 0) / (60 * 1000)));
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+};
+
+const lookupRateLimitMessage = `Too many email lookup attempts. For security reasons, please try again in ${formatWindowMinutes(lookupWindowMs)}.`;
+
 const rateLimitCounters = {
   total: 0,
   auth_login: 0,
@@ -59,6 +70,8 @@ const rateLimitCounters = {
   onboarding_events: 0,
   ai: 0,
   pos: 0,
+  dgfy_tenant_session: 0,
+  dgfy_account_search: 0,
   registration: 0,
   geo_search: 0,
   inventory_push: 0,
@@ -180,6 +193,8 @@ const getScopeFromRequest = (req, fallbackScope) => {
   if (path.includes('/email-otp/request')) return 'email_otp';
   if (path.includes('/auth/register')) return 'auth_register';
   if (path.includes('/auth/lookup')) return 'auth_lookup';
+  if (path.includes('/dgfy/auth/tenant-session')) return 'dgfy_tenant_session';
+  if (path.includes('/dgfy/accounts/search')) return 'dgfy_account_search';
   if (path.includes('/store/auth/')) return 'store_auth';
   if (path.includes('/store/track/') || path.includes('/store/orders/')) return 'store_tracking';
   if (path.includes('/storefront/discovery')) return 'storefront_discovery';
@@ -692,7 +707,7 @@ export const onboardingEventsLimiter = rateLimit({
 export const lookupLimiter = rateLimit({
   windowMs: lookupWindowMs,
   max: lookupMaxRequests,
-  message: createRateLimitError('Too many email lookup attempts. For security reasons, please try again in 15 minutes.'),
+  message: createRateLimitError(lookupRateLimitMessage),
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
@@ -706,7 +721,7 @@ export const lookupLimiter = rateLimit({
     const response = buildRateLimitResponse(
       req,
       options,
-      'Too many email lookup attempts. For security reasons, please try again in 15 minutes.',
+      lookupRateLimitMessage,
       'auth_lookup',
       'ip_email'
     );
@@ -740,6 +755,80 @@ export const tenantRegistrationLimiter = rateLimit({
       'ip'
     );
     logRateLimitEvent(req, 'registration', response.retryAfterSeconds, 'ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// DGFY-to-IMS tenant-session handoff limiter. Auth has already run before this
+// limiter, so key by account and tenant instead of the generic auth unknown-email bucket.
+export const dgfyTenantSessionLimiter = rateLimit({
+  windowMs: dgfyTenantSessionWindowMs,
+  max: dgfyTenantSessionMaxRequests,
+  message: createRateLimitError('Too many business session attempts. Please wait before opening this company again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('dgfy_tenant_session'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const accountId = String(req.dgfyAccount?.id || 'unknown-account').trim();
+    const tenantId = String(req.body?.tenant_id || req.body?.tenantId || 'unknown-tenant').trim();
+    return `dgfy_tenant_session:${ip}:${accountId || 'unknown-account'}:${tenantId || 'unknown-tenant'}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many business session attempts. Please wait before opening this company again.',
+      'dgfy_tenant_session',
+      'ip_account_tenant'
+    );
+    logRateLimitEvent(req, 'dgfy_tenant_session', response.retryAfterSeconds, 'ip_account_tenant');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// DGFY business account search is an authenticated IMS user-management lookup.
+// Keep it separate from authLimiter so normal typing cannot consume login buckets.
+export const dgfyAccountSearchLimiter = rateLimit({
+  windowMs: dgfyAccountSearchWindowMs,
+  max: dgfyAccountSearchMaxRequests,
+  message: createRateLimitError('Too many DGFY account searches. Wait a moment, then try again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('dgfy_account_search'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const tenantKey = String(req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant').trim();
+    const userKey = String(req.user?.user_id || userKeyFromAuthHeader(req.headers.authorization) || 'unknown-user').trim();
+    const query = String(req.query?.query || req.query?.q || '')
+      .trim()
+      .toLowerCase()
+      .slice(0, 64);
+    return `dgfy_account_search:${tenantKey || 'unknown-tenant'}:${userKey || 'unknown-user'}:${ip}:${query || 'empty-query'}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many DGFY account searches. Wait a moment, then try again.',
+      'dgfy_account_search',
+      'tenant_user_ip_query'
+    );
+    logRateLimitEvent(req, 'dgfy_account_search', response.retryAfterSeconds, 'tenant_user_ip_query');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
@@ -861,6 +950,7 @@ export default {
   storefrontFollow: storefrontFollowLimiter,
   onboardingEvents: onboardingEventsLimiter,
   lookup: lookupLimiter,
+  dgfyAccountSearch: dgfyAccountSearchLimiter,
   registration: tenantRegistrationLimiter,
   pos: posLimiter,
   geoSearch: geoSearchLimiter,

@@ -303,6 +303,13 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             expect(closeReplay.data.idempotent_replay).toBe(true);
             expect(closeReplay.data.replay_outcome).toBe('idempotent_replay');
 
+            await posRepository.createTerminalShift({
+                business_date: '2026-04-09',
+                terminal_id: 'WEB-POS-02',
+                cashier_id: 17,
+                status: 'open'
+            });
+
             const updatePayload = {
                 idempotency_key: 'NVP-ORDER-20260409-0910',
                 fulfillment_status: 'confirmed'
@@ -326,7 +333,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             expect(updateReplay.data.replay_outcome).toBe('idempotent_replay');
         });
 
-        expect(posRepository.counters.shiftCreates).toBe(1);
+        expect(posRepository.counters.shiftCreates).toBe(2);
         expect(posRepository.counters.cashEventsCreated).toBe(1);
         expect(posRepository.counters.shiftCloses).toBe(1);
         expect(posRepository.counters.orderUpdates).toBe(1);
@@ -440,6 +447,13 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             expect(closeConflict.success).toBe(false);
             expect(closeConflict.error.code).toBe(DomainErrorCode.CONFLICT);
 
+            await posRepository.createTerminalShift({
+                business_date: '2026-04-09',
+                terminal_id: 'WEB-POS-02',
+                cashier_id: 18,
+                status: 'open'
+            });
+
             const orderFirst = await updateOrderStatusUseCase({
                 posTransactionId: 911,
                 payload: {
@@ -521,6 +535,8 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             const enforceWithoutRegistry = await openShiftUseCase({
                 payload: {
                     terminal_id: 'COUNTER-01',
+                    business_date: '2026-04-09',
+                    opening_float_amount: 0,
                     idempotency_key: 'NVP-POLICY-ENFORCE-01'
                 },
                 user: { user_id: 21 }
@@ -539,6 +555,8 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             const enforceWithUnregisteredTerminal = await openShiftUseCase({
                 payload: {
                     terminal_id: 'COUNTER-09',
+                    business_date: '2026-04-09',
+                    opening_float_amount: 0,
                     idempotency_key: 'NVP-POLICY-ENFORCE-02'
                 },
                 user: { user_id: 21 }
@@ -557,6 +575,8 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             const warnWithUnregisteredTerminal = await openShiftUseCase({
                 payload: {
                     terminal_id: 'COUNTER-09',
+                    business_date: '2026-04-09',
+                    opening_float_amount: 0,
                     idempotency_key: 'NVP-POLICY-WARN-01'
                 },
                 user: { user_id: 21 }

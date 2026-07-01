@@ -3,7 +3,10 @@ import {
     buildDgfyHistoricalBackfillUseCase,
     buildGetDgfyCustomerDashboardUseCase,
     buildListDgfyCustomerActivitiesUseCase,
+    buildListDgfyCustomerNotificationsUseCase,
     buildManageDgfyCustomerAddressesUseCases,
+    buildMarkAllDgfyCustomerNotificationsReadUseCase,
+    buildMarkDgfyCustomerNotificationReadUseCase,
     buildListPublicDgfyCustomerReviewsUseCase,
     buildModerateDgfyCustomerReviewUseCase,
     buildRequestDgfyTrackingRecoveryUseCase,
@@ -31,7 +34,7 @@ describe('dgfyCustomerUseCases', () => {
             listActiveTenants: jest.fn(),
             listActivitiesForAccount: jest.fn().mockResolvedValue({
                 rows: [
-                    { activity_id: 1, activity_type: 'order', reference: 'SK-ABC123', status: 'placed', occurred_at: new Date() },
+                    { activity_id: 1, activity_type: 'order', reference: 'SK-ABC123', status: 'placed', dgfy_account_id: account.id, occurred_at: new Date() },
                     { activity_id: 2, activity_type: 'service_booking', reference: 'SV-001', status: 'pending', occurred_at: new Date() },
                     { activity_id: 3, activity_type: 'fnb_order', reference: 'FNB-123', status: 'paid', occurred_at: new Date() }
                 ]
@@ -39,15 +42,26 @@ describe('dgfyCustomerUseCases', () => {
             listAddresses: jest.fn().mockResolvedValue([{ address_id: 1, label: 'Home', address_line: 'Iloilo' }]),
             listLoyalty: jest.fn().mockResolvedValue({ balance: 5, transactions: [] })
         };
+        const activitySynchronizer = jest.fn().mockImplementation(({ activities }) => Promise.resolve(activities.map((entry) => (
+            entry.reference === 'SK-ABC123'
+                ? { ...entry, status: 'confirmed' }
+                : entry
+        ))));
         const useCase = buildGetDgfyCustomerDashboardUseCase({
-            repository
+            repository,
+            activitySynchronizer
         });
 
         const result = await useCase({ account });
 
         expect(result.success).toBe(true);
+        expect(activitySynchronizer).toHaveBeenCalledWith({
+            account: expect.objectContaining({ id: account.id }),
+            activities: expect.arrayContaining([expect.objectContaining({ reference: 'SK-ABC123' })])
+        });
         expect(result.data.account.phone_verification_deferred).toBe(true);
         expect(result.data.orders).toHaveLength(2);
+        expect(result.data.orders.find((entry) => entry.reference === 'SK-ABC123').status).toBe('confirmed');
         expect(result.data.bookings).toHaveLength(1);
         expect(result.data.orders.map((entry) => entry.type)).toEqual(expect.arrayContaining(['order', 'fnb_order']));
         expect(result.data.addresses[0].label).toBe('Home');
@@ -60,10 +74,16 @@ describe('dgfyCustomerUseCases', () => {
             activity_id: 1,
             activity_type: 'order',
             reference: 'SK-ABC123',
-            status: 'placed'
+            status: 'placed',
+            dgfy_account_id: account.id
         });
+        const activitySynchronizer = jest.fn().mockImplementation(({ activity }) => Promise.resolve({
+            ...activity,
+            status: 'preparing'
+        }));
         const useCase = buildTrackDgfyCustomerReferenceUseCase({
-            repository: { findActivityForAccount }
+            repository: { findActivityForAccount },
+            activitySynchronizer
         });
 
         const result = await useCase({ account, body: { reference: 'sk-abc123' } });
@@ -73,7 +93,12 @@ describe('dgfyCustomerUseCases', () => {
             dgfyAccountId: account.id,
             reference: 'SK-ABC123'
         });
+        expect(activitySynchronizer).toHaveBeenCalledWith({
+            account,
+            activity: expect.objectContaining({ reference: 'SK-ABC123' })
+        });
         expect(result.data.activity.reference).toBe('SK-ABC123');
+        expect(result.data.activity.status).toBe('preparing');
     });
 
     it('creates coordinate-backed saved addresses for delivery pins', async () => {
@@ -305,7 +330,11 @@ describe('dgfyCustomerUseCases', () => {
                 pagination: { page: 2, limit: 5, total: 6, totalPages: 2 }
             })
         };
-        const useCase = buildListDgfyCustomerActivitiesUseCase({ repository });
+        const activitySynchronizer = jest.fn().mockImplementation(({ activities }) => Promise.resolve(activities.map((entry) => ({
+            ...entry,
+            status: entry.status === 'paid' ? 'completed' : entry.status
+        }))));
+        const useCase = buildListDgfyCustomerActivitiesUseCase({ repository, activitySynchronizer });
 
         const result = await useCase({
             account,
@@ -313,6 +342,10 @@ describe('dgfyCustomerUseCases', () => {
         });
 
         expect(result.success).toBe(true);
+        expect(activitySynchronizer).toHaveBeenCalledWith({
+            account: expect.objectContaining({ id: account.id }),
+            activities: expect.arrayContaining([expect.objectContaining({ reference: 'FNB-30' })])
+        });
         expect(repository.listActivitiesForAccount).toHaveBeenCalledWith(account.id, expect.objectContaining({
             type: 'fnb_order',
             tenantId: 'tenant-1',
@@ -325,10 +358,90 @@ describe('dgfyCustomerUseCases', () => {
         }));
         expect(result.data.activities[0]).toEqual(expect.objectContaining({
             type: 'fnb_order',
+            status: 'completed',
             type_label: 'F&B order',
             allowed_actions: expect.objectContaining({ review: true }),
             review_targets: expect.arrayContaining([expect.objectContaining({ target_type: 'fnb_item', target_id: 88 })])
         }));
+    });
+
+    it('lists account-scoped notifications with unread filtering', async () => {
+        const repository = {
+            listNotificationsForAccount: jest.fn().mockResolvedValue({
+                rows: [{
+                    notification_id: 12,
+                    type: 'order_status',
+                    title: 'Order confirmed',
+                    body: 'The store confirmed your order.',
+                    status: 'confirmed',
+                    reference: 'SK-ABC123',
+                    tenant_id: 'tenant-1',
+                    activity_id: 1,
+                    read_at: null,
+                    created_at: new Date('2026-06-19T01:00:00Z')
+                }],
+                unread_count: 1
+            })
+        };
+        const useCase = buildListDgfyCustomerNotificationsUseCase({ repository });
+
+        const result = await useCase({
+            account,
+            query: { unread_only: 'true', limit: '25' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.listNotificationsForAccount).toHaveBeenCalledWith(account.id, {
+            limit: '25',
+            unreadOnly: true
+        });
+        expect(result.data.unread_count).toBe(1);
+        expect(result.data.notifications[0]).toEqual(expect.objectContaining({
+            notification_id: 12,
+            type: 'order_status',
+            reference: 'SK-ABC123',
+            status: 'confirmed'
+        }));
+    });
+
+    it('marks one account notification as read and rejects missing notifications', async () => {
+        const repository = {
+            markNotificationRead: jest.fn()
+                .mockResolvedValueOnce({
+                    notification_id: 12,
+                    type: 'order_status',
+                    title: 'Order confirmed',
+                    reference: 'SK-ABC123',
+                    read_at: new Date('2026-06-19T02:00:00Z')
+                })
+                .mockResolvedValueOnce(null)
+        };
+        const useCase = buildMarkDgfyCustomerNotificationReadUseCase({ repository });
+
+        const success = await useCase({ account, notificationId: 12 });
+        const failure = await useCase({ account, notificationId: 99 });
+
+        expect(success.success).toBe(true);
+        expect(success.data.notification.notification_id).toBe(12);
+        expect(repository.markNotificationRead).toHaveBeenCalledWith({
+            dgfyAccountId: account.id,
+            notificationId: 12
+        });
+        expect(failure.success).toBe(false);
+        expect(failure.error.statusCode).toBe(404);
+    });
+
+    it('marks all account notifications as read', async () => {
+        const repository = {
+            markAllNotificationsRead: jest.fn().mockResolvedValue({ read_at: '2026-06-19T02:00:00.000Z' })
+        };
+        const useCase = buildMarkAllDgfyCustomerNotificationsReadUseCase({ repository });
+
+        const result = await useCase({ account });
+
+        expect(result.success).toBe(true);
+        expect(repository.markAllNotificationsRead).toHaveBeenCalledWith(account.id);
+        expect(result.data.read_at).toBe('2026-06-19T02:00:00.000Z');
     });
 
     it('accepts typed service reviews from paid account booking activity', async () => {

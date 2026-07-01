@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
@@ -190,6 +190,30 @@ const getLastDiscoveryParams = (fetchMock) => {
   return parsed.searchParams;
 };
 
+const installNavigationLocationMock = () => {
+  const originalLocation = window.location;
+  let locationUrl = new URL(originalLocation.href);
+  const mockLocation = {
+    ancestorOrigins: undefined,
+    assign: vi.fn((value) => { locationUrl = new URL(String(value || ''), locationUrl); }),
+    reload: vi.fn(),
+    replace: vi.fn((value) => { locationUrl = new URL(String(value || ''), locationUrl); }),
+    toString: () => locationUrl.toString(),
+    get href() { return locationUrl.toString(); },
+    set href(value) { locationUrl = new URL(String(value || ''), locationUrl); },
+    get origin() { return locationUrl.origin; },
+    get protocol() { return locationUrl.protocol; },
+    get host() { return locationUrl.host; },
+    get hostname() { return locationUrl.hostname; },
+    get port() { return locationUrl.port; },
+    get pathname() { return locationUrl.pathname; },
+    get search() { return locationUrl.search; },
+    get hash() { return locationUrl.hash; }
+  };
+  Object.defineProperty(window, 'location', { configurable: true, writable: true, value: mockLocation });
+  return () => Object.defineProperty(window, 'location', { configurable: true, writable: true, value: originalLocation });
+};
+
 const getMapApis = () => maplibregl.Map.mock.results
   .map((result) => result?.value)
   .filter(Boolean);
@@ -289,6 +313,11 @@ describe('storefront discovery integration flow', () => {
 
   afterEach(() => {
     cleanup();
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 1024
+    });
     window.localStorage.clear();
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
     document.body.querySelectorAll('.store-marker-preview-card').forEach((node) => node.remove());
@@ -346,6 +375,7 @@ describe('storefront discovery integration flow', () => {
   });
 
   it('keeps account access visible when MapLibre cannot initialize WebGL', async () => {
+    const restoreLocation = installNavigationLocationMock();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     maplibregl.Map.mockImplementationOnce(function MapUnavailable() {
       throw new Error('webgl unavailable');
@@ -370,13 +400,20 @@ describe('storefront discovery integration flow', () => {
 
       fireEvent.click(screen.getByText('Log in / Sign up'));
 
-      expect(await screen.findByText('DGFY Account')).toBeTruthy();
+      await waitFor(() => expect(window.location.pathname).toBe('/dgfy/auth'));
+      const authParams = new URLSearchParams(window.location.search);
+      expect(authParams.get('intent')).toBe('customer');
+      expect(authParams.get('mode')).toBe('sign-in');
+      expect(authParams.get('return_to')).toContain('dgfy_account=1');
+      expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
     } finally {
       warnSpy.mockRestore();
+      restoreLocation();
     }
   });
 
-  it('keeps the storefront account panel as a launcher with guest and DGFY handoff actions', async () => {
+  it('routes the signed-out storefront account action directly to canonical DGFY auth', async () => {
+    const restoreLocation = installNavigationLocationMock();
     const defaultFetch = fetchMock.getMockImplementation();
     fetchMock.mockImplementation(async (url, options = {}) => {
       const normalized = String(url);
@@ -389,16 +426,20 @@ describe('storefront discovery integration flow', () => {
       return defaultFetch(url, options);
     });
 
-    render(<App />);
+    try {
+      render(<App />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: /log in \/ sign up/i })[0]);
+      fireEvent.click(screen.getAllByRole('button', { name: /log in \/ sign up/i })[0]);
 
-    expect(await screen.findByText('DGFY Account')).toBeTruthy();
-    const dialog = screen.getByRole('dialog', { name: 'DGFY Account' });
-    expect(within(dialog).getByRole('button', { name: /continue as guest/i })).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: /sign in \/ create account/i })).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: /^register your business$/i })).toBeTruthy();
-    expect(within(dialog).queryByRole('button', { name: /create dgfy account/i })).toBeNull();
+      await waitFor(() => expect(window.location.pathname).toBe('/dgfy/auth'));
+      const authParams = new URLSearchParams(window.location.search);
+      expect(authParams.get('intent')).toBe('customer');
+      expect(authParams.get('mode')).toBe('sign-in');
+      expect(authParams.get('return_to')).toContain('dgfy_account=1');
+      expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
+    } finally {
+      restoreLocation();
+    }
   });
 
   it('auto-loads signed-in DGFY customer context and exposes saved address checkout actions', async () => {
@@ -1137,7 +1178,7 @@ describe('storefront discovery integration flow', () => {
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'space');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
     await waitFor(() => expect(screen.getAllByText('Space Bar').length).toBeGreaterThan(1));
-    await user.click(screen.getByRole('button', { name: /View Results \(1\)/i }));
+    expect(screen.getByRole('button', { name: /Hide Results/i })).toBeTruthy();
 
     await user.click(screen.getAllByRole('button', { name: 'Order Now' })[0]);
 
@@ -1887,6 +1928,76 @@ describe('storefront discovery integration flow', () => {
     const mapApi = getMapApis()[0];
     expect(mapApi.getLayer('dgfy-discovery-user-location')).toBeTruthy();
     expect(mapApi.getLayer('dgfy-discovery-pin-symbols')).toBeTruthy();
+  });
+
+  it('exposes a mobile map control that shares current location and renders the user dot', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 390
+    });
+    window.dispatchEvent(new Event('resize'));
+    const user = userEvent.setup();
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.701, longitude: 122.501 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: parsed.searchParams.get('pin_scope') || 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main Branch', address_line: 'Alpha Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
+    await user.click(screen.getByRole('button', { name: 'Use current location on map' }));
+
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('latitude')).toBe('10.701');
+      expect(params.get('longitude')).toBe('122.501');
+      expect(params.get('pin_scope')).toBe('nearest_matching_branch');
+    });
+    await waitFor(() => expect(getDiscoveryUserFeatures()).toHaveLength(1));
+    expect(getDiscoveryUserFeatures()[0].geometry.coordinates).toEqual([122.501, 10.701]);
+    expect(screen.getByRole('button', { name: 'Use current location on map' }).textContent).toContain('My location');
   });
 
   it('Near Me failure falls back to discovery without coordinates', async () => {

@@ -9,6 +9,7 @@ const mockDeleteAdminDgfyAccountUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/dgfy/index.js', () => ({
+  createAdminProvisionedDgfyAccountUseCase: jest.fn(),
   listAdminDgfyAccountsUseCase: mockListAdminDgfyAccountsUseCase,
   getAdminDgfyAccountUseCase: mockGetAdminDgfyAccountUseCase,
   updateAdminDgfyAccountProfileUseCase: mockUpdateAdminDgfyAccountProfileUseCase,

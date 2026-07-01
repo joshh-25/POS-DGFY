@@ -8,7 +8,10 @@ import {
     listDgfyCustomerAddressesUseCase,
     listDgfyCustomerActivitiesUseCase,
     listDgfyCustomerBookingsUseCase,
+    listDgfyCustomerNotificationsUseCase,
     listDgfyCustomerOrdersUseCase,
+    markAllDgfyCustomerNotificationsReadUseCase,
+    markDgfyCustomerNotificationReadUseCase,
     listPublicDgfyCustomerReviewsUseCase,
     moderateDgfyCustomerReviewUseCase,
     reorderDgfyCustomerOrderUseCase,
@@ -21,6 +24,7 @@ import {
     verifyDgfyTrackingRecoveryUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
+import { publishDgfyCustomerEvent, subscribeDgfyCustomerEvents } from '../services/dgfyCustomerEventBus.js';
 
 const timestamp = () => new Date().toISOString();
 
@@ -71,6 +75,90 @@ export const listDgfyCustomerActivities = async (req, res, next) => {
 export const listDgfyCustomerBookings = async (req, res, next) => {
     try {
         return send(res, await listDgfyCustomerBookingsUseCase({ account: req.dgfyAccount, query: req.query }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listDgfyCustomerNotifications = async (req, res, next) => {
+    try {
+        return send(res, await listDgfyCustomerNotificationsUseCase({ account: req.dgfyAccount, query: req.query }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const markDgfyCustomerNotificationRead = async (req, res, next) => {
+    try {
+        const result = await markDgfyCustomerNotificationReadUseCase({
+            account: req.dgfyAccount,
+            notificationId: req.params.notification_id
+        });
+        if (result.success && result.data?.notification) {
+            publishDgfyCustomerEvent(req.dgfyAccount.id, 'notification.read', {
+                notification: result.data.notification
+            });
+        }
+        return send(res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const markAllDgfyCustomerNotificationsRead = async (req, res, next) => {
+    try {
+        const result = await markAllDgfyCustomerNotificationsReadUseCase({ account: req.dgfyAccount });
+        if (result.success) {
+            publishDgfyCustomerEvent(req.dgfyAccount.id, 'notification.read', {
+                all: true,
+                read_at: result.data?.read_at || timestamp()
+            });
+        }
+        return send(res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const writeSse = (res, type, payload = {}) => {
+    res.write(`event: ${type}\n`);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+};
+
+export const streamDgfyCustomerEvents = async (req, res, next) => {
+    try {
+        const accountId = req.dgfyAccount?.id;
+        if (!accountId) {
+            res.status(401).json({
+                success: false,
+                message: 'DGFY account authentication is required.'
+            });
+            return;
+        }
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.flushHeaders?.();
+
+        writeSse(res, 'connected', { connected: true, account_id: accountId, timestamp: timestamp() });
+
+        const unsubscribe = subscribeDgfyCustomerEvents(accountId, (event) => {
+            writeSse(res, event.type, {
+                ...event.payload,
+                emitted_at: event.emitted_at
+            });
+        });
+        const heartbeat = setInterval(() => {
+            writeSse(res, 'heartbeat', { timestamp: timestamp() });
+        }, 25000);
+
+        req.on('close', () => {
+            clearInterval(heartbeat);
+            unsubscribe();
+            res.end();
+        });
     } catch (error) {
         next(error);
     }

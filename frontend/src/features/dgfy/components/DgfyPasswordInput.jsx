@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 
 export default function DgfyPasswordInput({
   id,
+  name,
   value,
   onChange,
   placeholder,
@@ -17,6 +18,7 @@ export default function DgfyPasswordInput({
     <div className="relative">
       <Input
         id={id}
+        name={name}
         type={visible ? 'text' : 'password'}
         autoComplete={autoComplete}
         placeholder={placeholder}

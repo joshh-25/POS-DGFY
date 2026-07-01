@@ -3,6 +3,7 @@ import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
     buildGetAdminDgfyAccountUseCase,
+    buildCreateAdminProvisionedDgfyAccountUseCase,
     buildDeleteAdminDgfyAccountUseCase,
     buildListAdminDgfyAccountsUseCase,
     buildReactivateAdminDgfyAccountUseCase,
@@ -21,6 +22,7 @@ import {
     buildGetDgfyMeUseCase,
     buildLoginDgfyAccountUseCase,
     buildRejectDgfyInvitationUseCase,
+    buildPreflightDgfyAccountRegistrationUseCase,
     buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
@@ -40,7 +42,10 @@ import {
     buildDgfyHistoricalBackfillUseCase,
     buildListDgfyCustomerReviewsForModerationUseCase,
     buildListDgfyCustomerActivitiesUseCase,
+    buildListDgfyCustomerNotificationsUseCase,
     buildListPublicDgfyCustomerReviewsUseCase,
+    buildMarkAllDgfyCustomerNotificationsReadUseCase,
+    buildMarkDgfyCustomerNotificationReadUseCase,
     buildModerateDgfyCustomerReviewUseCase,
     buildManageDgfyCustomerAddressesUseCases,
     buildReorderDgfyCustomerOrderUseCase,
@@ -63,6 +68,10 @@ export const registerDgfyAccountUseCase = buildRegisterDgfyAccountUseCase({
     emailOtpPurposes: {
         DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification'
     }
+});
+
+export const preflightDgfyAccountRegistrationUseCase = buildPreflightDgfyAccountRegistrationUseCase({
+    repository: dgfyAccountRepository
 });
 
 export const getDgfyLegalTermsUseCase = buildGetDgfyLegalTermsUseCase();
@@ -197,6 +206,11 @@ export const getAdminDgfyAccountUseCase = buildGetAdminDgfyAccountUseCase({
     repository: dgfyAccountRepository
 });
 
+export const createAdminProvisionedDgfyAccountUseCase = buildCreateAdminProvisionedDgfyAccountUseCase({
+    repository: dgfyAccountRepository,
+    hashPassword: (password) => bcrypt.hash(password, 10)
+});
+
 export const updateAdminDgfyAccountProfileUseCase = buildUpdateAdminDgfyAccountProfileUseCase({
     repository: dgfyAccountRepository
 });
@@ -217,6 +231,9 @@ export const getDgfyCustomerDashboardUseCase = buildGetDgfyCustomerDashboardUseC
 export const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
 export const listDgfyCustomerOrdersUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'order' });
 export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'booking' });
+export const listDgfyCustomerNotificationsUseCase = buildListDgfyCustomerNotificationsUseCase();
+export const markDgfyCustomerNotificationReadUseCase = buildMarkDgfyCustomerNotificationReadUseCase();
+export const markAllDgfyCustomerNotificationsReadUseCase = buildMarkAllDgfyCustomerNotificationsReadUseCase();
 export const trackDgfyCustomerReferenceUseCase = buildTrackDgfyCustomerReferenceUseCase();
 export const cancelDgfyCustomerOrderUseCase = buildCancelDgfyCustomerOrderUseCase();
 export const reorderDgfyCustomerOrderUseCase = buildReorderDgfyCustomerOrderUseCase();

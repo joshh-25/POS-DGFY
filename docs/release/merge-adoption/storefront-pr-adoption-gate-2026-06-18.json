@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "merge_name": "storefront-pr-adoption-gate-2026-06-18",
+  "target_branch": "master",
+  "source_refs": [],
+  "explicitly_rejected_files": [],
+  "semantic_conflict_review": {
+    "status": "none",
+    "notes": "This change implements the agreed merge-adoption process and does not resolve a source branch code conflict.",
+    "user_approved_decisions": []
+  },
+  "feature_areas": [
+    {
+      "id": "required-pr-adoption-proof",
+      "decision": "adopt",
+      "intent": "High-risk storefront, checkout, DGFY auth, tracking, dashboard, Store API, or customer-order PRs must include merge-adoption proof before they can pass CI.",
+      "source_refs": [],
+      "master_behaviors_preserved": [
+        "The existing merge adoption manifest validator remains the source of truth for required files, rejected source files, string anchors, tests, rendered evidence, and production evidence."
+      ],
+      "proof": {
+        "required_files_present": [
+          "scripts/check-merge-adoption-required.js",
+          "scripts/check-merge-adoption-required.test.js",
+          "docs/ops/MERGE_ADOPTION_GATE.md",
+          "docs/ops/STOREFRONT_PR_ADOPTION_HANDOFF.md",
+          "docs/templates/MERGE_ADOPTION_MANIFEST_TEMPLATE.json"
+        ],
+        "required_strings_present": [
+          {
+            "file": "scripts/check-merge-adoption-required.js",
+            "text": "High-risk storefront/customer-flow files changed without merge adoption proof."
+          },
+          {
+            "file": ".github/workflows/ci.yml",
+            "text": "Require merge adoption proof for storefront customer-flow PRs"
+          },
+          {
+            "file": "docs/ops/MERGE_ADOPTION_GATE.md",
+            "text": "Behavioral conflicts must not be resolved silently."
+          },
+          {
+            "file": "docs/ops/STOREFRONT_PR_ADOPTION_HANDOFF.md",
+            "text": "Do not wholesale replace current `master` files just to avoid conflicts."
+          },
+          {
+            "file": ".github/pull_request_template.md",
+            "text": "Approved decisions are recorded in `semantic_conflict_review.user_approved_decisions`."
+          }
+        ],
+        "required_strings_absent": [
+          {
+            "file": "scripts/check-merge-adoption-required.js",
+            "text": "merge.adoption.not_required"
+          }
+        ],
+        "tests": [
+          "npm run test:merge-adoption",
+          "npm run lint:docs",
+          "npm run check:merge-adoption-required -- --base origin/master --head HEAD --manifest docs/release/merge-adoption/storefront-pr-adoption-gate-2026-06-18.json"
+        ],
+        "rendered_evidence": [
+          "Not applicable. This change adds PR/release governance and does not alter rendered customer UI."
+        ],
+        "production_evidence_required": [
+          "For the next storefront/customer-flow deployment, release verdict must record merge.adoption as pass using the applicable manifest, not merge.adoption.not_required."
+        ]
+      }
+    },
+    {
+      "id": "user-approved-semantic-merge-decisions",
+      "decision": "adopt",
+      "intent": "AI agents must ask the user before resolving semantic merge conflicts that affect behavior, UI, API contracts, docs governance, tests, or deployment gates.",
+      "source_refs": [],
+      "master_behaviors_preserved": [
+        "Mechanical conflicts can still be resolved by repository conventions without interrupting the user."
+      ],
+      "proof": {
+        "required_files_present": [
+          "scripts/check-merge-adoption.js",
+          "docs/templates/MERGE_ADOPTION_MANIFEST_TEMPLATE.json"
+        ],
+        "required_strings_present": [
+          {
+            "file": "scripts/check-merge-adoption.js",
+            "text": "manifest.semantic_conflict_review is required"
+          },
+          {
+            "file": "docs/templates/MERGE_ADOPTION_MANIFEST_TEMPLATE.json",
+            "text": "question_asked"
+          },
+          {
+            "file": "docs/ops/MERGE_ADOPTION_GATE.md",
+            "text": "The agent must ask the user what should win before editing the final tree"
+          }
+        ],
+        "tests": [
+          "npm run test:merge-adoption"
+        ],
+        "rendered_evidence": [
+          "Not applicable. This is a merge governance contract."
+        ],
+        "production_evidence_required": [
+          "Future adoption manifests with user-approved conflicts must include semantic_conflict_review.status=user-approved and the selected resolution."
+        ]
+      }
+    }
+  ]
+}

@@ -12,7 +12,8 @@ const STOREFRONT_ASSETS_ROOT = path.join(UPLOADS_ROOT, 'storefront-assets');
 
 const ASSET_TYPE_TO_FOLDER = Object.freeze({
     cover: 'cover',
-    profile: 'profile'
+    profile: 'profile',
+    gallery: 'gallery'
 });
 
 const normalizeTenantSegment = (value) => {

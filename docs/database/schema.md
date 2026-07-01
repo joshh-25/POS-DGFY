@@ -137,6 +137,8 @@ CREATE TABLE tenants (
 Subscription notes:
 - Tenant DB credentials are environment-driven at runtime (`DB_USER`, `DB_PASSWORD`); tenant-row plaintext credential columns are intentionally removed.
 - `owner_dgfy_account_id` is the landlord-scoped active company owner for DGFY-only company access. It is set at DGFY company creation and updated by the single-owner transfer flow; tenant-local Master Admin role is not sufficient to prove current ownership.
+- `provisioning_source` identifies whether the tenant came from public registration or platform-admin assisted provisioning.
+- `ownership_status` is `claimed` for ordinary owner-linked companies, `unassigned` for admin-provisioned ownerless companies, and `handover_pending` for future acceptance-based handovers.
 - `ownership_transferred_at` and `ownership_transferred_by` audit the latest owner transfer. Detailed attempts/results remain in landlord business audit logs.
 - `dgfy_account_business_audit_logs.action` includes company switch, invitation create/accept/reject, leave-company, ownership transfer, legacy link, and POS unlock attempt/success/failure actions. The POS actions intentionally separate DGFY auth/no-access failures from POS permission, terminal registry, and hardware-adjacent follow-up diagnostics.
 - `billing_cycle_anchor` backfill migration (`20260303000005-backfill-missing-billing-anchor.cjs`) only updates premium tenants with non-null `current_period_end` and null anchor.
@@ -216,6 +218,7 @@ Operational contract:
 - Missing, false, or stale terms acknowledgement is rejected with `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 - Legal acknowledgement persistence fails closed when the repository/transaction path is unavailable.
 - DGFY account registration consumes a `dgfy_account_verification` OTP, writes the verified account row, invitation membership mirrors, and acknowledgement row in one landlord transaction.
+- Platform-admin DGFY account creation does not consume public OTP. It records `provisioning_status=admin_provisioned`, `temporary_password_active=true`, and `email_verification_source=platform_admin_provisioned`; temporary passwords must not be persisted outside the password hash or audit snapshots.
 - Company registration uses the authenticated verified DGFY account email and does not consume a second same-address company-registration OTP. The tenant row and acknowledgement row are written in one landlord transaction before tenant provisioning.
 - Company registration acknowledgement is captured before tenant provisioning and is tied to the authenticated DGFY account plus the landlord tenant row.
 - Acknowledgement copy preserves the marketplace-provider framing: DGFY facilitates the transaction through a licensed payment partner while the merchant remains seller of record and receives net settlement after disclosed fees.
@@ -239,10 +242,11 @@ Landlord tables:
 1. `dgfy_customer_activities` stores account-facing activity snapshots across tenant databases. Activity rows include DGFY account, tenant, optional store customer, activity type (`order`, `service_booking`, `hospitality_booking`, or `fnb_order`), public reference, store label, status, payment status, total amount, customer contact snapshot, display snapshot, and occurrence timestamp.
 2. `dgfy_customer_addresses` stores global saved addresses for DGFY customer accounts, including label, address lines, city/province/postal/country, phone, coordinates, metadata, and default-address flag.
 3. `dgfy_customer_reviews` stores account-gated typed reviews. Reviews are purchase-gated by paid or completed DGFY customer activity, start pending approval, and identify `target_type`/`target_id` for product, service, Hospitality booking, F&B order, or F&B item review targets.
-4. `dgfy_loyalty_transactions` stores read-only DGFY loyalty ledger rows. Balance is an aggregate of all transactions, not only recent visible rows.
-5. `dgfy_tracking_recovery_codes` stores hashed tracking-recovery codes with generic production responses, attempt limits, expiry, and single-use consumption.
-6. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, `fnb_order_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
-7. `dgfy_account_admin_audit_logs` stores platform-admin DGFY account lifecycle evidence. Rows include `audit_log_id`, `dgfy_account_id`, action (`profile_update`, `suspend`, `reactivate`, `delete`), actor username, optional reason, request ID, IP address, user agent, safe `before_snapshot`/`after_snapshot` JSON, and timestamps. Snapshots must not include password hashes, tokens, OTP values, or other secrets.
+4. `dgfy_customer_notifications` stores account-scoped notification rows for DGFY customer activity updates. Rows include DGFY account, optional tenant/activity linkage, public reference, idempotent `event_key`, notification type, title/body, status, `read_at`, timestamps, and indexes for account/time and unread account reads.
+5. `dgfy_loyalty_transactions` stores read-only DGFY loyalty ledger rows. Balance is an aggregate of all transactions, not only recent visible rows.
+6. `dgfy_tracking_recovery_codes` stores hashed tracking-recovery codes with generic production responses, attempt limits, expiry, and single-use consumption.
+7. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, `fnb_order_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
+8. `dgfy_account_admin_audit_logs` stores platform-admin DGFY account lifecycle evidence. Rows include `audit_log_id`, `dgfy_account_id`, action (`profile_update`, `suspend`, `reactivate`, `delete`), actor username, optional reason, request ID, IP address, user agent, safe `before_snapshot`/`after_snapshot` JSON, and timestamps. Snapshots must not include password hashes, tokens, OTP values, or other secrets.
 
 Operational contract:
 

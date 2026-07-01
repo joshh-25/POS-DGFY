@@ -172,7 +172,10 @@ export const dgfyAccountRepository = {
 
     markEmailVerified(account) {
         if (!account) return null;
-        return account.update({ email_verified_at: account.email_verified_at || new Date() });
+        return account.update({
+            email_verified_at: account.email_verified_at || new Date(),
+            email_verification_source: account.email_verification_source || 'public_otp'
+        });
     },
 
     updateProfile(account, data = {}) {
@@ -180,9 +183,9 @@ export const dgfyAccountRepository = {
         return account.update(data);
     },
 
-    updatePassword(account, passwordHash) {
+    updatePassword(account, passwordHash, extraUpdates = {}) {
         if (!account) return null;
-        return account.update({ password_hash: passwordHash });
+        return account.update({ password_hash: passwordHash, ...extraUpdates });
     },
 
     async listAdminAccounts({
@@ -316,6 +319,13 @@ export const dgfyAccountRepository = {
 
     createAdminAuditLog(payload, options = {}) {
         return DgfyAccountAdminAuditLog.create(payload, options);
+    },
+
+    findActiveAdminAssignableAccount(id, options = {}) {
+        return DgfyAccount.findOne({
+            where: { id, is_active: true, deleted_at: null },
+            ...options
+        });
     },
 
     createBusinessAuditLog(payload, options = {}) {
@@ -972,6 +982,7 @@ export const dgfyAccountRepository = {
     async transferTenantOwnership({ tenant, fromAccountId, toAccountId }) {
         await tenant.update({
             owner_dgfy_account_id: toAccountId,
+            ownership_status: 'claimed',
             ownership_transferred_by: fromAccountId,
             ownership_transferred_at: new Date()
         });
@@ -996,6 +1007,50 @@ export const dgfyAccountRepository = {
             await targetMembership.update({ source: 'founder' });
         }
         return tenant.reload();
+    },
+
+    async forceAssignTenantOwnership({ tenant, toAccountId, tenantUserId = null, role = 'admin', actorAccountId = null }, options = {}) {
+        await tenant.update({
+            owner_dgfy_account_id: toAccountId,
+            ownership_status: 'claimed',
+            ownership_transferred_by: actorAccountId || null,
+            ownership_transferred_at: new Date()
+        }, options);
+        await DgfyAccountTenantMembership.update(
+            { source: 'invite' },
+            {
+                where: {
+                    tenant_id: tenant.id,
+                    source: 'founder',
+                    dgfy_account_id: { [Op.ne]: toAccountId }
+                },
+                ...options
+            }
+        );
+        const [membership] = await DgfyAccountTenantMembership.findOrCreate({
+            where: {
+                dgfy_account_id: toAccountId,
+                tenant_id: tenant.id
+            },
+            defaults: {
+                dgfy_account_id: toAccountId,
+                tenant_id: tenant.id,
+                tenant_user_id: tenantUserId || null,
+                role,
+                status: 'accepted',
+                source: 'admin_handover',
+                accepted_at: new Date()
+            },
+            ...options
+        });
+        await membership.update({
+            tenant_user_id: tenantUserId || membership.tenant_user_id,
+            role,
+            status: 'accepted',
+            source: 'admin_handover',
+            accepted_at: membership.accepted_at || new Date()
+        }, options);
+        return membership.reload(options);
     },
 
     listMemberships(dgfyAccountId) {

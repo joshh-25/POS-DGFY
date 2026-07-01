@@ -6,6 +6,7 @@ const originalEnv = { ...process.env };
 
 let generalLimiter;
 let authLimiter;
+let dgfyTenantSessionLimiter;
 let lookupLimiter;
 let tenantRegistrationLimiter;
 let logger;
@@ -16,6 +17,8 @@ beforeAll(async () => {
   process.env.RATE_LIMIT_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_AUTH_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_AUTH_MAX_REQUESTS = '1';
+  process.env.RATE_LIMIT_DGFY_TENANT_SESSION_WINDOW_MS = '60000';
+  process.env.RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_LOOKUP_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_LOOKUP_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS = '60000';
@@ -28,6 +31,7 @@ beforeAll(async () => {
   const limiterModule = await import('../src/middleware/rateLimiter.js');
   generalLimiter = limiterModule.generalLimiter;
   authLimiter = limiterModule.authLimiter;
+  dgfyTenantSessionLimiter = limiterModule.dgfyTenantSessionLimiter;
   lookupLimiter = limiterModule.lookupLimiter;
   tenantRegistrationLimiter = limiterModule.tenantRegistrationLimiter;
 });
@@ -126,11 +130,12 @@ describe('Rate limiter behavior', () => {
 
     expect(sameEmail.body).toEqual(expect.objectContaining({
       success: false,
-      message: 'Too many email lookup attempts. For security reasons, please try again in 15 minutes.',
+      message: 'Too many email lookup attempts. For security reasons, please try again in 1 minute.',
       limitScope: 'auth_lookup',
       limitKeyType: 'ip_email',
       retryAfterSeconds: expect.any(Number),
     }));
+    expect(Number(sameEmail.headers['retry-after'])).toBeLessThanOrEqual(60);
 
     await request(app)
       .post('/api/v1/auth/lookup')
@@ -162,5 +167,47 @@ describe('Rate limiter behavior', () => {
       limitKeyType: 'ip',
       retryAfterSeconds: expect.any(Number),
     }));
+  });
+
+  it('keys DGFY tenant session handoff by authenticated account and tenant', async () => {
+    const app = express();
+    app.use(express.json());
+    app.post('/api/v1/dgfy/auth/tenant-session', (req, _res, next) => {
+      req.dgfyAccount = { id: req.headers['x-test-dgfy-account'] || 'acct-a' };
+      next();
+    }, dgfyTenantSessionLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+    await request(app)
+      .post('/api/v1/dgfy/auth/tenant-session')
+      .set('x-test-dgfy-account', 'acct-a')
+      .send({ tenant_id: 'tenant-a', company_token: 'secret-token-a' })
+      .expect(200);
+
+    const sameAccountTenant = await request(app)
+      .post('/api/v1/dgfy/auth/tenant-session')
+      .set('x-test-dgfy-account', 'acct-a')
+      .send({ tenant_id: 'tenant-a', company_token: 'secret-token-a' })
+      .expect(429);
+
+    expect(sameAccountTenant.body).toEqual(expect.objectContaining({
+      success: false,
+      message: 'Too many business session attempts. Please wait before opening this company again.',
+      limitScope: 'dgfy_tenant_session',
+      limitKeyType: 'ip_account_tenant',
+      retryAfterSeconds: expect.any(Number),
+    }));
+    expect(JSON.stringify(sameAccountTenant.body)).not.toContain('secret-token-a');
+
+    await request(app)
+      .post('/api/v1/dgfy/auth/tenant-session')
+      .set('x-test-dgfy-account', 'acct-b')
+      .send({ tenant_id: 'tenant-a', company_token: 'secret-token-a' })
+      .expect(200);
+
+    await request(app)
+      .post('/api/v1/dgfy/auth/tenant-session')
+      .set('x-test-dgfy-account', 'acct-a')
+      .send({ tenant_id: 'tenant-b', company_token: 'secret-token-b' })
+      .expect(200);
   });
 });

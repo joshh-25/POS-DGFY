@@ -232,11 +232,10 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
  * @param {Object} params - Template parameters
  * @param {string} params.companyName - The approved company name
  * @param {string} params.adminEmail - Admin's email (login identifier)
- * @param {string} params.companyToken - Company's unique token
  * @param {string} params.appUrl - The base URL of the application
  * @returns {string} HTML email content
  */
-export const getCompanyApprovedTemplate = ({ companyName, adminEmail, companyToken, appUrl }) => {
+export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl }) => {
   const loginUrlRaw = `${appUrl}/login`;
   const loginUrl = appendUtm(loginUrlRaw, 'company_approved');
 
@@ -282,19 +281,15 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, companyTok
                 Great news! Your company <strong style="color: #1f2937;">"${companyName}"</strong> has been reviewed and approved. Your account is now ready to use.
               </p>
 
-              <!-- Credentials Box -->
+              <!-- Account Access Box -->
               <div style="background-color: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
                 <h3 style="margin: 0 0 12px; color: #0f766e; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
-                  Your Login Credentials
+                  Account Access
                 </h3>
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
                     <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Email:</td>
                     <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-weight: 600;">${adminEmail}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Company Token:</td>
-                    <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-weight: 600; font-family: monospace;">${companyToken}</td>
                   </tr>
                 </table>
               </div>
@@ -306,12 +301,6 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, companyTok
                 </a>
               </div>
 
-              <!-- Security Notice -->
-              <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 0 8px 8px 0;">
-                <p style="margin: 0; color: #92400e; font-size: 14px;">
-                  <strong>Security Note:</strong> Keep your company token confidential. Share it only with trusted team members who need access to your company's account.
-                </p>
-              </div>
             </td>
           </tr>
 
@@ -836,4 +825,3 @@ export default {
   getReactivationApprovedTemplate,
   getResubmissionConfirmationTemplate
 };
-

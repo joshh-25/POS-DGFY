@@ -1,6 +1,6 @@
 import React, { useEffect, lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from '../Layout.jsx'
 import AdminLayout from '../Components/admin/AdminLayout.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
@@ -8,71 +8,51 @@ import { PermissionProvider } from './store/PermissionContext.jsx'
 import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.jsx'
 import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
-import { refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
+import { getAccessToken, refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
+import { login as loginTenantSession } from './services/authService.js'
 import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
-import { resolvePosTerminalUrl } from './features/dgfyRouteHelpers.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
-import NotFoundPage from './components/common/NotFoundPage.jsx'
 import { Toaster } from '@/components/ui/sonner'
+import { getRuntimeConfig } from './utils/runtimeConfig.js'
 import './index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
-const enableDevAutoLogin = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTO_LOGIN === 'true'
-const devAutoLoginCompanyToken = String(import.meta.env.VITE_DEV_COMPANY_TOKEN || '').trim()
-const devAutoLoginEmail = String(import.meta.env.VITE_DEV_EMAIL || 'admin@test.com').trim()
-const devAutoLoginPassword = String(import.meta.env.VITE_DEV_PASSWORD || 'Admin123!').trim()
-const devAutoLoginTerminalId = String(import.meta.env.VITE_DEV_TERMINAL_ID || 'COUNTER-01').trim()
+const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
+const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
+const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
 
-const shouldSkipDevAutoLoginForRoute = () => {
+const shouldRunDevAutoLogin = () => {
+  if (!import.meta.env.DEV) return false
+  if (!devAutoLoginEnabled) return false
   if (typeof window === 'undefined') return false
-  const pathname = String(window.location?.pathname || '').trim().toLowerCase()
-  return [
-    '/login',
-    '/register',
-    '/dgfy/auth',
-    '/dgfy/reset-password',
-    '/register-company',
-    '/accept-invite',
-    '/reactivate'
-  ].includes(pathname)
+  const pathname = String(window.location?.pathname || '/')
+  if (pathname === '/terminal' || pathname.startsWith('/terminal/')) return false
+  return shouldRefreshBrowserSessionForPath(pathname)
 }
 
-const isPrivateIpv4Host = (hostname = '') => {
-  const value = String(hostname || '').trim()
-  if (!value) return false
-  if (/^10\./.test(value)) return true
-  if (/^192\.168\./.test(value)) return true
-  const match = value.match(/^172\.(\d{1,3})\./)
-  if (!match) return false
-  const secondOctet = Number.parseInt(match[1], 10)
-  return Number.isInteger(secondOctet) && secondOctet >= 16 && secondOctet <= 31
-}
+const applyDesktopShellBootstrap = () => {
+  if (typeof window === 'undefined') return
+  if (!runtimeConfig.isDesktopShell) return
 
-const shouldDisableServiceWorkerForCurrentHost = () => {
-  if (typeof window === 'undefined') return false
-  const hostname = String(window.location?.hostname || '').trim().toLowerCase()
-  return hostname === 'localhost'
-    || hostname === '127.0.0.1'
-    || hostname === '::1'
-    || isPrivateIpv4Host(hostname)
+  try {
+    if (runtimeConfig.companyToken) {
+      setBrowserSession({ companyToken: runtimeConfig.companyToken })
+    }
+    if (runtimeConfig.terminalId) {
+      window.localStorage.setItem('pos_terminal_identity_v1', runtimeConfig.terminalId)
+    }
+  } catch {
+    // Shell bootstrap values are optional and should not block app mount.
+  }
 }
 
 const registerAdminServiceWorker = async () => {
   if (typeof window === 'undefined') return
   if (import.meta.env.DEV) return
+  if (runtimeConfig.isDesktopShell) return
   if (!('serviceWorker' in navigator)) return
-
-  if (shouldDisableServiceWorkerForCurrentHost()) {
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(registrations.map((registration) => registration.unregister()))
-    } catch {
-      // Local preview should still load even if service worker cleanup fails.
-    }
-    return
-  }
 
   try {
     const probe = await fetch(serviceWorkerUrl, { method: 'GET', cache: 'no-store' })
@@ -105,16 +85,17 @@ const Reports = lazy(() => import('../Pages/Reports.jsx'))
 const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
+const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
 const DgfyAuthPage = lazy(() => import('../Pages/DgfyAuthPage.jsx'))
 const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.jsx'))
-const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
 const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
 const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
 const DispatchOrders = lazy(() => import('../Pages/DispatchOrders.jsx'))
 const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
-const IntegratedPOSPage = lazy(() => import('./features/pos/pages/SkupervisorPOSPage.jsx'))
+const POSPage = lazy(() => import('./features/pos/pages/SkupervisorPOSPage.jsx'))
+const TerminalPage = lazy(() => import('./features/pos/pages/TerminalPage.jsx'))
 const SalesPage = lazy(() => import('./features/sales/pages/SalesPage.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
@@ -122,16 +103,6 @@ const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.
 const PaymentOperations = lazy(() => import('../Pages/admin/PaymentOperations.jsx'))
 const AdminPricing = lazy(() => import('../Pages/admin/AdminPricing.jsx'))
 const HostingStatus = lazy(() => import('../Pages/admin/HostingStatus.jsx'))
-
-function PosTerminalRedirect() {
-  const location = useLocation()
-
-  useEffect(() => {
-    window.location.replace(resolvePosTerminalUrl(location.search))
-  }, [location.search])
-
-  return <div className="min-h-screen bg-slate-50 p-6 text-sm text-slate-600">Opening DGFY POS...</div>
-}
 
 function App() {
   const location = useLocation()
@@ -143,6 +114,7 @@ function App() {
    */
   useEffect(() => {
     if (!shouldRefreshBrowserSessionForPath(location.pathname)) return;
+    if (getAccessToken()) return;
     refreshBrowserSession().catch(() => {});
   }, [location.pathname]);
 
@@ -152,9 +124,9 @@ function App() {
         {/* Public routes - Login and Register pages */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/register-company" element={<RegisterCompany />} />
         <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
         <Route path="/dgfy/reset-password" element={<DgfyResetPasswordPage />} />
-        <Route path="/register-company" element={<RegisterCompany />} />
         <Route path="/legal/:slug" element={<LegalDocument />} />
         <Route path="/privacy" element={<LegalDocument />} />
         <Route path="/accept-invite" element={<AcceptInvite />} />
@@ -235,8 +207,7 @@ function App() {
         <Route path="/pos" element={
           <ProtectedRoute>
             <Layout currentPageName={currentPageName}>
-              {/* Integrated POS inside the authenticated SKUpervisor application shell. */}
-              <IntegratedPOSPage />
+              <POSPage />
             </Layout>
           </ProtectedRoute>
         } />
@@ -267,8 +238,7 @@ function App() {
             </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
-        {/* Dedicated POS application surface; intentionally leaves the IMS shell. */}
-        <Route path="/terminal" element={<PosTerminalRedirect />} />
+        <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/sales" element={
           <ProtectedRoute>
             <Layout currentPageName={currentPageName}>
@@ -304,7 +274,6 @@ function App() {
 
         {/* Legacy route - redirect to new admin portal */}
         <Route path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />} />
-        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
   )
@@ -313,10 +282,11 @@ function App() {
 const rootElement = document.getElementById('root');
 
 const mountApp = () => {
+  applyDesktopShellBootstrap()
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <BrowserRouter
+        <RootRouter
           future={{
             v7_startTransition: true,
             v7_relativeSplatPath: true,
@@ -329,7 +299,7 @@ const mountApp = () => {
               <App />
             </WorkflowModeProvider>
           </PermissionProvider>
-        </BrowserRouter>
+        </RootRouter>
       </ErrorBoundary>
     </React.StrictMode>,
   )
@@ -337,30 +307,23 @@ const mountApp = () => {
   registerAdminServiceWorker()
 }
 
-// Dev-only auto-login is opt-in and must not contaminate public auth flows.
-if (enableDevAutoLogin && devAutoLoginCompanyToken && !shouldSkipDevAutoLoginForRoute()) {
+// Dev-only auto-login: opt-in local convenience for protected IMS routes only.
+// DGFY auth and POS terminal lock routes must render without hidden tenant login.
+if (shouldRunDevAutoLogin()) {
   (async () => {
     try {
-      // Attempt to login and store tokens; backend will validate tenant context
-      const resp = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-company-token': devAutoLoginCompanyToken
-        },
-        body: JSON.stringify({ email: devAutoLoginEmail, password: devAutoLoginPassword })
-      });
+      const AUTO_EMAIL = 'admin@test.com';
+      const AUTO_PASSWORD = 'Admin123!';
+      const COMPANY_TOKEN = 'token-original';
+      const TERMINAL_ID = 'COUNTER-01';
 
-      const body = await resp.json().catch(() => null);
-      if (resp.ok && body?.success && body?.data?.token) {
-        try {
-          setBrowserSession({ token: body.data.token, companyToken: devAutoLoginCompanyToken });
-          localStorage.setItem('pos_terminal_identity_v1', devAutoLoginTerminalId);
-          // dispatch auth event so PermissionContext picks up new session
-          window.dispatchEvent(new CustomEvent('auth:login'))
-        } catch (e) {
-          // ignore storage errors
-        }
+      const session = await loginTenantSession({
+        email: AUTO_EMAIL,
+        password: AUTO_PASSWORD,
+        companyToken: COMPANY_TOKEN
+      });
+      if (session?.token) {
+        localStorage.setItem('pos_terminal_identity_v1', TERMINAL_ID);
       }
     } catch (e) {
       // best-effort only; do not block app mount

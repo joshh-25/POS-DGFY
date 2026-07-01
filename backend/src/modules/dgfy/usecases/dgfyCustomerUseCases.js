@@ -6,7 +6,6 @@ import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode, isDomainError } from '../../shared/contracts/domainErrors.js';
 import {
-    buildPhoneLookupVariants,
     dgfyCustomerRepository,
     hashReviewInviteToken,
     hashTrackingRecoveryLookup
@@ -123,68 +122,18 @@ const publicActivity = (activity = {}) => {
     };
 };
 
-const isSamePhone = (left, right) => {
-    const leftVariants = new Set(buildPhoneLookupVariants(left));
-    return buildPhoneLookupVariants(right).some((variant) => leftVariants.has(variant));
-};
-
-const syncAccountOrderActivities = async ({ repository = dgfyCustomerRepository, account, activities = [] } = {}) => {
-    const dgfyAccount = ensureAccount(account);
-    const rows = Array.isArray(activities) ? activities : [];
-    if (!rows.length) return rows;
-
-    const refreshed = await Promise.all(rows.map(async (activity) => {
-        if (!activity || !ORDER_ACTIVITY_TYPES.has(String(activity.activity_type || '').trim().toLowerCase())) {
-            return activity;
-        }
-        if (!activity.tenant_id || !activity.reference) {
-            return activity;
-        }
-
-        try {
-            return await withTenantContext(activity.tenant_id, async () => {
-                const PosTransaction = dbStore.get('PosTransaction');
-                if (!PosTransaction) return activity;
-
-                const row = await PosTransaction.findOne({
-                    where: { tracking_pin: normalizeReference(activity.reference) }
-                });
-                if (!row) return activity;
-
-                const plain = typeof row.toJSON === 'function' ? row.toJSON() : row;
-                const normalizedActivityCustomerId = parsePositiveInt(activity.store_customer_id);
-                const normalizedOrderCustomerId = parsePositiveInt(plain.store_customer_id);
-                const emailMatches = normalizeEmail(plain.customer_email || activity.customer_email) === normalizeEmail(dgfyAccount.email);
-                const phoneMatches = isSamePhone(plain.customer_phone || activity.customer_phone, dgfyAccount.phone);
-                const customerIdMatches = (
-                    normalizedActivityCustomerId
-                    && normalizedOrderCustomerId
-                    && normalizedActivityCustomerId === normalizedOrderCustomerId
-                );
-
-                if (!customerIdMatches && !emailMatches && !phoneMatches) {
-                    return activity;
-                }
-
-                const synced = await recordDgfyOrderActivity({
-                    tenantId: activity.tenant_id,
-                    order: plain,
-                    storeCustomer: {
-                        customer_id: normalizedOrderCustomerId || normalizedActivityCustomerId || null,
-                        dgfy_account_id: dgfyAccount.id,
-                        email: plain.customer_email || activity.customer_email || dgfyAccount.email,
-                        phone: plain.customer_phone || activity.customer_phone || dgfyAccount.phone || null
-                    }
-                });
-                return synced || activity;
-            });
-        } catch {
-            return activity;
-        }
-    }));
-
-    return refreshed;
-};
+const publicNotification = (notification = {}) => ({
+    notification_id: notification.notification_id,
+    type: notification.type,
+    title: notification.title,
+    body: notification.body,
+    status: notification.status,
+    reference: notification.reference,
+    tenant_id: notification.tenant_id || null,
+    activity_id: notification.activity_id || null,
+    read_at: notification.read_at || null,
+    created_at: notification.created_at || null
+});
 
 const genericRecoveryResponse = (extra = {}) => ({
     message: 'If matching orders exist, a recovery code has been sent by email.',
@@ -280,6 +229,82 @@ const withTenantContext = async (tenantId, callback) => {
         ...getTenantModels(sequelize)
     };
     return dbStore.run(context, () => callback({ tenant, sequelize }));
+};
+
+const toPlainRecord = (value) => (
+    value && typeof value.toJSON === 'function'
+        ? value.toJSON()
+        : value
+);
+
+const syncExplicitAccountOrderActivity = async ({ account, activity } = {}) => {
+    const dgfyAccount = ensureAccount(account);
+    if (!activity || !ORDER_ACTIVITY_TYPES.has(String(activity.activity_type || '').trim().toLowerCase())) {
+        return activity;
+    }
+    if (!activity.tenant_id || !activity.reference || String(activity.dgfy_account_id || '') !== String(dgfyAccount.id)) {
+        return activity;
+    }
+
+    try {
+        return await withTenantContext(activity.tenant_id, async ({ sequelize }) => {
+            const PosTransaction = dbStore.get('PosTransaction');
+            if (!PosTransaction) return activity;
+
+            const include = [];
+            const StoreCustomer = dbStore.get('StoreCustomer');
+            if (StoreCustomer) {
+                const storeCustomerAttributes = await existingModelAttributes(sequelize, StoreCustomer);
+                if (storeCustomerAttributes.length) {
+                    include.push({
+                        model: StoreCustomer,
+                        as: 'storeCustomer',
+                        required: false,
+                        attributes: storeCustomerAttributes
+                    });
+                }
+            }
+
+            const row = await PosTransaction.findOne({
+                where: { tracking_pin: normalizeReference(activity.reference) },
+                include
+            });
+            if (!row) return activity;
+
+            const order = toPlainRecord(row);
+            const orderStoreCustomer = order.storeCustomer || order.store_customer || {};
+            const orderAccountId = String(orderStoreCustomer.dgfy_account_id || '').trim();
+            if (orderAccountId && orderAccountId !== String(dgfyAccount.id)) {
+                return activity;
+            }
+
+            const activityCustomerId = parsePositiveInt(activity.store_customer_id);
+            const orderCustomerId = parsePositiveInt(order.store_customer_id || orderStoreCustomer.customer_id);
+            if (activityCustomerId && orderCustomerId && activityCustomerId !== orderCustomerId) {
+                return activity;
+            }
+
+            const synced = await recordDgfyOrderActivity({
+                tenantId: activity.tenant_id,
+                order,
+                storeCustomer: {
+                    customer_id: orderCustomerId || activityCustomerId || null,
+                    dgfy_account_id: dgfyAccount.id,
+                    email: order.customer_email || activity.customer_email || dgfyAccount.email || null,
+                    phone: order.customer_phone || activity.customer_phone || dgfyAccount.phone || null
+                }
+            });
+            return synced || activity;
+        });
+    } catch {
+        return activity;
+    }
+};
+
+const syncExplicitAccountOrderActivities = async ({ account, activities = [] } = {}) => {
+    const rows = Array.isArray(activities) ? activities : [];
+    if (!rows.length) return rows;
+    return Promise.all(rows.map((activity) => syncExplicitAccountOrderActivity({ account, activity })));
 };
 
 const matchAccountForOrder = (order = {}) => {
@@ -614,7 +639,10 @@ const hashRecoveryCode = ({ lookup, code }) => (
 
 const generateRecoveryCode = () => String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
 
-export const buildGetDgfyCustomerDashboardUseCase = ({ repository = dgfyCustomerRepository } = {}) => async ({ account }) => {
+export const buildGetDgfyCustomerDashboardUseCase = ({
+    repository = dgfyCustomerRepository,
+    activitySynchronizer = syncExplicitAccountOrderActivities
+} = {}) => async ({ account }) => {
     try {
         const dgfyAccount = ensureAccount(account);
         const [activityResult, addresses, loyalty] = await Promise.all([
@@ -622,12 +650,11 @@ export const buildGetDgfyCustomerDashboardUseCase = ({ repository = dgfyCustomer
             repository.listAddresses(dgfyAccount.id),
             repository.listLoyalty(dgfyAccount.id, 20)
         ]);
-        const syncedActivities = await syncAccountOrderActivities({
-            repository,
+        const syncedRows = await activitySynchronizer({
             account: dgfyAccount,
             activities: activityResult.rows
         });
-        const activities = syncedActivities.map(publicActivity);
+        const activities = syncedRows.map(publicActivity);
         return ok({
             account: {
                 id: dgfyAccount.id,
@@ -651,7 +678,10 @@ export const buildGetDgfyCustomerDashboardUseCase = ({ repository = dgfyCustomer
     }
 };
 
-export const buildListDgfyCustomerActivitiesUseCase = ({ repository = dgfyCustomerRepository } = {}) => async ({ account, query = {}, type = null }) => {
+export const buildListDgfyCustomerActivitiesUseCase = ({
+    repository = dgfyCustomerRepository,
+    activitySynchronizer = syncExplicitAccountOrderActivities
+} = {}) => async ({ account, query = {}, type = null }) => {
     try {
         const dgfyAccount = ensureAccount(account);
         const result = await repository.listActivitiesForAccount(dgfyAccount.id, {
@@ -665,13 +695,12 @@ export const buildListDgfyCustomerActivitiesUseCase = ({ repository = dgfyCustom
             page: query.page,
             limit: query.limit
         });
-        const syncedActivities = await syncAccountOrderActivities({
-            repository,
+        const syncedRows = await activitySynchronizer({
             account: dgfyAccount,
             activities: result.rows
         });
         return ok({
-            activities: syncedActivities.map(publicActivity),
+            activities: syncedRows.map(publicActivity),
             pagination: result.pagination
         });
     } catch (error) {
@@ -679,7 +708,58 @@ export const buildListDgfyCustomerActivitiesUseCase = ({ repository = dgfyCustom
     }
 };
 
-export const buildTrackDgfyCustomerReferenceUseCase = ({ repository = dgfyCustomerRepository } = {}) => async ({ account = null, body = {} }) => {
+export const buildListDgfyCustomerNotificationsUseCase = ({
+    repository = dgfyCustomerRepository
+} = {}) => async ({ account, query = {} }) => {
+    try {
+        const dgfyAccount = ensureAccount(account);
+        const result = await repository.listNotificationsForAccount(dgfyAccount.id, {
+            limit: query.limit,
+            unreadOnly: ['1', 'true', true].includes(query.unread_only ?? query.unreadOnly)
+        });
+        return ok({
+            notifications: result.rows.map(publicNotification),
+            unread_count: result.unread_count
+        });
+    } catch (error) {
+        return fail(mapError(error, 'Failed to list DGFY customer notifications'));
+    }
+};
+
+export const buildMarkDgfyCustomerNotificationReadUseCase = ({
+    repository = dgfyCustomerRepository
+} = {}) => async ({ account, notificationId }) => {
+    try {
+        const dgfyAccount = ensureAccount(account);
+        const notification = await repository.markNotificationRead({
+            dgfyAccountId: dgfyAccount.id,
+            notificationId
+        });
+        if (!notification) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Notification was not found for this DGFY account.', { statusCode: 404 });
+        }
+        return ok({ notification: publicNotification(notification) });
+    } catch (error) {
+        return fail(mapError(error, 'Failed to mark DGFY customer notification as read'));
+    }
+};
+
+export const buildMarkAllDgfyCustomerNotificationsReadUseCase = ({
+    repository = dgfyCustomerRepository
+} = {}) => async ({ account }) => {
+    try {
+        const dgfyAccount = ensureAccount(account);
+        const result = await repository.markAllNotificationsRead(dgfyAccount.id);
+        return ok({ read_at: result.read_at });
+    } catch (error) {
+        return fail(mapError(error, 'Failed to mark DGFY customer notifications as read'));
+    }
+};
+
+export const buildTrackDgfyCustomerReferenceUseCase = ({
+    repository = dgfyCustomerRepository,
+    activitySynchronizer = syncExplicitAccountOrderActivity
+} = {}) => async ({ account = null, body = {} }) => {
     try {
         const reference = normalizeReference(body.reference || body.tracking_pin);
         if (!TRACKING_REFERENCE_PATTERN.test(reference)) {
@@ -691,7 +771,10 @@ export const buildTrackDgfyCustomerReferenceUseCase = ({ repository = dgfyCustom
         if (!activity) {
             throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Tracking reference was not found.', { statusCode: 404 });
         }
-        return ok({ activity: publicActivity(activity) });
+        const synced = account?.id
+            ? await activitySynchronizer({ account, activity })
+            : activity;
+        return ok({ activity: publicActivity(synced) });
     } catch (error) {
         return fail(mapError(error, 'Failed to track DGFY customer reference'));
     }

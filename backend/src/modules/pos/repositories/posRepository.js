@@ -498,7 +498,7 @@ const buildTransactionInclude = () => ([
     {
         model: dbStore.get('StoreCustomer'),
         as: 'storeCustomer',
-        attributes: ['customer_id', 'email', 'name', 'phone']
+        attributes: ['customer_id', 'dgfy_account_id', 'email', 'name', 'phone']
     },
     {
         model: dbStore.get('FnbCheck'),

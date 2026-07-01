@@ -177,7 +177,7 @@ describe('userService mode-aware RBAC persistence', () => {
     expect(UserLocationGrant.destroy).not.toHaveBeenCalled();
   });
 
-  it('passes CSV role presets and imported location ids through invitation creation', async () => {
+  it('rejects retired direct CSV invitations before creating tenant users', async () => {
     const admin = createUser({
       user_id: 1,
       username: 'admin',
@@ -200,22 +200,12 @@ describe('userService mode-aware RBAC persistence', () => {
       }
     ], 1);
 
-    expect(result.errors).toEqual([]);
-    expect(result.invited).toEqual([expect.objectContaining({
+    expect(result.errors).toEqual([expect.objectContaining({
       email: 'scheduler@example.com',
-      role: 'staff',
-      role_preset_key: 'services_scheduler',
-      location_ids: [1, 3]
+      error: expect.stringContaining('Direct user invitation links have been retired')
     })]);
-    expect(User.create).toHaveBeenCalledWith(expect.objectContaining({
-      email: 'scheduler@example.com',
-      role: 'staff',
-      role_preset_key: 'services_scheduler',
-      permissions: expect.arrayContaining(['services:bookings:manage'])
-    }), expect.any(Object));
-    expect(UserLocationGrant.bulkCreate).toHaveBeenCalledWith([
-      { user_id: 99, location_id: 1, created_by: 1 },
-      { user_id: 99, location_id: 3, created_by: 1 }
-    ], expect.any(Object));
+    expect(result.invited).toEqual([]);
+    expect(User.create).not.toHaveBeenCalled();
+    expect(UserLocationGrant.bulkCreate).not.toHaveBeenCalled();
   });
 });

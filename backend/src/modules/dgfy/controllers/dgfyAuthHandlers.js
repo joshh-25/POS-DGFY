@@ -8,6 +8,7 @@ import {
     getDgfyLegalTermsUseCase,
     leaveDgfyCompanyUseCase,
     listDgfyAccountCompaniesUseCase,
+    preflightDgfyAccountRegistrationUseCase,
     registerDgfyAccountUseCase,
     loginDgfyAccountUseCase,
     getDgfyMeUseCase,
@@ -64,6 +65,22 @@ export const getDgfyLegalTerms = async (req, res) => {
     const result = await getDgfyLegalTermsUseCase();
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY legal terms lookup failed'
+    });
+};
+
+export const preflightDgfyAccountRegistration = async (req, res) => {
+    const result = await preflightDgfyAccountRegistrationUseCase({
+        body: req.body
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY account registration preflight failed',
+        errorPayloadResolver: (failure) => ({
+            success: false,
+            data: null,
+            message: failure.message,
+            error_code: failure.details?.error_code || failure.code || null,
+            details: failure.details || null
+        })
     });
 };
 

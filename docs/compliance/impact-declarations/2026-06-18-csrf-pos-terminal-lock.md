@@ -1,15 +1,15 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-06-18
+last_reviewed: 2026-06-19
 related_adr: docs/architecture/adr/0026-browser-session-cookie-authority.md,docs/architecture/adr/0028-dgfy-account-company-switching.md
 declaration_id: 2026-06-18-csrf-pos-terminal-lock
 classification: regulatory
-surfaces: pos,terminal,settings,compliance
+surfaces: pos,terminal,settings,storefront,compliance
 reason_codes_impacted: CSRF_TOKEN_REQUIRED,ALLOWED
 policy_version: 2026.06.18
-verification_evidence: npm run lint:docs,npm run check:architecture,npm --prefix frontend test -- --run src/services/__tests__/api.interceptor.test.js src/services/__tests__/adminService.interceptor.test.js src/services/__tests__/adminService.adminOperations.contract.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:pos,git diff --check
-rollback_note: Revert the shared API CSRF header injection and dedicated POS lock sequencing together if unsafe browser requests or POS unlock regress; backend CSRF enforcement remains unchanged.
+verification_evidence: npm run lint:docs,npm run check:architecture,npm --prefix frontend test -- --run apps/store/src/__tests__/requestJson.csrfSession.test.js apps/store/src/__tests__/hospitalityStorefront.contract.test.js src/services/__tests__/browserEntrypoints.csrfSession.contract.test.js src/services/__tests__/api.interceptor.test.js src/services/__tests__/adminService.interceptor.test.js src/services/__tests__/adminService.adminOperations.contract.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:pos,npm --prefix frontend run build:store,git diff --check
+rollback_note: Revert the shared API/Storefront CSRF helper consolidation and dedicated POS lock sequencing together if unsafe browser requests or POS unlock regress; backend CSRF enforcement remains unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-06-18T11:36:00+08:00
@@ -22,11 +22,13 @@ preflight_request_ref: CSRF-POS-LOCK-2026-06-18
 
 Regulatory.
 
-This declaration covers frontend-only remediation for two production-facing control gaps:
+This declaration covers frontend-only remediation for production-facing control gaps:
 
 1. Shared tenant and platform-admin API clients now attach the browser-readable `sku_csrf_token` as `x-csrf-token` on unsafe methods when a cookie-backed browser session is present.
 2. The dedicated POS app remains locked until explicit terminal unlock succeeds, so the DGFY POS unlock drawer precedes open-shift prompting.
-3. The DGFY-first POS drawer can fall back to the governed legacy tenant-local login path when `/dgfy/auth/login` rejects an unlinked legacy account with `401`; that fallback still resolves tenant context through `/auth/lookup`, validates tenant credentials, and preserves the separate terminal unlock step before selling resumes.
+3. The DGFY-first POS drawer can fall back to the governed legacy tenant-local login path when `/dgfy/auth/login` rejects an unlinked legacy account with `401`; that fallback still resolves tenant context through `/auth/lookup`, validates tenant credentials, and keeps terminal selection before unlock.
+4. Storefront shared `requestJson` now owns cookie credentials, Storefront/tenant/location context headers, bearer propagation, and unsafe-method CSRF header injection for Storefront browser requests; hospitality booking no longer reads the CSRF cookie or calls `fetch` through a local request helper.
+5. IMS and standalone POS dev auto-login entrypoints now use the shared tenant login/session service instead of hand-rolled `/auth/login` fetches.
 
 The change is compliance-sensitive because missing CSRF headers caused cookie-authenticated protected actions to fail closed, including platform-admin DGFY account lifecycle actions and POS shift/device actions. The POS lock sequencing is terminal-sensitive because cashier workflows must authenticate and select company/terminal before shift operations.
 
@@ -36,14 +38,17 @@ The change is compliance-sensitive because missing CSRF headers caused cookie-au
 - Platform-admin API requests through `frontend/src/services/adminService.js` attach `x-csrf-token` for unsafe methods while preserving existing admin bearer-token behavior.
 - Platform-admin DGFY account actions such as profile update, suspend/reactivate, and delete are covered by the admin service contract test.
 - POS terminal shift/open and other unsafe POS calls inherit the tenant API CSRF header.
+- Storefront requests through `frontend/apps/store/src/services/requestJson.js` attach `x-csrf-token` on unsafe methods while preserving Storefront slug, tenant slug/id, selected location, bearer token, JSON body, and `credentials: include` behavior.
+- Hospitality booking actions inherit the Storefront helper instead of maintaining a parallel CSRF cookie reader.
+- IMS and standalone POS dev auto-login use `frontend/src/services/authService.js` for tenant session establishment and in-memory browser session updates.
 - The dedicated POS app no longer refreshes cookie-only tenant sessions into an unlocked terminal state before the explicit POS unlock flow.
-- The open-shift modal is suppressed while the terminal lock drawer or dedicated terminal unlock step is active, keeping DGFY sign-in, company selection, and terminal unlock before shift opening.
+- The open-shift modal is suppressed while the terminal lock drawer is open, keeping login/company/terminal selection before shift opening.
 - Unlinked legacy tenant-local POS users can use the same primary drawer credentials during the grace period; a DGFY account login `401` falls through to the existing tenant-local login path instead of trapping valid legacy credentials behind a collapsed details control.
 
 ## Compliance Preconditions
 
 1. Backend CSRF enforcement remains the authority for rejecting cookie-authenticated unsafe requests without a matching `x-csrf-token`.
-2. Frontend direct network calls outside the shared tenant/admin clients must still explicitly attach the browser-readable CSRF cookie or move to the shared clients.
+2. Frontend direct network calls outside the shared tenant, platform-admin, or Storefront clients must still explicitly attach the browser-readable CSRF cookie or move to the shared clients. Current remaining direct `fetch` callsites are limited to service-worker probes/cache handling, third-party reverse geocoding GETs, and the shared session refresh helper.
 3. DGFY POS unlock remains DGFY sign-in, accessible company selection, terminal/counter selection, then POS session creation.
 4. Open-shift actions remain permission-gated and require a selected terminal identity after unlock.
 5. Legacy POS login remains only a dated grace fallback and must not bypass the terminal lock sequencing, tenant lookup, credential validation, POS permissions, or terminal identity checks.
@@ -52,13 +57,14 @@ The change is compliance-sensitive because missing CSRF headers caused cookie-au
 
 Required validation for this branch:
 
-1. `npm --prefix frontend test -- --run src/services/__tests__/api.interceptor.test.js src/services/__tests__/adminService.interceptor.test.js src/services/__tests__/adminService.adminOperations.contract.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js`
+1. `npm --prefix frontend test -- --run apps/store/src/__tests__/requestJson.csrfSession.test.js apps/store/src/__tests__/hospitalityStorefront.contract.test.js src/services/__tests__/browserEntrypoints.csrfSession.contract.test.js src/services/__tests__/api.interceptor.test.js src/services/__tests__/adminService.interceptor.test.js src/services/__tests__/adminService.adminOperations.contract.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js`
 2. `npm --prefix frontend run build:skupervisor`
 3. `npm --prefix frontend run build:pos`
-4. `npm run lint:docs`
-5. `npm run check:architecture`
-6. `npm run check:compliance`
-7. `git diff --check`
+4. `npm --prefix frontend run build:store`
+5. `npm run lint:docs`
+6. `npm run check:architecture`
+7. `npm run check:compliance`
+8. `git diff --check`
 
 ## Deployment Note
 

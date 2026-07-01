@@ -209,11 +209,11 @@ export const useFinalizeItem = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const finalizeItem = useCallback(async (itemId) => {
+  const finalizeItem = useCallback(async (itemId, itemData = {}) => {
     setLoading(true);
     setError(null);
     try {
-      const item = await itemService.finalizeItem(itemId);
+      const item = await itemService.finalizeItem(itemId, itemData);
       return item;
     } catch (err) {
       setError(err.message || 'Failed to finalize item');

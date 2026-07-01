@@ -126,8 +126,8 @@ topic: dgfy_unified_onboarding_plan
 1. On successful login, master admin receives onboarding reminder + wizard for incomplete state.
 2. Wizard sections:
 - Optional profile picture and cover photo
-- Primary storefront location pin through the shared IMS MapLibre picker, with click-to-place, drag-to-adjust, browser geolocation, coordinate fields, and delivery-radius preview. The shared picker is also used by Settings > Storefront location editing and uses an inline raster style so a remote style JSON failure cannot blank the picker before merchants can place or adjust a pin.
-- Storefront business-hours setup in the same primary-location step, persisted to `storefront_hours`
+- Primary storefront location pin through the shared IMS MapLibre picker, with explicit locked/adjust modes, browser geolocation accuracy feedback, coordinate fields, delivery-radius preview, and first-party PH-local address suggestions. The shared picker is also used by Settings > Storefront location editing, opens over Iloilo City, Philippines when no saved pin exists, and uses the shared Storefront MapLibre basemap style so merchants can see street context while address lookup remains on the first-party reverse-geocode endpoint. Iloilo City is the default camera view only, not a default saved merchant pin; onboarding and Settings reject missing coordinates, `0,0`, and browser geolocation results outside the Philippines before saving a merchant storefront location. Settings opens locked until `Adjust Pin`; onboarding starts in adjust mode only when searchable storefront visibility is enabled and no valid saved pin exists.
+- Storefront business-hours setup in the same primary-location step, persisted to `storefront_hours` with support for multiple ordered intervals per day.
 - Mode-aware bulk starter-item creation, including row-level partial saves, optional post-create storefront image upload retry, and exact generated-SKU replay handling that returns prior rows as idempotent success rather than duplicates
 3. Persist progress after each step and allow safe resume.
 

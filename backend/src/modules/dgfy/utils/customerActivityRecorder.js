@@ -1,4 +1,5 @@
 import { dgfyCustomerRepository } from '../repositories/dgfyCustomerRepository.js';
+import { dispatchDgfyCustomerActivityUpdate } from '../services/dgfyCustomerNotifications.js';
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeReference = (value) => String(value || '').trim().toUpperCase();
@@ -62,6 +63,10 @@ export const recordDgfyOrderActivity = async ({ tenantId, order, storeCustomer =
             pointsDelta: points,
             reason: 'completed_order'
         }).catch(() => null);
+    }
+
+    if (activity?.dgfy_account_id && activity._status_changed !== false) {
+        await dispatchDgfyCustomerActivityUpdate(activity).catch(() => null);
     }
 
     return activity;

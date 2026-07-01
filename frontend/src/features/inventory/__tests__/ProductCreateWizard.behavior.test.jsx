@@ -120,7 +120,7 @@ describe('ProductCreateWizard behavior', () => {
     expect(screen.getByText('Step 2 of 11')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'POS Setup' })).toBeTruthy();
     expect(screen.getByText(/POS Controls/i)).toBeTruthy();
-    expect(screen.getByText(/Storefront Catalog/i)).toBeTruthy();
+    expect(screen.getAllByText(/Storefront Catalog/i).length).toBeGreaterThan(0);
   });
 
   it('clears manufacturing-only fields when an existing F&B product is saved', async () => {

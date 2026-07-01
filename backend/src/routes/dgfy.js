@@ -1,5 +1,5 @@
 import express from 'express';
-import { authLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, dgfyAccountSearchLimiter, dgfyTenantSessionLimiter } from '../middleware/rateLimiter.js';
 import { authenticate, authenticateAdmin, checkPermission } from '../middleware/auth.js';
 import { authenticateDgfyAccount, authenticateDgfyAccountOrTenantMembership } from '../middleware/dgfyAuth.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -23,6 +23,7 @@ import {
     requestDgfyLegacyLinkEmailOtp,
     requestDgfyPasswordReset,
     requestDgfyEmailVerification,
+    preflightDgfyAccountRegistration,
     searchDgfyBusinessAccounts,
     startDgfyPosSession,
     startDgfyTenantSession,
@@ -35,6 +36,7 @@ import {
 } from '../modules/dgfy/controllers/dgfyAuthHandlers.js';
 import {
     getAdminDgfyAccount,
+    createAdminProvisionedDgfyAccount,
     deleteAdminDgfyAccount,
     listAdminDgfyAccounts,
     reactivateAdminDgfyAccount,
@@ -51,14 +53,18 @@ import {
     listDgfyCustomerAddresses,
     listDgfyCustomerActivities,
     listDgfyCustomerBookings,
+    listDgfyCustomerNotifications,
     listDgfyCustomerOrders,
     listPublicDgfyCustomerReviews,
     moderateDgfyCustomerReview,
     reorderDgfyCustomerOrder,
     requestDgfyTrackingRecovery,
     setDefaultDgfyCustomerAddress,
+    markAllDgfyCustomerNotificationsRead,
+    markDgfyCustomerNotificationRead,
     submitDgfyGuestReviewInvite,
     submitDgfyCustomerReview,
+    streamDgfyCustomerEvents,
     trackDgfyCustomerReference,
     updateDgfyCustomerAddress,
     validateDgfyReviewInvite,
@@ -68,6 +74,7 @@ import {
 const router = express.Router();
 
 router.get('/legal-terms/current', getDgfyLegalTerms);
+router.post('/auth/register/preflight', authLimiter, preflightDgfyAccountRegistration);
 router.post('/auth/register', authLimiter, registerDgfyAccount);
 router.post('/auth/login', authLimiter, loginDgfyAccount);
 router.post('/auth/password-reset/request', authLimiter, requestDgfyPasswordReset);
@@ -80,7 +87,7 @@ router.post('/auth/password/change', authenticateDgfyAccount, changeDgfyPassword
 router.post('/auth/email-verification/request', authLimiter, authenticateDgfyAccount, requestDgfyEmailVerification);
 router.post('/auth/email-verification/verify', authLimiter, authenticateDgfyAccount, verifyDgfyEmail);
 router.post('/auth/handoff', authenticateDgfyAccount, createDgfyHandoff);
-router.post('/auth/tenant-session', authLimiter, authenticateDgfyAccount, startDgfyTenantSession);
+router.post('/auth/tenant-session', authenticateDgfyAccount, dgfyTenantSessionLimiter, startDgfyTenantSession);
 router.get('/account/companies', authenticateDgfyAccountOrTenantMembership, listDgfyAccountCompanies);
 router.post('/account/business-step-up/request', authLimiter, authenticateDgfyAccountOrTenantMembership, requestDgfyBusinessStepUp);
 router.post('/account/companies/:tenant_id/switch', authLimiter, authenticateDgfyAccountOrTenantMembership, switchDgfyCompany);
@@ -91,12 +98,13 @@ router.get('/legacy-link/status', authenticate, getDgfyLegacyLinkStatus);
 router.post('/legacy-link/request-email-otp', authLimiter, authenticate, requestDgfyLegacyLinkEmailOtp);
 router.post('/legacy-link/complete', authLimiter, authenticate, completeDgfyLegacyLink);
 router.post('/legacy-link/start-registration-handoff', authLimiter, authenticate, startDgfyLegacyRegistrationHandoff);
-router.get('/accounts/search', authLimiter, authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), searchDgfyBusinessAccounts);
+router.get('/accounts/search', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), dgfyAccountSearchLimiter, searchDgfyBusinessAccounts);
 router.post('/invitations', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), createDgfyInvitation);
 router.post('/invitations/:membership_id/accept', authenticateDgfyAccountOrTenantMembership, acceptDgfyInvitation);
 router.post('/invitations/:membership_id/reject', authenticateDgfyAccountOrTenantMembership, rejectDgfyInvitation);
 
 router.get('/admin/accounts', authenticateAdmin, listAdminDgfyAccounts);
+router.post('/admin/accounts', authenticateAdmin, createAdminProvisionedDgfyAccount);
 router.get('/admin/accounts/:account_id', authenticateAdmin, getAdminDgfyAccount);
 router.patch('/admin/accounts/:account_id/profile', authenticateAdmin, updateAdminDgfyAccountProfile);
 router.post('/admin/accounts/:account_id/suspend', authenticateAdmin, suspendAdminDgfyAccount);
@@ -107,6 +115,10 @@ router.get('/customer/dashboard', authenticateDgfyAccount, getDgfyCustomerDashbo
 router.get('/customer/activities', authenticateDgfyAccount, listDgfyCustomerActivities);
 router.get('/customer/orders', authenticateDgfyAccount, listDgfyCustomerOrders);
 router.get('/customer/bookings', authenticateDgfyAccount, listDgfyCustomerBookings);
+router.get('/customer/notifications', authenticateDgfyAccount, listDgfyCustomerNotifications);
+router.patch('/customer/notifications/read-all', authenticateDgfyAccount, markAllDgfyCustomerNotificationsRead);
+router.patch('/customer/notifications/:notification_id/read', authenticateDgfyAccount, markDgfyCustomerNotificationRead);
+router.get('/customer/events', authenticateDgfyAccount, streamDgfyCustomerEvents);
 router.post('/customer/track', authenticateDgfyAccount, trackDgfyCustomerReference);
 router.post('/customer/orders/:reference/cancel', authenticateDgfyAccount, cancelDgfyCustomerOrder);
 router.post('/customer/orders/:reference/reorder', authenticateDgfyAccount, reorderDgfyCustomerOrder);

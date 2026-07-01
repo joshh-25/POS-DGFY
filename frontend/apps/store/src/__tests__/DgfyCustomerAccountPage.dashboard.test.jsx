@@ -108,44 +108,45 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByText('Confirmed')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'View Receipt' })).toHaveLength(2);
     fireEvent.click(screen.getAllByRole('button', { name: 'Track' })[0]);
-    expect(onTrackReference).toHaveBeenCalledWith(accountPanel.orders[0]);
+    expect(onTrackReference).toHaveBeenCalledTimes(1);
+    expect(onTrackReference.mock.calls[0][0]).toMatchObject({ reference: 'SK-M3SGQA' });
   });
 
-  it('uses the real tracking flow for booking details', () => {
-    const booking = {
-      reference: 'BOOK-1001',
-      store_name: 'DGFY Service',
-      occurred_at: '2026-06-18T09:00:00Z',
-      status: 'confirmed'
-    };
+  it('opens notifications, marks single entries read, and marks all entries read', () => {
     const onTrackReference = vi.fn();
+    const onMarkNotificationRead = vi.fn();
+    const onMarkAllNotificationsRead = vi.fn();
     renderDashboard({
       onTrackReference,
-      accountPanel: { ...accountPanel, bookings: [booking] }
+      onMarkNotificationRead,
+      onMarkAllNotificationsRead,
+      accountPanel: {
+        ...accountPanel,
+        notifications: [
+          {
+            notification_id: 77,
+            title: 'Order confirmed',
+            body: 'Space Bar confirmed your order.',
+            reference: 'SK-M3SGQA',
+            status: 'confirmed',
+            read_at: null
+          }
+        ],
+        unreadNotificationCount: 1
+      }
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Bookings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'View Details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
 
-    expect(onTrackReference).toHaveBeenCalledWith(booking);
-  });
+    expect(screen.getByText('Order confirmed')).toBeTruthy();
+    expect(screen.getByText('Mark all read')).toBeTruthy();
 
-  it('marks unfinished account actions as disabled instead of exposing placeholder alerts', () => {
-    renderDashboard();
+    fireEvent.click(screen.getByText('SK-M3SGQA - Track Order'));
+    expect(onMarkNotificationRead).toHaveBeenCalledWith(expect.objectContaining({ notification_id: 77 }));
+    expect(onTrackReference).toHaveBeenCalledWith(expect.objectContaining({ reference: 'SK-M3SGQA' }));
 
-    expect(screen.getAllByRole('button', { name: 'Help Center' }).every((button) => button.disabled)).toBe(true);
-    expect(screen.getAllByRole('button', { name: 'Contact Support' }).every((button) => button.disabled)).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Addresses' }));
-    expect(screen.getByRole('button', { name: 'Add Address' }).disabled).toBe(true);
-    expect(screen.getAllByRole('button', { name: 'Edit' }).every((button) => button.disabled)).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Loyalty' }));
-    expect(screen.getByRole('button', { name: 'Redeem Rewards' }).disabled).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Account' }));
-    expect(screen.getByRole('button', { name: 'Edit Profile' }).disabled).toBe(true);
-    expect(screen.getByRole('button', { name: 'Change Password' }).disabled).toBe(true);
-    expect(screen.getByText('Not verified')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+    fireEvent.click(screen.getByText('Mark all read'));
+    expect(onMarkAllNotificationsRead).toHaveBeenCalledTimes(1);
   });
 });

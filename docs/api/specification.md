@@ -195,13 +195,7 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
 ### POST /auth/login
 Authenticate user and establish a browser session.
 
-Tenant-local login remains selected by the `x-company-token` request header. For POS, this endpoint is now the governed legacy fallback path only. The primary POS cashier flow is:
-1. `POST /api/v1/dgfy/auth/login`
-2. list accessible companies from the authenticated DGFY account
-3. `POST /api/v1/dgfy/account/companies/:tenant_id/pos-session`
-4. terminal unlock and shift-open flow
-
-Standalone POS may still use `POST /api/v1/auth/lookup` followed by `/auth/login` only for the approved legacy fallback path when a grace-eligible tenant-local IMS/POS user is not yet using the DGFY account path. In that fallback flow, the current browser company token may be reused only when it is one of the lookup tenants, or as a temporary fallback when lookup fails because of a network/server outage. Missing email-to-tenant mapping, multiple-tenant ambiguity, lookup rate limiting, and invalid password must remain distinguishable operator outcomes. Lookup rate limiting is scoped by client IP plus normalized email and returns retry metadata so POS can tell the operator when to try again without falling back to stale tenant context.
+Tenant-local login remains selected by the `x-company-token` request header. Standalone POS terminal unlock must first call `POST /api/v1/auth/lookup` for the submitted email and then send `/auth/login` with the resolved company token. The current browser company token may be reused only when it is one of the lookup tenants, or as a temporary fallback when lookup fails because of a network/server outage. Missing email-to-tenant mapping, multiple-tenant ambiguity, lookup rate limiting, and invalid password must remain distinguishable operator outcomes. Lookup rate limiting is scoped by client IP plus normalized email, defaults to a 5-minute retry window, and returns retry metadata so POS can tell the operator when to try again without falling back to stale tenant context.
 
 **Request**
 ```json
@@ -2321,33 +2315,6 @@ Gating notes:
 - In billing-paused mode (`PAYMENTS_ENABLED=false`), `requirePremium` is plan-driven (`plan === premium`) and does not block on `subscription_status`.
 - In live billing mode (`PAYMENTS_ENABLED=true`), `requirePremium` also enforces active/grace subscription state.
 
-### GET /pos/setup/cashiers
-List active POS cashier accounts and their assigned store IDs for terminal setup.
-
-**Permission**: `users:manage`
-**Plan Gate**: Premium (`requirePremium`)
-
-The response contains `data.cashiers`. Each cashier includes identity fields, role metadata, and `location_ids`. POS Setup uses `location_ids` to display cashiers under terminal cards with the same assigned store.
-
-### POST /pos/setup/cashiers
-Create an active tenant-local cashier from POS Setup.
-
-**Permission**: `users:manage`
-**Plan Gate**: Premium (`requirePremium`)
-
-**Request Body**
-```json
-{
-  "username": "front-counter",
-  "email": "cashier@example.com",
-  "phone_number": "+63 900 000 0000",
-  "password": "minimum-8-characters",
-  "location_ids": [3]
-}
-```
-
-The POS terminal card supplies exactly one `location_ids` entry from its assigned store. The backend validates the active store, creates the cashier and location grant transactionally, and returns the created cashier under `data.cashier`.
-
 ### GET /pos/catalog
 List sellable POS catalog items.
 
@@ -2441,10 +2408,10 @@ Resolve a barcode scan for the current POS context before cart insertion.
 
 **Rules**
 - Resolution runs through POS use cases, not direct Inventory lookup from the UI.
-- Successful scans may enter cart after item status, POS visibility, sale price, shift/location scope, and stock/service exemption pass. Compliance readiness is optional for non-fiscal POS operation and only blocks fiscal/compliant-only output or explicit backend policy denials.
+- Successful scans may enter cart only after item status, POS visibility, sale price, shift/location scope, stock/service exemption, and compliance readiness pass.
 - Service booking/ticket QR scans return routed metadata and must not add cart lines. Ticket-scope barcodes that are not service booking routes return `TICKET_SCAN_NOT_CARTABLE`.
 - Blocked reason codes include `BARCODE_NOT_FOUND`, `BARCODE_CONFLICT`, `BARCODE_SCOPE_NOT_POS`, `TICKET_SCAN_NOT_CARTABLE`, `NOT_POS_VISIBLE`, `ITEM_INACTIVE`, `MISSING_PRICE`, `OUT_OF_STOCK`, `LOCATION_CONTEXT_REQUIRED`, `UNAUTHORIZED_LOCATION`, `COMPLIANCE_BLOCKED`, and `SERVICE_UNAVAILABLE`.
-- Offline checkout payloads may include `scan_metadata`; replay revalidates barcode mapping, item state, stock/location, and fiscal/compliant-only policy before committing.
+- Offline checkout payloads may include `scan_metadata`; replay revalidates barcode mapping, item state, stock/location, and compliance before committing.
 
 ### GET /pos/catalog-overrides
 List POS catalog overrides for admin inventory/POS configuration screens.
@@ -2584,9 +2551,9 @@ Payment handoff policy (current contract):
 **Permission**: `pos:transact`
 **Plan Gate**: Premium (`requirePremium`)
 
-**Compliance Gate (dual-mode, optional for non-fiscal POS operation)**
+**Compliance Gate (dual-mode, fail-closed for compliant mode)**
 Checkout is evaluated by the compliance policy engine:
-1. `compliance_mode_choice_required=true` no longer blocks POS checkout or terminal operations; POS proceeds as non-compliant/non-fiscal operation until the tenant completes compliance setup. Payment capability enabling may still be blocked by `LEGACY_MODE_SELECTION_REQUIRED`.
+1. `compliance_mode_choice_required=true` blocks checkout and terminal operations (`LEGACY_MODE_SELECTION_REQUIRED`).
 2. `non_compliant_active` allows checkout with non-fiscal receipt contract only (`document_type=non_fiscal_slip`, `document_context=non_fiscal`).
 3. `compliant_pending` allows operations, but fiscal output remains blocked until activation checklist is complete.
 4. `compliant_active` fails closed when checklist controls are unmet:
@@ -2684,20 +2651,6 @@ Get the current open shift and cash summary for a terminal.
 | Name | Type | Description |
 |------|------|-------------|
 | `terminal_id` | string | Terminal identifier (e.g. `COUNTER-01`) |
-
-### POST /pos/terminal/verify
-Verify an authenticated operator's terminal ID and terminal password. A successful response sets the signed `sku_pos_terminal_pairing` HttpOnly cookie and returns only safe terminal policy context; the pairing token and password hash are never returned in JSON.
-
-**Permission**: `pos:view`
-**Plan Gate**: Premium (`requirePremium`)
-
-### GET /pos/terminal/paired
-Revalidate the current browser's POS pairing after cashier authentication. The backend checks token signature and expiry, tenant, active terminal registry entry, password-hash/location fingerprint, and the cashier's location grant.
-
-**Permission**: `pos:view`
-**Plan Gate**: Premium (`requirePremium`)
-
-When valid, the response includes `paired: true` and safe `terminal_identity_policy` context. Missing, expired, tampered, changed, or unauthorized pairings return an error and clear the pairing cookie; POS must fall back to one-time Terminal Unlock.
 
 ### POST /pos/terminal/shifts/open
 Open a terminal shift for cashier operations.
@@ -3003,7 +2956,7 @@ Manage tenant-private storefront/POS/service location pins from IMS Settings.
 
 **Auth**: Private (`system:edit_settings`)
 
-IMS location clients should submit the merchant-editable address with the normal location payload. The shared map pin picker may autofill that address from reverse geocoding after click, drag, or geolocation selection, but backend persistence treats the submitted address text and the submitted latitude/longitude as separate fields; reverse-geocode failure must not prevent saving valid coordinates.
+IMS location clients should submit the merchant-editable address with the normal location payload. The shared map pin picker may suggest an address from first-party PH-local reverse geocoding after adjust-mode click, marker drag, or geolocation selection, but backend persistence treats the submitted address text and the submitted latitude/longitude as separate fields; reverse-geocode failure must not prevent saving valid coordinates. Address suggestions may fill an empty address field, but must not overwrite merchant-edited text unless the merchant applies the suggestion. IMS clients must not coerce empty coordinate fields to `0`; missing values, `0,0`, and coordinates outside the Philippines are invalid merchant storefront pins and must be blocked before tenant-location create/update calls.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -3604,6 +3557,8 @@ https://skupervisor.surebizcorp.com/api/v1/commerce-payments/paymongo/webhook
 
 The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_SECRET`. If an unsigned probe returns `404`, the backend route is not deployed there yet and live PayMongo delivery will fail.
 
+Live split checkout also requires explicit external PayMongo platform evidence. API-created tenant child merchant IDs are tenant readiness inputs only; they are not the DGFY parent/platform merchant ID used as the fixed 1% split recipient. When `COMMERCE_PAYMONGO_SPLIT_ENABLED=true` and `PAYMONGO_MODE=live`, production configuration is incomplete until PayMongo confirms the parent merchant ID plus live `split_payment.transfer_to` and fixed-recipient capability, and the operator sets `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`. Current provider status as of June 25, 2026 is externally blocked: PayMongo support confirmed Linked Accounts is not configured for the account and self-service onboarding is still under development.
+
 **Auth**: Admin JWT (`/admin/login`)
 **Base Path**: `/api/v1/commerce-payments/admin`
 **Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
@@ -3613,7 +3568,7 @@ The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_S
 | `GET` | `/payment-sessions` | List PayMongo commerce payment sessions. Supports `tenant_id`, `status`, `target_type`, `limit`, and `offset`. |
 | `GET` | `/payment-sessions/:payment_session_id` | Inspect a payment session, provider IDs, order linkage, refundable balance, and refund attempts. |
 | `GET` | `/settlement-report` | Summarize/export QR Ph gross, fixed DGFY 1%, estimated tenant gross, refund exposure, provider IDs, and variance. Supports the same filter shape as payment-session listing. |
-| `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks and the remaining external evidence required before live money movement. |
+| `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks, parent split-capability confirmation status, and the remaining external evidence required before live money movement. |
 | `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
 | `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
 | `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |
@@ -4649,6 +4604,52 @@ Clients must fail closed when account registration lacks `terms_version`, `priva
 
 If this endpoint is unavailable, registration UI must fail closed and keep the registration submit action disabled.
 
+### POST /dgfy/auth/register/preflight
+
+Check whether the submitted DGFY registration email and phone are available before requesting the public signup OTP.
+
+**Access:** Public, rate-limited.
+
+**Request**
+
+```json
+{
+  "email": "ada@example.com",
+  "phone": "+639123456789"
+}
+```
+
+Email is checked before phone. This endpoint does not create an account, request an OTP, consume an OTP, or persist legal acknowledgement evidence.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "available": true
+  },
+  "message": "DGFY registration credentials are available."
+}
+```
+
+**Conflict (409)**
+
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "A DGFY account already exists with this email.",
+  "error_code": "DGFY_ACCOUNT_ALREADY_EXISTS",
+  "details": {
+    "error_code": "DGFY_ACCOUNT_ALREADY_EXISTS",
+    "field": "email"
+  }
+}
+```
+
+For phone conflicts, `message` is `A DGFY account already exists with this phone number.` and `details.field` is `phone`.
+
 ### POST /dgfy/auth/register
 
 Create a global DGFY account used for customer account surfaces and business registration.
@@ -4674,7 +4675,7 @@ Create a global DGFY account used for customer account surfaces and business reg
 }
 ```
 
-Registration requires a prior global `dgfy_account_verification` code from `POST /auth/email-otp/request` for the submitted email, plus the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The public OTP request does not require tenant context; tenant-scoped browser cookies/headers must not scope this OTP because the registration mutation consumes the email OTP with `tenant_id: null`, creates the account with `email_verified_at` set, and writes the account row, mirrored DGFY invitation memberships, and acknowledgement evidence in one landlord transaction. Persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+Registration requires a prior global `dgfy_account_verification` code from `POST /auth/email-otp/request` for the submitted email, plus the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. Browser registration must call `POST /dgfy/auth/register/preflight` and block duplicate DGFY email or phone credentials before requesting this OTP. The public OTP request does not require tenant context; tenant-scoped browser cookies/headers must not scope this OTP because the registration mutation consumes the email OTP with `tenant_id: null`, creates the account with `email_verified_at` set, and writes the account row, mirrored DGFY invitation memberships, and acknowledgement evidence in one landlord transaction. Persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 The customer-facing registration order is Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password. Password fields expose visibility toggles. `middle_name` is optional and nullable; when present it is returned on account/profile/customer surfaces.
 
@@ -5104,18 +5105,7 @@ Requires the current owner DGFY account, a recent or supplied `dgfy_business_ste
 
 ### POST /dgfy/account/companies/:tenant_id/pos-session
 
-Requires an authenticated DGFY account with accepted membership, POS permission/capability, and a selected tenant/company. Creates the normal tenant session for POS and returns terminal context. Company-token context can preselect the company only after DGFY access is confirmed.
-
-Current POS operator flow:
-1. cashier signs in with DGFY email and password
-2. POS loads accessible companies for that DGFY account
-3. cashier selects the company
-4. POS creates the tenant POS session
-5. POS validates the browser's terminal pairing
-6. on first use or invalid pairing, cashier completes Terminal Unlock with the terminal password, which pairs the browser
-7. with a valid pairing and cashier store grant, POS goes directly to Opening Cash
-8. if there is no active shift, cashier enters opening cash to open the shift
-9. if the terminal was only relocked while a shift remained open, terminal password alone resumes the terminal without asking for opening cash again
+Requires an authenticated DGFY account with accepted membership, POS permission/capability, and a selected terminal/counter. Creates the normal tenant session for POS and returns terminal context. Company-token context can preselect the company only after DGFY access is confirmed.
 
 ```json
 {
@@ -5150,6 +5140,7 @@ Platform-admin DGFY account endpoints live under `/api/v1/dgfy/admin/accounts` a
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/dgfy/admin/accounts` | List all DGFY accounts with filters for status, email verification, company membership, search, page, and limit |
+| `POST` | `/dgfy/admin/accounts` | Create an admin-provisioned active DGFY account with a temporary password and audit reason |
 | `GET` | `/dgfy/admin/accounts/:account_id` | Return one DGFY account with tenant memberships and recent admin audit rows |
 | `PATCH` | `/dgfy/admin/accounts/:account_id/profile` | Update first name, optional middle name, last name, and phone |
 | `POST` | `/dgfy/admin/accounts/:account_id/suspend` | Suspend a DGFY account and require a reason |
@@ -5224,6 +5215,22 @@ List query parameters:
 }
 ```
 
+**Create Admin-Provisioned Account Request**
+
+```json
+{
+  "first_name": "Maria",
+  "middle_name": "",
+  "last_name": "Santos",
+  "email": "maria@example.com",
+  "phone": "+639123456789",
+  "temporary_password": "optional-admin-supplied-password",
+  "reason": "White glove onboarding"
+}
+```
+
+This endpoint does not consume public OTP. It creates an active account with `provisioning_status="admin_provisioned"`, `temporary_password_active=true`, `email_verification_source="platform_admin_provisioned"`, and `phone_verified_at=null`. The temporary password is returned only in the create response and is excluded from audit snapshots.
+
 Email changes are rejected from this endpoint. DGFY email changes remain deferred until a dedicated verified email-change or approved admin override design exists. Phone changes clear `phone_verified_at`; phone verification remains deferred and must not be presented as verified identity.
 
 **Suspend/Reactivate Request**
@@ -5257,6 +5264,10 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | `GET` | `/dgfy/customer/activities` | Return paginated normalized cross-store history with filters for `type`, `tenant_id`, `store_slug`, `status`, `payment_status`, date range, page, and limit |
 | `GET` | `/dgfy/customer/orders` | List account-linked order activities |
 | `GET` | `/dgfy/customer/bookings` | List account-linked service/hospitality booking activities |
+| `GET` | `/dgfy/customer/notifications` | List account-scoped customer notifications with optional unread filtering |
+| `PATCH` | `/dgfy/customer/notifications/:notification_id/read` | Mark one account-owned notification as read |
+| `PATCH` | `/dgfy/customer/notifications/read-all` | Mark all account-owned notifications as read |
+| `GET` | `/dgfy/customer/events` | Stream account-scoped live activity and notification events with Server-Sent Events |
 | `POST` | `/dgfy/customer/track` | Track an account-linked reference by `reference` or `tracking_pin` |
 | `POST` | `/dgfy/customer/orders/:reference/cancel` | Cancel an eligible account-linked order |
 | `POST` | `/dgfy/customer/orders/:reference/reorder` | Return reusable cart lines for a prior order; checkout revalidates current state |
@@ -5279,6 +5290,12 @@ Storefront checkout keeps account-saved, temporary checkout, recommended store o
 `PATCH /dgfy/customer/addresses/:address_id/default` is a transport alias for updating the address with `is_default=true`; it must remain registered before the generic `PATCH /dgfy/customer/addresses/:address_id` route. Storefront checkout and booking forms consume the default saved address for signed-in customers only when the visible customer address field is still empty.
 
 `GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Response cards include `reference`, `store`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`.
+
+Dashboard, activities, and account reference tracking reads refresh account-owned order snapshots from the tenant POS transaction before returning data when the activity is already explicitly linked to the signed-in DGFY account. This read-time refresh must not adopt guest orders by email or phone matching.
+
+`GET /dgfy/customer/notifications` returns only notifications owned by the signed-in DGFY account. `unread_only=true` limits the result to unread rows, and `limit` bounds the returned rows. Notification rows include `notification_id`, `type`, `title`, `body`, `status`, `reference`, optional `tenant_id`, optional `activity_id`, `read_at`, and `created_at`; the response also includes `unread_count`. Order-status notification writes are idempotent by `event_key`. Read mutations publish account-scoped `notification.read` events, and newly created order-status notifications publish `notification.created`.
+
+`GET /dgfy/customer/events` is an authenticated SSE stream for the active DGFY account. It emits `connected`, periodic `heartbeat`, `activity.updated`, `notification.created`, and `notification.read` events. Stream events are account-scoped and do not expose other tenants or other DGFY accounts.
 
 `POST /dgfy/customer/reviews` accepts `activity_id`, `target_type`, optional `target_id`, `rating`, `comment`, and optional `anonymous`. Supported target types are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; the activity snapshot must prove eligibility, and reviews remain pending until moderated. Public review reads require `tenant_id` plus `item_id` or explicit `target_type`/`target_id`, only return approved rows, and include summary fields such as average rating, total count, verified count, and rating distribution.
 
@@ -5333,6 +5350,22 @@ Submit a public company registration request.
 - Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
 - Founder account source: public company registration requires a signed-in active DGFY account. The backend derives founder email, phone, username seed, and password hash from that account and does not require a separate DGFY email-code step or `email_verified_at` gate before tenant creation.
 - Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before tenant creation. The backend fails closed before tenant creation if legal acknowledgement persistence is unavailable. After confirming there is a signed-in active DGFY account, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+
+### Platform Admin Assisted Provisioning Endpoints
+
+These endpoints require the platform admin JWT/cookie accepted by `authenticateAdmin`. They are privileged onboarding paths and do not change the public `/admin/tenants/register` OTP/DGFY-account requirement.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/admin/tenants/admin-provision` | Create and immediately provision an ownerless platform-admin company |
+| `POST` | `/admin/tenants/admin-provision-with-account` | Create a DGFY account and company together, then link accepted founder membership |
+| `POST` | `/admin/tenants/:id/owner` | Assign or force-assign an existing active DGFY account as company owner |
+
+Company-only provisioning accepts company name, workflow mode, admin email, admin phone, temporary password, and reason. It creates a tenant with `provisioning_source="platform_admin"` and `ownership_status="unassigned"`, provisions the tenant database immediately, and returns the temporary password once. Ownerless companies cannot issue DGFY tenant sessions, POS sessions, or switcher access until an owner is assigned.
+
+Combined provisioning accepts a DGFY account payload plus company payload and reason. It creates an admin-provisioned DGFY account, provisions the tenant database, creates the tenant-local master admin profile, and writes an accepted membership with explicit owner linkage.
+
+Owner assignment accepts `dgfy_account_id`, `reason`, and optional `force` (default `true`). The target must be an existing active DGFY account. The backend must not infer ownership from raw email or phone values.
 
 **Response (201, explicit manual mode)**
 ```json
@@ -5961,8 +5994,9 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 - Login and current-user bootstrap payloads expose onboarding metadata for tenant master admins.
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
-- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses an inline raster style so the picker is not blocked by a third-party style JSON request; click, drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. Click, drag, and geolocation selections may reverse-geocode into the editable address field; reverse-geocode failure must not block coordinate saving.
-- The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, `open`, and `close` in `HH:mm` format.
+- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses the shared Storefront MapLibre basemap style for visible street context; adjust-mode click, marker drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. Settings opens locked and requires `Adjust Pin` before map interactions can change coordinates. Onboarding starts in adjust mode only after searchable storefront visibility is enabled and no valid saved pin exists. The picker opens over Iloilo City, Philippines when no saved pin exists, but that is camera state only and must not be saved as an implicit merchant pin. Missing coordinates, `0,0`, and browser geolocation results outside the Philippines are invalid for merchant-store pins. Browser geolocation uses high-accuracy mode when available and shows reported accuracy feedback, but it remains best effort and cannot guarantee device precision. Click, drag, and geolocation selections may ask the first-party reverse-geocode endpoint for an address suggestion; reverse-geocode failure must not block coordinate saving.
+- `GET /api/v1/geo/reverse-geocode` returns first-party PH-local address metadata for IMS map suggestions. Successful responses include `provider="dgfy-ph-local"`, `precision` (`barangay`, `city`, `province`, or `coordinate_only`), optional `distance_meters`, optional PSGC code fields when a bundled local match exists, and `provenance` with the bundled PSGC release/generation metadata. The endpoint must not return vague `Near ...` labels; when no local match is available it returns `Pinned location (lat, lon)` with `precision="coordinate_only"`.
+- The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, compatibility `open`/`close`, and `intervals: [{ open, close }]` in `HH:mm` format. Legacy one-window `{ enabled, open, close }` entries normalize to one interval.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
 
 ### GET /onboarding/status

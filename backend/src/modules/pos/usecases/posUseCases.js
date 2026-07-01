@@ -11,7 +11,7 @@ import {
 } from '../../compliance/index.js';
 import logger from '../../../config/logger.js';
 import dbStore from '../../../utils/dbStore.js';
-import { resolveMovementLocation } from '../../../services/locationInventoryService.js';
+import { resolveMovementLocation } from '../../inventory/index.js';
 import {
     computeDgfyConvenienceFee,
     getDgfyConvenienceFeeLabel

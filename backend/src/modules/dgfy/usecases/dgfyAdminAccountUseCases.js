@@ -1,7 +1,7 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { normalizePhoneNumber, isValidPhoneNumber } from '../../../utils/phoneNumber.js';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
 const normalizeReason = (value) => String(value || '').trim().replace(/\s+/g, ' ');
@@ -25,6 +25,10 @@ const requireReason = (reason) => {
 };
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const normalizePassword = (value) => String(value || '');
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ''));
+
+export const generateTemporaryPassword = () => `Dgfy-${randomBytes(9).toString('base64url')}1!`;
 
 const requireConfirmEmail = (providedEmail, accountEmail) => {
     const provided = normalizeEmail(providedEmail);
@@ -104,6 +108,10 @@ export const sanitizeAdminDgfyAccount = (account) => {
         deletion_reason: account.deletion_reason || null,
         email_verified_at: account.email_verified_at || null,
         phone_verified_at: account.phone_verified_at || null,
+        provisioning_status: account.provisioning_status || 'self_registered',
+        temporary_password_active: Boolean(account.temporary_password_active),
+        email_verification_source: account.email_verification_source || null,
+        merchant_terms_acknowledged_at: account.merchant_terms_acknowledged_at || null,
         is_email_verified: Boolean(account.email_verified_at),
         is_phone_verified: Boolean(account.phone_verified_at),
         last_login_at: account.last_login_at || null,
@@ -144,6 +152,10 @@ const buildSafeSnapshot = (account) => {
         deleted_by: safe.deleted_by,
         email_verified_at: safe.email_verified_at,
         phone_verified_at: safe.phone_verified_at,
+        provisioning_status: safe.provisioning_status,
+        temporary_password_active: safe.temporary_password_active,
+        email_verification_source: safe.email_verification_source,
+        merchant_terms_acknowledged_at: safe.merchant_terms_acknowledged_at,
         membership_count: safe.membership_count
     };
 };
@@ -186,6 +198,86 @@ export const buildListAdminDgfyAccountsUseCase = ({ repository }) => async ({ qu
             }
         }
     });
+};
+
+export const buildCreateAdminProvisionedDgfyAccountUseCase = ({ repository, hashPassword, temporaryPasswordGenerator = generateTemporaryPassword }) => async ({
+    body = {},
+    actor = {},
+    metadata = {}
+} = {}) => {
+    try {
+        const firstName = normalizeName(body.first_name || body.firstName);
+        const middleName = normalizeName(body.middle_name || body.middleName || '');
+        const lastName = normalizeName(body.last_name || body.lastName);
+        const email = normalizeEmail(body.email);
+        const phone = normalizePhoneNumber(body.phone);
+        const reason = requireReason(body.reason);
+        const requestedPassword = normalizePassword(body.temporary_password || body.temporaryPassword);
+        const temporaryPassword = requestedPassword || temporaryPasswordGenerator();
+
+        if (!firstName || !lastName || !email || !phone) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Last name, first name, email, phone, and reason are required.', { statusCode: 400 });
+        }
+        if (!isValidEmail(email)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Enter a valid email address.', { statusCode: 400 });
+        }
+        if (!isValidPhoneNumber(phone)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Phone must be a valid phone number.', { statusCode: 400 });
+        }
+        if (temporaryPassword.length < 8) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Temporary password must be at least 8 characters.', { statusCode: 400 });
+        }
+
+        const existingByEmail = await repository.findByEmail(email);
+        if (existingByEmail) {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this email address.', { statusCode: 409 });
+        }
+        const existingByPhone = await repository.findByPhone(phone);
+        if (existingByPhone) {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this phone number.', { statusCode: 409 });
+        }
+
+        const account = await repository.transaction(async (transaction) => {
+            const created = await repository.create({
+                first_name: firstName,
+                middle_name: middleName || null,
+                last_name: lastName,
+                username: firstName,
+                email,
+                phone,
+                password_hash: await hashPassword(temporaryPassword),
+                is_active: true,
+                email_verified_at: new Date(),
+                email_verification_source: 'platform_admin_provisioned',
+                provisioning_status: 'admin_provisioned',
+                temporary_password_active: true
+            }, { transaction });
+            await repository.createAdminAuditLog(buildAuditPayload({
+                accountId: created.id,
+                action: 'admin_create_dgfy_account',
+                actor,
+                reason,
+                metadata,
+                beforeSnapshot: null,
+                afterSnapshot: buildSafeSnapshot(created)
+            }), { transaction });
+            return created;
+        });
+
+        return ok({
+            statusCode: 201,
+            payload: {
+                success: true,
+                data: {
+                    account: sanitizeAdminDgfyAccount(account),
+                    temporary_password: temporaryPassword
+                },
+                message: 'Admin-provisioned DGFY account created.'
+            }
+        });
+    } catch (error) {
+        return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Failed to create admin-provisioned DGFY account.', { cause: error }));
+    }
 };
 
 export const buildGetAdminDgfyAccountUseCase = ({ repository }) => async ({ accountId } = {}) => {

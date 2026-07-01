@@ -92,4 +92,90 @@ describe('UserInvitationModal DGFY-only invitations', () => {
     expect(mocks.userService.inviteDgfyAccountToCompany).not.toHaveBeenCalled();
     expect(mocks.toast.error).toHaveBeenCalledWith('Select a registered DGFY account to invite');
   });
+
+  it('shows DGFY search rate-limit copy without claiming no account exists', async () => {
+    mocks.userService.searchDgfyBusinessAccounts.mockRejectedValue({
+      response: {
+        status: 429,
+        headers: { 'retry-after': '75' },
+        data: {
+          message: 'Too many DGFY account searches. Wait a moment, then try again.',
+          retryAfterSeconds: 75
+        }
+      }
+    });
+
+    render(
+      <UserInvitationModal
+        open
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('Search registered DGFY account'), {
+      target: { value: 'ada@example.test' }
+    });
+
+    expect(await screen.findByText(/Too many DGFY account searches/)).toBeTruthy();
+    expect(screen.getByText(/Try again in about 2 minutes/)).toBeTruthy();
+    expect(screen.queryByText('No registered active DGFY account found for this search.')).toBeNull();
+  });
+
+  it('reports that successful invitations are visible by email and DGFY My Account Business', async () => {
+    const onOpenChange = vi.fn();
+    const onSuccess = vi.fn();
+    render(
+      <UserInvitationModal
+        open
+        onOpenChange={onOpenChange}
+        onSuccess={onSuccess}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('Search registered DGFY account'), {
+      target: { value: 'ada' }
+    });
+
+    const adaButton = await screen.findByRole('button', { name: /Ada Lovelace/i });
+    fireEvent.click(adaButton);
+    fireEvent.click(await screen.findByLabelText('Main Branch'));
+    fireEvent.click(screen.getByRole('button', { name: 'Send DGFY Invitation' }));
+
+    await waitFor(() => expect(mocks.userService.inviteDgfyAccountToCompany).toHaveBeenCalledWith(expect.objectContaining({
+      dgfyAccountId: 'dgfy-new'
+    })));
+    expect(mocks.toast.success).toHaveBeenCalledWith(
+      'Invitation sent by email to ada@example.test and visible in DGFY My Account > Business.'
+    );
+    expect(onSuccess).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('reports Business visibility when email delivery fails or is not configured', async () => {
+    mocks.userService.inviteDgfyAccountToCompany.mockResolvedValue({
+      email_sent: false,
+      delivery_error: 'SMTP unavailable'
+    });
+
+    render(
+      <UserInvitationModal
+        open
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('Search registered DGFY account'), {
+      target: { value: 'ada' }
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/i }));
+    fireEvent.click(await screen.findByLabelText('Main Branch'));
+    fireEvent.click(screen.getByRole('button', { name: 'Send DGFY Invitation' }));
+
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith(
+      'Invitation is visible in DGFY My Account > Business; email delivery failed or is not configured (SMTP unavailable).'
+    ));
+  });
 });

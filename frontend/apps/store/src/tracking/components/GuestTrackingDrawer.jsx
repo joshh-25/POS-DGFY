@@ -76,7 +76,7 @@ function GuestTrackingDrawerCard({
 
           <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid #f1f5f9' }}>
             <span style={{ color: '#0f172a', fontWeight: 800 }}>{badgeText}</span>
-            {entry.branch_name ? <span style={{ margin: '0 6px', color: '#1A4E8D' }}>•</span> : null}
+            {entry.branch_name ? <span style={{ margin: '0 6px', color: '#1A4E8D' }}>-</span> : null}
             {entry.branch_name ? <span>{entry.branch_name}</span> : null}
           </div>
 
@@ -105,7 +105,7 @@ function GuestTrackingDrawerCard({
                             idx === 2 ? <ChefHat size={10} strokeWidth={2.5} /> :
                               <ShoppingBag size={10} strokeWidth={2.5} />
                     ) : (
-                      isCompleted ? <Check size={12} strokeWidth={4} /> : (isActive ? <span style={{ fontSize: 10, fontWeight: 900 }}>•</span> : <ShoppingBag size={10} />)
+                      isCompleted ? <Check size={12} strokeWidth={4} /> : (isActive ? <span style={{ fontSize: 10, fontWeight: 900 }}>.</span> : <ShoppingBag size={10} />)
                     )}
                   </div>
                   <div style={{ display: 'grid', gap: 2, transform: 'translateY(-2px)' }}>
@@ -142,6 +142,7 @@ export function GuestTrackingDrawer({
   trackingPinInput,
   onTrackingPinInputChange,
   onTrack,
+  trackingError = '',
   selectedStore,
   guestTrackedOrders,
   expandedGuestDrawerPin,
@@ -215,6 +216,11 @@ export function GuestTrackingDrawer({
           >
             Track
           </button>
+          {trackingError ? (
+            <div style={{ gridColumn: '1 / -1', color: '#b91c1c', fontSize: 12, lineHeight: 1.4, fontWeight: 600 }}>
+              {trackingError}
+            </div>
+          ) : null}
         </div>
         <div style={{ minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', display: 'grid', gap: 8, alignContent: 'start', paddingRight: 2 }}>
           {guestTrackedOrders.length === 0 ? (

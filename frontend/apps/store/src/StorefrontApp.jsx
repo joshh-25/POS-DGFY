@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import dgfyHeaderLogo from '../../../public/dgfy-logo.png';
 import dgfySymbolLogo from '../../../public/dgfy-symbologo.png';
 import dgfyBusinessOwnerPhoto from '../../../public/man.png';
+import { DEFAULT_CENTER, TILING_SERVER, tileTransformRequest } from '../../../src/components/maps/mapLibreShared.js';
 import { formatStorefrontBusinessHoursDisplay } from '../../../src/features/settings/storefrontBusinessHours.js';
 import {
   ArrowLeft,
@@ -98,8 +99,17 @@ import {
   getStorefrontAccessBlockMessage
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
-import { getBusinessModePinMeta, renderBusinessModePinSvg } from './businessModePins.js';
-import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from './discoveryMapDom.js';
+import { getDiscoveryMarkerKey } from './discoveryMapDom.js';
+import {
+  DISCOVERY_PIN_LAYER_ID,
+  DISCOVERY_PIN_SOURCE_ID,
+  DISCOVERY_USER_SOURCE_ID,
+  buildDiscoveryPinLayerModel,
+  buildUserLocationSourceData,
+  ensureDiscoveryMapLayers,
+  ensureMapImage,
+  setGeoJsonSourceData
+} from './discoveryMapLayers.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
 import {
@@ -113,14 +123,13 @@ import {
 } from './Components/store/DiscoveryResponsiveLayout.jsx';
 import { SolutionsPage } from './Components/storefront/pages/SolutionsPage.jsx';
 import { FnbProductDetailsPage } from './Components/storefront/pages/FnbProductDetailsPage.jsx';
-import { DgfyCustomerAuthModal } from './components/storefront/pages/DgfyCustomerAuthModal.jsx';
-import { DgfyCustomerAccountPage } from './components/storefront/pages/DgfyCustomerAccountPage.jsx';
-import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './components/storefront/hero/StorefrontHeroNameCluster.jsx';
-import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './components/storefront/hero/StorefrontHeaderNav.jsx';
-import { StorefrontShareQr as SharedStorefrontShareQr } from './components/storefront/hero/StorefrontShareQr.jsx';
-import { StorefrontPromoSection as SharedStorefrontPromoSection } from './components/storefront/sections/StorefrontPromoSection.jsx';
-import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from './components/storefront/sections/StorefrontReviewsSection.jsx';
-import { StorefrontFooterSection as SharedStorefrontFooterSection } from './components/storefront/sections/StorefrontFooterSection.jsx';
+import { DgfyCustomerAccountPage } from './Components/storefront/pages/DgfyCustomerAccountPage.jsx';
+import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './Components/storefront/hero/StorefrontHeroNameCluster.jsx';
+import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './Components/storefront/hero/StorefrontHeaderNav.jsx';
+import { StorefrontShareQr as SharedStorefrontShareQr } from './Components/storefront/hero/StorefrontShareQr.jsx';
+import { StorefrontPromoSection as SharedStorefrontPromoSection } from './Components/storefront/sections/StorefrontPromoSection.jsx';
+import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from './Components/storefront/sections/StorefrontReviewsSection.jsx';
+import { StorefrontFooterSection as SharedStorefrontFooterSection } from './Components/storefront/sections/StorefrontFooterSection.jsx';
 import { getServicesResponsiveLayout } from './storefrontViewport.js';
 import { createTrackingAdapterRegistry, fetchNormalizedTrackingEntity } from './tracking/core.js';
 import {
@@ -129,6 +138,7 @@ import {
   getTrackingFlowForOrderMethod
 } from './tracking/fnbAdapter.js';
 import TrackingRouteMap, { extractTrackingMapCoordinates } from './tracking/TrackingRouteMap.jsx';
+import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
 import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
@@ -141,15 +151,18 @@ import {
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
+  clearDgfyExplicitSignOut,
+  hasDgfyExplicitSignOut,
+  markDgfyExplicitSignOut,
   readDgfyAuthToken,
+  readDgfySignedOutEmail,
   readStoreAuthToken,
-  writeDgfyAuthToken,
+  rememberDgfySignedOutEmail,
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
 import { buildFnbCheckoutPayload } from './checkout/buildFnbCheckoutPayload.js';
 import { hasCustomerName, hasPrimaryContact, hasDeliveryAddress, isCustomerStepComplete } from './checkout/checkoutValidation.js';
-import { DEFAULT_STOREFRONT_SLUG, getDefaultStorefrontPath } from './defaultStorefrontRoute.js';
 import { CustomerIdentityCard } from './checkout/components/CustomerIdentityCard.jsx';
 import { CheckoutHeroHeader } from './checkout/components/CheckoutHeroHeader.jsx';
 import { GuestIdentityForm } from './checkout/components/GuestIdentityForm.jsx';
@@ -200,7 +213,6 @@ checkoutResult.payments.filter
 cart_line_id
 */
 
-const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
 const FNB_RECOMMENDED_LOCATION = Object.freeze({
   id: 'recommended-main-branch',
   label: 'Mandurriao, Iloilo City',
@@ -209,21 +221,6 @@ const FNB_RECOMMENDED_LOCATION = Object.freeze({
   longitude: DEFAULT_CENTER.longitude,
   recommended: true
 });
-const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
-
-const TILING_SERVER = import.meta.env.DEV
-  ? '/openfreemap/styles/positron'
-  : `${TILE_BASE}/styles/positron`;
-
-const tileTransformRequest = import.meta.env.DEV
-  ? (url) => {
-    if (url.startsWith(TILE_BASE)) {
-      return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
-    }
-    return { url };
-  }
-  : undefined;
-
 const ORDER_METHOD_OPTIONS = [
   { value: 'delivery', label: 'Delivery' },
   { value: 'pickup', label: 'Pickup' },
@@ -266,6 +263,25 @@ function buildPinnedDeliveryAddress(pin) {
   const longitude = Number(pin?.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
   return `Pinned map location (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`;
+}
+
+function normalizeCoordinatePair({ latitude, longitude } = {}) {
+  if (latitude == null || longitude == null || latitude === '' || longitude === '') return null;
+  const parsedLatitude = Number(latitude);
+  const parsedLongitude = Number(longitude);
+  if (!Number.isFinite(parsedLatitude) || !Number.isFinite(parsedLongitude)) return null;
+  return { latitude: parsedLatitude, longitude: parsedLongitude };
+}
+
+async function reverseGeocodeDeliveryPin(pin, { signal } = {}) {
+  const normalized = normalizeCoordinatePair(pin);
+  if (!normalized) return '';
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(normalized.latitude)}&lon=${encodeURIComponent(normalized.longitude)}`,
+    { signal, headers: { Accept: 'application/json' } }
+  );
+  if (!response.ok) return buildPinnedDeliveryAddress(normalized);
+  return formatReverseGeocodedAddress(await response.json()) || buildPinnedDeliveryAddress(normalized);
 }
 
 function extractSavedLocationLabel(address = '') {
@@ -918,7 +934,6 @@ const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '
   return availableSlots[0]?.value || '09:00';
 };
 const TENANT_STORE_BASE_PATH = '/tenant-store';
-const TEMPLATE_ENTRY_PATHS = new Set(['/', '/store-template', '/storefront-template']);
 const STORE_BOOKING_SUBPAGE = 'book';
 const STORE_ORDER_SUBPAGE = 'order';
 const STORE_TRACK_SUBPAGE = 'track';
@@ -929,6 +944,11 @@ const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+const isPublicMapDisabled = (entry = {}) => (
+  entry?.store_has_no_location === true
+  || entry?.map_publication_disabled === true
+  || entry?.public_map_enabled === false
+);
 const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const toRad = (value) => value * (Math.PI / 180);
   const earthRadiusKm = 6371;
@@ -960,7 +980,8 @@ const readRouteSlug = () => {
   const path = window.location.pathname || '';
   const patterns = [
     /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
-    /^\/store\/([^/]+)(?:\/[^/]+)?$/i
+    /^\/store\/([^/]+)(?:\/[^/]+)?$/i,
+    /^\/(?!api\/|map-dgfy(?:\/|$)|store-template(?:\/|$)|storefront-template(?:\/|$)|tenant-store(?:\/|$)|store(?:\/|$))([^/?#]+)$/i
   ];
   for (const pattern of patterns) {
     const match = path.match(pattern);
@@ -976,6 +997,25 @@ const readRouteSlug = () => {
   }
   return null;
 };
+const readRouteLocationId = () => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search || '');
+  const parsed = Number(params.get('location_id'));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+const hasMeaningfulDgfyAccount = (account = null) => Boolean(
+  account
+  && typeof account === 'object'
+  && (
+    account.id
+    || account.account_id
+    || account.email
+    || account.phone
+    || account.first_name
+    || account.last_name
+    || account.name
+  )
+);
 const readStoreSubpage = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
@@ -1149,6 +1189,23 @@ export const findCanonicalStorefrontSlug = (requestedSlug, stores = []) => {
   return '';
 };
 
+export const buildStorefrontSlugFallbackQueries = (requestedSlug) => {
+  const normalizedRequestedSlug = toSlug(requestedSlug);
+  if (!normalizedRequestedSlug) return [];
+
+  const withoutHashSuffix = normalizedRequestedSlug
+    .replace(/-[0-9a-f]{6,}$/i, '')
+    .replace(/-[0-9]{4,}$/i, '');
+  const candidates = [
+    normalizedRequestedSlug,
+    withoutHashSuffix,
+    withoutHashSuffix.replace(/-/g, ' '),
+    normalizedRequestedSlug.replace(/-/g, ' ')
+  ];
+
+  return Array.from(new Set(candidates.map((candidate) => String(candidate || '').trim()).filter(Boolean)));
+};
+
 const normalizeStorefrontCategories = (value) => parseOptionalArray(value)
   .map((entry) => String(entry || '').trim())
   .filter(Boolean)
@@ -1299,7 +1356,7 @@ const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_
 const STOREFRONT_CHECKOUT_AUTH_RESUME_KEY = 'dgfy_store_checkout_auth_resume_v1';
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
-const TERMINAL_TRACKING_STATUSES = new Set(['completed', 'cancelled', 'rejected']);
+const TERMINAL_TRACKING_STATUSES = new Set(['completed', 'delivered', 'picked_up', 'cancelled', 'rejected']);
 const DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES = new Set(['order', 'pos_order', 'fnb_order']);
 const DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
 const EMPTY_ACCOUNT_PANEL = Object.freeze({
@@ -1310,6 +1367,8 @@ const EMPTY_ACCOUNT_PANEL = Object.freeze({
   activities: [],
   orders: [],
   bookings: [],
+  notifications: [],
+  unreadNotificationCount: 0,
   addresses: [],
   loyalty: null
 });
@@ -1567,6 +1626,37 @@ const deriveAccountActivityCollections = ({ dashboardData = null, activitiesData
     orders: activities.filter((entry) => DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES.has(String(entry?.type || '').trim().toLowerCase())),
     bookings: activities.filter((entry) => DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES.has(String(entry?.type || '').trim().toLowerCase()))
   };
+};
+
+const mergeAccountActivityList = (list = [], activity = null) => {
+  if (!activity?.reference && !activity?.activity_id) return Array.isArray(list) ? list : [];
+  const nextActivity = { ...activity };
+  const existing = Array.isArray(list) ? list : [];
+  const matchKey = String(nextActivity.activity_id || nextActivity.reference || '').trim().toUpperCase();
+  const withoutCurrent = existing.filter((entry) => {
+    const entryKey = String(entry?.activity_id || entry?.reference || '').trim().toUpperCase();
+    return entryKey !== matchKey;
+  });
+  return [nextActivity, ...withoutCurrent].sort((a, b) => (
+    new Date(b?.occurred_at || b?.updated_at || b?.created_at || 0).getTime()
+    - new Date(a?.occurred_at || a?.updated_at || a?.created_at || 0).getTime()
+  ));
+};
+
+const mergeAccountPanelActivity = (panel = EMPTY_ACCOUNT_PANEL, activity = null) => {
+  const activities = mergeAccountActivityList(panel.activities, activity);
+  const type = String(activity?.type || activity?.activity_type || '').trim().toLowerCase();
+  const nextPanel = {
+    ...panel,
+    activities
+  };
+  if (DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES.has(type)) {
+    nextPanel.orders = mergeAccountActivityList(panel.orders, activity);
+  }
+  if (DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES.has(type)) {
+    nextPanel.bookings = mergeAccountActivityList(panel.bookings, activity);
+  }
+  return nextPanel;
 };
 
 const resolveStorefrontRouteSlug = (activity = {}, selectedStore = null) => {
@@ -1843,28 +1933,10 @@ const getOrCreateStorefrontVisitorId = () => {
   return generated;
 };
 
-const makePinElement = (mode, selected = false, ariaLabel = 'Store marker', glow = false) => {
-  const el = document.createElement('div');
-  el.style.cssText = `width:${selected ? 38 : 34}px;height:${selected ? 48 : 44}px;display:flex;align-items:center;justify-content:center;cursor:pointer;`;
-  el.setAttribute('role', 'button');
-  el.setAttribute('tabindex', '0');
-  el.setAttribute('aria-label', ariaLabel);
-  el.classList.add('discovery-result-pin');
-  const visual = document.createElement('div');
-  visual.className = (selected || glow) ? 'discovery-result-pin-visual is-glowing' : 'discovery-result-pin-visual';
-  const pinHex = String(getBusinessModePinMeta(mode)?.color || '#1a4e8d').trim();
-  const hex = pinHex.startsWith('#') ? pinHex.slice(1) : pinHex;
-  const normalizedHex = hex.length === 3 ? hex.split('').map((char) => `${char}${char}`).join('') : hex;
-  if (/^[0-9a-fA-F]{6}$/.test(normalizedHex)) {
-    const r = Number.parseInt(normalizedHex.slice(0, 2), 16);
-    const g = Number.parseInt(normalizedHex.slice(2, 4), 16);
-    const b = Number.parseInt(normalizedHex.slice(4, 6), 16);
-    visual.style.setProperty('--pin-glow-rgb', `${r}, ${g}, ${b}`);
-  }
-  visual.innerHTML = renderBusinessModePinSvg(mode, selected);
-  el.appendChild(visual);
-  return el;
-};
+const EMPTY_HIGHLIGHTED_MARKER_KEYS = [];
+const STORE_MARKER_POPUP_OFFSET = { bottom: [0, -58], top: [0, 58], left: [58, 0], right: [-58, 0] };
+const STORE_MARKER_FIT_PADDING = { top: 76, right: 76, bottom: 104, left: 76 };
+const STORE_MARKER_AUTO_OPEN_FIT_PADDING = { top: 96, right: 96, bottom: 120, left: 96 };
 
 const makeUserLocationElement = () => {
   const el = document.createElement('div');
@@ -1882,26 +1954,40 @@ const makeUserLocationElement = () => {
 function StoresMap({
   stores,
   selectedKey,
+  highlightedKeys = EMPTY_HIGHLIGHTED_MARKER_KEYS,
   onSelectStore,
   userLocation = null,
   height = 360,
   autoOpenPopups = false,
   openPopupOnHover = false,
-  pinGlow = false
+  onSelectCluster = null,
+  viewportPolicy = 'auto',
+  viewportSignal = ''
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
   const popupsRef = useRef([]);
   const userMarkerRef = useRef(null);
+  const layerEventCleanupRef = useRef(null);
   const onSelectStoreRef = useRef(onSelectStore);
+  const onSelectClusterRef = useRef(onSelectCluster);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
+  const markerSignatureRef = useRef('');
+  const viewportHasFitRef = useRef(false);
+  const lastViewportLocationSignatureRef = useRef('');
+  const lastViewportSignalRef = useRef('');
   const [mapUnavailable, setMapUnavailable] = useState(false);
+  const [mapStyleReady, setMapStyleReady] = useState(false);
 
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
   }, [onSelectStore]);
+
+  useEffect(() => {
+    onSelectClusterRef.current = onSelectCluster;
+  }, [onSelectCluster]);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
@@ -1925,293 +2011,410 @@ function StoresMap({
 
     map.on('error', (e) => console.error('[MapLibre error]', e));
     map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
+    const markReady = () => setMapStyleReady(true);
+    if (typeof map.isStyleLoaded === 'function') {
+      if (map.isStyleLoaded()) {
+        markReady();
+      } else if (typeof map.once === 'function') {
+        map.once('load', markReady);
+      } else {
+        map.on('load', markReady);
+      }
+    } else {
+      markReady();
+    }
 
     return () => {
+      if (typeof map.off === 'function') {
+        try { map.off('load', markReady); } catch {
+          // MapLibre cleanup is best-effort across mocked and real maps.
+        }
+      }
       map.remove();
       mapRef.current = null;
+      setMapStyleReady(false);
     };
   }, []);
-
-	  useEffect(() => {
-	    const map = mapRef.current;
-	    if (!map) return;
-      const generation = popupGenerationRef.current + 1;
-      popupGenerationRef.current = generation;
-      if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
-        window.cancelAnimationFrame(autoOpenFrameRef.current);
-        autoOpenFrameRef.current = null;
+  useEffect(() => () => {
+    if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+      window.cancelAnimationFrame(autoOpenFrameRef.current);
+      autoOpenFrameRef.current = null;
+    }
+    popupsRef.current.forEach((popup) => {
+      try { popup?.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the popup.
       }
-
-	    popupsRef.current.forEach((popup) => {
-	      try { popup?.remove?.(); } catch {}
-	    });
-	    popupsRef.current = [];
-	    markersRef.current.forEach((m) => m.remove());
-	    markersRef.current = [];
-
-	    const rows = Array.isArray(stores) ? stores : [];
-	    const uniqueRows = [];
-	    const seenMarkerKeys = new Set();
-	    rows.forEach((store) => {
-	      if (!store) return;
-	      const markerKey = getDiscoveryMarkerKey(store);
-	      if (!markerKey) {
-	        uniqueRows.push(store);
-	        return;
-	      }
-	      if (seenMarkerKeys.has(markerKey)) return;
-	      seenMarkerKeys.add(markerKey);
-	      uniqueRows.push(store);
-	    });
-	    const bounds = [];
-	    const autoOpenCallbacks = [];
-	    const coordinateGroups = uniqueRows.reduce((acc, store) => {
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return acc;
-      const key = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      if (!Array.isArray(acc[key])) {
-        acc[key] = [];
+    });
+    popupsRef.current = [];
+    markersRef.current.forEach((marker) => {
+      try { marker?.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the marker.
       }
-      acc[key].push(store);
-      return acc;
-    }, {});
-    const renderedCoordinateGroups = new Set();
+    });
+    markersRef.current = [];
+    if (typeof layerEventCleanupRef.current === 'function') {
+      layerEventCleanupRef.current();
+      layerEventCleanupRef.current = null;
+    }
+    if (userMarkerRef.current) {
+      try { userMarkerRef.current.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the user marker.
+      }
+      userMarkerRef.current = null;
+    }
+  }, []);
 
-	    uniqueRows.forEach((store) => {
-      if (!store) return;
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const coordinateKey = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      if (renderedCoordinateGroups.has(coordinateKey)) return;
-      renderedCoordinateGroups.add(coordinateKey);
-      const group = Array.isArray(coordinateGroups[coordinateKey]) ? coordinateGroups[coordinateKey] : [];
-      if (group.length === 0) return;
-      const clusterSelected = selectedKey
-        ? group.some((entry) => String(getDiscoveryMarkerKey(entry) || '') === String(selectedKey))
-        : group.some((entry) => entry?.is_primary_storefront === true);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapStyleReady) return undefined;
+    const generation = popupGenerationRef.current + 1;
+    popupGenerationRef.current = generation;
+    let cancelled = false;
+    if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+      window.cancelAnimationFrame(autoOpenFrameRef.current);
+      autoOpenFrameRef.current = null;
+    }
 
-      if (group.length > 1) {
-        const clusterElement = makeClusterElement(group.length, clusterSelected, `${group.length} storefronts at this location`);
-        const clusterPopup = new maplibregl.Popup({
-          anchor: 'bottom',
-          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
-          closeOnClick: false,
-          focusAfterOpen: false
-        });
-        popupsRef.current.push(clusterPopup);
-        const clusterNode = createSharedCoordinatePreviewNode(group, {
-          onSelect: (selectedStorefront) => {
-            clusterPopup.remove();
-            onSelectStoreRef.current?.(selectedStorefront);
-          },
-          onClose: () => {
-            clusterPopup.remove();
-          }
-        });
-        clusterPopup.setDOMContent(clusterNode);
-        const openClusterPopup = (event) => {
-          event?.preventDefault?.();
-          event?.stopPropagation?.();
-          clusterPopup.setLngLat([lng, lat]).addTo(map);
-        };
-        clusterElement.addEventListener('click', openClusterPopup);
-        clusterElement.addEventListener('pointerup', openClusterPopup);
-        clusterElement.addEventListener('touchend', openClusterPopup, { passive: false });
-        clusterElement.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            openClusterPopup(event);
-          }
-        });
-        const clusterMarker = new maplibregl.Marker({ element: clusterElement, anchor: 'center' })
-          .setLngLat([lng, lat])
-          .addTo(map);
-        markersRef.current.push(clusterMarker);
-        bounds.push([lng, lat]);
+    const rows = Array.isArray(stores) ? stores : [];
+    const nextMarkerSignature = rows
+      .map((store) => {
+        const markerKey = getDiscoveryMarkerKey(store);
+        const lat = Number(store?.latitude);
+        const lng = Number(store?.longitude);
+        return [
+          markerKey || toSlug(store?.slug || store?.tenant_name),
+          Number.isFinite(lat) ? lat.toFixed(6) : '',
+          Number.isFinite(lng) ? lng.toFixed(6) : '',
+          store?.location_id ?? ''
+        ].join(':');
+      })
+      .join('|');
+    const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
+    markerSignatureRef.current = nextMarkerSignature;
+    const normalizedViewportSignal = String(viewportSignal || '').trim();
+    const viewportSignalChanged = lastViewportSignalRef.current !== normalizedViewportSignal;
+    lastViewportSignalRef.current = normalizedViewportSignal;
+    const userLocationSignature = userLocation?.latitude != null && userLocation?.longitude != null
+      ? `${Number(userLocation.latitude).toFixed(6)}:${Number(userLocation.longitude).toFixed(6)}`
+      : '';
+    const userLocationChanged = lastViewportLocationSignatureRef.current !== userLocationSignature;
+    lastViewportLocationSignatureRef.current = userLocationSignature;
+
+    const retainedPopupKeys = new Set();
+    const retainedPopups = [];
+    popupsRef.current.forEach((popup) => {
+      const isOpen = typeof popup?.isOpen === 'function'
+        ? popup.isOpen()
+        : Boolean(popup?.node?.isConnected);
+      if (!markerSetChanged && isOpen) {
+        const popupMarkerKey = String(popup?.__dgfyMarkerKey || '').trim();
+        if (popupMarkerKey) retainedPopupKeys.add(popupMarkerKey);
+        retainedPopups.push(popup);
         return;
       }
+      try { popup?.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the popup.
+      }
+    });
+    popupsRef.current = retainedPopups;
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+    if (userMarkerRef.current) {
+      try { userMarkerRef.current.remove?.(); } catch {
+        // Cleanup is best-effort when migrating user location to map layers.
+      }
+      userMarkerRef.current = null;
+    }
+    if (typeof layerEventCleanupRef.current === 'function') {
+      layerEventCleanupRef.current();
+      layerEventCleanupRef.current = null;
+    }
 
-      const [singleStore] = group;
-      const markerKey = getDiscoveryMarkerKey(singleStore) || `${lat}:${lng}`;
-      const highlighted = selectedKey
-        ? markerKey === String(selectedKey)
-        : singleStore.is_primary_storefront === true;
-      const branchName = String(singleStore?.location_name || singleStore?.nearest_location_name || 'Branch');
-      const tenantName = String(singleStore?.tenant_name || 'Storefront');
-      const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
-      const el = makePinElement(singleStore.workflow_mode || singleStore.business_mode, highlighted, markerAriaLabel);
-	      const popup = new maplibregl.Popup({
-	        anchor: 'bottom',
-	        offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
-	        closeOnClick: false,
-	        focusAfterOpen: false
-	      });
-	      popupsRef.current.push(popup);
+    const layerModel = buildDiscoveryPinLayerModel({ stores: rows, selectedKey, highlightedKeys });
+    const userSourceData = buildUserLocationSourceData(userLocation);
+    const userFeature = userSourceData.features[0];
+    const bounds = [...layerModel.bounds];
+    if (userFeature) bounds.push(userFeature.geometry.coordinates);
+
+    const layerReady = ensureDiscoveryMapLayers(map);
+    if (layerReady) {
+      setGeoJsonSourceData(map, DISCOVERY_USER_SOURCE_ID, userSourceData);
+    }
+
+    const popupEntries = new globalThis.Map();
+    let activeHoverEntry = null;
+    const createPopupForEntry = (entry) => {
+      const existing = popupEntries.get(entry.coordinateKey);
+      if (existing) return existing;
+      const { group, isCluster, lat, lng, markerKey } = entry;
+      if (isCluster) {
+        const clusterEntry = {
+          markerKey,
+          coordinateKey: entry.coordinateKey,
+          highlighted: entry.highlighted,
+          isCluster: true,
+          group,
+          open: (mode = 'click') => {
+            if (mode !== 'click') return;
+            onSelectClusterRef.current?.(group, entry);
+          },
+          setMarkerHovered: () => {}
+        };
+        popupEntries.set(entry.coordinateKey, clusterEntry);
+        return clusterEntry;
+      }
+      const popup = new maplibregl.Popup({
+        anchor: 'bottom',
+        offset: STORE_MARKER_POPUP_OFFSET,
+        closeOnClick: false,
+        focusAfterOpen: false
+      });
+      popup.__dgfyMarkerKey = markerKey;
+      popupsRef.current.push(popup);
+
       let closeTimer = null;
       let markerHovered = false;
-      let previewHovered = false;
       let popupOpening = false;
+      let popupOpenMode = 'idle';
+      let previewNodeRef = null;
       const clearCloseTimer = () => {
         if (closeTimer) {
           window.clearTimeout(closeTimer);
           closeTimer = null;
         }
       };
-      const openPopup = () => {
+      const closeHoverPopup = () => {
+        if (popupGenerationRef.current !== generation || popupOpenMode !== 'hover') return;
+        markerHovered = false;
+        popupOpenMode = 'idle';
         clearCloseTimer();
-        const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
-        if (popupGenerationRef.current !== generation || popupOpening || popupAlreadyOpen) return;
-        popupOpening = true;
-        try {
-          if (popupGenerationRef.current !== generation) return;
-          popup.setLngLat([lng, lat]).addTo(map);
-        } finally {
-          popupOpening = false;
+        if (previewNodeRef?.style) {
+          previewNodeRef.style.pointerEvents = '';
         }
+        popup.remove();
       };
       const schedulePopupClose = () => {
         clearCloseTimer();
         closeTimer = window.setTimeout(() => {
-          if (popupGenerationRef.current === generation && !markerHovered && !previewHovered) {
-            popup.remove();
-          }
-        }, 120);
+          if (!markerHovered) closeHoverPopup();
+        }, 40);
       };
+      const bindPreviewHover = (node) => {
+        node.addEventListener('mouseenter', () => {
+          if (popupOpenMode === 'click') {
+            clearCloseTimer();
+          }
+        });
+        node.addEventListener('mouseleave', () => {
+          if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
+        });
+        node.addEventListener('focusin', () => {
+          if (popupOpenMode === 'click') {
+            clearCloseTimer();
+          }
+        });
+        node.addEventListener('focusout', (event) => {
+          const nextFocused = event.relatedTarget;
+          if (nextFocused && node.contains(nextFocused)) return;
+          if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
+        });
+      };
+      const [singleStore] = group;
       const previewNode = createStoreMarkerPreviewNode(singleStore, {
         resolveAssetUrl: withAssetOrigin,
         onAction: () => onSelectStoreRef.current?.(singleStore),
         onClose: () => {
           markerHovered = false;
-          previewHovered = false;
           clearCloseTimer();
+          popupOpenMode = 'idle';
+          if (previewNodeRef?.style) {
+            previewNodeRef.style.pointerEvents = '';
+          }
           popup.remove();
         }
       });
-      previewNode.addEventListener('mouseenter', () => {
-        previewHovered = true;
-        clearCloseTimer();
-      });
-      previewNode.addEventListener('mouseleave', () => {
-        previewHovered = false;
-        schedulePopupClose();
-      });
-      previewNode.addEventListener('focusin', () => {
-        previewHovered = true;
-        clearCloseTimer();
-      });
-      previewNode.addEventListener('focusout', (event) => {
-        const nextFocused = event.relatedTarget;
-        if (nextFocused && previewNode.contains(nextFocused)) return;
-        previewHovered = false;
-        schedulePopupClose();
-      });
+      previewNodeRef = previewNode;
+      bindPreviewHover(previewNode);
       previewNode.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
           event.preventDefault();
+          popupOpenMode = 'idle';
+          if (previewNodeRef?.style) {
+            previewNodeRef.style.pointerEvents = '';
+          }
           popup.remove();
-          el.focus();
         }
       });
       popup.setDOMContent(previewNode);
-      const hoverPreviewEnabled = openPopupOnHover
-        && typeof window !== 'undefined'
-        && window.matchMedia?.('(hover: hover)').matches;
-      const openPopupFromPointer = (event) => {
-        event?.preventDefault?.();
-        event?.stopPropagation?.();
-        openPopup();
+      const open = (mode = 'click') => {
+        popupOpenMode = mode === 'click' || popupOpenMode === 'click' ? 'click' : 'hover';
+        clearCloseTimer();
+        if (previewNodeRef?.style) {
+          previewNodeRef.style.pointerEvents = popupOpenMode === 'hover' ? 'none' : '';
+        }
+        const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
+        if (popupOpening || popupAlreadyOpen) return;
+        popupOpening = true;
+        try {
+          popup.setLngLat([lng, lat]).addTo(map);
+        } finally {
+          popupOpening = false;
+        }
       };
-      el.addEventListener('click', openPopupFromPointer);
-      el.addEventListener('pointerup', openPopupFromPointer);
-      el.addEventListener('touchend', openPopupFromPointer, { passive: false });
-      el.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          openPopup();
+      popupEntries.set(entry.coordinateKey, {
+        markerKey,
+        coordinateKey: entry.coordinateKey,
+        highlighted: entry.highlighted,
+        isCluster: false,
+        open,
+        closeHoverPopup,
+        setMarkerHovered: (value) => {
+          markerHovered = Boolean(value);
+          if (markerHovered) {
+            clearCloseTimer();
+          } else if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
         }
       });
-      if (hoverPreviewEnabled) {
-        el.addEventListener('mouseenter', () => {
-          markerHovered = true;
-          openPopup();
-        });
-        el.addEventListener('mouseleave', () => {
-          markerHovered = false;
-          schedulePopupClose();
-        });
-        el.addEventListener('focus', () => {
-          markerHovered = true;
-          openPopup();
-        });
-        el.addEventListener('blur', () => {
-          markerHovered = false;
-          schedulePopupClose();
-        });
-      }
-	      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-	        .setLngLat([lng, lat])
-	        .addTo(map);
-	      if (autoOpenPopups) {
-	        autoOpenCallbacks.push({ key: markerKey, open: openPopup });
-	      }
-	      markersRef.current.push(marker);
-	      bounds.push([lng, lat]);
-    });
+      return popupEntries.get(entry.coordinateKey);
+    };
 
-    if (userMarkerRef.current) {
-      userMarkerRef.current.remove();
-      userMarkerRef.current = null;
-    }
-    if (userLocation?.latitude != null && userLocation?.longitude != null) {
-      const uLat = Number(userLocation.latitude);
-      const uLng = Number(userLocation.longitude);
-      if (Number.isFinite(uLat) && Number.isFinite(uLng)) {
-        const el = makeUserLocationElement();
-        userMarkerRef.current = new maplibregl.Marker({ element: el })
-          .setLngLat([uLng, uLat])
-          .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
-          .addTo(map);
-        bounds.push([uLng, uLat]);
-      }
-    }
+    layerModel.groups.forEach((entry) => createPopupForEntry(entry));
 
-	    if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
-	    if (bounds.length > 1) {
-	      const lngs = bounds.map((b) => b[0]);
-	      const lats = bounds.map((b) => b[1]);
-	      map.fitBounds(
-	        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-	        { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
-	      );
-	    }
-		    if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
-		      autoOpenFrameRef.current = window.requestAnimationFrame(() => {
-            autoOpenFrameRef.current = null;
-            if (popupGenerationRef.current !== generation) return;
-            const openedMarkerKeys = new Set();
-		        autoOpenCallbacks.forEach((entry) => {
-              const markerKey = String(entry?.key || '');
-              if (!markerKey || openedMarkerKeys.has(markerKey)) return;
-              openedMarkerKeys.add(markerKey);
-              entry?.open?.();
-            });
-		      });
-		    }
-      return () => {
-        if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
-          window.cancelAnimationFrame(autoOpenFrameRef.current);
-          autoOpenFrameRef.current = null;
+    const getEventEntry = (event) => {
+      const feature = Array.isArray(event?.features) ? event.features[0] : null;
+      const coordinateKey = String(feature?.properties?.coordinateKey || '').trim();
+      return coordinateKey ? popupEntries.get(coordinateKey) : null;
+    };
+    const clickHandler = (event) => {
+      event?.preventDefault?.();
+      const entry = getEventEntry(event);
+      entry?.open?.('click');
+    };
+    const hoverPreviewEnabled = openPopupOnHover
+      && typeof window !== 'undefined'
+      && window.matchMedia?.('(hover: hover)').matches;
+    const mouseEnterHandler = (event) => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = 'pointer';
+      }
+      if (!hoverPreviewEnabled) return;
+      const entry = getEventEntry(event);
+      if (activeHoverEntry && activeHoverEntry !== entry) {
+        activeHoverEntry.closeHoverPopup?.();
+      }
+      activeHoverEntry = entry || null;
+      entry?.setMarkerHovered?.(true);
+      entry?.open?.('hover');
+    };
+    const mouseLeaveHandler = (event) => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
+      if (!hoverPreviewEnabled) return;
+      const entry = getEventEntry(event);
+      if (activeHoverEntry === entry) {
+        activeHoverEntry = null;
+      }
+      entry?.setMarkerHovered?.(false);
+    };
+    const mapMouseMoveHandler = (event) => {
+      if (!hoverPreviewEnabled || !activeHoverEntry || typeof map.queryRenderedFeatures !== 'function') return;
+      const renderedFeatures = map.queryRenderedFeatures(event?.point, { layers: [DISCOVERY_PIN_LAYER_ID] }) || [];
+      const stillOnActiveMarker = renderedFeatures.some((feature) => (
+        String(feature?.properties?.coordinateKey || '').trim() === activeHoverEntry.coordinateKey
+      ));
+      if (stillOnActiveMarker) return;
+      activeHoverEntry.setMarkerHovered?.(false);
+      activeHoverEntry = null;
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
+    };
+    if (layerReady && typeof map.on === 'function') {
+      map.on('click', DISCOVERY_PIN_LAYER_ID, clickHandler);
+      map.on('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler);
+      map.on('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler);
+      map.on('mousemove', mapMouseMoveHandler);
+      layerEventCleanupRef.current = () => {
+        if (typeof map.off !== 'function') return;
+        try { map.off('click', DISCOVERY_PIN_LAYER_ID, clickHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mousemove', mapMouseMoveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
         }
       };
-	  }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
+    }
+
+    Promise.all(layerModel.requiredImages.map(({ id, svg }) => ensureMapImage(map, id, svg)))
+      .then(() => {
+        if (cancelled || popupGenerationRef.current !== generation) return;
+        if (layerReady) {
+          setGeoJsonSourceData(map, DISCOVERY_PIN_SOURCE_ID, layerModel.sourceData);
+        }
+      });
+
+    const shouldFitViewport = viewportPolicy !== 'search-stable'
+      || !viewportHasFitRef.current
+      || viewportSignalChanged
+      || userLocationChanged;
+    if (shouldFitViewport && bounds.length === 1) {
+      map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
+      viewportHasFitRef.current = true;
+    }
+    if (shouldFitViewport && bounds.length > 1) {
+      const lngs = bounds.map((b) => b[0]);
+      const lats = bounds.map((b) => b[1]);
+      map.fitBounds(
+        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+        { padding: autoOpenPopups ? STORE_MARKER_AUTO_OPEN_FIT_PADDING : STORE_MARKER_FIT_PADDING, maxZoom: autoOpenPopups ? 13.5 : 14 }
+      );
+      viewportHasFitRef.current = true;
+    }
+    const autoOpenEntries = Array.from(popupEntries.values()).filter((entry) => entry.highlighted);
+    if (autoOpenPopups && autoOpenEntries.length > 0 && typeof window !== 'undefined') {
+      autoOpenFrameRef.current = window.requestAnimationFrame(() => {
+        autoOpenFrameRef.current = null;
+        if (popupGenerationRef.current !== generation) return;
+        const openedMarkerKeys = new Set();
+        autoOpenEntries.forEach((entry) => {
+          const markerKey = String(entry?.markerKey || '');
+          if (!markerKey || retainedPopupKeys.has(markerKey) || openedMarkerKeys.has(markerKey)) return;
+          openedMarkerKeys.add(markerKey);
+          entry?.open?.();
+        });
+      });
+    }
+    return () => {
+      cancelled = true;
+      if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+        window.cancelAnimationFrame(autoOpenFrameRef.current);
+        autoOpenFrameRef.current = null;
+      }
+      if (typeof layerEventCleanupRef.current === 'function') {
+        layerEventCleanupRef.current();
+        layerEventCleanupRef.current = null;
+      }
+    };
+  }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, mapStyleReady]);
 
   if (mapUnavailable) {
     return (
       <div style={{ minHeight: height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden', background: '#f8fafc', padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#1f5f9f', fontWeight: 900 }}>
-          <MapPin size={15} />
+          <MapPin size={18} />
           Store map unavailable
         </div>
         <p style={{ margin: '8px 0 16px', color: '#64748b', fontSize: 13 }}>
@@ -2275,10 +2478,44 @@ function DeliveryPinMap({
   highlightGlow = 'rgba(249,115,22,0.14)',
   overlayControls = null
 }) {
+  const frameRef = useRef(null);
   const ref = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
   const [mapUnavailable, setMapUnavailable] = useState(false);
+  const resolvedHeight = typeof height === 'number' ? `${height}px` : String(height || '260px');
+
+  const scheduleMapResize = useCallback((reason = 'layout') => {
+    const map = mapRef.current;
+    const frame = frameRef.current;
+    if (!map || !frame) return undefined;
+
+    const runResize = () => {
+      const rect = frame.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const canvas = map.getCanvas?.();
+      const canvasContainer = map.getCanvasContainer?.();
+      if (canvasContainer?.style) {
+        canvasContainer.style.width = '100%';
+        canvasContainer.style.height = '100%';
+      }
+      if (canvas?.style) {
+        canvas.style.zIndex = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+      }
+      map.resize();
+    };
+
+    const rafId = window.requestAnimationFrame(runResize);
+    const earlyTimer = window.setTimeout(runResize, reason === 'visible' ? 60 : 40);
+    const settleTimer = window.setTimeout(runResize, 220);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(earlyTimer);
+      window.clearTimeout(settleTimer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return undefined;
@@ -2296,10 +2533,23 @@ function DeliveryPinMap({
       setMapUnavailable(true);
       return undefined;
     }
-    map.getCanvas().style.zIndex = '0';
+    const canvasContainer = map.getCanvasContainer?.();
+    if (canvasContainer?.style) {
+      canvasContainer.style.width = '100%';
+      canvasContainer.style.height = '100%';
+    }
+    const canvas = map.getCanvas();
+    canvas.style.zIndex = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
     map.on('error', (e) => console.error('[DeliveryPinMap] MapLibre error', e));
+    map.on('load', () => {
+      scheduleMapResize('load');
+    });
     mapRef.current = map;
+    const cleanupInitialResize = scheduleMapResize('init');
     return () => {
+      cleanupInitialResize?.();
       if (markerRef.current) {
         markerRef.current.remove();
         markerRef.current = null;
@@ -2307,7 +2557,7 @@ function DeliveryPinMap({
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [scheduleMapResize]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -2326,7 +2576,7 @@ function DeliveryPinMap({
         markerRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom', draggable: !disabled })
           .setLngLat([lng, lat])
           .addTo(map);
-        if (!disabled) {
+        if (!disabled && typeof markerRef.current?.on === 'function') {
           markerRef.current.on('dragstart', () => {
             if (markerRef.current?._element) markerRef.current._element.style.cursor = 'grabbing';
           });
@@ -2367,19 +2617,45 @@ function DeliveryPinMap({
   }, [disabled, onPinChange]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return undefined;
-    const timer = setTimeout(() => map.resize(), 120);
-    return () => clearTimeout(timer);
-  }, [disabled]);
+    if (!mapRef.current || !frameRef.current) return undefined;
+    const cleanupTasks = [];
+    cleanupTasks.push(scheduleMapResize('visible'));
+
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        const cleanup = scheduleMapResize('observer');
+        if (cleanup) cleanupTasks.push(cleanup);
+      });
+      resizeObserver.observe(frameRef.current);
+    }
+
+    const handleViewportResize = () => {
+      const cleanup = scheduleMapResize('viewport');
+      if (cleanup) cleanupTasks.push(cleanup);
+    };
+    window.addEventListener('resize', handleViewportResize);
+    window.addEventListener('orientationchange', handleViewportResize);
+    window.visualViewport?.addEventListener?.('resize', handleViewportResize);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', handleViewportResize);
+      window.removeEventListener('orientationchange', handleViewportResize);
+      window.visualViewport?.removeEventListener?.('resize', handleViewportResize);
+      cleanupTasks.splice(0).forEach((cleanup) => cleanup?.());
+    };
+  }, [disabled, resolvedHeight, scheduleMapResize]);
 
   if (mapUnavailable) {
     return (
       <div
+        data-delivery-map-frame="fallback"
         style={{
           marginBottom: 10,
           width: '100%',
-          minHeight: height,
+          height: resolvedHeight,
+          minHeight: resolvedHeight,
           border: `2px solid ${highlighted ? highlightColor : '#cbd5e1'}`,
           borderRadius: 16,
           background: '#f8fafc',
@@ -2396,13 +2672,15 @@ function DeliveryPinMap({
 
   return (
     <div
+      ref={frameRef}
+      data-delivery-map-frame="true"
       style={{
         position: 'relative',
         marginBottom: 10,
         width: '100%',
         maxWidth: '100%',
-        aspectRatio: '16 / 10',
-        minHeight: height,
+        height: resolvedHeight,
+        minHeight: resolvedHeight,
         overflow: 'hidden',
         border: `1.5px solid ${highlighted ? highlightColor : '#dbe5ee'}`,
         borderRadius: 18,
@@ -2412,10 +2690,32 @@ function DeliveryPinMap({
         transition: 'all 200ms ease'
       }}
     >
-      <div ref={ref} style={{ height: '100%', width: '100%' }} />
-      {overlayControls}
+      <div
+        ref={ref}
+        data-delivery-map-root="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          height: '100%',
+          width: '100%',
+          minHeight: 0
+        }}
+      />
+      {overlayControls && (
+        <div
+          data-delivery-map-controls="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 10
+          }}
+        >
+          {overlayControls}
+        </div>
+      )}
       {disabled && (
-        <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(255,255,255,.6)' }} />
+        <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(255,255,255,.6)', zIndex: 20 }} />
       )}
     </div>
   );
@@ -2452,35 +2752,6 @@ function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRe
           style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700 }}
         >
           Check Again
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function StoreCatalogErrorState({ message = '', guidance = '', onRefreshTenantPage }) {
-  return (
-    <div
-      style={{
-        marginTop: 12,
-        border: '1px solid #fecaca',
-        borderRadius: 14,
-        background: 'linear-gradient(180deg,#fff7f7 0%,#ffffff 100%)',
-        padding: 16
-      }}
-    >
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>Storefront catalog could not load</div>
-      <p style={{ margin: '8px 0 0 0', color: '#7f1d1d', fontSize: 14 }}>{message || 'Failed to load tenant storefront catalog.'}</p>
-      {guidance && (
-        <p style={{ margin: '8px 0 0 0', color: '#475569', fontSize: 14 }}>{guidance}</p>
-      )}
-      <div style={{ marginTop: 12 }}>
-        <button
-          type="button"
-          onClick={onRefreshTenantPage}
-          style={{ borderRadius: 10, border: '1px solid #b91c1c', background: '#fff', color: '#991b1b', padding: '8px 12px', fontWeight: 700 }}
-        >
-          Retry Catalog
         </button>
       </div>
     </div>
@@ -2838,7 +3109,8 @@ const FnbHero = ({
   const showMobilePrimaryInfoCard = hasAboutSection || hasMobileStoreDetailsSummary;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
+  const hasMapData = !isPublicMapDisabled(selectedStore)
+    && Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
   const whyChooseUs = Array.isArray(heroSectionModel.whyChooseUs) && heroSectionModel.whyChooseUs.length > 0
     ? heroSectionModel.whyChooseUs
@@ -4043,8 +4315,7 @@ const ServicesHero = ({
   const hasAboutOrGallerySection = hasAboutSection || hasGallerySection;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = Array.isArray(serviceHeroModel.mapStores) && serviceHeroModel.mapStores.length > 0;
   const visibleWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) ? serviceHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: serviceHeroModel.contactRows,
@@ -4913,8 +5184,7 @@ const SimpleHero = ({
   const hasAboutSection = aboutText.length > 0;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = Array.isArray(simpleHeroModel.mapStores) && simpleHeroModel.mapStores.length > 0;
   const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: simpleHeroModel.contactRows,
@@ -5461,6 +5731,7 @@ export default function StorefrontApp() {
   const [selectedMapPin, setSelectedMapPin] = useState(null);
   const [isStoreListVisible, setIsStoreListVisible] = useState(false);
   const [isMobileResultsCollapsed, setIsMobileResultsCollapsed] = useState(false);
+  const [clusterResultContext, setClusterResultContext] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [viewMode, setViewMode] = useState('list');
   const [discoveryResultsPage, setDiscoveryResultsPage] = useState(1);
@@ -5490,21 +5761,6 @@ export default function StorefrontApp() {
   const isServiceDetailsSubpage = routeSubpage === STORE_SERVICE_SUBPAGE;
   const isFnbDetailsSubpage = routeSubpage === STORE_ITEM_SUBPAGE;
   const isResolvedOrderSubpage = isOrderSubpage || isTrackSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || routeSlug) return;
-    const normalizedPath = String(window.location.pathname || '').replace(/\/+$/, '') || '/';
-    if (!TEMPLATE_ENTRY_PATHS.has(normalizedPath)) return;
-
-    const target = getDefaultStorefrontPath(window.location.search || '');
-    if (`${window.location.pathname}${window.location.search}` !== target) {
-      window.history.replaceState({ storeSlug: DEFAULT_STOREFRONT_SLUG, storeSubpage: null }, '', target);
-    }
-    setRouteSlug(DEFAULT_STOREFRONT_SLUG);
-    setRouteSubpage(null);
-    setRouteServiceItemId(null);
-    setRouteItemId(null);
-  }, [routeSlug]);
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState(null);
   const [selectedFnbDetail, setSelectedFnbDetail] = useState(null);
@@ -5625,7 +5881,7 @@ export default function StorefrontApp() {
   const [highlightedDiscoveryMarkerKey, setHighlightedDiscoveryMarkerKey] = useState('');
   const [storeLocations, setStoreLocations] = useState([]);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
-  const [selectedLocationId, setSelectedLocationId] = useState(null);
+  const [selectedLocationId, setSelectedLocationId] = useState(() => readRouteLocationId());
   const [hasSelectedBranchFromMenu, setHasSelectedBranchFromMenu] = useState(false);
   const fnbCategoryDropdownRef = useRef(null);
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(null);
@@ -5693,6 +5949,11 @@ export default function StorefrontApp() {
   const [isGuestTrackingDrawerOpen, setIsGuestTrackingDrawerOpen] = useState(false);
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState(EMPTY_ACCOUNT_PANEL);
+  const [accountOrderActionReference, setAccountOrderActionReference] = useState('');
+  const [accountAddressActionId, setAccountAddressActionId] = useState('');
+  const [accountAddressPinAction, setAccountAddressPinAction] = useState({ mode: '', loading: false, error: '' });
+  const accountAddressPinRequestRef = useRef(0);
+  const accountPanelRefreshInFlightRef = useRef(false);
   const [trackedCustomerActivity, setTrackedCustomerActivity] = useState(null);
   const [customerTrackLoadingReference, setCustomerTrackLoadingReference] = useState('');
   const [customerTrackError, setCustomerTrackError] = useState('');
@@ -5756,15 +6017,69 @@ export default function StorefrontApp() {
     let cancelled = false;
 
     const bootstrapDgfyCookieSession = async () => {
-      if (readDgfyAuthToken()) {
+      let consumedHandoff = false;
+      if (typeof window !== 'undefined') {
+        const currentUrl = new URL(window.location.href);
+        const handoffToken = String(currentUrl.searchParams.get('handoff_token') || '').trim();
+        if (handoffToken) {
+          currentUrl.searchParams.delete('handoff_token');
+          window.history.replaceState({}, '', currentUrl.toString());
+          try {
+            const handoffPayload = await requestJson('/api/v1/dgfy/auth/handoff/exchange', {
+              method: 'POST',
+              cache: 'no-store',
+              body: {
+                handoff_token: handoffToken,
+                soft_fail: true
+              }
+            });
+            consumedHandoff = handoffPayload?.status !== 'invalid';
+            if (consumedHandoff) clearDgfyExplicitSignOut();
+            clearDgfyAuthToken();
+            setDgfyAuthTokenState('');
+          } catch {
+            clearDgfyAuthToken();
+            setDgfyAuthTokenState('');
+          }
+          if (cancelled) return;
+        }
+      }
+
+      const legacyToken = readDgfyAuthToken();
+      if (!consumedHandoff && !legacyToken && hasDgfyExplicitSignOut()) {
+        clearDgfyAuthToken();
+        setDgfyAuthTokenState('');
+        setDgfySessionAccount(null);
         return;
       }
       try {
         const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
         if (cancelled) return;
         const account = payload?.account || payload || null;
-        setDgfySessionAccount(account && typeof account === 'object' ? account : null);
+        const hasAccount = hasMeaningfulDgfyAccount(account);
+        setDgfySessionAccount(hasAccount ? account : null);
+        if (hasAccount) {
+          clearDgfyAuthToken();
+          setDgfyAuthTokenState('');
+        }
       } catch {
+        if (cancelled) return;
+        if (legacyToken && !consumedHandoff) {
+          try {
+            const payload = await requestJson('/api/v1/dgfy/auth/me', {
+              authToken: legacyToken,
+              cache: 'no-store'
+            });
+            if (cancelled) return;
+            const account = payload?.account || payload || null;
+            setDgfySessionAccount(hasMeaningfulDgfyAccount(account) ? account : null);
+            return;
+          } catch {
+            if (cancelled) return;
+          }
+        }
+        clearDgfyAuthToken();
+        setDgfyAuthTokenState('');
         if (cancelled) return;
         setDgfySessionAccount(null);
       }
@@ -5776,6 +6091,7 @@ export default function StorefrontApp() {
     };
   }, []);
   const discoveryRequestSequenceRef = useRef(0);
+  const discoveryAbortControllerRef = useRef(null);
   const storeLoadRequestSequenceRef = useRef(0);
   const locationCatalogRequestSequenceRef = useRef(0);
   const lastImmediateDiscoveryRequestRef = useRef({ search: '', at: 0 });
@@ -5801,6 +6117,7 @@ export default function StorefrontApp() {
     isServicesMode,
     isFnbMode,
     isSimpleMode,
+    isHospitalityMode,
     modeAdapter,
     servicesViewModel,
     fnbViewModel,
@@ -5810,7 +6127,8 @@ export default function StorefrontApp() {
     supporting: supportingSectionModel
   } = pageModel;
   const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
-  const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
+  const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;
+  const isStandaloneTrackingPage = Boolean(trackingResult) && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
@@ -5968,12 +6286,6 @@ export default function StorefrontApp() {
     const initials = parts.map((part) => part.charAt(0).toUpperCase()).join('');
     return initials || 'GU';
   }, [accountDisplayName]);
-  const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  const accountDrawerTitle = isGuestAccountDrawerState ? 'DGFY Account' : 'My Account';
-  const accountDrawerSubtitle = isGuestAccountDrawerState
-    ? 'Orders, tracking, profile, addresses, loyalty, and company invitations.'
-    : 'Manage your bookings, orders, tickets and more.';
-  const accountPrimaryDescription = 'View and manage your saved bookings, orders, tickets, receipts, and the latest linked transaction.';
   const activeCustomerOrders = useMemo(() => {
     const activeStatuses = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']);
     return (Array.isArray(accountPanel.orders) ? accountPanel.orders : []).filter((order) => (
@@ -5988,6 +6300,27 @@ export default function StorefrontApp() {
         .filter(Boolean)
     )
   ), [activeCustomerOrders, selectedStore]);
+  const mergeLiveAccountActivity = useCallback((activity) => {
+    if (!activity || typeof activity !== 'object') return;
+    const normalizedReference = String(activity.reference || '').trim().toUpperCase();
+    setAccountPanel((previous) => mergeAccountPanelActivity(previous, activity));
+    setTrackedCustomerActivity((previous) => {
+      const previousReference = String(previous?.reference || '').trim().toUpperCase();
+      return normalizedReference && previousReference === normalizedReference
+        ? { ...previous, ...activity }
+        : previous;
+    });
+    setTrackingResult((previous) => {
+      const previousPin = String(previous?.tracking_pin || previous?.order?.tracking_pin || '').trim().toUpperCase();
+      if (!normalizedReference || previousPin !== normalizedReference) return previous;
+      return {
+        ...previous,
+        status: activity.status || previous?.status,
+        status_label: activity.status_label || activity.status || previous?.status_label,
+        updated_at: activity.updated_at || activity.occurred_at || previous?.updated_at
+      };
+    });
+  }, []);
   const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
   const canOpenTrackingDrawer = (isDgfyCustomerSignedIn || isGuestStorefrontUser) && !isStandaloneTrackingPage;
 
@@ -6241,6 +6574,9 @@ export default function StorefrontApp() {
     }
     const requestSequence = discoveryRequestSequenceRef.current + 1;
     discoveryRequestSequenceRef.current = requestSequence;
+    discoveryAbortControllerRef.current?.abort?.();
+    const discoveryController = typeof AbortController === 'function' ? new AbortController() : null;
+    discoveryAbortControllerRef.current = discoveryController;
     setLoadingStores(true);
     setStoresError('');
     try {
@@ -6249,7 +6585,7 @@ export default function StorefrontApp() {
       if (requestSearch) q.set('search', requestSearch);
       q.set('result_mode', discoveryResultMode);
       q.set('stock_filter', discoveryStockFilter);
-      q.set('pin_scope', discoveryPinScope);
+      q.set('pin_scope', options?.pinScope || discoveryPinScope);
       q.set('include_match_meta', discoveryIncludeMatchMeta ? 'true' : 'false');
       if (resolvedCoords?.latitude && resolvedCoords?.longitude) {
         q.set('latitude', String(resolvedCoords.latitude));
@@ -6274,17 +6610,24 @@ export default function StorefrontApp() {
         setDiscoveryCoords(null);
       }
       q.set('limit', '100');
-      const data = await requestJson(`/api/v1/storefront/discovery?${q.toString()}`);
+      const data = await requestJson(
+        `/api/v1/storefront/discovery?${q.toString()}`,
+        discoveryController ? { signal: discoveryController.signal } : undefined
+      );
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setStores(Array.isArray(data?.stores) ? data.stores : []);
         setDiscoveryAppliedFilters(data?.applied_filters || null);
       }
     } catch (error) {
+      if (error?.name === 'AbortError') return;
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setDiscoveryAppliedFilters(null);
         setStoresError(error.message || 'Failed to load discovery stores.');
       }
     } finally {
+      if (discoveryAbortControllerRef.current === discoveryController) {
+        discoveryAbortControllerRef.current = null;
+      }
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setLoadingStores(false);
       }
@@ -6309,9 +6652,14 @@ export default function StorefrontApp() {
       } catch (profileError) {
         if (Number(profileError?.status) !== 404) throw profileError;
 
-        const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(normalized)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`, { cache: 'no-store' });
-        const fallbackStores = Array.isArray(discoveryFallback?.stores) ? discoveryFallback.stores : [];
-        const canonicalSlug = findCanonicalStorefrontSlug(normalized, fallbackStores);
+        let canonicalSlug = '';
+        for (const fallbackQuery of buildStorefrontSlugFallbackQueries(normalized)) {
+          const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(fallbackQuery)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`, { cache: 'no-store' });
+          const fallbackStores = Array.isArray(discoveryFallback?.stores) ? discoveryFallback.stores : [];
+          canonicalSlug = findCanonicalStorefrontSlug(normalized, fallbackStores)
+            || findCanonicalStorefrontSlug(fallbackQuery, fallbackStores);
+          if (canonicalSlug) break;
+        }
         if (!canonicalSlug) throw profileError;
 
         profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(canonicalSlug)}`, { cache: 'no-store' });
@@ -6342,6 +6690,14 @@ export default function StorefrontApp() {
       try {
         const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug, cache: 'no-store' });
         if (requestSequence !== storeLoadRequestSequenceRef.current) return;
+        const publicMapDisabled = isPublicMapDisabled(profile) || isPublicMapDisabled(locationsData);
+        if (publicMapDisabled) {
+          setSelectedStore((prev) => (prev ? { ...prev, store_has_no_location: true, map_publication_disabled: true } : prev));
+          setStoreLocations([]);
+          setPrimaryLocationId(null);
+          resolvedCatalogLocationId = null;
+          setSelectedLocationId(null);
+        } else {
         const apiLocations = Array.isArray(locationsData?.locations) ? locationsData.locations : [];
         const useProfileSnapshot = !locationsMatchProfileSnapshot(apiLocations, profile);
         const locations = useProfileSnapshot ? profileLocations : apiLocations;
@@ -6356,7 +6712,7 @@ export default function StorefrontApp() {
             && toSlug(preferredStoreLocationSelection.slug) === toSlug(profile.slug)
           )
             ? preferredStoreLocationSelection.locationId
-            : null;
+            : (toSlug(profile.slug) === toSlug(normalized) ? readRouteLocationId() : null);
           const preferredLocation = preferredLocationId == null
             ? null
             : (locations.find((location) => Number(location.location_id) === Number(preferredLocationId)) || null);
@@ -6376,6 +6732,7 @@ export default function StorefrontApp() {
         } else {
           resolvedCatalogLocationId = null;
           setSelectedLocationId(null);
+        }
         }
       } catch {
         const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
@@ -6398,6 +6755,7 @@ export default function StorefrontApp() {
     } catch (error) {
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
+      setSelectedStore(null);
       setStoreLocations([]);
       setCatalog([]);
       setCatalogError(normalizedError.message);
@@ -6432,6 +6790,49 @@ export default function StorefrontApp() {
     }
     loadStores();
   }, [loadStores, debouncedDiscoverySearch]);
+
+  useEffect(() => {
+    if (isStorePage || !navigator?.geolocation) return;
+    let cancelled = false;
+    const requestGrantedLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (cancelled) return;
+          loadStores({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        () => {},
+        {
+          enableHighAccuracy: true,
+          timeout: 8000
+        }
+      );
+    };
+    const checkPermission = async () => {
+      try {
+        if (navigator.permissions?.query) {
+          const permission = await navigator.permissions.query({ name: 'geolocation' });
+          if (!cancelled && permission?.state === 'granted') requestGrantedLocation();
+          return;
+        }
+      } catch {
+        // Fall through to prior explicit-success compatibility below.
+      }
+      try {
+        if (!cancelled && window.localStorage.getItem('dgfy_storefront_discovery_location_permission_v1') === 'granted') {
+          requestGrantedLocation();
+        }
+      } catch {
+        // Local storage can be unavailable in private/hardened modes.
+      }
+    };
+    checkPermission();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStorePage, loadStores]);
 
   useEffect(() => {
     discoveryCoordsRef.current = discoveryCoords;
@@ -6592,14 +6993,15 @@ export default function StorefrontApp() {
   }, [isAccountDrawerOpen, isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen, isStandaloneAccountPage]);
 
   useEffect(() => {
-    if (!isFnbOrderSubpage) return;
+    const routeWantsTrack = isStoreTrackingRoute;
+    const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;
+    if (!shouldInitializeTrackingRoute) return;
     const resolvedSlug = toSlug(selectedStore?.slug || routeSlug);
     const persistedTrackedOrders = readTrackedOrdersForStore(resolvedSlug).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const persistedTrackingPin = readLastTrackingPinForStore(resolvedSlug);
     const routeTrackingPin = readTrackingPinFromQuery();
-    const routeWantsTrack = routeSubpage === STORE_TRACK_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
-    const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');
     const preferredPin = String(routeTrackingPin || persistedTrackedOrders[0]?.tracking_pin || persistedTrackingPin || '').trim().toUpperCase();
+    const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');
     if (!trackingPinInput && preferredPin) {
       setTrackingPinInput(preferredPin);
     }
@@ -6607,12 +7009,12 @@ export default function StorefrontApp() {
     setCheckoutTab(preferredTab);
     setPendingOrderInitialTab('');
     setIsCheckoutOpen(false);
-  }, [currentPathSubpage, isFnbOrderSubpage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
+  }, [isFnbOrderSubpage, isStoreTrackingRoute, pendingOrderInitialTab, routeSlug, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
 
   useEffect(() => {
-    const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken());
+    const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
     setRememberCustomerDetails((previous) => (previous ? true : isSignedIn));
-  }, [accountPanel.me]);
+  }, [accountPanel.me, dgfySessionAccount?.id]);
 
   useEffect(() => {
     const me = accountPanel?.me;
@@ -6632,10 +7034,10 @@ export default function StorefrontApp() {
   }, [accountPanel.me]);
 
   useEffect(() => {
-    if (isGuestTrackingDrawerOpen && (!canOpenTrackingDrawer || !selectedStore?.slug)) {
+    if (isGuestTrackingDrawerOpen && (!canOpenTrackingDrawer || (!isDgfyCustomerSignedIn && !selectedStore?.slug))) {
       setIsGuestTrackingDrawerOpen(false);
     }
-  }, [canOpenTrackingDrawer, isGuestTrackingDrawerOpen, selectedStore?.slug]);
+  }, [canOpenTrackingDrawer, isDgfyCustomerSignedIn, isGuestTrackingDrawerOpen, selectedStore?.slug]);
 
   useEffect(() => {
     if (!dgfyAuthToken || accountPanel.loading) return;
@@ -6657,6 +7059,136 @@ export default function StorefrontApp() {
       setCustomerTrackLoadingReference('');
     }
   }, [isAccountDrawerOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
+    const shouldPollAccountOrders = isAccountDrawerOpen
+      || isStandaloneAccountPage
+      || isGuestTrackingDrawerOpen
+      || activeCustomerOrderCount > 0;
+    if (!shouldPollAccountOrders) return undefined;
+    let cancelled = false;
+    const refreshAccountOrders = async () => {
+      if (cancelled || accountPanelRefreshInFlightRef.current) return;
+      accountPanelRefreshInFlightRef.current = true;
+      try {
+        await handleLoadAccountPanel();
+      } finally {
+        accountPanelRefreshInFlightRef.current = false;
+      }
+    };
+    const pollMs = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return 30000;
+      return activeCustomerOrderCount > 0 ? 3000 : 15000;
+    };
+    let timerId = null;
+    const scheduleNext = () => {
+      if (cancelled) return;
+      timerId = window.setTimeout(async () => {
+        await refreshAccountOrders();
+        scheduleNext();
+      }, pollMs());
+    };
+    refreshAccountOrders();
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      if (timerId) window.clearTimeout(timerId);
+    };
+  }, [
+    activeCustomerOrderCount,
+    isAccountDrawerOpen,
+    isDgfyCustomerSignedIn,
+    isGuestTrackingDrawerOpen,
+    isStandaloneAccountPage
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
+    const shouldStreamAccountEvents = isAccountDrawerOpen
+      || isStandaloneAccountPage
+      || isGuestTrackingDrawerOpen
+      || activeCustomerOrderCount > 0;
+    if (!shouldStreamAccountEvents) return undefined;
+
+    let closed = false;
+    const source = new EventSource(withApiOrigin('/api/v1/dgfy/customer/events'), { withCredentials: true });
+    source.addEventListener('activity.updated', (event) => {
+      try {
+        const payload = JSON.parse(event.data || '{}');
+        mergeLiveAccountActivity(payload.activity);
+      } catch {
+        // Ignore malformed stream messages and let polling correct the state.
+      }
+    });
+    source.addEventListener('notification.created', (event) => {
+      try {
+        const payload = JSON.parse(event.data || '{}');
+        const notification = payload.notification;
+        if (!notification?.notification_id) return;
+        setAccountPanel((previous) => {
+          const existing = Array.isArray(previous.notifications) ? previous.notifications : [];
+          if (existing.some((entry) => entry?.notification_id === notification.notification_id)) return previous;
+          return {
+            ...previous,
+            notifications: [notification, ...existing].slice(0, 50),
+            unreadNotificationCount: Number(previous.unreadNotificationCount || 0) + (notification.read_at ? 0 : 1)
+          };
+        });
+      } catch {
+        // Polling remains the source of repair for malformed stream messages.
+      }
+    });
+    source.addEventListener('notification.read', (event) => {
+      try {
+        const payload = JSON.parse(event.data || '{}');
+        setAccountPanel((previous) => {
+          const readAt = payload.read_at || payload.notification?.read_at || new Date().toISOString();
+          if (payload.all) {
+            return {
+              ...previous,
+              notifications: (Array.isArray(previous.notifications) ? previous.notifications : []).map((entry) => ({
+                ...entry,
+                read_at: entry.read_at || readAt
+              })),
+              unreadNotificationCount: 0
+            };
+          }
+          const notificationId = payload.notification?.notification_id;
+          if (!notificationId) return previous;
+          let unreadDelta = 0;
+          const notifications = (Array.isArray(previous.notifications) ? previous.notifications : []).map((entry) => {
+            if (entry?.notification_id !== notificationId) return entry;
+            if (!entry.read_at) unreadDelta = 1;
+            return { ...entry, read_at: readAt };
+          });
+          return {
+            ...previous,
+            notifications,
+            unreadNotificationCount: Math.max(0, Number(previous.unreadNotificationCount || 0) - unreadDelta)
+          };
+        });
+      } catch {
+        // Polling remains the source of repair for malformed stream messages.
+      }
+    });
+    source.onerror = () => {
+      if (!closed && accountPanelRefreshInFlightRef.current === false) {
+        void handleLoadAccountPanel();
+      }
+    };
+    return () => {
+      closed = true;
+      source.close();
+    };
+  }, [
+    activeCustomerOrderCount,
+    isAccountDrawerOpen,
+    isDgfyCustomerSignedIn,
+    isGuestTrackingDrawerOpen,
+    isStandaloneAccountPage,
+    mergeLiveAccountActivity
+  ]);
 
   useEffect(() => {
     if (!isAccountDrawerOpen) return undefined;
@@ -6837,7 +7369,7 @@ export default function StorefrontApp() {
     if (!normalized || typeof window === 'undefined') return;
     const persistedTrackedOrders = readTrackedOrdersForStore(normalized).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const resolvedInitialTab = initialTab || 'checkout';
-    const target = storePath(normalized, STORE_ORDER_SUBPAGE);
+    const target = storePath(normalized, STORE_ORDER_SUBPAGE, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ORDER_SUBPAGE }, '', target);
     }
@@ -6984,7 +7516,8 @@ export default function StorefrontApp() {
         const slug = toSlug(store?.slug);
         const locationBundle = discoveryLocationMap[slug] || {};
         const allLocations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
-        const activeLocations = allLocations.filter((location) => location?.is_active !== false);
+        const mapDisabled = isPublicMapDisabled(store) || isPublicMapDisabled(locationBundle);
+        const activeLocations = mapDisabled ? [] : allLocations.filter((location) => location?.is_active !== false);
         const pins = activeLocations
           .map((location) => ({
             ...location,
@@ -7005,10 +7538,10 @@ export default function StorefrontApp() {
           || pins.find((location) => location?.is_primary_storefront === true)
           || null;
         const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
-        const fallbackLat = toNumberOrNull(store?.latitude);
-        const fallbackLng = toNumberOrNull(store?.longitude);
-        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? DEFAULT_CENTER.latitude;
-        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? DEFAULT_CENTER.longitude;
+        const fallbackLat = mapDisabled ? null : toNumberOrNull(store?.latitude);
+        const fallbackLng = mapDisabled ? null : toNumberOrNull(store?.longitude);
+        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? null;
+        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? null;
         const nearestPinWithDistance = hasDiscoveryLocation
           ? pins
             .map((location) => ({
@@ -7142,7 +7675,8 @@ export default function StorefrontApp() {
       const slug = toSlug(store?.slug);
       const locationBundle = discoveryLocationMap[slug] || {};
       const locations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
-      const activeWithCoords = locations
+      const mapDisabled = isPublicMapDisabled(store) || isPublicMapDisabled(locationBundle);
+      const activeWithCoords = mapDisabled ? [] : locations
         .filter((location) => location?.is_active !== false)
         .map((location) => ({
           ...location,
@@ -7160,6 +7694,7 @@ export default function StorefrontApp() {
         ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
         : null;
       if (activeWithCoords.length === 0) {
+        if (mapDisabled) return;
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
         if (lat == null || lng == null) return;
@@ -7278,6 +7813,7 @@ export default function StorefrontApp() {
   const fallbackDiscoveryMapPins = useMemo(() => (
     (Array.isArray(filteredDiscoveryStores) ? filteredDiscoveryStores : [])
       .map((store) => {
+        if (isPublicMapDisabled(store)) return null;
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
         if (lat == null || lng == null) return null;
@@ -7306,7 +7842,8 @@ export default function StorefrontApp() {
     (Array.isArray(storesWithNearestBranch) ? storesWithNearestBranch : []).forEach((store) => {
       const slug = toSlug(store?.slug || store?.tenant_name);
       const locationBundle = discoveryLocationMap[slug] || {};
-      const activeLocations = (Array.isArray(locationBundle.locations) ? locationBundle.locations : [])
+      const mapDisabled = isPublicMapDisabled(store) || isPublicMapDisabled(locationBundle);
+      const activeLocations = mapDisabled ? [] : (Array.isArray(locationBundle.locations) ? locationBundle.locations : [])
         .filter((location) => location?.is_active !== false)
         .map((location) => ({
           ...location,
@@ -7316,6 +7853,7 @@ export default function StorefrontApp() {
         .filter((location) => location.latitude != null && location.longitude != null);
 
       if (activeLocations.length === 0) {
+        if (mapDisabled) return;
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
         if (lat == null || lng == null) return;
@@ -7407,6 +7945,33 @@ export default function StorefrontApp() {
   const searchedDiscoveryMapPins = hasDiscoverySearch && filteredDiscoveryStores.length > 0
     ? discoveryMapPins
     : persistentDiscoveryMapPins;
+  const isDiscoveryLocationShared = discoveryCoords?.latitude != null && discoveryCoords?.longitude != null;
+  const highlightedDiscoveryMarkerKeys = useMemo(() => {
+    if (hasDiscoverySearch) {
+      return (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
+        .map((pin) => getDiscoveryMarkerKey(pin))
+        .filter(Boolean);
+    }
+    return highlightedDiscoveryMarkerKey ? [highlightedDiscoveryMarkerKey] : [];
+  }, [hasDiscoverySearch, searchedDiscoveryMapPins, highlightedDiscoveryMarkerKey]);
+  const discoveryViewportSignal = useMemo(() => ([
+    hasDiscoverySearch ? `search:${debouncedDiscoverySearch.trim().toLowerCase()}` : 'browse',
+    `category:${discoveryCategoryFilter}`,
+    `distance:${discoveryDistanceFilter}`,
+    `open:${discoveryOpenFilter}`,
+    `rating:${discoveryRatingFilter}`,
+    `availability:${discoveryAvailabilityFilter}`,
+    `coords:${discoveryCoords ? `${Number(discoveryCoords.latitude).toFixed(4)},${Number(discoveryCoords.longitude).toFixed(4)}` : 'default'}`
+  ].join('|')), [
+    hasDiscoverySearch,
+    debouncedDiscoverySearch,
+    discoveryCategoryFilter,
+    discoveryDistanceFilter,
+    discoveryOpenFilter,
+    discoveryRatingFilter,
+    discoveryAvailabilityFilter,
+    discoveryCoords
+  ]);
   const discoveryResultsMapKey = useMemo(() => {
     const searchKey = String(search || '').trim().toLowerCase();
     const pinKey = (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
@@ -7417,6 +7982,52 @@ export default function StorefrontApp() {
       .join('|');
     return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
   }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
+  const renderDiscoveryCurrentLocationButton = ({
+    compact = false,
+    floating = false,
+    label = isDiscoveryLocationShared ? 'My location' : 'Use location'
+  } = {}) => (
+    <button
+      type="button"
+      onClick={handleNearMe}
+      title="Use current location on map"
+      aria-label="Use current location on map"
+      data-discovery-current-location="true"
+      style={{
+        border: '1px solid rgba(148,163,184,0.32)',
+        background: isDiscoveryLocationShared ? '#eff6ff' : 'rgba(255,255,255,.96)',
+        color: '#0f172a',
+        boxShadow: floating ? '0 8px 20px rgba(15,23,42,.18)' : '0 4px 10px rgba(15,23,42,.16)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: compact ? 4 : 7,
+        minHeight: compact ? 36 : 40,
+        borderRadius: compact ? 999 : 12,
+        padding: compact ? '0 11px' : '0 13px',
+        fontSize: compact ? 11 : 12,
+        fontWeight: 800,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        lineHeight: 1
+      }}
+    >
+      <Navigation size={compact ? 14 : 16} fill={isDiscoveryLocationShared ? '#1a4e8d' : 'none'} />
+      <span>{label}</span>
+      {isDiscoveryLocationShared && (
+        <span
+          aria-hidden="true"
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 999,
+            background: '#1a4e8d',
+            boxShadow: '0 0 0 3px rgba(26,78,141,.14)'
+          }}
+        />
+      )}
+    </button>
+  );
   const discoverySummary = useMemo(() => {
     const totalStores = filteredDiscoveryStores.length;
     const openStores = filteredDiscoveryStores.filter((store) => store.storefront_open).length;
@@ -7533,7 +8144,8 @@ export default function StorefrontApp() {
   const bookingPermitted = canUseBooking(selectedStore);
   const serviceHeroModel = useMemo(() => {
     if (!selectedStore || !isServicesMode) return null;
-    const mapStores = storeLocations.length > 0
+    const publicMapDisabled = isPublicMapDisabled(selectedStore);
+    const mapStores = publicMapDisabled ? [] : storeLocations.length > 0
       ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
       : [selectedStore];
     const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
@@ -7562,7 +8174,7 @@ export default function StorefrontApp() {
       || selectedStore?.tenant_created_at
       || selectedStore?.created_at
     );
-    const directionsUrl = buildGoogleMapsDirectionsUrl({
+    const directionsUrl = publicMapDisabled ? '' : buildGoogleMapsDirectionsUrl({
       latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
       longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
       addressLine
@@ -7957,7 +8569,8 @@ export default function StorefrontApp() {
       || selectedStore?.tenant_created_at
       || selectedStore?.created_at
     );
-    const mapStores = storeLocations.length > 0
+    const publicMapDisabled = isPublicMapDisabled(selectedStore);
+    const mapStores = publicMapDisabled ? [] : storeLocations.length > 0
       ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
       : [selectedStore];
     const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
@@ -7966,7 +8579,7 @@ export default function StorefrontApp() {
           categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : [],
           catalog
         });
-    const directionsUrl = buildGoogleMapsDirectionsUrl({
+    const directionsUrl = publicMapDisabled ? '' : buildGoogleMapsDirectionsUrl({
       latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
       longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
       addressLine
@@ -8031,9 +8644,9 @@ export default function StorefrontApp() {
   ]);
   const hasCatalogSearchQuery = catalogSearch.trim().length > 0;
   const catalogState = useMemo(() => {
-    if (catalogError) return 'error';
     if (loadingCatalog && catalog.length === 0) return 'empty_setup';
     if (loadingCatalog) return 'loading';
+    if (catalogError) return 'error';
     if (!hasCatalogSearchQuery && filteredCatalog.length === 0) return 'empty_setup';
     if (catalog.length === 0 && hasCatalogSearchQuery) return 'empty_search_on_zero';
     if (catalog.length === 0) return 'empty_setup';
@@ -8710,15 +9323,22 @@ export default function StorefrontApp() {
     servicePaymentTiming,
     simpleOrderStep
   ]);
-  const openCanonicalDgfyAuth = useCallback((intent = 'customer', mode = 'sign-in') => {
+  const openCanonicalDgfyAuth = useCallback((intent = 'customer', mode = 'sign-in', options = {}) => {
     if (typeof window === 'undefined') return;
     const normalizedIntent = String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer';
+    const normalizedMode = String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in';
+    const signedOutEmail = readDgfySignedOutEmail();
+    const explicitSignedOutLogin = normalizedIntent === 'customer'
+      && normalizedMode === 'sign-in'
+      && hasDgfyExplicitSignOut();
     window.location.href = buildDgfyAuthUrl({
       intent: normalizedIntent,
-      mode: String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in',
+      mode: normalizedMode,
       returnTo: normalizedIntent === 'customer'
         ? buildStorefrontAccountReturnUrl()
-        : '/register-company#business-registration'
+        : '/register-company#business-registration',
+      reason: options.reason || (explicitSignedOutLogin ? 'signed-out' : ''),
+      email: options.email || (explicitSignedOutLogin ? signedOutEmail : '')
     });
   }, [buildStorefrontAccountReturnUrl]);
   const openCheckoutAuthFlow = useCallback((mode = 'create-account', resumeTarget = {}) => {
@@ -8742,9 +9362,61 @@ export default function StorefrontApp() {
       toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
     }
   }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
+  const requestDgfyBusinessSecurityCode = useCallback(async () => {
+    await requestJson('/api/v1/dgfy/account/business-step-up/request', {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      cache: 'no-store'
+    });
+  }, []);
+  const handleAcceptDgfyCompanyInvitation = useCallback(async ({ membershipId, emailOtpCode }) => {
+    await requestJson(`/api/v1/dgfy/invitations/${encodeURIComponent(membershipId)}/accept`, {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      body: { email_otp_code: emailOtpCode },
+      cache: 'no-store'
+    });
+    toast.success('Company invitation accepted.');
+    await handleLoadAccountPanel();
+  }, []);
+  const handleRejectDgfyCompanyInvitation = useCallback(async ({ membershipId }) => {
+    await requestJson(`/api/v1/dgfy/invitations/${encodeURIComponent(membershipId)}/reject`, {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      cache: 'no-store'
+    });
+    toast.success('Company invitation rejected.');
+    await handleLoadAccountPanel();
+  }, []);
+  const handleLeaveDgfyCompany = useCallback(async ({ tenantId }) => {
+    await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(tenantId)}/leave`, {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      cache: 'no-store'
+    });
+    toast.success('You left the company.');
+    await handleLoadAccountPanel();
+  }, []);
+  const switchDgfyCompanyFromStorefront = useCallback(async ({ tenantId, emailOtpCode }) => {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) throw new Error('Select a company to open in SKUpervisor.');
+    await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(normalizedTenantId)}/switch`, {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      body: { email_otp_code: emailOtpCode },
+      cache: 'no-store'
+    });
+    window.location.href = buildDgfyAuthUrl({ intent: 'customer', mode: 'sign-in', returnTo: '/' });
+  }, []);
   const openAccountPanel = () => {
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
+
+    if (!isStorefrontAccountAuthenticated) {
+      openCanonicalDgfyAuth('customer', 'sign-in');
+      return;
+    }
+
     setIsAccountDrawerOpen(true);
     handleLoadAccountPanel();
   };
@@ -8979,6 +9651,74 @@ export default function StorefrontApp() {
       setCustomerPin(null);
     }
   }, []);
+  const useAccountAddressForCheckout = useCallback((address) => {
+    if (!address) return;
+    const addressLine = String(address.address_line || address.fullAddress || address.formatted_address || '').trim();
+    const coordinates = normalizeCoordinatePair(address);
+    setDeliveryLocationAction('saved');
+    setSelectedSavedLocationId(String(address.id || (address.address_id ? `account-address-${address.address_id}` : 'account-address')));
+    setPinLocationError('');
+    if (addressLine) {
+      setResolvedDeliveryAddress(addressLine);
+      setCustomerAddress(addressLine);
+    }
+    if (coordinates) setCustomerPin(coordinates);
+    toast.success('Saved address applied to checkout.');
+  }, []);
+
+  const applyAccountAddressPin = useCallback(async ({ pin, onChange, mode }) => {
+    const coordinates = normalizeCoordinatePair(pin);
+    if (!coordinates || typeof onChange !== 'function') return;
+    const requestId = ++accountAddressPinRequestRef.current;
+    onChange((previous) => ({
+      ...previous,
+      ...coordinates,
+      address_line: String(previous?.address_line || '').trim() || buildPinnedDeliveryAddress(coordinates)
+    }));
+    setAccountAddressPinAction({ mode, loading: true, error: '' });
+    try {
+      const resolvedAddress = await reverseGeocodeDeliveryPin(coordinates);
+      if (accountAddressPinRequestRef.current !== requestId) return;
+      onChange((previous) => ({
+        ...previous,
+        ...coordinates,
+        address_line: String(previous?.address_line || '').trim() || resolvedAddress
+      }));
+      setAccountAddressPinAction({ mode: '', loading: false, error: '' });
+    } catch {
+      if (accountAddressPinRequestRef.current !== requestId) return;
+      setAccountAddressPinAction({ mode, loading: false, error: 'Address lookup failed. The pin remains selected; edit the address text if needed.' });
+    }
+  }, []);
+
+  const handleAccountAddressCurrentLocation = useCallback(({ onChange, mode }) => {
+    if (!navigator?.geolocation) {
+      setAccountAddressPinAction({ mode, loading: false, error: 'Geolocation is not supported on this device/browser.' });
+      return;
+    }
+    setAccountAddressPinAction({ mode, loading: true, error: '' });
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => applyAccountAddressPin({ pin: { latitude: coords.latitude, longitude: coords.longitude }, onChange, mode }),
+      () => setAccountAddressPinAction({ mode, loading: false, error: 'Unable to get your current location. Pin the address on the map instead.' }),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [applyAccountAddressPin]);
+
+  const renderAddressPinEditor = useCallback(({ draft = {}, onChange, mode = 'address' }) => {
+    const pin = normalizeCoordinatePair(draft);
+    const isBusy = accountAddressPinAction.loading && accountAddressPinAction.mode === mode;
+    const errorMessage = accountAddressPinAction.mode === mode ? accountAddressPinAction.error : '';
+    return (
+      <div style={{ display: 'grid', gap: 10, border: '1px solid #dbe5ee', borderRadius: 14, background: '#f8fafc', padding: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div><strong>Location Pin</strong><div style={{ fontSize: 12, color: '#64748b' }}>Optional exact point for this address.</div></div>
+          <button type="button" onClick={() => handleAccountAddressCurrentLocation({ onChange, mode })} disabled={isBusy}>Use Current Location</button>
+        </div>
+        <DeliveryPinMap pin={pin} onPinChange={(nextPin) => applyAccountAddressPin({ pin: nextPin, onChange, mode })} disabled={isBusy} height={180} highlighted={Boolean(pin)} />
+        {errorMessage ? <div style={{ fontSize: 12, color: '#b91c1c' }}>{errorMessage}</div> : null}
+      </div>
+    );
+  }, [accountAddressPinAction, applyAccountAddressPin, handleAccountAddressCurrentLocation]);
 
   const refreshDgfyCheckoutAddresses = useCallback(async () => {
     if (!isDgfyCustomerSignedIn) return [];
@@ -9732,20 +10472,22 @@ export default function StorefrontApp() {
   }, [routeSlug, selectedStore?.slug]);
 
   useEffect(() => {
-    if (!(checkoutTab === 'track' && isFnbOrderSubpage) || !selectedStore?.slug) return;
+    const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);
+    if (!shouldPollTrackingRoute || !selectedStore?.slug) return;
     const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
+    const canRefreshBackgroundPins = !isStoreTrackingRoute;
     const backgroundPins = Array.from(
       new Set(
         guestTrackedOrders
           .map((entry) => String(entry.tracking_pin || '').trim().toUpperCase())
-          .filter((pin) => Boolean(pin) && pin !== selectedPin)
+          .filter((pin) => canRefreshBackgroundPins && Boolean(pin) && pin !== selectedPin)
       )
     );
     if (!selectedPin && backgroundPins.length === 0) return;
 
     let cancelled = false;
-    const selectedPollMs = typeof document !== 'undefined' && document.hidden ? 8000 : 2000;
-    const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 30000 : 12000;
+    const selectedPollMs = typeof document !== 'undefined' && document.hidden ? 90000 : 45000;
+    const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 300000 : 180000;
 
     const refreshSelectedPin = async () => {
       if (!selectedPin) return;
@@ -9787,7 +10529,7 @@ export default function StorefrontApp() {
       if (selectedTimerId) window.clearInterval(selectedTimerId);
       if (backgroundTimerId) window.clearInterval(backgroundTimerId);
     };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
+  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, isStoreTrackingRoute, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
 
   const handleLoadAccountPanel = async () => {
     const dgfyToken = readDgfyAuthToken();
@@ -9797,16 +10539,55 @@ export default function StorefrontApp() {
       return;
     }
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
+    const loadDgfyAccountPanel = async (authToken = '') => {
+      const [meData, dashboardData, activitiesData, loyaltyData, notificationsData] = await Promise.all([
+        requestJson('/api/v1/dgfy/auth/me', { authToken, cache: 'no-store' }),
+        requestJson('/api/v1/dgfy/customer/dashboard', { authToken, cache: 'no-store' }),
+        requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
+        requestJson('/api/v1/dgfy/customer/loyalty', { authToken, cache: 'no-store' }).catch(() => null),
+        requestJson('/api/v1/dgfy/customer/notifications?limit=50', { authToken, cache: 'no-store' }).catch(() => ({ notifications: [], unread_count: 0 }))
+      ]);
+      const hasResolvedDgfyAccount = Boolean(
+        meData?.account?.id
+        || meData?.id
+        || dashboardData?.account?.id
+        || dgfySessionAccount?.id
+        || String(authToken || '').trim()
+      );
+      const companiesData = hasResolvedDgfyAccount
+        ? await requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] }))
+        : { companies: [] };
+      return {
+        meData,
+        dashboardData,
+        activitiesData,
+        loyaltyData,
+        companiesData,
+        notificationsData
+      };
+    };
     try {
       if (dgfyToken || dgfySessionAccount?.id) {
-        const [meData, dashboardData, activitiesData, loyaltyData] = await Promise.all([
-          requestJson('/api/v1/dgfy/auth/me', { authToken: dgfyToken, cache: 'no-store' }),
-          requestJson('/api/v1/dgfy/customer/dashboard', { authToken: dgfyToken, cache: 'no-store' }),
-          requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
-          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null)
-        ]);
+        const preferredToken = dgfySessionAccount?.id ? '' : dgfyToken;
+        let panelData;
+        try {
+          panelData = await loadDgfyAccountPanel(preferredToken);
+        } catch (error) {
+          if (error?.status === 401 && preferredToken) {
+            clearDgfyAuthToken();
+            setDgfyAuthTokenState('');
+            panelData = await loadDgfyAccountPanel('');
+          } else {
+            throw error;
+          }
+        }
+        const { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData } = panelData;
         const activityCollections = deriveAccountActivityCollections({ dashboardData, activitiesData });
         setDgfySessionAccount(meData?.account || dashboardData?.account || meData || dgfySessionAccount || null);
+        if (meData?.account || dashboardData?.account || meData) {
+          clearDgfyAuthToken();
+          setDgfyAuthTokenState('');
+        }
         setAccountPanel({
           loading: false,
           error: '',
@@ -9815,8 +10596,12 @@ export default function StorefrontApp() {
           activities: activityCollections.activities,
           orders: activityCollections.orders,
           bookings: activityCollections.bookings,
+          notifications: Array.isArray(notificationsData?.notifications) ? notificationsData.notifications : [],
+          unreadNotificationCount: Number(notificationsData?.unread_count || 0),
           addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
-          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
+          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null,
+          businessCompanies: Array.isArray(companiesData?.companies) ? companiesData.companies : [],
+          businessStepUp: companiesData?.business_step_up || { verified: false }
         });
         return;
       }
@@ -9838,10 +10623,19 @@ export default function StorefrontApp() {
         activities: [],
         orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
         bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
+        notifications: [],
+        unreadNotificationCount: 0,
         addresses: [],
-        loyalty: null
+        loyalty: null,
+        businessCompanies: [],
+        businessStepUp: { verified: false }
       });
     } catch (error) {
+      if (error?.status === 401) {
+        clearDgfyAuthToken();
+        setDgfyAuthTokenState('');
+        setDgfySessionAccount(null);
+      }
       setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
     }
   };
@@ -9891,6 +10685,99 @@ export default function StorefrontApp() {
       setCustomerTrackLoadingReference('');
     }
   }, [dgfySessionAccount?.id, goStoreTrackPage, routeSlug, selectedStore]);
+
+  const handleMarkNotificationRead = useCallback(async (notification) => {
+    const notificationId = notification?.notification_id;
+    if (!notificationId) return;
+    setAccountPanel((previous) => {
+      let unreadDelta = 0;
+      const notifications = (Array.isArray(previous.notifications) ? previous.notifications : []).map((entry) => {
+        if (entry?.notification_id !== notificationId) return entry;
+        if (!entry.read_at) unreadDelta = 1;
+        return { ...entry, read_at: entry.read_at || new Date().toISOString() };
+      });
+      return {
+        ...previous,
+        notifications,
+        unreadNotificationCount: Math.max(0, Number(previous.unreadNotificationCount || 0) - unreadDelta)
+      };
+    });
+    try {
+      await requestJson(`/api/v1/dgfy/customer/notifications/${encodeURIComponent(notificationId)}/read`, {
+        method: 'PATCH',
+        authToken: readDgfyAuthToken(),
+        cache: 'no-store'
+      });
+    } catch {
+      void handleLoadAccountPanel();
+    }
+  }, []);
+
+  const handleMarkAllNotificationsRead = useCallback(async () => {
+    const readAt = new Date().toISOString();
+    setAccountPanel((previous) => ({
+      ...previous,
+      notifications: (Array.isArray(previous.notifications) ? previous.notifications : []).map((entry) => ({
+        ...entry,
+        read_at: entry.read_at || readAt
+      })),
+      unreadNotificationCount: 0
+    }));
+    try {
+      await requestJson('/api/v1/dgfy/customer/notifications/read-all', {
+        method: 'PATCH',
+        authToken: readDgfyAuthToken(),
+        cache: 'no-store'
+      });
+    } catch {
+      void handleLoadAccountPanel();
+    }
+  }, []);
+
+  const handleSaveAccountAddress = useCallback(async (draft = {}, existingAddress = null) => {
+    const token = readDgfyAuthToken();
+    const hasDgfySession = Boolean(token || dgfySessionAccount?.id);
+    const addressLine = String(draft.address_line || '').trim();
+    if (!hasDgfySession || !addressLine) {
+      toast.error(hasDgfySession ? 'Enter an address before saving.' : 'Sign in to manage saved addresses.');
+      return false;
+    }
+    const addressId = existingAddress?.address_id;
+    setAccountAddressActionId(addressId ? String(addressId) : 'new');
+    try {
+      const coordinates = normalizeCoordinatePair(draft);
+      await requestJson(addressId ? `/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}` : '/api/v1/dgfy/customer/addresses', {
+        method: addressId ? 'PUT' : 'POST', authToken: token, cache: 'no-store',
+        body: { label: String(draft.label || 'Address').trim() || 'Address', address_line: addressLine, latitude: coordinates?.latitude ?? null, longitude: coordinates?.longitude ?? null, is_default: draft.is_default === true }
+      });
+      toast.success(addressId ? 'Address updated.' : 'Address saved.');
+      await handleLoadAccountPanel();
+      return true;
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to save this address.'));
+      return false;
+    } finally { setAccountAddressActionId(''); }
+  }, [dgfySessionAccount?.id]);
+  const handleSetDefaultAccountAddress = useCallback(async (address = {}) => {
+    const addressId = address?.address_id;
+    if (!addressId) return;
+    setAccountAddressActionId(String(addressId));
+    try {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}/default`, { method: 'PATCH', authToken: readDgfyAuthToken(), cache: 'no-store' });
+      await handleLoadAccountPanel();
+    } finally { setAccountAddressActionId(''); }
+  }, []);
+  const handleDeleteAccountAddress = useCallback(async (address = {}) => {
+    const addressId = address?.address_id;
+    if (!addressId) return;
+    setAccountAddressActionId(String(addressId));
+    try {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}`, { method: 'DELETE', authToken: readDgfyAuthToken(), cache: 'no-store' });
+      toast.success('Address deleted.');
+      await handleLoadAccountPanel();
+    } finally { setAccountAddressActionId(''); }
+  }, []);
+
   const closeAccountDrawer = useCallback(() => {
     setIsAccountDrawerOpen(false);
   }, []);
@@ -9919,6 +10806,12 @@ export default function StorefrontApp() {
       window.history.replaceState({}, '', currentUrl.toString());
     }
   }, [isDgfyCustomerSignedIn]);
+  useEffect(() => {
+    const routeWantsTrack = isStoreTrackingRoute;
+    if (!routeWantsTrack) return;
+    setIsCheckoutOpen(false);
+    setIsGuestTrackingDrawerOpen(false);
+  }, [isStoreTrackingRoute]);
   useEffect(() => {
     if (typeof window === 'undefined' || hasAppliedCheckoutAuthResume || !isDgfyCustomerSignedIn) return;
     const draft = readCheckoutAuthResumeDraft();
@@ -9967,6 +10860,9 @@ export default function StorefrontApp() {
   ]);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
+    const signedOutEmail = String(accountPanel.me?.email || dgfySessionAccount?.email || '').trim();
+    rememberDgfySignedOutEmail(signedOutEmail);
+    markDgfyExplicitSignOut();
     try {
       await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
     } catch {
@@ -9980,6 +10876,7 @@ export default function StorefrontApp() {
     setCustomerTrackLoadingReference('');
     setCustomerTrackError('');
     setIsAccountDrawerOpen(false);
+    clearCheckoutAuthResumeDraft();
     if (typeof window !== 'undefined') {
       const currentUrl = new URL(window.location.href);
       const normalizedPath = String(currentUrl.pathname || '').replace(/\/+$/, '') || '/';
@@ -10057,26 +10954,15 @@ export default function StorefrontApp() {
     setIsStoreListVisible(false);
     setIsMobileResultsCollapsed(false);
     setSelectedMapPin(null);
-    setDebouncedDiscoverySearch(currentSearch);
-    if (!navigator?.geolocation) {
-      loadStores(undefined, { useImmediateSearch: true });
+    if (
+      currentSearch === String(debouncedDiscoverySearch || '').trim()
+      && !discoveryCoordsRef.current
+      && discoveryPinScope === 'tenant_primary'
+    ) {
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        loadStores({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        }, { useImmediateSearch: true });
-      },
-      () => {
-        loadStores(undefined, { useImmediateSearch: true });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000
-      }
-    );
+    setDebouncedDiscoverySearch(currentSearch);
+    loadStores(null, { useImmediateSearch: true, pinScope: 'tenant_primary' });
   };
   const handlePopularDiscoveryCategory = (query) => {
     const normalized = String(query || '').trim();
@@ -10221,6 +11107,33 @@ export default function StorefrontApp() {
     const startIndex = (discoveryResultsPage - 1) * discoveryResultsPerPage;
     return filteredDiscoveryStores.slice(startIndex, startIndex + discoveryResultsPerPage);
   }, [filteredDiscoveryStores, discoveryResultsPage, discoveryResultsPerPage]);
+  const clusterResultStores = useMemo(() => {
+    const clusterStores = Array.isArray(clusterResultContext?.stores) ? clusterResultContext.stores : [];
+    if (clusterStores.length === 0) return [];
+    const byMarkerKey = new globalThis.Map();
+    const bySlug = new globalThis.Map();
+    [
+      ...(Array.isArray(filteredDiscoveryStores) ? filteredDiscoveryStores : []),
+      ...(Array.isArray(discoveryResultStores) ? discoveryResultStores : []),
+      ...(Array.isArray(storesWithNearestBranch) ? storesWithNearestBranch : [])
+    ].forEach((store) => {
+      if (!store) return;
+      const markerKey = getDiscoveryMarkerKey(store);
+      const slug = toSlug(store.slug || store.tenant_slug || store.tenant_name);
+      if (markerKey && !byMarkerKey.has(markerKey)) byMarkerKey.set(markerKey, store);
+      if (slug && !bySlug.has(slug)) bySlug.set(slug, store);
+    });
+    return clusterStores
+      .map((pin) => {
+        const markerKey = getDiscoveryMarkerKey(pin);
+        const slug = toSlug(pin?.slug || pin?.tenant_slug || pin?.tenant_name);
+        return (markerKey && byMarkerKey.get(markerKey))
+          || (slug && bySlug.get(slug))
+          || pin;
+      })
+      .filter(Boolean);
+  }, [clusterResultContext, filteredDiscoveryStores, discoveryResultStores, storesWithNearestBranch]);
+  const isClusterResultsActive = clusterResultStores.length > 0;
   const hasActiveDiscoveryFilters = (
     discoverySortBy !== 'nearest'
     || discoveryCategoryFilter !== 'all'
@@ -10250,6 +11163,7 @@ export default function StorefrontApp() {
   }, [hasActiveDiscoveryFilters]);
   useEffect(() => {
     setDiscoveryResultsPage(1);
+    setClusterResultContext(null);
   }, [
     viewMode,
     search,
@@ -10289,12 +11203,34 @@ export default function StorefrontApp() {
     items.push(discoveryTotalPages);
     return items;
   }, [discoveryResultsPage, discoveryTotalPages]);
+  const handleDiscoveryClusterSelect = useCallback((clusterStores, clusterEntry) => {
+    const storesAtCluster = Array.isArray(clusterStores) ? clusterStores.filter(Boolean) : [];
+    if (storesAtCluster.length === 0) return;
+    setHasDiscoveryExplorationStarted(true);
+    setClusterResultContext({
+      coordinateKey: String(clusterEntry?.coordinateKey || ''),
+      stores: storesAtCluster
+    });
+    setDiscoveryResultsPage(1);
+    setIsStoreListVisible(true);
+    setIsMobileResultsCollapsed(false);
+    setHighlightedStoreSlug('');
+    setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(storesAtCluster[0]) || '');
+    setSelectedMapPin(null);
+  }, []);
   const renderDiscoveryResultsStage = () => {
     const cityLabel = discoveryCoords ? 'your selected area' : 'Iloilo City';
-    const resultCountLabel = `${filteredDiscoveryStores.length} ${filteredDiscoveryStores.length === 1 ? 'Store' : 'Stores'} Found`;
-    const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
+    const isResultsPanelVisible = isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible;
+    const panelStores = isClusterResultsActive ? clusterResultStores : paginatedDiscoveryStores;
+    const panelTotalCount = isClusterResultsActive ? clusterResultStores.length : filteredDiscoveryStores.length;
+    const resultCountLabel = `${panelTotalCount} ${panelTotalCount === 1 ? 'Store' : 'Stores'} Found`;
+    const resultsTitle = isClusterResultsActive ? 'Stores At This Pin' : 'Best Shops Today';
+    const resultsSubtitle = isClusterResultsActive
+      ? 'Showing the storefronts grouped inside the selected clustered pin.'
+      : hasDiscoverySearch && String(search || '').trim()
       ? `Showing businesses related to "${String(search || '').trim()}" near ${cityLabel}`
       : `Showing businesses within your selected area near ${cityLabel}`;
+    const shouldPulseResultsToggle = hasDiscoverySearch && filteredDiscoveryStores.length > 0 && !isResultsPanelVisible;
 	    const viewButtonStyle = (mode) => ({
 	      minHeight: isDiscoveryMobileViewport ? 36 : 34,
 	      minWidth: isDiscoveryMobileViewport ? 40 : 96,
@@ -10321,6 +11257,7 @@ export default function StorefrontApp() {
       const categories = normalizeStorefrontCategories(store?.storefront_categories);
       const primaryCategory = categories[0] || String(store?.workflow_mode || 'Store').replace(/_/g, ' ');
       const secondaryCategory = categories[1] || null;
+      const publicMapDisabled = isPublicMapDisabled(store);
       const categoryLabel = [primaryCategory, secondaryCategory].filter(Boolean).join(' â€¢ ');
 	      const reviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
 	      const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '0.0';
@@ -10328,8 +11265,9 @@ export default function StorefrontApp() {
       const distanceLabel = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km away` : 'Distance unavailable';
       const waitBase = Number(store?.estimated_wait_minutes || 10);
       const etaLabel = `${waitBase}-${waitBase + 5} min`;
-	      const branchCount = Number(store?.active_location_count || 0);
+	      const branchCount = publicMapDisabled ? 0 : Number(store?.active_location_count || 0);
 	      const branchLabel = branchCount > 0 ? `${branchCount} ${branchCount === 1 ? 'Branch' : 'Branches'}` : null;
+      const locationAvailabilityLabel = publicMapDisabled ? 'Searchable storefront, no map pin' : branchLabel;
 	      const isStoreOpenNow = store?.storefront_open === true;
 		      const businessHoursLabel = formatStorefrontHoursLabel(
             store?.storefront_hours,
@@ -10533,7 +11471,7 @@ export default function StorefrontApp() {
                     </span>
                   </div>
 	                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
-	                    {branchLabel && <span style={{ fontWeight: 600 }}>{branchLabel}</span>}
+	                    {locationAvailabilityLabel && <span style={{ fontWeight: 600 }}>{locationAvailabilityLabel}</span>}
                     {Number(store?.catalog_count || 0) > 0 && (
                       <>
                         <span style={{ color: '#cbd5e1' }}>â€¢</span>
@@ -10686,7 +11624,7 @@ export default function StorefrontApp() {
               </span>
             </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {branchLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{branchLabel}</span>}
+              {locationAvailabilityLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{locationAvailabilityLabel}</span>}
               {Number(store?.catalog_count || 0) > 0 && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>}
                       </div>
                       {!isStoreOpenNow && (
@@ -10713,7 +11651,6 @@ export default function StorefrontApp() {
           )
 	      );
 	    };
-		    const isResultsPanelVisible = isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible;
 			    const desktopResultsPanelWidth = isDiscoveryMobileViewport
 			      ? '100%'
 			      : isDiscoveryTabletViewport
@@ -10741,6 +11678,7 @@ export default function StorefrontApp() {
                   key={discoveryResultsMapKey}
                   stores={searchedDiscoveryMapPins}
                   selectedKey={highlightedDiscoveryMarkerKey || null}
+                  highlightedKeys={highlightedDiscoveryMarkerKeys}
                   userLocation={discoveryCoords}
                   height="100%"
 	                  onSelectStore={(pin) => {
@@ -10755,19 +11693,39 @@ export default function StorefrontApp() {
                     setSelectedMapPin(matched || pin || null);
                     goStore(pin.slug, pin.location_id ?? null);
                   }}
-                  autoOpenPopups={filteredDiscoveryStores.length > 0}
+                  autoOpenPopups={false}
                   openPopupOnHover={true}
+                  onSelectCluster={handleDiscoveryClusterSelect}
+                  viewportPolicy="search-stable"
+                  viewportSignal={discoveryViewportSignal}
                 />
               ) : (
                 <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
                   {loadingStores ? 'Loading map...' : storesError || 'No storefront pins available right now.'}
 		            </div>
               )}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: isDiscoveryMobileViewport ? 12 : 16,
+                  left: isDiscoveryMobileViewport ? 12 : 16,
+                  zIndex: 42,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}
+              >
+                {renderDiscoveryCurrentLocationButton({
+                  compact: isDiscoveryMobileViewport,
+                  floating: true,
+                  label: isDiscoveryLocationShared ? 'My location' : 'Use location'
+                })}
+              </div>
               {isDiscoveryMobileViewport && (
                 <button
                   type="button"
                   onClick={() => setIsMobileResultsCollapsed((v) => !v)}
-                  className="discovery-results-stage__mobile-toggle"
+                  className={`discovery-results-stage__mobile-toggle ${shouldPulseResultsToggle ? 'discovery-results-toggle--pulse' : ''}`}
                   style={{
                     position: 'absolute',
                     left: '50%',
@@ -10848,7 +11806,7 @@ export default function StorefrontApp() {
 	                <div style={{ display: 'flex', alignItems: isDiscoveryMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
 	                  <div style={{ minWidth: 0 }}>
 	                    <div style={{ fontSize: 11, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Discover Nearby</div>
-	                    <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>Best Shops Today</h2>
+	                    <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>{resultsTitle}</h2>
 	                    <p
 	                      style={{
 	                        margin: '8px 0 0',
@@ -11128,11 +12086,11 @@ export default function StorefrontApp() {
                   </div>
                 )}
 		                <div style={{ display: 'grid', gap: viewMode === 'grid' ? (isDiscoveryMobileViewport ? 14 : isDiscoveryTabletViewport ? 18 : 20) : (isDiscoveryMobileViewport ? 14 : 18), gridTemplateColumns: viewMode === 'grid' ? (isDiscoveryMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))') : '1fr' }}>
-	                  {paginatedDiscoveryStores.map(renderDiscoveryStoreCard)}
+	                  {panelStores.map(renderDiscoveryStoreCard)}
 	                </div>
               </div>
 
-              {filteredDiscoveryStores.length > 0 && discoveryTotalPages > 1 && (
+              {!isClusterResultsActive && filteredDiscoveryStores.length > 0 && discoveryTotalPages > 1 && (
                 <div style={{ padding: '0 18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     type="button"
@@ -11194,9 +12152,22 @@ export default function StorefrontApp() {
         onClose={closeStandaloneAccountPage}
         onRefresh={handleLoadAccountPanel}
         onTrackReference={handleTrackCustomerReference}
+        onMarkNotificationRead={handleMarkNotificationRead}
+        onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
         onSignOut={handleStorefrontSignOut}
+        onHelp={() => toast.info('Help center is not connected yet.')}
         onRegisterBusiness={openBusinessRegistrationFlow}
+        onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
+        onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
+        onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
+        onLeaveCompany={handleLeaveDgfyCompany}
+        onSwitchCompany={switchDgfyCompanyFromStorefront}
         onClearSavedDetails={clearSavedCustomerDetailsForDevice}
+        onUseAddressForCheckout={useAccountAddressForCheckout}
+        onSaveAddress={handleSaveAccountAddress}
+        onDeleteAddress={handleDeleteAccountAddress}
+        onSetDefaultAddress={handleSetDefaultAccountAddress}
+        renderAddressPinEditor={renderAddressPinEditor}
         accountIdentityInitials={accountIdentityInitials}
         accountIdentityName={accountIdentityName}
         accountIdentityContact={accountIdentityContact}
@@ -11208,6 +12179,8 @@ export default function StorefrontApp() {
         trackedCustomerActivity={trackedCustomerActivity}
         customerTrackLoadingReference={customerTrackLoadingReference}
         customerTrackError={customerTrackError}
+        accountOrderActionReference={accountOrderActionReference}
+        accountAddressActionId={accountAddressActionId}
       />
     );
   }
@@ -11244,11 +12217,7 @@ export default function StorefrontApp() {
               onItemClick={handleDiscoveryNavItemClick}
               onAuthClick={() => {
                 setIsDiscoveryNavMenuOpen(false);
-                if (isDgfyCustomerSignedIn) {
-                  openAccountPanel();
-                  return;
-                }
-                openCanonicalDgfyAuth('customer');
+                openAccountPanel();
               }}
               onBusinessClick={openBusinessRegistrationFlow}
             />
@@ -11677,7 +12646,7 @@ export default function StorefrontApp() {
 
 
                   {/* Ã¢â€â‚¬Ã¢â€â‚¬ STATIC HERO MAP Ã¢â€â‚¬Ã¢â€â‚¬ */}
-                  {!hasDiscoverySearch && (
+                  {!hasDiscoverySearch && !isClusterResultsActive && (
                     <>
                       <DiscoveryMapCard viewportMode={discoveryViewportMode}>
                       <div
@@ -11695,6 +12664,7 @@ export default function StorefrontApp() {
                         userLocation={discoveryCoords}
                         height={discoveryLayout.heroMapHeight}
                         openPopupOnHover={true}
+                        onSelectCluster={handleDiscoveryClusterSelect}
                         onSelectStore={(pin) => {
                           setHasDiscoveryExplorationStarted(true);
                           setHighlightedStoreSlug(pin.slug);
@@ -11734,26 +12704,6 @@ export default function StorefrontApp() {
 	                                Store Label
 	                              </div>
 	                            </div>
-	                            <button
-	                              type="button"
-	                              onClick={handleNearMe}
-	                              style={{
-	                                minWidth: 72,
-	                                borderRadius: 12,
-	                                background: 'rgba(255,255,255,.95)',
-	                                color: '#0f172a',
-	                                border: '1px solid rgba(148,163,184,.28)',
-	                                display: 'grid',
-	                                placeItems: 'center',
-	                                gap: 2,
-	                                padding: '6px 8px',
-	                                cursor: 'pointer',
-	                                boxShadow: '0 4px 10px rgba(15,23,42,.16)'
-	                              }}
-	                            >
-	                              <Navigation size={15} fill="#0f172a" />
-	                              <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', lineHeight: 1.1 }}>Current Location</span>
-	                            </button>
 	                          </div>
 	                        ) : (
                           [
@@ -11810,29 +12760,11 @@ export default function StorefrontApp() {
                             <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Store</span>
                             <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
                           </button>
-                          <button
-                            type="button"
-                            onClick={handleNearMe}
-                            style={{
-                              width: 84,
-                              minHeight: 80,
-                              borderRadius: 16,
-                              border: '1px solid rgba(148,163,184,0.28)',
-                              background: 'rgba(255,255,255,.96)',
-                              boxShadow: '0 6px 18px rgba(15,23,42,.16)',
-                              display: 'grid',
-                              placeItems: 'center',
-                              gap: 4,
-                              padding: '8px 6px',
-                              color: '#0f172a',
-                              cursor: 'pointer'
-                            }}
-                            aria-label="Current location"
-                          >
-                            <Navigation size={16} fill="#0f172a" />
-                            <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Current</span>
-                            <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
-                          </button>
+                          {renderDiscoveryCurrentLocationButton({
+                            compact: false,
+                            floating: true,
+                            label: isDiscoveryLocationShared ? 'My location' : 'Current location'
+                          })}
                           <button
                             type="button"
                             aria-label="Map information"
@@ -11857,7 +12789,7 @@ export default function StorefrontApp() {
 	                      </DiscoveryMapCard>
 	                  </>
 	                )}
-                {hasDiscoverySearch && renderDiscoveryResultsStage()}
+                {(hasDiscoverySearch || isClusterResultsActive) && renderDiscoveryResultsStage()}
               </div>
               </div>
             </section>
@@ -12615,6 +13547,7 @@ export default function StorefrontApp() {
                         <StoresMap
                           stores={activeDiscoveryMapPins}
                           selectedKey={highlightedDiscoveryMarkerKey || null}
+                          highlightedKeys={highlightedDiscoveryMarkerKeys}
                           userLocation={discoveryCoords}
                           height="100%"
                           onSelectStore={(pin) => {
@@ -12623,7 +13556,9 @@ export default function StorefrontApp() {
                             const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug);
                             setSelectedMapPin(matched || null);
                           }}
-                          autoOpenPopups={true}
+                          autoOpenPopups={false}
+                          openPopupOnHover={true}
+                          onSelectCluster={handleDiscoveryClusterSelect}
                         />
                       ) : (
                         <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
@@ -13046,9 +13981,9 @@ export default function StorefrontApp() {
                   <img alt={`${selectedStore.tenant_name} cover`} src={withAssetOrigin(selectedStore.storefront_cover_image_url)} />
                 ) : null}
                 <div>{`Tenant page: ${routeSlug}`}</div>
-                {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 && !catalogError ? <div>Storefront items are not set up yet</div> : null}
-                {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 && !catalogError ? <div>Customer checkout will be available once at least one storefront item is enabled.</div> : null}
-                {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 && !catalogError && hasCatalogSearchQuery ? <div>No items are available to search yet</div> : null}
+                {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Storefront items are not set up yet</div> : null}
+                {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Customer checkout will be available once at least one storefront item is enabled.</div> : null}
+                {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 && hasCatalogSearchQuery ? <div>No items are available to search yet</div> : null}
               </div>
             )}
             {isServicesMode && !isBookingSubpage && !isServiceDetailsSubpage && selectedStore && serviceHeroModel && (
@@ -13405,6 +14340,16 @@ export default function StorefrontApp() {
                   stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
                   selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
                   onSelectStore={(l) => l?.location_id && setSelectedLocationId(l.location_id)}
+                />
+              </section>
+            )}
+
+            {isHospitalityMode && selectedStore && (
+              <section style={{ marginBottom: 24 }}>
+                <HospitalityBookingPanel
+                  selectedStore={selectedStore}
+                  selectedLocationId={selectedLocationId}
+                  isMobileViewport={isMobileViewport}
                 />
               </section>
             )}
@@ -16041,16 +16986,6 @@ return (
           </div>
         )}
 
-        {catalogState === 'error' && (
-          <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-            <StoreCatalogErrorState
-              message={catalogError}
-              guidance={catalogErrorGuidance}
-              onRefreshTenantPage={refreshStorePageForTenantSetup}
-            />
-          </div>
-        )}
-
         {catalogState === 'empty_search_on_zero' && (
           <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
             <StoreCatalogEmptyState mode="search_on_empty" searchQuery={catalogSearch.trim()} onRefreshTenantPage={refreshStorePageForTenantSetup} />
@@ -18462,92 +19397,104 @@ return (
                                       setCustomerPin(nextPin);
                                     }}
                                     disabled={false}
+                                    height={isMobileViewport ? 'clamp(230px, 34svh, 280px)' : 260}
                                     highlighted={deliveryLocationAction === 'map'}
                                     highlightColor={fnbOrderBrand}
                                     highlightGlow="rgba(26,78,141,0.16)"
+                                    overlayControls={(
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={handlePinMyLocation}
+                                          disabled={pinLocationLoading}
+                                          style={{
+                                            position: 'absolute',
+                                            top: 12,
+                                            left: 12,
+                                            maxWidth: isMobileViewport ? 'calc(100% - 68px)' : 'none',
+                                            minHeight: 38,
+                                            borderRadius: 999,
+                                            border: `1px solid ${deliveryLocationAction === 'current' ? fnbOrderBrand : '#dbe5ee'}`,
+                                            background: deliveryLocationAction === 'current' ? '#dbeafe' : '#ffffff',
+                                            color: deliveryLocationAction === 'current' ? fnbOrderBrandDark : '#1e293b',
+                                            padding: '0 12px',
+                                            fontSize: 12,
+                                            fontWeight: 700,
+                                            cursor: pinLocationLoading ? 'wait' : 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 8,
+                                            boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
+                                            zIndex: 11,
+                                            fontFamily: servicesBodyFont,
+                                            pointerEvents: 'auto',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                          }}
+                                        >
+                                          <Navigation size={15} />
+                                          {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setDeliveryLocationAction('map');
+                                            setSelectedSavedLocationId('');
+                                          }}
+                                          style={{
+                                            position: 'absolute',
+                                            right: 12,
+                                            bottom: 12,
+                                            minHeight: 34,
+                                            borderRadius: 999,
+                                            border: `1px solid ${deliveryLocationAction === 'map' ? fnbOrderBrandBorder : '#dbe5ee'}`,
+                                            background: deliveryLocationAction === 'map' ? '#dbeafe' : 'rgba(255,255,255,0.96)',
+                                            color: deliveryLocationAction === 'map' ? fnbOrderBrandDark : '#334155',
+                                            padding: '0 10px',
+                                            fontSize: 12,
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 6,
+                                            boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
+                                            zIndex: 11,
+                                            fontFamily: servicesBodyFont,
+                                            pointerEvents: 'auto'
+                                          }}
+                                        >
+                                          <MapPin size={14} />
+                                          Drag to adjust pin
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowExpandedDeliveryMap(true)}
+                                          aria-label="Open large map"
+                                          title="Open large map"
+                                          style={{
+                                            position: 'absolute',
+                                            top: 12,
+                                            right: 12,
+                                            width: 36,
+                                            height: 36,
+                                            borderRadius: 10,
+                                            background: '#fff',
+                                            border: '1px solid #cbd5e1',
+                                            boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
+                                            display: 'grid',
+                                            placeItems: 'center',
+                                            cursor: 'pointer',
+                                            color: '#334155',
+                                            zIndex: 12,
+                                            pointerEvents: 'auto'
+                                          }}
+                                        >
+                                          <Maximize size={18} />
+                                        </button>
+                                      </>
+                                    )}
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={handlePinMyLocation}
-                                    disabled={pinLocationLoading}
-                                    style={{
-                                      position: 'absolute',
-                                      top: 12,
-                                      left: 12,
-                                      minHeight: 38,
-                                      borderRadius: 999,
-                                      border: `1px solid ${deliveryLocationAction === 'current' ? fnbOrderBrand : '#dbe5ee'}`,
-                                      background: deliveryLocationAction === 'current' ? '#dbeafe' : '#ffffff',
-                                      color: deliveryLocationAction === 'current' ? fnbOrderBrandDark : '#1e293b',
-                                      padding: '0 12px',
-                                      fontSize: 12,
-                                      fontWeight: 700,
-                                      cursor: pinLocationLoading ? 'wait' : 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 8,
-                                      boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
-                                      zIndex: 11,
-                                      fontFamily: servicesBodyFont
-                                    }}
-                                  >
-                                    <Navigation size={15} />
-                                    {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setDeliveryLocationAction('map');
-                                      setSelectedSavedLocationId('');
-                                    }}
-                                    style={{
-                                      position: 'absolute',
-                                      right: 12,
-                                      bottom: 12,
-                                      minHeight: 34,
-                                      borderRadius: 999,
-                                      border: `1px solid ${deliveryLocationAction === 'map' ? fnbOrderBrandBorder : '#dbe5ee'}`,
-                                      background: deliveryLocationAction === 'map' ? '#dbeafe' : 'rgba(255,255,255,0.96)',
-                                      color: deliveryLocationAction === 'map' ? fnbOrderBrandDark : '#334155',
-                                      padding: '0 10px',
-                                      fontSize: 12,
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 6,
-                                      boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
-                                      zIndex: 11,
-                                      fontFamily: servicesBodyFont
-                                    }}
-                                  >
-                                    <MapPin size={14} />
-                                    Drag to adjust pin
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowExpandedDeliveryMap(true)}
-                                    aria-label="Open large map"
-                                    title="Open large map"
-                                    style={{
-                                      position: 'absolute',
-                                      top: 12,
-                                      right: 12,
-                                      width: 36,
-                                      height: 36,
-                                      borderRadius: 10,
-                                      background: '#fff',
-                                      border: '1px solid #cbd5e1',
-                                      boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
-                                      display: 'grid',
-                                      placeItems: 'center',
-                                      cursor: 'pointer',
-                                      color: '#334155',
-                                      zIndex: 12
-                                    }}
-                                  >
-                                    <Maximize size={18} />
-                                  </button>
                                 </div>
                                 <div
                                   style={{
@@ -18620,8 +19567,10 @@ return (
                                 setCustomerPin(nextPin);
                               }}
                               disabled={false}
-                              height={isMobileViewport ? 360 : 520}
+                              height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}
                               highlighted
+                              highlightColor={fnbOrderBrand}
+                              highlightGlow="rgba(26,78,141,0.16)"
                               overlayControls={(
                                 <>
                                   <button
@@ -18646,7 +19595,12 @@ return (
                                       gap: 8,
                                       boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
                                       zIndex: 11,
-                                      fontFamily: servicesBodyFont
+                                      fontFamily: servicesBodyFont,
+                                      pointerEvents: 'auto',
+                                      maxWidth: isMobileViewport ? 'calc(100% - 24px)' : 'none',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
                                     }}
                                   >
                                     <Navigation size={15} />
@@ -18676,7 +19630,8 @@ return (
                                       gap: 6,
                                       boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
                                       zIndex: 11,
-                                      fontFamily: servicesBodyFont
+                                      fontFamily: servicesBodyFont,
+                                      pointerEvents: 'auto'
                                     }}
                                   >
                                     <MapPin size={14} />
@@ -20505,53 +21460,7 @@ return (
                     <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Loading Order Details...</div>
                     <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>Fetching real-time status for {selectedTrackingPin}</div>
                   </div>
-                ) : (
-                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)', maxWidth: 560, margin: '0 auto' }}>
-                    <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>Track Your Order</h3>
-                    <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>In-progress orders are tracked automatically on this device.</p>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input value={trackingPinInput} onChange={(e) => setTrackingPinInput(e.target.value.toUpperCase())} placeholder="SK-XXXXXX" style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                      <button type="button" onClick={handleTrack} disabled={!selectedStore} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '11px 16px', fontWeight: 700 }}>Track</button>
-                    </div>
-                    <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>In Progress Orders</div>
-                      {guestTrackedOrders.length === 0 ? (
-                        <div style={{ fontSize: 13, color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px', background: '#f8fafc' }}>
-                          No in-progress orders yet. Enter a tracking PIN to start tracking.
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gap: 8 }}>
-                          {guestTrackedOrders.map((entry) => {
-                            const isSelected = String(selectedTrackingPin || '').trim().toUpperCase() === String(entry.tracking_pin || '').trim().toUpperCase();
-                            return (
-                              <button
-                                key={`guest-track-order-${entry.tracking_pin}`}
-                                type="button"
-                                onClick={() => {
-                                  const nextPin = String(entry.tracking_pin || '').trim().toUpperCase();
-                                  setSelectedTrackingPin(nextPin);
-                                  setTrackingPinInput(nextPin);
-                                  setTrackingResult(null);
-                                  setTrackingError('');
-                                }}
-                                style={{ border: `1px solid ${isSelected ? '#1a4e8d' : '#e2e8f0'}`, borderRadius: 12, background: isSelected ? '#eff6ff' : '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', cursor: 'pointer', textAlign: 'left' }}
-                              >
-                                <div style={{ display: 'grid', gap: 3 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{entry.tracking_pin}</div>
-                                  <div style={{ fontSize: 12, color: '#64748b' }}>{entry.status_label || entry.status || 'In progress'}</div>
-                                </div>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', textTransform: 'capitalize' }}>
-                                  {entry.order_method || 'delivery'}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                    {trackingError && <p style={{ color: '#b91c1c', marginTop: 10 }}>{trackingError}</p>}
-                  </div>
-                )}
+                ) : null}
               </div>
             )}
 
@@ -20596,37 +21505,28 @@ return (
       )}
     </>
   )}
-      {isAccountDrawerOpen && (isGuestAccountDrawerState ? (
-        <DgfyCustomerAuthModal
-          isMobileViewport={isMobileViewport}
-          onClose={closeAccountDrawer}
-          savedCustomerDetails={savedCustomerDetails}
-          hasSavedCustomerDetails={hasSavedCustomerDetails}
-          onContinueAsGuest={() => {
-            if (hasSavedCustomerDetails) {
-              applySavedCustomerDetails();
-            }
-            closeAccountDrawer();
-          }}
-          onClearSavedDetails={clearSavedCustomerDetailsForDevice}
-          onOpenAuth={() => {
-            closeAccountDrawer();
-            openCanonicalDgfyAuth('customer');
-          }}
-          onOpenRegisterBusiness={() => {
-            closeAccountDrawer();
-            openBusinessRegistrationFlow();
-          }}
-        />
-      ) : (
+      {isAccountDrawerOpen && (
         <DgfyCustomerAccountPage
           isMobileViewport={isMobileViewport}
           onClose={closeAccountDrawer}
           onRefresh={handleLoadAccountPanel}
           onTrackReference={handleTrackCustomerReference}
+          onMarkNotificationRead={handleMarkNotificationRead}
+          onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
           onSignOut={handleStorefrontSignOut}
+          onHelp={() => toast.info('Help center is not connected yet.')}
           onRegisterBusiness={openBusinessRegistrationFlow}
+          onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
+          onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
+          onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
+          onLeaveCompany={handleLeaveDgfyCompany}
+          onSwitchCompany={switchDgfyCompanyFromStorefront}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
+          onUseAddressForCheckout={useAccountAddressForCheckout}
+          onSaveAddress={handleSaveAccountAddress}
+          onDeleteAddress={handleDeleteAccountAddress}
+          onSetDefaultAddress={handleSetDefaultAccountAddress}
+          renderAddressPinEditor={renderAddressPinEditor}
           accountIdentityInitials={accountIdentityInitials}
           accountIdentityName={accountIdentityName}
           accountIdentityContact={accountIdentityContact}
@@ -20638,9 +21538,11 @@ return (
           trackedCustomerActivity={trackedCustomerActivity}
           customerTrackLoadingReference={customerTrackLoadingReference}
           customerTrackError={customerTrackError}
+          accountOrderActionReference={accountOrderActionReference}
+          accountAddressActionId={accountAddressActionId}
           onOpenBusinessInventory={handleOpenBusinessInventory}
         />
-      ))}
+      )}
       {isGuestTrackingDrawerOpen && canOpenTrackingDrawer && !isStandaloneTrackingPage && (
         <GuestTrackingDrawer
           isOpen={isGuestTrackingDrawerOpen}
@@ -20650,6 +21552,7 @@ return (
           onTrack={handleTrack}
           selectedStore={selectedStore}
           guestTrackedOrders={trackingDrawerOrders}
+          trackingError={trackingError}
           expandedGuestDrawerPin={expandedGuestDrawerPin}
           onExpandedGuestDrawerPinChange={setExpandedGuestDrawerPin}
           onClose={() => setIsGuestTrackingDrawerOpen(false)}

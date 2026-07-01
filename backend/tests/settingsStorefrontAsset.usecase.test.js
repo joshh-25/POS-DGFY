@@ -34,7 +34,8 @@ describe('settings storefront asset use-cases', () => {
     expect(result.success).toBe(true);
     expect(result.data).toEqual({
       asset_type: 'cover',
-      image_url: '/uploads/storefront-assets/t-1/cover-1.png'
+      image_url: '/uploads/storefront-assets/t-1/cover-1.png',
+      path: 'storefront-assets/t-1/cover-1.png'
     });
     expect(storefrontAssetStorage.remove).toHaveBeenCalledWith({ path: 'storefront-assets/t-1/old-cover.png' });
     expect(settingsRepository.updateSettings).toHaveBeenCalledWith({
@@ -47,6 +48,41 @@ describe('settings storefront asset use-cases', () => {
     expect(settingsRepository.updateSettings.mock.invocationCallOrder[0]).toBeLessThan(
       storefrontAssetStorage.remove.mock.invocationCallOrder[0]
     );
+  });
+
+  it('gallery upload stores file without mutating persisted gallery settings', async () => {
+    const imageFileValidator = jest.fn().mockResolvedValue({ ok: true, detectedMime: 'image/png' });
+    const settingsRepository = {
+      getSettingsByKeys: jest.fn(),
+      updateSettings: jest.fn()
+    };
+    const storefrontAssetStorage = {
+      remove: jest.fn().mockResolvedValue(undefined),
+      store: jest.fn().mockResolvedValue({
+        path: 'storefront-assets/t-1/gallery-1.png',
+        url: '/uploads/storefront-assets/t-1/gallery-1.png'
+      })
+    };
+    const useCase = buildUploadStorefrontAssetUseCase({ settingsRepository, storefrontAssetStorage, imageFileValidator });
+
+    const result = await useCase({
+      assetType: 'gallery',
+      file: {
+        mimetype: 'image/png',
+        originalname: 'gallery.png',
+        path: '/tmp/gallery.png'
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({
+      asset_type: 'gallery',
+      image_url: '/uploads/storefront-assets/t-1/gallery-1.png',
+      path: 'storefront-assets/t-1/gallery-1.png'
+    });
+    expect(settingsRepository.getSettingsByKeys).not.toHaveBeenCalled();
+    expect(settingsRepository.updateSettings).not.toHaveBeenCalled();
+    expect(storefrontAssetStorage.remove).not.toHaveBeenCalled();
   });
 
   it('upload use-case rejects non-image mime types', async () => {
@@ -75,6 +111,63 @@ describe('settings storefront asset use-cases', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe('VALIDATION_FAILED');
     expect(result.error.statusCode).toBe(422);
+    expect(result.error.message).toBe('Only PNG, JPEG, GIF, WebP, BMP, or AVIF images are allowed for storefront assets.');
+  });
+
+  it('upload use-case returns a clear message for oversized image files', async () => {
+    const imageFileValidator = jest.fn().mockResolvedValue({ ok: false, reason: 'file_too_large' });
+    const useCase = buildUploadStorefrontAssetUseCase({
+      settingsRepository: {
+        getSettingsByKeys: jest.fn(),
+        updateSettings: jest.fn()
+      },
+      storefrontAssetStorage: {
+        remove: jest.fn(),
+        store: jest.fn()
+      },
+      imageFileValidator
+    });
+
+    const result = await useCase({
+      assetType: 'gallery',
+      file: {
+        mimetype: 'image/png',
+        originalname: 'large.png',
+        path: '/tmp/large.png'
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.message).toBe('Storefront images must be 5 MB or smaller.');
+  });
+
+  it('upload use-case returns a clear message for binary signature mismatches', async () => {
+    const imageFileValidator = jest.fn().mockResolvedValue({ ok: false, reason: 'mime_signature_mismatch' });
+    const useCase = buildUploadStorefrontAssetUseCase({
+      settingsRepository: {
+        getSettingsByKeys: jest.fn(),
+        updateSettings: jest.fn()
+      },
+      storefrontAssetStorage: {
+        remove: jest.fn(),
+        store: jest.fn()
+      },
+      imageFileValidator
+    });
+
+    const result = await useCase({
+      assetType: 'gallery',
+      file: {
+        mimetype: 'image/png',
+        originalname: 'fake.png',
+        path: '/tmp/fake.png'
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.message).toBe('The uploaded file does not match a supported image format.');
   });
 
   it('delete use-case clears persisted keys', async () => {

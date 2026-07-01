@@ -8,8 +8,7 @@ import {
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
-const STOREFRONT_ASSET_TYPES = new Set(['cover', 'profile']);
-const POS_SETTINGS_ACCESS_PIN_PATTERN = /^[0-9]{4,12}$/;
+const STOREFRONT_ASSET_TYPES = new Set(['cover', 'profile', 'gallery']);
 const PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS = new Set([
   'pos_software_name',
   'pos_software_version',
@@ -107,14 +106,7 @@ const posTerminalRegistryEntrySchema = Joi.object({
   location_id: Joi.number().integer().positive().allow(null).optional(),
   label: Joi.string().trim().max(80).allow('', null).optional(),
   is_active: Joi.boolean().default(true),
-  is_default: Joi.boolean().default(false),
-  terminal_password: Joi.string().trim().min(4).max(64).allow('', null).optional().messages({
-    'string.min': 'Terminal password must be at least 4 characters',
-    'string.max': 'Terminal password must be 64 characters or less'
-  }),
-  clear_terminal_password: Joi.boolean().default(false),
-  terminal_password_hash: Joi.string().trim().max(255).allow('', null).optional(),
-  has_password: Joi.boolean().optional()
+  is_default: Joi.boolean().default(false)
 });
 
 const posTerminalRegistrySchema = Joi.array()
@@ -126,7 +118,6 @@ const posTerminalRegistrySchema = Joi.array()
     }
 
     const seenIds = new Set();
-    const activeLocationIds = new Set();
     let defaultCount = 0;
     let activeCount = 0;
 
@@ -144,15 +135,6 @@ const posTerminalRegistrySchema = Joi.array()
       const isActive = entry?.is_active !== false;
       if (isActive) {
         activeCount += 1;
-        const locationId = Number.isInteger(Number(entry?.location_id)) ? Number(entry.location_id) : null;
-        if (locationId) {
-          if (activeLocationIds.has(locationId)) {
-            return helpers.error('any.invalid', {
-              message: `Only one active terminal is allowed for location ${locationId}`
-            });
-          }
-          activeLocationIds.add(locationId);
-        }
       }
       if (entry?.is_default === true) {
         defaultCount += 1;
@@ -207,6 +189,15 @@ const storefrontPromoSchema = Joi.object({
   validity_text: Joi.string().trim().max(120).allow('', null).optional(),
   active: Joi.boolean().default(false)
 }).optional();
+const businessHoursIntervalSchema = Joi.object({
+  open: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
+    'string.pattern.base': 'Business hours opening time must use HH:mm format'
+  }),
+  close: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
+    'string.pattern.base': 'Business hours closing time must use HH:mm format'
+  })
+});
+
 const businessHoursDaySchema = Joi.object({
   enabled: Joi.boolean().required(),
   open: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
@@ -214,7 +205,30 @@ const businessHoursDaySchema = Joi.object({
   }),
   close: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
     'string.pattern.base': 'Business hours closing time must use HH:mm format'
-  })
+  }),
+  intervals: Joi.array().items(businessHoursIntervalSchema).min(1).max(6).optional()
+}).custom((value, helpers) => {
+  if (!value?.enabled || !Array.isArray(value.intervals)) return value;
+  const ranges = value.intervals
+    .flatMap((interval) => {
+      const [openHour, openMinute] = String(interval.open).split(':').map(Number);
+      const [closeHour, closeMinute] = String(interval.close).split(':').map(Number);
+      const open = (openHour * 60) + openMinute;
+      const close = (closeHour * 60) + closeMinute;
+      if (open === close) return [[0, 1440]];
+      return close > open ? [[open, close]] : [[open, 1440], [0, close]];
+    })
+    .sort((first, second) => first[0] - second[0]);
+  for (let index = 1; index < ranges.length; index += 1) {
+    if (ranges[index][0] < ranges[index - 1][1]) {
+      return helpers.error('any.invalid', {
+        message: 'Business hours intervals cannot overlap'
+      });
+    }
+  }
+  return value;
+}).messages({
+  'any.invalid': '{{#message}}'
 });
 const storefrontBusinessHoursSchema = Joi.alternatives().try(
   Joi.string().trim().max(120).allow(''),
@@ -230,17 +244,15 @@ const storefrontBusinessHoursSchema = Joi.alternatives().try(
       fri: businessHoursDaySchema.required(),
       sat: businessHoursDaySchema.required()
     }).required(),
-    display: Joi.string().trim().max(120).allow('').optional()
+    display: Joi.string().trim().max(1000).allow('').optional()
   })
 );
 const storefrontCategoriesSchema = Joi.array().items(Joi.string().trim().min(1).max(60)).max(12).optional();
 const storefrontGalleryUrlSchema = Joi.alternatives().try(
-  Joi.string().trim().max(500).pattern(/^$|^\/uploads\/storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow('', null),
-  Joi.string().trim().max(500).uri({ scheme: ['http', 'https'] }).allow('', null)
-).optional().messages({
-  'alternatives.match': 'Storefront gallery url must be empty, a backend-relative /uploads/storefront-assets path, or an absolute http(s) URL'
-});
-const storefrontGalleryPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow('', null).optional().messages({
+  Joi.string().trim().max(500).uri({ scheme: ['http', 'https'] }),
+  storefrontAssetUrlSchema
+).allow('', null).optional();
+const storefrontGalleryPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow(null).optional().messages({
   'string.pattern.base': 'Storefront gallery path must be empty or a storefront-assets relative path'
 });
 const storefrontGalleryImageSchema = Joi.object({
@@ -275,11 +287,11 @@ const storefrontReviewSummarySchema = Joi.object({
   score: Joi.number().min(0).max(5).precision(2).allow(null).optional(),
   total_count: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
   star_distribution: Joi.object({
-    1: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
-    2: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
-    3: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
-    4: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
-    5: Joi.number().integer().min(0).max(1000000).allow(null).optional()
+    1: Joi.number().integer().min(0).max(1000000).optional(),
+    2: Joi.number().integer().min(0).max(1000000).optional(),
+    3: Joi.number().integer().min(0).max(1000000).optional(),
+    4: Joi.number().integer().min(0).max(1000000).optional(),
+    5: Joi.number().integer().min(0).max(1000000).optional()
   }).optional()
 }).optional();
 const customerAccessModeSchema = Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_MODES).messages({
@@ -341,10 +353,6 @@ export const updateSettingsSchema = Joi.object({
     'any.only': 'Terminal registry mode must be warn or enforce'
   }),
   pos_terminal_location_binding_enforced: Joi.boolean().optional(),
-  pos_settings_access_pin: Joi.string().trim().pattern(POS_SETTINGS_ACCESS_PIN_PATTERN).allow('').optional().messages({
-    'string.pattern.base': 'POS Settings access PIN must be 4 to 12 digits'
-  }),
-  clear_pos_settings_access_pin: Joi.boolean().optional(),
   pos_petty_cash_symbol: Joi.string().trim().max(12).allow('').optional(),
   pos_petty_cash_amount: Joi.number().min(0).precision(4).optional(),
   store_delivery_fee: Joi.number().min(0).precision(4).optional(),
@@ -398,90 +406,6 @@ export const updateSingleSettingSchema = Joi.object({
   })
 });
 
-const normalizeStorefrontGalleryEntry = (entry) => {
-  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-    return entry;
-  }
-
-  const url = String(entry.url || '').trim();
-  const path = String(entry.path || '').trim();
-  if (!url && !path) {
-    return null;
-  }
-
-  return {
-    ...entry,
-    url,
-    path
-  };
-};
-
-const sanitizeStorefrontGalleryImagesPayload = (value) => {
-  if (!Array.isArray(value)) {
-    return value;
-  }
-
-  return value
-    .map((entry) => normalizeStorefrontGalleryEntry(entry))
-    .filter(Boolean);
-};
-
-const sanitizeStorefrontReviewSummaryPayload = (value) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return value;
-  }
-
-  const nextValue = { ...value };
-  const rawDistribution = value.star_distribution;
-  if (rawDistribution && typeof rawDistribution === 'object' && !Array.isArray(rawDistribution)) {
-    const sanitizedDistribution = { ...rawDistribution };
-    [1, 2, 3, 4, 5].forEach((star) => {
-      const rawStarValue = sanitizedDistribution[star];
-      if (rawStarValue === '' || rawStarValue == null || rawStarValue === 'null') {
-        sanitizedDistribution[star] = null;
-      }
-    });
-    nextValue.star_distribution = sanitizedDistribution;
-  }
-
-  if (nextValue.score === '' || nextValue.score === 'null') {
-    nextValue.score = null;
-  }
-  if (nextValue.total_count === '' || nextValue.total_count === 'null') {
-    nextValue.total_count = null;
-  }
-
-  return nextValue;
-};
-
-const sanitizeStorefrontSettingsPayload = (value, { singleSettingKey = '' } = {}) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    if (singleSettingKey === 'storefront_gallery_images') {
-      return sanitizeStorefrontGalleryImagesPayload(value);
-    }
-    if (singleSettingKey === 'storefront_review_summary') {
-      return sanitizeStorefrontReviewSummaryPayload(value);
-    }
-    return value;
-  }
-
-  if (singleSettingKey === 'storefront_gallery_images') {
-    return sanitizeStorefrontGalleryImagesPayload(value);
-  }
-  if (singleSettingKey === 'storefront_review_summary') {
-    return sanitizeStorefrontReviewSummaryPayload(value);
-  }
-
-  const nextValue = { ...value };
-  if (Object.prototype.hasOwnProperty.call(nextValue, 'storefront_gallery_images')) {
-    nextValue.storefront_gallery_images = sanitizeStorefrontGalleryImagesPayload(nextValue.storefront_gallery_images);
-  }
-  if (Object.prototype.hasOwnProperty.call(nextValue, 'storefront_review_summary')) {
-    nextValue.storefront_review_summary = sanitizeStorefrontReviewSummaryPayload(nextValue.storefront_review_summary);
-  }
-  return nextValue;
-};
-
 // Middleware to validate settings update
 export const validateUpdateSettings = (req, res, next) => {
   const rawOrderMethodFees = req?.body?.pos_order_method_fees;
@@ -500,9 +424,7 @@ export const validateUpdateSettings = (req, res, next) => {
     }
   }
 
-  const sanitizedBody = sanitizeStorefrontSettingsPayload(req.body);
-
-  const { error, value } = updateSettingsSchema.validate(sanitizedBody, {
+  const { error, value } = updateSettingsSchema.validate(req.body, {
     abortEarly: false,
     stripUnknown: true
   });
@@ -546,7 +468,6 @@ export const validateUpdateSingleSetting = (req, res, next) => {
   }
 
   const settingKey = String(req?.params?.key || '').trim();
-  const sanitizedValue = sanitizeStorefrontSettingsPayload(value.value, { singleSettingKey: settingKey });
   if (PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS.has(settingKey)) {
     return res.status(422).json({
       success: false,
@@ -586,7 +507,6 @@ export const validateUpdateSingleSetting = (req, res, next) => {
       'any.only': 'Terminal registry mode must be warn or enforce'
     }),
     pos_terminal_location_binding_enforced: Joi.boolean(),
-    pos_settings_access_pin_hash: Joi.string().trim().allow(''),
     pos_petty_cash_symbol: Joi.string().trim().max(12).allow(''),
     pos_petty_cash_amount: Joi.number().min(0).precision(4),
     store_delivery_fee: Joi.number().min(0).precision(4),
@@ -642,7 +562,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
 
   const settingValueSchema = singleSettingSchemaByKey[settingKey];
   if (settingValueSchema) {
-    const validation = settingValueSchema.validate(sanitizedValue, { abortEarly: false });
+    const validation = settingValueSchema.validate(value.value, { abortEarly: false });
     if (validation.error) {
       const errors = validation.error.details.map(detail => ({
         field: detail.path.length ? `value.${detail.path.join('.')}` : 'value',
@@ -659,7 +579,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     return next();
   }
 
-  req.validatedData = { ...value, value: sanitizedValue };
+  req.validatedData = value;
   next();
 };
 
@@ -671,43 +591,12 @@ export const validateStorefrontAssetTypeParam = (req, res, next) => {
       message: 'Validation failed',
       errors: [{
         field: 'asset_type',
-        message: 'asset_type must be one of: cover, profile'
+        message: 'asset_type must be one of: cover, profile, gallery'
       }],
       timestamp: new Date().toISOString()
     });
   }
 
   req.params.asset_type = assetType;
-  next();
-};
-
-export const validateVerifyPosSettingsAccessPin = (req, res, next) => {
-  const schema = Joi.object({
-    pin: Joi.string().trim().pattern(POS_SETTINGS_ACCESS_PIN_PATTERN).required().messages({
-      'any.required': 'PIN is required',
-      'string.pattern.base': 'PIN must be 4 to 12 digits'
-    })
-  });
-
-  const { error, value } = schema.validate(req.body, {
-    abortEarly: false,
-    stripUnknown: true
-  });
-
-  if (error) {
-    const errors = error.details.map((detail) => ({
-      field: detail.path.join('.'),
-      message: detail.message
-    }));
-
-    return res.status(422).json({
-      success: false,
-      message: 'Validation failed',
-      errors,
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  req.validatedData = value;
   next();
 };

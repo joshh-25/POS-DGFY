@@ -29,12 +29,16 @@ export const broadcastWorkflowModeChange = ({ mode, source = 'settings' } = {}) 
 export function WorkflowModeProvider({ children }) {
   const [workflowMode, setWorkflowMode] = useState(DEFAULT_WORKFLOW_MODE);
   const [loading, setLoading] = useState(true);
+  const [resolved, setResolved] = useState(false);
+  const [error, setError] = useState(null);
   const [modeChangeNotice, setModeChangeNotice] = useState(null);
   const workflowModeRef = useRef(DEFAULT_WORKFLOW_MODE);
 
   const refreshWorkflowMode = useCallback(async ({ force = false } = {}) => {
     if (!shouldRefreshBrowserSessionForPath(window.location.pathname)) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
+      setResolved(true);
+      setError(null);
       setLoading(false);
       return DEFAULT_WORKFLOW_MODE;
     }
@@ -42,19 +46,26 @@ export function WorkflowModeProvider({ children }) {
     const token = getAccessToken() || await refreshBrowserSession().catch(() => '');
     if (!token) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
+      setResolved(true);
+      setError(null);
       setLoading(false);
       return DEFAULT_WORKFLOW_MODE;
     }
 
     setLoading(true);
+    setResolved(false);
+    setError(null);
 
     try {
       const settings = await getAllSettings({ force });
       const nextMode = extractWorkflowModeFromSettings(settings);
       setWorkflowMode(nextMode);
+      setResolved(true);
       return nextMode;
-    } catch {
+    } catch (refreshError) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
+      setResolved(false);
+      setError(refreshError);
       return DEFAULT_WORKFLOW_MODE;
     } finally {
       setLoading(false);
@@ -79,6 +90,8 @@ export function WorkflowModeProvider({ children }) {
     };
     const handleAuthLogout = () => {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
+      setResolved(false);
+      setError(null);
       setModeChangeNotice(null);
       setLoading(false);
     };
@@ -86,6 +99,8 @@ export function WorkflowModeProvider({ children }) {
       const nextMode = normalizeWorkflowMode(event?.detail?.mode);
       const previousMode = workflowModeRef.current;
       setWorkflowMode(nextMode);
+      setResolved(true);
+      setError(null);
       if (nextMode !== previousMode) {
         setModeChangeNotice({
           from: previousMode,
@@ -109,10 +124,12 @@ export function WorkflowModeProvider({ children }) {
   const value = useMemo(() => ({
     workflowMode,
     loading,
+    resolved,
+    error,
     modeChangeNotice,
     refreshWorkflowMode,
     dismissModeChangeNotice
-  }), [dismissModeChangeNotice, loading, modeChangeNotice, refreshWorkflowMode, workflowMode]);
+  }), [dismissModeChangeNotice, error, loading, modeChangeNotice, refreshWorkflowMode, resolved, workflowMode]);
 
   return (
     <WorkflowModeContext.Provider value={value}>

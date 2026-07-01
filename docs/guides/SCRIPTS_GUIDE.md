@@ -2,15 +2,6 @@
 
 This guide documents operational scripts used in this repository.
 
-## Namecheap Shared Hosting Helpers
-
-GitHub Actions deploys for Namecheap shared hosting are documented in `docs/ops/NAMECHEAP_SHARED_CICD.md`.
-
-- `scripts/deploy/namecheap-shared/upload-artifacts.js`: uploads selected backend/frontend zips and rendered PHP helper scripts to the FTP deploy control directory. It prefers FTPS and falls back to FTP.
-- `scripts/deploy/namecheap-shared/tools/render-templates.py`: injects `DEPLOY_TOKEN` and target directory variables into remote helper templates.
-- `scripts/cicd/bootstrap-and-deploy.ps1`: configures GitHub secrets/variables from `.cicd/production.deploy.config.json` and dispatches `.github/workflows/deploy-namecheap-shared.yml`.
-- `npm run test:deploy:namecheap`: validates local path selection and missing-secret behavior for the FTP upload helper.
-
 ## DGFY Customer Activity Backfill
 
 Historical DGFY customer activity backfill is an operator command, not a public API. It populates landlord-scoped DGFY customer activity from tenant POS orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations.
@@ -110,7 +101,7 @@ Recommended by environment:
 - Staging/Production: run `--verify` only when a known verification tenant/dataset is available
 
 ## 2. `scripts/deploy-remote.sh`
-Local convenience script that pushes to GitHub and triggers remote deploy over SSH.
+Local operator convenience script that triggers the existing SSH production deploy after the governed `staging -> master` promotion has produced the exact production SHA.
 
 Usage:
 ```bash
@@ -118,16 +109,21 @@ bash scripts/deploy-remote.sh
 ```
 
 Notes:
-- Operates on local `master` branch by design.
+- Operates on the production branch `master` by design after promotion; developers still open feature PRs into `staging` and do not push directly to `master`.
 - Meant to run locally, not on the production server.
 - Requires working SSH auth to production. Prefer key-based auth over password prompts.
+- When using a clean linked release worktree while another worktree has local `master` checked out, confirm `origin/master` already equals the intended release SHA or push the release worktree explicitly with `git push origin HEAD:master` before running this script. Do not let a stale local `master` from another worktree define the deploy target.
 - Auto-loads `.env.qa.local` and `.env.qa.secrets.local` (if present) before preflight/gate execution.
 - QA env loading tolerates CRLF line endings, UTF-8 BOM, and values containing `=`; malformed env keys are skipped with a warning.
+- Manual Windows SSH fallbacks must not pipe PowerShell here-strings into remote `bash` when SHA or branch arguments are present. Use Git Bash or pass one remote command argument through `ssh.exe` so CRLF cannot corrupt `--expect-commit` or `--branch`.
 - Enforces no-staging release hard gate by default after push and before production SSH deploy (`DEPLOY_ENFORCE_NO_STAGING_GATE=1`).
 - Runs no-staging preflight before push (`npm run gate:release:no-staging:preflight`) when gate enforcement is enabled.
-- Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) if local summary file is missing before hard gate execution.
+- Promotes the pushed target SHA to QA before the production gate when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`.
+- Refuses QA promotion when `QA_SSH_HOST` and `QA_APP_DIR` match the production host and app dir.
+- Fetches fresh QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) before every hard gate execution.
 - Uses an absolute host path for fetched QA deploy evidence when invoked from Git Bash on Windows, then verifies the file exists before running the hard gate.
 - Verifies the generated release verdict with `--require-pass true`; production SSH deploy is not attempted unless the verdict is `pass` or explicitly `bypassed`.
+- Defaults `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0` for wrapper-triggered deploys until redundant index cleanup is complete. Set `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1` to restore strict wrapper enforcement.
 
 One-time setup for persistent passwordless deploy access (per machine):
 ```bash
@@ -186,16 +182,51 @@ Behavior:
 - Fails fast before push/deploy when no-staging hard gate is enabled but required inputs are missing.
 - Validates:
   - `QA_BASE_URL`
+  - `QA_COMPANY_TOKEN` must be present and must not be a placeholder value
   - `QA_SSH_HOST`
+  - `QA_SSH_PORT` when the QA/prod evidence host does not use port `22`
   - `ssh` command availability
   - `powershell`/`pwsh` availability (used by QA gate wrapper scripts)
 - QA deploy summary source availability (local file or SSH-fetch path)
+- QA promotion mode and, when production target values are supplied, whether the QA host/app-dir is distinct from production
 
 Recommended secret layout:
 1. Non-secret QA defaults in `.env.qa.local`
 2. Sensitive QA values (`QA_COMPANY_TOKEN`, optional `QA_AUTH_JWT`) in `.env.qa.secrets.local` (gitignored)
 
-## 2c. `scripts/check-merge-adoption.js`
+## 2c. `scripts/deploy-qa-target.ps1`
+Guarded QA promotion helper used by `scripts/deploy-remote.sh` before the no-staging hard gate.
+
+Usage:
+```bash
+RELEASE_TARGET_SHA=<sha> npm run deploy:qa:target
+```
+
+Dry-run:
+```bash
+QA_DEPLOY_DRY_RUN=1 RELEASE_TARGET_SHA=<sha> npm run deploy:qa:target
+```
+
+Required environment:
+1. `RELEASE_TARGET_SHA`
+2. `QA_SSH_HOST`
+3. `QA_SSH_PORT` (default `22`)
+4. `QA_SSH_USER` (default `root`)
+5. `QA_APP_DIR` (default `/var/www/skupervisor`)
+6. `QA_DEPLOY_BRANCH` (default `master`)
+
+Safety:
+1. The helper auto-loads `.env.qa.local` and `.env.qa.secrets.local`, while preserving already-exported process values.
+2. It does not print secret values.
+3. When `DEPLOY_PROD_REMOTE_HOST` and `DEPLOY_PROD_REMOTE_DIR` are supplied, it refuses to run if QA points at the production host and app dir.
+4. Remote execution is a single SSH command argument:
+   ```bash
+   cd "$QA_APP_DIR" && git fetch origin "$QA_DEPLOY_BRANCH" && git cat-file -e "$RELEASE_TARGET_SHA^{commit}" && bash scripts/deploy.sh --branch "$QA_DEPLOY_BRANCH" --expect-commit "$RELEASE_TARGET_SHA"
+   ```
+
+Production-as-QA mode can still fetch existing evidence, but it cannot be used for automatic QA promotion. Set `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` if no distinct QA target exists.
+
+## 2d. `scripts/check-merge-adoption.js`
 Merge adoption proof gate for PR, branch, or `merge-docs/` releases.
 
 Usage:
@@ -217,7 +248,7 @@ MERGE_ADOPTION_MANIFEST=path/to/merge-adoption.json RELEASE_TARGET_SHA=<sha> npm
 
 Use this for releases where ancestry alone is not enough proof, especially visible UI replacements, backend contract merges, auth/security changes, or any merge guided by `merge-docs/`.
 
-## 2d. Runtime Schema Doctor (`npm run doctor:runtime`)
+## 2e. Runtime Schema Doctor (`npm run doctor:runtime`)
 Use this before storefront/IMS/POS manual verification and after backend restart/deploy.
 
 Usage:
@@ -242,7 +273,7 @@ npm run migrate
 npm run doctor:runtime
 ```
 
-## 2e. `scripts/check-hosting-profile.js`
+## 2f. `scripts/check-hosting-profile.js`
 Hosting profile preflight validator for shared hosting and Redis-capable VPS deployments.
 
 Usage:
@@ -702,4 +733,5 @@ RELEASE_TARGET_SHA=<sha> npm run evidence:qa:deploy-summary
 
 Required environment:
 1. `QA_SSH_HOST`
-2. Optional: `QA_SSH_PORT`, `QA_SSH_USER`, `QA_DEPLOY_SUMMARY_REMOTE`, `QA_DEPLOY_SUMMARY_FILE`
+2. `QA_SSH_PORT` when the evidence host does not use port `22`
+3. Optional: `QA_SSH_USER`, `QA_DEPLOY_SUMMARY_REMOTE`, `QA_DEPLOY_SUMMARY_FILE`

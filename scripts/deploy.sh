@@ -47,14 +47,18 @@ if [[ "$STORE_BASE_PATH" != /* ]]; then
 fi
 STORE_BASE_PATH="${STORE_BASE_PATH%/}/"
 
+strip_cr() {
+    printf '%s' "$1" | tr -d '\r'
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --branch)
-            BRANCH_OVERRIDE="${2:-}"
+            BRANCH_OVERRIDE="$(strip_cr "${2:-}")"
             shift 2
             ;;
         --expect-commit)
-            EXPECTED_COMMIT="${2:-}"
+            EXPECTED_COMMIT="$(strip_cr "${2:-}")"
             shift 2
             ;;
         --skip-db-backup)
@@ -111,11 +115,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ -n "$EXPECTED_COMMIT" && ! "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    echo "Invalid --expect-commit value after CRLF normalization: '$EXPECTED_COMMIT'"
+    exit 1
+fi
+
 mkdir -p "$DEPLOY_LOG_DIR" "$DEPLOY_STATE_DIR"
 RUN_TS="$(date +'%Y%m%d_%H%M%S')"
 LOG_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.log"
 MANIFEST_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.changed_files.txt"
 SUMMARY_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.summary.txt"
+FRONTEND_BUILD_MANIFEST_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.frontend_build_manifest.json"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -1019,6 +1029,10 @@ run_step "Running documentation governance lint..." npm run lint:docs
 run_step "Running architecture gate checks..." npm run check:architecture
 
 run_step "Building frontend production artifacts (IMS, POS, Store)..." run_frontend_builds
+run_step "Recording frontend build manifest..." node "$PROJECT_ROOT/scripts/record-frontend-build-manifest.js" \
+    --project-root "$PROJECT_ROOT" \
+    --target-sha "$POST_PULL_COMMIT" \
+    --output "$FRONTEND_BUILD_MANIFEST_FILE"
 
 # ===========================================================================
 # Database migrations
@@ -1274,6 +1288,7 @@ rm -f "$LOCK_FILE" 2>/dev/null || true
 ELAPSED="$SECONDS"
 ELAPSED_MIN="$((ELAPSED / 60))"
 ELAPSED_SEC="$((ELAPSED % 60))"
+PRODUCTION_DEPLOY_CONTRACT_FILE="$DEPLOY_LOG_DIR/deploy_${RUN_TS}.production_contract.json"
 
 {
     echo "deploy_timestamp=$RUN_TS"
@@ -1283,6 +1298,7 @@ ELAPSED_SEC="$((ELAPSED % 60))"
     echo "remote_head=$REMOTE_COMMIT"
     echo "expected_commit=${EXPECTED_COMMIT:-none}"
     echo "manifest_file=$MANIFEST_FILE"
+    echo "frontend_build_manifest_file=$FRONTEND_BUILD_MANIFEST_FILE"
     echo "log_file=$LOG_FILE"
     echo "migrations_changed=$MIGRATIONS_CHANGED"
     echo "db_backup_file=${BACKUP_FILE:-none}"
@@ -1309,10 +1325,20 @@ ELAPSED_SEC="$((ELAPSED % 60))"
     echo "tenant_schema_sync_require_zero=${TENANT_SYNC_REQUIRE_ZERO:-0}"
     echo "tenant_index_headroom_report_file=${TENANT_INDEX_HEADROOM_REPORT_FILE:-none}"
     echo "tenant_index_headroom_strict=${TENANT_INDEX_HEADROOM_STRICT:-0}"
+    echo "production_deploy_contract_file=$PRODUCTION_DEPLOY_CONTRACT_FILE"
     echo "elapsed_seconds=$ELAPSED"
 } > "$SUMMARY_FILE"
 
+run_step "Verifying production deployment source contract..." node "$PROJECT_ROOT/scripts/verify-production-deploy-contract.js" \
+    --project-root "$PROJECT_ROOT" \
+    --target-sha "$POST_PULL_COMMIT" \
+    --deploy-state-file "$DEPLOY_STATE_DIR/last_deployed_commit" \
+    --deploy-summary-file "$SUMMARY_FILE" \
+    --health-url "$BACKEND_HEALTH_URL" \
+    --report "$PRODUCTION_DEPLOY_CONTRACT_FILE"
+
 log "Deployment summary: $SUMMARY_FILE"
+log "Production deployment contract: $PRODUCTION_DEPLOY_CONTRACT_FILE"
 
 echo ""
 echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════╗${NC}"

@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "merge_name": "pr23-storefront-customer-flow-2026-06-18",
+  "target_branch": "master",
+  "source_refs": [
+    {
+      "ref": "origin/pr-testing",
+      "base": "origin/master"
+    }
+  ],
+  "explicitly_rejected_files": [
+    {
+      "path": "docs/proposals/STOREFRONT_CUSTOMER_FLOW_PUSH_HANDOFF_2026-06-17.md",
+      "reason": "The handoff note is local review context supplied by the user and PR body; it must not become production or governed-doc scope."
+    }
+  ],
+  "semantic_conflict_review": {
+    "status": "none",
+    "notes": "Current origin/master merged into pr-testing with no Git conflict. No behavior conflict was resolved silently in this pass. If later review finds a semantic conflict in storefront UI, checkout, auth, dashboard, tracking, API payloads, tests, docs governance, or release gates, the agent must ask the user before resolving it.",
+    "user_approved_decisions": []
+  },
+  "feature_areas": [
+    {
+      "id": "storefront-customer-flow-ui",
+      "decision": "adopt",
+      "intent": "Adopt PR #23 storefront/customer-facing UI as the incoming source of truth for storefront responsiveness, checkout entry, guest checkout, signed-in checkout, product details, and storefront tracking.",
+      "source_refs": [
+        "origin/pr-testing"
+      ],
+      "master_behaviors_preserved": [
+        "Current master release and deploy source contract gates remain in the final branch.",
+        "Current master DGFY company access, IMS, POS safety, and production observability support remain in the final branch.",
+        "Current master Hospitality booking storefront panel and public PMS booking API surface remain wired in StorefrontApp.jsx.",
+        "Current master discovery search safety remains in force: in-flight discovery requests are aborted, stale responses are ignored, and stale hash storefront slugs use canonical fallback queries.",
+        "Guest orders remain separate from DGFY account orders and must not be auto-adopted by email or phone matching.",
+        "Signed-in checkout identity remains read-only in checkout.",
+        "Address persistence remains tied to signed-in customer accounts."
+      ],
+      "proof": {
+        "required_files_present": [
+          "frontend/apps/store/src/StorefrontApp.jsx",
+          "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+          "frontend/apps/store/src/Components/storefront/pages/FnbProductDetailsPage.jsx",
+          "frontend/apps/store/src/Components/storefront/pages/SolutionsPage.jsx",
+          "frontend/apps/store/src/HospitalityBookingPanel.jsx",
+          "frontend/apps/store/src/__tests__/geoSearchIntegration.contract.test.js",
+          "frontend/apps/store/src/__tests__/hospitalityStorefront.contract.test.js",
+          "frontend/apps/store/src/__tests__/normalizeStorefrontPageModel.test.js",
+          "frontend/apps/store/src/__tests__/fnbStorefront.contract.test.js",
+          "frontend/apps/store/src/__tests__/DgfyCustomerAccountPage.dashboard.test.jsx",
+          "frontend/apps/store/src/__tests__/profileLauncher.integration.test.jsx",
+          "frontend/apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx"
+        ],
+        "required_strings_present": [
+          {
+            "file": "frontend/apps/store/src/StorefrontApp.jsx",
+            "text": "Continue as Guest"
+          },
+          {
+            "file": "frontend/apps/store/src/StorefrontApp.jsx",
+            "text": "Create DGFY Account"
+          },
+          {
+            "file": "frontend/apps/store/src/StorefrontApp.jsx",
+            "text": "customer_name"
+          },
+          {
+            "file": "frontend/apps/store/src/StorefrontApp.jsx",
+            "text": "HospitalityBookingPanel"
+          },
+          {
+            "file": "frontend/apps/store/src/StorefrontApp.jsx",
+            "text": "discoveryAbortControllerRef.current?.abort?.()"
+          },
+          {
+            "file": "frontend/apps/store/src/StorefrontApp.jsx",
+            "text": "buildStorefrontSlugFallbackQueries"
+          },
+          {
+            "file": "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+            "text": "Active Orders"
+          },
+          {
+            "file": "frontend/src/features/dgfyRouteHelpers.js",
+            "text": "return_to"
+          },
+          {
+            "file": "frontend/src/features/dgfyRouteHelpers.js",
+            "text": "isApprovedDgfyAbsoluteReturnTarget"
+          }
+        ],
+        "tests": [
+          "npm run check:merge-adoption-required -- --base origin/master --head HEAD --manifest docs/release/merge-adoption/pr23-storefront-customer-flow-2026-06-18.json",
+          "npm --prefix frontend run build:store",
+          "npm run build:skupervisor",
+          "npm --prefix frontend exec vitest run apps/store/src/__tests__/geoSearchIntegration.contract.test.js",
+          "npm --prefix frontend exec vitest run apps/store/src/__tests__/hospitalityStorefront.contract.test.js",
+          "npm --prefix frontend exec vitest run apps/store/src/__tests__/normalizeStorefrontPageModel.test.js",
+          "npm --prefix frontend exec vitest run apps/store/src/__tests__/fnbStorefront.contract.test.js",
+          "npm --prefix frontend exec vitest run apps/store/src/__tests__/DgfyCustomerAccountPage.dashboard.test.jsx",
+          "npm --prefix frontend exec vitest run apps/store/src/__tests__/profileLauncher.integration.test.jsx",
+          "npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx",
+          "npm run lint:docs",
+          "npm run check:architecture"
+        ],
+        "rendered_evidence": [
+          "Required before final merge approval: desktop and mobile screenshots or browser evidence for discovery search, storefront, checkout entry, tracking drawer/page, DGFY auth return behavior, and customer dashboard."
+        ],
+        "production_evidence_required": [
+          "Deployment must include frontend/apps/store/src, frontend/Pages, frontend/src, and frontend/public build outputs from the target SHA.",
+          "Release verdict must show merge.adoption passing with this manifest, not merge.adoption.not_required.",
+          "Production health runtime SHA and frontend assets must match the target SHA after deployment."
+        ]
+      }
+    },
+    {
+      "id": "dgfy-auth-return-and-business-handoff",
+      "decision": "combine",
+      "intent": "Use the PR #23 DGFY auth UI and return-target improvements while preserving current master company access, tenant session, and business-registration hardening.",
+      "source_refs": [
+        "origin/pr-testing"
+      ],
+      "master_behaviors_preserved": [
+        "Business registration continues to require a DGFY account.",
+        "Unsafe auth return targets fall back to the customer dashboard.",
+        "DGFY company access and invitation-related master hardening remains in force."
+      ],
+      "proof": {
+        "required_files_present": [
+          "frontend/Pages/DgfyAuthPage.jsx",
+          "frontend/Pages/LegalDocument.jsx",
+          "frontend/src/features/dgfy/components/DgfyAuthHero.jsx",
+          "docs/features/DGFY_CUSTOMER_ACCOUNT.md"
+        ],
+        "required_strings_present": [
+          {
+            "file": "frontend/Pages/DgfyAuthPage.jsx",
+            "text": "routeParams.returnTo"
+          },
+          {
+            "file": "frontend/Pages/LegalDocument.jsx",
+            "text": "returnTo"
+          },
+          {
+            "file": "docs/features/DGFY_CUSTOMER_ACCOUNT.md",
+            "text": "Guest orders"
+          }
+        ],
+        "tests": [
+          "npm --prefix frontend exec vitest run Pages/__tests__/DgfyAuthPage.fieldEnhancements.test.jsx",
+          "npm --prefix frontend exec vitest run Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx"
+        ],
+        "rendered_evidence": [
+          "Required before final merge approval: browser proof that /dgfy/auth preserves safe storefront/dashboard return targets and displays the intended account name after sign-in."
+        ],
+        "production_evidence_required": [
+          "After deploy, verify auth return flow against the production target SHA before marking the release complete."
+        ]
+      }
+    }
+  ]
+}

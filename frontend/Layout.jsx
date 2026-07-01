@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { usePermission } from './src/hooks/usePermission'; // Created next
 import { createPageUrl } from './utils.js';
@@ -34,7 +34,9 @@ import GracePeriodBanner from './Components/common/GracePeriodBanner';
 import TenantCapabilityNotice from './src/components/common/TenantCapabilityNotice.jsx';
 import useStore from './src/store/useStore.js';
 import { useWorkflowMode } from './src/features/settings/WorkflowModeContext.jsx';
-import { getWorkflowModeLabel, isWorkflowPageVisible, modeHasCapability } from './src/features/settings/workflowMode.js';
+import { getWorkflowModeLabel, isWorkflowPageModeSensitive, isWorkflowPageVisible } from './src/features/settings/workflowMode.js';
+import OnboardingSetupModal, { OnboardingReminderBanner } from './src/features/onboarding/components/OnboardingSetupModal.jsx';
+import { trackOnboardingEvent } from './src/services/onboardingService.js';
 import { getAllSettings } from './src/services/settingsService.js';
 import { buildTenantCapabilityNoticeFromSettings } from './src/utils/tenantCapabilityMessages.js';
 import { mergeCurrentCompanyWithMemberships } from './src/utils/companySwitcherRows.js';
@@ -52,9 +54,9 @@ const ALL_NAV_ITEMS = [
   { name: 'Purchase Orders', icon: ClipboardList, page: 'PurchaseOrders', permission: 'po:view' },
   { name: 'Job Orders', icon: Factory, page: 'JobOrders', permission: 'jo:view' },
   { name: 'Dispatch Orders', icon: PackageCheck, page: 'DispatchOrders', permission: 'do:view' },
-  { name: 'Services', icon: CalendarCheck, page: 'Services', requiredCapability: 'services', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
-  { name: 'Food & Beverage', icon: Utensils, page: 'Fnb', requiredCapability: 'fnbDining', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
-  { name: 'Hospitality', icon: BedDouble, page: 'Hospitality', requiredCapability: 'hospitalityReservations', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
+  { name: 'Services', icon: CalendarCheck, page: 'Services', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
+  { name: 'Food & Beverage', icon: Utensils, page: 'Fnb', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
+  { name: 'Hospitality', icon: BedDouble, page: 'Hospitality', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
   { name: 'POS Terminal', icon: ShoppingCart, page: 'POS', permission: 'pos:view' },
   { name: 'Sales', icon: FileText, page: 'Sales', permissionAny: ['reports:view', 'do:view', 'pos:view', 'pos:transact'] },
   { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements', permission: 'stock:view' },
@@ -80,9 +82,14 @@ const UserProfile = ({ user }) => {
   );
 };
 
-const getSwitchErrorMessage = (error, fallback) => (
-  error?.response?.data?.message || error?.message || fallback
-);
+const getSwitchErrorMessage = (error, fallback) => {
+  const status = error?.response?.status;
+  const message = error?.response?.data?.message || error?.message || '';
+  if ((status === 400 || status === 401) && message.toLowerCase().includes('not linked to a dgfy account membership')) {
+    return 'Current company loaded. Link your IMS user to a DGFY account to see extra DGFY businesses and pending invitations here.';
+  }
+  return message || fallback;
+};
 
 const CompanySwitcher = ({ user }) => {
   const [open, setOpen] = useState(false);
@@ -339,11 +346,20 @@ export default function Layout({ children, currentPageName }) {
   const [capabilityNotice, setCapabilityNotice] = useState(null);
   const { can, userRole, loading } = usePermission();
   const { setCurrentUser: setGlobalCurrentUser } = useStore();
-  const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
+  const {
+    workflowMode,
+    loading: workflowModeLoading,
+    resolved: workflowModeResolved = true,
+    modeChangeNotice,
+    dismissModeChangeNotice
+  } = useWorkflowMode();
+  const [onboardingModalOpen, setOnboardingModalOpen] = useState(false);
+  const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
+  const onboardingReminderTrackedRef = useRef(false);
 
   React.useEffect(() => {
-    if (!loading && import.meta.env.DEV) {
-      console.debug('Layout: Permission State', { userRole, loading, canItems: can('items:view') });
+    if (!loading) {
+      console.log('Layout: Permission State', { userRole, loading, canItems: can('items:view') });
     }
   }, [loading, can, userRole]);
 
@@ -398,15 +414,54 @@ export default function Layout({ children, currentPageName }) {
       cancelled = true;
     };
   }, [currentUser]);
+
+
+  const onboarding = currentUser?.onboarding || null;
+  const onboardingState = String(onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
+  const shouldShowOnboardingReminder = Boolean(
+    currentUser?.is_master_admin === true
+    && onboardingState !== 'completed'
+    && workflowModeLoading === false
+    && workflowModeResolved === true
+  );
   const shouldShowPhoneReminder = Boolean(
     currentUser && !String(currentUser.phone_number || '').trim()
   );
 
+  React.useEffect(() => {
+    if (!shouldShowOnboardingReminder) {
+      onboardingReminderTrackedRef.current = false;
+      return;
+    }
+
+    if (!onboardingReminderTrackedRef.current) {
+      onboardingReminderTrackedRef.current = true;
+      trackOnboardingEvent({
+        eventKey: 'reminder_shown',
+        metadata: { surface: 'layout' }
+      }).catch(() => {});
+    }
+
+    if (onboardingDismissedThisSession) return;
+    setOnboardingModalOpen(true);
+  }, [onboardingDismissedThisSession, shouldShowOnboardingReminder]);
+
+  const refreshCurrentUser = React.useCallback(async () => {
+    try {
+      const user = await getCurrentUser();
+      setCurrentUser(user);
+      setGlobalCurrentUser(user);
+    } catch (error) {
+      console.warn('Failed to refresh user profile after onboarding action', error);
+    }
+  }, [setGlobalCurrentUser]);
+
   // Filter nav items - only filter after permissions have loaded
   // During loading, show all items to prevent flash of limited menu
+  const workflowModeReady = workflowModeLoading === false && workflowModeResolved === true;
   const navItems = ALL_NAV_ITEMS.filter(item => {
-    if (!isWorkflowPageVisible(item.page, workflowMode)) return false;
-    if (item.requiredCapability && !modeHasCapability(workflowMode, item.requiredCapability)) return false;
+    if (!workflowModeReady && isWorkflowPageModeSensitive(item.page)) return false;
+    if (workflowModeReady && !isWorkflowPageVisible(item.page, workflowMode)) return false;
     if (loading) return true; // Show all during loading to prevent flash
     if (item.permissionAny?.length) {
       return item.permissionAny.some((permission) => can(permission));
@@ -519,6 +574,15 @@ export default function Layout({ children, currentPageName }) {
               onDismiss={() => setCapabilityNotice(null)}
             />
           )}
+          {shouldShowOnboardingReminder && (
+            <OnboardingReminderBanner
+              onboarding={onboarding}
+              onOpenWizard={() => {
+                setOnboardingDismissedThisSession(false);
+                setOnboardingModalOpen(true);
+              }}
+            />
+          )}
           {shouldShowPhoneReminder && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-900">Add your phone number to complete your account profile.</p>
@@ -564,6 +628,21 @@ export default function Layout({ children, currentPageName }) {
           {children}
         </div>
       </main>
+      <OnboardingSetupModal
+        open={onboardingModalOpen && shouldShowOnboardingReminder}
+        onClose={() => {
+          setOnboardingModalOpen(false);
+          setOnboardingDismissedThisSession(true);
+          trackOnboardingEvent({
+            eventKey: 'reminder_dismissed',
+            metadata: { surface: 'layout' }
+          }).catch(() => {});
+        }}
+        onboarding={onboarding}
+        currentUser={currentUser}
+        workflowMode={workflowMode}
+        onRefreshUser={refreshCurrentUser}
+      />
       <FeedbackWidget />
     </div>
   );

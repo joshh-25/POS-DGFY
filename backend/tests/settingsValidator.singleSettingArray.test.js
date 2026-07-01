@@ -39,6 +39,48 @@ describe('settings validator single-setting payload', () => {
     expect(res.json).toHaveBeenCalled();
   });
 
+  it('accepts structured storefront_hours with a long generated display for repository normalization', () => {
+    const longDisplay = Array.from({ length: 8 }, (_, index) => `Segment ${index + 1} 6:00 AM - 10:00 AM`).join('; ');
+    const day = {
+      enabled: true,
+      open: '06:00',
+      close: '22:00',
+      intervals: [
+        { open: '06:00', close: '10:00' },
+        { open: '11:00', close: '15:00' },
+        { open: '16:00', close: '22:00' }
+      ]
+    };
+    const req = {
+      params: { key: 'storefront_hours' },
+      body: {
+        value: {
+          mode: 'weekly',
+          timezone: 'Asia/Manila',
+          weekly: {
+            sun: day,
+            mon: day,
+            tue: day,
+            wed: day,
+            thu: day,
+            fri: day,
+            sat: day
+          },
+          display: longDisplay
+        }
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSingleSetting(req, res, next);
+
+    expect(longDisplay.length).toBeGreaterThan(120);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.value.display).toBe(longDisplay);
+  });
+
   it('rejects unsupported method keys when updating pos_order_method_fees via single-setting route', () => {
     const req = {
       params: { key: 'pos_order_method_fees' },
@@ -79,12 +121,16 @@ describe('settings validator single-setting payload', () => {
     expect(Array.isArray(req.validatedData.value)).toBe(true);
   });
 
-  it('accepts storefront_gallery_images backend-relative upload urls', () => {
+  it('accepts storefront_gallery_images with uploaded backend-local image URLs', () => {
     const req = {
       params: { key: 'storefront_gallery_images' },
       body: {
         value: [
-          { url: '/uploads/storefront-assets/t1/gallery-1.png', caption: 'Featured dish' }
+          {
+            url: '/uploads/storefront-assets/t1/gallery-uploaded.png',
+            path: 'storefront-assets/t1/gallery-uploaded.png',
+            caption: 'Uploaded dish'
+          }
         ]
       }
     };
@@ -95,10 +141,13 @@ describe('settings validator single-setting payload', () => {
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
-    expect(req.validatedData.value[0].url).toBe('/uploads/storefront-assets/t1/gallery-1.png');
+    expect(req.validatedData.value[0]).toEqual(expect.objectContaining({
+      url: '/uploads/storefront-assets/t1/gallery-uploaded.png',
+      path: 'storefront-assets/t1/gallery-uploaded.png'
+    }));
   });
 
-  it('drops storefront_gallery_images entries that have neither url nor path', () => {
+  it('rejects storefront_gallery_images entries that have neither url nor path', () => {
     const req = {
       params: { key: 'storefront_gallery_images' },
       body: {
@@ -112,34 +161,12 @@ describe('settings validator single-setting payload', () => {
 
     validateUpdateSingleSetting(req, res, next);
 
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.status).not.toHaveBeenCalled();
-    expect(req.validatedData.value).toEqual([]);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(res.json).toHaveBeenCalled();
   });
 
-  it('drops blank storefront_gallery_images placeholder rows on the single-setting route', () => {
-    const req = {
-      params: { key: 'storefront_gallery_images' },
-      body: {
-        value: [
-          { url: '', path: '', caption: '' },
-          { url: '/uploads/storefront-assets/t1/gallery-1.png', caption: 'Featured dish' }
-        ]
-      }
-    };
-    const res = createRes();
-    const next = jest.fn();
-
-    validateUpdateSingleSetting(req, res, next);
-
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.status).not.toHaveBeenCalled();
-    expect(req.validatedData.value).toEqual([
-      { url: '/uploads/storefront-assets/t1/gallery-1.png', path: '', caption: 'Featured dish' }
-    ]);
-  });
-
-  it('rejects storefront_gallery_images entries with non-http(s) url values', () => {
+  it('rejects storefront_gallery_images entries with unsafe url values', () => {
     const req = {
       params: { key: 'storefront_gallery_images' },
       body: {

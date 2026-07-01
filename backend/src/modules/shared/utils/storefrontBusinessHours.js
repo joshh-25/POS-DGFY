@@ -56,6 +56,11 @@ const toMinutesFrom24Hour = (value) => {
     return (Number.parseInt(match[1], 10) * 60) + Number.parseInt(match[2], 10);
 };
 
+const normalizeTime = (value, fallback) => {
+    const text = String(value || '').trim();
+    return TIME_24H_PATTERN.test(text) ? text : fallback;
+};
+
 const formatMinutes = (minutes) => {
     const safeMinutes = Number(minutes);
     if (!Number.isFinite(safeMinutes)) return '';
@@ -66,16 +71,30 @@ const formatMinutes = (minutes) => {
     return `${hour12}:${String(minute).padStart(2, '0')} ${meridiem}`;
 };
 
+const normalizeIntervals = (entry) => {
+    const source = Array.isArray(entry?.intervals) && entry.intervals.length > 0
+        ? entry.intervals
+        : [{ open: entry?.open, close: entry?.close }];
+    const intervals = source
+        .map((interval) => ({
+            open: normalizeTime(interval?.open, ''),
+            close: normalizeTime(interval?.close, '')
+        }))
+        .filter((interval) => interval.open && interval.close);
+    return intervals.length > 0 ? intervals : [{ open: '09:00', close: '18:00' }];
+};
+
 const normalizeDaySchedule = (entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-        return { enabled: false, open: '09:00', close: '18:00' };
+        return { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] };
     }
-    const open = TIME_24H_PATTERN.test(String(entry.open || '').trim()) ? String(entry.open).trim() : '09:00';
-    const close = TIME_24H_PATTERN.test(String(entry.close || '').trim()) ? String(entry.close).trim() : '18:00';
+    const intervals = normalizeIntervals(entry);
+    const first = intervals[0] || { open: '09:00', close: '18:00' };
     return {
         enabled: entry.enabled === true,
-        open,
-        close
+        open: first.open,
+        close: first.close,
+        intervals
     };
 };
 
@@ -87,9 +106,17 @@ const summarizeWeeklySchedule = (weekly) => {
         const label = current.start === current.end
             ? DAY_LABELS[current.start]
             : `${DAY_LABELS[current.start]}-${DAY_LABELS[current.end]}`;
-        const hoursLabel = current.openMinutes === current.closeMinutes
-            ? '24 hours'
-            : `${formatMinutes(current.openMinutes)} - ${formatMinutes(current.closeMinutes)}`;
+        const hoursLabel = current.intervals
+            .map((interval) => {
+                const openMinutes = toMinutesFrom24Hour(interval.open);
+                const closeMinutes = toMinutesFrom24Hour(interval.close);
+                if (openMinutes == null || closeMinutes == null) return '';
+                return openMinutes === closeMinutes
+                    ? '24 hours'
+                    : `${formatMinutes(openMinutes)} - ${formatMinutes(closeMinutes)}`;
+            })
+            .filter(Boolean)
+            .join(', ');
         segments.push(`${label} ${hoursLabel}`);
     };
 
@@ -100,15 +127,15 @@ const summarizeWeeklySchedule = (weekly) => {
             current = null;
             return;
         }
-        const openMinutes = toMinutesFrom24Hour(entry.open);
-        const closeMinutes = toMinutesFrom24Hour(entry.close);
-        const signature = `${openMinutes}-${closeMinutes}`;
+        const signature = (entry.intervals || [])
+            .map((interval) => `${toMinutesFrom24Hour(interval.open)}-${toMinutesFrom24Hour(interval.close)}`)
+            .join('|');
         if (current?.signature === signature) {
             current.end = dayKey;
             return;
         }
         pushCurrent();
-        current = { start: dayKey, end: dayKey, openMinutes, closeMinutes, signature };
+        current = { start: dayKey, end: dayKey, intervals: entry.intervals || [], signature };
     });
     pushCurrent();
 
@@ -224,19 +251,22 @@ const isDateWithinWeeklyHours = (date, schedule) => {
     const yesterday = schedule.weekly?.[yesterdayKey];
 
     if (today?.enabled) {
-        const startMinutes = toMinutesFrom24Hour(today.open);
-        const endMinutes = toMinutesFrom24Hour(today.close);
-        if (startMinutes != null && endMinutes != null) {
+        const matched = (today.intervals || []).some((interval) => {
+            const startMinutes = toMinutesFrom24Hour(interval.open);
+            const endMinutes = toMinutesFrom24Hour(interval.close);
+            if (startMinutes == null || endMinutes == null) return false;
             return isWithinWindow({ minutes, startMinutes, endMinutes });
-        }
+        });
+        if (matched) return true;
     }
 
     if (yesterday?.enabled) {
-        const startMinutes = toMinutesFrom24Hour(yesterday.open);
-        const endMinutes = toMinutesFrom24Hour(yesterday.close);
-        if (startMinutes != null && endMinutes != null && endMinutes < startMinutes && minutes <= endMinutes) {
-            return true;
-        }
+        const matched = (yesterday.intervals || []).some((interval) => {
+            const startMinutes = toMinutesFrom24Hour(interval.open);
+            const endMinutes = toMinutesFrom24Hour(interval.close);
+            return startMinutes != null && endMinutes != null && endMinutes < startMinutes && minutes <= endMinutes;
+        });
+        if (matched) return true;
     }
 
     return false;

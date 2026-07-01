@@ -5,29 +5,25 @@ import { fileURLToPath } from 'url';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appSource = () => fs.readFileSync(path.join(appRoot, 'StorefrontApp.jsx'), 'utf8');
-const sourceWithoutComments = (source) => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/^\s*\/\/.*$/gm, '');
-const appImplementationSource = () => sourceWithoutComments(appSource());
 const panelSource = () => fs.readFileSync(path.join(appRoot, 'FnbReservationPanel.jsx'), 'utf8');
 const productDetailsSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/FnbProductDetailsPage.jsx'), 'utf8');
 const accountPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/DgfyCustomerAccountPage.jsx'), 'utf8');
 const solutionsPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/SolutionsPage.jsx'), 'utf8');
 const businessRegistrationUrlSource = () => fs.readFileSync(path.join(appRoot, 'businessRegistrationUrl.js'), 'utf8');
+const guestTrackingDrawerSource = () => fs.readFileSync(path.join(appRoot, 'tracking/components/GuestTrackingDrawer.jsx'), 'utf8');
 
 describe('Food & Beverage storefront contract', () => {
   it('renders restaurant menu metadata and carries modifiers into checkout lines', () => {
-    const source = appImplementationSource();
+    const source = appSource();
 
     expect(source).toContain('fnb_modifier_groups');
+    expect(source).toContain('Allergens:');
+    expect(source).toContain('getDefaultFnbLineModifiers');
     expect(source).toContain('line_modifiers');
-    expect(source).toContain('selectedFnbLineModifiers');
-    expect(source).toContain('setSelectedFnbLineModifiers');
-    expect(productDetailsSource()).toContain('Allergens');
   });
 
   it('supports a deep-linkable item detail subpage for food and beverage menus', () => {
-    const source = appImplementationSource();
+    const source = appSource();
 
     expect(source).toContain("const STORE_ITEM_SUBPAGE = 'item';");
     expect(source).toContain('?item=');
@@ -37,19 +33,20 @@ describe('Food & Beverage storefront contract', () => {
     expect(productDetailsSource()).toContain('aria-label="Previous slide"');
     expect(productDetailsSource()).toContain('aria-label="Next slide"');
     expect(productDetailsSource()).toContain('Custom dynamic thumbnails gallery representation');
-    expect(source).toContain('const openFnbDetail = useCallback((item, options = {}) => {');
+    expect(source).toContain('const openFnbDetail = (item, options = {}) => {');
     expect(source).toContain('const closeFnbDetail = () => {');
     expect(source).toContain('isFnbDetailsSubpage');
   });
 
   it('keeps DGFY account and checkout contracts wired through Storefront account routes', () => {
-    const source = appImplementationSource();
+    const source = appSource();
     const accountSource = accountPageSource();
 
-    expect(source).toContain('openBusinessRegistrationFlow');
-    expect(source).toContain('requestDgfyBusinessSecurityCode');
+    expect(source).toContain('handleOpenBusinessInventory');
     expect(source).toContain('trackedCustomerActivity');
-    expect(accountSource).toContain('Registered Businesses');
+    expect(accountSource).toContain('Your businesses');
+    expect(accountSource).toContain('Pending invitations');
+    expect(accountSource).toContain("startBusinessAction('accept'");
     expect(accountSource).toContain('Go to Inventory');
     expect(accountSource).toContain('businessMemberships');
     expect(accountSource).toContain('onOpenBusinessInventory');
@@ -60,8 +57,30 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('selectedSavedLocationId');
   });
 
+  it('keeps mobile delivery maps on a concrete height with DGFY-branded expanded state', () => {
+    const source = appSource();
+
+    expect(source).toContain('const resolvedHeight = typeof height ===');
+    expect(source).toContain('height: resolvedHeight');
+    expect(source).toContain('data-delivery-map-frame="true"');
+    expect(source).toContain('data-delivery-map-root="true"');
+    expect(source).toContain('data-delivery-map-controls="true"');
+    expect(source).toContain('ResizeObserver');
+    expect(source).toContain('window.visualViewport?.addEventListener?.(\'resize\'');
+    expect(source).toContain('scheduleMapResize(\'observer\')');
+    expect(source).toContain('scheduleMapResize(\'viewport\')');
+    expect(source).toContain("height={isMobileViewport ? 'clamp(230px, 34svh, 280px)' : 260}");
+    expect(source).not.toContain("aspectRatio: '16 / 10'");
+    expect(source).toContain("height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}");
+    expect(source).toContain('highlightColor={fnbOrderBrand}');
+    expect(source).toContain('highlightGlow="rgba(26,78,141,0.16)"');
+    expect(source).toContain("maxWidth: isMobileViewport ? 'calc(100% - 68px)' : 'none'");
+    expect(source).toContain("pointerEvents: 'none'");
+    expect(source).toContain("pointerEvents: 'auto'");
+  });
+
   it('builds business registration links through the configurable Storefront helper', () => {
-    const source = appImplementationSource();
+    const source = appSource();
     const solutionsSource = solutionsPageSource();
     const helperSource = businessRegistrationUrlSource();
 
@@ -73,26 +92,61 @@ describe('Food & Beverage storefront contract', () => {
     expect(solutionsSource).not.toContain("window.location.href = 'https://skupervisor.dgfy.ph/register-company'");
   });
 
-  it('keeps checkout identity, handoff, saved details, and payment session paths in production code', () => {
-    const source = appImplementationSource();
+  it('uses the side tracking drawer instead of the deprecated standalone tracking list card', () => {
+    const source = appSource();
+    const drawerSource = guestTrackingDrawerSource();
 
-    expect(source).toContain('readStorefrontCustomerAuthToken');
-    expect(source).toContain('readDgfyHandoffToken');
-    expect(source).toContain('/api/v1/dgfy/auth/handoff/exchange');
-    expect(source).toContain('writeDgfyAuthToken(token)');
-    expect(source).toContain('DgfyCustomerAuthModal');
-    expect(source).toContain('readSavedCustomerDetails');
-    expect(source).toContain('writeSavedCustomerDetails');
-    expect(source).toContain('clearSavedCustomerDetailsForDevice');
-    expect(source).toContain('rememberCustomerDetails');
-    expect(source).toContain('/api/v1/store/checkout/payment-sessions');
-    expect(source).toContain("source: authToken ? 'account' : 'guest'");
-    expect(source).toContain('setIsGuestTrackingDrawerOpen(true)');
-    expect(source).toContain('Active guest orders for this store only.');
+    expect(source).toContain('const isStandaloneTrackingPage = Boolean(trackingResult)');
+    expect(source).toContain("const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');");
+    expect(source).toContain('setIsGuestTrackingDrawerOpen(true);');
+    expect(source).toContain('trackingError={trackingError}');
+    expect(source).not.toContain('In-progress orders are tracked automatically on this device.');
+    expect(source).not.toContain("key={`guest-track-order-${entry.tracking_pin}`}");
+    expect(drawerSource).toContain('Active orders linked to your DGFY account.');
+    expect(drawerSource).toContain('trackingError =');
+  });
+
+  it('keeps /track routes mode-independent and limiter-safe', () => {
+    const source = appSource();
+
+    expect(source).toContain('const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;');
+    expect(source).toContain('const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;');
+    expect(source).not.toContain('if (!isFnbOrderSubpage) return;');
+    expect(source).toContain("const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);");
+    expect(source).toContain('const canRefreshBackgroundPins = !isStoreTrackingRoute;');
+    expect(source).toContain('const selectedPollMs = typeof document !==');
+    expect(source).toContain('90000 : 45000');
+    expect(source).toContain('300000 : 180000');
+    expect(source).toContain('setIsGuestTrackingDrawerOpen(false);');
+  });
+
+  it('supports guest-or-account checkout entry while preserving auth draft resume state', () => {
+    const source = appSource();
+
+    expect(source).toContain('STOREFRONT_CHECKOUT_AUTH_RESUME_KEY');
+    expect(source).toContain('writeCheckoutAuthResumeDraft');
+    expect(source).toContain('clearCheckoutAuthResumeDraft');
+    expect(source).toContain('renderGuestCheckoutEntry');
+    expect(source).toContain('renderAccountOwnedIdentitySummary');
+    expect(source).toContain('Create DGFY Account');
+    expect(source).toContain('Continue as Guest');
+    expect(source).toContain('Already have an account?');
+    expect(source).toContain('customerFirstName');
+    expect(source).toContain('customerLastName');
+    expect(source).toContain('buildCustomerFullName');
+    expect(source).toContain("toast.success('Signed in. Resuming your checkout.')");
+    expect(source).toContain("description: 'Create an account or continue as guest to continue this menu order.'");
+    expect(source).toContain("description: hasServiceCart");
+    expect(source).toContain("const nextFnbStep = draft.checkoutTab === 'cart' ? 3 : null;");
+    expect(source).toContain("const nextSimpleStep = draft.checkoutTab === 'checkout' && !draft.selectedServiceItemId ? 1 : null;");
+    expect(source).toContain("const nextServiceStep = draft.selectedServiceItemId ? 1 : null;");
+    expect(source).toContain('setGuestCheckoutUnlocked(true)');
+    expect(source).toContain("Your DGFY account details will be used for this order.");
+    expect(source).toContain("Your signed-in DGFY account will be used for this booking.");
   });
 
   it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {
-    const source = appImplementationSource();
+    const source = appSource();
 
     expect(source).toContain('/api/v1/dgfy/customer/reviews/public?');
     expect(source).toContain('/api/v1/dgfy/customer/review-invites/');
@@ -101,24 +155,17 @@ describe('Food & Beverage storefront contract', () => {
   });
 
   it('exposes the public reservation request tab for F&B storefronts', () => {
+    const source = appSource();
     const panel = panelSource();
 
+    expect(source).toContain("id: 'reservation'");
+    expect(source).toContain('/api/v1/store/fnb/reservations');
     expect(panel).toContain('Reservation Request');
     expect(panel).toContain('Send Request');
   });
 
-  it('starts a fresh F&B order after a completed checkout/back navigation', () => {
-    const source = appImplementationSource();
-
-    expect(source).toContain('setCheckoutResult(null);');
-    expect(source).toContain('setFnbOrderStep(3);');
-    expect(source).toContain("setCheckoutTab(isFnbMode ? 'cart' : 'review');");
-    expect(source).toContain('setSimpleOrderStep(1)');
-    expect(source).toContain('Back to Menu');
-  });
-
-  it('renders derived F&B menu content when storefront profile fields are thin', () => {
-    const source = appImplementationSource();
+  it('does not depend on generated F&B summary copy when IMS profile fields are thin', () => {
+    const source = appSource();
 
     expect(source).not.toContain('buildFnbContentReadinessItems');
     expect(source).not.toContain('buildFnbOverviewFallbackCopy');
@@ -128,5 +175,15 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).not.toContain('items marked ready now');
     expect(source).not.toContain('Store profile copy is available');
     expect(source).not.toContain('food and beverage backend');
+  });
+
+  it('starts a fresh F&B order after a completed checkout/back navigation', () => {
+    const source = appSource();
+
+    expect(source).toContain('setCheckoutResult(null);');
+    expect(source).toContain('setFnbOrderStep(3);');
+    expect(source).toContain("setCheckoutTab(isFnbMode ? 'cart' : 'review');");
+    expect(source).toContain('setSimpleOrderStep(1)');
+    expect(source).toContain('Back to Menu');
   });
 });

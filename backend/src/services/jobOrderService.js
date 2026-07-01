@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
-import { createStockMovement } from './stockMovementService.js';
+import { consumeStockForProduction, receiveProducedStock } from '../modules/inventory/commands/stockCommandService.js';
 import { convertQuantity, areCompatible, normalizeUom } from '../utils/uomConverter.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 
@@ -493,7 +493,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
 
         // Use centralized service for consumption
         // PASS TRANSACTION 't'
-        const movement = await createStockMovement({
+        const movement = await consumeStockForProduction({
           item_id: item.item_id,
           quantity: quantityToConsume,
           movement_type: 'production_consumption',
@@ -533,7 +533,7 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
       // Create production output movement
       // Use createStockMovement with 'production_output' which handles positive addition
       // PASS TRANSACTION 't'
-      await createStockMovement({
+      await receiveProducedStock({
         item_id: product.item_id,
         quantity: qtyToProcess,
         movement_type: 'production_output',

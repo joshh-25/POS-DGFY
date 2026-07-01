@@ -652,6 +652,117 @@ describe('storefront F&B modifier checkout contract', () => {
     jest.useRealTimers();
   });
 
+  it('accepts scheduled checkout inside either split storefront business-hours interval', async () => {
+    const splitHours = {
+      mode: 'weekly',
+      timezone: 'Asia/Manila',
+      weekly: {
+        sun: { enabled: false, open: '09:00', close: '18:00' },
+        mon: {
+          enabled: true,
+          open: '06:00',
+          close: '12:00',
+          intervals: [
+            { open: '06:00', close: '12:00' },
+            { open: '13:00', close: '20:00' }
+          ]
+        },
+        tue: { enabled: true, open: '09:00', close: '18:00' },
+        wed: { enabled: true, open: '09:00', close: '18:00' },
+        thu: { enabled: true, open: '09:00', close: '18:00' },
+        fri: { enabled: true, open: '09:00', close: '18:00' },
+        sat: { enabled: true, open: '09:00', close: '18:00' }
+      },
+      display: 'Mon 6:00 AM - 12:00 PM, 1:00 PM - 8:00 PM'
+    };
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        { setting_key: 'storefront_hours', setting_value: JSON.stringify(splitHours) }
+      ])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const morning = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-hours-split-morning',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        scheduled_for: '2026-06-01T07:30:00+08:00',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+    const afternoon = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-hours-split-afternoon',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        scheduled_for: '2026-06-01T13:30:00+08:00',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(morning.error?.details?.reason_code).not.toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+    expect(afternoon.error?.details?.reason_code).not.toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+  });
+
+  it('rejects scheduled checkout in the closed gap between split storefront business-hours intervals', async () => {
+    const splitHours = {
+      mode: 'weekly',
+      timezone: 'Asia/Manila',
+      weekly: {
+        sun: { enabled: false, open: '09:00', close: '18:00' },
+        mon: {
+          enabled: true,
+          open: '06:00',
+          close: '12:00',
+          intervals: [
+            { open: '06:00', close: '12:00' },
+            { open: '13:00', close: '20:00' }
+          ]
+        },
+        tue: { enabled: true, open: '09:00', close: '18:00' },
+        wed: { enabled: true, open: '09:00', close: '18:00' },
+        thu: { enabled: true, open: '09:00', close: '18:00' },
+        fri: { enabled: true, open: '09:00', close: '18:00' },
+        sat: { enabled: true, open: '09:00', close: '18:00' }
+      },
+      display: 'Mon 6:00 AM - 12:00 PM, 1:00 PM - 8:00 PM'
+    };
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        { setting_key: 'storefront_hours', setting_value: JSON.stringify(splitHours) }
+      ])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-hours-split-gap',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        scheduled_for: '2026-06-01T12:30:00+08:00',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.details.reason_code).toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+  });
+
   it('does not block scheduled checkout when storefront hours are malformed', async () => {
     const repository = buildRepository([burgerItem], {
       getSettingsByKeys: jest.fn().mockResolvedValue([

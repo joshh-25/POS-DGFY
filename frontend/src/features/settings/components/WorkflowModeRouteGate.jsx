@@ -37,12 +37,12 @@ export default function WorkflowModeRouteGate({
   children
 }) {
   const location = useLocation();
-  const { loading, workflowMode } = useWorkflowMode();
+  const { loading, resolved, workflowMode } = useWorkflowMode();
 
-  if (loading) {
+  if (loading || !resolved) {
     return (
       <div className="flex items-center justify-center min-h-[220px] text-sm text-slate-500">
-        Loading workspace mode...
+        {loading ? 'Loading workspace mode...' : 'Unable to confirm workspace mode. Refresh and try again.'}
       </div>
     );
   }

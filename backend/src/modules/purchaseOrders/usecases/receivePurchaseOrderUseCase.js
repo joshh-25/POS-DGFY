@@ -2,7 +2,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPurchaseOrderUseCaseError } from './purchaseOrderUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
-import { createStockMovement } from '../../../services/stockMovementService.js';
+import { receivePurchasedStock } from '../../inventory/commands/stockCommandService.js';
 
 const parsePositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
@@ -12,7 +12,10 @@ const parsePositiveInt = (value) => {
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-export const buildReceivePurchaseOrderUseCase = ({ purchaseOrderRepository }) => {
+export const buildReceivePurchaseOrderUseCase = ({
+  purchaseOrderRepository,
+  inventoryCommandService = { receivePurchasedStock }
+}) => {
   return async ({ poId, receiptData, userId }) => {
     const normalizedPoId = parsePositiveInt(poId);
     const normalizedUserId = userId === undefined || userId === null ? null : parsePositiveInt(userId);
@@ -83,7 +86,7 @@ export const buildReceivePurchaseOrderUseCase = ({ purchaseOrderRepository }) =>
             expiry_date: receiptItem.expiry_date || lineItem.expiry_date || null
           }, { transaction });
 
-          await createStockMovement({
+          await inventoryCommandService.receivePurchasedStock({
             item_id: lineItem.item.item_id,
             quantity: receivingQty,
             movement_type: 'purchase_receipt',

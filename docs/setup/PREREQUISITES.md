@@ -342,7 +342,8 @@ Legacy SureBiz production domains remain supported while DNS and customer links 
 # Commit and push
 git add .
 git commit -m "Description of changes"
-git push origin master
+git push origin <feature-branch>
+# Then open a PR into staging. Do not push directly to master.
 ```
 
 #### 2. Deploy to Hosting Server

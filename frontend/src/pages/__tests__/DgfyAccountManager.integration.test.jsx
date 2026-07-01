@@ -8,6 +8,7 @@ import DgfyAccountManager from '../../../Pages/admin/DgfyAccountManager.jsx';
 const mocks = vi.hoisted(() => ({
   adminServiceMock: {
     listDgfyAccounts: vi.fn(),
+    createDgfyAccount: vi.fn(),
     getDgfyAccount: vi.fn(),
     updateDgfyAccountProfile: vi.fn(),
     suspendDgfyAccount: vi.fn(),
@@ -83,6 +84,7 @@ describe('DgfyAccountManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.adminServiceMock.listDgfyAccounts.mockResolvedValue(listPayload);
+    mocks.adminServiceMock.createDgfyAccount.mockResolvedValue({ data: { temporary_password: 'DgfyTemp123!' } });
     mocks.adminServiceMock.getDgfyAccount.mockResolvedValue({
       data: {
         account: activeAccount,
@@ -145,6 +147,28 @@ describe('DgfyAccountManager', () => {
     expect(screen.getByText('Risk review')).toBeTruthy();
   });
 
+  it('keeps account-only creation available and displays its temporary password once', async () => {
+    const user = userEvent.setup();
+    render(<DgfyAccountManager />);
+    await screen.findByText('Ada Lovelace');
+
+    await user.type(screen.getByPlaceholderText('First name'), 'Katherine');
+    await user.type(screen.getByPlaceholderText('Last name'), 'Johnson');
+    await user.type(screen.getByPlaceholderText('Email'), 'katherine@example.test');
+    await user.type(screen.getByPlaceholderText('Phone'), '+639333333333');
+    await user.type(screen.getByPlaceholderText('Audit reason'), 'Merchant onboarding');
+    await user.click(screen.getByRole('button', { name: /Create Account/i }));
+
+    await waitFor(() => expect(mocks.adminServiceMock.createDgfyAccount).toHaveBeenCalledWith(expect.objectContaining({
+      first_name: 'Katherine',
+      last_name: 'Johnson',
+      email: 'katherine@example.test',
+      phone: '+639333333333',
+      reason: 'Merchant onboarding'
+    })));
+    expect(await screen.findByText(/DgfyTemp123!/)).toBeTruthy();
+  });
+
   it('edits only name and phone fields', async () => {
     const user = userEvent.setup();
     render(<DgfyAccountManager />);
@@ -182,7 +206,7 @@ describe('DgfyAccountManager', () => {
 
     const suspendButton = await screen.findByRole('button', { name: 'Suspend Account' });
     expect(suspendButton.hasAttribute('disabled')).toBe(true);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Risk review' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /lifecycle reason/i }), { target: { value: 'Risk review' } });
     expect(suspendButton.hasAttribute('disabled')).toBe(false);
     await user.click(suspendButton);
 
@@ -192,7 +216,7 @@ describe('DgfyAccountManager', () => {
 
     const graceRow = screen.getByText('Grace Hopper').closest('tr');
     await user.click(within(graceRow).getAllByRole('button')[2]);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Support verified identity' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /lifecycle reason/i }), { target: { value: 'Support verified identity' } });
     await user.click(screen.getByRole('button', { name: 'Reactivate Account' }));
 
     await waitFor(() => {

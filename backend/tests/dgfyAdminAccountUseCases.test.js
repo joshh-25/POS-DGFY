@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import {
     buildGetAdminDgfyAccountUseCase,
+    buildCreateAdminProvisionedDgfyAccountUseCase,
     buildDeleteAdminDgfyAccountUseCase,
     buildListAdminDgfyAccountsUseCase,
     buildReactivateAdminDgfyAccountUseCase,
@@ -48,7 +49,9 @@ const createRepository = (account = createAccount()) => ({
     }),
     findAccountForAdmin: jest.fn().mockResolvedValue(account),
     listAdminAuditLogs: jest.fn().mockResolvedValue([]),
+    findByEmail: jest.fn().mockResolvedValue(null),
     findByPhone: jest.fn().mockResolvedValue(null),
+    create: jest.fn().mockImplementation(async (payload) => createAccount({ id: 'created-dgfy', ...payload })),
     updateAdminProfile: jest.fn().mockImplementation(async (_account, payload) => createAccount({ ...account, ...payload })),
     updateAdminLifecycle: jest.fn().mockImplementation(async (_account, isActive) => createAccount({ ...account, is_active: isActive })),
     deleteAdminAccount: jest.fn().mockImplementation(async (_account, payload) => createAccount({ ...account, ...payload })),
@@ -59,6 +62,43 @@ const createRepository = (account = createAccount()) => ({
 describe('dgfyAdminAccountUseCases', () => {
     beforeEach(() => {
         process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_for_ci_only_32_chars!';
+    });
+
+    it('creates an admin-provisioned DGFY account without OTP and returns the temporary password once', async () => {
+        const repository = createRepository();
+        const useCase = buildCreateAdminProvisionedDgfyAccountUseCase({
+            repository,
+            hashPassword: jest.fn(async (password) => `hashed:${password}`),
+            temporaryPasswordGenerator: () => 'TempPass123!'
+        });
+
+        const result = await useCase({
+            body: {
+                first_name: 'Maria',
+                last_name: 'Santos',
+                email: 'Maria@Example.test',
+                phone: '+639991112222',
+                reason: 'Merchant onboarding'
+            },
+            actor: { username: 'platform-admin' },
+            metadata: { request_id: 'req-1' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.payload.data.temporary_password).toBe('TempPass123!');
+        expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
+            email: 'maria@example.test',
+            email_verification_source: 'platform_admin_provisioned',
+            provisioning_status: 'admin_provisioned',
+            temporary_password_active: true
+        }), { transaction: 'tx' });
+        expect(repository.createAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'admin_create_dgfy_account',
+            reason: 'Merchant onboarding',
+            after_snapshot: expect.not.objectContaining({
+                password_hash: expect.anything()
+            })
+        }), { transaction: 'tx' });
     });
 
     it('lists admin DGFY accounts with pagination and summary', async () => {

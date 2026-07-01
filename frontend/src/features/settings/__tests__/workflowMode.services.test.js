@@ -3,6 +3,7 @@ import {
   DEFAULT_WORKFLOW_MODE,
   getWorkflowModeLabel,
   getWorkflowModePinMeta,
+  isWorkflowPageModeSensitive,
   isWorkflowPageVisible,
   isWorkflowPathBlocked,
   modeHasCapability,
@@ -57,6 +58,16 @@ describe('Services and Food Manufacturing workflow modes', () => {
     expect(isWorkflowPageVisible('DispatchOrders', 'fnb')).toBe(false);
     expect(isWorkflowPathBlocked('/fnb', 'retail')).toBe(true);
     expect(isWorkflowPathBlocked('/job-orders', 'fnb')).toBe(true);
+  });
+
+  it('marks mode-dependent navigation as sensitive until workflow mode resolves', () => {
+    expect(isWorkflowPageModeSensitive('JobOrders')).toBe(true);
+    expect(isWorkflowPageModeSensitive('DispatchOrders')).toBe(true);
+    expect(isWorkflowPageModeSensitive('Fnb')).toBe(true);
+    expect(isWorkflowPageModeSensitive('Services')).toBe(true);
+    expect(isWorkflowPageModeSensitive('Hospitality')).toBe(true);
+    expect(isWorkflowPageModeSensitive('Dashboard')).toBe(false);
+    expect(isWorkflowPageModeSensitive('Items')).toBe(false);
   });
 
   it('keeps Hospitality PMS-native and hides unrelated mode consoles', () => {

@@ -25,12 +25,10 @@ import {
     isPlatformControlledPosSoftwareKey,
     isTenantReviewedPosReceiptKey
 } from './posReceiptMetadataApprovalPolicy.js';
-import { hashTerminalRegistrySecrets } from './posTerminalRegistrySecrets.js';
 import {
-    POS_SETTINGS_ACCESS_PIN_HASH_KEY,
-    assertPosSettingsAccessPinAuthorization,
-    resolvePosSettingsAccessPinPatch
-} from './posSettingsAccessPinPolicy.js';
+    cleanupOmittedStorefrontGalleryAssets,
+    snapshotStorefrontGalleryCleanup
+} from './storefrontGalleryAssetCleanup.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -49,7 +47,7 @@ const getTenantComplianceSnapshot = () => {
     };
 };
 
-export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
+export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontAssetStorage = null }) => {
     return async ({ key, value, actorUser = null }) => {
         if (!key || typeof key !== 'string') {
             return fail(new DomainError(
@@ -68,10 +66,6 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
         try {
             let normalizedValue = value;
             let strictBindingRegistryPatch = null;
-            const pinSettingsData = key === POS_SETTINGS_ACCESS_PIN_HASH_KEY
-                ? { [POS_SETTINGS_ACCESS_PIN_HASH_KEY]: normalizedValue }
-                : {};
-            assertPosSettingsAccessPinAuthorization({ actorUser, settingsData: pinSettingsData });
             if (key === PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY) {
                 return fail(new DomainError(
                     DomainErrorCode.AUTHORIZATION_FAILED,
@@ -166,26 +160,6 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
                 await assertStrictBindingReadiness({ settingsRepository });
             }
 
-            if (key === POS_TERMINAL_REGISTRY_KEY) {
-                const currentRegistrySetting = typeof settingsRepository?.getSettingsByKeys === 'function'
-                    ? await settingsRepository.getSettingsByKeys([POS_TERMINAL_REGISTRY_KEY])
-                    : {};
-                normalizedValue = await hashTerminalRegistrySecrets({
-                    incomingEntries: normalizedValue,
-                    currentEntries: currentRegistrySetting?.[POS_TERMINAL_REGISTRY_KEY]?.value || []
-                });
-            }
-            if (key === POS_SETTINGS_ACCESS_PIN_HASH_KEY) {
-                const currentPinSetting = typeof settingsRepository?.getSettingsByKeys === 'function'
-                    ? await settingsRepository.getSettingsByKeys([POS_SETTINGS_ACCESS_PIN_HASH_KEY])
-                    : {};
-                const normalizedPatch = await resolvePosSettingsAccessPinPatch({
-                    settingsData: { [POS_SETTINGS_ACCESS_PIN_HASH_KEY]: normalizedValue },
-                    currentHash: currentPinSetting?.[POS_SETTINGS_ACCESS_PIN_HASH_KEY]?.value || ''
-                });
-                normalizedValue = normalizedPatch[POS_SETTINGS_ACCESS_PIN_HASH_KEY] || '';
-            }
-
             const tenant = getTenantComplianceSnapshot();
             if (tenant?.id) {
                 const changedSettingKeys = await resolveChangedSettingKeys({
@@ -223,7 +197,16 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
                 await settingsRepository.updateSettingByKey(POS_TERMINAL_REGISTRY_KEY, strictBindingRegistryPatch);
             }
 
+            const omittedStorefrontGalleryPaths = await snapshotStorefrontGalleryCleanup({
+                settingsRepository,
+                settingsData: { [key]: normalizedValue }
+            });
+
             const updatedSetting = await settingsRepository.updateSettingByKey(key, normalizedValue);
+            await cleanupOmittedStorefrontGalleryAssets({
+                omittedPaths: omittedStorefrontGalleryPaths,
+                storefrontAssetStorage
+            });
             return ok(updatedSetting);
         } catch (error) {
             return fail(mapSettingsUseCaseError(error, 'Failed to update setting'));

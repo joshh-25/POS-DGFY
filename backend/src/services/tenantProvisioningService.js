@@ -31,6 +31,45 @@ const CUSTOMER_ACCESS_MODE_SETTING_KEY = 'customer_access_mode';
 const INVENTORY_DISPLAY_MODE_SETTING_KEY = 'inventory_display_mode';
 const INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_SETTING_KEY = 'inventory_low_stock_display_threshold';
 
+const parsePositiveId = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const readInsertId = (...candidates) => {
+    for (const candidate of candidates) {
+        const direct = parsePositiveId(candidate?.insertId);
+        if (direct) return direct;
+        if (Array.isArray(candidate)) {
+            for (const entry of candidate) {
+                const nested = parsePositiveId(entry?.insertId ?? entry?.user_id);
+                if (nested) return nested;
+            }
+        }
+    }
+    return null;
+};
+
+export const resolveSeededAdminUserId = async ({
+    tenantSequelize,
+    insertResult,
+    insertMetadata,
+    email
+}) => {
+    const fromInsert = readInsertId(insertResult, insertMetadata);
+    if (fromInsert) return fromInsert;
+
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!tenantSequelize || !normalizedEmail) return null;
+
+    const [rows] = await tenantSequelize.query(
+        'SELECT user_id FROM users WHERE LOWER(email) = ? ORDER BY user_id DESC LIMIT 1',
+        { replacements: [normalizedEmail] }
+    );
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return parsePositiveId(row?.user_id);
+};
+
 const buildRegisteredOnboardingProgress = () => ({
     step_payloads: {
         business_classification: {
@@ -336,14 +375,12 @@ export const provisionTenant = async (options) => {
                     replacements: [founderUsername, email, phoneNumber, passwordHash, adminDefaultPermissions]
                 }
             );
-            const insertedAdminUserId = adminInsertResult?.insertId || adminInsertMetadata?.insertId || null;
-            const [[seededAdminUser] = []] = await tenantSequelize.query(
-                'SELECT user_id FROM users WHERE email = ? ORDER BY user_id ASC LIMIT 1',
-                {
-                    replacements: [email]
-                }
-            );
-            const adminUserId = insertedAdminUserId || seededAdminUser?.user_id || null;
+            const adminUserId = await resolveSeededAdminUserId({
+                tenantSequelize,
+                insertResult: adminInsertResult,
+                insertMetadata: adminInsertMetadata,
+                email
+            });
 
             const seededWorkflowMode = await seedWorkflowModeSetting(tenantSequelize, normalizedWorkflowMode);
             logger.info('[Provisioning] Workflow mode setting seeded', {

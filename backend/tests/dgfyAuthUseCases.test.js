@@ -1,8 +1,10 @@
 import { jest } from '@jest/globals';
+import jwt from 'jsonwebtoken';
 import {
     buildAcceptDgfyInvitationUseCase,
     buildChangeDgfyPasswordUseCase,
     buildCompleteDgfyPasswordResetUseCase,
+    buildCreateDgfyInvitationUseCase,
     buildCreateDgfyHandoffUseCase,
     buildExchangeDgfyHandoffUseCase,
     buildGetDgfyMeUseCase,
@@ -12,13 +14,16 @@ import {
     buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildSearchDgfyBusinessAccountsUseCase,
     buildStartDgfyPosSessionUseCase,
     buildStartDgfyTenantSessionUseCase,
     buildSwitchDgfyCompanyUseCase,
     buildTransferDgfyCompanyOwnershipUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
-    buildRegisterDgfyAccountUseCase
+    buildPreflightDgfyAccountRegistrationUseCase,
+    buildRegisterDgfyAccountUseCase,
+    generateDgfyToken
 } from '../src/modules/dgfy/usecases/dgfyAuthUseCases.js';
 import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalTerms.js';
 
@@ -42,6 +47,123 @@ const createAccount = (overrides = {}) => ({
 describe('dgfyAuthUseCases', () => {
     beforeEach(() => {
         process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_for_ci_only_32_chars!';
+    });
+
+    describe('preflight DGFY account registration', () => {
+        it('returns available when email and phone are unused', async () => {
+            const repository = {
+                findByEmail: jest.fn().mockResolvedValue(null),
+                findByPhone: jest.fn().mockResolvedValue(null)
+            };
+            const useCase = buildPreflightDgfyAccountRegistrationUseCase({ repository });
+
+            const result = await useCase({
+                body: {
+                    email: 'ADA@EXAMPLE.TEST',
+                    phone: '+63 912 345 6789'
+                }
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data.payload).toMatchObject({
+                success: true,
+                data: { available: true },
+                message: 'DGFY registration credentials are available.'
+            });
+            expect(repository.findByEmail).toHaveBeenCalledWith('ada@example.test');
+            expect(repository.findByPhone).toHaveBeenCalledWith('+63 912 345 6789');
+        });
+
+        it('rejects duplicate email before checking phone', async () => {
+            const repository = {
+                findByEmail: jest.fn().mockResolvedValue(createAccount()),
+                findByPhone: jest.fn()
+            };
+            const useCase = buildPreflightDgfyAccountRegistrationUseCase({ repository });
+
+            const result = await useCase({
+                body: {
+                    email: 'ada@example.test',
+                    phone: '+63 912 345 6789'
+                }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(409);
+            expect(result.error.message).toBe('A DGFY account already exists with this email.');
+            expect(result.error.details).toEqual({
+                error_code: 'DGFY_ACCOUNT_ALREADY_EXISTS',
+                field: 'email'
+            });
+            expect(repository.findByPhone).not.toHaveBeenCalled();
+        });
+
+        it('rejects duplicate phone when email is unused', async () => {
+            const repository = {
+                findByEmail: jest.fn().mockResolvedValue(null),
+                findByPhone: jest.fn().mockResolvedValue(createAccount({ id: 'dgfy-phone' }))
+            };
+            const useCase = buildPreflightDgfyAccountRegistrationUseCase({ repository });
+
+            const result = await useCase({
+                body: {
+                    email: 'new@example.test',
+                    phone: '+63 912 345 6789'
+                }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(409);
+            expect(result.error.message).toBe('A DGFY account already exists with this phone number.');
+            expect(result.error.details).toEqual({
+                error_code: 'DGFY_ACCOUNT_ALREADY_EXISTS',
+                field: 'phone'
+            });
+        });
+
+        it('rejects invalid credentials without repository lookups', async () => {
+            const repository = {
+                findByEmail: jest.fn(),
+                findByPhone: jest.fn()
+            };
+            const useCase = buildPreflightDgfyAccountRegistrationUseCase({ repository });
+
+            const result = await useCase({
+                body: {
+                    email: 'not-an-email',
+                    phone: '+63 912 345 6789'
+                }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(400);
+            expect(repository.findByEmail).not.toHaveBeenCalled();
+            expect(repository.findByPhone).not.toHaveBeenCalled();
+        });
+    });
+
+    it('mints unique normal DGFY session tokens for immediate re-login after logout', () => {
+        const account = createAccount();
+
+        const firstToken = generateDgfyToken(account);
+        const secondToken = generateDgfyToken(account);
+        const firstDecoded = jwt.decode(firstToken);
+        const secondDecoded = jwt.decode(secondToken);
+
+        expect(secondToken).not.toBe(firstToken);
+        expect(firstDecoded).toMatchObject({
+            token_scope: 'dgfy',
+            dgfy_account_id: account.id,
+            email: account.email
+        });
+        expect(secondDecoded).toMatchObject({
+            token_scope: 'dgfy',
+            dgfy_account_id: account.id,
+            email: account.email
+        });
+        expect(firstDecoded.jti).toEqual(expect.any(String));
+        expect(secondDecoded.jti).toEqual(expect.any(String));
+        expect(secondDecoded.jti).not.toBe(firstDecoded.jti);
     });
 
     it('creates a global DGFY account with username seeded from first name', async () => {
@@ -764,7 +886,9 @@ describe('dgfyAuthUseCases', () => {
         expect(result.success).toBe(true);
         expect(comparePassword).toHaveBeenCalledWith('password123', account.password_hash);
         expect(hashPassword).toHaveBeenCalledWith('new-password123');
-        expect(updatePassword).toHaveBeenCalledWith(account, 'hashed-new-password');
+        expect(updatePassword).toHaveBeenCalledWith(account, 'hashed-new-password', {
+            temporary_password_active: false
+        });
     });
 
     it('requests DGFY password reset generically but only sends OTP for active accounts', async () => {
@@ -827,7 +951,9 @@ describe('dgfyAuthUseCases', () => {
             code: '123456',
             tenantId: null
         }));
-        expect(updatePassword).toHaveBeenCalledWith(account, 'hashed-reset-password');
+        expect(updatePassword).toHaveBeenCalledWith(account, 'hashed-reset-password', {
+            temporary_password_active: false
+        });
     });
 
     it('returns linked company memberships for the account profile', async () => {
@@ -863,6 +989,137 @@ describe('dgfyAuthUseCases', () => {
                 company: expect.objectContaining({ name: 'Ada Foods' })
             })
         ]);
+    });
+
+    it('rejects short DGFY account search queries before repository lookup', async () => {
+        const repository = {
+            searchActiveAccounts: jest.fn()
+        };
+        const useCase = buildSearchDgfyBusinessAccountsUseCase({ repository });
+
+        const result = await useCase({ query: 'a', tenantId: 'tenant-1' });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.message).toBe('Search requires at least 2 characters.');
+        expect(repository.searchActiveAccounts).not.toHaveBeenCalled();
+    });
+
+    it('returns safe active DGFY account search results with membership state', async () => {
+        const accounts = [{
+            dgfy_account_id: 'dgfy-new',
+            display_name: 'Ada Lovelace',
+            email: 'ada@example.test',
+            masked_phone: '+63******6789',
+            account_status: 'active',
+            membership_status: null,
+            already_connected: false
+        }, {
+            dgfy_account_id: 'dgfy-pending',
+            display_name: 'Grace Hopper',
+            email: 'grace@example.test',
+            masked_phone: '+63******1111',
+            account_status: 'active',
+            membership_status: 'pending',
+            already_connected: true
+        }];
+        const repository = {
+            searchActiveAccounts: jest.fn().mockResolvedValue(accounts)
+        };
+        const useCase = buildSearchDgfyBusinessAccountsUseCase({ repository });
+
+        const result = await useCase({ query: ' ADA ', tenantId: 'tenant-1' });
+
+        expect(result.success).toBe(true);
+        expect(repository.searchActiveAccounts).toHaveBeenCalledWith('ADA', { tenantId: 'tenant-1' });
+        expect(result.data.payload.data.accounts).toEqual(accounts);
+        expect(JSON.stringify(result.data.payload)).not.toContain('company_token');
+    });
+
+    it('creates a DGFY invitation and reports successful email delivery plus account visibility', async () => {
+        const account = createAccount();
+        const membership = {
+            id: 91,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-1',
+            tenant_user_id: 7,
+            role: 'staff',
+            status: 'pending',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-1',
+                name: 'Ada Foods',
+                status: 'active'
+            }
+        };
+        const repository = {
+            createInvitationForDgfyAccount: jest.fn().mockResolvedValue({ account, membership }),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const sendEmail = jest.fn().mockResolvedValue(null);
+        const useCase = buildCreateDgfyInvitationUseCase({ repository, sendEmail });
+
+        const result = await useCase({
+            tenant: { id: 'tenant-1', company_token: 'secret-token', name: 'Ada Foods' },
+            adminUser: { user_id: 1, username: 'Admin', is_master_admin: true },
+            body: { dgfy_account_id: account.id, role: 'staff' },
+            metadata: { request_id: 'req-invite-created' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+            to: account.email,
+            subject: 'Invitation to join Ada Foods on DGFY',
+            text: expect.stringContaining('open My Account > Business')
+        }));
+        expect(result.data.payload.data.email_sent).toBe(true);
+        expect(result.data.payload.data.delivery_error).toBeNull();
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'invitation_created',
+            result: 'success',
+            request_id: 'req-invite-created'
+        }));
+        expect(JSON.stringify(result.data.payload)).not.toContain('secret-token');
+    });
+
+    it('creates the DGFY invitation even when email delivery fails and returns delivery diagnostics', async () => {
+        const account = createAccount();
+        const membership = {
+            id: 92,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-1',
+            tenant_user_id: 8,
+            role: 'staff',
+            status: 'pending',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-1',
+                name: 'Ada Foods',
+                status: 'active'
+            }
+        };
+        const repository = {
+            createInvitationForDgfyAccount: jest.fn().mockResolvedValue({ account, membership }),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const sendEmail = jest.fn().mockRejectedValue(new Error('SMTP unavailable'));
+        const useCase = buildCreateDgfyInvitationUseCase({ repository, sendEmail });
+
+        const result = await useCase({
+            tenant: { id: 'tenant-1', company_token: 'secret-token', name: 'Ada Foods' },
+            adminUser: { user_id: 1, username: 'Admin', is_master_admin: true },
+            body: { dgfy_account_id: account.id, role: 'staff' },
+            metadata: { request_id: 'req-invite-email-failed' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.payload.data.email_sent).toBe(false);
+        expect(result.data.payload.data.delivery_error).toBe('SMTP unavailable');
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'invitation_created',
+            result: 'success',
+            request_id: 'req-invite-email-failed'
+        }));
     });
 
     it('rejects invitation acceptance without a valid membership id', async () => {

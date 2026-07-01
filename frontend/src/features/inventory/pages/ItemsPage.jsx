@@ -1400,7 +1400,10 @@ export default function Items() {
 
       let savedItem = null;
       if (isEditingExistingItem) {
-        if (Object.keys(itemPayload).length > 0) {
+        if (editingItem.status === 'draft' && itemPayload.status === 'active') {
+          savedItem = await finalizeItem(editingItem.item_id, itemPayload);
+          toast.success('Item finalized successfully');
+        } else if (Object.keys(itemPayload).length > 0) {
           savedItem = await updateItem(editingItem.item_id, itemPayload);
           toast.success('Item updated successfully');
         } else {

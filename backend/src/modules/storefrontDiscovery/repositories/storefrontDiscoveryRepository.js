@@ -10,7 +10,8 @@ import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storef
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
 import {
     formatStorefrontBusinessHoursDisplay,
-    getStorefrontBusinessHoursStatus
+    getStorefrontBusinessHoursStatus,
+    normalizeStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';
 import { publicSearchTextMatches } from '../../shared/utils/publicSearchAliasPolicy.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
@@ -375,13 +376,14 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSign
         })
     });
 
+    const normalizedStorefrontHours = normalizeStorefrontBusinessHours(settingsMap.storefront_hours);
     const storefrontHoursStatus = getStorefrontBusinessHoursStatus(settingsMap.storefront_hours);
     const settingsPayload = {
         storefront_tagline: toTrimmedString(settingsMap.storefront_tagline, 120),
         storefront_about: toTrimmedString(settingsMap.storefront_about, 1000),
         storefront_phone: toTrimmedString(settingsMap.storefront_phone, 50),
         storefront_email: toTrimmedString(settingsMap.storefront_email, 120),
-        storefront_hours: toTrimmedString(formatStorefrontBusinessHoursDisplay(settingsMap.storefront_hours), 120),
+        storefront_hours: normalizedStorefrontHours,
         storefront_hours_status: storefrontHoursStatus,
         storefront_why_choose_us: whyChooseUs,
         storefront_social_links: social,
@@ -1096,7 +1098,9 @@ export const storefrontDiscoveryRepository = {
                     'access_limitation_reason',
                     'customer_access_modes_enabled',
                     'store_has_no_location',
-                    'map_publication_disabled'
+                    'map_publication_disabled',
+                    'storefront_hours',
+                    'storefront_hours_status'
                 ].includes(key)
             )));
         }

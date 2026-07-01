@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeStorefrontPageModel } from '../normalizeStorefrontPageModel.js';
-import { findCanonicalStorefrontSlug } from '../StorefrontApp.jsx';
+import { buildStorefrontSlugFallbackQueries, findCanonicalStorefrontSlug } from '../StorefrontApp.jsx';
 
 describe('normalizeStorefrontPageModel', () => {
   it('derives service mode metadata and section visibility from storefront content', () => {
@@ -39,6 +39,105 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.sections.supporting.hasPromo).toBe(true);
     expect(model.sections.supporting.hasReviews).toBe(true);
     expect(model.sections.supporting.hasGallery).toBe(true);
+  });
+
+  it('preserves external, backend-local, and path-only storefront gallery images', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_gallery_images: [
+          { url: 'https://cdn.example.com/external.jpg', caption: 'External' },
+          { url: '/uploads/storefront-assets/t1/local-url.png', caption: 'Local URL' },
+          { path: 'storefront-assets/t1/path-only.png', caption: 'Path only' }
+        ]
+      },
+      catalog: []
+    });
+
+    expect(model.supporting.galleryImages).toEqual([
+      expect.objectContaining({ url: 'https://cdn.example.com/external.jpg' }),
+      expect.objectContaining({ url: '/uploads/storefront-assets/t1/local-url.png' }),
+      expect.objectContaining({ url: '/uploads/storefront-assets/t1/path-only.png' })
+    ]);
+    expect(model.hero.galleryPreview).toEqual([
+      'https://cdn.example.com/external.jpg',
+      '/uploads/storefront-assets/t1/local-url.png',
+      '/uploads/storefront-assets/t1/path-only.png'
+    ]);
+  });
+
+  it('prefers uploaded local gallery paths over stale external urls on the same row', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_gallery_images: [
+          {
+            url: 'https://file.notion.so/f/example/expired.png',
+            path: 'storefront-assets/masu/gallery-uploaded.png',
+            caption: 'Uploaded gallery image'
+          }
+        ]
+      },
+      catalog: []
+    });
+
+    expect(model.supporting.galleryImages).toEqual([
+      expect.objectContaining({
+        url: '/uploads/storefront-assets/masu/gallery-uploaded.png',
+        caption: 'Uploaded gallery image'
+      })
+    ]);
+    expect(model.hero.galleryPreview).toEqual([
+      '/uploads/storefront-assets/masu/gallery-uploaded.png'
+    ]);
+  });
+
+  it('omits expired signed gallery urls with placeholder local paths', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_gallery_images: [
+          {
+            url: 'https://file.notion.so/f/example/expired.png?expirationTimestamp=1000',
+            path: 'storefront-assets/tenant/gallery',
+            caption: 'Expired gallery image'
+          }
+        ]
+      },
+      catalog: []
+    });
+
+    expect(model.supporting.galleryImages).toEqual([]);
+    expect(model.hero.galleryPreview).toEqual([]);
+    expect(model.sections.supporting.hasGallery).toBe(false);
+  });
+
+  it('formats structured storefront hours for the tenant page model', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_hours: {
+          mode: 'weekly',
+          timezone: 'Asia/Manila',
+          weekly: {
+            sun: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] },
+            mon: { enabled: true, open: '06:00', close: '20:00', intervals: [{ open: '06:00', close: '12:00' }, { open: '13:00', close: '20:00' }] },
+            tue: { enabled: true, open: '06:00', close: '20:00', intervals: [{ open: '06:00', close: '12:00' }, { open: '13:00', close: '20:00' }] },
+            wed: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] },
+            thu: { enabled: true, open: '10:00', close: '18:00', intervals: [{ open: '10:00', close: '18:00' }] },
+            fri: { enabled: true, open: '10:00', close: '18:00', intervals: [{ open: '10:00', close: '18:00' }] },
+            sat: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] }
+          }
+        },
+        storefront_hours_status: { display: 'Mon-Sat 9:00 AM - 6:00 PM' }
+      },
+      catalog: []
+    });
+
+    expect(model.hero.hours).toBe('Mon-Tue 6:00 AM - 12:00 PM, 1:00 PM - 8:00 PM; Thu-Fri 10:00 AM - 6:00 PM');
+    expect(model.hero.contactRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Hours', value: model.hero.hours })
+    ]));
   });
 
   it('collapses optional sections when storefront data is missing', () => {
@@ -118,5 +217,17 @@ describe('normalizeStorefrontPageModel', () => {
     expect(findCanonicalStorefrontSlug('abeezee', [
       { slug: 'abeezee-bb983b', tenant_name: 'ABeeZee' }
     ])).toBe('abeezee-bb983b');
+  });
+
+  it('builds discovery fallback queries for stale hash storefront slugs', () => {
+    expect(buildStorefrontSlugFallbackQueries('space-bar-2193ed')).toEqual([
+      'space-bar-2193ed',
+      'space-bar',
+      'space bar',
+      'space bar 2193ed'
+    ]);
+    expect(findCanonicalStorefrontSlug('space bar', [
+      { slug: 'space-bar-8ddb33', tenant_name: 'Space Bar' }
+    ])).toBe('space-bar-8ddb33');
   });
 });

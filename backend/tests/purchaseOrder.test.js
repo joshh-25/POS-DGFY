@@ -5,6 +5,7 @@ import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
 import { PERMISSIONS } from '../src/config/permissions.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
+import { generateToken, hashPassword } from '../src/services/authService.js';
 
 jest.setTimeout(120000);
 
@@ -41,31 +42,18 @@ describe('Purchase Order API', () => {
             password: 'Password123!'
         };
 
-        await request(app)
-            .post('/api/v1/auth/register')
-            .set('x-company-token', tenantCtx.token)
-            .send(userData)
-            .expect(201);
+        const user = await tenantCtx.models.User.create({
+            username: userData.username,
+            email: userData.email,
+            phone_number: userData.phone_number,
+            password_hash: await hashPassword(userData.password),
+            role: 'manager',
+            permissions: [PERMISSIONS.ORDERS.actions.CREATE_PO],
+            is_active: true
+        });
 
-        await tenantCtx.models.User.update(
-            {
-                role: 'manager',
-                permissions: [PERMISSIONS.ORDERS.actions.CREATE_PO]
-            },
-            { where: { email: userData.email } }
-        );
-
-        const loginRes = await request(app)
-            .post('/api/v1/auth/login')
-            .set('x-company-token', tenantCtx.token)
-            .send({
-                email: userData.email,
-                password: userData.password
-            })
-            .expect(200);
-
-        token = loginRes.body.data.token;
-        userId = loginRes.body.data.user_id;
+        token = generateToken(user, { tenantId: tenantCtx.tenant.id });
+        userId = user.user_id;
 
         const supplier = await tenantCtx.models.Supplier.create({
             name: `Test Supplier ${stamp}`,

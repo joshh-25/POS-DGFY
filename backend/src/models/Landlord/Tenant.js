@@ -126,6 +126,16 @@ export default (sequelize) => {
                 key: 'id'
             }
         },
+        provisioning_source: {
+            type: DataTypes.ENUM('public_registration', 'platform_admin'),
+            allowNull: false,
+            defaultValue: 'public_registration'
+        },
+        ownership_status: {
+            type: DataTypes.ENUM('claimed', 'unassigned', 'handover_pending'),
+            allowNull: false,
+            defaultValue: 'claimed'
+        },
         ownership_transferred_at: {
             type: DataTypes.DATE,
             allowNull: true

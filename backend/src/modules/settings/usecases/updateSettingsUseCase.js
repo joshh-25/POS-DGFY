@@ -25,12 +25,10 @@ import {
     isPlatformControlledPosSoftwareKey,
     isTenantReviewedPosReceiptKey
 } from './posReceiptMetadataApprovalPolicy.js';
-import { hashTerminalRegistrySecrets } from './posTerminalRegistrySecrets.js';
 import {
-    POS_SETTINGS_ACCESS_PIN_HASH_KEY,
-    assertPosSettingsAccessPinAuthorization,
-    resolvePosSettingsAccessPinPatch
-} from './posSettingsAccessPinPolicy.js';
+    cleanupOmittedStorefrontGalleryAssets,
+    snapshotStorefrontGalleryCleanup
+} from './storefrontGalleryAssetCleanup.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -149,7 +147,7 @@ const extractTenantReviewedPosReceiptChanges = async ({ settingsRepository, sett
     return { settingsData: nextSettingsData, pendingReviewKeys };
 };
 
-export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
+export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAssetStorage = null }) => {
     return async ({ settingsData, actorUser = null }) => {
         if (!settingsData || typeof settingsData !== 'object' || Array.isArray(settingsData)) {
             return fail(new DomainError(
@@ -168,7 +166,6 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
 
             assertTenantSettingsDoNotMutatePlatformAccessCeiling({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
-            assertPosSettingsAccessPinAuthorization({ settingsData, actorUser });
             await assertPublicStorefrontHandlePatch({ settingsData, settingsRepository });
             if (
                 Object.prototype.hasOwnProperty.call(settingsData, 'store_tenant_slug')
@@ -176,17 +173,6 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
             ) {
                 await settingsRepository.reservePublicStorefrontHandle(settingsData.store_tenant_slug);
             }
-            const currentPinHashSetting = (
-                Object.prototype.hasOwnProperty.call(settingsData, 'pos_settings_access_pin')
-                || Object.prototype.hasOwnProperty.call(settingsData, 'clear_pos_settings_access_pin')
-                || Object.prototype.hasOwnProperty.call(settingsData, POS_SETTINGS_ACCESS_PIN_HASH_KEY)
-            ) && typeof settingsRepository?.getSettingsByKeys === 'function'
-                ? await settingsRepository.getSettingsByKeys([POS_SETTINGS_ACCESS_PIN_HASH_KEY])
-                : {};
-            settingsData = await resolvePosSettingsAccessPinPatch({
-                settingsData,
-                currentHash: currentPinHashSetting?.[POS_SETTINGS_ACCESS_PIN_HASH_KEY]?.value || ''
-            });
             const requestedStrictBinding = settingsData[POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY] === true;
             const currentBindingSetting = requestedStrictBinding
                 && typeof settingsRepository?.getSettingsByKeys === 'function'
@@ -210,16 +196,6 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
 
             if (requestedStrictBinding) {
                 await assertStrictBindingReadiness({ settingsRepository });
-            }
-
-            if (Object.prototype.hasOwnProperty.call(settingsData, POS_TERMINAL_REGISTRY_KEY)) {
-                const currentRegistrySetting = typeof settingsRepository?.getSettingsByKeys === 'function'
-                    ? await settingsRepository.getSettingsByKeys([POS_TERMINAL_REGISTRY_KEY])
-                    : {};
-                settingsData[POS_TERMINAL_REGISTRY_KEY] = await hashTerminalRegistrySecrets({
-                    incomingEntries: settingsData[POS_TERMINAL_REGISTRY_KEY],
-                    currentEntries: currentRegistrySetting?.[POS_TERMINAL_REGISTRY_KEY]?.value || []
-                });
             }
 
             const tenant = getTenantComplianceSnapshot();
@@ -253,7 +229,16 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
                 });
             }
 
+            const omittedStorefrontGalleryPaths = await snapshotStorefrontGalleryCleanup({
+                settingsRepository,
+                settingsData
+            });
+
             const result = await settingsRepository.updateSettings(settingsData);
+            await cleanupOmittedStorefrontGalleryAssets({
+                omittedPaths: omittedStorefrontGalleryPaths,
+                storefrontAssetStorage
+            });
             return ok({
                 ...result,
                 pending_review_keys: posMetadataReview.pendingReviewKeys

@@ -18,7 +18,7 @@ export default (sequelize) => {
             }
         },
         action: {
-            type: DataTypes.ENUM('profile_update', 'suspend', 'reactivate', 'delete'),
+            type: DataTypes.ENUM('profile_update', 'suspend', 'reactivate', 'delete', 'admin_create_dgfy_account', 'temporary_password_rotated'),
             allowNull: false
         },
         actor_username: {

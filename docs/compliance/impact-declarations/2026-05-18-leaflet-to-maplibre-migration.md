@@ -74,3 +74,61 @@ Runtime hardening:
 1. `trackResize: false` is set on the shared picker MapLibre instance so MapLibre does not fire its own resize handler while onboarding modals or Settings panels are closing.
 2. The component-owned `ResizeObserver` keeps guarded resize behavior and catches late MapLibre cleanup failures during unmount.
 3. Storefront discovery maps continue to use their existing OpenFreeMap vector style contract; this addendum only changes the shared IMS picker.
+
+## Addendum (2026-06-20): Shared IMS Picker Provider Removal
+
+The 2026-06-05 OSM raster fallback is superseded for the shared IMS `MapPinPicker`.
+
+Reason:
+1. The IMS picker contract is MapLibre interaction first: merchants need a stable click/drag/geolocation pinning surface, not a third-party basemap dependency.
+2. Browser-side or server-side Nominatim/OpenStreetMap dependencies are not part of the approved IMS picker provider contract.
+3. The picker must open over Iloilo City, Philippines when no saved pin exists.
+
+Runtime hardening:
+1. The shared IMS picker now uses an internal MapLibre style with no external tile-provider URL.
+2. Click, drag, and browser-geolocation selections continue to emit latitude/longitude through the existing location form contract.
+3. Address autofill goes through the first-party reverse-geocode endpoint, which returns a local address label without browser-side third-party geocoding requests. Coordinates remain authoritative and saving valid coordinates must not be blocked by address-label availability.
+
+## Addendum (2026-06-20): Shared IMS Picker Basemap Restoration
+
+The internal-style-only IMS picker is superseded after production operators could not visually confirm street context while pinning a location.
+
+Runtime hardening:
+1. Onboarding and Settings continue to use the shared IMS `MapPinPicker`.
+2. The picker reuses the Storefront MapLibre positron basemap style and existing `/openfreemap` development/preview proxy path, opening over Iloilo City, Philippines when no saved pin exists.
+3. Click, marker drag, and browser-geolocation selections still emit latitude/longitude through the tenant-location form contract.
+4. Address autofill remains first-party through `/api/v1/geo/reverse-geocode`; the IMS picker must not call browser-side Nominatim directly.
+
+## Addendum (2026-06-20): IMS Merchant Pin Reliability Guard
+
+The shared IMS picker and its onboarding/Settings form consumers now distinguish the default camera view from a saved merchant-store pin.
+
+Runtime hardening:
+1. Iloilo City, Philippines remains the initial camera center when no saved pin exists, but it is not persisted unless the merchant explicitly pins or enters usable coordinates.
+2. Missing coordinate fields, `0,0`, and out-of-Philippines browser geolocation results are rejected before onboarding or Settings tenant-location saves.
+3. `Adjust Pin` creates a first draggable draft marker at the current map center when no usable pin exists, so the merchant can place and drag the pin without relying on a pre-existing marker.
+4. `Reset View` returns the camera to Iloilo City and clears invalid `0,0` selected state.
+5. Reverse geocoding remains first-party and best-effort; lookup failure does not discard valid Philippines coordinates.
+
+## Addendum (2026-06-21): Draft Marker Ownership Hotfix
+
+The shared IMS picker now owns an immediate local draft pin after map click, browser-geolocation success, or `Adjust Pin`, then reconciles with parent latitude/longitude props. This prevents the moving-pin control state from appearing without a visible marker while preserving the parent form as the submitted coordinate source of truth.
+
+Runtime hardening:
+1. `Stop Moving Pin` must only render when the picker has a usable marker position.
+2. Onboarding must not expose interactive map pin controls while searchable storefront visibility is off, because hidden storefront saves intentionally do not require a map pin.
+3. Browser geolocation failure messages distinguish permission denial, unavailable position, timeout, unsupported browser, and out-of-Philippines coordinates.
+4. Settings opens the picker locked; click, marker drag, and browser-geolocation overwrite are disabled until `Adjust Pin`.
+5. Onboarding may open in adjust mode only when searchable storefront visibility is enabled and no valid saved pin exists, allowing first pin placement without saving Iloilo City as an implicit default.
+6. Browser geolocation uses high-accuracy mode when available, displays the reported accuracy radius, and does not claim guaranteed device precision.
+7. Address suggestions remain first-party through `/api/v1/geo/reverse-geocode`, now returning `provider="dgfy-ph-local"`, precision metadata, PSGC provenance, and optional PSGC code fields for bundled local matches. The endpoint must not call browser-side Nominatim or return vague `Near ...` labels.
+8. Reverse-geocode suggestions may fill an empty address field but must not overwrite merchant-edited address text unless the merchant applies the suggestion.
+
+## Addendum (2026-06-21): Same-Origin Basemap Proxy Hardening
+
+The shared MapLibre helper now uses the same-origin `/openfreemap/styles/positron` style URL by default across development and production builds. MapLibre subresource requests that originate from `https://tiles.openfreemap.org` are rewritten through the current app origin's `/openfreemap` proxy path, covering style-referenced TileJSON, vector PBF tiles, sprites, glyphs, and natural-earth raster resources.
+
+Runtime hardening:
+1. Production IMS and Storefront map surfaces no longer rely on direct browser access to `tiles.openfreemap.org` unless an operator explicitly sets `VITE_TILE_BASE` for a managed tile origin.
+2. The SKUpervisor service worker bypasses `/openfreemap` requests so map resources are fetched through the network/proxy path instead of runtime shell caching.
+3. Rendered QA for map releases must prove visible roads/labels over Iloilo City from the actual app origin, not only marker/attribution rendering in an isolated component harness.

@@ -33,7 +33,7 @@ Current browser authentication contract:
 - Refresh/session authority is held by HttpOnly cookies issued by the backend.
 - Frontend code may keep the access token in module memory through `frontend/src/services/browserSession.js`.
 - Frontend code must not persist `authToken`, `refreshToken`, tenant context, DGFY customer tokens, storefront customer tokens, or admin tokens in `localStorage` or `sessionStorage`.
-- Cookie-authenticated unsafe requests must include `x-csrf-token` from the browser-readable `sku_csrf_token` cookie. The shared tenant API client and platform-admin API client inject that CSRF header for unsafe methods; new direct `fetch`/Axios call sites must either use those clients or explicitly attach the browser-readable CSRF cookie.
+- Cookie-authenticated unsafe requests must include `x-csrf-token` from the browser-readable `sku_csrf_token` cookie. The shared tenant API client, platform-admin API client, and Storefront `requestJson` helper inject that CSRF header for unsafe methods; new direct `fetch`/Axios call sites must either use those clients/helpers or explicitly attach the browser-readable CSRF cookie.
 - Tenant refresh requests use the HttpOnly `sku_refresh_token` cookie. When the companion tenant-context cookie is missing, the backend can recover tenant context from the signed refresh cookie's tenant binding before rotating the session; invalid or tenant-mismatched refresh cookies still fail closed.
 - Tenant login and refresh responses include `data.company.token` when tenant context is available. Frontend protected API requests preflight `refreshBrowserSession()` after a hard reload when the in-memory access token has been lost but the HttpOnly browser session cookie still exists.
 

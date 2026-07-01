@@ -3,7 +3,7 @@ const SHELL_CACHE_NAME = `${CACHE_PREFIX}-shell-v1`;
 const RUNTIME_CACHE_NAME = `${CACHE_PREFIX}-runtime-v1`;
 const MAX_RUNTIME_CACHE_ENTRIES = 120;
 const STATIC_CACHEABLE_DESTINATIONS = new Set(['script', 'style', 'image', 'font', 'manifest']);
-const BYPASS_PATH_PREFIXES = ['/api/', '/uploads/'];
+const BYPASS_PATH_PREFIXES = ['/api/', '/uploads/', '/openfreemap'];
 
 const resolveBasePath = () => {
   const rawScope = self.registration?.scope || self.location?.origin || 'https://localhost/';

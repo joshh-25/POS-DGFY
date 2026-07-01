@@ -21,35 +21,11 @@ import {
 import { getTenantModels } from '../../src/utils/tenantModelFactory.js';
 import tenantConnector from '../../src/utils/TenantConnector.js';
 import logger from '../../src/config/logger.js';
-
-const ensureColumn = async (tableName, columnName, definitionSql, afterColumnName) => {
-    const [rows] = await landlordSequelize.query(
-        `SELECT COUNT(*) AS count
-         FROM information_schema.columns
-         WHERE table_schema = DATABASE()
-           AND table_name = ?
-           AND column_name = ?`,
-        { replacements: [tableName, columnName] }
-    );
-
-    if (Number(rows?.[0]?.count || 0) > 0) {
-        return;
-    }
-
-    const afterClause = afterColumnName ? ` AFTER \`${afterColumnName}\`` : '';
-    await landlordSequelize.query(
-        `ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definitionSql}${afterClause}`
-    );
-};
+import { ensureLandlordTenantSchemaReady } from './landlordSchemaReadiness.js';
 
 const ensureAuthPhoneSchema = async () => {
     if (process.env.NODE_ENV !== 'test') return;
-    await ensureColumn('tenants', 'admin_phone', 'VARCHAR(40) NULL', 'admin_email');
-    await ensureColumn('tenants', 'owner_dgfy_account_id', 'CHAR(36) NULL', 'admin_password_hash');
-    await ensureColumn('tenants', 'ownership_transferred_at', 'DATETIME NULL', 'owner_dgfy_account_id');
-    await ensureColumn('tenants', 'ownership_transferred_by', 'CHAR(36) NULL', 'ownership_transferred_at');
-    await ensureColumn('dgfy_account_tenant_memberships', 'last_selected_at', 'DATETIME NULL', 'accepted_at');
-    await ensureColumn('users', 'phone_number', 'VARCHAR(40) NULL', 'email');
+    await ensureLandlordTenantSchemaReady();
 };
 
 /**

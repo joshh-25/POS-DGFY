@@ -11,9 +11,6 @@ Use this guide for:
 Hosting profile reference:
 - `docs/ops/HOSTING_PROFILES.md`
 
-Namecheap shared hosting GitHub Actions lane:
-- `docs/ops/NAMECHEAP_SHARED_CICD.md`
-
 No-staging release policy reference:
 - `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
 
@@ -40,6 +37,8 @@ Merge-adoption release proof reference:
   - `AUTH_BLACKLIST_FAILURE_MODE`
   - `TEMP_FILE_STORAGE`
   - `TENANT_REGISTRATION_APPROVAL_MODE` (`auto_standard` by default; `manual` only for explicit admin-review rollback)
+  - `RATE_LIMIT_DGFY_TENANT_SESSION_WINDOW_MS`
+  - `RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS`
   - `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS`
   - `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`
   - `REDIS_URL` when `HOSTING_PROFILE=vps`
@@ -66,8 +65,6 @@ Merge-adoption release proof reference:
     - `0`: skip reconciliation only for a controlled incident/rollback window; run `npm run reconcile:storefront-discovery -- --dry-run --json` and then the write reconciliation as soon as the blocker is cleared.
 
 ## Standard Deployment (Simplified)
-For Namecheap shared hosting, use the artifact-based GitHub Actions lane in `docs/ops/NAMECHEAP_SHARED_CICD.md`. That lane deploys with FTP plus cPanel Node.js App, uses `backend/app.js` as the startup shim, restarts through Passenger `tmp/restart.txt`, and blocks backend deploys when migrations changed.
-
 Before deploying to a new host type, validate the selected profile:
 
 ```bash
@@ -167,17 +164,28 @@ bash scripts/deploy-remote.sh
 Behavior:
 1. Pushes target commit.
 2. Runs no-staging preflight (`npm run gate:release:no-staging:preflight`) before push when `DEPLOY_ENFORCE_NO_STAGING_GATE=1`.
-3. Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) when local summary file is missing.
-4. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
-5. Runs the merge-adoption proof gate when `MERGE_ADOPTION_MANIFEST` is set.
-6. Proceeds to production SSH deploy only when gate verdict is pass/bypassed and QA deploy evidence matches the exact target SHA.
-7. Auto-loads `.env.qa.local` and `.env.qa.secrets.local` if present.
+3. Promotes the pushed target SHA to QA first when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`.
+4. Refuses QA promotion when the configured QA SSH host and app dir match the production SSH host and app dir.
+5. Fetches fresh QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) every run before the gate.
+6. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
+7. Runs the merge-adoption proof gate when `MERGE_ADOPTION_MANIFEST` is set.
+8. Proceeds to production SSH deploy only when gate verdict is pass/bypassed and QA deploy evidence matches the exact target SHA.
+9. Auto-loads `.env.qa.local` and `.env.qa.secrets.local` if present.
 
 No-staging preflight checks:
 1. `QA_BASE_URL` configured (for QA smoke contract).
 2. `QA_SSH_HOST` configured (for QA drills/evidence fetch).
-3. Local runtime has `ssh` and `powershell`/`pwsh`.
-4. QA deploy summary can be sourced (existing local file or SSH fetch path).
+3. `QA_COMPANY_TOKEN` configured with a real active tenant token for the same QA environment; placeholder values are blockers.
+4. Local runtime has `ssh` and `powershell`/`pwsh`.
+5. QA deploy summary can be sourced (existing local file or SSH fetch path).
+6. Rollback and restore drill SSH connectivity is valid for the configured `QA_SSH_HOST`, `QA_SSH_PORT`, `QA_SSH_USER`, and `QA_APP_DIR`.
+7. QA promotion mode is reported. When production host/app-dir values are supplied, enabled QA promotion fails if QA points at production.
+
+QA promotion controls:
+1. `DEPLOY_PROMOTE_QA_BEFORE_PROD=auto` is the default wrapper mode.
+2. `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` or `0` disables automatic QA promotion and only fetches existing QA evidence.
+3. `QA_DEPLOY_DRY_RUN=1 npm run deploy:qa:target` validates configuration and remote command construction without SSH mutation.
+4. A production-as-QA evidence configuration cannot create pre-production parity. Configure a distinct QA checkout or disable promotion intentionally.
 
 ### QA Gate Input Hygiene (Recommended)
 Before running `gate:release:no-staging` or `deploy-remote.sh`:
@@ -194,6 +202,11 @@ powershell -ExecutionPolicy Bypass -File scripts/fetch-qa-deploy-summary.ps1
 Exact QA parity requirement:
 1. `qa_deploy_summary.txt` must show `deployed_head=<RELEASE_TARGET_SHA>`.
 2. A stale QA summary is a hard release failure; refresh QA to the target SHA, fetch a fresh summary, and rerun the gate.
+3. Emergency bypass is incident-only and must not be used as the routine stale-QA path.
+
+Linked worktree warning:
+1. `scripts/deploy-remote.sh` historically pushes `master`. When using a clean linked release worktree while another worktree has local `master` checked out, prove `origin/master` already equals the release SHA or push the release worktree explicitly with `git push origin HEAD:master` before running the wrapper.
+2. Do not deploy from a dirty original worktree to avoid unrelated source or docs files entering the release scope.
 
 ## Advanced Deployment (SHA Pinning)
 If you need to ensure a specific commit is deployed (e.g., to prevent race conditions during parallel pushes):
@@ -204,6 +217,8 @@ git fetch origin "$BRANCH"
 EXPECTED_COMMIT=$(git rev-parse "origin/$BRANCH")
 bash scripts/deploy.sh --branch "$BRANCH" --expect-commit "$EXPECTED_COMMIT"
 ```
+
+On Windows, avoid passing `--expect-commit` through CRLF-corrupted stdin scripts. Use Git Bash for the wrapper or pass a single remote command string through `ssh.exe`. Do not pipe a PowerShell here-string into remote `bash` when the command contains SHA or branch arguments; `\r` can become part of the expected SHA or branch name.
 
 What `deploy.sh` does:
 1. Validates env requirements
@@ -284,8 +299,10 @@ Storefront map/search release proof:
 Tenant schema/index risk controls:
 - `DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter` (default: `report`)
 - `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1` (default: `1`; set `0` only for controlled exception windows)
-- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1` (default: `1`; set `0` only for controlled exception windows)
-  - `scripts/deploy-remote.sh` forwards this override to the production-side `scripts/deploy.sh`; the June 16, 2026 DGFY company-switching deploy used `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0` because redundant-index warnings remained a tracked cleanup concern while tenant schema sync, health, PM2 reload, public endpoints, and asset parity passed.
+- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1`
+  - `scripts/deploy.sh` defaults to strict mode when run directly on the server.
+  - `scripts/deploy-remote.sh` defaults to `0` and forwards report mode to production until redundant index cleanup is complete. Set `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1` for a strict wrapper release.
+  - The June 16, 2026 DGFY company-switching deploy used `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0` because redundant-index warnings remained a tracked cleanup concern while tenant schema sync, health, PM2 reload, public endpoints, and asset parity passed.
 
 Deterministic install retry controls:
 - `DEPLOY_NPM_CI_RETRIES=<n>` (default: `3`)
@@ -382,6 +399,22 @@ cd /var/www/skupervisor
 sed -i 's/\r$//' scripts/deploy.sh
 bash scripts/deploy.sh --help
 ```
+
+## If Expected SHA Or Branch Looks Correct But Fails
+Symptom:
+- Deploy output shows an expected SHA or branch that visually matches, but `deploy.sh` reports an expected-commit mismatch or `git fetch` rejects a refspec such as `master?`.
+
+Common cause:
+- A Windows CRLF character was appended to an argument during a manual SSH deploy, usually from a PowerShell here-string or piped script.
+
+Recovery:
+1. Stop the deploy attempt and do not use emergency bypass for this condition.
+2. Re-run through Git Bash:
+   ```powershell
+   & "C:\Program Files\Git\bin\bash.exe" scripts/deploy-remote.sh --yes
+   ```
+3. If manual SSH is required, pass one remote command argument instead of piping stdin, and compute `EXPECTED_COMMIT` on the server after `git fetch`.
+4. Confirm the next deploy summary has `expected_commit`, `remote_head`, and `deployed_head` all matching the target SHA.
 
 ## If Billing-Funnel Audit Fails With `webhook_without_telemetry`
 Common cause:
