@@ -10,6 +10,9 @@ This hotfix makes the POS setup and settings maps load real map tiles instead of
 - Non-POS surfaces keep the existing same-origin `/openfreemap` proxy behavior.
 - Focused regression tests for POS and non-POS MapLibre routing.
 - POS handler transport test mock alignment for the PR25 cashier/setup use-case exports.
+- Positive backend tests for the accepted POS setup cashier and cashier login use cases.
+- Frontend lint-safe POS tab reset scheduling.
+- Compliance impact declaration for the POS-sensitive terminal workspace touch.
 
 ## Excluded
 
@@ -18,14 +21,21 @@ This hotfix makes the POS setup and settings maps load real map tiles instead of
 - Backend API changes.
 - PR #25 POS cashier/setup UI changes already represented by the previous hotfix.
 - Storefront discovery map behavior changes.
+- Fiscal receipt, payment, compliance lifecycle, or tenant lifecycle behavior changes.
 - Branch retirement.
 
 ## Regression Risk Notice
 
 - Level: high
 - Warning: A mistake could keep POS onboarding/settings maps blank or accidentally alter non-POS tile proxy behavior.
-- Evidence reducing risk: focused MapLibre tests, POS handler transport contract test, POS production build, live resource content-type check, docs lint, architecture check, and whitespace check passed.
+- Evidence reducing risk: focused MapLibre tests, POS handler transport contract test, POS cashier setup/login tests, frontend lint, POS production build, live resource content-type check, docs lint, architecture check, and whitespace check passed.
 - Remaining gap: production still needs rendered POS proof after deployment.
+
+## Compliance Declaration
+
+- File: `docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md`
+- Classification: major
+- Reason: the hotfix touches a POS terminal workspace file, but it does not change fiscal receipts, payment handling, database schema, compliance lifecycle transitions, or tenant lifecycle behavior.
 
 ## Rollback
 

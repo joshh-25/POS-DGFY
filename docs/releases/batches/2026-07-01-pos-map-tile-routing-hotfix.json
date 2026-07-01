@@ -11,19 +11,25 @@
       "name": "POS MapLibre tile routing hotfix",
       "plain_english_purpose": "Make the POS terminal setup and onboarding maps load real map tiles instead of a blank gray panel on the POS production host.",
       "purpose": "Route POS MapLibre style and tile requests to OpenFreeMap by default when the POS app surface has no explicit tile base, while preserving the existing local /openfreemap proxy behavior for non-POS surfaces.",
-      "implementation_summary": "Updates the shared MapLibre helper so VITE_APP_SURFACE=pos uses the external OpenFreeMap style URL unless VITE_TILE_BASE is configured, avoids rewriting OpenFreeMap tile URLs back to the POS host, adds regression tests proving POS and non-POS routing behavior, and aligns the POS handler transport test mock with the PR25 cashier/setup exports so the full POS handler import contract stays covered.",
+      "implementation_summary": "Updates the shared MapLibre helper so VITE_APP_SURFACE=pos uses the external OpenFreeMap style URL unless VITE_TILE_BASE is configured, avoids rewriting OpenFreeMap tile URLs back to the POS host, adds regression tests proving POS and non-POS routing behavior, aligns the POS handler transport test mock and accepted cashier/setup tests with the PR25 exports, fixes the POS terminal workspace lint violation, and documents the POS compliance impact.",
       "included_files": [
+        "backend/tests/posCashierLoginUseCase.test.js",
         "backend/tests/posHandlers.transport.test.js",
+        "backend/tests/posSetupCashierUseCase.test.js",
+        "docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.md",
         "frontend/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
-        "frontend/src/components/maps/mapLibreShared.js"
+        "frontend/src/components/maps/mapLibreShared.js",
+        "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx"
       ],
       "included_features": [
         "POS map style fallback to OpenFreeMap when no POS tile proxy is configured",
         "Non-POS surfaces keep same-origin /openfreemap proxy behavior",
         "Regression tests for POS and non-POS MapLibre routing",
-        "POS handler transport test mock alignment for the PR25 cashier/setup use-case exports"
+        "POS handler transport test mock alignment for the PR25 cashier/setup use-case exports",
+        "Positive backend tests for the accepted POS setup cashier and cashier login use cases",
+        "Frontend lint-safe POS tab reset scheduling"
       ],
       "excluded_files": [],
       "excluded_features": [
@@ -51,7 +57,8 @@
       "affected_surfaces": [
         "frontend",
         "POS",
-        "docs"
+        "docs",
+        "compliance"
       ],
       "affected_surface_map": {
         "backend": false,
@@ -59,7 +66,7 @@
         "database": false,
         "scripts/deploy": false,
         "docs": true,
-        "compliance": false,
+        "compliance": true,
         "POS": true,
         "Storefront": false,
         "DGFY": false,
@@ -81,6 +88,8 @@
         "POS production build passed on 2026-07-01: npm --prefix frontend run build:pos",
         "Live resource check proved https://pos.dgfy.ph/openfreemap/styles/positron returns text/html while https://tiles.openfreemap.org/styles/positron returns application/json",
         "Focused backend POS handler transport test passed after mock alignment on 2026-07-01",
+        "Focused backend POS cashier setup/login tests passed after replacing stale anti-adoption assertions on 2026-07-01",
+        "Frontend lint passed after replacing synchronous tab reset effects with scheduled resets on 2026-07-01",
         "Governed docs lint, architecture check, and whitespace check passed on 2026-07-01"
       ],
       "evidence_gaps": [
@@ -94,9 +103,12 @@
       "required_tests": [
         "npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
         "npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js --runInBand",
+        "npm --prefix backend test -- --runTestsByPath tests/posSetupCashierUseCase.test.js tests/posCashierLoginUseCase.test.js --runInBand",
+        "npm --prefix frontend run lint",
         "npm --prefix frontend run build:pos",
         "npm run lint:docs",
         "npm run check:architecture",
+        "npm run check:compliance",
         "git diff --check origin/master..origin/staging"
       ],
       "completed_tests": [
@@ -109,6 +121,16 @@
           "command": "npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js --runInBand",
           "status": "pass",
           "evidence": "2026-07-01 hotfix worktree validation: POS handler transport contract passed after adding PR25 cashier/setup exports to the module mock"
+        },
+        {
+          "command": "npm --prefix backend test -- --runTestsByPath tests/posSetupCashierUseCase.test.js tests/posCashierLoginUseCase.test.js --runInBand",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: POS cashier setup/login adoption tests passed after replacing stale anti-adoption assertions"
+        },
+        {
+          "command": "npm --prefix frontend run lint",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: frontend lint passed after scheduled POS tab reset fix"
         },
         {
           "command": "npm --prefix frontend run build:pos",
@@ -126,6 +148,11 @@
           "evidence": "2026-07-01 hotfix worktree validation: architecture guardrails and controller boundaries passed"
         },
         {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: compliance gate passed after adding docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md"
+        },
+        {
           "command": "git diff --check origin/master..origin/staging",
           "status": "pass",
           "evidence": "2026-07-01 after staging reflection: whitespace check passed for the current promotion diff"
@@ -133,6 +160,7 @@
       ],
       "docs_required": true,
       "required_docs": [
+        "docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.md"
       ],
@@ -143,6 +171,11 @@
         "reviewed_at": "2026-07-01T22:45:00.000+08:00",
         "rationale": "This hotfix changes frontend map resource routing only. No backend boundary, database schema, deploy automation, or ADR change is required; the reviewed batch manifest and plain-English release summary document the exact production slice.",
         "documents": [
+          {
+            "path": "docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md",
+            "action": "added",
+            "evidence": "Compliance declaration records that the POS-sensitive terminal workspace touch is limited to map rendering and lint-safe tab reset scheduling with no fiscal, payment, migration, or lifecycle behavior change."
+          },
           {
             "path": "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
             "action": "updated",
@@ -155,8 +188,8 @@
           }
         ]
       },
-      "adr_compliance_declaration_required": false,
-      "adr_or_compliance": "No ADR or compliance declaration is required because this is a frontend map resource routing hotfix with no backend, database, payment, fiscal, tenant lifecycle, or authorization boundary change.",
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "Compliance impact declaration added at docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md because the hotfix touches a POS terminal workspace file. No ADR is required because there is no backend boundary, database, payment, fiscal, tenant lifecycle, or authorization boundary change.",
       "rollback_notes": "Revert this hotfix commit and redeploy the previous production SHA; no data migration or payment rollback is needed.",
       "production_proof_required": [
         "Production remote HEAD, .deploy-state/last_deployed_commit, deploy summary, and /api/v1/health runtime SHA equal the final origin/master SHA",

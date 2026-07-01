@@ -523,13 +523,16 @@ function ShiftControlsWorkspace({
     if (previousInitialTabRef.current === initialTab) return;
     previousInitialTabRef.current = initialTab;
     clearAnimationTimers();
-    setActiveTab(initialTab);
-    setRenderedTab(initialTab);
-    setPaneInlineStyle({
-      transform: 'translateX(0)',
-      opacity: 1,
-      transition: 'transform 150ms ease, opacity 150ms ease'
-    });
+    const resetTimerId = window.setTimeout(() => {
+      setActiveTab(initialTab);
+      setRenderedTab(initialTab);
+      setPaneInlineStyle({
+        transform: 'translateX(0)',
+        opacity: 1,
+        transition: 'transform 150ms ease, opacity 150ms ease'
+      });
+    }, 0);
+    animationTimersRef.current.push(resetTimerId);
   }, [clearAnimationTimers, initialTab]);
 
   const handleTabChange = useCallback((nextTab) => {
@@ -2744,13 +2747,16 @@ function SettingsWorkspace({
     if (previousInitialTabRef.current === initialTab) return;
     previousInitialTabRef.current = initialTab;
     clearAnimationTimers();
-    setActiveTab(initialTab);
-    setRenderedTab(initialTab);
-    setPaneInlineStyle({
-      transform: 'translateX(0)',
-      opacity: 1,
-      transition: 'transform 150ms ease, opacity 150ms ease'
-    });
+    const resetTimerId = window.setTimeout(() => {
+      setActiveTab(initialTab);
+      setRenderedTab(initialTab);
+      setPaneInlineStyle({
+        transform: 'translateX(0)',
+        opacity: 1,
+        transition: 'transform 150ms ease, opacity 150ms ease'
+      });
+    }, 0);
+    animationTimersRef.current.push(resetTimerId);
   }, [clearAnimationTimers, initialTab]);
 
   useEffect(() => {
