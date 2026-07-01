@@ -11,20 +11,28 @@
       "name": "POS MapLibre tile routing hotfix",
       "plain_english_purpose": "Make the POS terminal setup and onboarding maps load real map tiles instead of a blank gray panel on the POS production host.",
       "purpose": "Route POS MapLibre style and tile requests to OpenFreeMap by default when the POS app surface has no explicit tile base, while preserving the existing local /openfreemap proxy behavior for non-POS surfaces.",
-      "implementation_summary": "Updates the shared MapLibre helper so VITE_APP_SURFACE=pos uses the external OpenFreeMap style URL unless VITE_TILE_BASE is configured, avoids rewriting OpenFreeMap tile URLs back to the POS host, adds regression tests proving POS and non-POS routing behavior, aligns the POS handler transport test mock and accepted cashier/setup tests with the PR25 exports, fixes the POS terminal workspace lint violation, and documents the POS compliance impact.",
+      "implementation_summary": "Updates the shared MapLibre helper so VITE_APP_SURFACE=pos uses the external OpenFreeMap style URL unless VITE_TILE_BASE is configured, avoids rewriting OpenFreeMap tile URLs back to the POS host, adds regression tests proving POS and non-POS routing behavior, aligns stale POS/backend transport and frontend source-contract tests with accepted PR25/DGFY-first behavior, restores the POS settings location-binding readiness summary, redirects the legacy feedback route, and documents the POS compliance impact.",
       "included_files": [
         "backend/tests/posCashierLoginUseCase.test.js",
         "backend/tests/posHandlers.transport.test.js",
         "backend/tests/posSetupCashierUseCase.test.js",
         "backend/tests/reproduce_import_bypass.test.js",
+        "backend/tests/settingsHandlers.transport.test.js",
         "docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.md",
         "frontend/src/components/common/__tests__/tenantCapabilityNotice.contract.test.js",
         "frontend/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
         "frontend/src/components/maps/mapLibreShared.js",
+        "frontend/src/features/fnb/__tests__/fnbMode.contract.test.js",
+        "frontend/src/features/pos/__tests__/hospitalityPos.contract.test.js",
+        "frontend/src/features/pos/__tests__/posPageShell.contract.test.js",
+        "frontend/src/features/pos/__tests__/posSettingsStrictBinding.contract.test.js",
+        "frontend/src/features/pos/__tests__/terminalLocationScope.integration.test.jsx",
+        "frontend/src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx",
         "frontend/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js",
         "frontend/src/features/settings/__tests__/settingsDeepLink.contract.test.js",
+        "frontend/src/main.jsx",
         "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx"
       ],
       "included_features": [
@@ -35,7 +43,12 @@
         "Positive backend tests for the accepted POS setup cashier and cashier login use cases",
         "Frontend lint-safe POS tab reset scheduling",
         "CI contract test alignment for the accepted PR25 POS layout and inline capability notice",
-        "Import-bypass reproduction test authService mock alignment for the accepted POS cashier login export"
+        "Import-bypass reproduction test authService mock alignment for the accepted POS cashier login export",
+        "Settings handler transport mock alignment for the accepted POS settings access PIN export",
+        "F&B and Hospitality POS contracts read the shared POS page shell after route ownership moved there",
+        "Terminal lock and location-scope contracts reflect the DGFY-first terminal login and current shift/location controls",
+        "Strict POS location-binding readiness summary restored in terminal setup settings",
+        "Legacy admin feedback route redirects to the current admin feedback dashboard"
       ],
       "excluded_files": [],
       "excluded_features": [
@@ -97,6 +110,8 @@
         "Focused backend POS cashier setup/login tests passed after replacing stale anti-adoption assertions on 2026-07-01",
         "Frontend lint passed after replacing synchronous tab reset effects with scheduled resets on 2026-07-01",
         "Focused frontend POS source contracts passed after aligning stale literal checks to the accepted PR25 layout on 2026-07-01",
+        "Full frontend suite passed on 2026-07-01 after final CI contract alignment: npm --prefix frontend test -- --run",
+        "Settings handler transport test passed on 2026-07-01 after adding the verifyPosSettingsAccessPinUseCase mock export",
         "Backend db_integration_scripts CI failure root cause identified as a stale authService mock missing loginUser; mock aligned on 2026-07-01",
         "Governed docs lint, architecture check, and whitespace check passed on 2026-07-01"
       ],
@@ -113,6 +128,8 @@
         "npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js --runInBand",
         "npm --prefix backend test -- --runTestsByPath tests/posSetupCashierUseCase.test.js tests/posCashierLoginUseCase.test.js --runInBand",
         "npm --prefix frontend test -- --run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js src/features/settings/__tests__/settingsDeepLink.contract.test.js src/components/common/__tests__/tenantCapabilityNotice.contract.test.js",
+        "npm --prefix frontend test -- --run",
+        "npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.transport.test.js --runInBand",
         "npm --prefix frontend run lint",
         "npm --prefix frontend run build:pos",
         "npm run lint:docs",
@@ -145,6 +162,16 @@
           "command": "npm --prefix frontend test -- --run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js src/features/settings/__tests__/settingsDeepLink.contract.test.js src/components/common/__tests__/tenantCapabilityNotice.contract.test.js",
           "status": "pass",
           "evidence": "2026-07-01 hotfix worktree validation: 3 source-contract files, 20 tests passed after aligning stale POS literal checks to the accepted PR25 layout and inline POS capability notice"
+        },
+        {
+          "command": "npm --prefix frontend test -- --run",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: full frontend suite passed, 135 files and 747 tests"
+        },
+        {
+          "command": "npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.transport.test.js --runInBand",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: settings handler transport contract passed after adding verifyPosSettingsAccessPinUseCase to the test module mock"
         },
         {
           "command": "npm --prefix frontend run build:pos",
