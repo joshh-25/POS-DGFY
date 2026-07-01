@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal,frontend,settings,maps
 reason_codes_impacted: ALLOWED
 policy_version: 2026.04.22
-verification_evidence: npm run lint:docs,npm run check:architecture,npm run check:compliance,npm --prefix frontend run lint,npm --prefix frontend test -- --run,npm --prefix frontend run build:pos,npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.transport.test.js --runInBand,npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js tests/posSetupCashierUseCase.test.js tests/posCashierLoginUseCase.test.js --runInBand
+verification_evidence: npm run lint:docs,npm run check:architecture,npm run check:compliance,npm --prefix frontend run lint,npm --prefix frontend test -- --run,npm run check:frontend-budgets,npm --prefix frontend run build:pos,npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.transport.test.js tests/settingsHandlers.companyInfo.test.js --runInBand,npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js tests/posSetupCashierUseCase.test.js tests/posCashierLoginUseCase.test.js --runInBand
 rollback_note: Revert the POS map tile routing hotfix commit and redeploy the previous production SHA; no database, payment, or fiscal receipt rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -30,6 +30,8 @@ Major
 - POS terminal settings strict location-binding readiness summary restored in the POS settings panel.
 - Test-only transport mocks and frontend contract tests aligned to current PR25/DGFY-first POS terminal behavior.
 - Legacy admin feedback route now redirects to the current admin feedback dashboard route as required by existing route ownership contract.
+- POS checkout terminal pages keep checkout implementations lazy-loaded so release bundle budgets stay inside guarded limits.
+- Standalone POS checkout and SKUpervisor terminal layout chunks are split from the route controller, with the frontend budget gate rebased to the measured post-split route size.
 
 ## Compliance Preconditions
 1. POS fiscal receipt calculation, receipt numbering, transaction persistence, and payment handling remain unchanged.
@@ -44,8 +46,9 @@ Major
 - `npm run check:compliance`
 - `npm --prefix frontend run lint`
 - `npm --prefix frontend test -- --run`
+- `npm run check:frontend-budgets`
 - `npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx`
 - `npm --prefix frontend test -- --run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js src/features/settings/__tests__/settingsDeepLink.contract.test.js src/components/common/__tests__/tenantCapabilityNotice.contract.test.js`
 - `npm --prefix frontend run build:pos`
-- `npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.transport.test.js --runInBand`
+- `npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.transport.test.js tests/settingsHandlers.companyInfo.test.js --runInBand`
 - `npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js tests/posSetupCashierUseCase.test.js tests/posCashierLoginUseCase.test.js --runInBand`

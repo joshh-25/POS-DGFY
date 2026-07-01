@@ -13,8 +13,9 @@ describe('POS page shell and route ownership', () => {
     const skupervisorPage = read('frontend/src/features/pos/pages/SkupervisorPOSPage.jsx');
 
     expect(sharedShell).toContain('export default function PosPageShell');
-    expect(posPage).toContain('CheckoutTerminal={POSCheckoutTerminal}');
-    expect(skupervisorPage).toContain('CheckoutTerminal={SkupervisorPOSCheckoutTerminal}');
+    expect(posPage).toContain("lazy(() => import('../components/POSCheckoutTerminal.jsx'))");
+    expect(skupervisorPage).toContain("lazy(() => import('../components/SkupervisorPOSCheckoutTerminal.jsx'))");
+    expect(sharedShell).toContain('<CheckoutTerminal canViewHistory={canViewPos} fnbContext={fnbCheckoutContext} />');
     expect(posPage).not.toContain('ServicesPosQueue');
     expect(skupervisorPage).not.toContain('ServicesPosQueue');
   });

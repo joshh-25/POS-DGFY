@@ -17,22 +17,28 @@
         "backend/tests/posHandlers.transport.test.js",
         "backend/tests/posSetupCashierUseCase.test.js",
         "backend/tests/reproduce_import_bypass.test.js",
+        "backend/tests/settingsHandlers.companyInfo.test.js",
         "backend/tests/settingsHandlers.transport.test.js",
         "docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.md",
+        "scripts/check-frontend-budgets.js",
         "frontend/src/components/common/__tests__/tenantCapabilityNotice.contract.test.js",
         "frontend/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
         "frontend/src/components/maps/mapLibreShared.js",
         "frontend/src/features/fnb/__tests__/fnbMode.contract.test.js",
         "frontend/src/features/pos/__tests__/hospitalityPos.contract.test.js",
         "frontend/src/features/pos/__tests__/posPageShell.contract.test.js",
-        "frontend/src/features/pos/__tests__/posSettingsStrictBinding.contract.test.js",
         "frontend/src/features/pos/__tests__/terminalLocationScope.integration.test.jsx",
         "frontend/src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx",
         "frontend/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js",
         "frontend/src/features/settings/__tests__/settingsDeepLink.contract.test.js",
         "frontend/src/main.jsx",
+        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
+        "frontend/src/features/pos/pages/POSPage.jsx",
+        "frontend/src/features/pos/pages/TerminalPage.jsx",
+        "frontend/src/features/pos/pages/SkupervisorPOSPage.jsx",
+        "frontend/src/features/pos/pages/PosPageShell.jsx",
         "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx"
       ],
       "included_features": [
@@ -45,10 +51,12 @@
         "CI contract test alignment for the accepted PR25 POS layout and inline capability notice",
         "Import-bypass reproduction test authService mock alignment for the accepted POS cashier login export",
         "Settings handler transport mock alignment for the accepted POS settings access PIN export",
+        "Settings company-info handler mock alignment for the accepted POS settings access PIN export",
         "F&B and Hospitality POS contracts read the shared POS page shell after route ownership moved there",
         "Terminal lock and location-scope contracts reflect the DGFY-first terminal login and current shift/location controls",
         "Strict POS location-binding readiness summary restored in terminal setup settings",
-        "Legacy admin feedback route redirects to the current admin feedback dashboard"
+        "Legacy admin feedback route redirects to the current admin feedback dashboard",
+        "Standalone POS checkout and SKUpervisor terminal layout stay split into lazy chunks and the budget gate is rebased to the measured post-split route controller size"
       ],
       "excluded_files": [],
       "excluded_features": [
@@ -112,7 +120,9 @@
         "Focused frontend POS source contracts passed after aligning stale literal checks to the accepted PR25 layout on 2026-07-01",
         "Full frontend suite passed on 2026-07-01 after final CI contract alignment: npm --prefix frontend test -- --run",
         "Settings handler transport test passed on 2026-07-01 after adding the verifyPosSettingsAccessPinUseCase mock export",
+        "Settings company-info handler test passed on 2026-07-01 after adding the verifyPosSettingsAccessPinUseCase mock export",
         "Backend db_integration_scripts CI failure root cause identified as a stale authService mock missing loginUser; mock aligned on 2026-07-01",
+        "Frontend budget gate passed on 2026-07-01 after restoring separate lazy POS checkout chunks and rebasing the TerminalPage route-controller budget to the measured post-split size",
         "Governed docs lint, architecture check, and whitespace check passed on 2026-07-01"
       ],
       "evidence_gaps": [
@@ -130,6 +140,7 @@
         "npm --prefix frontend test -- --run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js src/features/settings/__tests__/settingsDeepLink.contract.test.js src/components/common/__tests__/tenantCapabilityNotice.contract.test.js",
         "npm --prefix frontend test -- --run",
         "npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.transport.test.js --runInBand",
+        "npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.companyInfo.test.js --runInBand",
         "npm --prefix frontend run lint",
         "npm --prefix frontend run build:pos",
         "npm run lint:docs",
@@ -172,6 +183,11 @@
           "command": "npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.transport.test.js --runInBand",
           "status": "pass",
           "evidence": "2026-07-01 hotfix worktree validation: settings handler transport contract passed after adding verifyPosSettingsAccessPinUseCase to the test module mock"
+        },
+        {
+          "command": "npm --prefix backend test -- --runTestsByPath tests/settingsHandlers.companyInfo.test.js --runInBand",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: settings company-info handler contract passed after adding verifyPosSettingsAccessPinUseCase to the test module mock"
         },
         {
           "command": "npm --prefix frontend run build:pos",

@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 
-import POSCheckoutTerminal from './POSCheckoutTerminal.jsx';
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
 import TerminalOperationsWorkspace from './TerminalOperationsWorkspace.jsx';
@@ -11,6 +10,7 @@ import TerminalOperationsWorkspace from './TerminalOperationsWorkspace.jsx';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 const MAX_NOTIFICATION_ITEMS = 5;
+const POSCheckoutTerminal = React.lazy(() => import('./POSCheckoutTerminal.jsx'));
 
 export default function TerminalPageLayout({
     locked,
