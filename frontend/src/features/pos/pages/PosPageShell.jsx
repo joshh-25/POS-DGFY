@@ -147,7 +147,9 @@ export default function PosPageShell({ CheckoutTerminal }) {
                     <FnbDiningPanel onSelectCheckoutContext={setFnbCheckoutContext} />
                 </Suspense>
             )}
-            <CheckoutTerminal canViewHistory={canViewPos} fnbContext={fnbCheckoutContext} />
+            <Suspense fallback={<section className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS checkout...</section>}>
+                <CheckoutTerminal canViewHistory={canViewPos} fnbContext={fnbCheckoutContext} />
+            </Suspense>
         </div>
     );
 }

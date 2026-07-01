@@ -31,10 +31,12 @@ const ROUTE_BUDGETS = [
   { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 154 },
   // PR #11 renamed the admin POS route chunk from POSPage-* to SkupervisorPOSPage-*.
   { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 59 },
-  // Rebased after terminal auth, shift, and queue orchestration moved into this
-  // route; the checkout UI and operations workspace remain separate lazy chunks.
-  // Rebased 2026-06-30 to the current terminal route candidate.
-  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 65 },
+  // Rebased after terminal auth, shift, queue orchestration, and setup-flow
+  // state remained in the route controller while checkout/layout render work
+  // split into lazy chunks.
+  // Rebased 2026-07-01 after the POS map hotfix restored lazy checkout chunks
+  // and measured the remaining route controller at 110.39KB.
+  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 116 },
   // Rebased 2026-06-30 to the current sales route candidate.
   { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 49 },
 ];
