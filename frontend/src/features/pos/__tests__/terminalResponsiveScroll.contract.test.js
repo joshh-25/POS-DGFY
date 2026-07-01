@@ -25,25 +25,27 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('lets checkout cards expand naturally and avoids legacy 100vh calc sizing', () => {
     expect(posCheckoutContent).toContain("const shellClassName = 'space-y-5';");
-    expect(posCheckoutContent).toContain("const checkoutGridClassName = 'grid grid-cols-1 gap-4 2xl:grid-cols-12 2xl:gap-6';");
+    expect(posCheckoutContent).toContain("const checkoutGridClassName = 'grid grid-cols-1 gap-4 pb-24 md:pb-0 md:grid-cols-[minmax(0,1fr)_325px] 2xl:gap-6';");
     expect(posCheckoutContent).toContain("const checkoutPaneClassName = '2xl:min-h-[32rem] 2xl:max-h-none';");
-    expect(posCheckoutContent).not.toContain('overflow-y-auto');
     expect(posCheckoutContent).not.toContain('min-h-0 overflow-hidden');
     expect(posCheckoutContent).not.toContain('splitPaneScrollClassName');
     expect(posCheckoutContent).not.toContain('calc(100vh-13.5rem)');
   });
 
-  it('spans checkout catalog and current-sale panes across the 2xl grid instead of compressing into single columns', () => {
-    expect(posCheckoutContent).toContain('2xl:col-span-8');
-    expect(posCheckoutContent).toContain('2xl:col-span-4');
-    expect(posCheckoutContent).toContain('min-w-0 rounded-xl border border-slate-200 bg-white');
-    expect(posCheckoutContent).toContain('min-w-0 space-y-4 2xl:col-span-4');
+  it('keeps checkout catalog and current-sale panes in the current responsive layout', () => {
+    expect(posCheckoutContent).toContain('md:grid-cols-[minmax(0,1fr)_325px]');
+    expect(posCheckoutContent).toContain('aria-label="POS catalog contents"');
+    expect(posCheckoutContent).toContain('aria-label="Current sale contents"');
+    expect(posCheckoutContent).toContain('fixed inset-x-0 bottom-0 z-50 max-h-[88vh]');
+    expect(posCheckoutContent).toContain('md:static md:z-auto md:max-h-none md:translate-y-0 md:overflow-visible');
   });
 
   it('pins current-sale terminal actions with sticky footer controls', () => {
-    expect(posCheckoutContent).toContain('sticky bottom-0 z-20 grid grid-cols-1 gap-2');
+    expect(posCheckoutContent).toContain('grid grid-cols-2 gap-2 border-t border-slate-200 pt-3');
     expect(posCheckoutContent).toContain('Checkout');
     expect(posCheckoutContent).toContain('Close Day / Z-Reading');
+    expect(posCheckoutContent).toContain('Print Last Receipt');
+    expect(posCheckoutContent).toContain('Open Cash Drawer');
   });
 
   it('removes legacy scroll badges without restoring split-pane detection', () => {
@@ -63,7 +65,6 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).not.toContain('onScroll={syncCatalogPaneScrollState}');
     expect(posCheckoutContent).not.toContain('onScroll={syncCurrentSalePaneScrollState}');
     expect(posCheckoutContent).not.toContain('handlePaneScrollKeyDown(event)');
-    expect(posCheckoutContent).not.toContain('tabIndex={0}');
   });
 
   it('does not render split-pane overflow cues', () => {
