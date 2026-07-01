@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MapPinPicker from '../MapPinPicker.jsx';
+import { getMapStyleUrl, rewriteOpenFreeMapUrl, shouldUseLocalTileProxy } from '../mapLibreShared.js';
 
 const originalFetch = globalThis.fetch;
 
@@ -223,6 +224,30 @@ describe('MapPinPicker MapLibre behavior', () => {
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
     expect(screen.getByText(/No pin selected yet\./i)).toBeTruthy();
     expect(maplibreMocks.Marker).not.toHaveBeenCalled();
+  });
+
+  it('keeps POS map tiles on OpenFreeMap when the POS host has no local tile proxy', () => {
+    const posEnv = {
+      VITE_APP_SURFACE: 'pos',
+      VITE_TILE_BASE: ''
+    };
+
+    expect(shouldUseLocalTileProxy(posEnv)).toBe(false);
+    expect(getMapStyleUrl(posEnv)).toBe('https://tiles.openfreemap.org/styles/positron');
+  });
+
+  it('keeps the local tile proxy for non-POS surfaces', () => {
+    const skupervisorEnv = {
+      VITE_APP_SURFACE: 'skupervisor',
+      VITE_TILE_BASE: ''
+    };
+
+    expect(shouldUseLocalTileProxy(skupervisorEnv)).toBe(true);
+    expect(getMapStyleUrl(skupervisorEnv)).toBe('/openfreemap/styles/positron');
+    expect(rewriteOpenFreeMapUrl(
+      'https://tiles.openfreemap.org/styles/positron',
+      'https://skupervisor.dgfy.ph'
+    )).toBe('https://skupervisor.dgfy.ph/openfreemap/styles/positron');
   });
 
   it('treats legacy 0,0 coordinates as no selected merchant pin', async () => {

@@ -56,6 +56,11 @@ jest.unstable_mockModule('../src/services/authService.js', () => ({
     generateToken: jest.fn().mockReturnValue('token'),
     generateRefreshToken: jest.fn().mockReturnValue('refresh'),
     blacklistToken: jest.fn().mockResolvedValue(true),
+    loginUser: jest.fn().mockResolvedValue({
+        user: { user_id: 1, role: 'cashier' },
+        token: 'token',
+        refreshToken: 'refresh'
+    })
 }));
 
 // Helper placeholders

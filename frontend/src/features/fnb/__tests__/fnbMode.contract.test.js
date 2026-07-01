@@ -45,14 +45,14 @@ describe('Food & Beverage frontend contract', () => {
   });
 
   it('attaches F&B check context to POS checkout and receipts', () => {
-    const posPage = read('frontend/src/features/pos/pages/POSPage.jsx');
+    const posPageShell = read('frontend/src/features/pos/pages/PosPageShell.jsx');
     const diningPanel = read('frontend/src/features/fnb/components/FnbDiningPanel.jsx');
     const terminal = read('frontend/src/features/pos/components/POSCheckoutTerminal.jsx');
     const checkoutSurfaceContract = read('frontend/src/features/pos/utils/checkoutSurfaceContract.js');
     const historyPanel = read('frontend/src/features/pos/components/POSTransactionHistoryPanel.jsx');
     const receipt = read('frontend/src/features/pos/components/ReceiptPrintView.jsx');
 
-    expect(posPage).toContain('FnbDiningPanel');
+    expect(posPageShell).toContain('FnbDiningPanel');
     expect(diningPanel).toContain('restaurant_service_charge: serviceCharge');
     expect(terminal).toContain('fnbContext: normalizedFnbContext');
     expect(checkoutSurfaceContract).toContain('fnb_check_id');

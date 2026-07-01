@@ -1,5 +1,6 @@
 const DEFAULT_TILE_BASE = 'https://tiles.openfreemap.org';
 const LOCAL_TILE_PROXY_BASE = '/openfreemap';
+const POS_APP_SURFACE = 'pos';
 
 export const DEFAULT_CENTER = Object.freeze({ latitude: 10.7202, longitude: 122.5621 });
 export const PHILIPPINES_BOUNDS = Object.freeze({
@@ -11,9 +12,16 @@ export const PHILIPPINES_BOUNDS = Object.freeze({
 
 export const TILE_BASE = import.meta.env.VITE_TILE_BASE || DEFAULT_TILE_BASE;
 
+export const shouldUseLocalTileProxy = (env = import.meta.env) => {
+  const configuredTileBase = String(env?.VITE_TILE_BASE || '').trim();
+  const appSurface = String(env?.VITE_APP_SURFACE || '').trim().toLowerCase();
+  return !configuredTileBase && appSurface !== POS_APP_SURFACE;
+};
+
 export const getMapStyleUrl = (env = import.meta.env) => {
   const configuredTileBase = String(env?.VITE_TILE_BASE || '').trim();
   if (configuredTileBase) return `${configuredTileBase.replace(/\/+$/, '')}/styles/positron`;
+  if (!shouldUseLocalTileProxy(env)) return `${DEFAULT_TILE_BASE}/styles/positron`;
   return `${LOCAL_TILE_PROXY_BASE}/styles/positron`;
 };
 
@@ -26,6 +34,7 @@ export const rewriteOpenFreeMapUrl = (url, origin = '') => {
 export const TILING_SERVER = getMapStyleUrl();
 
 export const tileTransformRequest = (url) => {
+  if (!shouldUseLocalTileProxy()) return { url };
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   return { url: rewriteOpenFreeMapUrl(url, origin) };
 };
