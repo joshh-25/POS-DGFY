@@ -42,4 +42,3 @@ Major
 - `npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx`
 - `npm --prefix frontend run build:pos`
 - `npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js tests/posSetupCashierUseCase.test.js tests/posCashierLoginUseCase.test.js --runInBand`
-
