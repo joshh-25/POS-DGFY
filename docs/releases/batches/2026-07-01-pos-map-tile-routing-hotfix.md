@@ -9,6 +9,7 @@ This hotfix makes the POS setup and settings maps load real map tiles instead of
 - POS map style fallback to OpenFreeMap when no POS tile proxy is configured.
 - Non-POS surfaces keep the existing same-origin `/openfreemap` proxy behavior.
 - Focused regression tests for POS and non-POS MapLibre routing.
+- POS handler transport test mock alignment for the PR25 cashier/setup use-case exports.
 
 ## Excluded
 
@@ -23,7 +24,7 @@ This hotfix makes the POS setup and settings maps load real map tiles instead of
 
 - Level: high
 - Warning: A mistake could keep POS onboarding/settings maps blank or accidentally alter non-POS tile proxy behavior.
-- Evidence reducing risk: focused MapLibre tests, POS production build, live resource content-type check, docs lint, architecture check, and whitespace check passed.
+- Evidence reducing risk: focused MapLibre tests, POS handler transport contract test, POS production build, live resource content-type check, docs lint, architecture check, and whitespace check passed.
 - Remaining gap: production still needs rendered POS proof after deployment.
 
 ## Rollback

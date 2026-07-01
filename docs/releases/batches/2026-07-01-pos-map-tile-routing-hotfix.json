@@ -11,8 +11,9 @@
       "name": "POS MapLibre tile routing hotfix",
       "plain_english_purpose": "Make the POS terminal setup and onboarding maps load real map tiles instead of a blank gray panel on the POS production host.",
       "purpose": "Route POS MapLibre style and tile requests to OpenFreeMap by default when the POS app surface has no explicit tile base, while preserving the existing local /openfreemap proxy behavior for non-POS surfaces.",
-      "implementation_summary": "Updates the shared MapLibre helper so VITE_APP_SURFACE=pos uses the external OpenFreeMap style URL unless VITE_TILE_BASE is configured, avoids rewriting OpenFreeMap tile URLs back to the POS host, and adds regression tests proving POS and non-POS routing behavior.",
+      "implementation_summary": "Updates the shared MapLibre helper so VITE_APP_SURFACE=pos uses the external OpenFreeMap style URL unless VITE_TILE_BASE is configured, avoids rewriting OpenFreeMap tile URLs back to the POS host, adds regression tests proving POS and non-POS routing behavior, and aligns the POS handler transport test mock with the PR25 cashier/setup exports so the full POS handler import contract stays covered.",
       "included_files": [
+        "backend/tests/posHandlers.transport.test.js",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
         "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.md",
         "frontend/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
@@ -21,7 +22,8 @@
       "included_features": [
         "POS map style fallback to OpenFreeMap when no POS tile proxy is configured",
         "Non-POS surfaces keep same-origin /openfreemap proxy behavior",
-        "Regression tests for POS and non-POS MapLibre routing"
+        "Regression tests for POS and non-POS MapLibre routing",
+        "POS handler transport test mock alignment for the PR25 cashier/setup use-case exports"
       ],
       "excluded_files": [],
       "excluded_features": [
@@ -78,6 +80,7 @@
         "Focused MapLibre tests passed on 2026-07-01: npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
         "POS production build passed on 2026-07-01: npm --prefix frontend run build:pos",
         "Live resource check proved https://pos.dgfy.ph/openfreemap/styles/positron returns text/html while https://tiles.openfreemap.org/styles/positron returns application/json",
+        "Focused backend POS handler transport test passed after mock alignment on 2026-07-01",
         "Governed docs lint, architecture check, and whitespace check passed on 2026-07-01"
       ],
       "evidence_gaps": [
@@ -90,6 +93,7 @@
       ],
       "required_tests": [
         "npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
+        "npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js --runInBand",
         "npm --prefix frontend run build:pos",
         "npm run lint:docs",
         "npm run check:architecture",
@@ -100,6 +104,11 @@
           "command": "npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
           "status": "pass",
           "evidence": "2026-07-01 hotfix worktree validation: 2 files, 27 tests passed"
+        },
+        {
+          "command": "npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js --runInBand",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: POS handler transport contract passed after adding PR25 cashier/setup exports to the module mock"
         },
         {
           "command": "npm --prefix frontend run build:pos",

@@ -24,6 +24,9 @@ const mockUploadPosCatalogImageUseCase = jest.fn();
 const mockUploadBulkPosCatalogImagesUseCase = jest.fn();
 const mockDeletePosCatalogImageUseCase = jest.fn();
 const mockOpenTerminalShiftUseCase = jest.fn();
+const mockCreatePosSetupCashierUseCase = jest.fn();
+const mockListPosSetupCashiersUseCase = jest.fn();
+const mockLoginPosCashierUseCase = jest.fn();
 const mockSwitchTerminalShiftLocationUseCase = jest.fn();
 const mockGetCurrentTerminalShiftUseCase = jest.fn();
 const mockRecordCashDrawerEventUseCase = jest.fn();
@@ -63,6 +66,9 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     uploadBulkPosCatalogImagesUseCase: mockUploadBulkPosCatalogImagesUseCase,
     deletePosCatalogImageUseCase: mockDeletePosCatalogImageUseCase,
     openTerminalShiftUseCase: mockOpenTerminalShiftUseCase,
+    createPosSetupCashierUseCase: mockCreatePosSetupCashierUseCase,
+    listPosSetupCashiersUseCase: mockListPosSetupCashiersUseCase,
+    loginPosCashierUseCase: mockLoginPosCashierUseCase,
     switchTerminalShiftLocationUseCase: mockSwitchTerminalShiftLocationUseCase,
     getCurrentTerminalShiftUseCase: mockGetCurrentTerminalShiftUseCase,
     recordCashDrawerEventUseCase: mockRecordCashDrawerEventUseCase,
