@@ -1,0 +1,166 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-authorized Codex hotfix review",
+  "reviewed_at": "2026-07-01T22:45:00.000+08:00",
+  "source_pr": "owner-direct-staging-hotfix:codex/staging-pos-map-hotfix",
+  "release_slices": [
+    {
+      "id": "pos-map-tile-routing-hotfix",
+      "slice_name": "POS MapLibre tile routing hotfix",
+      "name": "POS MapLibre tile routing hotfix",
+      "plain_english_purpose": "Make the POS terminal setup and onboarding maps load real map tiles instead of a blank gray panel on the POS production host.",
+      "purpose": "Route POS MapLibre style and tile requests to OpenFreeMap by default when the POS app surface has no explicit tile base, while preserving the existing local /openfreemap proxy behavior for non-POS surfaces.",
+      "implementation_summary": "Updates the shared MapLibre helper so VITE_APP_SURFACE=pos uses the external OpenFreeMap style URL unless VITE_TILE_BASE is configured, avoids rewriting OpenFreeMap tile URLs back to the POS host, and adds regression tests proving POS and non-POS routing behavior.",
+      "included_files": [
+        "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
+        "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.md",
+        "frontend/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
+        "frontend/src/components/maps/mapLibreShared.js"
+      ],
+      "included_features": [
+        "POS map style fallback to OpenFreeMap when no POS tile proxy is configured",
+        "Non-POS surfaces keep same-origin /openfreemap proxy behavior",
+        "Regression tests for POS and non-POS MapLibre routing"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "PayMongo or payment-channel work",
+        "Database migrations",
+        "Backend API changes",
+        "PR #25 POS cashier/setup UI changes already represented by the previous hotfix",
+        "Storefront discovery map behavior changes",
+        "Branch retirement"
+      ],
+      "owner_attribution": "BabyBaBab owner-authorized POS map hotfix request",
+      "source_branch": "codex/staging-pos-map-hotfix",
+      "source_pr": "owner-direct-staging-hotfix:codex/staging-pos-map-hotfix",
+      "source_type": "owner_direct_staging",
+      "source_type_allowed_values": [
+        "developer_pr",
+        "owner_direct_staging",
+        "controller_promotion"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "affected_surfaces": [
+        "frontend",
+        "POS",
+        "docs"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": false,
+        "POS": true,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "low",
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "This hotfix changes shared map resource routing for the POS app surface; a mistake could keep POS onboarding/settings maps blank or accidentally alter non-POS tile proxy behavior.",
+      "potentially_affected_existing_behaviors": [
+        "POS terminal onboarding primary store location map rendering",
+        "POS Settings Storefront Locations map rendering",
+        "Shared MapLibre tile URL routing",
+        "IMS and Storefront map views that rely on the same local /openfreemap proxy helper"
+      ],
+      "evidence_covering_regression_risk": [
+        "Focused MapLibre tests passed on 2026-07-01: npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
+        "POS production build passed on 2026-07-01: npm --prefix frontend run build:pos",
+        "Live resource check proved https://pos.dgfy.ph/openfreemap/styles/positron returns text/html while https://tiles.openfreemap.org/styles/positron returns application/json",
+        "Governed docs lint, architecture check, and whitespace check passed on 2026-07-01"
+      ],
+      "evidence_gaps": [
+        "Rendered live POS browser proof must still confirm that production loads a nonblank map after deployment",
+        "If a future POS-local tile proxy is added, VITE_TILE_BASE must be configured and retested"
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting this hotfix commit and redeploying the previous production SHA; no migration rollback is required",
+        "After deployment, monitor POS setup/settings map rendering and browser console/network failures for MapLibre style or tile requests"
+      ],
+      "required_tests": [
+        "npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
+        "npm --prefix frontend run build:pos",
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "git diff --check origin/master..origin/staging"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm --prefix frontend test -- --run src/components/maps/__tests__/mapLibreShared.test.js src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: 2 files, 27 tests passed"
+        },
+        {
+          "command": "npm --prefix frontend run build:pos",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: standalone POS production build completed with existing large-chunk warning only"
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: governed docs lint passed"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "2026-07-01 hotfix worktree validation: architecture guardrails and controller boundaries passed"
+        },
+        {
+          "command": "git diff --check origin/master..origin/staging",
+          "status": "pass",
+          "evidence": "2026-07-01 after staging reflection: whitespace check passed for the current promotion diff"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
+        "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.md"
+      ],
+      "architecture_classification": "no-architecture-impact",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-authorized Codex documentation review",
+        "reviewed_at": "2026-07-01T22:45:00.000+08:00",
+        "rationale": "This hotfix changes frontend map resource routing only. No backend boundary, database schema, deploy automation, or ADR change is required; the reviewed batch manifest and plain-English release summary document the exact production slice.",
+        "documents": [
+          {
+            "path": "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
+            "action": "updated",
+            "evidence": "Reviewed manifest covers the exact POS map tile routing hotfix files and ship/exclude decisions."
+          },
+          {
+            "path": "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.md",
+            "action": "updated",
+            "evidence": "Plain-English release summary records user impact, validation, rollback, and production proof requirements."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No ADR or compliance declaration is required because this is a frontend map resource routing hotfix with no backend, database, payment, fiscal, tenant lifecycle, or authorization boundary change.",
+      "rollback_notes": "Revert this hotfix commit and redeploy the previous production SHA; no data migration or payment rollback is needed.",
+      "production_proof_required": [
+        "Production remote HEAD, .deploy-state/last_deployed_commit, deploy summary, and /api/v1/health runtime SHA equal the final origin/master SHA",
+        "Production POS build assets include the external OpenFreeMap fallback for the POS app surface",
+        "Live POS map resource requests resolve to MapLibre JSON and render a nonblank map on POS setup or settings"
+      ],
+      "production_accuracy_checks_required": [
+        "Verify production POS map no longer requests https://pos.dgfy.ph/openfreemap/styles/positron as its default style",
+        "Verify production POS setup/settings map renders a real map tile layer, not only the pin shell",
+        "Verify non-POS local /openfreemap proxy behavior is not changed by the hotfix"
+      ],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}
