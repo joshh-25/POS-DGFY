@@ -8,7 +8,7 @@ const readSource = (relativePath) => fs.readFileSync(path.join(featureRoot, rela
 
 describe('Hospitality POS contract', () => {
     it('renders a front-desk folio panel only for Hospitality mode', () => {
-        const page = readSource('pages/POSPage.jsx');
+        const page = readSource('pages/PosPageShell.jsx');
 
         expect(page).toContain('isHospitalityWorkflowMode');
         expect(page).toContain('HospitalityPosPanel');

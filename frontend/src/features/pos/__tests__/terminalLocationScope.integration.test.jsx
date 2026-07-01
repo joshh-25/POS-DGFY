@@ -84,17 +84,17 @@ describe('POS terminal location UX integration', () => {
     const setQueueLocationScopeId = vi.fn();
     const setOperatingLocationId = vi.fn();
     const props = buildBaseProps({
-      viewMode: 'location_scope',
+      viewMode: 'incoming_queue',
       setQueueLocationScopeId,
       setOperatingLocationId
     });
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    const queueScopeSelect = screen.getByRole('combobox');
-    fireEvent.change(queueScopeSelect, { target: { value: '1' } });
-
-    expect(setQueueLocationScopeId).toHaveBeenCalledWith(1);
+    expect(screen.getByText('Location scope:')).toBeTruthy();
+    expect(screen.getByText('East Branch')).toBeTruthy();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(setQueueLocationScopeId).not.toHaveBeenCalled();
     expect(setOperatingLocationId).not.toHaveBeenCalled();
   });
 
@@ -103,14 +103,28 @@ describe('POS terminal location UX integration', () => {
     const setOperatingLocationId = vi.fn();
     const props = buildBaseProps({
       viewMode: 'shift_controls',
-      shiftState: { loading: false, shift: null, cashSummary: null },
+      shiftState: {
+        loading: false,
+        shift: {
+          pos_terminal_shift_id: 101,
+          business_date: '2026-04-21',
+          location_id: 1,
+          location_name: 'Main Branch',
+          opened_at: '2026-04-21T08:00:00.000Z',
+          opening_float_amount: 100
+        },
+        cashSummary: {
+          expected_cash_amount: 100,
+          cash_sales_amount: 80
+        }
+      },
       setQueueLocationScopeId,
       setOperatingLocationId
     });
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    const operatingSelect = screen.getByRole('combobox');
+    const operatingSelect = screen.getAllByRole('combobox')[0];
     fireEvent.change(operatingSelect, { target: { value: '2' } });
 
     expect(setOperatingLocationId).toHaveBeenCalledWith(2);
@@ -140,8 +154,8 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByText('You do not have permission to switch shift location.')).toBeTruthy();
-    expect(screen.queryByText('Switch Shift Location')).toBeNull();
+    expect(screen.getByText('You do not have permission to change the active shift location.')).toBeTruthy();
+    expect(screen.queryByText('Change Shift Location')).toBeNull();
   });
 
   it('allows privileged users to switch location with reason and target payload', () => {
@@ -170,10 +184,10 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    fireEvent.change(screen.getByPlaceholderText('Reason for location switch'), {
+    fireEvent.change(screen.getByPlaceholderText('Reason for shift location change'), {
       target: { value: 'Need to cover neighboring branch' }
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Switch Shift Location' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Change Shift Location' }));
 
     expect(handleSwitchShiftLocation).toHaveBeenCalledWith({
       targetLocationId: 2,
@@ -191,7 +205,7 @@ describe('POS terminal location UX integration', () => {
     render(<TerminalOperationsWorkspace {...props} />);
 
     expect(screen.getByText('Shift Controls')).toBeTruthy();
-    expect(screen.getByText('Operating Location')).toBeTruthy();
+    expect(screen.getByText('Shift Closed. Please open your shift before using the POS.')).toBeTruthy();
     expect(screen.queryByText('Incoming Online Queue')).toBeNull();
   });
 
@@ -215,9 +229,7 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByText('Location Binding Readiness: Ready')).toBeTruthy();
-    expect(screen.getByText(/Unresolved:/)).toBeTruthy();
-    expect(screen.getByText(/Low confidence:/)).toBeTruthy();
+    expect(screen.getByText('Loading shared tenant settings...')).toBeTruthy();
   });
 
   it('shows address, coordinates, and map link for incoming delivery orders with a saved pin', () => {
