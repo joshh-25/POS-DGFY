@@ -100,3 +100,22 @@ test('candidate evidence rejects missing or failed documentation closure', () =>
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('candidate evidence permits only fully approved isolated-QA emergency evidence', () => {
+  const { root, options } = fixture();
+  try {
+    write(root, options.qaProof, { status: 'unavailable', target_sha: SHA, isolated: false });
+    assert.throws(() => buildCandidateEvidence(options), (error) => error.code === 'EMERGENCY_QA_AUTHORIZATION_INVALID');
+    options.emergencyQaReport = write(root, 'emergency-qa.json', {
+      schema: 'sku-emergency-qa-authorization/v1', status: 'approved', reason_code: 'isolated_qa_unavailable',
+      target_sha: SHA, owner_approved: true, actor: 'owner', reason: 'Distinct QA unavailable.',
+      payment_sensitive: false, migrations_changed: false,
+      compensating_controls: { local_qualification: true, rollback_ready: true, production_readonly_smoke_planned: true, post_deploy_accuracy_required: true },
+    });
+    const evidence = buildCandidateEvidence(options);
+    assert.equal(evidence.emergency_qa.reason_code, 'isolated_qa_unavailable');
+    assert.match(evidence.emergency_qa.report_sha256, /^[0-9a-f]{64}$/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

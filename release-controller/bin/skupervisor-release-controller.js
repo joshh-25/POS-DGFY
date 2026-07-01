@@ -17,6 +17,7 @@ const {
   validateInventoryDocumentation,
   validateDocumentationClosureEvidence,
   validateEvidence,
+  validateEmergencyQaReport,
   validateLiveGithubEvidence,
   validateGithubActionsUnavailabilityReport,
   validateAccuracyProofBundle,
@@ -34,7 +35,7 @@ function parseArgs(argv) {
   const options = { dryRun: true, finalize: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (['--phase', '--target-sha', '--tag', '--payment-tag', '--inventory', '--evidence', '--documentation-closure', '--regression-risk-notice', '--github-actions-unavailability', '--accuracy-proof', '--config'].includes(arg)) {
+    if (['--phase', '--target-sha', '--tag', '--payment-tag', '--inventory', '--evidence', '--documentation-closure', '--regression-risk-notice', '--github-actions-unavailability', '--emergency-qa-report', '--accuracy-proof', '--config'].includes(arg)) {
       options[arg.slice(2).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = argv[index + 1] || '';
       index += 1;
     } else if (arg === '--execute') {
@@ -200,6 +201,16 @@ function controllerMain(options) {
   const regressionRiskNoticeHash = sha256File(options.regressionRiskNotice);
   const inventory = validateInventory(readJson(options.inventory, 'reviewed inventory'), options.targetSha);
   const evidence = readJson(options.evidence, 'candidate evidence');
+  const allowEmergencyQaBypass = config.emergency_qa_bypass?.enabled === true;
+  if (evidence.emergency_qa) {
+    if (!allowEmergencyQaBypass) throw new ReleaseControllerError('EMERGENCY_QA_BYPASS_DISABLED', 'Root-owned controller configuration does not enable emergency QA bypass');
+    if (!options.emergencyQaReport) throw new ReleaseControllerError('EMERGENCY_QA_AUTHORIZATION_MISSING', 'Candidate evidence requires --emergency-qa-report');
+    validateEmergencyQaReport(
+      readJson(options.emergencyQaReport, 'emergency QA report'),
+      evidence,
+      { targetSha: options.targetSha, reportPath: options.emergencyQaReport }
+    );
+  }
   if (evidence.github_actions_unavailability) {
     if (!options.githubActionsUnavailability) throw new ReleaseControllerError('GITHUB_ACTIONS_UNAVAILABILITY_MISSING', 'Candidate evidence requires --github-actions-unavailability');
     if (sha256File(options.githubActionsUnavailability) !== evidence.github_actions_unavailability.report_sha256) {
@@ -236,7 +247,7 @@ function controllerMain(options) {
   const ledger = new NonceLedger(config.ledger_dir);
   if (!options.finalize) ledger.assertUnused(authorization.auth);
   const allowGithubBillingFallback = config.github_actions_billing_fallback?.enabled === true;
-  validateEvidence(evidence, expected, config.required_checks?.[options.phase] || [], { allowGithubBillingFallback });
+  validateEvidence(evidence, expected, config.required_checks?.[options.phase] || [], { allowGithubBillingFallback, allowEmergencyQaBypass });
 
   let paymentAuthorization = null;
   if (inventory.payment_sensitive) {

@@ -35,16 +35,12 @@ export const fetchPosTransactionById = async (id) => {
 };
 
 export const fetchPosDeviceStatus = async () => {
-    try {
-        const response = await api.get('/pos/device/status', {
-            // Device status is a background capability probe. In tablet/APK deployments
-            // the local HTTP bridge can be absent, so this should fail quietly.
-            skipGlobalErrorToast: true
-        });
-        return response.data?.data;
-    } catch (error) {
-        throw error;
-    }
+    const response = await api.get('/pos/device/status', {
+        // Device status is a background capability probe. In tablet/APK deployments
+        // the local HTTP bridge can be absent, so this should fail quietly.
+        skipGlobalErrorToast: true
+    });
+    return response.data?.data;
 };
 
 export const printPosReceipt = async (payload = {}) => {

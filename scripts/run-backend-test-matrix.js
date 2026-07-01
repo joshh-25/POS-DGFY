@@ -223,7 +223,11 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir) {
     ...tests.map(relativeTestPath),
   ];
   const started = Date.now();
-  const result = run(process.execPath, args, { cwd: BACKEND_DIR, timeout: DEFAULT_CHUNK_TIMEOUT_MS });
+  const result = run(process.execPath, args, {
+    cwd: BACKEND_DIR,
+    timeout: DEFAULT_CHUNK_TIMEOUT_MS,
+    env: { ...process.env, NODE_ENV: 'test' },
+  });
   const durationMs = Date.now() - started;
   writeLog(logFile, result);
   const timedOut = result.error && result.error.code === 'ETIMEDOUT';

@@ -124,6 +124,33 @@ function buildNotice(inventory, options = {}) {
   return notice;
 }
 
+function formatNoticeEntry(entry) {
+  if (entry === null || entry === undefined) return '';
+  if (typeof entry === 'string') return entry.trim();
+  if (typeof entry === 'number' || typeof entry === 'boolean') return String(entry);
+  if (Array.isArray(entry)) return entry.map(formatNoticeEntry).filter(Boolean).join('; ');
+  if (typeof entry !== 'object') return String(entry);
+
+  const parts = [];
+  if (entry.command) parts.push(`command: ${entry.command}`);
+  if (entry.status) parts.push(`status: ${entry.status}`);
+  if (entry.evidence) parts.push(`evidence: ${entry.evidence}`);
+  if (entry.name) parts.push(`name: ${entry.name}`);
+  if (entry.detail) parts.push(`detail: ${entry.detail}`);
+  if (parts.length > 0) return parts.join('; ');
+
+  return JSON.stringify(entry);
+}
+
+function pushMarkdownList(lines, entries, emptyText) {
+  const formatted = (entries || []).map(formatNoticeEntry).filter(Boolean);
+  if (formatted.length === 0) {
+    lines.push(`- ${emptyText}`);
+    return;
+  }
+  for (const entry of formatted) lines.push(`- ${entry}`);
+}
+
 function toMarkdown(notice) {
   const lines = [
     '## Regression Risk Notice',
@@ -143,24 +170,16 @@ function toMarkdown(notice) {
     lines.push(`- Operator decision: ${slice.regression_warning_required ? 'ship only if this residual risk is acceptable or gather the missing evidence first' : 'no specific regression risk identified'}`);
     lines.push('');
     lines.push('Evidence reducing risk:');
-    for (const evidence of slice.evidence_covering_regression_risk || []) lines.push(`- ${evidence}`);
+    pushMarkdownList(lines, slice.evidence_covering_regression_risk, 'No specific regression evidence recorded.');
     lines.push('');
     lines.push('Remaining gaps:');
-    if ((slice.evidence_gaps || []).length === 0) {
-      lines.push('- No specific regression evidence gap identified.');
-    } else {
-      for (const gap of slice.evidence_gaps) lines.push(`- ${gap}`);
-    }
+    pushMarkdownList(lines, slice.evidence_gaps, 'No specific regression evidence gap identified.');
     lines.push('');
     lines.push('Potentially affected existing behaviors:');
-    if ((slice.potentially_affected_existing_behaviors || []).length === 0) {
-      lines.push('- No specific affected existing behavior identified.');
-    } else {
-      for (const behavior of slice.potentially_affected_existing_behaviors) lines.push(`- ${behavior}`);
-    }
+    pushMarkdownList(lines, slice.potentially_affected_existing_behaviors, 'No specific affected existing behavior identified.');
     lines.push('');
     lines.push('Rollback or monitoring notes:');
-    for (const note of slice.rollback_or_monitoring_notes || []) lines.push(`- ${note}`);
+    pushMarkdownList(lines, slice.rollback_or_monitoring_notes, 'No specific rollback or monitoring note recorded.');
     lines.push('');
   }
 
@@ -226,6 +245,7 @@ if (require.main === module) main();
 module.exports = {
   parseArgs,
   buildNotice,
+  formatNoticeEntry,
   toMarkdown,
   checkRegressionRisk,
 };
