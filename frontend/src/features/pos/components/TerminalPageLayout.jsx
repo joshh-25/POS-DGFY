@@ -1,30 +1,16 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { resolveAppAssetUrl } from '@/src/utils/assetUrl.js';
+import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 
-import TenantCapabilityNotice from '@/src/components/common/TenantCapabilityNotice.jsx';
+import POSCheckoutTerminal from './POSCheckoutTerminal.jsx';
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
-const POSCheckoutTerminal = lazy(() => import('./POSCheckoutTerminal.jsx'));
-const TerminalOperationsWorkspace = lazy(() => import('./TerminalOperationsWorkspace.jsx'));
+import TerminalOperationsWorkspace from './TerminalOperationsWorkspace.jsx';
+
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 const MAX_NOTIFICATION_ITEMS = 5;
-const QUEUE_STATUS_LABELS = {
-  queued: 'Queued',
-  replaying: 'Replaying',
-  replayed: 'Replayed',
-  failed_manual_resolution_required: 'Manual Resolution Required'
-};
-const QUEUE_OPERATION_LABELS = {
-  checkout: 'Checkout',
-  shift_open: 'Shift Open',
-  shift_close: 'Shift Close',
-  cash_event: 'Cash Drawer Event',
-  order_status_update: 'Order Status Update'
-};
 
 export default function TerminalPageLayout({
     locked,
@@ -39,11 +25,18 @@ export default function TerminalPageLayout({
     setMobileNavOpen,
     isDesktopWide,
     canViewPos,
-    allowAdminNavigationWithoutShift = false,
+    onboardingRestricted = false,
+    canCreateItems = false,
+    canEditItems = false,
+    canDeleteItems = false,
+    canAdminBypassShiftPrompt = false,
+    itemsStockFilterPreset = '',
+    onItemsStockFilterPresetApplied = () => {},
     canAdjustCashDrawer,
     canCloseDay,
     terminalUser,
     posViewMode,
+    workflowMode = '',
     isMsmeMode = false,
     shiftState,
     incomingOrdersState,
@@ -51,6 +44,7 @@ export default function TerminalPageLayout({
     operatingLocationId,
     queueLocationScopeId,
     handleSelectViewMode,
+    settingsEntryViewMode = 'settings_profile',
     handleLock,
     setDrawerOpen,
     effectiveSidebarCollapsed = false,
@@ -87,7 +81,10 @@ export default function TerminalPageLayout({
     refreshIncomingOrders,
     activeShiftId,
     checkoutBlockedReason,
-    complianceBlockerDetails,
+    refreshTerminalUser = async () => {},
+    refreshTerminalMeta = async () => {},
+    onPosSetupSaved = async () => {},
+    onStorefrontSetupSaved = async () => {},
     queuedTerminalOperationCount,
     queuedTerminalBlockedCount = 0,
     queuedTerminalOperations = [],
@@ -113,23 +110,22 @@ export default function TerminalPageLayout({
     catalogSearchPrefill,
     onCatalogSearchHydrated,
     drawerOpen,
+    terminalUnlockModalOpen = false,
     formData,
     setFormData,
     dgfyPosState = {},
     submitting,
     handleLogin,
+    handleCashierLogin = null,
     handleLegacyLogin = null
 }) {
-  const navigate = useNavigate();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [capabilityNotice, setCapabilityNotice] = useState(null);
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
   const actionableQueueCount = queueCount + blockedQueueCount;
   const queueTotalCount = Number(queueSummary?.total || actionableQueueCount);
-  const complianceBlocked = Boolean(complianceBlockerDetails);
   const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
-  const terminalIdentityDisplay = normalizedActiveTerminalId || 'Not selected';
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const activeHeaderTitle = useMemo(() => {
     const titles = {
@@ -139,13 +135,14 @@ export default function TerminalPageLayout({
       reports: 'Report',
       items: 'Items',
       incoming_queue: 'Orders',
-      location_scope: 'Location Scope',
+      location_scope: 'Settings',
+      settings_profile: 'Settings',
+      settings_pos: 'Settings',
+      settings_storefront: 'Settings',
       shift_controls: 'Shift',
       cash_drawer: 'Cash Drawer Event',
-      close_shift: 'Close Shift',
-      sales_today: 'Sales Today',
-      terminal_setup: 'Terminal Setup Context',
-      sync_queue: 'Sync Queue'
+      close_shift: 'Shift',
+      terminal_setup: 'Terminal Setup Context'
     };
     return titles[posViewMode] || 'POS Catalog';
   }, [posViewMode]);
@@ -163,51 +160,10 @@ export default function TerminalPageLayout({
         }
       });
     }
-    const queueNotificationItems = (Array.isArray(queuedTerminalOperations) ? queuedTerminalOperations : [])
-      .filter((entry) => {
-        const status = String(entry?.status || '').trim();
-        return status === 'queued' || status === 'replaying' || status === 'failed_manual_resolution_required';
-      })
-      .slice(0, MAX_NOTIFICATION_ITEMS)
-      .map((entry) => {
-        const statusKey = String(entry?.status || '').trim() || 'queued';
-        const operationLabel = QUEUE_OPERATION_LABELS[entry?.operation] || entry?.operation || 'Terminal Operation';
-        const lastErrorMessage = String(entry?.last_error?.message || '').trim();
-        return {
-          id: `sync-queue-${entry.intent_id}`,
-          title: `${operationLabel} • ${QUEUE_STATUS_LABELS[statusKey] || statusKey}`,
-          description: lastErrorMessage || `Intent ${entry.intent_id}`,
-          actionLabel: 'Open Sync Queue',
-          onClick: () => {
-            setNotificationsOpen(false);
-            handleSelectViewMode('sync_queue');
-          }
-        };
-      });
-    items.push(...queueNotificationItems);
-    if (complianceBlocked) {
-      items.push({
-        id: 'compliance-blocked',
-        title: complianceBlockerDetails?.title || 'Compliance action required',
-        description: complianceBlockerDetails?.message || 'Resolve the compliance blocker before checkout.',
-        actionLabel: complianceBlockerDetails?.actionHref ? 'Open Compliance' : '',
-        onClick: () => {
-          setNotificationsOpen(false);
-          if (complianceBlockerDetails?.actionHref) {
-            navigate(complianceBlockerDetails.actionHref);
-          }
-        }
-      });
-    }
     return items.slice(0, MAX_NOTIFICATION_ITEMS);
   }, [
-    blockedQueueCount,
-    complianceBlocked,
-    complianceBlockerDetails,
     handleSelectViewMode,
-    incomingOrders.length,
-    navigate,
-    queuedTerminalOperations
+    incomingOrders.length
   ]);
   const notificationCount = notifications.length;
   const primaryNotificationAction = notifications[0]?.onClick || null;
@@ -227,20 +183,17 @@ export default function TerminalPageLayout({
     ? 'flex min-h-[38px] flex-col gap-1 lg:grid lg:min-h-[46px] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-2'
     : 'grid min-h-[56px] grid-cols-1 gap-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center';
   const headerSubtitleClassName = IS_DGFY_POS_SURFACE
-    ? 'mt-0.5 hidden max-w-3xl text-[11px] leading-4 text-[#334155] lg:block'
-    : 'mt-0.5 hidden max-w-3xl text-[12px] leading-4 text-[#334155] md:block';
-  const offlineMessageClassName = IS_DGFY_POS_SURFACE
-    ? 'mt-2 hidden text-sm font-semibold text-amber-700 lg:block'
-    : 'mt-2 hidden text-sm font-semibold text-amber-700 md:block';
+    ? 'mt-1 hidden max-w-3xl text-[11px] leading-4 text-pos-muted lg:block'
+    : 'mt-1 hidden max-w-3xl text-[12px] leading-4 text-pos-muted md:block';
   const compactBellClassName = IS_DGFY_POS_SURFACE
-    ? 'relative grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100 lg:hidden'
+    ? 'relative grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:hidden'
     : 'hidden';
   const compactIdentityClassName = IS_DGFY_POS_SURFACE
     ? 'hidden'
     : 'hidden';
   const desktopBellClassName = IS_DGFY_POS_SURFACE
-    ? 'relative hidden h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100 lg:grid'
-    : 'relative grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100';
+    ? 'relative hidden h-10 w-10 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:grid'
+    : 'relative grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100';
   const desktopIdentityClassName = IS_DGFY_POS_SURFACE
     ? 'hidden min-w-0 shrink-0 items-center gap-2 lg:flex'
     : 'flex min-w-0 shrink-0 items-center gap-2.5';
@@ -248,6 +201,7 @@ export default function TerminalPageLayout({
     ? 'fixed inset-0 z-50 lg:hidden'
     : 'fixed inset-0 z-50 xl:hidden';
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
+
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handleCapabilityBlocked = (event) => {
@@ -262,19 +216,20 @@ export default function TerminalPageLayout({
     window.addEventListener('tenant:capability-blocked', handleCapabilityBlocked);
     return () => window.removeEventListener('tenant:capability-blocked', handleCapabilityBlocked);
   }, []);
+
   const notificationPanel = notificationsOpen ? createPortal(
     <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)}>
       <div
         className="absolute right-2 top-[3.85rem] w-[21rem] max-w-[calc(100vw-1rem)] lg:right-5 lg:top-[4.1rem]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="absolute right-4 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-slate-200 bg-[#1A4E8D]" />
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15">
-          <div className="bg-[#1A4E8D] px-4 py-3 text-white">
+        <div className="absolute right-4 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#1A4E8D]" />
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15">
+          <div className="bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-white">
             <p className="text-lg font-black">Notifications</p>
             <p className="mt-0.5 text-xs text-blue-100">Review alerts without leaving the current screen.</p>
           </div>
-          <div className="max-h-[22rem] overflow-y-auto bg-[#F8FAFC]">
+          <div className="max-h-[22rem] overflow-y-auto bg-[#f8fbff]">
             {notifications.length > 0 ? notifications.map((item) => (
               <button
                 key={item.id}
@@ -282,7 +237,7 @@ export default function TerminalPageLayout({
                 onClick={item.onClick}
                 className="flex w-full items-start gap-3 border-b border-slate-200 px-4 py-4 text-left transition hover:bg-white"
               >
-                <span className="mt-2 h-3 w-3 shrink-0 rounded-full bg-[#1A4E8D]" />
+                <span className="mt-2 h-3 w-3 shrink-0 rounded-full bg-[#2563EB]" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-extrabold text-[#0F172A]">{item.title}</p>
                   <p className="mt-1 text-xs leading-5 text-[#64748B]">{item.description}</p>
@@ -310,7 +265,7 @@ export default function TerminalPageLayout({
                   setNotificationsOpen(false);
                 }
               }}
-              className="block w-full bg-[#1A4E8D] px-4 py-3 text-center text-sm font-black text-white transition hover:bg-[#143F73]"
+              className="block w-full bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-center text-sm font-black text-white transition hover:from-[#143F73] hover:to-[#1D4ED8]"
             >
               Show all notifications
             </button>
@@ -320,6 +275,7 @@ export default function TerminalPageLayout({
     </div>,
     document.body
   ) : null;
+
   const renderNotificationButton = (className, size) => (
     <div className="relative">
       <button
@@ -342,389 +298,326 @@ export default function TerminalPageLayout({
     </div>
   );
 
-    return (
-        <div className={`dgfy-pos-shell h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden bg-[#F1F5F9] text-[#0F172A] ${shellLayoutClassName}`}>
-            {notificationPanel}
-            {!effectiveSidebarCollapsed && (
-            <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
-                <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
-                    <TerminalWorkspaceSidebar
-                        className={persistentSidebarBodyClassName}
-                        locked={locked}
-                        isMsmeMode={isMsmeMode}
-                        terminalUser={terminalUser}
-                        currentViewMode={posViewMode}
-                        canViewPos={canViewPos}
-                        allowAdminNavigationWithoutShift={allowAdminNavigationWithoutShift}
-                        canAdjustCashDrawer={canAdjustCashDrawer}
-                        canCloseDay={canCloseDay}
-                        shiftState={shiftState}
-                        incomingOrdersState={incomingOrdersState}
-                        locationsState={locationsState}
-                        queueLocationScopeId={queueLocationScopeId}
-                        queueSummary={queueSummary}
-                        onSelectViewMode={handleSelectViewMode}
-                        onUnlock={() => setDrawerOpen(true)}
-                        onLock={handleLock}
-                    />
-                </Suspense>
-            </div>
-            )}
-            <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-            <div className={`border-b border-slate-200 bg-white/95 px-4 py-1.5 backdrop-blur sm:px-5 lg:px-7 ${lockedSurfaceClassName}`}>
-                <div className={headerShellClassName}>
-                    <div className="flex min-w-0 items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (locked) return;
-                                if (isDesktopWide) {
-                                    setSidebarCollapsed((collapsed) => !collapsed);
-                                    return;
-                                }
-                                setMobileNavOpen(true);
-                            }}
-                            disabled={locked}
-                            className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
-                            aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
-                            aria-pressed={isDesktopWide ? effectiveSidebarCollapsed : undefined}
-                        >
-                            <Menu className="h-6 w-6" />
-                        </button>
-                        <div className="min-w-0 flex-1">
-                            <h1 className="min-w-0 truncate text-[18px] font-black tracking-tight text-[#0F172A] lg:text-[20px]">
-                                {activeHeaderTitle}
-                            </h1>
-                            <p className={headerSubtitleClassName}>{headerSubtitle}</p>
-                            {!isOnline && (
-                                <p className={offlineMessageClassName}>
-                                    You are offline. Online queue refresh and online-order actions are paused until connection is restored.
-                                </p>
-                            )}
-                        </div>
-                        </div>
-                        {renderNotificationButton(compactBellClassName, 20)}
-                    </div>
-                    <div className="flex min-w-0 items-center justify-between gap-3 sm:gap-4 lg:justify-end">
-                    <div className={compactIdentityClassName}>
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
-                            <UserRound size={22} className="text-white" />
-                        </div>
-                        <div className="min-w-0 leading-tight">
-                            <div className="truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
-                            <div className="truncate text-[11px] text-[#64748B]">{terminalUser?.email || 'Sign in required'}</div>
-                        </div>
-                    </div>
-                    {renderNotificationButton(desktopBellClassName, 24)}
-                    <div className={desktopIdentityClassName}>
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
-                            <UserRound size={22} className="text-white" />
-                        </div>
-                        <div className="min-w-0 leading-tight">
-                            <div className="truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
-                            <div className="truncate text-[11px] text-[#64748B]">{terminalUser?.email || 'Sign in required'}</div>
-                        </div>
-                    </div>
-                    </div>
-                </div>
-            </div>
-
-            <div
-                ref={workspacePaneRef}
-                className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${lockedSurfaceClassName}`}
+  return (
+    <div className={`dgfy-pos-shell h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden ${shellLayoutClassName}`}>
+      {notificationPanel}
+      {!effectiveSidebarCollapsed && (
+      <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
+        <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
+          <TerminalWorkspaceSidebar
+            className={persistentSidebarBodyClassName}
+            locked={locked}
+            isMsmeMode={isMsmeMode}
+            terminalUser={terminalUser}
+            currentViewMode={posViewMode}
+              canViewPos={canViewPos}
+            onboardingRestricted={onboardingRestricted}
+            allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
+              canAdjustCashDrawer={canAdjustCashDrawer}
+            canCloseDay={canCloseDay}
+            shiftState={shiftState}
+            incomingOrdersState={incomingOrdersState}
+            locationsState={locationsState}
+            queueLocationScopeId={queueLocationScopeId}
+            queueSummary={queueSummary}
+            settingsTargetViewMode={settingsEntryViewMode}
+            onSelectViewMode={handleSelectViewMode}
+            onUnlock={() => setDrawerOpen(true)}
+            onLock={handleLock}
+          />
+        </Suspense>
+      </div>
+      )}
+      <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      <div className={`dgfy-pos-panel border-b border-pos px-4 py-2 backdrop-blur sm:px-5 lg:px-7 ${lockedSurfaceClassName}`}>
+        <div className={headerShellClassName}>
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (locked) return;
+                if (isDesktopWide) {
+                  setSidebarCollapsed((collapsed) => !collapsed);
+                  return;
+                }
+                setMobileNavOpen(true);
+              }}
+              disabled={locked}
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
+              aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
+              aria-pressed={isDesktopWide ? effectiveSidebarCollapsed : undefined}
             >
-            {modeChangeNotice && (
-                <div className="mx-4 mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-sky-900">
-                        Business Mode changed. Refresh this terminal view to apply updated POS defaults.
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                        <button
-                            type="button"
-                            className="rounded border border-sky-300 bg-white px-2.5 py-1 text-xs font-semibold text-sky-900"
-                            onClick={() => window.location.reload()}
-                        >
-                            Refresh Terminal
-                        </button>
-                        <button
-                            type="button"
-                            className="rounded border border-sky-200 px-2.5 py-1 text-xs font-semibold text-sky-900"
-                            onClick={dismissModeChangeNotice}
-                        >
-                            Dismiss
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {capabilityNotice && (
-                <TenantCapabilityNotice
-                    notice={capabilityNotice}
-                    className="mx-4 mt-3"
-                    onDismiss={() => setCapabilityNotice(null)}
-                />
-            )}
-
-            {complianceBlockerDetails && (
-                <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-amber-900">{complianceBlockerDetails.title}</p>
-                    <p className="mt-1 text-xs text-amber-800">{complianceBlockerDetails.message}</p>
-                    {complianceBlockerDetails.reasonCode && (
-                        <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
-                            Reason code: {complianceBlockerDetails.reasonCode}
-                        </p>
-                    )}
-                    {Array.isArray(complianceBlockerDetails.blockers) && complianceBlockerDetails.blockers.length > 0 && (
-                        <ul className="mt-2 space-y-2 text-xs text-amber-800">
-                            {complianceBlockerDetails.blockers.slice(0, 3).map((blocker) => (
-                                <li key={`${blocker.code}-${blocker.section}`} className="rounded-md border border-amber-200 bg-white/70 px-2 py-1.5">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <p className="font-semibold text-amber-900">
-                                            {blocker.label || blocker.code}
-                                        </p>
-                                        {blocker.action_target && (
-                                            <button
-                                                type="button"
-                                                className="rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-900"
-                                                onClick={() => navigate(blocker.action_target)}
-                                            >
-                                                Fix now
-                                            </button>
-                                        )}
-                                    </div>
-                                    <p className="mt-1">{blocker.message}</p>
-                                    {blocker.code && (
-                                        <p className="mt-1 text-[11px] uppercase tracking-wide text-amber-900/80">{blocker.code}</p>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                    {Number(complianceBlockerDetails.missingRequirementCount) > 0 && (
-                        <p className="mt-2 text-xs font-semibold text-amber-900">
-                            Missing requirements: {complianceBlockerDetails.missingRequirementCount}
-                        </p>
-                    )}
-                    {complianceBlockerDetails.actionHref && (
-                        <button
-                            type="button"
-                            className="mt-2 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900"
-                            onClick={() => navigate(complianceBlockerDetails.actionHref)}
-                        >
-                            {complianceBlockerDetails.actionLabel || 'Open compliance settings'}
-                        </button>
-                    )}
-                </div>
-            )}
-
-            {(actionableQueueCount > 0 || replayingQueuedTerminalOperations) && (
-                <div className="mx-4 mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                            <p className="text-sm font-semibold text-sky-900">
-                                Offline operation queue: {queueCount} pending
-                                {blockedQueueCount > 0 ? ` / ${blockedQueueCount} manual-resolution` : ''}
-                            </p>
-                            <p className="mt-1 text-xs text-sky-800">
-                                Use Sync Queue to review errors, retry blocked intents, and mark resolved outcomes.
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            <button
-                                type="button"
-                                className="rounded-md border border-sky-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-sky-900"
-                                onClick={() => handleSelectViewMode('sync_queue')}
-                            >
-                                Open Sync Queue
-                            </button>
-                            <button
-                                type="button"
-                                className="rounded-md border border-sky-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-sky-900 disabled:cursor-not-allowed disabled:opacity-60"
-                                onClick={() => handleReplayQueuedTerminalOperations({ toastIfEmpty: true })}
-                                disabled={replayingQueuedTerminalOperations || !isOnline}
-                            >
-                                {replayingQueuedTerminalOperations ? 'Replaying...' : 'Replay queued operations'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {!isDesktopWide && mobileNavOpen && (
-                <div className={overlayContainerClassName}>
-                    <div className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
-                    <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto bg-white p-3 shadow-2xl shadow-slate-950/30">
-                        <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
-                            <img
-                                src={DGFY_POS_LOGO}
-                                alt="DGFY"
-                                className="h-8 w-auto min-w-0 object-contain"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setMobileNavOpen(false)}
-                                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100"
-                                aria-label="Close sidebar menu"
-                            >
-                                <Menu className="h-6 w-6" />
-                            </button>
-                        </div>
-                        <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500">Loading menu...</div>}>
-                            <TerminalWorkspaceSidebar
-                                className="flex"
-                                showBrand={false}
-                                showIdentityInSidebar
-                                locked={locked}
-                                isMsmeMode={isMsmeMode}
-                                terminalUser={terminalUser}
-                                currentViewMode={posViewMode}
-                                canViewPos={canViewPos}
-                                allowAdminNavigationWithoutShift={allowAdminNavigationWithoutShift}
-                                canAdjustCashDrawer={canAdjustCashDrawer}
-                                canCloseDay={canCloseDay}
-                                shiftState={shiftState}
-                                incomingOrdersState={incomingOrdersState}
-                                locationsState={locationsState}
-                                queueLocationScopeId={queueLocationScopeId}
-                                queueSummary={queueSummary}
-                                onSelectViewMode={handleSelectViewMode}
-                                onUnlock={() => {
-                                    setDrawerOpen(true);
-                                    setMobileNavOpen(false);
-                                }}
-                                onLock={() => {
-                                    handleLock();
-                                    setMobileNavOpen(false);
-                                }}
-                            />
-                        </Suspense>
-                    </div>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
-                <div
-                    id={TERMINAL_SECTION_IDS.checkoutWorkspace}
-                    className="transition"
-                >
-                    {(isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
-                        <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
-                            <POSCheckoutTerminal
-                                sessionLocked={locked}
-                                isMsmeMode={isMsmeMode}
-                                sidebarCollapsed={effectiveSidebarCollapsed}
-                                canViewHistory={canViewPos}
-                                queueReplayManagedExternally
-                                selectedLocationId={operatingLocationId}
-                                activeShiftId={activeShiftId}
-                                terminalId={normalizedActiveTerminalId}
-                                terminalMeta={terminalMeta}
-                                checkoutBlockedReason={checkoutBlockedReason}
-                                complianceBlockerDetails={complianceBlockerDetails}
-                                onCheckoutCompleted={handleCheckoutCompleted}
-                                viewMode={posViewMode}
-                                onViewModeChange={setPosViewMode}
-                                modalOnly={!isCheckoutWorkspaceMode}
-                                externalReceiptTransactionId={receiptRequestId}
-                                externalHistoryQuery={historyRequestQuery}
-                                onExternalReceiptHydrated={() => {
-                                    setReceiptRequestId(null);
-                                }}
-                                onExternalReceiptClosed={() => {
-                                    setIncomingReceiptOpeningId(null);
-                                    if (receiptReturnViewMode) {
-                                        setPosViewMode(receiptReturnViewMode);
-                                        setReceiptReturnViewMode(null);
-                                    }
-                                }}
-                                onExternalHistoryHydrated={() => {
-                                    setHistoryRequestQuery('');
-                                    setIncomingHistoryOpeningId(null);
-                                }}
-                                externalCatalogSearch={catalogSearchPrefill}
-                                onExternalCatalogHydrated={onCatalogSearchHydrated}
-                            />
-                        </Suspense>
-                    )}
-
-                    {isOperationsWorkspaceMode && (
-                        <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
-                            <TerminalOperationsWorkspace
-                                viewMode={posViewMode}
-                                isMsmeMode={isMsmeMode}
-                                terminalUser={terminalUser}
-                                activeTerminalId={normalizedActiveTerminalId}
-                                locked={locked}
-                                terminalMeta={terminalMeta}
-                                shiftState={shiftState}
-                                todayDashboard={todayDashboard}
-                                reportRefreshKey={reportRefreshKey}
-                                canViewPos={canViewPos}
-                                canTransactPos={canTransactPos}
-                                canAdjustCashDrawer={canAdjustCashDrawer}
-                                canCloseDay={canCloseDay}
-                                openShiftForm={openShiftForm}
-                                setOpenShiftForm={setOpenShiftForm}
-                                cashEventForm={cashEventForm}
-                                setCashEventForm={setCashEventForm}
-                                closeShiftForm={closeShiftForm}
-                                setCloseShiftForm={setCloseShiftForm}
-                                shiftActionLoading={shiftActionLoading}
-                                handleOpenShift={handleOpenShift}
-                                canSwitchPosLocation={canSwitchPosLocation}
-                                handleSwitchShiftLocation={handleSwitchShiftLocation}
-                                handleRecordCashEvent={handleRecordCashEvent}
-                                handleCloseShift={handleCloseShift}
-                                refreshOperationalContext={refreshOperationalContext}
-                                locationsState={locationsState}
-                                operatingLocationId={operatingLocationId}
-                                setOperatingLocationId={setOperatingLocationId}
-                                queueLocationScopeId={queueLocationScopeId}
-                                setQueueLocationScopeId={setQueueLocationScopeId}
-                                incomingOrdersState={incomingOrdersState}
-                                incomingOrderActionState={incomingOrderActionState}
-                                handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
-                                handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
-                                handleOpenIncomingOrderHistory={handleOpenIncomingOrderHistory}
-                                incomingReceiptOpeningId={incomingReceiptOpeningId}
-                                incomingHistoryOpeningId={incomingHistoryOpeningId}
-                                refreshIncomingOrders={refreshIncomingOrders}
-                                queuedTerminalOperations={queuedTerminalOperations}
-                                queueStatusFilter={queueStatusFilter}
-                                setQueueStatusFilter={setQueueStatusFilter}
-                                queueSummary={queueSummary}
-                                replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
-                                handleReplayQueuedTerminalOperations={handleReplayQueuedTerminalOperations}
-                                handleRetryQueuedOperation={handleRetryQueuedOperation}
-                                handleResolveQueuedOperation={handleResolveQueuedOperation}
-                                isOnline={isOnline}
-                                handleLock={handleLock}
-                                setDrawerOpen={setDrawerOpen}
-                                sectionIds={TERMINAL_SECTION_IDS}
-                            />
-                        </Suspense>
-                    )}
-                </div>
+              <Menu className="h-6 w-6" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <h1 className="min-w-0 truncate text-[18px] font-black tracking-tight text-[#0F172A] lg:text-[22px]">
+                {activeHeaderTitle}
+              </h1>
+              <p className={headerSubtitleClassName}>{headerSubtitle}</p>
             </div>
             </div>
-
-            <Suspense fallback={null}>
-                <TerminalLockDrawer
-                    drawerOpen={drawerOpen}
-                    formData={formData}
-                    setFormData={setFormData}
-                    dgfyPosState={dgfyPosState}
-                    terminalIdOptions={terminalIdOptions}
-                    terminalRegistry={terminalRegistry}
-                    terminalRegistryMode={terminalRegistryMode}
-                    registryEnforced={registryEnforced}
-                    submitting={submitting}
-                    onSubmit={handleLogin}
-                    onLegacySubmit={handleLegacyLogin}
-                />
-            </Suspense>
-            </main>
+            {renderNotificationButton(compactBellClassName, 20)}
+          </div>
+          <div className="flex min-w-0 items-center justify-between gap-3 sm:gap-4 lg:justify-end">
+          <div className={compactIdentityClassName}>
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
+              <UserRound size={22} className="text-white" />
+            </div>
+            <div className="min-w-0 leading-tight">
+              <div className="truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
+              <div className="truncate text-[11px] text-pos-muted">{terminalUser?.email || 'Sign in required'}</div>
+            </div>
+          </div>
+          {renderNotificationButton(desktopBellClassName, 24)}
+          <div className={desktopIdentityClassName}>
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
+              <UserRound size={22} className="text-white" />
+            </div>
+            <div className="min-w-0 leading-tight">
+              <div className="truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
+              <div className="truncate text-[11px] text-[#64748B]">{terminalUser?.email || 'Sign in required'}</div>
+            </div>
+          </div>
+          </div>
         </div>
-    );
+      </div>
+
+      <div
+        ref={workspacePaneRef}
+        className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${lockedSurfaceClassName}`}
+      >
+      {modeChangeNotice && (
+        <div className="mx-4 mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+          <p className="text-sm font-semibold text-sky-900">
+            Business Mode changed. Refresh this terminal view to apply updated POS defaults.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded border border-sky-300 bg-white px-2.5 py-1 text-xs font-semibold text-sky-900"
+              onClick={() => window.location.reload()}
+            >
+              Refresh Terminal
+            </button>
+            <button
+              type="button"
+              className="rounded border border-sky-200 px-2.5 py-1 text-xs font-semibold text-sky-900"
+              onClick={dismissModeChangeNotice}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {capabilityNotice && (
+        <div className="mx-4 mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-900">{capabilityNotice.title}</p>
+              <p className="mt-1 text-xs text-amber-800">{capabilityNotice.message}</p>
+              {capabilityNotice.code && (
+                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
+                  Reason code: {capabilityNotice.code}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="rounded border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900"
+              onClick={() => setCapabilityNotice(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isDesktopWide && mobileNavOpen && (
+        <div className={overlayContainerClassName}>
+          <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
+          <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto p-3 shadow-2xl shadow-slate-950/20" style={{ background: 'var(--pos-shell-sidebar)' }}>
+            <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
+              <img
+                src={DGFY_POS_LOGO}
+                alt="DGFY"
+                className="h-8 w-auto min-w-0 object-contain"
+              />
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100"
+                aria-label="Close sidebar menu"
+              >
+                <Menu className="h-6 w-6" />
+              </button>
+            </div>
+            <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500">Loading menu...</div>}>
+              <TerminalWorkspaceSidebar
+                className="flex"
+                showBrand={false}
+                showIdentityInSidebar
+                locked={locked}
+                isMsmeMode={isMsmeMode}
+                terminalUser={terminalUser}
+                currentViewMode={posViewMode}
+                canViewPos={canViewPos}
+                allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
+                canAdjustCashDrawer={canAdjustCashDrawer}
+                canCloseDay={canCloseDay}
+                shiftState={shiftState}
+                incomingOrdersState={incomingOrdersState}
+                locationsState={locationsState}
+                queueLocationScopeId={queueLocationScopeId}
+                queueSummary={queueSummary}
+                settingsTargetViewMode={settingsEntryViewMode}
+                onSelectViewMode={handleSelectViewMode}
+                onUnlock={() => {
+                  setDrawerOpen(true);
+                  setMobileNavOpen(false);
+                }}
+                onLock={() => {
+                  handleLock();
+                  setMobileNavOpen(false);
+                }}
+              />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
+        <div
+          id={TERMINAL_SECTION_IDS.checkoutWorkspace}
+          className="transition"
+        >
+          {(isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
+            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
+              <POSCheckoutTerminal
+                sessionLocked={locked}
+                isMsmeMode={isMsmeMode}
+                sidebarCollapsed={effectiveSidebarCollapsed}
+                canViewHistory={canViewPos}
+                selectedLocationId={operatingLocationId}
+                activeShiftId={activeShiftId}
+                terminalId={normalizedActiveTerminalId}
+                terminalMeta={terminalMeta}
+                checkoutBlockedReason={checkoutBlockedReason}
+                onCheckoutCompleted={handleCheckoutCompleted}
+                viewMode={posViewMode}
+                onViewModeChange={setPosViewMode}
+                modalOnly={!isCheckoutWorkspaceMode}
+                externalReceiptTransactionId={receiptRequestId}
+                externalHistoryQuery={historyRequestQuery}
+                onExternalReceiptHydrated={() => {
+                  setReceiptRequestId(null);
+                }}
+                onExternalReceiptClosed={() => {
+                  setIncomingReceiptOpeningId(null);
+                  if (receiptReturnViewMode) {
+                    setPosViewMode(receiptReturnViewMode);
+                    setReceiptReturnViewMode(null);
+                  }
+                }}
+                onExternalHistoryHydrated={() => {
+                  setHistoryRequestQuery('');
+                  setIncomingHistoryOpeningId(null);
+                }}
+                externalCatalogSearch={catalogSearchPrefill}
+                onExternalCatalogHydrated={onCatalogSearchHydrated}
+              />
+            </Suspense>
+          )}
+
+          {isOperationsWorkspaceMode && (
+            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
+              <TerminalOperationsWorkspace
+                viewMode={posViewMode}
+                workflowMode={workflowMode}
+                isMsmeMode={isMsmeMode}
+                terminalUser={terminalUser}
+                activeTerminalId={normalizedActiveTerminalId}
+                locked={locked}
+                terminalMeta={terminalMeta}
+                shiftState={shiftState}
+                todayDashboard={todayDashboard}
+                reportRefreshKey={reportRefreshKey}
+                canViewPos={canViewPos}
+                canCreateItems={canCreateItems}
+                canEditItems={canEditItems}
+                canDeleteItems={canDeleteItems}
+                itemsStockFilterPreset={itemsStockFilterPreset}
+                onItemsStockFilterPresetApplied={onItemsStockFilterPresetApplied}
+                canTransactPos={canTransactPos}
+                canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
+                canAdjustCashDrawer={canAdjustCashDrawer}
+                canCloseDay={canCloseDay}
+                openShiftForm={openShiftForm}
+                setOpenShiftForm={setOpenShiftForm}
+                cashEventForm={cashEventForm}
+                setCashEventForm={setCashEventForm}
+                closeShiftForm={closeShiftForm}
+                setCloseShiftForm={setCloseShiftForm}
+                shiftActionLoading={shiftActionLoading}
+                handleOpenShift={handleOpenShift}
+                canSwitchPosLocation={canSwitchPosLocation}
+                handleSwitchShiftLocation={handleSwitchShiftLocation}
+                handleRecordCashEvent={handleRecordCashEvent}
+                handleCloseShift={handleCloseShift}
+                refreshOperationalContext={refreshOperationalContext}
+                locationsState={locationsState}
+                operatingLocationId={operatingLocationId}
+                setOperatingLocationId={setOperatingLocationId}
+                queueLocationScopeId={queueLocationScopeId}
+                setQueueLocationScopeId={setQueueLocationScopeId}
+                incomingOrdersState={incomingOrdersState}
+                incomingOrderActionState={incomingOrderActionState}
+                handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+                handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
+                handleOpenIncomingOrderHistory={handleOpenIncomingOrderHistory}
+                incomingReceiptOpeningId={incomingReceiptOpeningId}
+                incomingHistoryOpeningId={incomingHistoryOpeningId}
+                refreshIncomingOrders={refreshIncomingOrders}
+                queueStatusFilter={queueStatusFilter}
+                setQueueStatusFilter={setQueueStatusFilter}
+                queueSummary={queueSummary}
+                replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
+                handleReplayQueuedTerminalOperations={handleReplayQueuedTerminalOperations}
+                handleRetryQueuedOperation={handleRetryQueuedOperation}
+                handleResolveQueuedOperation={handleResolveQueuedOperation}
+                isOnline={isOnline}
+                handleLock={handleLock}
+                setDrawerOpen={setDrawerOpen}
+                refreshTerminalUser={refreshTerminalUser}
+                refreshTerminalMeta={refreshTerminalMeta}
+                onPosSetupSaved={onPosSetupSaved}
+                onStorefrontSetupSaved={onStorefrontSetupSaved}
+                sectionIds={TERMINAL_SECTION_IDS}
+              />
+            </Suspense>
+          )}
+        </div>
+      </div>
+      </div>
+
+      <Suspense fallback={null}>
+        <TerminalLockDrawer
+          drawerOpen={drawerOpen && !terminalUnlockModalOpen}
+          formData={formData}
+          setFormData={setFormData}
+          dgfyPosState={dgfyPosState}
+          terminalIdOptions={terminalIdOptions}
+          terminalRegistry={terminalRegistry}
+          terminalRegistryMode={terminalRegistryMode}
+          registryEnforced={registryEnforced}
+          submitting={submitting}
+          onSubmit={handleLogin}
+          onCashierSubmit={handleCashierLogin}
+          onLegacySubmit={handleLegacyLogin}
+        />
+      </Suspense>
+      </main>
+    </div>
+  );
 }

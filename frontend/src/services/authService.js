@@ -73,6 +73,32 @@ export const login = async (credentials, requestConfig = {}) => {
   return response.data.data;
 };
 
+export const loginCashier = async (credentials, requestConfig = {}) => {
+  const resolvedCompanyToken = String(credentials?.companyToken || '').trim();
+  if (!resolvedCompanyToken) {
+    const error = new Error('Company token is required for cashier login.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const response = await api.post('/pos/auth/cashier-login', {
+    identifier: credentials.identifier,
+    password: credentials.password
+  }, {
+    ...requestConfig,
+    headers: {
+      ...requestConfig.headers,
+      'x-company-token': resolvedCompanyToken
+    },
+    skipAuthRefresh: true
+  });
+
+  const { token } = response.data.data;
+  setBrowserSession({ token, companyToken: resolvedCompanyToken });
+  window.dispatchEvent(new CustomEvent('auth:login'));
+  return response.data.data;
+};
+
 export const logout = async () => {
   let logoutError = null;
   try {

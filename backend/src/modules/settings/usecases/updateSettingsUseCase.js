@@ -33,6 +33,11 @@ import {
     hashTerminalRegistrySecrets,
     sanitizeTerminalRegistryForRead
 } from './posTerminalRegistrySecrets.js';
+import {
+    POS_SETTINGS_ACCESS_PIN_HASH_KEY,
+    assertPosSettingsAccessPinAuthorization,
+    resolvePosSettingsAccessPinPatch
+} from './posSettingsAccessPinPolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -170,6 +175,7 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
 
             assertTenantSettingsDoNotMutatePlatformAccessCeiling({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
+            assertPosSettingsAccessPinAuthorization({ settingsData, actorUser });
             await assertPublicStorefrontHandlePatch({ settingsData, settingsRepository });
             if (
                 Object.prototype.hasOwnProperty.call(settingsData, 'store_tenant_slug')
@@ -201,6 +207,17 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
             if (requestedStrictBinding) {
                 await assertStrictBindingReadiness({ settingsRepository });
             }
+
+            const currentPinHashSetting = (
+                Object.prototype.hasOwnProperty.call(settingsData, 'pos_settings_access_pin')
+                || Object.prototype.hasOwnProperty.call(settingsData, 'clear_pos_settings_access_pin')
+                    ? await settingsRepository.getSettingsByKeys([POS_SETTINGS_ACCESS_PIN_HASH_KEY])
+                    : {}
+            );
+            settingsData = await resolvePosSettingsAccessPinPatch({
+                settingsData,
+                currentHash: currentPinHashSetting?.[POS_SETTINGS_ACCESS_PIN_HASH_KEY]?.value || ''
+            });
 
             if (Object.prototype.hasOwnProperty.call(settingsData, POS_TERMINAL_REGISTRY_KEY)) {
                 const current = typeof settingsRepository?.getSettingsByKeys === 'function'

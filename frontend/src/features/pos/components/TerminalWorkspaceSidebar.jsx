@@ -1,9 +1,7 @@
 import React from 'react';
 import {
-  Banknote,
   BarChart3,
   ClipboardList,
-  Clock3,
   History,
   ListChecks,
   LogIn,
@@ -11,12 +9,12 @@ import {
   MapPinned,
   Settings2,
   ShoppingCart,
-  RefreshCcw,
   Truck,
   UserRound
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { resolveAppAssetUrl } from '@/src/utils/assetUrl.js';
+import { Button } from '../../../../Components/ui/button.jsx';
+import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
+
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 
@@ -57,6 +55,8 @@ export default function TerminalWorkspaceSidebar({
   locationsState = { locations: [] },
   queueLocationScopeId = null,
   queueSummary = {},
+  onboardingRestricted = false,
+  settingsTargetViewMode = 'settings_profile',
   onSelectViewMode = () => {},
   onUnlock = () => {},
   onLock = () => {}
@@ -64,24 +64,23 @@ export default function TerminalWorkspaceSidebar({
   const incomingCount = canViewPos && Array.isArray(incomingOrdersState?.orders)
     ? incomingOrdersState.orders.length
     : 0;
-  const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
-  const selectedLocationName = !queueLocationScopeId
-    ? 'Not selected'
-    : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
-  const showIncomingQueue = !isMsmeMode;
   const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedRole === 'cashier';
-  const showLocationScope = !isMsmeMode && !isCashierRole;
+  const showIncomingQueue = !isMsmeMode;
   const showAdvancedOps = !isMsmeMode && !isCashierRole;
-  const pendingQueueCount = Number(queueSummary?.pending || 0);
-  const blockedQueueCount = Number(queueSummary?.blocked || 0);
   const hasActiveShift = Boolean(shiftState?.shift);
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
+  const onboardingCaption = 'Finish onboarding in Settings first';
 
   return (
     <aside
       className={`${className} rounded-none border-0 border-r border-slate-200 bg-white shadow-sm xl:h-full xl:min-h-0 xl:overflow-hidden`}
+      style={{
+        background: 'var(--pos-shell-sidebar)',
+        borderColor: 'var(--pos-shell-sidebar-border)',
+        color: 'var(--pos-shell-sidebar-text)'
+      }}
     >
       <div className="dgfy-pos-sidebar-scroll min-h-0 flex-1 overflow-y-auto">
         {showBrand && (
@@ -118,141 +117,85 @@ export default function TerminalWorkspaceSidebar({
             icon={ShoppingCart}
             active={sellWorkspaceModes.has(currentViewMode)}
             onClick={() => onSelectViewMode('checkout')}
-            disabled={locked || !navigationShiftReady}
-            caption={locked ? 'Unlock terminal to continue' : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse; checkout remains blocked'))}
+            disabled={locked || onboardingRestricted || !navigationShiftReady}
+            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened')))}
           />
           <NavButton
             label="History"
             icon={History}
             active={currentViewMode === 'history'}
             onClick={() => onSelectViewMode('history')}
-            disabled={locked || !canViewPos || !navigationShiftReady}
+            disabled={locked || onboardingRestricted || !canViewPos || !navigationShiftReady}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Invoice lookups and audit trail'))
+                : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Invoice lookups and audit trail' : 'Admin review available without an active shift'))))
             }
             testId="pos-nav-history"
           />
-          {!isCashierRole && <NavButton
-            label="Report"
-            icon={BarChart3}
-            active={currentViewMode === 'reports'}
-            onClick={() => onSelectViewMode('reports')}
-            disabled={locked || !canViewPos || !navigationShiftReady}
-            caption={
-              locked
-                ? 'Unlock terminal to continue'
-                : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions'))
-            }
-            testId="pos-nav-reports"
-          />}
-          {!isCashierRole && <NavButton
+          {!isCashierRole && (
+            <NavButton
+              label="Report"
+              icon={BarChart3}
+              active={currentViewMode === 'reports'}
+              onClick={() => onSelectViewMode('reports')}
+              disabled={locked || onboardingRestricted || !canViewPos}
+              caption={
+                locked
+                  ? 'Unlock terminal to continue'
+                  : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (!navigationShiftReady ? 'Protected by POS access PIN' : 'Daily totals, popular items, and transactions')))
+              }
+              testId="pos-nav-reports"
+            />
+          )}
+          <NavButton
             label="Items"
             icon={ClipboardList}
             active={currentViewMode === 'items'}
             onClick={() => onSelectViewMode('items')}
-            disabled={locked || !canViewPos || !navigationShiftReady}
+            disabled={locked || onboardingRestricted || !canViewPos}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Edit SKUpervisor item price and cost'))
+                : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (!navigationShiftReady ? 'Protected by POS access PIN' : (isCashierRole ? 'View store items only' : 'Edit SKUpervisor item price and cost'))))
             }
             testId="pos-nav-items"
-          />}
+          />
           {showIncomingQueue && (
             <NavButton
               label={`Orders (${incomingCount})`}
               icon={Truck}
               active={currentViewMode === 'incoming_queue'}
               onClick={() => onSelectViewMode('incoming_queue')}
-              disabled={locked || !canViewPos || !navigationShiftReady}
-              caption={
-                locked
-                  ? 'Unlock terminal to continue'
-                  : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress online orders'))
-              }
-            />
-          )}
+               disabled={locked || onboardingRestricted || !canViewPos || !navigationShiftReady}
+               caption={
+                 locked
+                   ? 'Unlock terminal to continue'
+                 : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Accept, reject, and progress online orders' : 'Admin queue review available without an active shift'))))
+               }
+             />
+           )}
           <NavButton
             label="Shift"
             icon={ListChecks}
-            active={currentViewMode === 'shift_controls'}
+            active={currentViewMode === 'shift_controls' || currentViewMode === 'close_shift' || currentViewMode === 'cash_drawer'}
             onClick={() => onSelectViewMode('shift_controls')}
-            disabled={locked}
-            caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift to unlock POS selling' : 'Open shift, monitor cash, and status')}
+            disabled={locked || onboardingRestricted}
+            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? (allowAdminNavigationWithoutShift ? 'Open or close shifts in admin navigation mode' : 'Open shift to unlock POS selling') : 'Open, monitor, and close the active shift'))}
           />
         </div>
 
         <div className="my-5 border-t border-slate-200" />
-        <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Secondary Actions</p>
+        <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Settings</p>
         <div className="space-y-2">
-          {showLocationScope && (
-            <NavButton
-              label={`Location Scope: ${selectedLocationName}`}
-              icon={MapPinned}
-              active={currentViewMode === 'location_scope'}
-              onClick={() => onSelectViewMode('location_scope')}
-              disabled={locked || !canViewPos || !navigationShiftReady}
-              caption={
-                locked
-                  ? 'Unlock terminal to continue'
-                  : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Filter queue by fulfillment location'))
-              }
-            />
-          )}
-          <NavButton
-            label={`Sync Queue (${pendingQueueCount}${blockedQueueCount > 0 ? `/${blockedQueueCount}` : ''})`}
-            icon={RefreshCcw}
-            active={currentViewMode === 'sync_queue'}
-            onClick={() => onSelectViewMode('sync_queue')}
-            disabled={locked || !hasActiveShift}
-            caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift first to continue' : 'Replay, retry, and resolve offline terminal intents')}
-          />
           {showAdvancedOps && (
             <NavButton
-              label="Cash Drawer Event"
-              icon={Banknote}
-              active={currentViewMode === 'cash_drawer'}
-              onClick={() => onSelectViewMode('cash_drawer')}
-              disabled={locked || !canAdjustCashDrawer || !hasActiveShift}
-              caption={
-                locked
-                  ? 'Unlock terminal to continue'
-                  : (!hasActiveShift ? 'Open shift first to enable' : (!canAdjustCashDrawer ? 'Cash drawer permission required' : 'Cash in/out adjustments'))
-              }
-            />
-          )}
-          <NavButton
-            label="Close Shift"
-            icon={Lock}
-            active={currentViewMode === 'close_shift'}
-            onClick={() => onSelectViewMode('close_shift')}
-            disabled={locked || !canCloseDay}
-            caption={
-              locked
-                ? 'Unlock terminal to continue'
-                : (!hasActiveShift ? 'No active shift to close' : (!canCloseDay ? 'Close-day permission required' : 'Finalize shift and closing cash'))
-            }
-          />
-          {showAdvancedOps && (
-            <NavButton
-              label="Sales Today"
-              icon={Clock3}
-              active={currentViewMode === 'sales_today'}
-              onClick={() => onSelectViewMode('sales_today')}
-              disabled={locked || !hasActiveShift}
-              caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift first to continue' : 'Daily totals and breakdowns')}
-            />
-          )}
-          {showAdvancedOps && (
-            <NavButton
-              label="Terminal Setup Context"
+              label="Settings"
               icon={Settings2}
-              active={currentViewMode === 'terminal_setup'}
-              onClick={() => onSelectViewMode('terminal_setup')}
-              disabled={locked || !hasActiveShift}
-              caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift first to continue' : 'Compliance and POS setup snapshot')}
+              active={['location_scope', 'terminal_setup', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
+              onClick={() => onSelectViewMode(settingsTargetViewMode)}
+              disabled={locked ? true : false}
+              caption={locked ? 'Unlock terminal to continue' : 'Profile, POS setup, and storefront tools'}
             />
           )}
         </div>
@@ -268,9 +211,6 @@ export default function TerminalWorkspaceSidebar({
             Lock Terminal
           </Button>
         )}
-        <div className="mt-6 border-t border-slate-100 pt-4 text-[12px] font-medium text-[#64748B]">
-          © 2024 DGFY. All rights reserved.
-        </div>
       </div>
       </div>
     </aside>

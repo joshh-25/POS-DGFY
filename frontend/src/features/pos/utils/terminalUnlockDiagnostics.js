@@ -110,9 +110,23 @@ export const resolveTerminalLoginErrorMessage = (error) => {
     return 'Unable to reach the POS backend. Check the server connection and try again.';
   }
 
-  if (status === 401) return 'Invalid email or password.';
+  if (status === 401) {
+    if (requestPath.includes('/pos-session')) {
+      const lowerMessage = responseMessage.toLowerCase();
+      if (lowerMessage.includes('terminal password')) {
+        return responseMessage || 'Terminal password is incorrect.';
+      }
+      if (lowerMessage.includes('invalid dgfy account token') || lowerMessage.includes('invalid dgfy account session')) {
+        return 'Your DGFY session expired before terminal unlock. Sign in again and retry.';
+      }
+    }
+    return 'Invalid email or password.';
+  }
   if (status === 403) {
     const lowerMessage = responseMessage.toLowerCase();
+    if (code === 'CSRF_TOKEN_REQUIRED') {
+      return responseMessage || 'The browser security token is missing. Refresh POS and sign in again.';
+    }
     if (lowerMessage.includes('pos:') || lowerMessage.includes('permission')) {
       return 'Your account does not have permission to unlock or operate this POS terminal.';
     }

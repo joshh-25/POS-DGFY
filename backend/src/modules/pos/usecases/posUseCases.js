@@ -3104,6 +3104,80 @@ export const buildVerifyFiscalEventLedgerUseCase = ({ posRepository }) => {
     };
 };
 
+export const buildCreatePosSetupCashierUseCase = ({ userService }) => {
+    if (!userService || typeof userService.createLocalCashier !== 'function') {
+        throw new Error('buildCreatePosSetupCashierUseCase requires userService.createLocalCashier');
+    }
+
+    return async ({ payload = {}, user = null } = {}) => {
+        try {
+            const actorUserId = parsePositiveInt(user?.user_id);
+            if (!actorUserId) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHENTICATION_FAILED,
+                    'Authenticated user is required',
+                    { statusCode: 401 }
+                );
+            }
+
+            const cashier = await userService.createLocalCashier(actorUserId, {
+                username: payload.username,
+                email: payload.email,
+                phone_number: payload.phone_number,
+                password: payload.password,
+                location_ids: payload.location_ids
+            });
+
+            return ok({ cashier }, 'Cashier created');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to create POS cashier'));
+        }
+    };
+};
+
+export const buildListPosSetupCashiersUseCase = ({ userService }) => {
+    if (!userService || typeof userService.listLocalCashiers !== 'function') {
+        throw new Error('buildListPosSetupCashiersUseCase requires userService.listLocalCashiers');
+    }
+
+    return async ({ user = null } = {}) => {
+        try {
+            const actorUserId = parsePositiveInt(user?.user_id);
+            if (!actorUserId) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHENTICATION_FAILED,
+                    'Authenticated user is required',
+                    { statusCode: 401 }
+                );
+            }
+
+            const cashiers = await userService.listLocalCashiers(actorUserId);
+            return ok({ cashiers }, 'Cashiers retrieved');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list POS cashiers'));
+        }
+    };
+};
+
+export const buildLoginPosCashierUseCase = ({ authService }) => {
+    if (!authService || typeof authService.loginUser !== 'function') {
+        throw new Error('buildLoginPosCashierUseCase requires authService.loginUser');
+    }
+
+    return async ({ payload = {} } = {}) => {
+        try {
+            const session = await authService.loginUser(
+                payload.identifier,
+                payload.password,
+                { allowUsername: true, requiredRole: 'cashier' }
+            );
+            return ok(session, 'Cashier login successful');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Cashier login failed'));
+        }
+    };
+};
+
 export const buildListPosTransactionsUseCase = ({ posRepository }) => {
     return async ({ query, user }) => {
         if (query !== undefined && !isPlainObject(query)) {

@@ -1,4 +1,8 @@
 import bcrypt from 'bcryptjs';
+import {
+    sanitizePosSettingsAccessPinForRead,
+    sanitizePosSettingsAccessPinSingleSettingForRead
+} from './posSettingsAccessPinPolicy.js';
 
 const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -59,7 +63,7 @@ export const sanitizeTerminalRegistryForRead = (entries = []) => (
 
 export const sanitizeSettingsPayloadForRead = (settings = {}) => {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return settings;
-    const sanitized = { ...settings };
+    const sanitized = sanitizePosSettingsAccessPinForRead(settings);
     const registry = settings.pos_terminal_registry;
     if (registry && typeof registry === 'object') {
         sanitized.pos_terminal_registry = {
@@ -71,6 +75,9 @@ export const sanitizeSettingsPayloadForRead = (settings = {}) => {
 };
 
 export const sanitizeSingleSettingForRead = ({ key, setting }) => {
+    if (key === 'pos_settings_access_pin_hash') {
+        return sanitizePosSettingsAccessPinSingleSettingForRead({ key, setting });
+    }
     if (key !== 'pos_terminal_registry' || !setting || typeof setting !== 'object') return setting;
     return {
         ...setting,

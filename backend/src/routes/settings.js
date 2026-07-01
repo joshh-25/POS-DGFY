@@ -10,6 +10,7 @@ import { PERMISSIONS } from '../config/permissions.js';
 import { storefrontAssetUpload } from '../config/uploadConfig.js';
 import {
   validateStorefrontAssetTypeParam,
+  validateVerifyPosSettingsAccessPin,
   validateUpdateSettings,
   validateUpdateSingleSetting
 } from '../validators/settingsValidator.js';
@@ -29,6 +30,13 @@ router.get('/', authenticate, settingsController.getAllSettings);
  * @access  Private (Master Admin only)
  */
 router.get('/company-info', authenticate, requireMasterAdmin, settingsController.getCompanyInfo);
+
+router.post(
+  '/verify-pos-access-pin',
+  authenticate,
+  validateVerifyPosSettingsAccessPin,
+  settingsController.verifyPosSettingsAccessPin
+);
 
 /**
  * @route   GET /api/v1/settings/:key

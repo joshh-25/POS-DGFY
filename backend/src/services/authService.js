@@ -273,7 +273,14 @@ export const registerUser = async (userData) => {
   };
 };
 
-export const loginUser = async (email, password) => {
+export const loginUser = async (email, password, options = {}) => {
+  const allowUsername = options.allowUsername === true;
+  const requiredRole = String(options.requiredRole || '').trim().toLowerCase();
+  const identifier = String(email || '').trim();
+  const normalizedEmail = identifier.toLowerCase();
+  const invalidCredentialsMessage = allowUsername
+    ? 'Invalid username/email or password'
+    : 'Invalid email or password';
   const tenantStore = await requireTenantAuthContext({ operation: 'auth.login' });
   const tenantId = String(tenantStore?.tenantId || '').trim();
   if (!tenantId || tenantId === 'default') {
@@ -281,12 +288,22 @@ export const loginUser = async (email, password) => {
     error.statusCode = 400;
     throw error;
   }
-  // Find user by email
+
   const User = dbStore.get('User');
-  const user = await User.findOne({ where: { email } });
+  const user = await User.findOne({
+    where: allowUsername && !identifier.includes('@')
+      ? { username: identifier }
+      : { email: normalizedEmail }
+  });
 
   if (!user) {
-    const error = new Error('Invalid email or password');
+    const error = new Error(invalidCredentialsMessage);
+    error.statusCode = 401;
+    throw error;
+  }
+
+  if (requiredRole && String(user.role || '').trim().toLowerCase() !== requiredRole) {
+    const error = new Error(invalidCredentialsMessage);
     error.statusCode = 401;
     throw error;
   }
@@ -308,7 +325,7 @@ export const loginUser = async (email, password) => {
   const isPasswordValid = await comparePassword(password, user.password_hash);
 
   if (!isPasswordValid) {
-    const error = new Error('Invalid email or password');
+    const error = new Error(invalidCredentialsMessage);
     error.statusCode = 401;
     throw error;
   }

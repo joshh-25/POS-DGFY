@@ -1111,6 +1111,161 @@ const validateAdminHierarchy = (adminUser, targetUser, action, targetRole = null
   return true;
 };
 
+export const createLocalCashier = async (adminUserId, cashierData = {}) => {
+  const {
+    username: rawUsername,
+    email: rawEmail,
+    phone_number: rawPhoneNumber,
+    password,
+    location_ids: locationIds = []
+  } = cashierData;
+
+  const username = String(rawUsername || '').trim();
+  const email = String(rawEmail || '').trim().toLowerCase();
+  const phoneNumber = normalizePhoneNumber(rawPhoneNumber);
+
+  if (!username) throw createError('Cashier username is required', 422);
+  if (!email) throw createError('Cashier email is required', 422);
+  if (!password || String(password).length < 8) {
+    throw createError('Cashier password must be at least 8 characters', 422);
+  }
+  if (phoneNumber && !isValidPhoneNumber(phoneNumber)) {
+    throw createError(PHONE_NUMBER_VALIDATION_MESSAGE, 422);
+  }
+
+  const normalizedLocationIds = await validateActiveLocationIds(locationIds);
+  if (normalizedLocationIds.length === 0) {
+    throw createError('Assign at least one active location to this cashier', 422);
+  }
+
+  const User = dbStore.get('User');
+  const adminUser = await findVisibleUserById(User, adminUserId);
+  if (!adminUser) throw notFoundError('Admin user not found');
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+
+  validateAdminHierarchy(adminUser, null, 'create cashier', 'cashier');
+
+  const existingUser = await User.findOne({
+    where: {
+      [Op.or]: [
+        { email },
+        { username }
+      ]
+    }
+  });
+  if (existingUser && !existingUser.deleted_at) {
+    if (existingUser.email === email) {
+      throw createError('A user with this email already exists', 409);
+    }
+    throw createError('Username is already taken', 409);
+  }
+
+  const passwordHash = await hashPassword(password);
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const transaction = await sequelize.transaction();
+  let cashier;
+
+  try {
+    const payload = {
+      username,
+      email,
+      phone_number: phoneNumber || null,
+      password_hash: passwordHash,
+      role: 'cashier',
+      role_preset_key: null,
+      permissions: DEFAULT_ROLE_PERMISSIONS.cashier,
+      is_active: true,
+      is_master_admin: false,
+      invitation_token: null,
+      invitation_expires_at: null,
+      invited_by: null,
+      invitation_status: null,
+      invitation_delivery_status: null,
+      invitation_delivery_error: null,
+      invitation_last_sent_at: null,
+      invitation_accepted_at: null,
+      invitation_cancelled_at: null,
+      invitation_cancelled_by: null,
+      deleted_at: null,
+      deleted_by: null
+    };
+
+    if (existingUser?.deleted_at) {
+      await existingUser.update(payload, { transaction });
+      cashier = existingUser;
+    } else {
+      cashier = await User.create(payload, { transaction });
+    }
+    await replaceUserLocationGrants(cashier.user_id, normalizedLocationIds, transaction, adminUserId);
+    await transaction.commit();
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    throw error;
+  }
+
+  const workflowMode = await readCurrentWorkflowMode();
+  return buildUserPayload(cashier, workflowMode, {
+    is_active: cashier.is_active,
+    permissions: resolveEffectivePermissions(cashier),
+    is_master_admin: cashier.is_master_admin,
+    location_ids: normalizedLocationIds
+  });
+};
+
+export const listLocalCashiers = async (adminUserId) => {
+  const User = dbStore.get('User');
+  const UserLocationGrant = dbStore.get('UserLocationGrant');
+  const adminUser = await findVisibleUserById(User, adminUserId);
+  if (!adminUser) throw notFoundError('Admin user not found');
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+  if (!UserLocationGrant) {
+    throw createError('Location grant model is unavailable in this tenant context', 500);
+  }
+
+  const cashiers = await User.findAll({
+    attributes: [
+      'user_id',
+      'username',
+      'email',
+      'phone_number',
+      'role',
+      'role_preset_key',
+      'is_active',
+      'permissions',
+      'is_master_admin',
+      'created_at'
+    ],
+    where: buildVisibleWhere({ role: 'cashier', is_active: true }),
+    order: [['created_at', 'ASC']]
+  });
+  const cashierIds = cashiers.map((cashier) => cashier.user_id);
+  const grants = cashierIds.length > 0
+    ? await UserLocationGrant.findAll({
+      where: { user_id: { [Op.in]: cashierIds } },
+      attributes: ['user_id', 'location_id']
+    })
+    : [];
+  const locationsByUserId = grants.reduce((lookup, grant) => {
+    const userId = Number(grant.user_id);
+    const locationId = Number(grant.location_id);
+    if (!lookup.has(userId)) lookup.set(userId, []);
+    lookup.get(userId).push(locationId);
+    return lookup;
+  }, new Map());
+  const workflowMode = await readCurrentWorkflowMode();
+
+  return cashiers.map((cashier) => buildUserPayload(cashier, workflowMode, {
+    is_active: cashier.is_active,
+    permissions: resolveEffectivePermissions(cashier),
+    is_master_admin: cashier.is_master_admin,
+    location_ids: locationsByUserId.get(Number(cashier.user_id)) || []
+  }));
+};
+
 /**
  * Create a user invitation and send email
  * @param {number} adminUserId - ID of admin creating the invitation

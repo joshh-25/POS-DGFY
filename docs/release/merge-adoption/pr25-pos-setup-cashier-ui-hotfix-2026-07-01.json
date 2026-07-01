@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "merge_name": "pr25-pos-setup-cashier-ui-hotfix-2026-07-01",
+  "target_branch": "staging",
+  "source_refs": [],
+  "semantic_conflict_review": {
+    "status": "user-approved",
+    "user_approved_decisions": [
+      {
+        "area": "PR25 richer POS setup/cashier UI",
+        "question_asked": "Should the hotfix adopt PR #25's richer setup/cashier UI even though the prior safe adoption rejected local cashier UX?",
+        "resolution": "combine",
+        "approved_by": "BabyBaBab",
+        "rationale": "Adopt the visible richer PR #25 setup/cashier workflow, but combine it with the current production terminal-pairing backend and existing tenant-user cashier role instead of replacing backend safeguards."
+      }
+    ]
+  },
+  "feature_areas": [
+    {
+      "id": "pr25-richer-pos-setup-cashier-ui",
+      "decision": "combine",
+      "intent": "Use PR #25's richer POS setup, terminal unlock, cashier login, and shared POS shell UI while preserving the current production terminal-pairing safety model.",
+      "master_behaviors_preserved": [
+        "DGFY tenant context remains required for POS authentication.",
+        "Terminal pairing remains HttpOnly cookie-bound and revalidated by the current backend service.",
+        "PayMongo/payment work remains excluded."
+      ],
+      "source_behaviors_adopted": [
+        "Cashier Unlock UI.",
+        "Login as Cashier UI.",
+        "POS setup cashier management UI.",
+        "POS Settings access PIN UI.",
+        "Shared POS shell and richer setup workflow."
+      ],
+      "proof": {
+        "required_files_present": [
+          "frontend/src/features/pos/pages/TerminalPage.jsx",
+          "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
+          "frontend/src/features/pos/components/PosTenantSetupModal.jsx",
+          "frontend/src/features/pos/utils/setupFlow.js",
+          "backend/src/routes/pos.js",
+          "backend/src/routes/settings.js",
+          "backend/src/modules/settings/usecases/posSettingsAccessPinPolicy.js"
+        ],
+        "required_strings_present": [
+          {
+            "file": "frontend/src/features/pos/pages/TerminalPage.jsx",
+            "text": "Cashier Unlock"
+          },
+          {
+            "file": "frontend/src/features/pos/pages/TerminalPage.jsx",
+            "text": "loginCashierWithCredentials"
+          },
+          {
+            "file": "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
+            "text": "fetchPosSetupCashiers"
+          },
+          {
+            "file": "backend/src/routes/pos.js",
+            "text": "router.post('/auth/cashier-login'"
+          },
+          {
+            "file": "backend/src/routes/pos.js",
+            "text": "router.post('/setup/cashiers'"
+          },
+          {
+            "file": "backend/src/routes/settings.js",
+            "text": "verify-pos-access-pin"
+          },
+          {
+            "file": "backend/src/services/authService.js",
+            "text": "allowUsername"
+          }
+        ],
+        "required_strings_absent": [
+          {
+            "file": "backend/src/modules/pos/usecases/posUseCases.js",
+            "text": "PayMongo"
+          }
+        ],
+        "tests": [
+          "npm --prefix frontend test -- --run src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/posDgfyAdminBypass.contract.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/utils/__tests__/setupFlow.test.js",
+          "npm --prefix frontend run build:pos",
+          "npm --prefix frontend run build:skupervisor",
+          "npm --prefix backend test -- --runInBand --runTestsByPath tests/posTerminalPairingService.test.js tests/posTerminalPairingUseCase.test.js tests/posTerminalPairingCookie.test.js tests/posDeviceShiftGuard.test.js"
+        ],
+        "production_evidence_required": [
+          "Live POS bundle contains Cashier Unlock, Login as Cashier, POS Setup, and POS Settings access PIN.",
+          "Production runtime SHA, remote HEAD, deploy state, and deploy summary all match the final origin/master SHA."
+        ]
+      }
+    }
+  ]
+}
