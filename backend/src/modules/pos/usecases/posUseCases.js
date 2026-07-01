@@ -662,7 +662,8 @@ const resolvePosReadLocationScope = async ({
     requestedLocationId = null,
     userId = null,
     transaction = null,
-    operationLabel = 'POS read operation'
+    operationLabel = 'POS read operation',
+    allowNullWhenUnresolved = false
 } = {}) => {
     const normalizedRequestedLocationId = requestedLocationId == null
         ? null

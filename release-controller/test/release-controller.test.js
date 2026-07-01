@@ -11,6 +11,7 @@ const {
   validateAuthorizationFields,
   verifySignedTag,
   validateEvidence,
+  validateEmergencyQaReport,
   validateInventoryDocumentation,
   validateDocumentationClosureEvidence,
   validateLiveGithubEvidence,
@@ -130,6 +131,24 @@ test('candidate evidence fails for failed checks and stale QA', () => {
   evidence.qa.target_sha = SHA;
   evidence.local_qualification.status = 'fail';
   assert.throws(() => validateEvidence(evidence, evidenceExpected, ['exact-master']), (error) => error.code === 'LOCAL_QUALIFICATION_FAILED');
+});
+
+test('emergency QA bypass is explicit, configured, and limited to isolated QA unavailability', () => {
+  const evidence = {
+    schema: 'sku-release-evidence/v2', version: 2, repository: 'owner/repo', phase: 'production', target_sha: SHA,
+    pr: { number: 24, base: 'master', head: 'staging' }, inventory_sha256: HASH_A, payment_sensitive: false,
+    documentation_closure: { status: 'pass', target_sha: SHA, inventory_sha256: HASH_A, report_sha256: 'd'.repeat(64), non_bypassable: true },
+    regression_risk_notice: { status: 'pass', target_sha: SHA, report_sha256: 'e'.repeat(64) },
+    qa: { status: 'unavailable', target_sha: SHA, isolated: false },
+    emergency_qa: { status: 'approved', reason_code: 'isolated_qa_unavailable', target_sha: SHA, actor: 'owner', report_sha256: 'f'.repeat(64) },
+    local_qualification: { status: 'pass', target_sha: SHA },
+    master_audit: { status: 'pass', governed_promotion: true }, required_checks: [],
+  };
+  const evidenceExpected = expected({ documentationClosureHash: 'd'.repeat(64), regressionRiskNoticeHash: 'e'.repeat(64) });
+  assert.throws(() => validateEvidence(evidence, evidenceExpected), (error) => error.code === 'QA_EVIDENCE_INVALID');
+  assert.doesNotThrow(() => validateEvidence(evidence, evidenceExpected, [], { allowEmergencyQaBypass: true }));
+  evidence.local_qualification.status = 'fail';
+  assert.throws(() => validateEvidence(evidence, evidenceExpected, [], { allowEmergencyQaBypass: true }), (error) => error.code === 'LOCAL_QUALIFICATION_FAILED');
 });
 
 test('billing fallback accepts only a hash-bound failed check when explicitly enabled', () => {

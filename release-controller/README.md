@@ -49,6 +49,8 @@ sudo --preserve-env=GNUPGHOME,GH_TOKEN \
 
 Add `--execute` only after the dry-run result is reviewed. Payment-sensitive releases also require `--payment-tag`.
 
+If isolated QA is unavailable during an eligible emergency, root-owned configuration must explicitly set `emergency_qa_bypass.enabled=true`. Build candidate evidence with `--emergency-qa-report`, then pass the same hash-bound report to the controller with `--emergency-qa-report`. This lane is ineligible for payment-sensitive or migration releases and does not run QA against production.
+
 Successful production deployment ends in `deployed_pending_accuracy`, not `completed`. The controller writes `<release_records_dir>/<sha>/release_record.json` and `release_record.md` outside Git, then requires a separate trusted finalization operation:
 
 ```bash
@@ -78,7 +80,7 @@ Finalization recollects exact-SHA production proof, verifies every slice artifac
 6. Production SSH is invoked by installed controller code, not by a GitHub workflow.
 7. Documentation closure is independently revalidated against the exact-SHA worktree and cannot be bypassed.
 8. Post-deploy records are root-owned, mode `0600`, stored outside the deployed checkout, and never committed as proof of their own deployment SHA.
-9. Billing fallback changes only where qualification runs; it cannot bypass failed tests, isolated QA, review, signed authorization, or production proof.
+9. Billing fallback changes only where qualification runs; it cannot bypass failed tests, review, signed authorization, or production proof. Isolated QA may be substituted only by the separately configured, signed, hash-bound emergency QA lane described above.
 
 ## Recovery
 

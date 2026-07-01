@@ -9,7 +9,6 @@ import { Op } from 'sequelize';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
 import {
-    formatStorefrontBusinessHoursDisplay,
     getStorefrontBusinessHoursStatus,
     normalizeStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';

@@ -172,11 +172,13 @@ export default function MapPinPicker({
   useEffect(() => { effectivePositionRef.current = effectivePosition; }, [effectivePosition]);
   useEffect(() => {
     if (selectedPosition) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Prop synchronization must discard an obsolete draft pin.
       setDraftPin(null);
     }
   }, [selectedPosition]);
   useEffect(() => {
     if (defaultAdjustMode === true && !selectedPosition) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- The controlled default must synchronize drag mode.
       setIsPinDragMode(true);
     }
   }, [defaultAdjustMode, selectedPosition]);
@@ -464,6 +466,7 @@ export default function MapPinPicker({
         markerRef.current = null;
       }
       if (defaultAdjustMode !== true) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Removing the imperative marker also clears drag mode.
         setIsPinDragMode(false);
       }
       return;

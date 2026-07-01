@@ -1,0 +1,17 @@
+{
+  "schema": "sku-emergency-qa-authorization/v1",
+  "status": "approved",
+  "reason_code": "isolated_qa_unavailable",
+  "target_sha": "0123456789abcdef0123456789abcdef01234567",
+  "owner_approved": true,
+  "actor": "release-owner-name",
+  "reason": "Distinct isolated QA is unavailable and delaying this non-payment, no-migration release creates greater operational risk.",
+  "payment_sensitive": false,
+  "migrations_changed": false,
+  "compensating_controls": {
+    "local_qualification": true,
+    "rollback_ready": true,
+    "production_readonly_smoke_planned": true,
+    "post_deploy_accuracy_required": true
+  }
+}

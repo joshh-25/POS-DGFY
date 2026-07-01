@@ -125,7 +125,7 @@ The controller independently verifies GitHub PR/check state and recomputes all l
 
 Promotion requires QA deployed at the exact staging candidate SHA. QA must have a separate app directory, Unix identity, database and database credentials, environment/runtime marker, uploads directory, PM2 names, tenant/data marker, and disposable test data. Production database credentials and production data must be inaccessible to the QA Unix identity.
 
-Production-as-QA is prohibited and not bypassable.
+Production-as-QA is prohibited and not bypassable. When distinct isolated QA is genuinely unavailable, the signed emergency QA lane may record QA as unavailable; it must never run QA promotion or mutation against production.
 
 ## Signed Authorization
 
@@ -212,7 +212,7 @@ npm run collect:github-actions-unavailability -- \
 
 ## Incident And Recovery
 
-There is no unsigned emergency bypass. Incidents use fresh, explicitly scoped signed authorization and preserved controller evidence. Key compromise follows ADR 0030 revocation and rotation. A failed action never makes a nonce reusable.
+There is no unsigned emergency bypass. The supported emergency path is `reason_code=isolated_qa_unavailable` in a hash-bound `sku-emergency-qa-authorization/v1` report, enabled by root-owned controller configuration and approved through separate fresh signed promotion and production tags. It is limited to non-payment, no-migration releases with passing non-QA gates, trusted local qualification, rollback readiness, planned read-only production smoke, and mandatory accuracy finalization. Key compromise follows ADR 0030 revocation and rotation. A failed action never makes a nonce reusable.
 
 ## Current Limitation
 
