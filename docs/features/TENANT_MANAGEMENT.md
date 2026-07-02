@@ -231,7 +231,7 @@ Body: { "email": "user@example.com" }
 ### Key behaviors
 - Email is **case-normalized** (lowercased) before lookup — `USER@EXAMPLE.COM` and `user@example.com` resolve identically.
 - Only tenants with status `'active'` or `'pending'` are returned. Rejected/inactive tenants are excluded.
-- Rate-limited to **5 requests per 15-minute window** in production (bypassed in `NODE_ENV=test`).
+- Rate-limited to **5 requests per 5-minute window** in production (bypassed in `NODE_ENV=test`).
 - Standalone POS terminal unlock uses this lookup before password validation. If lookup returns one tenant, POS logs in with that company token. If the current browser token is present, POS may reuse it only when it matches one of the lookup tenants. Multiple-tenant lookup blocks with an explicit operator instruction, and missing mappings or rate-limit responses must not silently fall back to an unrelated stale browser tenant. Fallback to the current browser token is reserved for transient lookup outages.
 
 ### Mapping management
