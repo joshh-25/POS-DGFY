@@ -83,6 +83,7 @@ import {
   isTenantSetupFlowRequested,
   resolveProfileSetupReadiness,
   resolvePosSetupReadiness,
+  resolveStarterItemSetupReadiness,
   resolveStorefrontSetupReadiness,
   resolveTenantSetupStep,
   resolveTenantSetupStepValue,
@@ -90,7 +91,6 @@ import {
 } from '../utils/setupFlow.js';
 
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
-import PosTenantSetupModal from '../components/PosTenantSetupModal.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -105,6 +105,7 @@ import {
 import { emitPosHardwareMessage, POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazy(() => import('../components/TerminalPageLayout.jsx'));
+const PosTenantSetupModal = lazy(() => import('../components/PosTenantSetupModal.jsx'));
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
@@ -316,20 +317,24 @@ const buildTenantSetupStateSnapshot = ({
   settingsPayload = {},
   companyPayload = {},
   usersPayload = [],
-  locationsPayload = []
+  locationsPayload = [],
+  itemsPayload = []
 } = {}) => {
   const profileRequirements = resolveProfileSetupReadiness(companyPayload, settingsPayload);
   const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
   const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
+  const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload);
 
   return {
     loading: false,
     profileReady: profileRequirements.ready,
     posSetupReady: posRequirements.ready,
     storefrontSetupReady: storefrontRequirements.ready,
+    starterItemReady: starterItemRequirements.ready,
     profileRequirements,
     posRequirements,
     storefrontRequirements,
+    starterItemRequirements,
     tenantUsers: Array.isArray(usersPayload) ? usersPayload : []
   };
 };
@@ -498,6 +503,7 @@ export default function TerminalPage() {
     profileReady: false,
     posSetupReady: false,
     storefrontSetupReady: false,
+    starterItemReady: false,
     profileRequirements: {
       ready: false,
       companyNameReady: false,
@@ -516,6 +522,11 @@ export default function TerminalPage() {
       primaryLocationId: null,
       coverImageUrl: '',
       profileImageUrl: ''
+    },
+    starterItemRequirements: {
+      ready: false,
+      starterItemReady: false,
+      starterItemId: null
     },
     tenantUsers: []
   });
@@ -615,7 +626,7 @@ export default function TerminalPage() {
   const tenantSetupIncomplete = !setupFlowState.loading
     && !locked
     && terminalUser?.is_master_admin === true
-    && (!setupFlowState.profileReady || !setupFlowState.storefrontSetupReady || !setupFlowState.posSetupReady);
+    && (!setupFlowState.profileReady || !setupFlowState.storefrontSetupReady || !setupFlowState.starterItemReady || !setupFlowState.posSetupReady);
   const tenantSetupRequestedOrRequired = tenantSetupFlowRequested || tenantSetupIncomplete;
   const tenantSetupStep = useMemo(() => resolveTenantSetupStep({
     requested: tenantSetupRequestedOrRequired,
@@ -624,12 +635,14 @@ export default function TerminalPage() {
     requestedStep: requestedTenantSetupStep,
     profileReady: setupFlowState.profileReady,
     posSetupReady: setupFlowState.posSetupReady,
-    storefrontSetupReady: setupFlowState.storefrontSetupReady
+    storefrontSetupReady: setupFlowState.storefrontSetupReady,
+    starterItemReady: setupFlowState.starterItemReady
   }), [
     locked,
     requestedTenantSetupStep,
     setupFlowState.profileReady,
     setupFlowState.posSetupReady,
+    setupFlowState.starterItemReady,
     setupFlowState.storefrontSetupReady,
     tenantSetupRequestedOrRequired,
     terminalUser?.is_master_admin
@@ -673,6 +686,7 @@ export default function TerminalPage() {
         profileReady: false,
         posSetupReady: false,
         storefrontSetupReady: false,
+        starterItemReady: false,
         profileRequirements: {
           ready: false,
           companyNameReady: false,
@@ -692,6 +706,11 @@ export default function TerminalPage() {
           coverImageUrl: '',
           profileImageUrl: ''
         },
+        starterItemRequirements: {
+          ready: false,
+          starterItemReady: false,
+          starterItemId: null
+        },
         tenantUsers: []
       });
       return;
@@ -700,26 +719,31 @@ export default function TerminalPage() {
     setSetupFlowState((prev) => ({ ...prev, loading: true }));
     try {
       const requestConfig = suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {};
-      const [settingsPayload, companyPayload, usersPayload, locationsPayload] = await Promise.all([
+      const [settingsPayload, companyPayload, usersPayload, locationsPayload, itemsPayload] = await Promise.all([
         getAllSettings({
           force: true,
           requestConfig
         }),
         getCompanyInfo().catch(() => null),
         getAllUsers({ include_invitations: true }).catch(() => []),
-        listTenantLocations({ include_inactive: false }).catch(() => [])
+        listTenantLocations({ include_inactive: false }).catch(() => []),
+        fetchPosCatalog({ limit: 1 }).catch(() => [])
       ]);
       const profileRequirements = resolveProfileSetupReadiness(companyPayload, settingsPayload);
       const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
       const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
+      const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload);
       setSetupFlowState({
         loading: false,
         profileReady: profileRequirements.ready,
         posSetupReady: posRequirements.ready,
         storefrontSetupReady: storefrontRequirements.ready,
+        starterItemReady: starterItemRequirements.ready,
         profileRequirements,
         posRequirements,
-        storefrontRequirements
+        storefrontRequirements,
+        starterItemRequirements,
+        tenantUsers: Array.isArray(usersPayload) ? usersPayload : []
       });
     } catch {
       setSetupFlowState((prev) => ({ ...prev, loading: false }));
@@ -1928,7 +1952,7 @@ export default function TerminalPage() {
           }
         : null;
 
-      const [selectedTenantUser, selectedTenantSettings, selectedTenantCompany, selectedTenantUsers, selectedTenantLocations] = await Promise.all([
+      const [selectedTenantUser, selectedTenantSettings, selectedTenantCompany, selectedTenantUsers, selectedTenantLocations, selectedTenantItems] = await Promise.all([
         fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => null),
         getAllSettings({
           force: true,
@@ -1936,7 +1960,8 @@ export default function TerminalPage() {
         }).catch(() => ({})),
         getCompanyInfo().catch(() => null),
         getAllUsers({ include_invitations: true }).catch(() => []),
-        listTenantLocations({ include_inactive: false }).catch(() => [])
+        listTenantLocations({ include_inactive: false }).catch(() => []),
+        fetchPosCatalog({ limit: 1 }).catch(() => [])
       ]);
       const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;
       const selectedUserIsAdmin = effectiveSelectedTenantUser?.is_master_admin === true
@@ -1945,7 +1970,8 @@ export default function TerminalPage() {
         settingsPayload: selectedTenantSettings || {},
         companyPayload: selectedTenantCompany || {},
         usersPayload: selectedTenantUsers,
-        locationsPayload: selectedTenantLocations
+        locationsPayload: selectedTenantLocations,
+        itemsPayload: selectedTenantItems
       });
       const selectedTenantSetupStep = resolveTenantSetupStep({
         requested: true,
@@ -1954,7 +1980,8 @@ export default function TerminalPage() {
         requestedStep: POS_TERMINAL_SETUP_STEPS.PROFILE,
         profileReady: selectedTenantSetupState.profileReady,
         posSetupReady: selectedTenantSetupState.posSetupReady,
-        storefrontSetupReady: selectedTenantSetupState.storefrontSetupReady
+        storefrontSetupReady: selectedTenantSetupState.storefrontSetupReady,
+        starterItemReady: selectedTenantSetupState.starterItemReady
       });
 
       setTerminalUser(effectiveSelectedTenantUser);
@@ -3786,6 +3813,8 @@ export default function TerminalPage() {
           }}
           posRequirements={setupFlowState.posRequirements}
           storefrontRequirements={setupFlowState.storefrontRequirements}
+          starterItemRequirements={setupFlowState.starterItemRequirements}
+          workflowMode={workflowMode}
           terminalRegistry={terminalRegistry}
           terminalLocations={locationsState.locations}
           tenantUsers={setupFlowState.tenantUsers}
@@ -3807,6 +3836,15 @@ export default function TerminalPage() {
               if (!setupFlowState.storefrontSetupReady) {
                 toast.error('Finish Storefront Setup before continuing to POS Setup.');
                 openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+                return;
+              }
+              openTenantSetupStep(nextStep);
+              return;
+            }
+            if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM) {
+              if (!setupFlowState.starterItemReady) {
+                toast.error('Create at least one starter item before continuing to POS Setup.');
+                openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
                 return;
               }
               openTenantSetupStep(nextStep);
