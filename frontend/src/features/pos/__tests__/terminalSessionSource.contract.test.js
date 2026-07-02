@@ -40,7 +40,8 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('refreshBrowserSession()');
     expect(terminalPageSource).toContain('storedReason !== \'shift_closed\'');
     expect(terminalPageSource).toContain('storedReason !== \'terminal_reunlock\'');
-    expect(terminalPageSource).toContain('const pairedTerminal = await fetchPairedPosTerminal().catch(() => null);');
+    expect(terminalPageSource).toContain('const storedRegistryEntry = terminalRegistryLookup.get(storedTerminalId);');
+    expect(terminalPageSource).toContain('operatingLocationIdOverride: storedLocationId');
     expect(terminalPageSource).toContain('allowWhileLocked: true');
     expect(terminalPageSource).toContain('if (operationalContext?.shift) {');
     expect(terminalPageSource).toContain('setLocked(true);');

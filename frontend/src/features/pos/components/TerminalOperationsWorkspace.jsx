@@ -3802,7 +3802,7 @@ function SettingsWorkspace({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[13px] font-black text-[#0F172A]">Terminal Registry</p>
-                <p className="mt-1 text-[12px] text-[#475569]">Managed POS counters used in pairing and shift-open flows. A store location may have multiple active terminals.</p>
+                <p className="mt-1 text-[12px] text-[#475569]">Managed POS counters used for shift-open and checkout location control. A store location may have multiple active terminals.</p>
               </div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <Button
@@ -3992,12 +3992,12 @@ function SettingsWorkspace({
                           <div className="grid gap-1.5 md:col-span-2">
                             <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
                               <KeyRound className="h-3.5 w-3.5 text-blue-500" />
-                              Device Pairing
+                              Terminal Readiness
                             </Label>
                             <div className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[12px] text-[#475569]">
-                              {terminal.pairing_version
-                                ? 'Registry ready. A master admin pairs each physical device from POS onboarding.'
-                                : 'Save this terminal before pairing a physical device.'}
+                              {terminal.location_id
+                                ? 'Ready for authorized DGFY users with access to this location.'
+                                : 'Assign a store location before this terminal can be used.'}
                             </div>
                           </div>
                         </div>

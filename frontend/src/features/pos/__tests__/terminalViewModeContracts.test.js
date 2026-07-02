@@ -387,7 +387,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('Terminal ID');
     expect(terminalPageContent).toContain('Select registered terminal');
     expect(terminalPageContent).toContain('Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.');
-    expect(terminalPageContent).toContain('This physical POS device is not paired. Ask the company master admin to pair it from POS onboarding.');
+    expect(terminalPageContent).toContain('Authorized DGFY users can open shifts from any logged-in device');
     expect(terminalPageContent).toContain('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');
