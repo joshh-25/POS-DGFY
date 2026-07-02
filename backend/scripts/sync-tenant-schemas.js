@@ -16,6 +16,22 @@ const DB_USER = process.env.DB_USER || 'root';
 const DB_PASSWORD = process.env.DB_PASSWORD || '';
 const MAIN_DB = process.env.DB_NAME || 'sku_inventory_manager';
 
+export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
+    pos_catalog_overrides: Object.freeze({
+        pos_always_available: Object.freeze({
+            sql: "ALTER TABLE `pos_catalog_overrides` ADD COLUMN `pos_always_available` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'POS-only stock exemption; never changes Storefront visibility or Inventory stock truth'"
+        })
+    }),
+    pos_transaction_lines: Object.freeze({
+        stock_effect_type: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `stock_effect_type` ENUM('inventory_issue','stock_exempt') NOT NULL DEFAULT 'inventory_issue' COMMENT 'Immutable checkout-time stock-effect classification'"
+        }),
+        stock_exempt_reason: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `stock_exempt_reason` VARCHAR(80) NULL COMMENT 'Immutable reason when a POS sale line intentionally creates no inventory movement'"
+        })
+    })
+});
+
 export function normalizeErrorSignature(message) {
     const raw = String(message || '').trim();
     if (!raw) {
@@ -63,7 +79,9 @@ export function createSyncFailureRecord(tenant, error) {
         error_code: signature.error_code,
         error_message: String(error?.message || error || 'Unknown error'),
         normalized_message: signature.normalized_message,
-        fingerprint: signature.fingerprint
+        fingerprint: signature.fingerprint,
+        missing_columns: Array.isArray(error?.missing_columns) ? error.missing_columns : undefined,
+        repair_sql: Array.isArray(error?.repair_sql) ? error.repair_sql : undefined
     };
 }
 
@@ -93,6 +111,39 @@ function parseArgs(argv = process.argv.slice(2)) {
     return options;
 }
 
+export async function inspectRequiredTenantSchemaColumns(connection, tenantDb) {
+    const tableNames = Object.keys(REQUIRED_TENANT_SCHEMA_COLUMNS);
+    const [rows] = await connection.query(
+        `SELECT TABLE_NAME, COLUMN_NAME
+           FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = ?
+            AND TABLE_NAME IN (${tableNames.map(() => '?').join(', ')})`,
+        [tenantDb, ...tableNames]
+    );
+    const present = new Set(rows.map((row) => `${row.TABLE_NAME}.${row.COLUMN_NAME}`));
+    const missingColumns = [];
+
+    Object.entries(REQUIRED_TENANT_SCHEMA_COLUMNS).forEach(([table, columns]) => {
+        Object.keys(columns).forEach((column) => {
+            if (!present.has(`${table}.${column}`)) {
+                missingColumns.push({ table, column });
+            }
+        });
+    });
+
+    return missingColumns;
+}
+
+export function buildTenantSchemaRepairSql(missingColumns = []) {
+    return (Array.isArray(missingColumns) ? missingColumns : [])
+        .map(({ table, column }) => ({
+            table,
+            column,
+            sql: REQUIRED_TENANT_SCHEMA_COLUMNS?.[table]?.[column]?.sql || ''
+        }))
+        .filter((entry) => entry.sql);
+}
+
 async function writeReport(reportFile, payload) {
     if (!reportFile) {
         return;
@@ -103,7 +154,7 @@ async function writeReport(reportFile, payload) {
 
 export async function runTenantSchemaSync({ reportFile = '', failOnError = false, mode = 'report' } = {}) {
     const normalizedMode = String(mode || 'report').trim().toLowerCase();
-    if (!['report', 'alter'].includes(normalizedMode)) {
+    if (!['report', 'repair-dry-run', 'repair-apply', 'alter'].includes(normalizedMode)) {
         throw new Error(`Invalid tenant schema sync mode: ${mode}`);
     }
 
@@ -150,6 +201,41 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                     await tenantSequelize.sync({ alter: true });
                 } else {
                     await tenantSequelize.authenticate();
+                    const missingColumns = await inspectRequiredTenantSchemaColumns(connection, tenant.db_name);
+                    const repairSql = buildTenantSchemaRepairSql(missingColumns);
+
+                    if (normalizedMode === 'repair-apply') {
+                        for (const repair of repairSql) {
+                            await connection.query(`USE \`${tenant.db_name.replace(/`/g, '``')}\``);
+                            await connection.query(repair.sql);
+                        }
+                    }
+
+                    const remainingMissingColumns = normalizedMode === 'repair-apply'
+                        ? await inspectRequiredTenantSchemaColumns(connection, tenant.db_name)
+                        : missingColumns;
+
+                    if (remainingMissingColumns.length > 0 && normalizedMode === 'report') {
+                        const error = new Error(`Missing required tenant schema columns: ${remainingMissingColumns.map((entry) => `${entry.table}.${entry.column}`).join(', ')}`);
+                        error.missing_columns = remainingMissingColumns;
+                        error.repair_sql = repairSql;
+                        throw error;
+                    }
+
+                    if (remainingMissingColumns.length > 0 && normalizedMode === 'repair-dry-run') {
+                        report.summary.failed += 1;
+                        report.results.push({
+                            tenant_id: tenant.id,
+                            tenant_name: tenant.name,
+                            tenant_db: tenant.db_name,
+                            status: 'repair_required',
+                            mode: normalizedMode,
+                            missing_columns: remainingMissingColumns,
+                            repair_sql: repairSql
+                        });
+                        console.warn(`[TenantSchemaSync] repair_required tenant=${tenant.db_name} missing=${remainingMissingColumns.map((entry) => `${entry.table}.${entry.column}`).join(',')}`);
+                        continue;
+                    }
                 }
                 report.summary.succeeded += 1;
                 report.results.push({

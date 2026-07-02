@@ -7,6 +7,7 @@ import {
   POS_TERMINAL_SETUP_STEPS,
   resolveProfileSetupReadiness,
   resolvePosSetupReadiness,
+  resolveStarterItemSetupReadiness,
   resolveStorefrontSetupReadiness,
   resolveTenantSetupStep,
   resolveTenantSetupStepValue,
@@ -127,7 +128,18 @@ describe('setupFlow', () => {
       requestedStep: POS_TERMINAL_SETUP_STEPS.POS_SETUP,
       profileReady: true,
       posSetupReady: false,
-      storefrontSetupReady: true
+      storefrontSetupReady: true,
+      starterItemReady: false
+    })).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
+
+    expect(resolveTenantSetupStep({
+      requested: true,
+      isMasterAdmin: true,
+      requestedStep: POS_TERMINAL_SETUP_STEPS.POS_SETUP,
+      profileReady: true,
+      posSetupReady: false,
+      storefrontSetupReady: true,
+      starterItemReady: true
     })).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
   });
 
@@ -138,6 +150,7 @@ describe('setupFlow', () => {
       requestedStep: POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP,
       profileReady: true,
       storefrontSetupReady: true,
+      starterItemReady: true,
       posSetupReady: true
     })).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
 
@@ -147,15 +160,36 @@ describe('setupFlow', () => {
       requestedStep: POS_TERMINAL_SETUP_STEPS.POS_SETUP,
       profileReady: true,
       storefrontSetupReady: true,
+      starterItemReady: true,
       posSetupReady: true
     })).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
+  });
+
+  it('uses a sellable starter item as the POS onboarding starter-item readiness signal', () => {
+    expect(resolveStarterItemSetupReadiness([])).toEqual({
+      ready: false,
+      starterItemReady: false,
+      starterItemId: null
+    });
+    expect(resolveStarterItemSetupReadiness([{
+      item_id: 88,
+      default_sale_price: 150,
+      pos_visible: true,
+      status: 'active'
+    }])).toEqual({
+      ready: true,
+      starterItemReady: true,
+      starterItemId: 88
+    });
   });
 
   it('centralizes onboarding navigation order and settings targets', () => {
     expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.PROFILE)).toBe('');
     expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.PROFILE)).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
-    expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+    expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
+    expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
     expect(resolveTenantSetupViewMode(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP)).toBe('settings_storefront');
+    expect(resolveTenantSetupViewMode(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM)).toBe('items');
     expect(resolveTenantSetupViewMode(POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe('settings_pos');
   });
 
