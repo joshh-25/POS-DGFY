@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-27
+last_reviewed: 2026-07-02
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -188,6 +188,8 @@ The `UserTenantMapping` table in the main DB maps email addresses to tenant IDs.
 
 `POST /api/v1/auth/lookup` is a pre-login identification endpoint. It remains rate-limited to reduce tenant enumeration risk, but it must not require CSRF even when the browser still carries stale HttpOnly session cookies from a previous login; otherwise users can be blocked before they can identify their company or enter a manual token. The lookup limiter is scoped by client IP plus normalized email, not IP alone, and defaults to a 5-minute retry window so shared store networks do not cross-throttle different POS cashiers while repeated lookup attempts for the same email remain controlled.
 
+The credentialed IMS/DGFY login limiter also defaults to five attempts in a five-minute window, keyed by client IP plus normalized email. IMS and POS intentionally share that identity bucket so alternating surfaces cannot bypass brute-force protection. Login clients must use `Retry-After`, must not loop automatic retries, and must reset stale company/account state before a changed identity can submit. Public lookup does not preflight `/auth/refresh-token` and does not inherit stale tenant headers.
+
 ### Endpoint
 ```
 POST /api/v1/auth/lookup
@@ -229,7 +231,7 @@ Body: { "email": "user@example.com" }
 ### Key behaviors
 - Email is **case-normalized** (lowercased) before lookup — `USER@EXAMPLE.COM` and `user@example.com` resolve identically.
 - Only tenants with status `'active'` or `'pending'` are returned. Rejected/inactive tenants are excluded.
-- Rate-limited to **5 requests per 15-minute window** in production (bypassed in `NODE_ENV=test`).
+- Rate-limited to **5 requests per 5-minute window** in production (bypassed in `NODE_ENV=test`).
 - Standalone POS terminal unlock uses this lookup before password validation. If lookup returns one tenant, POS logs in with that company token. If the current browser token is present, POS may reuse it only when it matches one of the lookup tenants. Multiple-tenant lookup blocks with an explicit operator instruction, and missing mappings or rate-limit responses must not silently fall back to an unrelated stale browser tenant. Fallback to the current browser token is reserved for transient lookup outages.
 
 ### Mapping management

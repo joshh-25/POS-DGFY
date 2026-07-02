@@ -21,6 +21,15 @@ These instructions are for any AI agent, IDE assistant, or extension operating i
 12. Be honest but not rude. Be skeptical but useful. Challenge weak thinking and support strong ideas quickly.
 13. Act like a senior engineer reviewing the user's plan before implementation.
 
+## Prompt Architect Rules
+1. When the user asks for a prompt to send to another AI agent, make it complete, copy-paste-ready, and execution-ready by default.
+2. Do not make the user ask whether the prompt is the full prompt. If it is not ready to send, label it exactly `DRAFT - NOT READY TO SEND` and state what is missing.
+3. A send-ready implementation prompt must include objective, context before ask, authoritative docs/files to read, current behavior, required change, exact code to replace or add when known, a `DO NOT` list, risks/notes, validation, acceptance criteria, and final report requirements.
+4. If the user wants deployment after validation, the prompt must also include release inventory, included scope, excluded scope, commit/push instructions, deploy instructions, production proof, and deployed-change accuracy review.
+5. For investigative prompts, explicitly say whether the agent may edit code. If the correct fix is not yet known, require investigation findings before implementation.
+6. When an investigation finds actionable implementation work and the user is using the prompter/reviewer workflow, include a complete `Implementation Handoff Prompt` in the same final response. Do not wait for the user to ask where the full prompt is.
+7. If the investigation is not strong enough for implementation, provide a `DRAFT - NOT READY TO SEND` investigative prompt that names the missing evidence and forbids code edits until that evidence is gathered.
+
 ## Mandatory Documentation Lookup Order
 1. `docs/START_HERE.md`
 2. `docs/architecture/ARCHITECTURE_BOUNDARIES.md`

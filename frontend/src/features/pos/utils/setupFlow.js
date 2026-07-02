@@ -71,7 +71,10 @@ export const resolvePosSetupReadiness = (settingsPayload = {}, usersPayload = nu
   const cashierCheckRequired = Array.isArray(usersPayload);
   const hasActiveCashier = !cashierCheckRequired || usersPayload.some((user) => (
     user?.is_active !== false
-    && String(user?.role || '').trim().toLowerCase() === 'cashier'
+    && (
+      String(user?.role || '').trim().toLowerCase() === 'cashier'
+      || user?.is_master_admin === true
+    )
   ));
 
   return {

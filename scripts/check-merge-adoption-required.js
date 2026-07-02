@@ -136,8 +136,23 @@ function isHighRiskPath(filePath) {
   return HIGH_RISK_PATH_PATTERNS.some((pattern) => pattern.test(filePath));
 }
 
-function findManifestCandidates(changedFiles) {
-  return changedFiles.filter((filePath) => MANIFEST_PATH_PATTERN.test(filePath));
+function looksLikeMergeAdoptionManifest(projectRoot, filePath) {
+  if (!projectRoot) return true;
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, filePath), 'utf8'));
+    return manifest
+      && manifest.version === 1
+      && typeof manifest.merge_name === 'string'
+      && Array.isArray(manifest.feature_areas);
+  } catch {
+    return false;
+  }
+}
+
+function findManifestCandidates(changedFiles, projectRoot = '') {
+  return changedFiles
+    .filter((filePath) => MANIFEST_PATH_PATTERN.test(filePath))
+    .filter((filePath) => looksLikeMergeAdoptionManifest(projectRoot, filePath));
 }
 
 function validateRequiredManifest({ projectRoot, changedFiles, manifestPath, allowNotRequired, logger = console }) {
@@ -154,7 +169,7 @@ function validateRequiredManifest({ projectRoot, changedFiles, manifestPath, all
 
   let selectedManifest = manifestPath;
   if (!selectedManifest) {
-    const candidates = findManifestCandidates(changedFiles);
+    const candidates = findManifestCandidates(changedFiles, projectRoot);
     if (candidates.length === 1) {
       selectedManifest = candidates[0];
     } else if (candidates.length > 1) {

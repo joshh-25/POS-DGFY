@@ -1,19 +1,8 @@
 import {
-    createPosSetupCashierUseCase,
-    listPosSetupCashiersUseCase,
-    loginPosCashierUseCase,
-    verifyPosTerminalUseCase,
-    getPairedPosTerminalUseCase,
     listPosCatalogUseCase,
     scanPosBarcodeUseCase,
     checkoutPosUseCase,
     listPosTransactionsUseCase,
-    getPosReportsOverviewUseCase,
-    getPosReportsTopItemsUseCase,
-    getPosReportsComparisonUseCase,
-    getPosReportsProfitLossUseCase,
-    getPosReportsCashierShiftHistoryUseCase,
-    exportPosReportsUseCase,
     getPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase,
     voidPosTransactionUseCase,
@@ -34,6 +23,9 @@ import {
     uploadBulkPosCatalogImagesUseCase,
     deletePosCatalogImageUseCase,
     openTerminalShiftUseCase,
+    createPosSetupCashierUseCase,
+    listPosSetupCashiersUseCase,
+    loginPosCashierUseCase,
     switchTerminalShiftLocationUseCase,
     getCurrentTerminalShiftUseCase,
     recordCashDrawerEventUseCase,
@@ -43,9 +35,12 @@ import {
     updateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase,
     printPosReceiptUseCase,
-    openPosDrawerUseCase
+    openPosDrawerUseCase,
+    verifyPosTerminalUseCase,
+    getPairedPosTerminalUseCase,
+    posTerminalPairingMaxAgeMs
 } from '../index.js';
-import { resolveDomainFailure, sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
+import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import {
     SESSION_COOKIE_NAMES,
@@ -54,7 +49,6 @@ import {
     setBearerSessionCookie,
     setTenantSessionCookies
 } from '../../../utils/browserSessionCookies.js';
-import { maxAgeMs as terminalPairingMaxAgeMs } from '../services/posTerminalPairingService.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -68,6 +62,51 @@ const defaultErrorPayload = (req, res, failure) => ({
     request_id: requestId(req, res),
     timestamp: timestamp()
 });
+
+export const verifyTerminal = async (req, res, next) => {
+    try {
+        const result = await verifyPosTerminalUseCase({ payload: req.validatedData || req.body || {}, user: req.user });
+        if (result?.success && result.data?.pairing_token) {
+            setBearerSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing, result.data.pairing_token, {
+                maxAgeMs: posTerminalPairingMaxAgeMs
+            });
+        }
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: { ...result.data, pairing_token: undefined },
+                message: 'Terminal paired',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getPairedTerminal = async (req, res, next) => {
+    try {
+        const result = await getPairedPosTerminalUseCase({
+            pairingToken: getCookie(req, SESSION_COOKIE_NAMES.posTerminalPairing),
+            user: req.user
+        });
+        if (!result?.success) clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const clearPairedTerminal = (req, res) => {
+    clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+    return res.status(200).json({ success: true, data: { paired: false }, timestamp: timestamp() });
+};
 
 export const createSetupCashier = async (req, res, next) => {
     try {
@@ -134,38 +173,7 @@ export const loginCashier = async (req, res, next) => {
     }
 };
 
-export const verifyTerminal = async (req, res, next) => {
-    try {
-        const result = await verifyPosTerminalUseCase({
-            payload: req.validatedData || req.body || {},
-            user: req.user
-        });
-        if (result?.success && result.data?.pairing_token) {
-            setBearerSessionCookie(
-                res,
-                SESSION_COOKIE_NAMES.posTerminalPairing,
-                result.data.pairing_token,
-                { maxAgeMs: terminalPairingMaxAgeMs }
-            );
-        }
-        return sendUseCaseResult(res, result, {
-            successStatusCodeResolver: () => 200,
-            successPayloadResolver: () => ({
-                success: true,
-                data: {
-                    terminal_identity_policy: result.data?.terminal_identity_policy
-                },
-                message: 'Terminal verified',
-                timestamp: timestamp()
-            }),
-            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const getPairedTerminal = async (req, res, next) => {
+export const requirePairedTerminal = async (req, res, next) => {
     try {
         const result = await getPairedPosTerminalUseCase({
             pairingToken: getCookie(req, SESSION_COOKIE_NAMES.posTerminalPairing),
@@ -173,19 +181,44 @@ export const getPairedTerminal = async (req, res, next) => {
         });
         if (!result?.success) {
             clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+            const failure = result?.error || {};
+            return res.status(failure.statusCode || 401).json(defaultErrorPayload(req, res, failure));
         }
-        return sendUseCaseResult(res, result, {
-            successStatusCodeResolver: () => 200,
-            successPayloadResolver: () => ({
-                success: true,
-                data: result.data,
-                message: 'Paired terminal verified',
+        const requestedTerminalId = String(
+            req.body?.terminal_id
+            || req.headers?.['x-pos-terminal-id']
+            || ''
+        ).trim().toUpperCase();
+        if (requestedTerminalId && requestedTerminalId !== result.data.terminal_id) {
+            clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+            return res.status(403).json({
+                success: false,
+                data: null,
+                message: 'Requested terminal does not match the paired terminal.',
+                error_code: 'POS_PAIRED_TERMINAL_MISMATCH',
                 timestamp: timestamp()
-            }),
-            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
-        });
+            });
+        }
+        const requestedLocationId = Number.parseInt(
+            req.body?.location_id || req.body?.target_location_id,
+            10
+        );
+        if (Number.isInteger(requestedLocationId) && requestedLocationId > 0
+            && requestedLocationId !== Number(result.data.location_id)) {
+            return res.status(403).json({
+                success: false,
+                data: null,
+                message: 'Requested location does not match the paired terminal location.',
+                error_code: 'POS_PAIRED_LOCATION_MISMATCH',
+                timestamp: timestamp()
+            });
+        }
+        req.headers['x-pos-terminal-id'] = result.data.terminal_id;
+        req.posTerminalPairing = result.data;
+        return next();
     } catch (error) {
-        next(error);
+        clearSessionCookie(res, SESSION_COOKIE_NAMES.posTerminalPairing);
+        return next(error);
     }
 };
 
@@ -774,124 +807,6 @@ export const listTransactions = async (req, res, next) => {
     }
 };
 
-export const getReportsOverview = async (req, res, next) => {
-    try {
-        const result = await getPosReportsOverviewUseCase({
-            query: req.validatedQuery || req.query,
-            user: req.user
-        });
-        return sendUseCaseResult(res, result, {
-            successStatusCodeResolver: () => 200,
-            successPayloadResolver: () => ({
-                success: true,
-                data: result.data,
-                timestamp: timestamp()
-            }),
-            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const getReportsTopItems = async (req, res, next) => {
-    try {
-        const result = await getPosReportsTopItemsUseCase({
-            query: req.validatedQuery || req.query,
-            user: req.user
-        });
-        return sendUseCaseResult(res, result, {
-            successStatusCodeResolver: () => 200,
-            successPayloadResolver: () => ({
-                success: true,
-                data: result.data,
-                timestamp: timestamp()
-            }),
-            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const getReportsComparison = async (req, res, next) => {
-    try {
-        const result = await getPosReportsComparisonUseCase({
-            query: req.validatedQuery || req.query,
-            user: req.user
-        });
-        return sendUseCaseResult(res, result, {
-            successStatusCodeResolver: () => 200,
-            successPayloadResolver: () => ({
-                success: true,
-                data: result.data,
-                timestamp: timestamp()
-            }),
-            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const getReportsProfitLoss = async (req, res, next) => {
-    try {
-        const result = await getPosReportsProfitLossUseCase({
-            query: req.validatedQuery || req.query,
-            user: req.user
-        });
-        return sendUseCaseResult(res, result, {
-            successStatusCodeResolver: () => 200,
-            successPayloadResolver: () => ({
-                success: true,
-                data: result.data,
-                timestamp: timestamp()
-            }),
-            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const getReportsCashierShiftHistory = async (req, res, next) => {
-    try {
-        const result = await getPosReportsCashierShiftHistoryUseCase({
-            query: req.validatedQuery || req.query,
-            user: req.user
-        });
-        return sendUseCaseResult(res, result, {
-            successStatusCodeResolver: () => 200,
-            successPayloadResolver: () => ({
-                success: true,
-                data: result.data,
-                timestamp: timestamp()
-            }),
-            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const exportReports = async (req, res, next) => {
-    try {
-        const result = await exportPosReportsUseCase({
-            query: req.validatedQuery || req.query,
-            user: req.user
-        });
-        if (!result?.success) {
-            const failure = resolveDomainFailure(result);
-            return res.status(failure.statusCode).json(defaultErrorPayload(req, res, failure));
-        }
-        res.setHeader('Content-Type', result.data?.content_type || 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="${result.data?.filename || 'pos-report.csv'}"`);
-        return res.status(200).send(result.data?.content || '');
-    } catch (error) {
-        next(error);
-    }
-};
-
 export const getTransactionById = async (req, res, next) => {
     try {
         const result = await getPosTransactionByIdUseCase({
@@ -1160,21 +1075,17 @@ export const deleteCatalogImage = async (req, res, next) => {
 };
 
 export default {
+    verifyTerminal,
+    getPairedTerminal,
+    clearPairedTerminal,
+    requirePairedTerminal,
     createSetupCashier,
     listSetupCashiers,
     loginCashier,
-    verifyTerminal,
-    getPairedTerminal,
     listCatalog,
     scanBarcode,
     checkout,
     listTransactions,
-    getReportsOverview,
-    getReportsTopItems,
-    getReportsComparison,
-    getReportsProfitLoss,
-    getReportsCashierShiftHistory,
-    exportReports,
     getTransactionById,
     closeDayZReading,
     getDailyZReading,

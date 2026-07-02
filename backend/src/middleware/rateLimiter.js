@@ -10,7 +10,8 @@ const minProdGeneralMax = parseInt(process.env.RATE_LIMIT_MIN_PROD_REQUESTS) || 
 const maxRequests = isDevelopment
   ? (parsedGeneralMax || 1000)
   : Math.max(parsedGeneralMax || 100, minProdGeneralMax);
-const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
+export const DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS;
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
 const lookupWindowMs = parseInt(process.env.RATE_LIMIT_LOOKUP_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes default
 const lookupMaxRequests = parseInt(process.env.RATE_LIMIT_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
@@ -22,6 +23,8 @@ const storeAuthWindowMs = parseInt(process.env.RATE_LIMIT_STORE_AUTH_WINDOW_MS) 
 const storeAuthMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_AUTH_MAX_REQUESTS) || (isDevelopment ? 60 : 10);
 const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const storeTrackingMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
+const storeTrackingReadWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
+const storeTrackingReadMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS) || (isDevelopment ? 600 : 300);
 const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -65,6 +68,7 @@ const rateLimitCounters = {
   email_otp: 0,
   store_auth: 0,
   store_tracking: 0,
+  store_tracking_read: 0,
   storefront_discovery: 0,
   storefront_follow: 0,
   onboarding_events: 0,
@@ -87,6 +91,25 @@ const normalizeEmail = (value) => {
 const normalizeTrackingPin = (value) => {
   if (typeof value !== 'string') return '';
   return value.trim().toUpperCase();
+};
+
+const normalizeStoreLimiterSlug = (value) => {
+  if (typeof value !== 'string') return '';
+  return value.trim().toLowerCase().slice(0, 128);
+};
+
+const getTrackingLimiterKeyParts = (req) => {
+  const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+  const trackingPin = normalizeTrackingPin(req.params?.tracking_pin || req.body?.tracking_pin || '') || 'missing-pin';
+  const storeSlug = normalizeStoreLimiterSlug(
+    req.headers?.['x-store-slug']
+    || req.tenant?.slug
+    || req.tenant?.store_slug
+    || req.tenant?.id
+    || 'unknown-store'
+  ) || 'unknown-store';
+
+  return { ip, trackingPin, storeSlug };
 };
 
 const firstForwardedIp = (req) => {
@@ -559,7 +582,7 @@ export const storeAuthLimiter = rateLimit({
   },
 });
 
-// Store tracking limiter (public tracking/cancellation endpoints)
+// Store tracking mutation limiter (claim/cancellation actions).
 export const storeTrackingLimiter = rateLimit({
   windowMs: storeTrackingWindowMs,
   max: storeTrackingMaxRequests,
@@ -567,13 +590,10 @@ export const storeTrackingLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
-  store: new DynamicStore('store_tracking'),
-  keyGenerator: (req) => {
-    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
-    const trackingPin = normalizeTrackingPin(req.params?.tracking_pin || req.body?.tracking_pin || '');
-    return trackingPin
-      ? `store_tracking:${ip}:${trackingPin}`
-      : `store_tracking:${ip}:missing-pin`;
+    store: new DynamicStore('store_tracking'),
+    keyGenerator: (req) => {
+      const { ip, trackingPin } = getTrackingLimiterKeyParts(req);
+      return `store_tracking:${ip}:${trackingPin}`;
   },
   handler: (req, res, _next, options) => {
     const response = buildRateLimitResponse(
@@ -584,6 +604,39 @@ export const storeTrackingLimiter = rateLimit({
       'ip_tracking_pin'
     );
     logRateLimitEvent(req, 'store_tracking', response.retryAfterSeconds, 'ip_tracking_pin');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+  // Public tracking reads have a dedicated tenant/store + PIN bucket with
+  // headroom for customer refreshes. Claim/cancel mutations remain stricter.
+  export const storeTrackingReadLimiter = rateLimit({
+  windowMs: storeTrackingReadWindowMs,
+  max: storeTrackingReadMaxRequests,
+  message: createRateLimitError('Too many tracking refresh requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+    store: new DynamicStore('store_tracking_read'),
+    keyGenerator: (req) => {
+      const { ip, storeSlug, trackingPin } = getTrackingLimiterKeyParts(req);
+      return `store_tracking_read:${ip}:${storeSlug}:${trackingPin}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+        options,
+        'Too many tracking refresh requests. Please wait before trying again.',
+        'store_tracking_read',
+        'ip_store_tracking_pin'
+      );
+      logRateLimitEvent(req, 'store_tracking_read', response.retryAfterSeconds, 'ip_store_tracking_pin');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
@@ -946,6 +999,7 @@ export default {
   adminAuth: adminAuthLimiter,
   storeAuth: storeAuthLimiter,
   storeTracking: storeTrackingLimiter,
+  storeTrackingRead: storeTrackingReadLimiter,
   storefrontDiscovery: storefrontDiscoveryLimiter,
   storefrontFollow: storefrontFollowLimiter,
   onboardingEvents: onboardingEventsLimiter,

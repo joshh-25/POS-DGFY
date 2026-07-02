@@ -46,6 +46,12 @@
       "expected_authority_level": "authoritative"
     },
     {
+      "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+      "topic": "free_tier_signed_release_authorization",
+      "expected_status": "authoritative",
+      "expected_authority_level": "authoritative"
+    },
+    {
       "path": "docs/templates/IMPLEMENTATION_PLAN_TEMPLATE.md",
       "topic": "implementation_plan_template",
       "expected_status": "authoritative",
@@ -60,6 +66,12 @@
     {
       "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
       "topic": "development_to_production_workflow",
+      "expected_status": "authoritative",
+      "expected_authority_level": "authoritative"
+    },
+    {
+      "path": "docs/ops/QA_ISOLATION_PROFILE.md",
+      "topic": "qa_release_isolation",
       "expected_status": "authoritative",
       "expected_authority_level": "authoritative"
     },

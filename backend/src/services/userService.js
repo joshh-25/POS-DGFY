@@ -1124,12 +1124,8 @@ export const createLocalCashier = async (adminUserId, cashierData = {}) => {
   const email = String(rawEmail || '').trim().toLowerCase();
   const phoneNumber = normalizePhoneNumber(rawPhoneNumber);
 
-  if (!username) {
-    throw createError('Cashier username is required', 422);
-  }
-  if (!email) {
-    throw createError('Cashier email is required', 422);
-  }
+  if (!username) throw createError('Cashier username is required', 422);
+  if (!email) throw createError('Cashier email is required', 422);
   if (!password || String(password).length < 8) {
     throw createError('Cashier password must be at least 8 characters', 422);
   }
@@ -1144,9 +1140,7 @@ export const createLocalCashier = async (adminUserId, cashierData = {}) => {
 
   const User = dbStore.get('User');
   const adminUser = await findVisibleUserById(User, adminUserId);
-  if (!adminUser) {
-    throw notFoundError('Admin user not found');
-  }
+  if (!adminUser) throw notFoundError('Admin user not found');
   if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }
@@ -1204,35 +1198,17 @@ export const createLocalCashier = async (adminUserId, cashierData = {}) => {
     } else {
       cashier = await User.create(payload, { transaction });
     }
-
     await replaceUserLocationGrants(cashier.user_id, normalizedLocationIds, transaction, adminUserId);
     await transaction.commit();
   } catch (error) {
-    if (!transaction.finished) {
-      await transaction.rollback();
-    }
+    if (!transaction.finished) await transaction.rollback();
     throw error;
-  }
-
-  const store = dbStore.getStore();
-  const tenantId = store?.tenantId;
-  if (tenantId) {
-    try {
-      await landlordService.addEmailTenantMapping(email, tenantId);
-    } catch (mappingError) {
-      logger.warn('[UserService] Failed to add local cashier email tenant mapping', {
-        tenantId,
-        user_id: cashier.user_id,
-        email,
-        error: mappingError.message
-      });
-    }
   }
 
   const workflowMode = await readCurrentWorkflowMode();
   return buildUserPayload(cashier, workflowMode, {
     is_active: cashier.is_active,
-    permissions: cashier.permissions,
+    permissions: resolveEffectivePermissions(cashier),
     is_master_admin: cashier.is_master_admin,
     location_ids: normalizedLocationIds
   });
@@ -1242,9 +1218,7 @@ export const listLocalCashiers = async (adminUserId) => {
   const User = dbStore.get('User');
   const UserLocationGrant = dbStore.get('UserLocationGrant');
   const adminUser = await findVisibleUserById(User, adminUserId);
-  if (!adminUser) {
-    throw notFoundError('Admin user not found');
-  }
+  if (!adminUser) throw notFoundError('Admin user not found');
   if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
     throw createError('Missing users:manage permission', 403);
   }

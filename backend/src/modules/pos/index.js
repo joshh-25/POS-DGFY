@@ -1,26 +1,15 @@
 import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
-import { createStockMovement } from '../../services/stockMovementService.js';
+import { inventoryStockCommandService } from '../inventory/index.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
+import * as posTerminalPairingService from './services/posTerminalPairingService.js';
 import * as userService from '../../services/userService.js';
 import * as authService from '../../services/authService.js';
-import * as terminalPairingService from './services/posTerminalPairingService.js';
 import {
-    buildCreatePosSetupCashierUseCase,
-    buildListPosSetupCashiersUseCase,
-    buildLoginPosCashierUseCase,
-    buildVerifyPosTerminalUseCase,
-    buildGetPairedPosTerminalUseCase,
     buildListPosCatalogUseCase,
     buildScanPosBarcodeUseCase,
     buildCheckoutPosUseCase,
     buildListPosTransactionsUseCase,
-    buildGetPosReportsOverviewUseCase,
-    buildGetPosReportsTopItemsUseCase,
-    buildGetPosReportsComparisonUseCase,
-    buildGetPosReportsProfitLossUseCase,
-    buildGetPosReportsCashierShiftHistoryUseCase,
-    buildExportPosReportsUseCase,
     buildGetPosTransactionByIdUseCase,
     buildRecordFiscalPrintEventUseCase,
     buildVoidPosTransactionUseCase,
@@ -41,49 +30,32 @@ import {
     buildUploadBulkPosCatalogImagesUseCase,
     buildDeletePosCatalogImageUseCase,
     buildOpenTerminalShiftUseCase,
+    buildCreatePosSetupCashierUseCase,
+    buildListPosSetupCashiersUseCase,
+    buildLoginPosCashierUseCase,
     buildSwitchTerminalShiftLocationUseCase,
     buildGetCurrentTerminalShiftUseCase,
     buildRecordCashDrawerEventUseCase,
     buildCloseTerminalShiftUseCase,
     buildGetTerminalTodayDashboardUseCase,
     buildListIncomingOnlineOrdersUseCase,
-    buildUpdateOnlineOrderStatusUseCase
+    buildUpdateOnlineOrderStatusUseCase,
+    buildVerifyPosTerminalUseCase,
+    buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
 import {
     buildGetPosDeviceStatusUseCase,
     buildPrintPosReceiptUseCase,
     buildOpenPosDrawerUseCase
 } from './usecases/posDeviceUseCases.js';
-import {
-    buildGetMobilePosCatalogBootstrapUseCase,
-    buildGetMobilePosSettingsBootstrapUseCase,
-    buildGetMobilePosDevicePolicyUseCase,
-    buildSyncMobilePosCheckoutsUseCase,
-    buildSyncMobilePosShiftsUseCase,
-    buildSyncMobilePosHardwareEventsUseCase,
-    buildAcknowledgeMobilePosCheckpointUseCase
-} from './usecases/mobilePosUseCases.js';
 
-const stockMovementService = { createStockMovement };
-
-export const createPosSetupCashierUseCase = buildCreatePosSetupCashierUseCase({ userService });
-export const listPosSetupCashiersUseCase = buildListPosSetupCashiersUseCase({ userService });
-export const loginPosCashierUseCase = buildLoginPosCashierUseCase({ authService });
-export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({ posRepository, terminalPairingService });
-export const getPairedPosTerminalUseCase = buildGetPairedPosTerminalUseCase({ posRepository, terminalPairingService });
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
-export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, inventoryCommandService: inventoryStockCommandService });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
-export const getPosReportsOverviewUseCase = buildGetPosReportsOverviewUseCase({ posRepository });
-export const getPosReportsTopItemsUseCase = buildGetPosReportsTopItemsUseCase({ posRepository });
-export const getPosReportsComparisonUseCase = buildGetPosReportsComparisonUseCase({ posRepository });
-export const getPosReportsProfitLossUseCase = buildGetPosReportsProfitLossUseCase({ posRepository });
-export const getPosReportsCashierShiftHistoryUseCase = buildGetPosReportsCashierShiftHistoryUseCase({ posRepository });
-export const exportPosReportsUseCase = buildExportPosReportsUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });
-export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({ posRepository, stockMovementService });
+export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({ posRepository, inventoryCommandService: inventoryStockCommandService });
 export const generateESalesReportUseCase = buildGenerateESalesReportUseCase({ posRepository });
 export const listESalesReportsUseCase = buildListESalesReportsUseCase({ posRepository });
 export const verifyFiscalEventLedgerUseCase = buildVerifyFiscalEventLedgerUseCase({ posRepository });
@@ -110,6 +82,9 @@ export const deletePosCatalogImageUseCase = buildDeletePosCatalogImageUseCase({
     imageStorage: posCatalogImageStorage
 });
 export const openTerminalShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+export const createPosSetupCashierUseCase = buildCreatePosSetupCashierUseCase({ userService });
+export const listPosSetupCashiersUseCase = buildListPosSetupCashiersUseCase({ userService });
+export const loginPosCashierUseCase = buildLoginPosCashierUseCase({ authService });
 export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocationUseCase({ posRepository });
 export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
@@ -118,8 +93,11 @@ export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUs
 export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
-    stockMovementService
+    inventoryCommandService: inventoryStockCommandService
 });
+export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({ posRepository, terminalPairingService: posTerminalPairingService });
+export const getPairedPosTerminalUseCase = buildGetPairedPosTerminalUseCase({ posRepository, terminalPairingService: posTerminalPairingService });
+export const posTerminalPairingMaxAgeMs = posTerminalPairingService.maxAgeMs;
 export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
     posRepository,
     deviceBridgeService: posDeviceBridgeService
@@ -132,21 +110,3 @@ export const openPosDrawerUseCase = buildOpenPosDrawerUseCase({
     posRepository,
     deviceBridgeService: posDeviceBridgeService
 });
-export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({
-    listPosCatalogUseCase
-});
-export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
-export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({
-    posRepository
-});
-export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({
-    checkoutPosUseCase
-});
-export const syncMobilePosShiftsUseCase = buildSyncMobilePosShiftsUseCase({
-    openTerminalShiftUseCase,
-    switchTerminalShiftLocationUseCase,
-    recordCashDrawerEventUseCase,
-    closeTerminalShiftUseCase
-});
-export const syncMobilePosHardwareEventsUseCase = buildSyncMobilePosHardwareEventsUseCase();
-export const acknowledgeMobilePosCheckpointUseCase = buildAcknowledgeMobilePosCheckpointUseCase();

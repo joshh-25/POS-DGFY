@@ -288,7 +288,7 @@ export const loginUser = async (email, password, options = {}) => {
     error.statusCode = 400;
     throw error;
   }
-  // Username login is enabled only for callers that already resolved a tenant.
+
   const User = dbStore.get('User');
   const user = await User.findOne({
     where: allowUsername && !identifier.includes('@')

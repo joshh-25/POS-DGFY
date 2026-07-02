@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-06-29
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-06-29-pos-terminal-checkout-grid-layout-hotfix
-classification: regulatory
-surfaces: pos,terminal,settings,compliance
+classification: major
+surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED
 policy_version: 2026.06.29
 verification_evidence: npm --prefix frontend test -- --run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js --testTimeout 20000,npm --prefix frontend run build:pos,npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check

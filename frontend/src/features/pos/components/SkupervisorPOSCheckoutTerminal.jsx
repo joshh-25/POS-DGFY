@@ -1801,7 +1801,7 @@ export default function POSCheckoutTerminal({
                     <div className="grid grid-cols-1 gap-3 pb-2 md:grid-cols-2">
                         {catalog.map((item) => {
                             const isServiceItem = isServiceCatalogItem(item);
-                            const isAlwaysAvailable = item?.pos_always_available === true;
+                            const isAlwaysAvailable = item.pos_always_available === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
                             const configuredPosImageSrc = resolveAssetUrl(item.pos_image_url);
                             const mappedPosImageSrc = resolveMappedPosItemImage(item);
@@ -1871,13 +1871,9 @@ export default function POSCheckoutTerminal({
                                     <p className="min-h-[2.5rem] flex-1 overflow-hidden text-base font-semibold leading-tight text-slate-900 md:min-h-[2rem] md:text-sm xl:text-base">
                                         {item.name}
                                     </p>
-                                    {isServiceItem ? (
+                                    {isServiceItem || isAlwaysAvailable ? (
                                         <span className="shrink-0 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-700">
-                                            Service
-                                        </span>
-                                    ) : isAlwaysAvailable ? (
-                                        <span className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
-                                            Always available
+                                            {isServiceItem ? 'Service' : 'Always available'}
                                         </span>
                                     ) : isOutOfStock ? (
                                         <span className="shrink-0 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
@@ -1890,7 +1886,7 @@ export default function POSCheckoutTerminal({
                                 </p>
                                 <div className="mt-auto flex items-end justify-between gap-3 pt-2 text-xs text-slate-600">
                                     <span className="min-w-0 flex-1 font-medium bg-gradient-to-r from-teal-700 to-emerald-600 bg-clip-text text-transparent">
-                                        {isServiceItem ? 'Service sale' : isAlwaysAvailable ? 'Always available' : `Stock: ${Number(item.current_stock || 0).toFixed(2)}`}
+                                        {isServiceItem ? 'Service sale' : (isAlwaysAvailable ? 'Always available' : `Stock: ${Number(item.current_stock || 0).toFixed(2)}`)}
                                     </span>
                                     <span className="shrink-0 font-semibold text-slate-700">
                                         {Number(item.default_sale_price || 0) > 0

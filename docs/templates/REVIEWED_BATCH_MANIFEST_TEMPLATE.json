@@ -1,0 +1,104 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "OWNER_OR_REVIEWER_ID",
+  "reviewed_at": "YYYY-MM-DDTHH:mm:ss.sssZ",
+  "source_pr": "PR_NUMBER_OR_OWNER_DIRECT_STAGING_REFERENCE",
+  "release_slices": [
+    {
+      "id": "slice-id",
+      "slice_name": "Human reviewed slice name",
+      "name": "Human reviewed slice name",
+      "plain_english_purpose": "Explain the user or operator outcome in plain language.",
+      "purpose": "Explain the user or operator outcome in plain language.",
+      "implementation_summary": "Describe the concrete implementation without generated wording.",
+      "included_files": [
+        "path/to/changed-file"
+      ],
+      "included_features": [
+        "Reviewed feature name"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Explicit non-goal"
+      ],
+      "owner_attribution": "OWNER_OR_AUTHOR_ID",
+      "source_branch": "feature/branch-name",
+      "source_pr": "PR_NUMBER_OR_OWNER_DIRECT_STAGING_REFERENCE",
+      "source_type": "developer_pr",
+      "source_type_allowed_values": [
+        "developer_pr",
+        "owner_direct_staging",
+        "controller_promotion"
+      ],
+      "affected_surfaces": [
+        "scripts/deploy"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": true,
+        "docs": false,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "medium",
+      "required_tests": [
+        "npm run test:development-to-production"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "Trusted artifact path or immutable run URL"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md"
+      ],
+      "architecture_classification": "no-architecture-impact",
+      "architecture_classification_allowed_values": [
+        "no-architecture-impact",
+        "within-existing-boundary",
+        "cross-boundary"
+      ],
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "REAL_REVIEWER_IDENTITY",
+        "reviewed_at": "2026-06-30T00:00:00.000Z",
+        "rationale": "Explain why these documents close the implementation contract or why no tracked change is required.",
+        "documents": [
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "updated",
+            "evidence": "Updated the release behavior and validation contract for this slice."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "ADR impact reviewed; identify the governing ADR or explain why none is required.",
+      "rollback_notes": "Describe the exact rollback operation and evidence required.",
+      "production_proof_required": [
+        "Exact production runtime SHA proof"
+      ],
+      "production_accuracy_checks_required": [
+        "Actual API, UI, read-only database, or asset proof for this slice"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": true,
+      "high_risk_files": [
+        "path/to/changed-file"
+      ]
+    }
+  ]
+}

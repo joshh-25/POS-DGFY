@@ -1088,6 +1088,65 @@ describe('pos use-cases application result contract', () => {
         );
     });
 
+    it.each([
+        ['preparing', 'out_for_delivery'],
+        ['out_for_delivery', 'completed']
+    ])('updateOnlineOrderStatus commits delivery lifecycle hop %s -> %s', async (currentStatus, targetStatus) => {
+        const transaction = {
+            finished: false,
+            LOCK: { UPDATE: 'UPDATE' },
+            commit: jest.fn(async () => { transaction.finished = true; }),
+            rollback: jest.fn(async () => { transaction.finished = true; })
+        };
+        const fakeSequelize = {
+            transaction: jest.fn().mockResolvedValue(transaction)
+        };
+        const existingOrder = {
+            pos_transaction_id: 57,
+            invoice_number: 'INV-000057',
+            tracking_pin: 'SK-DELIV1',
+            order_source: 'online_store',
+            order_method: 'delivery',
+            fulfillment_status: currentStatus,
+            location_id: 5,
+            lines: []
+        };
+        const updatedOrder = {
+            ...existingOrder,
+            fulfillment_status: targetStatus
+        };
+        const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({
+                shift_id: 13,
+                cashier_id: 9,
+                location_id: 5,
+                status: 'open'
+            }),
+            getOrderByIdForLifecycle: jest
+                .fn()
+                .mockResolvedValueOnce(existingOrder)
+                .mockResolvedValueOnce(updatedOrder),
+            updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
+        };
+        const useCase = buildUpdateOnlineOrderStatusUseCase({ posRepository });
+
+        const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
+            posTransactionId: 57,
+            payload: { fulfillment_status: targetStatus },
+            user: { user_id: 9 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.order.fulfillment_status).toBe(targetStatus);
+        expect(posRepository.updateOrderById).toHaveBeenCalledWith(
+            57,
+            { fulfillment_status: targetStatus, cashier_id: 9 },
+            expect.objectContaining({ transaction, lock: true })
+        );
+        expect(transaction.commit).toHaveBeenCalledTimes(1);
+        expect(transaction.rollback).not.toHaveBeenCalled();
+    });
+
     it('updateOnlineOrderStatus does not re-apply stock movement for already completed orders', async () => {
         const transaction = {
             finished: false,

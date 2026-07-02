@@ -35,6 +35,10 @@ describe('healthService', () => {
         fs.writeFileSync(markerPath, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n');
         process.env = {
             ...originalEnv,
+            HOSTING_PROFILE: 'shared',
+            REDIS_URL: '',
+            AUTH_BLACKLIST_FAILURE_MODE: 'fail_open',
+            TEMP_FILE_STORAGE: 'local',
             RELEASE_TARGET_SHA: '',
             DEPLOYED_COMMIT: '',
             RELEASE_SHA: '',
@@ -72,6 +76,10 @@ describe('healthService', () => {
     it('warns when production cannot prove a runtime SHA', async () => {
         process.env = {
             ...originalEnv,
+            HOSTING_PROFILE: 'shared',
+            REDIS_URL: '',
+            AUTH_BLACKLIST_FAILURE_MODE: 'fail_open',
+            TEMP_FILE_STORAGE: 'local',
             RELEASE_TARGET_SHA: '',
             DEPLOYED_COMMIT: '',
             RELEASE_SHA: '',

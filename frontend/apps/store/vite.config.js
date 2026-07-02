@@ -5,9 +5,20 @@ import path from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:4300';
+const frontendRoot = path.resolve(__dirname, '../..');
+const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const configuredBasePath = process.env.VITE_STORE_BASE_PATH || '/';
 const allowedHosts = true;
+const frontendNodeModules = path.resolve(frontendRoot, 'node_modules');
+const reactAliases = [
+  { find: /^react$/, replacement: path.resolve(frontendNodeModules, 'react') },
+  { find: /^react\/jsx-runtime$/, replacement: path.resolve(frontendNodeModules, 'react/jsx-runtime.js') },
+  { find: /^react\/jsx-dev-runtime$/, replacement: path.resolve(frontendNodeModules, 'react/jsx-dev-runtime.js') },
+  { find: /^react-dom$/, replacement: path.resolve(frontendNodeModules, 'react-dom') },
+  { find: /^react-dom\/client$/, replacement: path.resolve(frontendNodeModules, 'react-dom/client.js') },
+  { find: /^react-router$/, replacement: path.resolve(frontendNodeModules, 'react-router') },
+  { find: /^react-router-dom$/, replacement: path.resolve(frontendNodeModules, 'react-router-dom') }
+];
 const normalizedBasePath = (() => {
   const trimmed = String(configuredBasePath).trim() || '/';
   if (trimmed === '/') return '/';
@@ -35,11 +46,18 @@ const proxyTargets = {
 
 export default defineConfig({
   root: __dirname,
-  cacheDir: path.resolve(__dirname, '../../node_modules/.vite/store'),
+  cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-store'),
   base: normalizedBasePath,
   plugins: [react()],
   define: {
     'import.meta.env.VITE_BUILD_STAMP': JSON.stringify(process.env.VITE_BUILD_STAMP || new Date().toISOString())
+  },
+  resolve: {
+    dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
+    alias: reactAliases
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router', 'react-router-dom', 'sonner']
   },
   server: {
     host: true,

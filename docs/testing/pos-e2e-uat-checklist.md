@@ -39,15 +39,8 @@ Execution support artifacts:
 6. Cashier role has POS permissions (`pos:view`, plus `pos:transact` for checkout flows).
 7. Admin role has settings + reports/sales visibility permissions.
 8. Terminal identity policy is known for the test tenant (`warn` or `enforce`) and at least one active registry entry exists when `enforce` is enabled.
-9. If testing a DGFY-created company account, use the DGFY-first POS flow first:
-   - create DGFY account
-   - create business account
-   - handoff into `/terminal?setup_flow=tenant_onboarding&setup_step=profile`
-   - finish `Settings > Profile Setting`
-   - finish `Settings > Storefront`
-   - finish `Settings > POS Setup`
-   - continue to normal POS terminal unlock
-   Confirm the tenant-local `/auth/lookup` path only when explicitly testing the governed legacy fallback flow.
+9. If testing a DGFY-created company account, confirm `POST /api/v1/auth/lookup` resolves the cashier/admin email to the intended tenant before password validation.
+10. Every physical test device is enrolled once by the company master admin against an active location-bound terminal.
 
 ## 3) Admin UAT Scenarios
 
@@ -100,70 +93,21 @@ Evidence:
 
 ### 4.0 Terminal Unlock Tenant Context
 1. Open the standalone POS terminal while another company session or stale tenant context may exist in the browser.
-2. Enter the cashier/admin DGFY email and DGFY password for the test tenant manually.
-3. Confirm the POS accepts DGFY sign-in first and then loads the accessible companies for that account.
-4. Select the intended company and continue to the terminal unlock step.
-5. Confirm terminal unlock then uses the selected company context and registered terminal identity, not an unrelated stale browser token.
-6. Repeat with an intentionally wrong DGFY password and confirm the UI shows invalid-credential copy rather than a tenant/company-token error.
-7. Repeat with a correct DGFY login but intentionally wrong terminal password and confirm the UI shows a terminal unlock/password error rather than a generic DGFY login error.
-8. If the account belongs to multiple companies, confirm unlock is blocked until the operator explicitly selects the intended company instead of guessing a tenant.
-9. If explicitly testing the legacy fallback path, confirm the terminal sends login with the company token returned by `/auth/lookup` for that email, not an unrelated stale browser token.
+2. Enter the cashier/admin email for the test tenant and the correct password manually.
+3. Confirm the terminal sends login with the company token returned by `/auth/lookup` for that email, not an unrelated stale browser token.
+4. Repeat with an intentionally wrong password and confirm the UI shows invalid-credential copy rather than a tenant/company-token error.
+5. If the account belongs to multiple companies, confirm unlock is blocked with the multi-company instruction instead of guessing a tenant.
 
 Expected:
-1. Correct DGFY credentials, correct company selection, and correct terminal password unlock the intended tenant terminal.
-2. Wrong DGFY password returns `401` and displays `Invalid email or password.`
-3. Wrong terminal password is surfaced as a terminal unlock/password failure, not as a generic DGFY login error.
-4. Missing email-to-tenant mapping displays a company-resolution message and does not reuse a stale token when the legacy fallback path is exercised.
-5. Optional `/pos/device/status` `503` is treated as a hardware bridge availability issue, not as an auth/unlock failure.
+1. Correct credentials unlock the intended tenant terminal.
+2. Wrong password returns `401` and displays `Invalid email or password.`
+3. Missing email-to-tenant mapping displays a company-resolution message and does not reuse a stale token.
+4. Optional `/pos/device/status` `503` is treated as a hardware bridge availability issue, not as an auth/unlock failure.
 
 Evidence:
-- Browser Network capture for the primary path:
-  - `/api/v1/dgfy/auth/login`
-  - `/api/v1/dgfy/account/companies`
-  - `/api/v1/dgfy/account/companies/:tenant_id/pos-session`
-- Browser Network capture for `/api/v1/auth/lookup` and `/api/v1/auth/login` only when validating the legacy fallback path
+- Browser Network capture for `/api/v1/auth/lookup` and `/api/v1/auth/login` with email visible and company token redacted
 - Screenshot of successful intended-tenant unlock
-- Screenshot or log capture of the wrong DGFY-password negative case
-- Screenshot or log capture of the wrong terminal-password negative case
-
-### 4.0A Guided Setup Gate For New Tenant POS Entry
-1. Create a brand-new DGFY account and business account.
-2. Confirm the business handoff opens POS directly on the guided setup flow.
-3. Confirm onboarding is forced first and cannot be dismissed into the rest of POS.
-4. Confirm the first guided step opens `Settings > Profile Setting` and reuses the registration data automatically.
-5. Continue to `Settings > Storefront`.
-6. Leave either the company icon or company cover image empty and confirm the setup gate still blocks the full POS.
-7. Upload both the storefront company icon and storefront cover image.
-8. Confirm guided setup then routes into `Settings > POS Setup`.
-9. Leave the terminal registry incomplete and confirm normal POS workspaces remain blocked.
-10. Create at least one active registered terminal with assigned store location and terminal password.
-11. Save POS Setup and confirm the guided setup state clears.
-12. Confirm the operator can enter the full POS workspace.
-13. Confirm the open-shift modal does not appear before at least one registered active terminal exists.
-14. After onboarding is complete and a terminal exists, confirm the normal unlock/open-shift flow becomes available.
-
-Expected:
-1. New business registration lands directly in POS guided setup.
-2. Guided setup order is enforced as:
-   - Profile Setting
-   - Storefront Setup
-   - POS Setup
-3. Profile Setting reuses the existing registration/business account data.
-4. Storefront Setup gate requires:
-   - company icon
-   - company cover image
-5. POS Setup gate requires:
-   - active registered terminal with assigned store location
-   - terminal password for that terminal
-6. Guided setup completion removes the restricted setup state and restores normal POS navigation.
-7. The shift-open flow stays unavailable until a valid registered terminal exists.
-
-Evidence:
-- Screenshot of first POS guided onboarding entry
-- Screenshot of Profile Setting guided step with reused registration data
-- Screenshot of POS Setup gate state
-- Screenshot of Storefront Setup gate state
-- Screenshot of full POS access after setup completion
+- Screenshot or log capture of the wrong-password negative case
 
 ### 4.1 POS Catalog + Cart
 1. Open POS terminal page.
@@ -180,6 +124,44 @@ Expected:
 
 Evidence:
 - Screenshot of cart before checkout
+
+### 4.1B DGFY Terminal Pairing and Role Navigation
+1. Authenticate as the DGFY company master admin, select an authorized company
+   and terminal, then pair the current physical device without a reusable terminal password.
+2. Sign in as an accepted DGFY cashier. Repeat with an unpaired device, inactive
+   terminal, unauthorized location, removed membership, and rotated pairing version.
+3. As admin, dismiss the open-shift prompt and open Items and Reports.
+4. As cashier, confirm settings/report/admin navigation is hidden.
+5. With no shift, attempt checkout, drawer opening, and receipt printing.
+
+Expected:
+1. Only a master-admin-enrolled device plus a valid identity/company/location combination operates.
+2. Binding changes invalidate the pairing without exposing a hash or token.
+3. Admin read/configuration navigation works without opening a shift.
+4. Cashier navigation remains focused and every transactional action remains
+   blocked without a shift.
+
+Evidence:
+- Desktop, tablet, and mobile screenshots of pair, denial, admin, and cashier states
+- Sanitized Network capture for `/pos/terminal/pair` and `/pos/terminal/paired`
+- Backend denial response for a changed terminal or membership binding
+
+### 4.1C POS Always Available
+1. Configure one POS-visible item as Always Available and leave stock at zero.
+2. Keep a second zero-stock item stock-controlled.
+3. Complete a mixed checkout containing a stocked line and the Always Available line.
+
+Expected:
+1. The Always Available row is addable and clearly labelled.
+2. The stock-controlled zero-stock row remains blocked.
+3. The exempt transaction line records `stock_effect_type=stock_exempt` and
+   `stock_exempt_reason=pos_always_available` with no Inventory movement.
+4. The stocked line still creates the normal Inventory goods issue.
+5. Storefront visibility and availability remain unchanged.
+
+Evidence:
+- Item setup and POS catalog screenshots
+- Read-only transaction-line and stock-movement query output
 
 ### 4.1A POS Scroll Behavior (Terminal + IMS Standalone)
 1. In terminal workspace (`/terminal`) on desktop (`>=1536px`), verify `Scroll Zone: Catalog` and `Scroll Zone: Current Sale` badges are shown.

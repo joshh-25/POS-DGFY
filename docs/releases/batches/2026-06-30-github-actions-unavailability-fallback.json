@@ -1,0 +1,274 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BBLabs-Albert owner-directed Codex review",
+  "reviewed_at": "2026-06-30T08:50:00.000Z",
+  "source_pr": "34",
+  "release_slices": [
+    {
+      "id": "billing-fallback-governance",
+      "slice_name": "GitHub billing fallback governance",
+      "name": "GitHub billing fallback governance",
+      "plain_english_purpose": "Keep pull-request and production qualification usable when GitHub refuses to allocate runners, without treating failed tests as acceptable.",
+      "purpose": "Keep pull-request and production qualification usable when GitHub refuses to allocate runners, without treating failed tests as acceptable.",
+      "implementation_summary": "Updates ADR 0030 and the authoritative release workflow to permit a narrowly verified zero-runner billing lane while preserving exact-SHA local qualification, isolated QA, human review, signed authorization, and production proof.",
+      "included_files": [
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/releases/batches/2026-06-30-github-actions-unavailability-fallback.json",
+        "release-controller/README.md"
+      ],
+      "included_features": [
+        "Authoritative billing-unavailable qualification policy",
+        "Feature PR and signed-controller fallback rules"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Emergency or unsigned deployment bypass",
+        "Production credentials or signing keys",
+        "Payment-channel changes",
+        "PR #25 or PR #26 application behavior"
+      ],
+      "owner_attribution": "BBLabs-Albert owner-directed implementation",
+      "source_branch": "codex/github-billing-fallback",
+      "source_pr": "34",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "docs",
+        "scripts/deploy"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": true,
+        "docs": true,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run test:development-to-production",
+        "npm run test:release-controller"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: governed docs lint PASS"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: architecture guardrails PASS for 36 modules, 325 code files, and 69 controllers"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: no compliance-sensitive changes and API contracts PASS"
+        },
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: full development-to-production governance suite PASS"
+        },
+        {
+          "command": "npm run test:release-controller",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: controller positive and fail-closed billing fallback tests PASS"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md"
+      ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BBLabs-Albert owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-30T08:50:00.000Z",
+        "rationale": "The fallback changes release authorization semantics and therefore requires an ADR-backed, fail-closed operating contract.",
+        "documents": [
+          {
+            "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+            "action": "updated",
+            "evidence": "Defines the exact GitHub API signals, signed evidence binding, and non-bypassable gates."
+          },
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "updated",
+            "evidence": "Defines the operator procedure for feature PRs and signed promotion or production qualification."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "ADR 0030 is updated because qualification trust behavior changes; no regulated product or payment behavior changes.",
+      "rollback_notes": "Disable github_actions_billing_fallback in root-owned controller configuration, restore controller 2.0.0, and require successful GitHub checks until a replacement lane is requalified.",
+      "production_proof_required": [
+        "Installed controller version 2.1.0 and package checksum",
+        "Exact live GitHub job and annotation revalidation",
+        "Passing exact-SHA controller qualification record",
+        "Signed authorization and nonce ledger record"
+      ],
+      "production_accuracy_checks_required": [
+        "A zero-step billing failure is accepted only when all exact signals are present",
+        "A generic failure or a job that executed a step is rejected",
+        "A normal successful GitHub check remains accepted without fallback"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    },
+    {
+      "id": "billing-fallback-enforcement",
+      "slice_name": "GitHub billing fallback enforcement",
+      "name": "GitHub billing fallback enforcement",
+      "plain_english_purpose": "Make the signed release controller independently distinguish a real GitHub billing denial from an actual failed check.",
+      "purpose": "Make the signed release controller independently distinguish a real GitHub billing denial from an actual failed check.",
+      "implementation_summary": "Adds a GitHub API evidence collector, hash-binds its report into candidate evidence, independently rechecks runner, step, application, conclusion, and annotation signals in controller 2.1.0, and adds negative-path tests.",
+      "included_files": [
+        "package.json",
+        "release-controller/VERSION",
+        "release-controller/bin/skupervisor-release-controller.js",
+        "release-controller/config/controller.example.json",
+        "release-controller/lib/release-controller.js",
+        "release-controller/package.json",
+        "release-controller/test/release-controller.test.js",
+        "scripts/build-release-candidate-evidence.js",
+        "scripts/build-release-candidate-evidence.test.js",
+        "scripts/collect-github-actions-unavailability.js",
+        "scripts/collect-github-actions-unavailability.test.js"
+      ],
+      "included_features": [
+        "Machine-readable GitHub billing denial collector",
+        "Hash-bound candidate evidence",
+        "Independent controller live revalidation",
+        "Fail-closed negative test coverage"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Controller installation on an untrusted workstation",
+        "Automatic PR merging",
+        "QA substitution",
+        "Production deployment"
+      ],
+      "owner_attribution": "BBLabs-Albert owner-directed implementation",
+      "source_branch": "codex/github-billing-fallback",
+      "source_pr": "34",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "scripts/deploy"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": true,
+        "docs": false,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "critical",
+      "required_tests": [
+        "node scripts/collect-github-actions-unavailability.test.js",
+        "node scripts/build-release-candidate-evidence.test.js",
+        "npm run test:development-to-production",
+        "npm run test:release-controller",
+        "npm run test:deploy-contract",
+        "git diff --check"
+      ],
+      "completed_tests": [
+        {
+          "command": "node scripts/collect-github-actions-unavailability.test.js",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: 3 tests PASS including executed-step and generic-failure rejection"
+        },
+        {
+          "command": "node scripts/build-release-candidate-evidence.test.js",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: 3 tests PASS including unavailability report hash binding"
+        },
+        {
+          "command": "npm run test:release-controller",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: 21 controller tests PASS"
+        },
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: complete governance suite PASS including collector and candidate evidence tests"
+        },
+        {
+          "command": "npm run test:deploy-contract",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: deploy source, QA preflight fixture, and production contract tests PASS"
+        },
+        {
+          "command": "git diff --check",
+          "status": "pass",
+          "evidence": "local-validation-2026-06-30: no whitespace errors"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md"
+      ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BBLabs-Albert owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-30T08:50:00.000Z",
+        "rationale": "Controller acceptance rules alter the production trust boundary and are documented in ADR 0030 and the authoritative operator workflow.",
+        "documents": [
+          {
+            "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+            "action": "updated",
+            "evidence": "Authorizes only exact zero-runner billing allocation evidence as a check-location substitute."
+          },
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "updated",
+            "evidence": "Defines collection, binding, review, and hard-stop behavior."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "ADR 0030 governs this controller change; compliance checks must confirm no payment or regulated runtime surface changed.",
+      "rollback_notes": "Set github_actions_billing_fallback.enabled to false or restore controller 2.0.0; preserve reports and signed records for audit.",
+      "production_proof_required": [
+        "Trusted Linux controller installation record for version 2.1.0",
+        "Controller dry run using an exact-SHA billing-unavailability report",
+        "Negative dry run proving generic failures remain blocked"
+      ],
+      "production_accuracy_checks_required": [
+        "Controller records local exact-SHA qualification for the authorized target",
+        "Live GitHub API state matches the hash-bound unavailability report",
+        "No production credential is exposed to candidate qualification"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}

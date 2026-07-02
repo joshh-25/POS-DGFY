@@ -14,13 +14,18 @@ const isSessionEstablishmentRoute = (req) => SESSION_ESTABLISHMENT_ROUTES.some((
   pattern.test(String(req.originalUrl || req.url || ''))
 ));
 
-const sendCsrfError = (res) => res.status(403).json({
-  success: false,
-  data: null,
-  message: 'CSRF token is required for cookie-authenticated requests.',
-  error_code: 'CSRF_TOKEN_REQUIRED',
-  timestamp: new Date().toISOString()
-});
+const sendCsrfError = (req, res, reason) => {
+  req.csrfFailureReason = reason;
+  res.locals = res.locals || {};
+  res.locals.errorCode = 'CSRF_TOKEN_REQUIRED';
+  return res.status(403).json({
+    success: false,
+    data: null,
+    message: 'CSRF token is required for cookie-authenticated requests.',
+    error_code: 'CSRF_TOKEN_REQUIRED',
+    timestamp: new Date().toISOString()
+  });
+};
 
 export const csrfProtection = (req, res, next) => {
   const method = String(req.method || '').toUpperCase();
@@ -32,7 +37,12 @@ export const csrfProtection = (req, res, next) => {
   const cookieToken = getCsrfCookie(req);
   const headerToken = String(req.headers['x-csrf-token'] || '').trim();
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
-    return sendCsrfError(res);
+    const reason = !cookieToken
+      ? 'missing_cookie'
+      : !headerToken
+        ? 'missing_header'
+        : 'token_mismatch';
+    return sendCsrfError(req, res, reason);
   }
 
   return next();

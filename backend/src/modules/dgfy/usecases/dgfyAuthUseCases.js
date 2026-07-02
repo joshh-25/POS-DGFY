@@ -903,14 +903,21 @@ export const buildCreateDgfyInvitationUseCase = ({
     const dgfyAccountId = String(body?.dgfy_account_id || body?.dgfyAccountId || '').trim();
     const role = String(body?.role || 'staff').trim().toLowerCase() || 'staff';
     const rolePresetKey = body?.role_preset_key || body?.rolePresetKey || null;
-    const permissions = Array.isArray(body?.permissions) ? body.permissions : [];
+    const permissions = role === 'cashier' ? [] : (Array.isArray(body?.permissions) ? body.permissions : []);
     const locationIds = Array.isArray(body?.location_ids) ? body.location_ids : (Array.isArray(body?.locationIds) ? body.locationIds : []);
+    const allowedRoles = new Set(['staff', 'cashier', 'po', 'do', 'jo', 'manager', 'admin']);
 
     if (!dgfyAccountId) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'DGFY account id is required.', { statusCode: 422 }));
     }
     if (!tenant?.id || !tenant?.company_token) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Tenant context is required.', { statusCode: 400 }));
+    }
+    if (!allowedRoles.has(role)) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invitation role is invalid.', { statusCode: 422 }));
+    }
+    if (role === 'cashier' && locationIds.length === 0) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Cashier invitations require at least one active store location.', { statusCode: 422 }));
     }
     if (role === 'admin' && adminUser?.is_master_admin !== true) {
         return fail(new DomainError(DomainErrorCode.FORBIDDEN, 'Only the company owner or master admin can invite an admin.', { statusCode: 403 }));

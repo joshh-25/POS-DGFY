@@ -524,6 +524,34 @@ describe('settings use-cases application result contract', () => {
     expect(updateSettings).toHaveBeenCalledWith({ pos_petty_cash_amount: 100 });
   });
 
+  it('updateSettings treats missing false buyer-details receipt flag as the default while saving Storefront settings', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
+    const getSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingByKey,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          storefront_tagline: { value: 'Old tagline' }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_fiscal_buyer_details_required: false,
+        storefront_tagline: 'New tagline'
+      },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.pending_review_keys).toEqual([]);
+    expect(getSettingByKey).not.toHaveBeenCalled();
+    expect(updateSettings).toHaveBeenCalledWith({ storefront_tagline: 'New tagline' });
+    expect(updateSettings.mock.calls[0][0]).not.toHaveProperty('pos_receipt_metadata_pending_changes');
+  });
+
   it('updateSettings puts only changed tenant receipt metadata fields into pending review', async () => {
     const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
     const useCase = buildUpdateSettingsUseCase({

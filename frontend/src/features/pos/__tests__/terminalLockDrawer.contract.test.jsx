@@ -9,7 +9,6 @@ const buildProps = (overrides = {}) => ({
   formData: {
     email: 'cashier@example.com',
     password: '',
-    dgfyTenantId: '',
     terminalId: ''
   },
   setFormData: vi.fn(),
@@ -17,7 +16,6 @@ const buildProps = (overrides = {}) => ({
     authenticated: false,
     companies: []
   },
-  terminalRegistry: [{ terminal_id: 'COUNTER-01', label: 'Front Counter', is_active: true, is_default: true }],
   submitting: false,
   onSubmit: vi.fn(),
   ...overrides
@@ -35,51 +33,48 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.queryByPlaceholderText(/Auto-lookup runs when left blank/i)).toBeNull();
   });
 
-  it('shows terminal ID as required for shift and checkout in warn mode', () => {
+  it('shows DGFY-first terminal login before company and terminal unlock', () => {
     render(<TerminalLockDrawer {...buildProps()} />);
 
-    expect(screen.getByLabelText('Email or Cashier Username')).toBeTruthy();
+    expect(screen.getByText('Terminal Login Required')).toBeTruthy();
+    expect(screen.getByLabelText('DGFY Email')).toBeTruthy();
     expect(screen.getByLabelText('DGFY Password')).toBeTruthy();
-    expect(screen.queryByText('Terminal ID')).toBeNull();
+    expect(screen.getByText(/Sign in with your DGFY account first/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
+    expect(screen.queryByText(/Terminal ID/i)).toBeNull();
   });
 
-  it('shows company selection after DGFY authentication succeeds', () => {
+  it('requires company selection after DGFY authentication returns companies', () => {
     render(<TerminalLockDrawer {...buildProps({
-      formData: {
-        email: 'cashier@example.com',
-        password: 'password123',
-        dgfyTenantId: '',
-        terminalId: ''
-      },
       dgfyPosState: {
         authenticated: true,
-        companies: [{ tenant_id: 'tenant-1', company_name: 'Front Counter Foods' }]
+        companies: [{ tenant_id: 'tenant-1', company_name: 'Main Company' }]
       }
     })} />);
 
     expect(screen.getByLabelText('Company')).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'Front Counter Foods' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Continue to POS' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Select accessible company' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Main Company' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue to POS' }).disabled).toBe(true);
   });
 
-  it('keeps company selection disabled while companies are still loading', () => {
+  it('removes standalone cashier-password login and keeps dated legacy access', () => {
     render(<TerminalLockDrawer {...buildProps({
-      formData: {
-        email: 'cashier@example.com',
-        password: 'password123',
-        dgfyTenantId: '',
-        terminalId: ''
-      },
-      dgfyPosState: {
-        authenticated: true,
-        companies: [],
-        loadingCompanies: true
-      }
+      onLegacySubmit: vi.fn()
     })} />);
 
-    expect(screen.getByLabelText('Company').disabled).toBe(true);
-    expect(screen.getByRole('option', { name: /Loading companies/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Continue to POS' }).disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Login as Cashier' })).toBeNull();
+    expect(screen.getByText('Legacy access until June 17, 2027')).toBeTruthy();
+  });
+
+  it('offers a clean account switch after DGFY authentication', () => {
+    const onUseDifferentAccount = vi.fn();
+    render(<TerminalLockDrawer {...buildProps({
+      dgfyPosState: { authenticated: true, companies: [] },
+      onUseDifferentAccount
+    })} />);
+
+    screen.getByRole('button', { name: 'Use different account' }).click();
+    expect(onUseDifferentAccount).toHaveBeenCalledOnce();
   });
 });

@@ -12,7 +12,8 @@ export default function TerminalLockDrawer({
   terminalRegistry = [],
   submitting,
   onSubmit,
-  onCashierSubmit,
+  onIdentityChange,
+  onUseDifferentAccount,
   onLegacySubmit
 }) {
   const dgfyCompanies = Array.isArray(dgfyPosState?.companies) ? dgfyPosState.companies : [];
@@ -44,13 +45,29 @@ export default function TerminalLockDrawer({
 
         <form onSubmit={onSubmit} className="space-y-4 p-6">
           <div className="space-y-1.5">
-            <Label htmlFor="dgfy-pos-email" className="text-[13px] font-bold text-[#0F172A]">Email or Cashier Username</Label>
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="dgfy-pos-email" className="text-[13px] font-bold text-[#0F172A]">DGFY Email</Label>
+              {dgfyAuthenticated && onUseDifferentAccount ? (
+                <button
+                  type="button"
+                  className="text-xs font-bold text-[#1A4E8D] hover:underline"
+                  onClick={onUseDifferentAccount}
+                  disabled={submitting}
+                >
+                  Use different account
+                </button>
+              ) : null}
+            </div>
             <Input
               id="dgfy-pos-email"
               type="text"
               value={formData.email}
-              onChange={(event) => setFormData((prev) => ({ ...prev, email: event.target.value }))}
-              placeholder="admin@company.com or cashier username"
+              onChange={(event) => {
+                const nextEmail = event.target.value;
+                if (onIdentityChange) onIdentityChange(nextEmail);
+                else setFormData((prev) => ({ ...prev, email: nextEmail }));
+              }}
+              placeholder="admin@company.com"
               autoComplete="username"
               className="h-12 rounded-2xl border-blue-200 bg-[#f2f7ff] text-sm text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:border-[#93C5FD] focus-visible:ring-[#93C5FD]"
             />
@@ -86,8 +103,16 @@ export default function TerminalLockDrawer({
                   </option>
                 ))}
               </select>
+              <p className="text-[11px] leading-5 text-[#64748B]">
+                Choose the company to continue. POS will open onboarding first when setup is incomplete.
+              </p>
             </div>
           ) : null}
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] leading-5 text-[#64748B]">
+            {dgfyAuthenticated
+              ? 'After company selection, POS will continue to onboarding or terminal unlock based on company setup.'
+              : 'Sign in with your DGFY account first. Company selection and terminal unlock appear after login succeeds.'}
+          </div>
           <Button
             type="submit"
             className="h-12 w-full rounded-2xl !bg-[#1A4E8D] text-sm font-extrabold text-white shadow-none hover:!bg-[#143F73] focus-visible:!ring-[#93C5FD]"
@@ -97,19 +122,6 @@ export default function TerminalLockDrawer({
               ? 'Continuing...'
               : (dgfyAuthenticated ? 'Continue to POS' : 'Sign in')}
           </Button>
-          {onCashierSubmit ? (
-            <div className="space-y-3 border-t border-slate-200 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-12 w-full rounded-2xl border-[#1A4E8D] bg-white text-sm font-extrabold text-[#1A4E8D] shadow-none hover:bg-blue-50"
-                disabled={submitting}
-                onClick={onCashierSubmit}
-              >
-                {submitting ? 'Checking cashier...' : 'Login as Cashier'}
-              </Button>
-            </div>
-          ) : null}
         </form>
         {onLegacySubmit && (
           <div className="px-6 pb-6">

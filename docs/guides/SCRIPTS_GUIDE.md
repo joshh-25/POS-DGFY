@@ -101,7 +101,7 @@ Recommended by environment:
 - Staging/Production: run `--verify` only when a known verification tenant/dataset is available
 
 ## 2. `scripts/deploy-remote.sh`
-Local operator convenience script that triggers the existing SSH production deploy after the governed `staging -> master` promotion has produced the exact production SHA.
+Disabled legacy entrypoint.
 
 Usage:
 ```bash
@@ -109,51 +109,24 @@ bash scripts/deploy-remote.sh
 ```
 
 Notes:
-- Operates on the production branch `master` by design after promotion; developers still open feature PRs into `staging` and do not push directly to `master`.
-- Meant to run locally, not on the production server.
-- Requires working SSH auth to production. Prefer key-based auth over password prompts.
-- When using a clean linked release worktree while another worktree has local `master` checked out, confirm `origin/master` already equals the intended release SHA or push the release worktree explicitly with `git push origin HEAD:master` before running this script. Do not let a stale local `master` from another worktree define the deploy target.
-- Auto-loads `.env.qa.local` and `.env.qa.secrets.local` (if present) before preflight/gate execution.
-- QA env loading tolerates CRLF line endings, UTF-8 BOM, and values containing `=`; malformed env keys are skipped with a warning.
-- Manual Windows SSH fallbacks must not pipe PowerShell here-strings into remote `bash` when SHA or branch arguments are present. Use Git Bash or pass one remote command argument through `ssh.exe` so CRLF cannot corrupt `--expect-commit` or `--branch`.
-- Enforces no-staging release hard gate by default after push and before production SSH deploy (`DEPLOY_ENFORCE_NO_STAGING_GATE=1`).
-- Runs no-staging preflight before push (`npm run gate:release:no-staging:preflight`) when gate enforcement is enabled.
-- Promotes the pushed target SHA to QA before the production gate when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`.
-- Refuses QA promotion when `QA_SSH_HOST` and `QA_APP_DIR` match the production host and app dir.
-- Fetches fresh QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) before every hard gate execution.
-- Uses an absolute host path for fetched QA deploy evidence when invoked from Git Bash on Windows, then verifies the file exists before running the hard gate.
-- Verifies the generated release verdict with `--require-pass true`; production SSH deploy is not attempted unless the verdict is `pass` or explicitly `bypassed`.
-- Defaults `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0` for wrapper-triggered deploys until redundant index cleanup is complete. Set `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1` to restore strict wrapper enforcement.
+- Always exits non-zero.
+- Production authorization moved to the root-owned external controller in `release-controller/`.
+- Developer machines and GitHub Actions must not hold production SSH credentials.
+- `scripts/deploy.sh` remains the fixed server-side deploy operation invoked only after controller authorization.
 
-One-time setup for persistent passwordless deploy access (per machine):
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/skupervisor_deploy_ed25519 -C "skupervisor-deploy"
-cat ~/.ssh/skupervisor_deploy_ed25519.pub | ssh -p 64428 root@192.53.116.33 'umask 077; mkdir -p ~/.ssh; cat >> ~/.ssh/authorized_keys'
-```
+## 2.1 `scripts/deploy-master-ci.sh`
 
-Add local SSH config:
-```sshconfig
-Host skupervisor-prod
-  HostName 192.53.116.33
-  Port 64428
-  User root
-  IdentityFile ~/.ssh/skupervisor_deploy_ed25519
-  IdentitiesOnly yes
-```
+Candidate-only dry-run wrapper. It validates exact `origin/master`, the deploy source contract, and a reviewed batch manifest, then writes `deploy_ci_plan.json` with `production_mutation=false`.
 
-Validate non-interactive auth:
-```bash
-ssh -o BatchMode=yes skupervisor-prod "echo AUTH_OK && hostname"
-```
+It refuses live mode. `.github/workflows/deploy-production.yml` does not invoke a deploy command or receive production secrets.
 
-Server-side requirement (one-time):
-```bash
-sshd -T | grep pubkeyauthentication
-```
-Expected:
-```text
-pubkeyauthentication yes
-```
+## 2.2 `release-controller/bin/skupervisor-release-controller.js`
+
+Installed outside candidate checkouts under a root-owned versioned path. It verifies standard GPG-signed annotated tags, full signer fingerprints, expiry, hashes, exact PR/SHA evidence, documentation closure, live GitHub checks, QA proof, and one-time nonces before candidate checkout.
+
+Production `--execute` ends at `deployed_pending_accuracy` and writes immutable external deployment records. A separate `--finalize --execute` invocation verifies current exact-SHA production state and per-slice accuracy artifacts before creating immutable finalization records and transitioning to `completed`.
+
+Use the installation and dry-run instructions in `release-controller/README.md` and ADR 0030.
 
 ## 2a. `scripts/check-frontend-asset-parity.js`
 Asset parity guardrail script used by deploy.
@@ -692,7 +665,7 @@ Output:
 - `.tmp/release-gates/<sha>/restore_drill_result.json`
 
 ## 20. `scripts/gate-release-no-staging.js`
-Hard-blocking release aggregator for environments without staging.
+Legacy evidence aggregator retained for tests and historical recovery analysis. It is not the ADR 0030 production authorization boundary.
 
 Usage:
 ```bash
@@ -704,14 +677,7 @@ Contract:
 - writes aggregated verdict:
   - `.tmp/release-gates/<sha>/release_verdict.json`
 
-Emergency bypass (incident-only):
-- `RELEASE_EMERGENCY_BYPASS=1`
-
-Pre-deploy summary SHA behavior:
-- `qa.deploy.summary.sha_match` is hard-blocking for production deploy.
-- `qa_deploy_summary.txt` must show `deployed_head=<RELEASE_TARGET_SHA>` before the deploy wrapper proceeds to production SSH.
-- `RELEASE_EMERGENCY_REASON=...`
-- `RELEASE_EMERGENCY_ACTOR=...`
+Under ADR 0030 there is no unsigned emergency bypass. Production authorization, documentation closure, QA isolation, exact-SHA evidence, nonce replay protection, external release records, and post-deploy accuracy finalization are enforced by the installed trusted controller. Do not use this legacy script to authorize promotion or production.
 
 ## 21. `scripts/verify-release-verdict.js`
 Validates release verdict artifact contract and SHA consistency.

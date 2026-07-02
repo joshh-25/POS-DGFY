@@ -20,6 +20,10 @@ function isTruthy(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
 }
 
+function csvSet(value) {
+  return new Set(String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean));
+}
+
 function parseSummary(filePath) {
   const values = {};
   if (!filePath || !fs.existsSync(filePath)) return values;
@@ -74,6 +78,17 @@ function checkQaTargetProof(options, logger = console) {
   const qaRuntimeMarker = String(env.QA_RUNTIME_MARKER || env.QA_ENVIRONMENT_MARKER || '').trim();
   const qaDatabaseMarker = String(env.QA_DATABASE_MARKER || env.QA_DB_NAME || '').trim();
   const qaTenantMarker = String(env.QA_TENANT_DATA_MARKER || env.QA_COMPANY_TOKEN || '').trim();
+  const qaUnixUser = String(env.QA_UNIX_USER || env.QA_SSH_USER || '').trim();
+  const prodUnixUser = String(env.DEPLOY_PROD_REMOTE_USER || env.PROD_UNIX_USER || '').trim();
+  const qaDatabaseName = String(env.QA_DATABASE_NAME || env.QA_DB_NAME || '').trim();
+  const prodDatabaseName = String(env.PROD_DATABASE_NAME || env.PROD_DB_NAME || '').trim();
+  const qaCredentialId = String(env.QA_DB_CREDENTIAL_ID || '').trim();
+  const prodCredentialId = String(env.PROD_DB_CREDENTIAL_ID || '').trim();
+  const qaUploadsDir = normalizePath(env.QA_UPLOADS_DIR);
+  const prodUploadsDir = normalizePath(env.PROD_UPLOADS_DIR);
+  const qaPm2Names = csvSet(env.QA_PM2_NAMES);
+  const prodPm2Names = csvSet(env.PROD_PM2_NAMES);
+  const qaProductionDataAccess = String(env.QA_PRODUCTION_DATA_ACCESS || '').trim().toLowerCase();
   const disposableData = isTruthy(env.QA_DISPOSABLE_TEST_DATA || env.QA_USES_DISPOSABLE_DATA);
   const summaryPath = options.summaryPath || (targetSha ? path.join('.tmp', 'release-gates', targetSha, 'qa_deploy_summary.txt') : '');
   const summary = parseSummary(summaryPath);
@@ -96,6 +111,13 @@ function checkQaTargetProof(options, logger = console) {
   addCheck(checks, 'qa.runtime.marker.isolated', qaRuntimeMarker.length > 0 && !/prod/i.test(qaRuntimeMarker), qaRuntimeMarker || 'Missing QA runtime marker');
   addCheck(checks, 'qa.database.marker.isolated', qaDatabaseMarker.length > 0 && !/prod/i.test(qaDatabaseMarker), qaDatabaseMarker || 'Missing QA database marker');
   addCheck(checks, 'qa.tenant_data.disposable', qaTenantMarker.length > 0 && disposableData, disposableData ? 'Disposable QA data declared' : 'QA_DISPOSABLE_TEST_DATA=1 is required');
+  addCheck(checks, 'qa.unix_identity.isolated', Boolean(qaUnixUser && prodUnixUser && qaUnixUser !== prodUnixUser), qaUnixUser && prodUnixUser ? `qa_user=${qaUnixUser}; distinct_from_production=${qaUnixUser !== prodUnixUser}` : 'QA and production Unix identities are required');
+  addCheck(checks, 'qa.database.name_isolated', Boolean(qaDatabaseName && prodDatabaseName && qaDatabaseName !== prodDatabaseName), qaDatabaseName && prodDatabaseName ? `qa_database=${qaDatabaseName}; distinct_from_production=${qaDatabaseName !== prodDatabaseName}` : 'QA and production database names are required');
+  addCheck(checks, 'qa.database.credentials_isolated', Boolean(qaCredentialId && prodCredentialId && qaCredentialId !== prodCredentialId), qaCredentialId && prodCredentialId ? `credential_ids_distinct=${qaCredentialId !== prodCredentialId}` : 'Non-secret QA and production DB credential identifiers are required');
+  addCheck(checks, 'qa.uploads.isolated', Boolean(qaUploadsDir && prodUploadsDir && qaUploadsDir !== prodUploadsDir), qaUploadsDir && prodUploadsDir ? `qa_uploads=${qaUploadsDir}; distinct_from_production=${qaUploadsDir !== prodUploadsDir}` : 'QA and production uploads paths are required');
+  const pm2Overlap = [...qaPm2Names].filter((name) => prodPm2Names.has(name));
+  addCheck(checks, 'qa.pm2_names.isolated', qaPm2Names.size > 0 && prodPm2Names.size > 0 && pm2Overlap.length === 0, qaPm2Names.size > 0 && prodPm2Names.size > 0 ? `overlap=${pm2Overlap.join(',') || 'none'}` : 'QA and production PM2 names are required');
+  addCheck(checks, 'qa.production_data.inaccessible', qaProductionDataAccess === 'denied', 'QA_PRODUCTION_DATA_ACCESS must be denied');
   if (options.allowMissingSummary) {
     addCheck(checks, 'qa.deploy.summary.present', true, 'summary allowed to be missing in dry-run proof mode');
   } else {
@@ -106,6 +128,14 @@ function checkQaTargetProof(options, logger = console) {
       Boolean(targetSha) && String(summary.deployed_head || '').toLowerCase() === targetSha,
       `deployed_head=${summary.deployed_head || '<missing>'}; target_sha=${targetSha || '<missing>'}`
     );
+    const summaryPm2Names = csvSet(summary.pm2_names);
+    addCheck(checks, 'qa.deploy.summary.runtime_marker', summary.runtime_marker === qaRuntimeMarker, `runtime_marker=${summary.runtime_marker || '<missing>'}`);
+    addCheck(checks, 'qa.deploy.summary.database_marker', summary.database_marker === qaDatabaseMarker, `database_marker=${summary.database_marker || '<missing>'}`);
+    addCheck(checks, 'qa.deploy.summary.unix_user', summary.unix_user === qaUnixUser, `unix_user=${summary.unix_user || '<missing>'}`);
+    addCheck(checks, 'qa.deploy.summary.app_dir', normalizePath(summary.app_dir) === normalizePath(qaAppDir), `app_dir=${summary.app_dir || '<missing>'}`);
+    addCheck(checks, 'qa.deploy.summary.database_name', summary.database_name === qaDatabaseName, `database_name=${summary.database_name || '<missing>'}`);
+    addCheck(checks, 'qa.deploy.summary.uploads_dir', normalizePath(summary.uploads_dir) === qaUploadsDir, `uploads_dir=${summary.uploads_dir || '<missing>'}`);
+    addCheck(checks, 'qa.deploy.summary.pm2_names', qaPm2Names.size > 0 && [...qaPm2Names].every((name) => summaryPm2Names.has(name)) && summaryPm2Names.size === qaPm2Names.size, `pm2_names=${summary.pm2_names || '<missing>'}`);
   }
 
   const failed = checks.filter((check) => !check.ok);

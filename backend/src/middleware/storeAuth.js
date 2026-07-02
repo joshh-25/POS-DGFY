@@ -33,30 +33,47 @@ const forbidden = (res, message) => res.status(403).json({
     timestamp: timestamp()
 });
 
+const conflict = (res, message, errorCode = 'STORE_CUSTOMER_LINK_REQUIRED') => res.status(409).json({
+    success: false,
+    data: null,
+    message,
+    error_code: errorCode,
+    timestamp: timestamp()
+});
+
+class StoreCustomerLinkRequiredError extends Error {
+    constructor(message = 'Store customer account requires explicit DGFY linking before this session can manage it.') {
+        super(message);
+        this.name = 'StoreCustomerLinkRequiredError';
+    }
+}
+
 const resolveOrCreateCustomerForDgfyAccount = async (account) => {
     const StoreCustomer = dbStore.get('StoreCustomer');
     const email = String(account?.email || '').trim().toLowerCase();
     if (!email) return null;
 
-    let supportsDgfyAccountId = true;
-    let customer = null;
+    let customer;
     try {
         customer = await StoreCustomer.findOne({ where: { dgfy_account_id: account.id } });
     } catch (error) {
         if (!isMissingDgfyAccountColumnError(error)) throw error;
-        supportsDgfyAccountId = false;
-        logger.warn('[StoreAuth] store_customers.dgfy_account_id is unavailable; falling back to email linkage', {
+        logger.warn('[StoreAuth] store_customers.dgfy_account_id is unavailable; DGFY storefront auth failed closed', {
             dgfy_account_id: account.id,
-            email
+            email_hash: email ? `len:${email.length}` : 'missing'
         });
+        throw new StoreCustomerLinkRequiredError('DGFY storefront customer linking is not available for this tenant schema.');
     }
 
     if (!customer) {
-        customer = await StoreCustomer.findOne({ where: { email } });
+        const sameEmailCustomer = await StoreCustomer.findOne({ where: { email } });
+        if (sameEmailCustomer) {
+            throw new StoreCustomerLinkRequiredError();
+        }
     }
 
     const payload = {
-        ...(supportsDgfyAccountId ? { dgfy_account_id: account.id } : {}),
+        dgfy_account_id: account.id,
         email,
         password_hash: DGFY_LINKED_STORE_PASSWORD_HASH,
         name: `${account.first_name || ''} ${account.middle_name || ''} ${account.last_name || ''}`.trim() || account.username || email,
@@ -71,17 +88,13 @@ const resolveOrCreateCustomerForDgfyAccount = async (account) => {
             name: payload.name,
             phone: payload.phone,
             last_login: payload.last_login,
-            ...(supportsDgfyAccountId ? { dgfy_account_id: account.id } : {})
+            dgfy_account_id: account.id
         };
         try {
             await customer.update(updatePayload);
         } catch (error) {
             if (!isMissingDgfyAccountColumnError(error)) throw error;
-            await customer.update({
-                name: payload.name,
-                phone: payload.phone,
-                last_login: payload.last_login
-            });
+            throw new StoreCustomerLinkRequiredError('DGFY storefront customer linking is not available for this tenant schema.');
         }
         return customer.reload();
     }
@@ -90,14 +103,7 @@ const resolveOrCreateCustomerForDgfyAccount = async (account) => {
         customer = await StoreCustomer.create(payload);
     } catch (error) {
         if (!isMissingDgfyAccountColumnError(error)) throw error;
-        customer = await StoreCustomer.create({
-            email,
-            password_hash: DGFY_LINKED_STORE_PASSWORD_HASH,
-            name: payload.name,
-            phone: payload.phone,
-            is_active: true,
-            last_login: payload.last_login
-        });
+        throw new StoreCustomerLinkRequiredError('DGFY storefront customer linking is not available for this tenant schema.');
     }
     return customer;
 };
@@ -123,7 +129,15 @@ const tryAuthenticateDgfyStoreCustomer = async (token, req, res, next) => {
         return unauthorized(res, 'DGFY account is unavailable');
     }
 
-    const customer = await resolveOrCreateCustomerForDgfyAccount(account);
+    let customer;
+    try {
+        customer = await resolveOrCreateCustomerForDgfyAccount(account);
+    } catch (error) {
+        if (error instanceof StoreCustomerLinkRequiredError) {
+            return conflict(res, error.message);
+        }
+        throw error;
+    }
     if (!customer) {
         return unauthorized(res, 'DGFY account cannot be linked to this storefront');
     }

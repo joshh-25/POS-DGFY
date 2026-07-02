@@ -75,22 +75,21 @@ export default function TerminalWorkspaceSidebar({
 
   return (
     <aside
-      className={`${className} flex h-full min-h-0 w-full flex-col overflow-hidden rounded-none border-0 border-r border-slate-200 bg-white shadow-sm`}
+      className={`${className} rounded-none border-0 border-r border-slate-200 bg-white shadow-sm xl:h-full xl:min-h-0 xl:overflow-hidden`}
       style={{
         background: 'var(--pos-shell-sidebar)',
         borderColor: 'var(--pos-shell-sidebar-border)',
         color: 'var(--pos-shell-sidebar-text)'
       }}
     >
-      <div className="dgfy-pos-sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="dgfy-pos-sidebar-scroll min-h-0 flex-1 overflow-y-auto">
         {showBrand && (
-        <div className="relative h-[60px] shrink-0 overflow-hidden bg-transparent px-4">
-          <div className="flex h-full min-w-0 items-center justify-center overflow-hidden">
+        <div className="relative h-[60px] overflow-hidden bg-transparent px-4">
+          <div className="flex h-full items-center justify-center">
             <img
               src={DGFY_POS_LOGO}
               alt="DGFY"
               className="w-[120px] h-auto object-contain"
-              style={{ width: '120px', maxWidth: '120px', height: 'auto' }}
             />
           </div>
         </div>

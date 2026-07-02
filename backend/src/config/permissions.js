@@ -64,6 +64,7 @@ export const PERMISSIONS = {
             TRANSACT_POS: "pos:transact",   // Execute POS checkout transactions
             PRICE_OVERRIDE_POS: "pos:price_override", // Override line-item sale price during checkout
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust", // Record cash in/out and shift cash adjustments
+            CLOSE_SHIFT_POS: "pos:shift_close", // Close the cashier's current terminal shift
             CLOSE_DAY_POS: "pos:close_day", // Close active terminal shift and generate day-end reconciliation
             REPRINT_POS_RECEIPT: "pos:reprint", // Reprint historical POS receipts
             VOID_POS_TRANSACTION: "pos:void", // Void completed POS transactions with governed fiscal evidence
@@ -228,13 +229,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
         PERMISSIONS.POS.actions.VIEW_POS,
         PERMISSIONS.POS.actions.TRANSACT_POS,
-        PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER,
-        PERMISSIONS.POS.actions.CLOSE_DAY_POS,
+        PERMISSIONS.POS.actions.CLOSE_SHIFT_POS,
         PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT,
-        PERMISSIONS.POS.actions.VOID_POS_TRANSACTION,
-        PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS,
-        PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
-        PERMISSIONS.REPORTS.actions.VIEW_REPORTS
     ],
     po: [
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,

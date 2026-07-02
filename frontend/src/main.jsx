@@ -204,6 +204,7 @@ function App() {
             </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
+        {/* Integrated POS inside the authenticated SKUpervisor application shell. */}
         <Route path="/pos" element={
           <ProtectedRoute>
             <Layout currentPageName={currentPageName}>
@@ -238,6 +239,7 @@ function App() {
             </WorkflowModeRouteGate>
           </ProtectedRoute>
         } />
+        {/* Dedicated POS application surface; intentionally leaves the IMS shell. */}
         <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/sales" element={
           <ProtectedRoute>

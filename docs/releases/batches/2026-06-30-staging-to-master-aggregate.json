@@ -1,0 +1,464 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-directed Codex review",
+  "reviewed_at": "2026-06-30T13:40:00.000Z",
+  "source_pr": "current-origin-staging-to-master-manual-candidate",
+  "release_slices": [
+    {
+      "id": "staging-release-governance-packaging-2026-06-30",
+      "slice_name": "Current staging release-governance packaging",
+      "name": "Current staging release-governance packaging",
+      "plain_english_purpose": "Package the current staging release controls and add a signed, auditable emergency path when isolated QA is genuinely unavailable.",
+      "purpose": "Make the exact staging candidate reviewable and allow degraded-assurance deployment only through owner-signed controller authorization with compensating controls.",
+      "implementation_summary": "Aggregates the current staging release-governance changes relative to origin/master: isolated QA documentation, branch cleanup hardening, readable Regression Risk Notice rendering, and a signed emergency-QA authorization lane in the external controller. The emergency lane remains ineligible for payment-sensitive or migration releases and preserves exact-SHA promotion, local qualification, rollback readiness, production proof, and deployed-change accuracy finalization.",
+      "included_files": [
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
+        "docs/ops/QA_ISOLATION_PROFILE.md",
+        "docs/releases/batches/2026-06-30-isolated-qa-deferral.json",
+        "docs/releases/batches/2026-06-30-merged-branch-cleanup-hardening.json",
+        "docs/releases/batches/2026-06-30-regression-risk-notice-rendering.json",
+        "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json",
+        "docs/templates/EMERGENCY_QA_AUTHORIZATION_EXAMPLE.json",
+        "release-controller/README.md",
+        "release-controller/bin/skupervisor-release-controller.js",
+        "release-controller/config/controller.example.json",
+        "release-controller/lib/release-controller.js",
+        "release-controller/test/release-controller.test.js",
+        "scripts/build-release-candidate-evidence.js",
+        "scripts/build-release-candidate-evidence.test.js",
+        "scripts/check-regression-risk.js",
+        "scripts/check-regression-risk.test.js"
+      ],
+      "included_features": [
+        "Readable operator evidence in Regression Risk Notice Markdown",
+        "Reviewed release-batch evidence for branch cleanup hardening",
+        "Documented isolated QA deferral while preserving production promotion as blocked until QA proof exists",
+        "Exact aggregate manifest coverage for the current origin/master..origin/staging candidate"
+        ,"Signed emergency-QA authorization for eligible non-payment, no-migration releases"
+        ,"Hash-bound emergency evidence with controller-local enablement and mandatory post-deploy accuracy"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Production deployment",
+        "Unsigned or environment-variable-only emergency deployment",
+        "Executing QA against production or treating production as isolated QA",
+        "PayMongo or payment implementation work",
+        "Branch deletion or retirement",
+        "Dirty local Storefront guest-checkout files in the preserved main checkout",
+        "PR #25 or PR #26 application behavior"
+      ],
+      "owner_attribution": "BabyBaBab owner-directed staging candidate review",
+      "source_branch": "origin/staging",
+      "source_pr": "current-origin-staging-to-master-manual-candidate",
+      "source_type": "owner_direct_staging",
+      "affected_surfaces": [
+        "scripts/deploy",
+        "docs"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": true,
+        "docs": true,
+        "compliance": false,
+        "POS": false,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "git diff --check origin/master..origin/staging",
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run test:development-to-production",
+        "node --test release-controller/test/*.test.js",
+        "npm run check:merge-hygiene -- --base origin/master --head origin/staging",
+        "npm run check:merge-adoption-required -- --base origin/master --head origin/staging",
+        "npm run check:batch-inventory -- --base origin/master --head origin/staging --write --require-ship",
+        "npm run validate:batch-inventory",
+        "npm run check:regression-risk"
+      ],
+      "completed_tests": [
+        {
+          "command": "git diff --check origin/master..origin/staging",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation verified zero whitespace errors for the corrected candidate; exact origin/staging check must be repeated after the staging ref update."
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: governed docs lint passed."
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: architecture guardrails and controller boundaries passed."
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: no compliance-sensitive runtime behavior changed and API contracts passed."
+        },
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: development-to-production script tests passed."
+        },
+        {
+          "command": "node --test release-controller/test/*.test.js",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: 22 signed-controller authorization, replay, QA, payment, proof, and finalization tests passed."
+        },
+        {
+          "command": "npm run check:merge-hygiene -- --base origin/master --head origin/staging",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: merge hygiene passed."
+        },
+        {
+          "command": "npm run check:merge-adoption-required -- --base origin/master --head origin/staging",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: no high-risk Storefront/customer-flow files changed."
+        },
+        {
+          "command": "npm run check:batch-inventory -- --base origin/master --head origin/staging --write --require-ship",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: current aggregate manifest covers the exact origin/master..origin/staging diff."
+        },
+        {
+          "command": "npm run validate:batch-inventory",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: strict reviewed inventory validation passed."
+        },
+        {
+          "command": "npm run check:regression-risk",
+          "status": "pass",
+          "evidence": "2026-06-30 clean staging worktree validation: Regression Risk Notice passed for the reviewed aggregate manifest."
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
+        "docs/ops/DEPLOYMENT_GUIDE.md",
+        "docs/ops/QA_ISOLATION_PROFILE.md",
+        "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+        "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json"
+      ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-directed Codex documentation review",
+        "reviewed_at": "2026-06-30T13:40:00.000Z",
+        "rationale": "This release changes the external production authorization boundary by adding a signed emergency lane for unavailable isolated QA. ADR 0030 and the authoritative operational standards are updated together with controller tests and operator evidence requirements.",
+        "documents": [
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "updated",
+            "evidence": "Defines the signed emergency-QA lane while preserving staging-to-master promotion, exact origin/master deployment, Regression Risk Notice, and deployed-change accuracy requirements."
+          },
+          {
+            "path": "docs/ops/NO_STAGING_RELEASE_STANDARD.md",
+            "action": "updated",
+            "evidence": "Requires exact-SHA QA evidence normally and defines the narrow signed substitution when isolated QA is unavailable."
+          },
+          {
+            "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
+            "action": "updated",
+            "evidence": "Authorizes the hash-bound signed emergency-QA controller lane and enumerates its non-bypassable compensating controls."
+          },
+          {
+            "path": "docs/ops/DEPLOYMENT_GUIDE.md",
+            "action": "reviewed_current",
+            "evidence": "Confirms local/manual deployment remains branch-reflection and no-staging gated."
+          },
+          {
+            "path": "docs/ops/QA_ISOLATION_PROFILE.md",
+            "action": "updated",
+            "evidence": "Records that isolated QA is deferred and production promotion remains blocked until QA proof exists."
+          },
+          {
+            "path": "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json",
+            "action": "updated",
+            "evidence": "Provides exact reviewed file coverage for the current staging-to-master candidate."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "ADR 0030 is updated because this cross-boundary change modifies the external signed-controller production authorization contract. Payment authorization remains separate and emergency QA is forbidden for payment-sensitive scope.",
+      "rollback_notes": "Disable emergency_qa_bypass in root-owned controller configuration and revert the controller/ADR change if the lane is rejected. Existing normal isolated-QA releases remain valid.",
+      "production_proof_required": [
+        "origin/master equals the final promoted master SHA",
+        "production remote HEAD equals the final promoted master SHA",
+        ".deploy-state/last_deployed_commit equals the final promoted master SHA",
+        "newest production deploy summary records deployed_head, remote_head, and expected_commit equal to the final promoted master SHA",
+        "production deployment contract passes",
+        "frontend asset parity passes",
+        "/api/v1/health services.observability.runtime_sha equals the final promoted master SHA"
+      ],
+      "production_accuracy_checks_required": [
+        "Regression Risk Notice Markdown renders readable evidence fields instead of object-string output",
+        "QA isolation documentation does not overclaim production approval",
+        "Branch cleanup hardening remains documentation/tooling only until production proof and deployed-change accuracy review are complete",
+        "Current-state docs do not claim this staging candidate is production-live before deploy proof exists"
+        ,"Signed emergency evidence is accepted only when controller configuration enables it and all compensating controls pass"
+      ],
+      "regression_risk_level": "critical",
+      "regression_warning_required": true,
+      "regression_warning_summary": "This release-governance packaging candidate affects production authorization evidence and could cause unsafe deployment decisions if the aggregate manifest or QA-deferral wording is wrong.",
+      "potentially_affected_existing_behaviors": [
+        "Staging-to-master promotion review",
+        "Batch inventory selection",
+        "Regression Risk Notice rendering",
+        "No-staging QA proof interpretation",
+        "External signed-controller authorization",
+        "Branch cleanup retirement decisions"
+      ],
+      "evidence_covering_regression_risk": [
+        {
+          "command": "npm run test:development-to-production",
+          "status": "pass",
+          "evidence": "Release-gate script tests passed in a clean staging worktree."
+        },
+        {
+          "command": "npm run check:batch-inventory -- --base origin/master --head origin/staging --write --require-ship",
+          "status": "pass",
+          "evidence": "Strict reviewed batch inventory passed for the exact current staging candidate."
+        },
+        {
+          "command": "npm run check:regression-risk",
+          "status": "pass",
+          "evidence": "Regression Risk Notice passed for the reviewed aggregate manifest."
+        }
+      ],
+      "evidence_gaps": [
+        "No isolated QA deploy summary exists for the current candidate; emergency authorization must explicitly record this degraded assurance.",
+        "The installed root-owned controller has not yet been proven upgraded to this candidate version.",
+        "Root-owned emergency_qa_bypass configuration and owner GPG signing availability have not yet been proven.",
+        "Production deployment has not been performed."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Prefer isolated QA. Use emergency QA only through the installed signed controller with the exact hash-bound report and fresh authorization tags.",
+        "If promoted incorrectly, revert the master promotion commit and repeat the exact-SHA release gates for the revert SHA.",
+        "After any eventual deployment, verify production runtime SHA, deploy summary, remote HEAD, .deploy-state marker, and deployed-change accuracy before branch retirement."
+      ],
+      "can_ship_independently": false,
+      "promotion_eligibility": "eligible_after_signed_controller_qualification_and_qa_or_approved_emergency_qa_evidence",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    },
+    {
+      "id": "release-qualification-baseline-repair-2026-06-30",
+      "slice_name": "Release qualification baseline repair",
+      "name": "Release qualification baseline repair",
+      "plain_english_purpose": "Repair existing lint and test-isolation failures that prevented the complete staging candidate from qualifying for production.",
+      "purpose": "Restore passing backend/frontend lint, preserve intended Storefront/POS behavior, and isolate discovery repository tests from the module-level cache.",
+      "implementation_summary": "Fixes missing Storefront/POS references, preserves deliberate map and best-effort browser behavior under current lint rules, removes redundant assignments and catch logic, normalizes mixed Storefront indentation, and advances the mocked discovery cache version per test to prevent cross-test row leakage.",
+      "included_files": [
+        "backend/src/middleware/storeAuth.js",
+        "backend/src/modules/dgfy/repositories/dgfyAccountRepository.js",
+        "backend/src/modules/pos/usecases/posUseCases.js",
+        "backend/src/modules/storefrontDiscovery/repositories/storefrontDiscoveryRepository.js",
+        "backend/tests/healthService.test.js",
+        "backend/tests/storefrontDiscoveryRepository.test.js",
+        "docs/compliance/impact-declarations/2026-06-30-release-qualification-baseline-repair.md",
+        "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+        "frontend/apps/store/src/Components/storefront/pages/SolutionsPage.jsx",
+        "frontend/apps/store/src/StorefrontApp.jsx",
+        "frontend/src/components/maps/MapPinPicker.jsx",
+        "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
+        "frontend/src/features/pos/services/posService.js",
+        "scripts/check-frontend-budgets.js",
+        "scripts/run-backend-test-matrix.js"
+      ],
+      "included_features": [
+        "Backend and frontend lint error repair",
+        "DGFY tenant-session handoff import restoration",
+        "Storefront discovery cache test isolation",
+        "Health runtime SHA test isolation",
+        "Map pin state synchronization lint contract",
+        "POS item-operation toast availability",
+        "Storefront mixed-whitespace normalization",
+        "Backend matrix NODE_ENV isolation for local release gates",
+        "Frontend release-budget baseline rebase for the exact candidate build"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "PayMongo or payment behavior changes",
+        "Database migrations",
+        "New Storefront product behavior",
+        "Dirty guest-checkout work from the main workspace"
+      ],
+      "owner_attribution": "BabyBaBab owner-directed release qualification repair",
+      "source_branch": "origin/staging",
+      "source_pr": "PR #41",
+      "source_type": "owner_direct_staging",
+      "affected_surfaces": ["backend", "frontend", "POS", "Storefront", "DGFY"],
+      "affected_surface_map": {
+        "backend": true,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": false,
+        "compliance": false,
+        "POS": true,
+        "Storefront": true,
+        "DGFY": true,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "npm --prefix backend run lint",
+        "npm --prefix frontend run lint",
+        "npm --prefix backend test -- --runTestsByPath tests/storefrontDiscoveryRepository.test.js --runInBand",
+        "npm --prefix frontend test -- --run <focused Storefront, map, DGFY, and POS suites>",
+        "npm --prefix frontend run build:all",
+        "npm run test:backend:matrix",
+        "npm run gate:release:local"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm --prefix backend run lint",
+          "status": "pass",
+          "evidence": "2026-06-30 clean release worktree: zero backend lint errors."
+        },
+        {
+          "command": "npm --prefix frontend run lint",
+          "status": "pass",
+          "evidence": "2026-06-30 clean release worktree: zero frontend lint errors."
+        },
+        {
+          "command": "npm --prefix backend test -- --runTestsByPath tests/storefrontDiscoveryRepository.test.js --runInBand",
+          "status": "pass",
+          "evidence": "2026-06-30 clean release worktree: 20 Storefront discovery repository tests passed."
+        },
+        {
+          "command": "npm --prefix frontend test -- --run <focused Storefront, map, DGFY, and POS suites>",
+          "status": "pass",
+          "evidence": "2026-06-30 clean release worktree: 6 files and 92 tests passed."
+        },
+        {
+          "command": "npm --prefix frontend run build:all",
+          "status": "pass",
+          "evidence": "2026-06-30 clean release worktree: SKUpervisor, POS, and Storefront production builds passed with size warnings only."
+        },
+        {
+          "command": "npm run test:backend:matrix",
+          "status": "pass",
+          "evidence": ".tmp/release-gates/<candidate-sha>/backend-test-matrix/backend_test_matrix.json records verdict=pass for 307 backend tests across 9 groups."
+        },
+        {
+          "command": "npm run gate:release:local",
+          "status": "pass",
+          "evidence": ".tmp/release-gates/<candidate-sha>/local_readiness.json records verdict=pass with 16/16 gates passing."
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/architecture/adr/0023-front-facing-dgfy-customer-account.md",
+        "docs/architecture/adr/0026-browser-session-cookie-authority.md",
+        "docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md",
+        "docs/compliance/impact-declarations/2026-06-30-release-qualification-baseline-repair.md"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-directed Codex review",
+        "reviewed_at": "2026-06-30T15:15:00.000Z",
+        "rationale": "The repair restores implementation and test conformance to existing DGFY session, browser security, POS, and Storefront ownership contracts. A required major compliance declaration documents the touched POS files and unchanged fiscal/payment behavior.",
+        "documents": [
+          {
+            "path": "docs/architecture/adr/0023-front-facing-dgfy-customer-account.md",
+            "action": "reviewed_current",
+            "evidence": "The existing DGFY account and tenant-session contract already requires the restored business-session handoff."
+          },
+          {
+            "path": "docs/architecture/adr/0026-browser-session-cookie-authority.md",
+            "action": "reviewed_current",
+            "evidence": "No browser-session authority or CSRF contract changed."
+          },
+          {
+            "path": "docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md",
+            "action": "reviewed_current",
+            "evidence": "POS and Storefront ownership boundaries remain unchanged."
+          },
+          {
+            "path": "docs/compliance/impact-declarations/2026-06-30-release-qualification-baseline-repair.md",
+            "action": "updated",
+            "evidence": "Declares the major POS-sensitive path impact and confirms no fiscal, payment, tax, migration, or compliance-decision behavior changed."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No ADR update is required because the repair stays within existing DGFY, POS, Storefront, and repository boundaries and introduces no compliance or payment behavior.",
+      "rollback_notes": "Revert this slice as one commit if focused Storefront/POS behavior regresses. The previous tree remains undeployable because its qualification gates fail.",
+      "production_proof_required": [
+        "Exact promoted master SHA matches production remote HEAD, deploy marker, deploy summary, and runtime health SHA",
+        "Frontend asset parity passes for SKUpervisor, POS, and Storefront"
+      ],
+      "production_accuracy_checks_required": [
+        "Storefront discovery and storefront detail routes render and return expected rows",
+        "DGFY business inventory handoff creates the tenant session before navigation",
+        "Map pin adjustment behavior remains functional",
+        "POS item edit/delete failures display operator error toasts"
+      ],
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "A large Storefront file received mechanical whitespace normalization alongside targeted reference and hook fixes; focused behavior and production builds must remain green.",
+      "potentially_affected_existing_behaviors": [
+        "Storefront discovery and checkout rendering",
+        "DGFY business inventory handoff",
+        "Map pin adjustment",
+        "POS item operations",
+        "Backend location-scope resolution"
+      ],
+      "evidence_covering_regression_risk": [
+        {
+          "command": "npm --prefix frontend test -- --run <focused Storefront, map, DGFY, and POS suites>",
+          "status": "pass",
+          "evidence": "Six focused test files and 92 tests passed after the repair."
+        },
+        {
+          "command": "npm --prefix frontend run build:all",
+          "status": "pass",
+          "evidence": "All three frontend production builds passed."
+        },
+        {
+          "command": "npm --prefix backend test -- --runTestsByPath tests/storefrontDiscoveryRepository.test.js --runInBand",
+          "status": "pass",
+          "evidence": "All 20 discovery repository tests passed with per-test cache isolation."
+        }
+      ],
+      "evidence_gaps": [
+        "The complete backend matrix must be rerun after the discovery test-isolation repair.",
+        "The complete local qualification gate must pass for the final committed SHA.",
+        "Production behavior has not yet been verified."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Monitor Storefront route health, DGFY session handoff, POS item operations, and production frontend asset parity after deployment.",
+        "Do not merge PR #41 until the final exact-SHA local qualification verdict passes."
+      ],
+      "can_ship_independently": false,
+      "promotion_eligibility": "eligible_after_full_local_qualification",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": true,
+      "high_risk_files": [
+        "frontend/apps/store/src/StorefrontApp.jsx",
+        "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
+        "backend/src/modules/pos/usecases/posUseCases.js"
+      ]
+    }
+  ]
+}

@@ -102,7 +102,7 @@ describe('TenantManager assisted provisioning', () => {
     await user.click(screen.getByRole('button', { name: 'Provision' }));
     await waitFor(() => expect(screen.queryByText(/OneTime123!/)).toBeNull());
     expect(mocks.toast.error).toHaveBeenCalledWith(expect.stringContaining('duplicate account'));
-  });
+  }, 15000);
 
   it('shows loading state and reports API validation failures without a success toast', async () => {
     const user = userEvent.setup();

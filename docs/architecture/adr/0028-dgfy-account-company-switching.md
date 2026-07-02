@@ -1,7 +1,7 @@
 ---
 status: authoritative
 authority_level: authoritative
-last_reviewed: 2026-06-17
+last_reviewed: 2026-07-02
 ---
 
 # ADR 0028: DGFY-Only Company Access And Switching
@@ -40,9 +40,12 @@ The hardening contract for this rollout requires explicit proof for replay, fail
 - DGFY users can see pending invitations, companies they own, and companies they were invited to in the DGFY account Business area. The IMS switcher must group owned companies separately from invited/member companies.
 - Invited/member companies can be left by the DGFY account. Founder-owned companies cannot be left until ownership is transferred.
 - Successful switching clears tenant-scoped frontend caches and lands on the IMS Dashboard.
-- POS uses the same DGFY company-access contract: DGFY sign-in, accessible company selection, governed terminal selection/pairing, and POS session creation from accepted membership plus existing terminal registry/location/capability gates. Repeated terminal-password entry may be skipped only under ADR 0030 after backend pairing and cashier-location revalidation.
-- DGFY tenant master-admin/admin sessions may use ADR 0030 administrator navigation mode without opening a cashier shift; cashier transactions remain shift-gated and the bypass is not persisted across refresh.
+- POS uses the same DGFY company-access contract: DGFY sign-in, accessible company selection, terminal/counter selection, and POS session creation from accepted membership plus existing terminal registry/location/capability gates.
+- POS onboarding invokes the same DGFY account search/invitation contract with a server-owned `cashier` role and selected active tenant-location grants. It must not create a new tenant-local password identity.
+- Company founders/master admins are POS-operator ready without changing their `admin` role or creating a duplicate cashier profile.
+- A paired POS device uses administrator-authorized, versioned device enrollment rather than a reusable terminal password. Operator authentication and terminal possession remain separate checks.
 - Legacy POS unlock is available only as a dated grace fallback for eligible existing users and must be presented separately from the DGFY POS drawer path.
+- POS and IMS account changes are authentication boundaries. Changing identity after company resolution must clear the previous company list, selected tenant, tenant session, password, and stale lookup state before another login attempt. The ordinary POS drawer must not expose a separate tenant-local `Login as Cashier` action; DGFY cashiers use the same DGFY sign-in and company-selection path, while eligible historical users retain only the separately labelled legacy grace path.
 - Switch success/failure and invitation accept success/failure are landlord-audited without secrets.
 - IMS users who entered SKUpervisor through ordinary tenant auth can still see switcher choices when their tenant-local user is explicitly linked to a DGFY account membership. Legacy master-admin/founder tenant users can receive an accepted founder membership through the verified-email bootstrap; non-founder users without a membership link will see a closed-state message until a DGFY account invitation is accepted.
 - Platform-admin owner assignment creates or updates explicit accepted membership state with `source='admin_handover'` and updates `tenants.owner_dgfy_account_id`; it does not edit DGFY email/password from tenant settings.

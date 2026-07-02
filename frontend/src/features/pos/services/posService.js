@@ -195,11 +195,6 @@ export const fetchPosReportsProfitLoss = async (params = {}, requestConfig = {})
     return response.data?.data;
 };
 
-export const fetchPosReportsCashierShifts = async (params = {}, requestConfig = {}) => {
-    const response = await api.get('/pos/reports/cashier-shifts', { params, ...requestConfig });
-    return response.data?.data;
-};
-
 export const exportPosReportCsv = async (params = {}) => {
     const response = await api.get('/pos/reports/export', {
         params,
@@ -331,7 +326,6 @@ export default {
     fetchPosReportsTopItems,
     fetchPosReportsComparison,
     fetchPosReportsProfitLoss,
-    fetchPosReportsCashierShifts,
     exportPosReportCsv,
     fetchIncomingOnlineOrders,
     updateOnlineOrderStatus,

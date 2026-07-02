@@ -31,6 +31,8 @@ import {
 } from '../../shared/utils/stockBearingPolicy.js';
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
+import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -208,220 +210,6 @@ const settingBoolean = (settings = {}, key) => {
 const normalizeOptionalIdempotencyKey = (value) => {
     const normalized = String(value || '').trim();
     return normalized.length >= 8 ? normalized : null;
-};
-
-export const buildCreatePosSetupCashierUseCase = ({ userService }) => {
-    if (!userService || typeof userService.createLocalCashier !== 'function') {
-        throw new Error('buildCreatePosSetupCashierUseCase requires userService.createLocalCashier');
-    }
-
-    return async ({ payload = {}, user = null } = {}) => {
-        try {
-            const actorUserId = parsePositiveInt(user?.user_id);
-            if (!actorUserId) {
-                throw new DomainError(
-                    DomainErrorCode.AUTHENTICATION_FAILED,
-                    'Authenticated user is required',
-                    { statusCode: 401 }
-                );
-            }
-
-            const cashier = await userService.createLocalCashier(actorUserId, {
-                username: payload.username,
-                email: payload.email,
-                phone_number: payload.phone_number,
-                password: payload.password,
-                location_ids: payload.location_ids
-            });
-
-            return ok({ cashier }, 'Cashier created');
-        } catch (error) {
-            return fail(mapPosUseCaseError(error, 'Failed to create POS cashier'));
-        }
-    };
-};
-
-export const buildListPosSetupCashiersUseCase = ({ userService }) => {
-    if (!userService || typeof userService.listLocalCashiers !== 'function') {
-        throw new Error('buildListPosSetupCashiersUseCase requires userService.listLocalCashiers');
-    }
-
-    return async ({ user = null } = {}) => {
-        try {
-            const actorUserId = parsePositiveInt(user?.user_id);
-            if (!actorUserId) {
-                throw new DomainError(
-                    DomainErrorCode.AUTHENTICATION_FAILED,
-                    'Authenticated user is required',
-                    { statusCode: 401 }
-                );
-            }
-
-            const cashiers = await userService.listLocalCashiers(actorUserId);
-            return ok({ cashiers }, 'Cashiers retrieved');
-        } catch (error) {
-            return fail(mapPosUseCaseError(error, 'Failed to list POS cashiers'));
-        }
-    };
-};
-
-export const buildLoginPosCashierUseCase = ({ authService }) => {
-    if (!authService || typeof authService.loginUser !== 'function') {
-        throw new Error('buildLoginPosCashierUseCase requires authService.loginUser');
-    }
-
-    return async ({ payload = {} } = {}) => {
-        try {
-            const session = await authService.loginUser(
-                payload.identifier,
-                payload.password,
-                { allowUsername: true, requiredRole: 'cashier' }
-            );
-            return ok(session, 'Cashier login successful');
-        } catch (error) {
-            return fail(mapPosUseCaseError(error, 'Cashier login failed'));
-        }
-    };
-};
-
-export const buildVerifyPosTerminalUseCase = ({ posRepository, terminalPairingService = null }) => {
-    return async ({ payload = {}, user = null } = {}) => {
-        try {
-            const normalizedUserId = parsePositiveInt(user?.user_id);
-            if (!normalizedUserId) {
-                throw new DomainError(
-                    DomainErrorCode.AUTHENTICATION_FAILED,
-                    'Authenticated user is required',
-                    { statusCode: 401 }
-                );
-            }
-
-            const terminalId = sanitizeTerminalId(payload?.terminal_id);
-            if (!terminalId) {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'A valid terminal ID is required.',
-                    { statusCode: 422 }
-                );
-            }
-
-            const policy = typeof posRepository.getTerminalIdentityPolicySecretSettings === 'function'
-                ? await posRepository.getTerminalIdentityPolicySecretSettings()
-                : await resolveTerminalIdentityPolicySettings({ posRepository, settings: {} });
-            const activeRegistry = Array.isArray(policy?.active_registry) ? policy.active_registry : [];
-            const registryEntry = activeRegistry.find((entry) => sanitizeTerminalId(entry?.terminal_id) === terminalId) || null;
-
-            if (activeRegistry.length === 0) {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'Terminal registry enforcement is active, but no active terminal entries are configured.',
-                    { statusCode: 422 }
-                );
-            }
-            if (!registryEntry) {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    `terminal_id "${terminalId}" is not an active registry terminal.`,
-                    { statusCode: 422 }
-                );
-            }
-            if (policy?.binding_enforced === true && !parsePositiveInt(registryEntry.location_id)) {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'Terminal location binding is enforced, but the selected terminal has no home location.',
-                    { statusCode: 422 }
-                );
-            }
-            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
-            const locationId = parsePositiveInt(registryEntry.location_id);
-            const pairingToken = terminalPairingService?.issue && tenantId && locationId
-                ? terminalPairingService.issue({
-                    tenantId,
-                    terminalId,
-                    locationId
-                })
-                : null;
-
-            return ok({
-                pairing_token: pairingToken,
-                terminal_identity_policy: {
-                    mode: policy?.mode || 'warn',
-                    binding_enforced: policy?.binding_enforced === true,
-                    terminal_id: terminalId,
-                    registry_entry: {
-                        terminal_id: terminalId,
-                        label: String(registryEntry.label || '').trim(),
-                        location_id: parsePositiveInt(registryEntry.location_id)
-                    },
-                    reason_code: 'ALLOWED'
-                }
-            }, 'Terminal verified');
-        } catch (error) {
-            return fail(mapPosUseCaseError(error, 'Failed to verify POS terminal'));
-        }
-    };
-};
-
-export const buildGetPairedPosTerminalUseCase = ({ posRepository, terminalPairingService }) => {
-    if (!terminalPairingService?.verify || !terminalPairingService?.assertBinding) {
-        throw new Error('buildGetPairedPosTerminalUseCase requires terminalPairingService');
-    }
-
-    return async ({ pairingToken = '', user = null } = {}) => {
-        try {
-            const normalizedUserId = parsePositiveInt(user?.user_id);
-            if (!normalizedUserId) {
-                throw new DomainError(
-                    DomainErrorCode.AUTHENTICATION_FAILED,
-                    'Authenticated user is required',
-                    { statusCode: 401 }
-                );
-            }
-
-            const claims = terminalPairingService.verify(pairingToken);
-            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
-            const terminalId = sanitizeTerminalId(claims?.terminal_id);
-            const policy = await posRepository.getTerminalIdentityPolicySecretSettings();
-            const activeRegistry = Array.isArray(policy?.active_registry) ? policy.active_registry : [];
-            const registryEntry = activeRegistry.find((entry) => sanitizeTerminalId(entry?.terminal_id) === terminalId) || null;
-            const locationId = parsePositiveInt(registryEntry?.location_id);
-            if (!registryEntry || !locationId) {
-                const error = new Error('This POS device pairing is no longer valid.');
-                error.statusCode = 401;
-                throw error;
-            }
-
-            terminalPairingService.assertBinding({
-                claims,
-                tenantId,
-                terminalId,
-                locationId
-            });
-
-            await resolveMovementLocation({
-                requestedLocationId: locationId,
-                userId: normalizedUserId,
-                operationLabel: 'paired POS terminal access'
-            });
-
-            return ok({
-                paired: true,
-                terminal_identity_policy: {
-                    mode: policy?.mode || 'warn',
-                    binding_enforced: policy?.binding_enforced === true,
-                    terminal_id: terminalId,
-                    registry_entry: {
-                        terminal_id: terminalId,
-                        label: String(registryEntry.label || '').trim(),
-                        location_id: locationId
-                    },
-                    reason_code: 'PAIRED_DEVICE_ALLOWED'
-                }
-            }, 'Paired terminal verified');
-        } catch (error) {
-            return fail(mapPosUseCaseError(error, 'Failed to verify paired POS terminal'));
-        }
-    };
 };
 
 const buildOperationReplayConflictError = () => new DomainError(
@@ -875,7 +663,8 @@ const resolvePosReadLocationScope = async ({
     requestedLocationId = null,
     userId = null,
     transaction = null,
-    operationLabel = 'POS read operation'
+    operationLabel = 'POS read operation',
+    allowNullWhenUnresolved = false
 } = {}) => {
     const normalizedRequestedLocationId = requestedLocationId == null
         ? null
@@ -899,6 +688,12 @@ const resolvePosReadLocationScope = async ({
             operationLabel
         });
     } catch (error) {
+        if (allowNullWhenUnresolved && normalizedRequestedLocationId == null) {
+            return {
+                location_id: null,
+                location: null
+            };
+        }
         mapLocationScopeResolutionError(error, {
             requestedLocationId: normalizedRequestedLocationId,
             operationLabel
@@ -953,6 +748,12 @@ const resolvePosOperationalLocationScope = async ({
             operationLabel
         });
     } catch (error) {
+        if (allowNullWhenUnresolved && normalizedRequestedLocationId == null) {
+            return {
+                location_id: null,
+                location: null
+            };
+        }
         mapLocationScopeResolutionError(error, {
             requestedLocationId: normalizedRequestedLocationId,
             operationLabel
@@ -1091,6 +892,173 @@ const buildShiftClosedError = () => new DomainError(
         }
     }
 );
+
+const resolvePairingIdentityStatus = async ({ tenantId, user }) => {
+    const status = await getDgfyLegacyLinkStatus({ tenantId, user });
+    if (status.dgfy_link_status === 'linked') {
+        const { DgfyAccount } = await import('../../../models/index.js');
+        const account = status.dgfy_account_id
+            ? await DgfyAccount.findByPk(status.dgfy_account_id)
+            : null;
+        if (!account || account.is_active !== true || account.deleted_at) {
+            throw new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'The linked DGFY account is inactive or unavailable.',
+                { statusCode: 403, details: { reason_code: 'POS_PAIRING_DGFY_ACCOUNT_INACTIVE' } }
+            );
+        }
+        return {
+            identity_mode: 'dgfy_membership',
+            membership_id: status.dgfy_membership_id
+        };
+    }
+    if (status.can_legacy_login === true) {
+        return {
+            identity_mode: 'legacy_grace',
+            membership_id: null
+        };
+    }
+    throw new DomainError(
+        DomainErrorCode.AUTHORIZATION_FAILED,
+        'A current DGFY membership or active legacy-grace identity is required for POS pairing.',
+        { statusCode: 403, details: { reason_code: 'POS_PAIRING_IDENTITY_INVALID' } }
+    );
+};
+
+const requirePosPermissionForPairing = (user) => {
+    if (user?.is_master_admin === true) return;
+    const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+    if (permissions.includes('pos:view') || permissions.includes('pos:transact')) return;
+    throw new DomainError(
+        DomainErrorCode.AUTHORIZATION_FAILED,
+        'POS permission is required for terminal pairing.',
+        { statusCode: 403, details: { reason_code: 'POS_PAIRING_PERMISSION_DENIED' } }
+    );
+};
+
+export const buildVerifyPosTerminalUseCase = ({
+    posRepository,
+    terminalPairingService,
+    resolveIdentityStatus = resolvePairingIdentityStatus,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ payload = {}, user = null } = {}) => {
+        try {
+            const userId = parsePositiveInt(user?.user_id);
+            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+            const terminalId = sanitizeTerminalId(payload.terminal_id);
+            if (!userId || !tenantId || tenantId === 'default') {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated tenant user is required.', { statusCode: 401 });
+            }
+            if (!terminalId) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Terminal ID is required.', { statusCode: 422 });
+            }
+            if (user?.is_master_admin !== true) {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the company master admin can pair a POS device.', {
+                    statusCode: 403,
+                    details: { reason_code: 'POS_TERMINAL_PAIRING_ADMIN_REQUIRED' }
+                });
+            }
+            requirePosPermissionForPairing(user);
+
+            const policy = await posRepository.getTerminalPairingPolicySettings();
+            const entry = (policy.active_registry || []).find((candidate) => candidate.terminal_id === terminalId);
+            if (!entry || entry.is_active === false) {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'The selected terminal is not active.', {
+                    statusCode: 403,
+                    details: { reason_code: 'POS_TERMINAL_INACTIVE_OR_UNKNOWN' }
+                });
+            }
+            if (!parsePositiveInt(entry.location_id)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'The selected terminal has no assigned location.', {
+                    statusCode: 422,
+                    details: { reason_code: 'POS_TERMINAL_LOCATION_REQUIRED' }
+                });
+            }
+            if (!entry.pairing_version) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Save the terminal registry before pairing this device.', {
+                    statusCode: 422,
+                    details: { reason_code: 'POS_TERMINAL_PAIRING_VERSION_REQUIRED' }
+                });
+            }
+
+            await resolveLocationScope({
+                requestedLocationId: entry.location_id,
+                userId,
+                operationLabel: 'POS terminal pairing'
+            });
+            const identity = await resolveIdentityStatus({ tenantId, user });
+            const pairingToken = terminalPairingService.issue({
+                tenantId,
+                terminalId,
+                pairingVersion: entry.pairing_version,
+                locationId: entry.location_id
+            });
+
+            return ok({
+                pairing_token: pairingToken,
+                paired: true,
+                terminal_id: terminalId,
+                location_id: entry.location_id,
+                terminal_label: entry.label || terminalId,
+                identity_mode: identity.identity_mode
+            }, 'Terminal paired');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to pair POS terminal'));
+        }
+    };
+};
+
+export const buildGetPairedPosTerminalUseCase = ({
+    posRepository,
+    terminalPairingService,
+    resolveIdentityStatus = resolvePairingIdentityStatus,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ pairingToken = '', user = null } = {}) => {
+        try {
+            const userId = parsePositiveInt(user?.user_id);
+            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+            if (!userId || !tenantId || tenantId === 'default') {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated tenant user is required.', { statusCode: 401 });
+            }
+            requirePosPermissionForPairing(user);
+            const claims = terminalPairingService.verify(pairingToken);
+            const policy = await posRepository.getTerminalPairingPolicySettings();
+            const entry = (policy.active_registry || []).find((candidate) => candidate.terminal_id === claims.terminal_id);
+            if (!entry || !entry.pairing_version || !parsePositiveInt(entry.location_id)) {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'The paired terminal is no longer active or fully configured.', {
+                    statusCode: 401,
+                    details: { reason_code: 'POS_TERMINAL_PAIRING_INVALID' }
+                });
+            }
+            terminalPairingService.assertBinding({
+                claims,
+                tenantId,
+                terminalId: entry.terminal_id,
+                pairingVersion: entry.pairing_version,
+                locationId: entry.location_id
+            });
+
+            const identity = await resolveIdentityStatus({ tenantId, user });
+            await resolveLocationScope({
+                requestedLocationId: entry.location_id,
+                userId,
+                operationLabel: 'paired POS terminal use'
+            });
+
+            return ok({
+                paired: true,
+                terminal_id: entry.terminal_id,
+                location_id: entry.location_id,
+                terminal_label: entry.label || entry.terminal_id,
+                identity_mode: identity.identity_mode
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to verify paired POS terminal'));
+        }
+    };
+};
 
 const assertOpenShiftForPosMutation = async ({
     posRepository,
@@ -1247,6 +1215,24 @@ const buildLineStockPolicySubject = (line = {}) => ({
     ...(line?.item || {}),
     category: line?.item?.category ?? line?.category
 });
+
+const executeInventoryStockCommand = async ({
+    inventoryCommandService,
+    command,
+    movementData,
+    userId,
+    transaction
+}) => {
+    const commandFn = inventoryCommandService?.[command] || inventoryCommandService?.createStockMovement;
+    if (typeof commandFn !== 'function') {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            `Inventory stock command is unavailable: ${command}`,
+            { statusCode: 409 }
+        );
+    }
+    return commandFn(movementData, userId, transaction);
+};
 
 const getPosSettings = async () => unwrapApplicationResultOrThrow(
     await getAllSettingsUseCase(),
@@ -1817,7 +1803,8 @@ const buildFiscalDocumentSnapshot = ({
     }))
 });
 
-export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService }) => {
+export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService, stockMovementService }) => {
+    const stockCommands = inventoryCommandService || stockMovementService;
     return async ({ payload, userId, user }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
@@ -2187,14 +2174,11 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 }
 
                 const isServiceItem = isStockExemptServiceItem(item);
+                const isAlwaysAvailable = item.pos_always_available === true;
+                const isStockExemptLine = isServiceItem || isAlwaysAvailable;
                 const currentStock = Number(item.current_stock) || 0;
                 const lineRecipeMovements = recipePlan.movementsByLineIndex[preparedLines.length] || [];
-                if (
-                    !isServiceItem
-                    && item.pos_always_available !== true
-                    && lineRecipeMovements.length === 0
-                    && currentStock + 0.000001 < quantity
-                ) {
+                if (!isStockExemptLine && lineRecipeMovements.length === 0 && currentStock + 0.000001 < quantity) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${quantity}`,
@@ -2245,7 +2229,11 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     item_name: item.name,
                     quantity: round4(quantity),
                     unit_of_measure: item.unit_of_measure,
-                    cost_snapshot: isServiceItem ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
+                    cost_snapshot: isStockExemptLine ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
+                    stock_effect_type: isStockExemptLine ? 'stock_exempt' : 'inventory_issue',
+                    stock_exempt_reason: isAlwaysAvailable
+                        ? 'pos_always_available'
+                        : (isServiceItem ? 'service_item' : null),
                     sale_price: round4(resolvedPrice),
                     sale_price_overridden: salePriceOverridden,
                     price_override_reason: salePriceOverridden ? priceOverrideReason : null,
@@ -2537,36 +2525,45 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
                 const line = preparedLines[lineIndex];
                 const item = itemMap.get(Number(line.item_id));
-                if (isStockExemptServiceItem(item)) {
+                if (line.stock_effect_type === 'stock_exempt') {
                     continue;
                 }
                 const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
                 if (recipeMovements.length > 0) {
                     for (const movement of recipeMovements) {
-                        await stockMovementService.createStockMovement({
-                            item_id: movement.ingredient_item_id,
-                            quantity: Number(movement.quantity),
-                            movement_type: 'goods_issue',
-                            location_id: enforcedCheckoutLocationId,
-                            reference_type: 'POS',
-                            reference_id: String(posTransactionId),
-                            notes: `F&B recipe consumption for ${movement.product_name} on POS checkout ${invoiceNumber}`
-                        }, normalizedUserId, transaction);
+                        await executeInventoryStockCommand({
+                            inventoryCommandService: stockCommands,
+                            command: 'issueStockForPosSale',
+                            movementData: {
+                                item_id: movement.ingredient_item_id,
+                                quantity: Number(movement.quantity),
+                                movement_type: 'goods_issue',
+                                location_id: enforcedCheckoutLocationId,
+                                reference_type: 'POS',
+                                reference_id: String(posTransactionId),
+                                notes: `F&B recipe consumption for ${movement.product_name} on POS checkout ${invoiceNumber}`
+                            },
+                            userId: normalizedUserId,
+                            transaction
+                        });
                     }
                     continue;
                 }
-                if (item?.pos_always_available === true) {
-                    continue;
-                }
-                await stockMovementService.createStockMovement({
-                    item_id: line.item_id,
-                    quantity: Number(line.quantity),
-                    movement_type: 'goods_issue',
-                    location_id: enforcedCheckoutLocationId,
-                    reference_type: 'POS',
-                    reference_id: String(posTransactionId),
-                    notes: `POS checkout ${invoiceNumber}`
-                }, normalizedUserId, transaction);
+                await executeInventoryStockCommand({
+                    inventoryCommandService: stockCommands,
+                    command: 'issueStockForPosSale',
+                    movementData: {
+                        item_id: line.item_id,
+                        quantity: Number(line.quantity),
+                        movement_type: 'goods_issue',
+                        location_id: enforcedCheckoutLocationId,
+                        reference_type: 'POS',
+                        reference_id: String(posTransactionId),
+                        notes: `POS checkout ${invoiceNumber}`
+                    },
+                    userId: normalizedUserId,
+                    transaction
+                });
             }
 
             const totalAmountCents = toCurrencyCents(totalAmount);
@@ -2684,7 +2681,8 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildVoidPosTransactionUseCase = ({ posRepository, stockMovementService }) => {
+export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, stockMovementService }) => {
+    const stockCommands = inventoryCommandService || stockMovementService;
     return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
@@ -2732,15 +2730,21 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, stockMovementSer
             for (const movement of stockMovements || []) {
                 const quantity = Math.abs(Number(movement.quantity || 0));
                 if (quantity <= 0) continue;
-                const reversal = await stockMovementService.createStockMovement({
-                    item_id: movement.item_id,
-                    quantity,
-                    movement_type: 'return',
-                    location_id: movement.location_id || existing.location_id || null,
-                    reference_type: 'POS',
-                    reference_id: String(normalizedTransactionId),
-                    notes: `POS void reversal for ${existing.invoice_number}`
-                }, actorUserId, transaction);
+                const reversal = await executeInventoryStockCommand({
+                    inventoryCommandService: stockCommands,
+                    command: 'returnStockForVoidedSale',
+                    movementData: {
+                        item_id: movement.item_id,
+                        quantity,
+                        movement_type: 'return',
+                        location_id: movement.location_id || existing.location_id || null,
+                        reference_type: 'POS',
+                        reference_id: String(normalizedTransactionId),
+                        notes: `POS void reversal for ${existing.invoice_number}`
+                    },
+                    userId: actorUserId,
+                    transaction
+                });
                 stockReversals.push({
                     original_movement_id: movement.movement_id || null,
                     reversal_movement_id: reversal?.movement_id || null
@@ -3088,6 +3092,57 @@ export const buildVerifyFiscalEventLedgerUseCase = ({ posRepository }) => {
     };
 };
 
+export const buildCreatePosSetupCashierUseCase = ({ userService }) => {
+    return async () => fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Local cashier creation is retired. Invite an existing DGFY account as cashier and assign its store locations.',
+        { statusCode: 410, details: { reason_code: 'POS_LOCAL_CASHIER_CREATION_RETIRED' } }
+    ));
+};
+
+export const buildListPosSetupCashiersUseCase = ({ userService }) => {
+    if (!userService || typeof userService.listLocalCashiers !== 'function') {
+        throw new Error('buildListPosSetupCashiersUseCase requires userService.listLocalCashiers');
+    }
+
+    return async ({ user = null } = {}) => {
+        try {
+            const actorUserId = parsePositiveInt(user?.user_id);
+            if (!actorUserId) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHENTICATION_FAILED,
+                    'Authenticated user is required',
+                    { statusCode: 401 }
+                );
+            }
+
+            const cashiers = await userService.listLocalCashiers(actorUserId);
+            return ok({ cashiers }, 'Cashiers retrieved');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list POS cashiers'));
+        }
+    };
+};
+
+export const buildLoginPosCashierUseCase = ({ authService }) => {
+    if (!authService || typeof authService.loginUser !== 'function') {
+        throw new Error('buildLoginPosCashierUseCase requires authService.loginUser');
+    }
+
+    return async ({ payload = {} } = {}) => {
+        try {
+            const session = await authService.loginUser(
+                payload.identifier,
+                payload.password,
+                { allowUsername: true, requiredRole: 'cashier' }
+            );
+            return ok(session, 'Cashier login successful');
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Cashier login failed'));
+        }
+    };
+};
+
 export const buildListPosTransactionsUseCase = ({ posRepository }) => {
     return async ({ query, user }) => {
         if (query !== undefined && !isPlainObject(query)) {
@@ -3123,78 +3178,6 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
         }
     };
 };
-
-const buildReadScopedPosReportUseCase = ({ posRepository, repositoryMethod, failureMessage }) => {
-    return async ({ query, user }) => {
-        if (query !== undefined && !isPlainObject(query)) {
-            return fail(new DomainError(
-                DomainErrorCode.VALIDATION_FAILED,
-                'query must be an object',
-                { statusCode: 400 }
-            ));
-        }
-
-        const normalizedUserId = parsePositiveInt(user?.user_id);
-        if (!normalizedUserId) {
-            return fail(new DomainError(
-                DomainErrorCode.AUTHENTICATION_FAILED,
-                'Authenticated user is required to view POS reports',
-                { statusCode: 401 }
-            ));
-        }
-
-        try {
-            const locationScope = await resolvePosReadLocationScope({
-                requestedLocationId: query?.location_id,
-                userId: normalizedUserId,
-                operationLabel: 'POS reports read'
-            });
-            const data = await repositoryMethod.call(posRepository, {
-                ...(query || {}),
-                location_id: locationScope.location_id
-            });
-            return ok(data);
-        } catch (error) {
-            return fail(mapPosUseCaseError(error, failureMessage));
-        }
-    };
-};
-
-export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
-    posRepository,
-    repositoryMethod: posRepository.getReportsOverview,
-    failureMessage: 'Failed to load POS reports overview'
-});
-
-export const buildGetPosReportsTopItemsUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
-    posRepository,
-    repositoryMethod: posRepository.getReportsTopItems,
-    failureMessage: 'Failed to load POS top items report'
-});
-
-export const buildGetPosReportsComparisonUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
-    posRepository,
-    repositoryMethod: posRepository.getReportsComparison,
-    failureMessage: 'Failed to load POS sales comparison report'
-});
-
-export const buildGetPosReportsProfitLossUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
-    posRepository,
-    repositoryMethod: posRepository.getReportsProfitLoss,
-    failureMessage: 'Failed to load POS profit/loss report'
-});
-
-export const buildGetPosReportsCashierShiftHistoryUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
-    posRepository,
-    repositoryMethod: posRepository.getReportsCashierShiftHistory,
-    failureMessage: 'Failed to load POS cashier shift history report'
-});
-
-export const buildExportPosReportsUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
-    posRepository,
-    repositoryMethod: posRepository.exportReports,
-    failureMessage: 'Failed to export POS report'
-});
 
 const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}) => {
     if (complianceError) {
@@ -3240,6 +3223,7 @@ const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}
     const hasMissing = (code) => missing.some((entry) => entry?.code === code);
     const status = String(item.status || '').trim().toLowerCase();
     const isServiceItem = isStockExemptServiceItem(item);
+    const isAlwaysAvailable = item.pos_always_available === true;
     const stock = Number(item.current_stock || 0);
 
     if (status !== 'active') {
@@ -3251,7 +3235,7 @@ const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}
     if (hasMissing('SALE_PRICE_MISSING') || Number(item.default_sale_price || 0) <= 0) {
         return { reason_code: 'MISSING_PRICE', message: 'Item is missing a sale price' };
     }
-    if (!isServiceItem && item.pos_always_available !== true && stock <= 0) {
+    if (!isServiceItem && !isAlwaysAvailable && stock <= 0) {
         return { reason_code: 'OUT_OF_STOCK', message: 'Item is out of stock at this location' };
     }
     if (isServiceItem && item.serviceDetail?.visible_in_pos === false) {
@@ -3820,9 +3804,11 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
             }
 
             const data = await posRepository.upsertCatalogOverride(normalizedItemId, {
-                ...(typeof payload.pos_visible === 'boolean' ? { pos_visible: payload.pos_visible } : {}),
-                ...(typeof payload.pos_always_available === 'boolean'
-                    ? { pos_always_available: payload.pos_always_available }
+                ...(Object.prototype.hasOwnProperty.call(payload, 'pos_visible')
+                    ? { pos_visible: payload.pos_visible }
+                    : {}),
+                ...(Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
+                    ? { pos_always_available: payload.pos_always_available === true }
                     : {})
             });
             return ok(toSerializable(data));
@@ -4436,27 +4422,6 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
             const existing = await posRepository.findOpenTerminalShift({
                 cashierId: normalizedUserId
             });
-            const existingTerminalShift = await posRepository.findOpenTerminalShift({
-                terminalId
-            });
-            if (
-                existingTerminalShift
-                && parsePositiveInt(existingTerminalShift.cashier_id) !== normalizedUserId
-            ) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'This terminal already has an active open shift.',
-                    {
-                        statusCode: 409,
-                        details: {
-                            existing_shift_id: existingTerminalShift.pos_terminal_shift_id,
-                            existing_terminal_id: existingTerminalShift.terminal_id || null,
-                            existing_cashier_id: parsePositiveInt(existingTerminalShift.cashier_id) || null,
-                            requested_terminal_id: terminalId || null
-                        }
-                    }
-                );
-            }
             if (existing) {
                 const existingLocationId = parsePositiveInt(existing.location_id);
                 if (String(existing.terminal_id || '') !== String(terminalId || '')) {
@@ -5190,7 +5155,13 @@ export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMovementService }) => {
+export const buildUpdateOnlineOrderStatusUseCase = ({
+    posRepository,
+    inventoryCommandService,
+    stockMovementService,
+    activityRecorder = recordDgfyOrderActivity
+}) => {
+    const stockCommands = inventoryCommandService || stockMovementService;
     return async ({ posTransactionId, payload, user }) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         if (!normalizedTransactionId) {
@@ -5290,7 +5261,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
             if (
                 currentStatus !== 'completed'
                 && targetStatus === 'completed'
-                && stockMovementService?.createStockMovement
+                && (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement)
             ) {
                 const stockMovements = await buildOnlineOrderStockMovements({
                     order: existing,
@@ -5301,11 +5272,13 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
                     }
                 });
                 for (const movement of stockMovements) {
-                    await stockMovementService.createStockMovement(
-                        movement,
-                        actingUserId,
+                    await executeInventoryStockCommand({
+                        inventoryCommandService: stockCommands,
+                        command: 'issueStockForOnlineFulfillment',
+                        movementData: movement,
+                        userId: actingUserId,
                         transaction
-                    );
+                    });
                 }
             }
 
@@ -5332,6 +5305,18 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
             });
 
             await transaction.commit();
+            const currentTenantId = dbStore.getStore()?.tenantId || null;
+            await activityRecorder({
+                tenantId: currentTenantId,
+                order: updated,
+                storeCustomer: updated?.storeCustomer || updated?.store_customer || null
+            }).catch((activityError) => {
+                logger.warn('Failed to sync DGFY order activity after POS status update', {
+                    pos_transaction_id: normalizedTransactionId,
+                    tracking_pin: updated?.tracking_pin || null,
+                    error: activityError?.message || activityError
+                });
+            });
             const replayPayload = {
                 order: toSerializable(updated),
                 status_transition: {

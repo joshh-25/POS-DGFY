@@ -11,6 +11,8 @@ const accountPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/s
 const solutionsPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/SolutionsPage.jsx'), 'utf8');
 const businessRegistrationUrlSource = () => fs.readFileSync(path.join(appRoot, 'businessRegistrationUrl.js'), 'utf8');
 const guestTrackingDrawerSource = () => fs.readFileSync(path.join(appRoot, 'tracking/components/GuestTrackingDrawer.jsx'), 'utf8');
+const promoCodePanelSource = () => fs.readFileSync(path.join(appRoot, 'checkout/components/PromoCodePanel.jsx'), 'utf8');
+const orderSummaryCardSource = () => fs.readFileSync(path.join(appRoot, 'checkout/components/OrderSummaryCard.jsx'), 'utf8');
 
 describe('Food & Beverage storefront contract', () => {
   it('renders restaurant menu metadata and carries modifiers into checkout lines', () => {
@@ -110,14 +112,39 @@ describe('Food & Beverage storefront contract', () => {
     const source = appSource();
 
     expect(source).toContain('const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;');
+    expect(source).toContain('const isFnbOrderSubpage = isFnbMode && isResolvedOrderSubpage;');
+    expect(source).toContain("const isStandaloneTrackingPage = Boolean(trackingResult) && isResolvedOrderSubpage && checkoutTab === 'track';");
     expect(source).toContain('const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;');
     expect(source).not.toContain('if (!isFnbOrderSubpage) return;');
     expect(source).toContain("const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);");
-    expect(source).toContain('const canRefreshBackgroundPins = !isStoreTrackingRoute;');
-    expect(source).toContain('const selectedPollMs = typeof document !==');
-    expect(source).toContain('90000 : 45000');
+    expect(source).toContain('return buildTrackingPinKey(guestTrackedOrders, {');
+    expect(source).toContain('enabled: !isStoreTrackingRoute');
+    expect(source).toContain("guestTrackingBackgroundPinsKey.split('|').filter(Boolean)");
+    expect(source).toContain('createCompletionTrackingScheduler({');
+    expect(source).toContain('resolveTrackingRetryDelayMs({ error, normalDelayMs })');
+    expect(source).toContain("visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible'");
+    expect(source).not.toContain('window.setInterval(refreshSelectedPin');
+    expect(source).not.toContain('guestTrackedOrders, isFnbOrderSubpage');
+    expect(source).not.toContain('trackingResult?.status]);');
     expect(source).toContain('300000 : 180000');
+    expect(source).toContain('Tracking is refreshing too often');
+    expect(source).toContain("Try again in ${trackingCooldownLabel}");
+    expect(source).toContain('disabled={isTrackingRefreshing || isTrackingCooldownActive}');
     expect(source).toContain('setIsGuestTrackingDrawerOpen(false);');
+  });
+
+  it('keeps signed-in standalone tracking live through SSE with polling repair', () => {
+    const source = appSource();
+
+    expect(source).toContain('const hasVisibleCustomerTrackingSurface = isAccountDrawerOpen');
+    expect(source).toContain('|| isStandaloneTrackingPage');
+    expect(source.match(/if \(!hasVisibleCustomerTrackingSurface\) return undefined;/g)).toHaveLength(2);
+    expect(source).toContain("source.addEventListener('activity.updated'");
+    expect(source).toContain('mergeLiveAccountActivity(payload.activity);');
+    expect(source).toContain('source.onerror = () => {');
+    expect(source).toContain('void handleLoadAccountPanel();');
+    expect(source).toContain('dedupeActiveCustomerOrders(accountPanel.orders)');
+    expect(source).toContain('mergeVisibleTrackingResult(previous, activity)');
   });
 
   it('supports guest-or-account checkout entry while preserving auth draft resume state', () => {
@@ -143,6 +170,35 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('setGuestCheckoutUnlocked(true)');
     expect(source).toContain("Your DGFY account details will be used for this order.");
     expect(source).toContain("Your signed-in DGFY account will be used for this booking.");
+  });
+
+  it('keeps F&B checkout payment values backend-valid and excludes the old online placeholder', () => {
+    const source = appSource();
+
+    expect(source).toContain('STOREFRONT_CHECKOUT_PAYMENT_OPTIONS');
+    expect(source).toContain("{ value: 'cash', label: 'Cash on delivery/pickup' }");
+    expect(source).toContain("{ value: 'gcash', label: 'GCash' }");
+    expect(source).toContain("{ value: 'maya', label: 'Maya' }");
+    expect(source).toContain("{ value: 'card', label: 'Card' }");
+    expect(source).toContain("{ value: 'bank_transfer', label: 'Bank transfer' }");
+    expect(source).not.toContain("{ value: 'online', label: 'Online payment' }");
+    expect(source).toContain('payment_type: fnbPaymentType');
+  });
+
+  it('keeps promo-code checkout UI display-only until backend validation exists', () => {
+    const source = appSource();
+    const promoSource = promoCodePanelSource();
+    const summarySource = orderSummaryCardSource();
+
+    expect(source).toContain("import { PromoCodePanel }");
+    expect(source).toContain('renderPromoCodePanel');
+    expect(source).toContain('code={promoCodeDraft}');
+    expect(promoSource).toContain('data-storefront-promo-code-panel="true"');
+    expect(promoSource).toContain('Code is displayed only; totals are unchanged.');
+    expect(summarySource).toContain('promoSlot');
+    expect(source).not.toContain('promo_code:');
+    expect(source).not.toContain('coupon_code:');
+    expect(source).not.toContain('discount_code:');
   });
 
   it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {

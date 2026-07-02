@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "merge_name": "June 30 staging release-governance and production guest-checkout reconciliation",
+  "target_branch": "staging",
+  "source_refs": [],
+  "explicitly_rejected_files": [],
+  "semantic_conflict_review": {
+    "status": "none",
+    "notes": "The current candidate preserves the already-deployed master guest-checkout behavior and adds release-governance controls. No unresolved semantic conflict was found in the final staging tree.",
+    "user_approved_decisions": []
+  },
+  "feature_areas": [
+    {
+      "id": "guest-checkout-production-docs",
+      "decision": "preserve-master",
+      "intent": "Preserve the production guest-checkout draft behavior and its honest deployed-but-mutation-unproven documentation while hardening release governance.",
+      "source_refs": [
+        "origin/master"
+      ],
+      "master_behaviors_preserved": [
+        "Session-scoped guest checkout draft restoration remains limited to the same storefront and valid cart.",
+        "Stored payment values remain normalized to backend-supported methods.",
+        "Production documentation does not claim controlled guest-order mutation proof that has not occurred."
+      ],
+      "proof": {
+        "required_files_present": [
+          "docs/features/DGFY_CUSTOMER_ACCOUNT.md",
+          "docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md",
+          "docs/architecture/adr/0030-free-tier-signed-release-authorization.md"
+        ],
+        "required_files_absent": [],
+        "required_strings_present": [
+          {
+            "file": "docs/features/DGFY_CUSTOMER_ACCOUNT.md",
+            "text": "session-scoped browser storage"
+          },
+          {
+            "file": "docs/features/DGFY_CUSTOMER_ACCOUNT.md",
+            "text": "deployed_but_behavior_not_proven"
+          },
+          {
+            "file": "docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md",
+            "text": "deployed_pending_accuracy"
+          }
+        ],
+        "required_strings_absent": [],
+        "tests": [
+          "npm --prefix frontend test -- --run apps/store/src/__tests__/guestCheckoutDraft.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js apps/store/src/__tests__/storefrontErrorMessages.test.js"
+        ],
+        "rendered_evidence": [
+          "Controlled disposable guest-order mutation remains required; this documentation-governance task does not perform production mutation."
+        ],
+        "production_evidence_required": [
+          "Use the external release record and separate accuracy finalization before calling a future release completed."
+        ]
+      }
+    }
+  ]
+}

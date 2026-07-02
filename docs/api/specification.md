@@ -2307,7 +2307,7 @@ Archive a completed or cancelled Dispatch Order. Sets `archived_at` timestamp.
 
 ## POS Endpoints
 
-Point-of-Sale (POS) handles real-time cashier transactions for POS-visible active items. Stock-controlled product checkouts create `goods_issue` stock movements using `reference_type='POS'`; Services Mode service rows are stock-exempt and do not require inventory stock to be sold.
+Point-of-Sale (POS) handles real-time cashier transactions for POS-visible active items. Stock-controlled product checkouts create `goods_issue` stock movements using `reference_type='POS'`; Services Mode service rows and rows explicitly configured as POS Always Available are stock-exempt and do not require inventory stock to be sold.
 
 Gating notes:
 - Plan gate uses `requirePremium`.
@@ -2332,6 +2332,7 @@ List sellable POS catalog items.
 - Response enforces `pos_visible !== false`.
 - Response includes out-of-stock rows. POS clients should display unavailable state for stock-controlled products with `current_stock <= 0`.
 - Services Mode rows (`category=service`) are visible when service metadata exists and `service_item_details.visible_in_pos` is not false. They remain addable even when `current_stock=0`.
+- `pos_always_available=true` is an explicit POS-only stock exemption. It does not change `pos_visible`, Storefront visibility, or Inventory balances.
 - POS folder chips should only show folders where `show_in_pos_filter = true`.
 - Hidden folders (`show_in_pos_filter = false`) are not listed as POS filters, but their eligible items remain discoverable in unfiltered/search catalog results.
 - Default visibility policy when no override row exists:
@@ -2441,9 +2442,42 @@ Create/update POS catalog override for an item.
 **Request Body**
 ```json
 {
-  "pos_visible": true
+  "pos_visible": true,
+  "pos_always_available": false
 }
 ```
+
+At least one field is required. `pos_always_available=true` keeps an otherwise
+eligible POS row sellable at zero stock. Checkout persists an immutable
+`stock_effect_type='stock_exempt'` and
+`stock_exempt_reason='pos_always_available'` line snapshot and creates no
+Inventory stock movement for that line.
+
+### POST /pos/terminal/pair
+Enroll the current physical POS device against a selected registered terminal after DGFY master-admin authentication.
+
+**Permission**: `pos:view`
+
+**Request Body**
+```json
+{
+  "terminal_id": "FRONT-01"
+}
+```
+
+Success sets the HttpOnly `sku_pos_terminal_pairing` cookie. The response does
+not expose the token. Enrollment requires the company master admin and is bound
+to the current tenant, terminal, location, and rotatable pairing version.
+Cashiers use their accepted DGFY membership and assigned location grants; no
+reusable terminal password exists.
+
+### GET /pos/terminal/paired
+Return sanitized current pairing metadata after revalidating the terminal,
+location, pairing version, user authorization profile, and DGFY membership.
+
+### DELETE /pos/terminal/paired
+Clear the pairing cookie. Explicit terminal lock uses this endpoint before
+clearing the frontend terminal session.
 
 ### POST /pos/catalog-overrides/images/bulk
 Upload POS catalog images in bulk by SKU filename stem.
@@ -2511,6 +2545,10 @@ Execute a POS checkout transaction (atomic). Creates:
 1. `pos_transactions` header
 2. `pos_transaction_lines` with immutable VAT snapshots
 3. `stock_movements` entries (`movement_type='goods_issue'`, `reference_type='POS'`) for stock-controlled product lines only
+
+The route requires a valid terminal pairing and an open shift. POS Always
+Available lines create no `stock_movements` row and instead retain the explicit
+stock-exempt snapshot on `pos_transaction_lines`.
 
 Route mapping note:
 - This spec uses module-relative paths (for example `/pos/checkouts`).
@@ -3644,6 +3682,7 @@ Track online-store order status for public users.
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
+**Rate Limit Contract**: Public reads use a dedicated IP + store context + normalized tracking-PIN bucket sized for state-aware 10-20 second visible polling. Claim and cancellation mutations remain on the stricter Store tracking mutation limiter. `429` responses include `Retry-After` and `retryAfterSeconds`; clients must retain the last successful status, disable manual retry during cooldown, show customer-friendly countdown copy, and delay the next request for at least that duration.
 
 ### VAT Data Placement (Current Contract)
 1. Default item classification: `items.vat_type`
