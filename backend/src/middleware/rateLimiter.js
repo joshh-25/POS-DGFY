@@ -10,7 +10,8 @@ const minProdGeneralMax = parseInt(process.env.RATE_LIMIT_MIN_PROD_REQUESTS) || 
 const maxRequests = isDevelopment
   ? (parsedGeneralMax || 1000)
   : Math.max(parsedGeneralMax || 100, minProdGeneralMax);
-const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
+export const DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS;
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
 const lookupWindowMs = parseInt(process.env.RATE_LIMIT_LOOKUP_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes default
 const lookupMaxRequests = parseInt(process.env.RATE_LIMIT_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 50 : 5);

@@ -37,9 +37,9 @@ describe('TerminalLockDrawer contract', () => {
     render(<TerminalLockDrawer {...buildProps()} />);
 
     expect(screen.getByText('Terminal Login Required')).toBeTruthy();
-    expect(screen.getByLabelText('Email or Cashier Username')).toBeTruthy();
+    expect(screen.getByLabelText('DGFY Email')).toBeTruthy();
     expect(screen.getByLabelText('DGFY Password')).toBeTruthy();
-    expect(screen.getByText(/Company selection and terminal unlock appear after login succeeds/i)).toBeTruthy();
+    expect(screen.getByText(/Sign in with your DGFY account first/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
     expect(screen.queryByText(/Terminal ID/i)).toBeNull();
   });
@@ -58,13 +58,23 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.getByRole('button', { name: 'Continue to POS' }).disabled).toBe(true);
   });
 
-  it('keeps cashier and legacy access as secondary DGFY-era paths', () => {
+  it('removes standalone cashier-password login and keeps dated legacy access', () => {
     render(<TerminalLockDrawer {...buildProps({
-      onCashierSubmit: vi.fn(),
       onLegacySubmit: vi.fn()
     })} />);
 
-    expect(screen.getByRole('button', { name: 'Login as Cashier' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Login as Cashier' })).toBeNull();
     expect(screen.getByText('Legacy access until June 17, 2027')).toBeTruthy();
+  });
+
+  it('offers a clean account switch after DGFY authentication', () => {
+    const onUseDifferentAccount = vi.fn();
+    render(<TerminalLockDrawer {...buildProps({
+      dgfyPosState: { authenticated: true, companies: [] },
+      onUseDifferentAccount
+    })} />);
+
+    screen.getByRole('button', { name: 'Use different account' }).click();
+    expect(onUseDifferentAccount).toHaveBeenCalledOnce();
   });
 });
