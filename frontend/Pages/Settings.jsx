@@ -269,9 +269,8 @@ const normalizeTerminalRegistry = (rawRegistry) => {
       location_id: toPositiveInt(entry?.location_id),
       is_active: isActive,
       is_default: isActive && entry?.is_default === true,
-      has_terminal_password: entry?.has_terminal_password === true,
-      terminal_password: String(entry?.terminal_password || ''),
-      clear_terminal_password: entry?.clear_terminal_password === true
+      pairing_version: String(entry?.pairing_version || '').trim(),
+      rotate_pairing: entry?.rotate_pairing === true
     });
   });
 
@@ -1416,9 +1415,8 @@ export default function Settings() {
           location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
-          has_terminal_password: entry?.has_terminal_password === true,
-          terminal_password: String(entry?.terminal_password || ''),
-          clear_terminal_password: entry?.clear_terminal_password === true
+          pairing_version: String(entry?.pairing_version || '').trim(),
+          rotate_pairing: entry?.rotate_pairing === true
         }))
         : [];
       const existing = entries[index] || {
@@ -1427,9 +1425,8 @@ export default function Settings() {
         location_id: null,
         is_active: true,
         is_default: entries.length === 0,
-        has_terminal_password: false,
-        terminal_password: '',
-        clear_terminal_password: false
+        pairing_version: '',
+        rotate_pairing: false
       };
       entries[index] = {
         ...existing,
@@ -1468,9 +1465,8 @@ export default function Settings() {
           location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
-          has_terminal_password: entry?.has_terminal_password === true,
-          terminal_password: String(entry?.terminal_password || ''),
-          clear_terminal_password: entry?.clear_terminal_password === true
+          pairing_version: String(entry?.pairing_version || '').trim(),
+          rotate_pairing: entry?.rotate_pairing === true
         }))
         : [];
       entries.push({
@@ -1479,9 +1475,8 @@ export default function Settings() {
         location_id: null,
         is_active: true,
         is_default: entries.length === 0,
-        has_terminal_password: false,
-        terminal_password: '',
-        clear_terminal_password: false
+        pairing_version: '',
+        rotate_pairing: false
       });
       return { ...prev, posTerminalRegistry: entries };
     });
@@ -1496,9 +1491,8 @@ export default function Settings() {
           location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
-          has_terminal_password: entry?.has_terminal_password === true,
-          terminal_password: String(entry?.terminal_password || ''),
-          clear_terminal_password: entry?.clear_terminal_password === true
+          pairing_version: String(entry?.pairing_version || '').trim(),
+          rotate_pairing: entry?.rotate_pairing === true
         }))
         .filter((_, entryIndex) => entryIndex !== index);
 
@@ -1940,14 +1934,12 @@ export default function Settings() {
           location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
-          has_terminal_password: entry?.has_terminal_password === true,
-          terminal_password: String(entry?.terminal_password || ''),
-          clear_terminal_password: entry?.clear_terminal_password === true
+          pairing_version: String(entry?.pairing_version || '').trim(),
+          rotate_pairing: entry?.rotate_pairing === true
         }))
         .filter((entry) => (
           entry.terminal_id
           || entry.label
-          || entry.terminal_password
           || entry.is_default
           || entry.is_active === false
         ));
@@ -1957,16 +1949,6 @@ export default function Settings() {
       ));
       if (invalidTerminalEntry) {
         toast.error(`Invalid terminal ID: ${invalidTerminalEntry.terminal_id || '(empty)'}`);
-        return;
-      }
-
-      const invalidTerminalPassword = candidateTerminalEntries.find((entry) => {
-        const nextPassword = String(entry?.terminal_password || '');
-        if (nextPassword && nextPassword.length < 8) return true;
-        return entry?.is_active !== false && entry?.has_terminal_password !== true && nextPassword.length < 8;
-      });
-      if (invalidTerminalPassword) {
-        toast.error(`Set a terminal password with at least 8 characters for ${invalidTerminalPassword.terminal_id || 'the active terminal'}.`);
         return;
       }
 
@@ -4264,18 +4246,10 @@ export default function Settings() {
                           </select>
                         </div>
                         <div className="md:col-span-3 space-y-1">
-                          <Label className="text-xs text-slate-500">Terminal Password</Label>
-                          <Input
-                            type="password"
-                            minLength={8}
-                            value={terminal.terminal_password || ''}
-                            onChange={(event) => handleTerminalRegistryChange(index, 'terminal_password', event.target.value)}
-                            placeholder={terminal.has_terminal_password ? 'Leave blank to keep current password' : 'At least 8 characters'}
-                            autoComplete="new-password"
-                          />
-                          <p className="text-[11px] text-slate-500">
-                            {terminal.has_terminal_password ? 'Password configured. Enter a new value to rotate it.' : 'Required before this terminal can be paired.'}
-                          </p>
+                          <Label className="text-xs text-slate-500">Device Pairing</Label>
+                          <div className="min-h-10 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                            {terminal.pairing_version ? 'Registry ready. Pair the physical device from POS onboarding.' : 'Save this terminal, then pair the physical device as master admin.'}
+                          </div>
                         </div>
                         <div className="md:col-span-1 space-y-1">
                           <Label className="text-xs text-slate-500">Active</Label>

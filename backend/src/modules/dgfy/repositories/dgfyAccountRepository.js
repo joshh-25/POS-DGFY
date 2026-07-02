@@ -612,12 +612,31 @@ export const dgfyAccountRepository = {
         return dbStore.run(context, async () => {
             const User = dbStore.get('User');
             const UserLocationGrant = dbStore.get('UserLocationGrant');
+            const TenantLocation = dbStore.get('TenantLocation');
             const now = new Date();
             const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
             const transaction = await sequelizeInstance.transaction();
             let user;
             let createdTenantUser = false;
             let previousTenantUserState;
+            const normalizedLocationIds = Array.from(new Set(locationIds
+                .map((id) => Number.parseInt(id, 10))
+                .filter((id) => Number.isInteger(id) && id > 0)));
+            if (normalizedLocationIds.length > 0) {
+                const activeLocationCount = await TenantLocation.count({
+                    where: {
+                        location_id: { [Op.in]: normalizedLocationIds },
+                        is_active: true
+                    }
+                });
+                if (activeLocationCount !== normalizedLocationIds.length) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Every invited user location must exist and be active in this company.',
+                        { statusCode: 422 }
+                    );
+                }
+            }
             try {
                 user = await User.findOne({ where: { email: normalizeEmail(account.email) }, transaction });
                 previousTenantUserState = user ? {
@@ -674,9 +693,6 @@ export const dgfyAccountRepository = {
 
                 if (UserLocationGrant && Array.isArray(locationIds)) {
                     await UserLocationGrant.destroy({ where: { user_id: user.user_id }, transaction });
-                    const normalizedLocationIds = locationIds
-                        .map((id) => Number.parseInt(id, 10))
-                        .filter((id) => Number.isInteger(id) && id > 0);
                     if (normalizedLocationIds.length > 0) {
                         await UserLocationGrant.bulkCreate(normalizedLocationIds.map((locationId) => ({
                             user_id: user.user_id,

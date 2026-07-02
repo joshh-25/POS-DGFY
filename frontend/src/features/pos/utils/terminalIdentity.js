@@ -52,9 +52,8 @@ export const normalizeTerminalRegistry = (rawRegistry) => {
       location_id: Number.isInteger(Number(entry?.location_id)) ? Number(entry?.location_id) : null,
       is_active: isActive,
       is_default: isActive && entry?.is_default === true,
-      has_password: entry?.has_password === true,
-      terminal_password: String(entry?.terminal_password || ''),
-      clear_terminal_password: entry?.clear_terminal_password === true
+      pairing_version: String(entry?.pairing_version || '').trim(),
+      paired_device_ready: entry?.paired_device_ready === true || Boolean(entry?.pairing_version)
     });
   });
 
@@ -95,11 +94,9 @@ export const resolvePreferredTerminalId = (
     return normalizedPreferred;
   }
 
-  const passwordReadyEntries = activeEntries.filter((entry) => entry?.has_password === true);
-  const preferredPool = passwordReadyEntries.length > 0 ? passwordReadyEntries : activeEntries;
-  const defaultEntry = preferredPool.find((entry) => entry.is_default === true);
+  const defaultEntry = activeEntries.find((entry) => entry.is_default === true);
   if (defaultEntry?.terminal_id) return defaultEntry.terminal_id;
-  return preferredPool[0]?.terminal_id || '';
+  return activeEntries[0]?.terminal_id || '';
 };
 
 export const resolveLoginTerminalId = ({

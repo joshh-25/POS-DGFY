@@ -171,8 +171,7 @@ const posScanSchema = Joi.object({
 });
 
 const verifyTerminalSchema = Joi.object({
-    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
-    terminal_password: Joi.string().min(8).max(128).required()
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required()
 });
 
 const posCashierLoginSchema = Joi.object({

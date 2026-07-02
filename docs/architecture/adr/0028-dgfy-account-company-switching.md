@@ -41,6 +41,9 @@ The hardening contract for this rollout requires explicit proof for replay, fail
 - Invited/member companies can be left by the DGFY account. Founder-owned companies cannot be left until ownership is transferred.
 - Successful switching clears tenant-scoped frontend caches and lands on the IMS Dashboard.
 - POS uses the same DGFY company-access contract: DGFY sign-in, accessible company selection, terminal/counter selection, and POS session creation from accepted membership plus existing terminal registry/location/capability gates.
+- POS onboarding invokes the same DGFY account search/invitation contract with a server-owned `cashier` role and selected active tenant-location grants. It must not create a new tenant-local password identity.
+- Company founders/master admins are POS-operator ready without changing their `admin` role or creating a duplicate cashier profile.
+- A paired POS device uses administrator-authorized, versioned device enrollment rather than a reusable terminal password. Operator authentication and terminal possession remain separate checks.
 - Legacy POS unlock is available only as a dated grace fallback for eligible existing users and must be presented separately from the DGFY POS drawer path.
 - Switch success/failure and invitation accept success/failure are landlord-audited without secrets.
 - IMS users who entered SKUpervisor through ordinary tenant auth can still see switcher choices when their tenant-local user is explicitly linked to a DGFY account membership. Legacy master-admin/founder tenant users can receive an accepted founder membership through the verified-email bootstrap; non-founder users without a membership link will see a closed-state message until a DGFY account invitation is accepted.

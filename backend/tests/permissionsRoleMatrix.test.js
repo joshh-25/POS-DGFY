@@ -25,7 +25,8 @@ describe('role/micro-permission matrix hardening', () => {
     const cashier = new Set(DEFAULT_ROLE_PERMISSIONS.cashier);
     expect(cashier.has(PERMISSIONS.POS.actions.VIEW_POS)).toBe(true);
     expect(cashier.has(PERMISSIONS.POS.actions.TRANSACT_POS)).toBe(true);
-    expect(cashier.has(PERMISSIONS.POS.actions.CLOSE_DAY_POS)).toBe(true);
+    expect(cashier.has(PERMISSIONS.POS.actions.CLOSE_SHIFT_POS)).toBe(true);
+    expect(cashier.has(PERMISSIONS.POS.actions.CLOSE_DAY_POS)).toBe(false);
     expect(cashier.has(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS)).toBe(false);
     expect(cashier.has(PERMISSIONS.SYSTEM.actions.MANAGE_USERS)).toBe(false);
     expect(cashier.has(PERMISSIONS.ORDERS.actions.APPROVE_PO)).toBe(false);

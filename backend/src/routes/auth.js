@@ -9,6 +9,7 @@ const router = express.Router();
 router.post('/register', authLimiter, validateRegister, authController.register);
 router.post('/email-otp/request', emailOtpLimiter, validateEmailOtpRequest, authController.requestAuthEmailOtp);
 router.post('/login', authLimiter, validateLogin, authController.login);
+router.get('/csrf-token', authController.issueBrowserCsrfToken);
 router.post('/refresh-token', validateRefreshToken, authController.refreshToken);
 // Logout - invalidates the token
 router.post('/logout', authenticate, authController.logout);
@@ -24,4 +25,3 @@ router.get('/validate-invite/:token', validateInviteToken, authController.valida
 router.post('/accept-invite', validateAcceptInvite, authController.acceptInvitation);
 
 export default router;
-

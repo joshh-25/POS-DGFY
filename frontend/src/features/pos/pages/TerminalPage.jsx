@@ -10,7 +10,6 @@ import {
   fetchTerminalTodayDashboard,
   openPosDeviceDrawer,
   openTerminalShift,
-  verifyPosTerminal,
   switchTerminalShiftLocation,
   recordCashDrawerEvent,
   updateOnlineOrderStatus
@@ -29,8 +28,7 @@ import {
   logoutDgfyAccount,
   requestDgfyLegacyLinkEmailOtp,
   startDgfyTenantSession,
-  startDgfyLegacyRegistrationHandoff,
-  startDgfyPosSession
+  startDgfyLegacyRegistrationHandoff
 } from '@/services/dgfyAuthService.js';
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
@@ -1762,10 +1760,6 @@ export default function TerminalPage() {
       toast.error('Select an active terminal from the configured registry.');
       return false;
     }
-    if (registryEntry && registryEntry.has_password !== true) {
-      toast.error('This terminal has no terminal password configured in POS Setup.');
-      return false;
-    }
     if (terminalUnlockMode !== 'relock' && registryEntry && Number(registryEntry.location_id || 0) <= 0) {
       toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
       return false;
@@ -1861,6 +1855,7 @@ export default function TerminalPage() {
     event.preventDefault();
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
+    const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;
 
     setSubmitting(true);
     try {
@@ -1893,6 +1888,9 @@ export default function TerminalPage() {
       ].filter((company) => company?.can_switch);
       const selectedTenantId = String(formData.dgfyTenantId || '').trim()
         || (acceptedCompanies.length === 1 ? String(acceptedCompanies[0]?.tenant_id || '') : '');
+      if (selectedTenantId) {
+        setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
+      }
       setDgfyPosState((prev) => ({
         ...prev,
         authenticated: true,
@@ -1911,7 +1909,10 @@ export default function TerminalPage() {
         toast.message('Select the company to continue.');
         return;
       }
-      setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
+      if (!continuingAfterCompanyPicker) {
+        toast.message('Confirm the company, then continue to POS.');
+        return;
+      }
       const selectedTenantSession = await startDgfyTenantSession({
         tenantId: selectedTenantId
       }, token);
@@ -2008,9 +2009,16 @@ export default function TerminalPage() {
         toast.error('POS setup is incomplete. An active terminal and cashier account are required before terminal unlock.');
         return;
       }
+      const pairedTerminal = await fetchPairedPosTerminal().catch(() => null);
+      if (!pairedTerminal?.paired) {
+        setTerminalUnlockModalOpen(false);
+        toast.error('This physical POS device is not paired. Ask the company master admin to pair it from POS onboarding.');
+        return;
+      }
+      setPairedTerminalContext(pairedTerminal);
       setTerminalUnlockForm((prev) => ({
         ...prev,
-        terminalId: resolveSelectedLoginTerminalId()
+        terminalId: sanitizeTerminalId(pairedTerminal.terminal_id || resolveSelectedLoginTerminalId())
       }));
       setTerminalUnlockModalOpen(true);
     } catch (error) {
@@ -2305,7 +2313,6 @@ export default function TerminalPage() {
     const pairedCashierOpening = Boolean(cashierSessionActive && pairedTerminalUnlock);
     const selectedTenantId = cashierSessionActive ? '' : await resolveTenantIdForTerminalUnlock();
     const selectedTerminalId = sanitizeTerminalId(terminalUnlockForm.terminalId || resolveSelectedLoginTerminalId());
-    const terminalPassword = String(terminalUnlockForm.terminalPassword || '');
     const requiresOpeningCash = terminalUnlockMode !== 'relock';
     const rawOpeningFloat = String(terminalUnlockForm.openingFloatAmount ?? '').trim();
     const openingFloatAmount = Number(rawOpeningFloat);
@@ -2315,8 +2322,8 @@ export default function TerminalPage() {
       return;
     }
     if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
-    if (!pairedTerminalUnlock && !terminalPassword.trim()) {
-      toast.error('Terminal password is required.');
+    if (!pairedTerminalUnlock) {
+      toast.error('This physical POS device must be paired by the company master admin before cashier use.');
       return;
     }
     if (!cashierSessionActive && requiresOpeningCash && !String(terminalUnlockForm.cashierEmail || '').trim()) {
@@ -2338,18 +2345,7 @@ export default function TerminalPage() {
 
     setSubmitting(true);
     try {
-      const terminalVerification = pairedTerminalUnlock
-        ? pairedTerminalContext
-        : cashierSessionActive
-        ? await verifyPosTerminal({
-            terminal_id: selectedTerminalId,
-            terminal_password: terminalPassword
-          })
-        : await startDgfyPosSession({
-            tenantId: selectedTenantId,
-            terminalId: selectedTerminalId,
-            terminalPassword
-          });
+      const terminalVerification = pairedTerminalContext;
       const resolvedCompanyToken = String(
         cashierUnlockSession?.companyToken
         || terminalVerification?.company?.token
@@ -2627,7 +2623,42 @@ export default function TerminalPage() {
       toast.error('Your account does not have permission to open a shift.');
       return;
     }
-    const terminalId = sanitizeTerminalId(activeTerminalId);
+    let verifiedPairing = pairedTerminalContext;
+    if (isOnline) {
+      try {
+        verifiedPairing = await fetchPairedPosTerminal();
+        setPairedTerminalContext(verifiedPairing?.paired ? verifiedPairing : null);
+      } catch (error) {
+        setPairedTerminalContext(null);
+        const reasonCode = String(
+          error?.response?.data?.errors?.reason_code
+          || error?.response?.data?.error_code
+          || ''
+        ).trim();
+        const message = reasonCode === 'POS_TERMINAL_PAIRING_INVALID'
+          ? 'This physical POS device must be paired again by the company master admin before opening a shift.'
+          : (error?.response?.data?.message || 'Unable to verify this POS device pairing.');
+        toast.error(message);
+        if (userIsAdminLike) setTenantSetupModalOpen(true);
+        return;
+      }
+    }
+    if (!verifiedPairing?.paired) {
+      toast.error('This physical POS device must be paired by the company master admin before opening a shift.');
+      if (userIsAdminLike) setTenantSetupModalOpen(true);
+      return;
+    }
+
+    const pairedTerminalId = sanitizeTerminalId(
+      verifiedPairing?.terminal_id
+      || verifiedPairing?.terminal_identity_policy?.registry_entry?.terminal_id
+    );
+    const pairedLocationId = Number(
+      verifiedPairing?.location_id
+      || verifiedPairing?.terminal_identity_policy?.registry_entry?.location_id
+      || 0
+    );
+    const terminalId = pairedTerminalId || sanitizeTerminalId(activeTerminalId);
     if (!terminalId) {
       toast.error('Select a terminal ID before opening shift.');
       setDrawerOpen(true);
@@ -2641,7 +2672,9 @@ export default function TerminalPage() {
     if (!registryEnforced && activeTerminalRegistry.length > 0 && !terminalRegistryLookup.has(terminalId)) {
       toast.warning(`Terminal ID ${terminalId} is not in active registry. Shift open continues in warn mode.`);
     }
-    const scopedOperatingLocationId = Number(operatingLocationId);
+    const scopedOperatingLocationId = Number.isInteger(pairedLocationId) && pairedLocationId > 0
+      ? pairedLocationId
+      : Number(operatingLocationId);
     if (!Number.isInteger(scopedOperatingLocationId) || scopedOperatingLocationId <= 0) {
       toast.error('Select an operating location before opening shift.');
       return;
@@ -3384,11 +3417,11 @@ export default function TerminalPage() {
                     : cashierResumeUnlock
                     ? 'Enter the cashier credentials for the open shift. Terminal password is not required.'
                     : terminalUnlockMode === 'relock'
-                    ? 'Enter the registered POS terminal password to resume the current shift.'
+                    ? 'Reauthenticate the current DGFY operator to resume the paired terminal.'
                     : pairedTerminalUnlock
                     ? 'This POS device is already paired to a terminal. Enter the cashier details and opening cash to start the shift.'
                     : cashierUnlockSession?.email
-                    ? 'Choose the registered POS terminal, enter the terminal password, and start the cashier shift.'
+                    ? 'Use the terminal already paired to this physical POS device and start the cashier shift.'
                     : 'Choose the registered POS terminal, sign in the cashier, and start the shift.'}
                 </DialogDescription>
               </DialogHeader>
@@ -3474,7 +3507,7 @@ export default function TerminalPage() {
                 ) : pairedTerminalUnlock ? (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-900">
                     <p className="font-extrabold">Paired terminal: {terminalUnlockForm.terminalId}</p>
-                    <p className="mt-1">This POS device is already bound to the terminal. Terminal ID and terminal password are not required here.</p>
+                    <p className="mt-1">This physical POS device is already bound to the terminal. No reusable terminal password is required.</p>
                   </div>
                 ) : (
                   <>
@@ -3503,7 +3536,7 @@ export default function TerminalPage() {
                       </select>
                       {activeTerminalRegistry.length > 1 ? (
                         <p className="text-[11px] font-medium text-[#64748B]">
-                          {activeTerminalRegistry.length} registered terminals available. Each store can keep only one active terminal, so choose the terminal assigned to this POS device.
+                          {activeTerminalRegistry.length} registered terminals available. A location may have multiple counters; pair this physical device to the correct terminal ID.
                         </p>
                       ) : null}
                     </>
@@ -3531,19 +3564,8 @@ export default function TerminalPage() {
                     Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
                   </p>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="terminal-unlock-password" className="text-xs font-extrabold text-[#0F172A]">
-                    Terminal Password
-                  </Label>
-                  <Input
-                    id="terminal-unlock-password"
-                    type="password"
-                    value={terminalUnlockForm.terminalPassword}
-                    onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalPassword: event.target.value }))}
-                    placeholder="Enter terminal password"
-                    disabled={submitting}
-                    required
-                  />
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  This device is not paired. Sign in as the company master admin and use POS onboarding to pair it.
                 </div>
                   </>
                 )}

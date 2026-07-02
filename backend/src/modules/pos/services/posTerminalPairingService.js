@@ -22,22 +22,20 @@ const resolvePairingSecret = () => {
     throw new Error('POS_TERMINAL_PAIRING_SECRET must be configured with at least 32 characters');
 };
 
-const buildBindingFingerprint = ({ terminalPasswordHash, locationId }) => (
+const buildBindingFingerprint = ({ pairingVersion, locationId }) => (
     crypto
         .createHash('sha256')
-        .update(`${String(terminalPasswordHash || '').trim()}\u0000${Number(locationId) || 0}\u0000active`)
+        .update(`${String(pairingVersion || '').trim()}\u0000${Number(locationId) || 0}\u0000active`)
         .digest('hex')
 );
 
-export const issue = ({ tenantId, terminalId, terminalPasswordHash, locationId, identityMode, membershipId = null }) => {
+export const issue = ({ tenantId, terminalId, pairingVersion, locationId }) => {
     const normalizedTenantId = String(tenantId || '').trim();
     const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
-    const normalizedPasswordHash = String(terminalPasswordHash || '').trim();
+    const normalizedPairingVersion = String(pairingVersion || '').trim();
     const normalizedLocationId = Number.parseInt(locationId, 10);
-    const normalizedIdentityMode = String(identityMode || '').trim();
-    if (!normalizedTenantId || !normalizedTerminalId || !normalizedPasswordHash || normalizedLocationId <= 0
-        || !['dgfy_membership', 'legacy_grace'].includes(normalizedIdentityMode)) {
-        throw new Error('Complete tenant, terminal, password, location, and identity context is required for POS pairing');
+    if (!normalizedTenantId || !normalizedTerminalId || !normalizedPairingVersion || normalizedLocationId <= 0) {
+        throw new Error('Complete tenant, terminal, pairing version, and location context is required for POS pairing');
     }
 
     return jwt.sign({
@@ -45,9 +43,7 @@ export const issue = ({ tenantId, terminalId, terminalPasswordHash, locationId, 
         tenant_id: normalizedTenantId,
         terminal_id: normalizedTerminalId,
         location_id: normalizedLocationId,
-        identity_mode: normalizedIdentityMode,
-        membership_id: membershipId || null,
-        binding_fingerprint: buildBindingFingerprint({ terminalPasswordHash: normalizedPasswordHash, locationId: normalizedLocationId })
+        binding_fingerprint: buildBindingFingerprint({ pairingVersion: normalizedPairingVersion, locationId: normalizedLocationId })
     }, resolvePairingSecret(), {
         expiresIn: EXPIRES_IN,
         issuer: ISSUER,
@@ -66,11 +62,11 @@ export const verify = (token) => {
     }
 };
 
-export const assertBinding = ({ claims, tenantId, terminalId, terminalPasswordHash, locationId }) => {
+export const assertBinding = ({ claims, tenantId, terminalId, pairingVersion, locationId }) => {
     const valid = String(claims?.tenant_id || '') === String(tenantId || '')
         && String(claims?.terminal_id || '') === String(terminalId || '').toUpperCase()
         && Number(claims?.location_id) === Number(locationId)
-        && String(claims?.binding_fingerprint || '') === buildBindingFingerprint({ terminalPasswordHash, locationId });
+        && String(claims?.binding_fingerprint || '') === buildBindingFingerprint({ pairingVersion, locationId });
     if (!valid) throw invalidPairingError();
     return true;
 };
