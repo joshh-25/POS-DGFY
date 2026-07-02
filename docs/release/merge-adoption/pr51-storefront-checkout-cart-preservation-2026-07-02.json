@@ -4,7 +4,7 @@
   "target_branch": "staging",
   "source_refs": [
     {
-      "ref": "origin/codex/hotfix-storefront-checkout",
+      "ref": "origin/pr/51",
       "base": "origin/staging"
     }
   ],
@@ -20,7 +20,7 @@
       "decision": "adopt",
       "intent": "Tenant-store product carts remain available through guest and DGFY-account checkout when product cart and checkout capabilities are enabled, regardless of the unrelated service-booking capability. Service carts remain governed by booking capability.",
       "source_refs": [
-        "origin/codex/hotfix-storefront-checkout"
+        "origin/pr/51"
       ],
       "master_behaviors_preserved": [
         "Product carts still fail closed when product-cart or checkout capability is disabled.",
