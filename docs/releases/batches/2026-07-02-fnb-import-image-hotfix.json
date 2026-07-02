@@ -1,0 +1,192 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-authorized Codex hotfix review",
+  "reviewed_at": "2026-07-02T17:12:00.000+08:00",
+  "source_pr": "https://github.com/BBLabs-Albert/SKU-Inventory-Manager/pull/47",
+  "release_slices": [
+    {
+      "id": "fnb-import-image-hotfix",
+      "slice_name": "F&B import and item image upload hotfix",
+      "name": "F&B import and item image upload hotfix",
+      "plain_english_purpose": "Stop F&B CSV imports from failing rows with database operation timeouts and make item image upload failures clear and recoverable.",
+      "purpose": "Stabilize F&B item import and Storefront Catalog item image upload without changing payments, checkout totals, POS shift rules, or tenant lifecycle behavior.",
+      "implementation_summary": "Caps row-level CSV import writes to reduce tenant database pool pressure, maps Multer upload-limit errors to client-visible 4xx responses, retries Storefront catalog image override writes without the gallery payload when tenant schemas lag the gallery column, updates targeted backend regression tests, corrects the stale POS terminal contract label expectation, and records compliance impact for the POS-sensitive test file.",
+      "included_files": [
+        "backend/src/middleware/errorHandler.js",
+        "backend/src/modules/inventory/repositories/itemRepository.js",
+        "backend/src/services/csvImportService.js",
+        "backend/tests/csvImportService.workflowMode.test.js",
+        "backend/tests/errorHandler.loggingPolicy.test.js",
+        "backend/tests/inventoryItemRepository.test.js",
+        "docs/compliance/impact-declarations/2026-07-02-fnb-import-image-hotfix.md",
+        "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
+        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js"
+      ],
+      "included_features": [
+        "F&B CSV import write-pressure reduction",
+        "Client-safe item image upload error mapping",
+        "Storefront catalog image gallery-column fallback",
+        "Regression tests for import concurrency, upload error mapping, and image repository fallback",
+        "Compliance declaration for the POS-sensitive contract-test correction"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "PayMongo or payment-channel work",
+        "POS physical pairing contract changes",
+        "Checkout totals, payment handling, fiscal receipt calculation, shift-opening logic, and tenant lifecycle changes",
+        "Database migrations",
+        "Production deployment outside the signed controller"
+      ],
+      "owner_attribution": "BabyBaBab owner-authorized hotfix request",
+      "source_branch": "codex/fnb-import-image-hotfix",
+      "source_pr": "https://github.com/BBLabs-Albert/SKU-Inventory-Manager/pull/47",
+      "source_type": "developer_pr",
+      "source_type_allowed_values": [
+        "developer_pr",
+        "owner_direct_staging",
+        "controller_promotion"
+      ],
+      "affected_surfaces": [
+        "backend",
+        "frontend",
+        "docs",
+        "compliance",
+        "POS",
+        "Storefront"
+      ],
+      "affected_surface_map": {
+        "backend": true,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": true,
+        "POS": true,
+        "Storefront": true,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "medium",
+      "regression_risk_level": "medium",
+      "regression_warning_required": true,
+      "regression_warning_summary": "CSV imports may process large update/product batches more slowly, and tenants missing the image-gallery column may temporarily store primary image data without gallery metadata until schema catch-up.",
+      "potentially_affected_existing_behaviors": [
+        "IMS Items CSV import confirm duration for large update/product imports",
+        "IMS Storefront Catalog item image upload error messages",
+        "Storefront catalog override image metadata persistence on lagging tenant schemas",
+        "POS terminal contract test coverage for the DGFY Email label"
+      ],
+      "evidence_covering_regression_risk": [
+        "Targeted backend tests passed: tests/errorHandler.loggingPolicy.test.js, tests/csvImportService.workflowMode.test.js, tests/inventoryItemRepository.test.js",
+        "Full F&B readiness gate passed on 2026-07-02, including backend F&B contracts, frontend POS/storefront contracts, SKUpervisor/POS/Storefront builds, docs lint, architecture gate, and diff whitespace hygiene",
+        "npm run check:architecture passed",
+        "npm run check:compliance passed",
+        "npm run lint:docs passed"
+      ],
+      "evidence_gaps": [
+        "Production smoke still must verify a real F&B CSV import no longer returns row-level operation timeouts under normal load",
+        "Production smoke still must verify item image upload returns a specific 4xx message for invalid uploads and succeeds for valid image files"
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting this hotfix release and redeploying the previous production SHA; no migration rollback is required",
+        "After deployment, monitor /api/v1/items/import/confirm durations and failures, /api/v1/items/:item_id/storefront-images 4xx/5xx rates, and tenant database pool utilization"
+      ],
+      "required_tests": [
+        "npm --prefix backend test -- --runInBand tests/errorHandler.loggingPolicy.test.js tests/csvImportService.workflowMode.test.js tests/inventoryItemRepository.test.js",
+        "npm run qa:fnb-readiness",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run lint:docs",
+        "git diff --check"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm --prefix backend test -- --runInBand tests/errorHandler.loggingPolicy.test.js tests/csvImportService.workflowMode.test.js tests/inventoryItemRepository.test.js",
+          "status": "pass",
+          "evidence": "2026-07-02 clean hotfix worktree validation: 64 backend tests passed"
+        },
+        {
+          "command": "npm run qa:fnb-readiness",
+          "status": "pass",
+          "evidence": "2026-07-02 clean hotfix worktree validation: 13-step F&B readiness gate passed, including frontend builds"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "2026-07-02 clean hotfix worktree validation: architecture guardrails and controller boundaries passed"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "2026-07-02 clean hotfix worktree validation: compliance impact and API contract checks passed"
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "2026-07-02 clean hotfix worktree validation: governed docs lint passed"
+        },
+        {
+          "command": "git diff --check",
+          "status": "pass",
+          "evidence": "2026-07-02 clean hotfix worktree validation: no whitespace errors"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/compliance/impact-declarations/2026-07-02-fnb-import-image-hotfix.md",
+        "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "architecture_classification_allowed_values": [
+        "no-architecture-impact",
+        "within-existing-boundary",
+        "cross-boundary"
+      ],
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-authorized Codex documentation review",
+        "reviewed_at": "2026-07-02T17:12:00.000+08:00",
+        "rationale": "The compliance declaration records the POS-sensitive test contract update and this reviewed batch manifest records the exact hotfix scope, exclusions, validation, risk, rollback, and production proof requirements.",
+        "documents": [
+          {
+            "path": "docs/compliance/impact-declarations/2026-07-02-fnb-import-image-hotfix.md",
+            "action": "updated",
+            "evidence": "Records compliance scope, affected surfaces, verification evidence, and rollback for the hotfix."
+          },
+          {
+            "path": "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
+            "action": "updated",
+            "evidence": "Reviewed manifest covers the exact hotfix files and ship/exclusion decisions."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "The 2026-07-02 F&B import image hotfix compliance declaration governs the POS-sensitive contract-test update; no ADR change is required because runtime architecture stays within routes/controllers/usecases/repositories boundaries.",
+      "rollback_notes": "Revert this hotfix release and redeploy the prior production SHA; no migration rollback or payment rollback is required.",
+      "production_proof_required": [
+        "Production remote HEAD, .deploy-state/last_deployed_commit, newest deploy summary, production contract, and /api/v1/health runtime SHA must match the final origin/master SHA",
+        "Production health tenantPool should be monitored after deployment",
+        "Feature-specific smoke proof for F&B CSV import and item image upload must be captured after deployment"
+      ],
+      "production_accuracy_checks_required": [
+        "Verify production /api/v1/items/import/confirm completes without row-level operation timeouts for a representative F&B import",
+        "Verify production /api/v1/items/:item_id/storefront-images returns a specific 4xx message for invalid uploads and succeeds for a valid image",
+        "Verify logs do not show Multer upload-limit errors as server 500s after deployment"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": true,
+      "high_risk_files": [
+        "backend/src/middleware/errorHandler.js",
+        "backend/src/modules/inventory/repositories/itemRepository.js",
+        "backend/src/services/csvImportService.js",
+        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js"
+      ]
+    }
+  ]
+}
