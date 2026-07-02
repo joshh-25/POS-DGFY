@@ -1,0 +1,225 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-directed Codex review",
+  "reviewed_at": "2026-07-02T09:20:00.000Z",
+  "source_pr": "owner-requested-staging-pr-2026-07-02-pos-logical-terminal-shift-open",
+  "release_slices": [
+    {
+      "id": "pos-logical-terminal-shift-open",
+      "slice_name": "POS logical terminal shift opening",
+      "name": "POS logical terminal shift opening",
+      "plain_english_purpose": "Let authorized DGFY admins and cashiers open a POS shift from any logged-in device when they select an active terminal assigned to an allowed location.",
+      "purpose": "Let authorized DGFY admins and cashiers open a POS shift from any logged-in device when they select an active terminal assigned to an allowed location.",
+      "implementation_summary": "Removes physical-device pairing as a required blocker for POS shift opening and checkout while preserving DGFY identity, accepted company membership, active tenant user profile, POS permission, active logical terminal, terminal location binding, location grants, and open-shift controls. Retained pairing endpoints remain compatibility or hardware-specific state.",
+      "included_files": [
+        "backend/src/modules/pos/usecases/posUseCases.js",
+        "backend/src/routes/pos.js",
+        "backend/tests/posUsecases.applicationResult.test.js",
+        "docs/api/specification.md",
+        "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+        "docs/compliance/impact-declarations/2026-07-02-pos-logical-terminal-shift-open.md",
+        "docs/features/IMS_POS_SALES_UX_JOURNEY.md",
+        "docs/releases/batches/2026-07-02-pos-logical-terminal-shift-open.json",
+        "docs/testing/dgfy-company-access-security-control-matrix.md",
+        "docs/testing/pos-e2e-uat-checklist.md",
+        "frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js",
+        "frontend/src/features/pos/__tests__/terminalPairing.contract.test.js",
+        "frontend/src/features/pos/__tests__/terminalSessionSource.contract.test.js",
+        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js",
+        "frontend/src/features/pos/components/PosTenantSetupModal.jsx",
+        "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
+        "frontend/src/features/pos/pages/TerminalPage.jsx"
+      ],
+      "included_features": [
+        "Shift opening from any logged-in device for authorized DGFY POS operators",
+        "Checkout use-case no longer blocked by missing or stale pairing cookie",
+        "Logical terminal readiness copy in POS setup and terminal operations",
+        "Governed ADR, API, UAT, and compliance contract updates"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "PayMongo, payment, billing, settlement, or QR Ph changes",
+        "Database migrations or schema changes",
+        "Hardware drawer, receipt print, fiscal print, void, Z-reading, or shift-close pairing rules",
+        "Production secrets, controller configuration, or deployment script changes",
+        "Unrelated local inventory, CSV import, and error-handler edits from the original dirty checkout"
+      ],
+      "owner_attribution": "BabyBaBab owner-directed implementation",
+      "source_branch": "codex/pos-logical-terminal-shift-open",
+      "source_pr": "owner-requested-staging-pr-2026-07-02-pos-logical-terminal-shift-open",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "backend",
+        "frontend",
+        "docs",
+        "compliance",
+        "POS",
+        "DGFY"
+      ],
+      "affected_surface_map": {
+        "backend": true,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": true,
+        "POS": true,
+        "Storefront": false,
+        "DGFY": true,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "medium",
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "This POS release changes the shift-open and checkout authorization path. A regression could either block legitimate operators from opening shifts or allow a POS action without the intended terminal/location/open-shift checks.",
+      "potentially_affected_existing_behaviors": [
+        "POS shift opening for admins and cashiers",
+        "POS checkout creation after terminal unlock",
+        "Terminal registry validation and location grant enforcement",
+        "Legacy physical-device pairing compatibility behavior"
+      ],
+      "evidence_covering_regression_risk": [
+        "Backend POS use-case test proves active logical terminals can open shifts without pairing cookies and inactive or unauthorized terminal/location cases fail closed.",
+        "Frontend POS contract tests prove TerminalPage no longer imports pairing as the unlock authority and preserves terminal selection copy.",
+        "Architecture, docs, compliance, and POS production build checks passed on the clean release branch."
+      ],
+      "evidence_gaps": [
+        "No seeded staging or production DGFY cashier/admin end-to-end mutation UAT has been run for this exact release SHA.",
+        "Rendered local proof reached the DGFY terminal login screen; post-login terminal selection copy remains credential/session-gated.",
+        "Full backend matrix and full frontend suite were not rerun for this narrow POS slice."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting this release commit and redeploying through the same governed flow.",
+        "Monitor POS shift-open failures, terminal-location denial reason codes, checkout creation failures, and pairing-cookie related 401 responses after deployment."
+      ],
+      "required_tests": [
+        "npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js",
+        "npm --prefix frontend exec vitest run src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js",
+        "npm --prefix frontend run build:pos",
+        "npm run check:architecture",
+        "npm run lint:docs",
+        "npm run check:compliance",
+        "git diff --check origin/master...HEAD"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js",
+          "status": "pass",
+          "evidence": "clean-release-branch b0174ef6: 1 backend suite and 36 POS use-case tests passed"
+        },
+        {
+          "command": "npm --prefix frontend exec vitest run src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js",
+          "status": "pass",
+          "evidence": "clean-release-branch b0174ef6: 4 frontend POS contract files and 55 tests passed"
+        },
+        {
+          "command": "npm --prefix frontend run build:pos",
+          "status": "pass",
+          "evidence": "clean-release-branch b0174ef6: standalone POS production build passed with existing large-chunk and Browserslist warnings only"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "clean-release-branch b0174ef6: 36 modules, 329 code files, and 69 controllers passed architecture checks"
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "clean-release-branch b0174ef6: 20 governed docs passed lint"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "clean-release-branch b0174ef6: 9 sensitive files and 10 compliance API contract rules passed"
+        },
+        {
+          "command": "git diff --check origin/master...HEAD",
+          "status": "pass",
+          "evidence": "clean-release-branch b0174ef6: whitespace check passed"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/api/specification.md",
+        "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+        "docs/compliance/impact-declarations/2026-07-02-pos-logical-terminal-shift-open.md",
+        "docs/features/IMS_POS_SALES_UX_JOURNEY.md",
+        "docs/testing/dgfy-company-access-security-control-matrix.md",
+        "docs/testing/pos-e2e-uat-checklist.md"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-directed Codex documentation review",
+        "reviewed_at": "2026-07-02T09:20:00.000Z",
+        "rationale": "The implementation stays inside existing POS, DGFY, Users, and Settings boundaries but changes the governed POS authorization contract, so the accepted POS ADR, DGFY ADR, API spec, UAT checklist, feature journey, and compliance declaration were updated together.",
+        "documents": [
+          {
+            "path": "docs/api/specification.md",
+            "action": "updated",
+            "evidence": "Documents that POS shift opening and checkout require logical terminal, permission, location, and open-shift authority, not a physical pairing cookie."
+          },
+          {
+            "path": "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+            "action": "updated",
+            "evidence": "Clarifies that POS use is authorized from any logged-in device through DGFY membership, permissions, logical terminal, and location grants."
+          },
+          {
+            "path": "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+            "action": "updated",
+            "evidence": "Records the accepted logical-terminal shift-open contract and preserves pairing only as optional compatibility state."
+          },
+          {
+            "path": "docs/compliance/impact-declarations/2026-07-02-pos-logical-terminal-shift-open.md",
+            "action": "updated",
+            "evidence": "Declares the POS-sensitive authorization change, excluded payment scope, compliance risk, validation, and rollback notes."
+          },
+          {
+            "path": "docs/features/IMS_POS_SALES_UX_JOURNEY.md",
+            "action": "updated",
+            "evidence": "Updates POS journey wording so terminal identity at unlock is the active logical terminal assigned to an allowed location."
+          },
+          {
+            "path": "docs/testing/dgfy-company-access-security-control-matrix.md",
+            "action": "updated",
+            "evidence": "Updates the DGFY POS control matrix to test logical terminal access instead of unpaired-device denial."
+          },
+          {
+            "path": "docs/testing/pos-e2e-uat-checklist.md",
+            "action": "updated",
+            "evidence": "Updates UAT prerequisites and expected behavior for shift opening from any logged-in device with an active logical terminal."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "ADR 0031 and ADR 0028 were updated because this release changes the governed POS shift-open authorization contract; a compliance declaration records POS-sensitive scope and explicitly excludes payment-sensitive changes.",
+      "rollback_notes": "Revert this release commit as one unit, rebuild POS, rerun POS backend/frontend tests, architecture, docs lint, compliance, and whitespace checks, then redeploy through the governed controller flow.",
+      "production_proof_required": [
+        "Production remote HEAD equals the promoted origin/master SHA",
+        ".deploy-state/last_deployed_commit equals the promoted origin/master SHA",
+        "Newest deploy summary deployed_head, remote_head, and expected_commit equal the target SHA",
+        "Live /api/v1/health services.observability.runtime_sha equals the target SHA",
+        "Frontend asset parity passes for POS assets",
+        "Read-only production POS terminal route smoke confirms the DGFY login shell loads without framework overlay"
+      ],
+      "production_accuracy_checks_required": [
+        "Confirm deployed route table does not require pairing middleware on /pos/checkouts or /pos/terminal/shifts/open",
+        "Confirm live POS docs/API contract match the deployed logical-terminal authorization behavior",
+        "Run a controlled or seeded POS UAT proving an authorized DGFY admin or cashier can open a shift on an active logical terminal without a pairing cookie",
+        "Run a negative POS UAT proving inactive terminal, missing terminal location, or denied location grant still blocks shift opening",
+        "Verify hardware-sensitive endpoints still retain pairing where required"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}
