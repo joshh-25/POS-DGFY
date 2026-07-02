@@ -1,0 +1,43 @@
+# Local development only. Auto-merged by `docker compose` when run from this
+# directory. Builds images from source instead of pulling from GHCR, and
+# exposes a few convenience ports. Do not use this file on a server.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up --build
+
+services:
+  backend:
+    image: dgfy-platform-backend:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile
+    ports:
+      - "5000:5000"
+
+  frontend:
+    image: dgfy-platform-frontend:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/frontend/Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+        VITE_STORE_BASE_PATH: /
+
+  nginx:
+    image: dgfy-platform-nginx:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/nginx/Dockerfile
+    # nginx's `ssl_certificate` directives are not optional — the container
+    # won't start without something at /etc/letsencrypt/live/dgfy.ph/. Run
+    # infrastructure/docker/nginx/dev-certs/generate.sh once to create a
+    # throwaway self-signed cert with the same layout as the real
+    # /etc/letsencrypt tree before bringing this stack up locally.
+    volumes:
+      - ./nginx/dev-certs:/etc/letsencrypt:ro
+    ports:
+      - "80:80"
+      - "443:443"
+
+  mysql:
+    ports:
+      - "3306:3306"

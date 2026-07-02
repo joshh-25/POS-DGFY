@@ -1,0 +1,98 @@
+name: dgfy-platform
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    # log_bin_trust_function_creators: some migrations create triggers
+    # (e.g. 20260406000001-add-tenant-compliance-program.cjs). MySQL 8 ships
+    # with binary logging on by default and requires SUPER privilege to
+    # create triggers/functions while it's on — the app's DB_USER is
+    # intentionally not a SUPER/root user, so this flag is needed instead of
+    # granting SUPER.
+    command: --log-bin-trust-function-creators=1
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/sieitzz/dgfy-platform-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DIALECT: mysql
+      REDIS_URL: redis://redis:6379
+      PORT: 5000
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_storage:/app/storage
+      - backend_logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    image: ghcr.io/sieitzz/dgfy-platform-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    image: ghcr.io/sieitzz/dgfy-platform-nginx:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks: [dgfy_internal]
+
+networks:
+  dgfy_internal:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  backend_uploads:
+  backend_storage:
+  backend_logs:
