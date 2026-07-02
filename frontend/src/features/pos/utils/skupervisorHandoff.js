@@ -53,6 +53,21 @@ export const getSkupervisorOrigin = () => {
     return `${protocol}//${hostname.replace(/^pos\./, 'skupervisor.')}`;
   }
 
+  if (hostname.startsWith('store.')) {
+    return `${protocol}//${hostname.replace(/^store\./, 'skupervisor.')}`;
+  }
+
+  if (hostname.startsWith('skupervisor.')) {
+    return `${protocol}//${hostname}`;
+  }
+
+  // Storefront apex case (dgfy.ph, beta.dgfy.ph, ...) has no surface
+  // prefix to replace -- prepend one instead. Falls back to the hardcoded
+  // production origin only if this can't be derived at all.
+  if (hostname) {
+    return `${protocol}//skupervisor.${hostname}`;
+  }
+
   return DEFAULT_PUBLIC_SKUPERVISOR_ORIGIN;
 };
 
