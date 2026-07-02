@@ -99,6 +99,9 @@ describe('POS terminal view-mode contracts', () => {
   it('checks selected tenant setup readiness before opening terminal unlock from POS login', () => {
     expect(terminalPageContent).toContain('const loginResult = await loginDgfyAccount({ email, password });');
     expect(terminalPageContent).toContain("toast.error('Unable to start DGFY session. Sign in again.');");
+    expect(terminalPageContent).toContain('const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;');
+    expect(terminalPageContent).toContain("toast.message('Confirm the company, then continue to POS.');");
+    expect(terminalPageContent).toContain('if (!continuingAfterCompanyPicker) {');
     expect(terminalPageContent).toContain('const selectedTenantSession = await startDgfyTenantSession({');
     expect(terminalPageContent).toContain('const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;');
     expect(terminalPageContent).toContain('const selectedTenantSetupState = buildTenantSetupStateSnapshot({');
@@ -384,7 +387,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('Terminal ID');
     expect(terminalPageContent).toContain('Select registered terminal');
     expect(terminalPageContent).toContain('Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.');
-    expect(terminalPageContent).toContain('This terminal has no terminal password configured in POS Setup.');
+    expect(terminalPageContent).toContain('This physical POS device is not paired. Ask the company master admin to pair it from POS onboarding.');
     expect(terminalPageContent).toContain('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');

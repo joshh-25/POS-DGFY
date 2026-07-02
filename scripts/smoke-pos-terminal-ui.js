@@ -40,8 +40,8 @@ const collectTerminalEvidence = async (browser, viewport) => {
   await page.getByRole('heading', { name: 'Current Sale' }).waitFor({ timeout: 15000 });
   await page.getByText('Terminal Login Required').waitFor({ timeout: 15000 });
   const bodyText = await page.locator('body').innerText({ timeout: 10000 });
-  await page.getByPlaceholder('cashier@company.com').fill(`cashier-${viewport.name}@example.test`);
-  await page.getByPlaceholder('COUNTER-01').fill(`COUNTER-${viewport.name.toUpperCase()}`);
+  await page.getByPlaceholder('admin@company.com or cashier username').fill(`cashier-${viewport.name}@example.test`);
+  await page.getByPlaceholder('Enter your password').fill(`password-${viewport.name}`);
 
   const filterButton = page.getByRole('button', { name: /filter/i });
   const lockDrawerBlocksCatalog = await filterButton.evaluate((element) => {
@@ -66,9 +66,9 @@ const collectTerminalEvidence = async (browser, viewport) => {
     hasTerminal: bodyText.includes('Terminal Login Required'),
     hasCatalog: bodyText.includes('POS Catalog'),
     hasCurrentSale: bodyText.includes('Current Sale'),
-    hasLogin: bodyText.includes('DGFY POS unlock'),
-    loginFormEditable: (await page.getByPlaceholder('cashier@company.com').inputValue()).includes(viewport.name)
-      && (await page.getByPlaceholder('COUNTER-01').inputValue()).includes(viewport.name.toUpperCase()),
+    hasLogin: bodyText.includes('DGFY Password') && bodyText.includes('Company selection and terminal unlock appear after login succeeds.'),
+    loginFormEditable: (await page.getByPlaceholder('admin@company.com or cashier username').inputValue()).includes(viewport.name)
+      && (await page.getByPlaceholder('Enter your password').inputValue()).includes(viewport.name),
     lockDrawerBlocksCatalog,
     errors: visibleConsoleErrors,
     httpErrors: unexpectedHttpErrors,

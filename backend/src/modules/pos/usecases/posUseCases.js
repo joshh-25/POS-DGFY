@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
-import bcrypt from 'bcryptjs';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
@@ -948,12 +947,17 @@ export const buildVerifyPosTerminalUseCase = ({
             const userId = parsePositiveInt(user?.user_id);
             const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
             const terminalId = sanitizeTerminalId(payload.terminal_id);
-            const terminalPassword = String(payload.terminal_password || '');
             if (!userId || !tenantId || tenantId === 'default') {
                 throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated tenant user is required.', { statusCode: 401 });
             }
-            if (!terminalId || !terminalPassword) {
-                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Terminal ID and terminal password are required.', { statusCode: 422 });
+            if (!terminalId) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Terminal ID is required.', { statusCode: 422 });
+            }
+            if (user?.is_master_admin !== true) {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the company master admin can pair a POS device.', {
+                    statusCode: 403,
+                    details: { reason_code: 'POS_TERMINAL_PAIRING_ADMIN_REQUIRED' }
+                });
             }
             requirePosPermissionForPairing(user);
 
@@ -971,16 +975,10 @@ export const buildVerifyPosTerminalUseCase = ({
                     details: { reason_code: 'POS_TERMINAL_LOCATION_REQUIRED' }
                 });
             }
-            if (!entry.terminal_password_hash) {
-                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Configure a terminal password in Settings > POS Setup before pairing.', {
+            if (!entry.pairing_version) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Save the terminal registry before pairing this device.', {
                     statusCode: 422,
-                    details: { reason_code: 'POS_TERMINAL_PASSWORD_NOT_CONFIGURED' }
-                });
-            }
-            if (!await bcrypt.compare(terminalPassword, entry.terminal_password_hash)) {
-                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Terminal password is incorrect.', {
-                    statusCode: 401,
-                    details: { reason_code: 'POS_TERMINAL_PASSWORD_INVALID' }
+                    details: { reason_code: 'POS_TERMINAL_PAIRING_VERSION_REQUIRED' }
                 });
             }
 
@@ -993,10 +991,8 @@ export const buildVerifyPosTerminalUseCase = ({
             const pairingToken = terminalPairingService.issue({
                 tenantId,
                 terminalId,
-                terminalPasswordHash: entry.terminal_password_hash,
-                locationId: entry.location_id,
-                identityMode: identity.identity_mode,
-                membershipId: identity.membership_id
+                pairingVersion: entry.pairing_version,
+                locationId: entry.location_id
             });
 
             return ok({
@@ -1030,7 +1026,7 @@ export const buildGetPairedPosTerminalUseCase = ({
             const claims = terminalPairingService.verify(pairingToken);
             const policy = await posRepository.getTerminalPairingPolicySettings();
             const entry = (policy.active_registry || []).find((candidate) => candidate.terminal_id === claims.terminal_id);
-            if (!entry || !entry.terminal_password_hash || !parsePositiveInt(entry.location_id)) {
+            if (!entry || !entry.pairing_version || !parsePositiveInt(entry.location_id)) {
                 throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'The paired terminal is no longer active or fully configured.', {
                     statusCode: 401,
                     details: { reason_code: 'POS_TERMINAL_PAIRING_INVALID' }
@@ -1040,19 +1036,11 @@ export const buildGetPairedPosTerminalUseCase = ({
                 claims,
                 tenantId,
                 terminalId: entry.terminal_id,
-                terminalPasswordHash: entry.terminal_password_hash,
+                pairingVersion: entry.pairing_version,
                 locationId: entry.location_id
             });
 
             const identity = await resolveIdentityStatus({ tenantId, user });
-            const sameIdentity = claims.identity_mode === identity.identity_mode
-                && (identity.identity_mode !== 'dgfy_membership' || Number(claims.membership_id) === Number(identity.membership_id));
-            if (!sameIdentity) {
-                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'The POS identity binding has changed.', {
-                    statusCode: 403,
-                    details: { reason_code: 'POS_PAIRING_IDENTITY_CHANGED' }
-                });
-            }
             await resolveLocationScope({
                 requestedLocationId: entry.location_id,
                 userId,
@@ -3105,34 +3093,11 @@ export const buildVerifyFiscalEventLedgerUseCase = ({ posRepository }) => {
 };
 
 export const buildCreatePosSetupCashierUseCase = ({ userService }) => {
-    if (!userService || typeof userService.createLocalCashier !== 'function') {
-        throw new Error('buildCreatePosSetupCashierUseCase requires userService.createLocalCashier');
-    }
-
-    return async ({ payload = {}, user = null } = {}) => {
-        try {
-            const actorUserId = parsePositiveInt(user?.user_id);
-            if (!actorUserId) {
-                throw new DomainError(
-                    DomainErrorCode.AUTHENTICATION_FAILED,
-                    'Authenticated user is required',
-                    { statusCode: 401 }
-                );
-            }
-
-            const cashier = await userService.createLocalCashier(actorUserId, {
-                username: payload.username,
-                email: payload.email,
-                phone_number: payload.phone_number,
-                password: payload.password,
-                location_ids: payload.location_ids
-            });
-
-            return ok({ cashier }, 'Cashier created');
-        } catch (error) {
-            return fail(mapPosUseCaseError(error, 'Failed to create POS cashier'));
-        }
-    };
+    return async () => fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Local cashier creation is retired. Invite an existing DGFY account as cashier and assign its store locations.',
+        { statusCode: 410, details: { reason_code: 'POS_LOCAL_CASHIER_CREATION_RETIRED' } }
+    ));
 };
 
 export const buildListPosSetupCashiersUseCase = ({ userService }) => {

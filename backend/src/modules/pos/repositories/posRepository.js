@@ -99,13 +99,20 @@ const normalizeTerminalPairingRegistry = (rawValue) => {
     const parsed = parseJsonLoosely(rawValue);
     if (!Array.isArray(parsed)) return [];
     return parsed
-        .map((entry) => ({
-            terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
-            label: String(entry?.label || '').trim(),
-            location_id: toPositiveInt(entry?.location_id),
-            is_active: entry?.is_active !== false,
-            terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
-        }))
+        .map((entry) => {
+            const terminalId = String(entry?.terminal_id || '').trim().toUpperCase();
+            const legacyPasswordHash = String(entry?.terminal_password_hash || '').trim();
+            return {
+                terminal_id: terminalId,
+                label: String(entry?.label || '').trim(),
+                location_id: toPositiveInt(entry?.location_id),
+                is_active: entry?.is_active !== false,
+                pairing_version: String(entry?.pairing_version || '').trim()
+                    || (legacyPasswordHash
+                        ? crypto.createHash('sha256').update(`${terminalId}\u0000${legacyPasswordHash}`).digest('hex')
+                        : '')
+            };
+        })
         .filter((entry) => entry.is_active && TERMINAL_ID_PATTERN.test(entry.terminal_id));
 };
 const toBoolean = (value, fallback = false) => {

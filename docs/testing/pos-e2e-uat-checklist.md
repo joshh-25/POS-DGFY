@@ -40,7 +40,7 @@ Execution support artifacts:
 7. Admin role has settings + reports/sales visibility permissions.
 8. Terminal identity policy is known for the test tenant (`warn` or `enforce`) and at least one active registry entry exists when `enforce` is enabled.
 9. If testing a DGFY-created company account, confirm `POST /api/v1/auth/lookup` resolves the cashier/admin email to the intended tenant before password validation.
-10. Every active test terminal has a terminal password configured in Settings; the test operator knows one correct and one incorrect value.
+10. Every physical test device is enrolled once by the company master admin against an active location-bound terminal.
 
 ## 3) Admin UAT Scenarios
 
@@ -126,16 +126,16 @@ Evidence:
 - Screenshot of cart before checkout
 
 ### 4.1B DGFY Terminal Pairing and Role Navigation
-1. Authenticate with DGFY, select an authorized company, select a terminal, and
-   enter its terminal password.
-2. Repeat with a wrong terminal password, inactive terminal, unauthorized
-   location, removed membership, and changed terminal password.
+1. Authenticate as the DGFY company master admin, select an authorized company
+   and terminal, then pair the current physical device without a reusable terminal password.
+2. Sign in as an accepted DGFY cashier. Repeat with an unpaired device, inactive
+   terminal, unauthorized location, removed membership, and rotated pairing version.
 3. As admin, dismiss the open-shift prompt and open Items and Reports.
 4. As cashier, confirm settings/report/admin navigation is hidden.
 5. With no shift, attempt checkout, drawer opening, and receipt printing.
 
 Expected:
-1. Only the valid identity/company/terminal/password combination pairs.
+1. Only a master-admin-enrolled device plus a valid identity/company/location combination operates.
 2. Binding changes invalidate the pairing without exposing a hash or token.
 3. Admin read/configuration navigation works without opening a shift.
 4. Cashier navigation remains focused and every transactional action remains

@@ -30,6 +30,24 @@ describe('settings validator terminal registry payload', () => {
     ]));
   });
 
+  it('accepts multiple active terminals assigned to the same location', () => {
+    const req = {
+      body: {
+        pos_terminal_registry: [
+          { terminal_id: 'COUNTER-01', location_id: 7, is_active: true, is_default: true },
+          { terminal_id: 'COUNTER-02', location_id: 7, is_active: true, is_default: false }
+        ]
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSettings(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
   it('rejects duplicate terminal identifiers', () => {
     const req = {
       body: {

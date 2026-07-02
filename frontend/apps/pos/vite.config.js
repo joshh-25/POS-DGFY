@@ -8,6 +8,18 @@ const __dirname = path.dirname(__filename);
 const frontendRoot = path.resolve(__dirname, '../..');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = true;
+const proxyTargets = {
+  '/api': {
+    target: apiProxyTarget,
+    changeOrigin: true,
+    secure: false
+  },
+  '/uploads': {
+    target: apiProxyTarget,
+    changeOrigin: true,
+    secure: false
+  }
+};
 const frontendNodeModules = path.resolve(frontendRoot, 'node_modules');
 const reactAliases = [
   { find: /^react$/, replacement: path.resolve(frontendNodeModules, 'react') },
@@ -48,23 +60,13 @@ export default defineConfig({
     host: true,
     port: 5174,
     allowedHosts,
-    proxy: {
-      '/api': {
-        target: apiProxyTarget,
-        changeOrigin: true,
-        secure: false
-      },
-      '/uploads': {
-        target: apiProxyTarget,
-        changeOrigin: true,
-        secure: false
-      }
-    }
+    proxy: proxyTargets
   },
   preview: {
     host: true,
     port: 5174,
-    allowedHosts
+    allowedHosts,
+    proxy: proxyTargets
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/pos'),
