@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-06-02
-last_reviewed: 2026-06-02
+last_reviewed: 2026-07-02
 doc_type: authoritative
 
 ## Context
@@ -15,6 +15,8 @@ Production browser session authority must live in `HttpOnly` cookies. JavaScript
 
 Cookie-authenticated unsafe requests must include the `x-csrf-token` header matching the non-HttpOnly CSRF cookie issued with the session. Session cookies use `SameSite=Lax`, are `Secure` outside localhost, and are host-only unless `SESSION_COOKIE_DOMAIN` is explicitly configured for an approved production domain such as `.dgfy.ph`.
 
+Refresh rotates both refresh authority and the CSRF cookie. A browser retry after successful refresh must replace any CSRF header captured on the original request with the current cookie value. A `CSRF_TOKEN_REQUIRED` response may trigger one bounded safe-token bootstrap and one retry; it must not disable CSRF enforcement or loop. Domain-level `401` responses such as invalid POS device pairing are not access-token expiry and must not trigger tenant-token refresh.
+
 `POST /api/v1/auth/refresh-token` is a strict tenant route, but its tenant context can be recovered from the signed HttpOnly tenant refresh cookie when the companion tenant-context cookie/header is missing. Recovery verifies the refresh JWT with `REFRESH_TOKEN_SECRET`, reads the embedded `tenant_id`, resolves the landlord tenant row, and restores the request tenant token before the normal refresh use case runs. The refresh use case still owns blacklist/replay checks, token type validation, tenant mismatch rejection, active-user checks, rotation, and refresh-token revocation.
 
 ## Consequences
@@ -23,6 +25,7 @@ Cookie-authenticated unsafe requests must include the `x-csrf-token` header matc
 - Frontend session state is module-memory only and must be rehydrated through cookie-backed refresh/session endpoints.
 - Cross-tab coordination must not broadcast tokens.
 - Release gates must include storage guards, cookie attribute checks, CSRF checks, and production auto-login guards.
+- Frontend refresh/retry tests must simulate CSRF rotation and prove that concurrent queued retries use the current cookie generation.
 - Missing tenant-context cookies should not strand a valid browser session when a signed tenant-bound refresh cookie is present; invalid, expired, missing-tenant, or unresolved refresh cookies still fail closed through the existing strict tenant/auth path.
 
 ## Validation

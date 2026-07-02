@@ -3,6 +3,7 @@ import {
   getAccessToken,
   getCompanyToken,
   getAuthHeaders,
+  ensureCsrfToken,
   refreshBrowserSession,
   setBrowserSession
 } from './browserSession.js';
@@ -85,6 +86,26 @@ const resolveRequestPath = (url = '') => {
 };
 
 const isSessionRefreshRequest = (url = '') => resolveRequestPath(url).endsWith('/auth/refresh-token');
+
+const setRequestHeader = (headers, name, value) => {
+  if (!headers || !value) return;
+  if (typeof headers.set === 'function') {
+    headers.set(name, value);
+    return;
+  }
+  headers[name] = value;
+};
+
+const getResponseReasonCode = (error) => String(
+  error?.response?.data?.errors?.reason_code
+  || error?.response?.data?.error_code
+  || error?.response?.data?.code
+  || ''
+).trim();
+
+const NON_REFRESHABLE_401_REASONS = new Set([
+  'POS_TERMINAL_PAIRING_INVALID'
+]);
 
 const isPublicOrAuthRequest = (url = '') => {
   const path = resolveRequestPath(url);
@@ -243,8 +264,16 @@ api.interceptors.request.use(
     }
 
     const method = String(config.method || 'get').toLowerCase();
+    const isUnsafeMethod = !['get', 'head', 'options'].includes(method);
+    if (
+      isUnsafeMethod
+      && shouldPreflightBrowserSession(config)
+      && !getAuthHeaders({ includeCsrf: true })['x-csrf-token']
+    ) {
+      await ensureCsrfToken().catch(() => '');
+    }
     const authHeaders = getAuthHeaders({
-      includeCsrf: !['get', 'head', 'options'].includes(method)
+      includeCsrf: isUnsafeMethod
     });
 
     if (token && !config.skipTenantAuthHeaders) {
@@ -255,8 +284,10 @@ api.interceptors.request.use(
     if (companyToken && !config.skipTenantAuthHeaders && !config.headers['x-company-token']) {
       config.headers['x-company-token'] = companyToken;
     }
-    if (authHeaders['x-csrf-token'] && !config.headers['x-csrf-token']) {
-      config.headers['x-csrf-token'] = authHeaders['x-csrf-token'];
+    if (authHeaders['x-csrf-token']) {
+      // Refresh rotates the CSRF cookie. Always replace a header carried by a
+      // retried Axios config so cookie and header remain the same generation.
+      setRequestHeader(config.headers, 'x-csrf-token', authHeaders['x-csrf-token']);
     }
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
@@ -273,12 +304,29 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    if (
+      error.response?.status === 403
+      && getResponseReasonCode(error) === 'CSRF_TOKEN_REQUIRED'
+      && originalRequest
+      && !originalRequest._csrfRetry
+      && !isPublicOrAuthRequest(originalRequest.url)
+    ) {
+      originalRequest._csrfRetry = true;
+      const csrfToken = await ensureCsrfToken({ force: true }).catch(() => '');
+      if (csrfToken) {
+        originalRequest.headers = originalRequest.headers || {};
+        setRequestHeader(originalRequest.headers, 'x-csrf-token', csrfToken);
+        return api(originalRequest);
+      }
+    }
+
     // Handle 401 errors (unauthorized)
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
       !originalRequest.skipAuthRefresh &&
-      !isPublicOrAuthRequest(originalRequest.url)
+      !isPublicOrAuthRequest(originalRequest.url) &&
+      !NON_REFRESHABLE_401_REASONS.has(getResponseReasonCode(error))
     ) {
       // A refresh is already in-flight (either started by this tab or by another tab
       // that broadcast 'token-refresh-started') — queue this request so it retries
@@ -313,7 +361,8 @@ api.interceptors.response.use(
 
         logDebug('🔄 [Auth] Refreshing token...', { companyToken });
 
-        axios.post(
+        ensureCsrfToken()
+          .then(() => axios.post(
           `${API_BASE_URL}/auth/refresh-token`,
           {},
           {
@@ -321,7 +370,7 @@ api.interceptors.response.use(
             timeout: 15000,
             withCredentials: true
           }
-        )
+        ))
           .then(({ data }) => {
             const session = data?.data || {};
             const token = session.token || '';

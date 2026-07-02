@@ -108,6 +108,8 @@ const posTerminalRegistryEntrySchema = Joi.object({
   label: Joi.string().trim().max(80).allow('', null).optional(),
   is_active: Joi.boolean().default(true),
   is_default: Joi.boolean().default(false),
+  pairing_version: Joi.string().guid({ version: ['uuidv4'] }).allow('').optional(),
+  rotate_pairing: Joi.boolean().optional(),
   terminal_password: Joi.string().min(8).max(128).allow('').optional(),
   clear_terminal_password: Joi.boolean().optional(),
   has_terminal_password: Joi.boolean().optional()

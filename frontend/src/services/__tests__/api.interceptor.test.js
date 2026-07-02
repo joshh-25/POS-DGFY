@@ -102,6 +102,7 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
   beforeEach(async () => {
     localStorage.clear();
     window.location.href = '';
+    document.cookie = 'sku_csrf_token=csrf-tenant-interceptor';
 
     refreshCallCount = 0;
 
@@ -147,6 +148,101 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
 
     expect(refreshCallCount).toBe(1);
     expect(successes).toHaveLength(6);
+  });
+
+  it('bootstraps CSRF before the 401 recovery refresh request', async () => {
+    document.cookie = '';
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url) => {
+      expect(String(url)).toContain('/auth/csrf-token');
+      document.cookie = 'sku_csrf_token=csrf-401-refresh';
+      return { ok: true, json: async () => ({ success: true }) };
+    }));
+
+    mockApi.onGet('/protected').replyOnce(401).onGet('/protected').reply(200, { data: 'ok' });
+    mockAxios.onPost(/auth\/refresh-token/).reply((config) => {
+      expect(config.headers['x-csrf-token']).toBe('csrf-401-refresh');
+      return [200, { data: { token: 'fresh-token' } }];
+    });
+
+    const response = await api.get('/protected');
+
+    expect(response.data).toEqual({ data: 'ok' });
+    document.cookie = 'sku_csrf_token=csrf-tenant-interceptor';
+  });
+
+  it('replaces the stale CSRF header after refresh rotates the cookie', async () => {
+    const retryHeaders = [];
+    mockApi.onPost('/pos/terminal/shifts/open').replyOnce(401, {
+      success: false,
+      message: 'Token expired',
+      error_code: 'TOKEN_EXPIRED'
+    });
+    mockApi.onPost('/pos/terminal/shifts/open').reply((config) => {
+      retryHeaders.push({ ...config.headers });
+      return [200, { data: { ok: true } }];
+    });
+    mockAxios.onPost(/auth\/refresh-token/).reply(() => {
+      document.cookie = 'sku_csrf_token=csrf-rotated-by-refresh';
+      return [200, { data: { token: 'fresh-token' } }];
+    });
+
+    await api.post('/pos/terminal/shifts/open', {
+      terminal_id: 'COUNTER-01',
+      opening_float_amount: 100
+    });
+
+    expect(retryHeaders).toHaveLength(1);
+    expect(retryHeaders[0]['x-csrf-token']).toBe('csrf-rotated-by-refresh');
+  });
+
+  it('does not refresh the access token for an invalid POS device pairing', async () => {
+    mockApi.onPost('/pos/terminal/shifts/open').reply(401, {
+      success: false,
+      message: 'This POS device pairing is missing, expired, or no longer valid.',
+      error_code: 'AUTHENTICATION_FAILED',
+      errors: { reason_code: 'POS_TERMINAL_PAIRING_INVALID' }
+    });
+    mockAxios.onPost(/auth\/refresh-token/).reply(() => {
+      refreshCallCount++;
+      return [200, { data: { token: 'unexpected-token' } }];
+    });
+
+    const error = await api.post('/pos/terminal/shifts/open', {
+      terminal_id: 'COUNTER-01',
+      opening_float_amount: 100
+    }).catch((caught) => caught);
+
+    expect(error.response.status).toBe(401);
+    expect(refreshCallCount).toBe(0);
+  });
+
+  it('force-rotates CSRF and retries a protected mutation only once', async () => {
+    let shiftCalls = 0;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url) => {
+      expect(String(url)).toContain('/auth/csrf-token');
+      document.cookie = 'sku_csrf_token=csrf-recovered';
+      return { ok: true, json: async () => ({ success: true }) };
+    }));
+    mockApi.onPost('/pos/terminal/shifts/open').reply((config) => {
+      shiftCalls++;
+      if (shiftCalls === 1) {
+        return [403, {
+          success: false,
+          error_code: 'CSRF_TOKEN_REQUIRED'
+        }];
+      }
+      expect(config.headers['x-csrf-token']).toBe('csrf-recovered');
+      return [200, { data: { ok: true } }];
+    });
+
+    const response = await api.post('/pos/terminal/shifts/open', {
+      terminal_id: 'COUNTER-01',
+      opening_float_amount: 100
+    });
+
+    expect(response.data).toEqual({ data: { ok: true } });
+    expect(shiftCalls).toBe(2);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
   // -------------------------------------------------------------------------
@@ -220,16 +316,27 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
   it('preflights protected requests with refresh when the tab has only session cookies after reload', async () => {
     const session = await import('../browserSession.js');
     session.clearBrowserSession();
+    document.cookie = '';
     const capturedHeaders = [];
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        data: {
-          token: 'rehydrated-access-token',
-          company: { token: 'rehydrated-company-token' }
-        }
-      })
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url, options = {}) => {
+      if (String(url).includes('/auth/csrf-token')) {
+        document.cookie = 'sku_csrf_token=csrf-refresh-bootstrap';
+        return { ok: true, json: async () => ({ success: true }) };
+      }
+      if (String(url).includes('/auth/refresh-token')) {
+        expect(options.headers['x-csrf-token']).toBe('csrf-refresh-bootstrap');
+        return {
+          ok: true,
+          json: async () => ({
+            data: {
+              token: 'rehydrated-access-token',
+              company: { token: 'rehydrated-company-token' }
+            }
+          })
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
     }));
 
     mockApi.onGet('/dashboard/stats').reply((config) => {
@@ -241,11 +348,16 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
 
     expect(result.data).toEqual({ data: 'ok' });
     expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/csrf-token'),
+      expect.objectContaining({ method: 'GET', credentials: 'include' })
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining('/auth/refresh-token'),
       expect.objectContaining({ method: 'POST', credentials: 'include' })
     );
     expect(capturedHeaders[0].Authorization).toBe('Bearer rehydrated-access-token');
     expect(capturedHeaders[0]['x-company-token']).toBe('rehydrated-company-token');
+    document.cookie = 'sku_csrf_token=csrf-tenant-interceptor';
   });
 
   it('adds the browser CSRF cookie to unsafe protected requests', async () => {
@@ -264,6 +376,42 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     expect(capturedHeaders[0].Authorization).toBe('Bearer expired-token');
     expect(capturedHeaders[0]['x-company-token']).toBe('test-company-token');
     expect(capturedHeaders[0]['x-csrf-token']).toBe('csrf-tenant-interceptor');
+  });
+
+  it('bootstraps a missing CSRF cookie before unsafe protected requests', async () => {
+    const capturedHeaders = [];
+    document.cookie = '';
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url) => {
+      if (String(url).includes('/auth/csrf-token')) {
+        document.cookie = 'sku_csrf_token=csrf-bootstrapped';
+        return {
+          ok: true,
+          json: async () => ({ success: true })
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
+    mockApi.onPost('/pos/terminal/shifts/open').reply((config) => {
+      capturedHeaders.push({ ...config.headers });
+      return [200, { data: { ok: true } }];
+    });
+
+    try {
+      await api.post('/pos/terminal/shifts/open', {
+        terminal_id: 'COUNTER-01',
+        opening_float_amount: 100
+      });
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/csrf-token'),
+        expect.objectContaining({ method: 'GET', credentials: 'include' })
+      );
+      expect(capturedHeaders[0]['x-csrf-token']).toBe('csrf-bootstrapped');
+    } finally {
+      document.cookie = 'sku_csrf_token=csrf-tenant-interceptor';
+    }
   });
 
   // -------------------------------------------------------------------------

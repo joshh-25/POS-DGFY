@@ -3,6 +3,7 @@ const CSRF_COOKIE_KEY = 'sku_csrf_token';
 let accessToken = '';
 let companyToken = '';
 let refreshInFlight = null;
+let csrfBootstrapInFlight = null;
 
 const readRuntimeCompanyToken = () => {
   if (typeof window === 'undefined') return '';
@@ -46,6 +47,34 @@ const readCookie = (name) => {
 
 export const getCsrfToken = () => decodeURIComponent(readCookie(CSRF_COOKIE_KEY));
 
+export const ensureCsrfToken = async ({ force = false } = {}) => {
+  const currentToken = getCsrfToken();
+  if (currentToken && !force) return currentToken;
+  if (typeof fetch !== 'function') return '';
+  if (csrfBootstrapInFlight) return csrfBootstrapInFlight;
+
+  csrfBootstrapInFlight = (async () => {
+    const response = await fetch(`${resolveApiBaseUrl()}/auth/csrf-token`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json'
+      }
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const error = new Error(data?.message || 'CSRF token bootstrap failed');
+      error.response = { status: response.status, data };
+      throw error;
+    }
+    return getCsrfToken();
+  })().finally(() => {
+    csrfBootstrapInFlight = null;
+  });
+
+  return csrfBootstrapInFlight;
+};
+
 export const setBrowserSession = ({ token, companyToken: nextCompanyToken } = {}) => {
   if (token !== undefined) accessToken = String(token || '').trim();
   if (nextCompanyToken !== undefined) companyToken = String(nextCompanyToken || '').trim();
@@ -81,6 +110,7 @@ export const refreshBrowserSession = async () => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
+      await ensureCsrfToken();
       const response = await fetch(`${resolveApiBaseUrl()}/auth/refresh-token`, {
         method: 'POST',
         credentials: 'include',

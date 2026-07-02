@@ -25,8 +25,7 @@ export const mapPosUseCaseError = (error, fallbackMessage = 'POS operation faile
         message,
         {
             statusCode: statusCode || undefined,
-            details: error?.details || null
+            details: error?.details || (error?.code ? { reason_code: error.code } : null)
         }
     );
 };
-

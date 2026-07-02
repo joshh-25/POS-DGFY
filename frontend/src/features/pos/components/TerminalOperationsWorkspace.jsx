@@ -64,9 +64,9 @@ import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonom
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
 import {
-  createPosSetupCashier,
   fetchPosSetupCashiers,
   fetchPosCatalog,
   fetchPosTransactions,
@@ -2592,14 +2592,7 @@ function SettingsWorkspace({
   const [companyInfo, setCompanyInfo] = useState(null);
   const [cashierUsers, setCashierUsers] = useState([]);
   const [cashiersLoading, setCashiersLoading] = useState(false);
-  const [cashierCreating, setCashierCreating] = useState(false);
-  const [cashierEditorTerminalIndex, setCashierEditorTerminalIndex] = useState(null);
-  const [cashierDraft, setCashierDraft] = useState({
-    username: '',
-    email: '',
-    phone_number: '',
-    password: ''
-  });
+  const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({
     username: '',
     email: '',
@@ -2928,41 +2921,6 @@ function SettingsWorkspace({
     loadCashierAccounts({ silent: true });
   }, [loadCashierAccounts]);
 
-  const handleCreateCashierAccount = useCallback(async (terminal) => {
-    const username = String(cashierDraft.username || '').trim();
-    const email = String(cashierDraft.email || '').trim();
-    const phoneNumber = String(cashierDraft.phone_number || '').trim();
-    const password = String(cashierDraft.password || '');
-    const locationId = toPositiveInt(terminal?.location_id);
-    if (!username || !email || !password || !locationId) {
-      toast.error('Cashier username, email, password, and assigned store are required.');
-      return;
-    }
-    if (password.length < 8) {
-      toast.error('Cashier password must be at least 8 characters.');
-      return;
-    }
-
-    setCashierCreating(true);
-    try {
-      await createPosSetupCashier({
-        username,
-        email,
-        phone_number: phoneNumber || null,
-        password,
-        location_ids: [locationId]
-      });
-      setCashierDraft({ username: '', email: '', phone_number: '', password: '' });
-      setCashierEditorTerminalIndex(null);
-      await loadCashierAccounts({ silent: true });
-      toast.success('Cashier created and assigned to this terminal\'s store.');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to create cashier account.');
-    } finally {
-      setCashierCreating(false);
-    }
-  }, [cashierDraft, loadCashierAccounts]);
-
   const handleTabChange = useCallback((nextTab) => {
     if (!nextTab || nextTab === activeTab) return;
     clearAnimationTimers();
@@ -3066,9 +3024,8 @@ function SettingsWorkspace({
           location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
-          has_password: entry?.has_password === true,
-          terminal_password: String(entry?.terminal_password || ''),
-          clear_terminal_password: entry?.clear_terminal_password === true
+          pairing_version: String(entry?.pairing_version || '').trim(),
+          rotate_pairing: entry?.rotate_pairing === true
         }))
         : [];
       const existing = entries[index] || {
@@ -3077,9 +3034,8 @@ function SettingsWorkspace({
         location_id: null,
         is_active: true,
         is_default: entries.length === 0,
-        has_password: false,
-        terminal_password: '',
-        clear_terminal_password: false
+        pairing_version: '',
+        rotate_pairing: false
       };
       entries[index] = {
         ...existing,
@@ -3087,14 +3043,6 @@ function SettingsWorkspace({
           ? sanitizeTerminalId(value)
           : (key === 'location_id' ? toPositiveInt(value) : value)
       };
-
-      if (key === 'terminal_password') {
-        entries[index].clear_terminal_password = false;
-      }
-      if (key === 'clear_terminal_password' && value === true) {
-        entries[index].terminal_password = '';
-        entries[index].has_password = false;
-      }
 
       if (key === 'is_active' && value === false && entries[index].is_default === true) {
         entries[index].is_default = false;
@@ -3126,9 +3074,8 @@ function SettingsWorkspace({
           location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
-          has_password: entry?.has_password === true,
-          terminal_password: String(entry?.terminal_password || ''),
-          clear_terminal_password: entry?.clear_terminal_password === true
+          pairing_version: String(entry?.pairing_version || '').trim(),
+          rotate_pairing: entry?.rotate_pairing === true
         }))
         : [];
       entries.push({
@@ -3137,9 +3084,8 @@ function SettingsWorkspace({
         location_id: null,
         is_active: true,
         is_default: entries.length === 0,
-        has_password: false,
-        terminal_password: '',
-        clear_terminal_password: false
+        pairing_version: '',
+        rotate_pairing: false
       });
       return { ...current, terminalRegistry: entries };
     });
@@ -3154,9 +3100,8 @@ function SettingsWorkspace({
           location_id: toPositiveInt(entry?.location_id),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
-          has_password: entry?.has_password === true,
-          terminal_password: String(entry?.terminal_password || ''),
-          clear_terminal_password: entry?.clear_terminal_password === true
+          pairing_version: String(entry?.pairing_version || '').trim(),
+          rotate_pairing: entry?.rotate_pairing === true
         }))
         .filter((_, entryIndex) => entryIndex !== index);
 
@@ -3197,9 +3142,8 @@ function SettingsWorkspace({
         location_id: toPositiveInt(entry?.location_id),
         is_active: entry?.is_active !== false,
         is_default: entry?.is_default === true,
-        has_password: entry?.has_password === true,
-        terminal_password: String(entry?.terminal_password || ''),
-        clear_terminal_password: entry?.clear_terminal_password === true
+        pairing_version: String(entry?.pairing_version || '').trim(),
+        rotate_pairing: entry?.rotate_pairing === true
       }))
       .filter((entry) => entry.terminal_id || entry.label || entry.is_default || entry.is_active === false);
 
@@ -3227,37 +3171,16 @@ function SettingsWorkspace({
       location_id: entry.location_id,
       is_active: entry.is_active !== false,
       is_default: entry.is_default === true,
-      has_password: entry.has_password === true,
-      terminal_password: String(entry.terminal_password || ''),
-      clear_terminal_password: entry.clear_terminal_password === true
+      pairing_version: entry.pairing_version,
+      rotate_pairing: entry.rotate_pairing === true
     }));
     const posTerminalRegistryMode = TERMINAL_REGISTRY_MODE_OPTIONS.includes(String(posForm.terminalRegistryMode || '').trim().toLowerCase())
       ? String(posForm.terminalRegistryMode || '').trim().toLowerCase()
       : 'warn';
     const normalizedRegistryState = normalizeTerminalRegistry(posTerminalRegistry);
     const activeRegistryEntries = normalizedRegistryState.filter((entry) => entry?.is_active !== false);
-    const activeLocationIds = new Set();
-    const duplicateLocationEntry = activeRegistryEntries.find((entry) => {
-      const locationId = Number(entry?.location_id || 0);
-      if (!locationId) return false;
-      if (activeLocationIds.has(locationId)) return true;
-      activeLocationIds.add(locationId);
-      return false;
-    });
-
     if (posTerminalRegistryMode === 'enforce' && activeRegistryEntries.length === 0) {
       throw new Error('Terminal registry mode "enforce" requires at least one active terminal entry.');
-    }
-
-    if (duplicateLocationEntry) {
-      const duplicateLocationName = locations.find(
-        (location) => Number(location?.location_id || 0) === Number(duplicateLocationEntry?.location_id || 0)
-      )?.name;
-      throw new Error(
-        duplicateLocationName
-          ? `Only one active terminal is allowed for store "${duplicateLocationName}".`
-          : 'Only one active terminal is allowed per store location.'
-      );
     }
 
     return {
@@ -3288,9 +3211,8 @@ function SettingsWorkspace({
         ...current,
         terminalRegistry: savedRegistry.map((entry) => ({
           ...entry,
-          has_password: entry?.has_password === true,
-          terminal_password: '',
-          clear_terminal_password: false
+          pairing_version: String(entry?.pairing_version || '').trim(),
+          rotate_pairing: false
         })),
         terminalRegistryMode: posTerminalRegistryMode
       }));
@@ -3880,7 +3802,7 @@ function SettingsWorkspace({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[13px] font-black text-[#0F172A]">Terminal Registry</p>
-                <p className="mt-1 text-[12px] text-[#475569]">Managed list of POS terminals used in unlock and shift-open flows. Keep one active terminal per store.</p>
+                <p className="mt-1 text-[12px] text-[#475569]">Managed POS counters used in pairing and shift-open flows. A store location may have multiple active terminals.</p>
               </div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <Button
@@ -4070,37 +3992,13 @@ function SettingsWorkspace({
                           <div className="grid gap-1.5 md:col-span-2">
                             <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
                               <KeyRound className="h-3.5 w-3.5 text-blue-500" />
-                              Terminal Password
+                              Device Pairing
                             </Label>
-                            <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
-                              <div className="min-w-0 flex-1">
-                                <Input
-                                  type="password"
-                                  className="h-11 rounded-xl border-slate-200 px-3.5 text-[14px] font-semibold text-[#0F172A] shadow-none"
-                                  value={terminal.terminal_password || ''}
-                                  onChange={(event) => handleTerminalRegistryChange(index, 'terminal_password', event.target.value)}
-                                  placeholder={terminal.has_password ? 'Leave blank to keep current password' : 'Create terminal password'}
-                                  disabled={locked || loading}
-                                />
-                              </div>
-                              {terminal.has_password ? (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="h-10 rounded-xl border-blue-200 px-4 text-[12px] font-extrabold text-[#2563EB] hover:bg-blue-50"
-                                  onClick={() => handleTerminalRegistryChange(index, 'clear_terminal_password', true)}
-                                  disabled={locked || loading}
-                                >
-                                  <RefreshCcw className="mr-2 h-3.5 w-3.5" />
-                                  Reset
-                                </Button>
-                              ) : null}
+                            <div className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[12px] text-[#475569]">
+                              {terminal.pairing_version
+                                ? 'Registry ready. A master admin pairs each physical device from POS onboarding.'
+                                : 'Save this terminal before pairing a physical device.'}
                             </div>
-                            <p className={`text-[11px] ${terminal.clear_terminal_password === true ? 'font-semibold text-rose-600' : 'text-[#64748B]'}`}>
-                              {terminal.clear_terminal_password === true
-                                ? 'Current password will be cleared on save.'
-                                : (terminal.has_password ? 'Password already configured.' : 'Required for terminal unlock.')}
-                            </p>
                           </div>
                         </div>
                       </div>
@@ -4178,21 +4076,18 @@ function SettingsWorkspace({
                             </span>
                           </div>
                           <p className="mt-1 text-[11px] leading-5 text-[#64748B]">
-                            Cashiers created here are automatically bound to the store assigned to this terminal.
+                            Cashiers are invited through DGFY and receive explicit access to one or more business locations.
                           </p>
                         </div>
                         <Button
                           type="button"
                           variant="outline"
                           className="h-9 rounded-lg border-blue-200 px-4 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
-                          onClick={() => {
-                            setCashierEditorTerminalIndex((current) => current === index ? null : index);
-                            setCashierDraft({ username: '', email: '', phone_number: '', password: '' });
-                          }}
-                          disabled={locked || loading || cashierCreating || !toPositiveInt(terminal.location_id)}
+                          onClick={() => setCashierInvitationOpen(true)}
+                          disabled={locked || loading || !toPositiveInt(terminal.location_id)}
                         >
                           <Plus className="mr-1.5 h-3.5 w-3.5" />
-                          Add Cashier
+                          Invite DGFY Cashier
                         </Button>
                       </div>
 
@@ -4213,39 +4108,6 @@ function SettingsWorkspace({
                         </p>
                       )}
 
-                      {cashierEditorTerminalIndex === index ? (
-                        <div className="mt-4 grid gap-3 rounded-xl border border-blue-100 bg-blue-50/40 p-3 md:grid-cols-2 xl:grid-cols-4">
-                          <div className="grid gap-1.5">
-                            <Label className="text-[11px] font-black text-[#0F172A]">Cashier Username</Label>
-                            <Input value={cashierDraft.username} onChange={(event) => setCashierDraft((current) => ({ ...current, username: event.target.value }))} placeholder="john" disabled={locked || cashierCreating} />
-                          </div>
-                          <div className="grid gap-1.5">
-                            <Label className="text-[11px] font-black text-[#0F172A]">Cashier Email</Label>
-                            <Input type="email" value={cashierDraft.email} onChange={(event) => setCashierDraft((current) => ({ ...current, email: event.target.value }))} placeholder="cashier@company.com" disabled={locked || cashierCreating} />
-                          </div>
-                          <div className="grid gap-1.5">
-                            <Label className="text-[11px] font-black text-[#0F172A]">Cashier Phone</Label>
-                            <Input value={cashierDraft.phone_number} onChange={(event) => setCashierDraft((current) => ({ ...current, phone_number: event.target.value }))} placeholder="+63 900 000 0000" disabled={locked || cashierCreating} />
-                          </div>
-                          <div className="grid gap-1.5">
-                            <Label className="text-[11px] font-black text-[#0F172A]">Cashier Password</Label>
-                            <Input type="password" value={cashierDraft.password} onChange={(event) => setCashierDraft((current) => ({ ...current, password: event.target.value }))} placeholder="Minimum 8 characters" disabled={locked || cashierCreating} />
-                          </div>
-                          <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-2 xl:col-span-4">
-                            <p className="text-[11px] font-semibold text-[#475569]">
-                              Store assignment: {locations.find((location) => toPositiveInt(location?.location_id) === toPositiveInt(terminal.location_id))?.name || `Store ${terminal.location_id}`}
-                            </p>
-                            <Button
-                              type="button"
-                              className="h-10 bg-[#1A4E8D] px-5 text-white hover:bg-[#143F73]"
-                              onClick={() => handleCreateCashierAccount(terminal)}
-                              disabled={locked || cashierCreating}
-                            >
-                              {cashierCreating ? 'Creating Cashier...' : 'Create Cashier'}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -4819,6 +4681,14 @@ function SettingsWorkspace({
           }
           return handleDeactivateLocation(pendingLocationAction?.locationId, { confirmed: true });
         }}
+      />
+      <UserInvitationModal
+        open={cashierInvitationOpen}
+        onOpenChange={setCashierInvitationOpen}
+        onSuccess={() => loadCashierAccounts({ silent: true })}
+        fixedRole="cashier"
+        title="Invite DGFY Cashier"
+        submitLabel="Send Cashier Invitation"
       />
     </div>
   );

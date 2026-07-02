@@ -10,42 +10,37 @@ afterEach(() => {
   else process.env.POS_TERMINAL_PAIRING_SECRET = originalSecret;
 });
 describe('POS terminal pairing service', () => {
-  it('issues a tenant, terminal, location, and identity-bound token', () => {
+  it('issues a tenant, terminal, version, and location-bound device token', () => {
     process.env.NODE_ENV = 'test';
     const token = pairingService.issue({
       tenantId: 'tenant-1',
       terminalId: 'counter-01',
-      terminalPasswordHash: '$2a$12$terminal-password-hash',
-      locationId: 3,
-      identityMode: 'dgfy_membership',
-      membershipId: 44
+      pairingVersion: '3d047440-b947-4f21-b2fa-2edc5ae0957f',
+      locationId: 3
     });
     const claims = pairingService.verify(token);
     expect(claims).toMatchObject({
       token_type: 'pos_terminal_pairing',
       tenant_id: 'tenant-1',
       terminal_id: 'COUNTER-01',
-      location_id: 3,
-      identity_mode: 'dgfy_membership',
-      membership_id: 44
+      location_id: 3
     });
     expect(pairingService.assertBinding({
       claims,
       tenantId: 'tenant-1',
       terminalId: 'COUNTER-01',
-      terminalPasswordHash: '$2a$12$terminal-password-hash',
+      pairingVersion: '3d047440-b947-4f21-b2fa-2edc5ae0957f',
       locationId: 3
     })).toBe(true);
   });
 
-  it('rejects tampering, password changes, and location reassignment', () => {
+  it('rejects tampering, pairing-version rotation, and location reassignment', () => {
     process.env.NODE_ENV = 'test';
     const token = pairingService.issue({
       tenantId: 'tenant-1',
       terminalId: 'COUNTER-01',
-      terminalPasswordHash: 'hash-one',
-      locationId: 3,
-      identityMode: 'legacy_grace'
+      pairingVersion: '3d047440-b947-4f21-b2fa-2edc5ae0957f',
+      locationId: 3
     });
     const claims = pairingService.verify(token);
     expect(() => pairingService.verify(`${token}tampered`)).toThrow(/pairing is missing, expired, or no longer valid/i);
@@ -53,14 +48,14 @@ describe('POS terminal pairing service', () => {
       claims,
       tenantId: 'tenant-1',
       terminalId: 'COUNTER-01',
-      terminalPasswordHash: 'hash-two',
+      pairingVersion: '5f1c652d-5404-4d15-bd21-670b55699c40',
       locationId: 3
     })).toThrow(/pairing is missing, expired, or no longer valid/i);
     expect(() => pairingService.assertBinding({
       claims,
       tenantId: 'tenant-1',
       terminalId: 'COUNTER-01',
-      terminalPasswordHash: 'hash-one',
+      pairingVersion: '3d047440-b947-4f21-b2fa-2edc5ae0957f',
       locationId: 4
     })).toThrow(/pairing is missing, expired, or no longer valid/i);
   });
@@ -71,10 +66,8 @@ describe('POS terminal pairing service', () => {
     expect(() => pairingService.issue({
       tenantId: 'tenant-1',
       terminalId: 'COUNTER-01',
-      terminalPasswordHash: 'hash-one',
-      locationId: 3,
-      identityMode: 'dgfy_membership',
-      membershipId: 44
+      pairingVersion: '3d047440-b947-4f21-b2fa-2edc5ae0957f',
+      locationId: 3
     })).toThrow(/POS_TERMINAL_PAIRING_SECRET/);
   });
 });
