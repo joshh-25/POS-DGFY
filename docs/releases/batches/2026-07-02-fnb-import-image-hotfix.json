@@ -201,6 +201,8 @@
         "docs/setup/COLLABORATOR_LOCAL_ENV.md",
         "frontend/Pages/Login.jsx",
         "frontend/Pages/__tests__/Login.identityReset.test.jsx",
+        "frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js",
+        "frontend/src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
         "frontend/src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx",
         "frontend/src/features/pos/components/TerminalLockDrawer.jsx",
         "frontend/src/features/pos/components/TerminalPageLayout.jsx",
@@ -280,7 +282,7 @@
       ],
       "required_tests": [
         "npm --prefix backend test -- --runInBand tests/rateLimiter.behavior.test.js tests/auth.ratelimit.e2e.test.js",
-        "npm --prefix frontend test -- --run Pages/__tests__/Login.identityReset.test.jsx src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/services/__tests__/api.publicAuthPolicy.test.js",
+        "npm --prefix frontend test -- --run Pages/__tests__/Login.identityReset.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/posSettingsCashier.contract.test.js src/services/__tests__/api.publicAuthPolicy.test.js",
         "npm --prefix frontend run build:all",
         "npm run lint:docs",
         "npm run check:architecture",
@@ -294,9 +296,9 @@
           "evidence": "2026-07-02 aggregate staging validation: 9 backend auth/rate-limit tests passed using the ignored local backend DB env; initial clean-worktree run without DB env failed before exercising code."
         },
         {
-          "command": "npm --prefix frontend test -- --run Pages/__tests__/Login.identityReset.test.jsx src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/services/__tests__/api.publicAuthPolicy.test.js",
+          "command": "npm --prefix frontend test -- --run Pages/__tests__/Login.identityReset.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/posSettingsCashier.contract.test.js src/services/__tests__/api.publicAuthPolicy.test.js",
           "status": "pass",
-          "evidence": "2026-07-02 aggregate staging validation: 10 frontend auth/POS contract tests passed."
+          "evidence": "2026-07-02 aggregate staging validation: 16 targeted Login, TerminalLockDrawer, POS settings cashier, and public-auth policy tests passed after stale POS contract assertions were aligned."
         },
         {
           "command": "npm --prefix frontend run build:all",
