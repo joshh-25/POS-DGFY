@@ -13,7 +13,8 @@ import {
     buildUpdateBulkPosCatalogOverridesUseCase,
     buildUploadPosCatalogImageUseCase,
     buildUploadBulkPosCatalogImagesUseCase,
-    buildUpdateOnlineOrderStatusUseCase
+    buildUpdateOnlineOrderStatusUseCase,
+    buildOpenTerminalShiftUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
 import { buildPosReadiness } from '../src/modules/shared/utils/catalogSetupPolicy.js';
 import { DomainError, DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
@@ -56,6 +57,41 @@ const createBulkPosRepository = ({ items = [], existing = null, readiness = null
 });
 
 const editableUser = { is_master_admin: false, permissions: ['items:edit'] };
+const posOperator = { user_id: 15, is_active: true, permissions: ['pos:view', 'pos:transact'] };
+
+const runWithTenantComplianceContext = (callback) => dbStore.run({
+    tenantId: 'tenant-1',
+    tenantComplianceId: 'tenant-1',
+    tenantComplianceModeState: 'non_compliant_active',
+    tenantCompliancePolicyVersion: 'test'
+}, callback);
+
+const createShiftOpenRepository = ({ registryEntry = { terminal_id: 'COUNTER-01', location_id: 3 } } = {}) => ({
+    getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({
+        mode: 'warn',
+        binding_enforced: false,
+        active_registry: registryEntry ? [registryEntry] : []
+    }),
+    findOperationReplayByKey: jest.fn().mockResolvedValue(null),
+    createOperationReplay: jest.fn().mockResolvedValue(null),
+    findOpenTerminalShift: jest.fn().mockResolvedValue(null),
+    createTerminalShift: jest.fn().mockResolvedValue({
+        pos_terminal_shift_id: 101,
+        terminal_id: 'COUNTER-01',
+        location_id: 3,
+        cashier_id: 15,
+        opening_float_amount: 500,
+        status: 'open'
+    }),
+    getTerminalShiftById: jest.fn().mockResolvedValue({
+        pos_terminal_shift_id: 101,
+        terminal_id: 'COUNTER-01',
+        location_id: 3,
+        cashier_id: 15,
+        opening_float_amount: 500,
+        status: 'open'
+    })
+});
 
 describe('pos use-cases application result contract', () => {
     it('listPosTransactions validates query shape', async () => {
@@ -67,6 +103,103 @@ describe('pos use-cases application result contract', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
         expect(result.error.statusCode).toBe(400);
+    });
+
+    it('opens a shift from an active logical terminal without a pairing cookie', async () => {
+        const posRepository = createShiftOpenRepository();
+        const resolveIdentityStatus = jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership', membership_id: 44 });
+        const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 3 });
+        const useCase = buildOpenTerminalShiftUseCase({
+            posRepository,
+            resolveIdentityStatus,
+            resolveLocationScope
+        });
+
+        const result = await runWithTenantComplianceContext(() => useCase({
+            payload: {
+                terminal_id: 'COUNTER-01',
+                location_id: 3,
+                opening_float_amount: 500
+            },
+            user: posOperator
+        }));
+
+        expect(result.success).toBe(true);
+        expect(resolveIdentityStatus).toHaveBeenCalledWith({ tenantId: 'tenant-1', user: posOperator });
+        expect(resolveLocationScope).toHaveBeenCalledWith(expect.objectContaining({
+            requestedLocationId: 3,
+            userId: 15,
+            operationLabel: 'POS shift open'
+        }));
+        expect(posRepository.createTerminalShift).toHaveBeenCalledWith(expect.objectContaining({
+            terminal_id: 'COUNTER-01',
+            location_id: 3,
+            cashier_id: 15,
+            status: 'open'
+        }));
+    });
+
+    it('blocks shift open for inactive or unknown logical terminals', async () => {
+        const useCase = buildOpenTerminalShiftUseCase({
+            posRepository: createShiftOpenRepository({ registryEntry: null }),
+            resolveIdentityStatus: jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership' }),
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 3 })
+        });
+
+        const result = await runWithTenantComplianceContext(() => useCase({
+            payload: {
+                terminal_id: 'COUNTER-01',
+                location_id: 3,
+                opening_float_amount: 500
+            },
+            user: posOperator
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.details.terminal_identity_policy.reason_code).toBe('TERMINAL_REGISTRY_REQUIRED');
+    });
+
+    it('blocks shift open when the terminal has no location or the operator lacks the location grant', async () => {
+        const missingLocationUseCase = buildOpenTerminalShiftUseCase({
+            posRepository: createShiftOpenRepository({ registryEntry: { terminal_id: 'COUNTER-01', location_id: null } }),
+            resolveIdentityStatus: jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership' }),
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: null })
+        });
+
+        const missingLocationResult = await runWithTenantComplianceContext(() => missingLocationUseCase({
+            payload: {
+                terminal_id: 'COUNTER-01',
+                location_id: 3,
+                opening_float_amount: 500
+            },
+            user: posOperator
+        }));
+
+        expect(missingLocationResult.success).toBe(false);
+        expect(missingLocationResult.error.statusCode).toBe(422);
+
+        const deniedLocationUseCase = buildOpenTerminalShiftUseCase({
+            posRepository: createShiftOpenRepository(),
+            resolveIdentityStatus: jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership' }),
+            resolveLocationScope: jest.fn().mockRejectedValue(new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'Location access denied',
+                { statusCode: 403, details: { reason_code: 'LOCATION_SCOPE_DENIED' } }
+            ))
+        });
+
+        const deniedLocationResult = await runWithTenantComplianceContext(() => deniedLocationUseCase({
+            payload: {
+                terminal_id: 'COUNTER-01',
+                location_id: 3,
+                opening_float_amount: 500
+            },
+            user: posOperator
+        }));
+
+        expect(deniedLocationResult.success).toBe(false);
+        expect(deniedLocationResult.error.statusCode).toBe(403);
     });
 
     it('getPosTransactionById validates positive integer id', async () => {

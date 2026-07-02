@@ -33,6 +33,17 @@ beforeAll(async () => {
 });
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
+const resolveActiveIdentityStatus = jest.fn(async () => ({ active_profile: true }));
+const resolveAuthorizedLocationScope = jest.fn(async () => ({
+    location_id: 1,
+    source: 'test_location_grant'
+}));
+
+const buildOpenShiftUseCase = (posRepository) => buildOpenTerminalShiftUseCase({
+    posRepository,
+    resolveIdentityStatus: resolveActiveIdentityStatus,
+    resolveLocationScope: resolveAuthorizedLocationScope
+});
 
 const createTransaction = () => {
     const transaction = {
@@ -79,7 +90,10 @@ const buildReplayRepository = () => {
     let shiftSequence = 1;
     let terminalPolicy = {
         mode: 'warn',
-        active_registry: []
+        active_registry: [
+            { terminal_id: 'WEB-POS-01', label: 'Web POS 1', location_id: 1 },
+            { terminal_id: 'WEB-POS-02', label: 'Web POS 2', location_id: 1 }
+        ]
     };
 
     const replayKey = ({ operationKey, idempotencyKey }) => `${operationKey}::${idempotencyKey}`;
@@ -215,7 +229,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             ]
         });
 
-        const openShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
         const cashEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
         const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
         const updateOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
@@ -358,7 +372,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             ]
         });
 
-        const openShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
         const cashEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
         const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
         const updateOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
@@ -524,7 +538,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
 
     it('enforces and warns terminal identity policy by mode', async () => {
         const posRepository = buildReplayRepository();
-        const openShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
 
         await runInTenantContext({ sequelize: null }, async () => {
             posRepository.setTerminalPolicy({
@@ -581,9 +595,10 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
                 },
                 user: { user_id: 21 }
             });
-            expect(warnWithUnregisteredTerminal.success).toBe(true);
-            expect(warnWithUnregisteredTerminal.data.terminal_identity_policy?.mode).toBe('warn');
-            expect(warnWithUnregisteredTerminal.data.terminal_identity_policy?.warning?.reason_code).toBe(
+            expect(warnWithUnregisteredTerminal.success).toBe(false);
+            expect(warnWithUnregisteredTerminal.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+            expect(warnWithUnregisteredTerminal.error.details?.terminal_identity_policy?.mode).toBe('warn');
+            expect(warnWithUnregisteredTerminal.error.details?.terminal_identity_policy?.warning?.reason_code).toBe(
                 'TERMINAL_ID_UNREGISTERED_WARN'
             );
         });

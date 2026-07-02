@@ -18,7 +18,6 @@ import { createTenantLocation, updateTenantLocation } from '@/services/tenantLoc
 import { bulkCreateOnboardingItems } from '@/services/onboardingService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
-import { verifyPosTerminal } from '../services/posService.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
@@ -170,7 +169,6 @@ export default function PosTenantSetupModal({
     current_stock: '0'
   }));
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
-  const [pairingTerminalId, setPairingTerminalId] = useState('');
   const [locationDraft, setLocationDraft] = useState(() => createLocationDraft(
     resolvePrimaryLocation(terminalLocations),
     companyName,
@@ -294,18 +292,6 @@ export default function PosTenantSetupModal({
       }
       return next;
     });
-  };
-
-  const handlePairDevice = async (terminalId) => {
-    setPairingTerminalId(terminalId);
-    try {
-      await verifyPosTerminal({ terminal_id: terminalId });
-      toast.success(`This device is now paired to ${terminalId}.`);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to pair this POS device.');
-    } finally {
-      setPairingTerminalId('');
-    }
   };
 
   const handleSaveTerminals = async () => {
@@ -773,9 +759,9 @@ export default function PosTenantSetupModal({
                           </Button>
                         </div>
                       </div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
+                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          Pair this physical device once as the company master admin. Cashiers then use DGFY sign-in without a terminal password.
+                          Create one logical terminal for each counter or station. Authorized DGFY users can open shifts from any logged-in device.
                         </div>
                         <label className="flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-[13px] font-semibold text-[#0F172A]">
                           <input
@@ -795,15 +781,6 @@ export default function PosTenantSetupModal({
                           />
                           Default
                         </label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-11"
-                          disabled={!terminal.terminal_id || !terminal.location_id || (!terminal.pairing_version && !terminal.paired_device_ready) || pairingTerminalId === terminal.terminal_id}
-                          onClick={() => handlePairDevice(terminal.terminal_id)}
-                        >
-                          {pairingTerminalId === terminal.terminal_id ? 'Pairing...' : 'Pair This Device'}
-                        </Button>
                       </div>
                     </div>
                   ))}
