@@ -42,6 +42,7 @@ describe('regular POS Setup cashier management contract', () => {
     expect(terminalPageSource).toContain('hydrateTerminalMeta({ suppressGlobalErrors: true })');
     expect(terminalPageSource).toContain('setSettingsAccessPinVerified(true);');
     expect(terminalPageSource).toContain('commitViewModeSelection(nextMode);');
+    expect(terminalPageSource).toContain('await hydrateTerminalMeta({ suppressGlobalErrors: true });');
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('reports')}");
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('items')}");
     expect(sidebarSource).toContain("disabled={locked || onboardingRestricted || !canViewPos}");

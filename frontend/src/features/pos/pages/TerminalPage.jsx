@@ -3110,6 +3110,7 @@ export default function TerminalPage() {
     setSettingsAccessPinSubmitting(true);
     try {
       await verifyPosSettingsAccessPin(normalizedPin);
+      await hydrateTerminalMeta({ suppressGlobalErrors: true });
       setSettingsAccessPinVerified(true);
       setSettingsAccessPinModalOpen(false);
       setSettingsAccessPinValue('');
@@ -3122,7 +3123,7 @@ export default function TerminalPage() {
     } finally {
       setSettingsAccessPinSubmitting(false);
     }
-  }, [commitViewModeSelection, pendingSettingsViewMode, settingsAccessPinValue]);
+  }, [commitViewModeSelection, hydrateTerminalMeta, pendingSettingsViewMode, settingsAccessPinValue]);
 
   const handleHardwareMessageOpenChange = useCallback((open) => {
     if (!open) {
