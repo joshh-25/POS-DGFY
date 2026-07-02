@@ -1,6 +1,6 @@
 {
   "schema": "sku-reviewed-batch-manifest/v1",
-  "review_status": "superseded_by_aggregate",
+  "review_status": "reviewed",
   "reviewed_by": "BabyBaBab-owner",
   "reviewed_at": "2026-07-02T05:50:00.000Z",
   "source_pr": "owner_direct_hotfix",
@@ -211,12 +211,13 @@
         "No PayMongo/payment behavior changed"
       ],
       "can_ship_independently": true,
-      "promotion_eligibility": "blocked",
-      "verdict": "defer",
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
       "payment_sensitive": false,
       "payment_sensitive_files": [],
       "high_risk_path": false,
-      "high_risk_files": [],
+      "high_risk_files": [
+      ],
       "regression_risk_level": "high",
       "regression_warning_required": true,
       "regression_warning_summary": "POS item setup, onboarding gating, Storefront/POS visibility toggles, barcode creation, and tenant schema deployment checks could regress if the staged post-create flow or schema repair contract behaves differently in production.",
@@ -242,10 +243,7 @@
         "Monitor POS item create/update errors, catalog override errors, barcode generation errors, and tenant schema sync reports immediately after deployment.",
         "If post-create setup fails in production, preserve item IDs from recovery UI and retry before rollback.",
         "Use signed-controller rollback; do not use local deploy scripts as production authority."
-      ],
-      "superseded_by": "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json"
+      ]
     }
-  ],
-  "superseded_by": "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
-  "superseded_reason": "Preserved for merge hygiene and traceability; the reviewed release authority is the aggregate manifest."
+  ]
 }
