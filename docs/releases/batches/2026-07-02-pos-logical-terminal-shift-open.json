@@ -15,7 +15,9 @@
       "included_files": [
         "backend/src/modules/pos/usecases/posUseCases.js",
         "backend/src/routes/pos.js",
+        "backend/tests/posCheckout.db.integration.test.js",
         "backend/tests/posCheckoutFnbContracts.usecase.test.js",
+        "backend/tests/posOperationReplayParity.usecase.test.js",
         "backend/tests/posSalesReconciliation.db.integration.test.js",
         "backend/tests/posUsecases.applicationResult.test.js",
         "docs/api/specification.md",
