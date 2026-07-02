@@ -392,7 +392,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');
     expect(terminalLockDrawerContent).not.toContain('Company Token (Optional)');
-    expect(terminalLockDrawerContent).toContain('DGFY Email');
+    expect(terminalLockDrawerContent).toContain('Email or Cashier Username');
     expect(terminalLockDrawerContent).toContain('Company');
     expect(terminalLockDrawerContent).toContain('Continue to POS');
     expect(terminalLockDrawerContent).toContain('Select accessible company');

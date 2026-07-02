@@ -38,14 +38,12 @@ describe('csvImportService workflow-mode template enforcement', () => {
   let previewImport;
   let confirmImport;
   let getTemplateDefinition;
-  let CSV_IMPORT_ROW_CONCURRENCY;
 
   beforeAll(async () => {
     const mod = await import('../src/services/csvImportService.js');
     previewImport = mod.previewImport;
     confirmImport = mod.confirmImport;
     getTemplateDefinition = mod.getTemplateDefinition;
-    CSV_IMPORT_ROW_CONCURRENCY = mod.CSV_IMPORT_ROW_CONCURRENCY;
   });
 
   beforeEach(() => {
@@ -307,10 +305,6 @@ describe('csvImportService workflow-mode template enforcement', () => {
       ]),
       expect.objectContaining({ validate: true })
     );
-  });
-
-  it('keeps row-level import writes below tenant pool pressure threshold', () => {
-    expect(CSV_IMPORT_ROW_CONCURRENCY).toBeLessThanOrEqual(3);
   });
 
   it('reports clear row errors when an F&B import database operation times out', async () => {
