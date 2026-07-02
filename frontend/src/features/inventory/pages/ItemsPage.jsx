@@ -103,7 +103,6 @@ const POS_CHECKLIST_SEARCH_KEYS = [
 
 const MSME_RESTRICTED_CATEGORY_FILTERS = new Set(['raw_material', 'packaging', 'finished_goods', 'work_in_progress']);
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
-const STOREFRONT_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 const parseStorefrontImageGallery = (value) => {
   if (Array.isArray(value)) return value;
@@ -569,11 +568,6 @@ export default function Items() {
       return;
     }
     const filesToUpload = normalizedFiles.slice(0, remainingSlots);
-    const oversizedFile = filesToUpload.find((file) => Number(file?.size || 0) > STOREFRONT_ITEM_IMAGE_MAX_BYTES);
-    if (oversizedFile) {
-      toast.error(`Cannot upload ${oversizedFile.name || 'item image'}: image size must be 5 MB or smaller.`);
-      return;
-    }
     if (normalizedFiles.length > remainingSlots) {
       toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
     }

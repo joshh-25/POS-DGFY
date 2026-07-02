@@ -331,8 +331,6 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('parseStorefrontImageGallery');
     expect(itemsPageSource).toContain('updateStorefrontCatalogGallery(itemId, nextGallery)');
     expect(itemsPageSource).toContain('Failed to upload item image');
-    expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024');
-    expect(itemsPageSource).toContain("image size must be 5 MB or smaller");
     expect(itemsPageSource).toContain('<StorefrontImageCarousel');
     expect(itemsPageSource).toContain('variant="table"');
     expect(storefrontImageCarouselSource).toContain('Set first');
