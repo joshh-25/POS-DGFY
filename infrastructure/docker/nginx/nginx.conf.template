@@ -22,6 +22,17 @@
 # TLS is provided by Let's Encrypt via the `certbot` service in
 # docker-compose.yml. See init-letsencrypt.sh for the one-time bootstrap
 # needed before this config's `ssl_certificate` paths exist.
+#
+# Every proxy_pass target below uses `set $var host:port; proxy_pass
+# http://$var;` instead of a bare `proxy_pass http://host:port;`. This is
+# NOT cosmetic: a bare proxy_pass resolves the hostname ONCE per nginx
+# worker (at startup/reload) and never again, but `backend`/`frontend`
+# get a NEW internal IP every time docker-compose recreates them (e.g. on
+# every deploy). Without this, nginx keeps proxying to the old, dead IP
+# after every deploy until it happens to be reloaded/restarted for some
+# other reason -- a "502 Bad Gateway" that only a manual `nginx -s reload`
+# fixes. Routing through a variable forces nginx to actually consult the
+# `resolver` directive (Docker's embedded DNS) on each connection.
 
 resolver 127.0.0.11 valid=10s;
 
@@ -66,7 +77,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     location /api {
-        proxy_pass http://backend:5000;
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -78,7 +90,8 @@ server {
     }
 
     location /uploads {
-        proxy_pass http://backend:5000;
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -104,7 +117,8 @@ server {
     }
 
     location / {
-        proxy_pass http://frontend:8081;
+        set $frontend_upstream frontend:8081;
+        proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -125,7 +139,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     location /api {
-        proxy_pass http://backend:5000;
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -137,7 +152,8 @@ server {
     }
 
     location /uploads {
-        proxy_pass http://backend:5000;
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -151,7 +167,8 @@ server {
     # This matches confirmed live production behavior, not an oversight.
 
     location / {
-        proxy_pass http://frontend:8082;
+        set $frontend_upstream frontend:8082;
+        proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -172,7 +189,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     location /api {
-        proxy_pass http://backend:5000;
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -184,7 +202,8 @@ server {
     }
 
     location /uploads {
-        proxy_pass http://backend:5000;
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -209,8 +228,9 @@ server {
     }
 
     location /tenant-store/ {
+        set $frontend_upstream frontend:8083;
         rewrite ^/tenant-store/(.*)$ /$1 break;
-        proxy_pass http://frontend:8083;
+        proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -222,7 +242,8 @@ server {
     }
 
     location / {
-        proxy_pass http://frontend:8083;
+        set $frontend_upstream frontend:8083;
+        proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
