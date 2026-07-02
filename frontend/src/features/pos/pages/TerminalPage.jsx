@@ -1792,6 +1792,7 @@ export default function TerminalPage() {
       refreshTenantLocations({ suppressGlobalErrors: true }),
       refreshOperationalContext({
         terminalIdOverride: selectedTerminalId,
+        operatingLocationIdOverride,
         suppressGlobalErrors: true
       })
     ]);
@@ -2603,7 +2604,10 @@ export default function TerminalPage() {
       toast.success('Shift opened successfully.');
       setAdminShiftPromptSkipped(false);
       setOpenShiftForm({ openingFloatAmount: '', openingNote: '' });
-      await refreshOperationalContext();
+      await refreshOperationalContext({
+        terminalIdOverride: terminalId,
+        operatingLocationIdOverride: scopedOperatingLocationId
+      });
       setPosViewMode('checkout');
       setMobileNavOpen(false);
     } catch (error) {
