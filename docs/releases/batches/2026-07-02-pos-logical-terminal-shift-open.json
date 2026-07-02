@@ -15,6 +15,7 @@
       "included_files": [
         "backend/src/modules/pos/usecases/posUseCases.js",
         "backend/src/routes/pos.js",
+        "backend/tests/posCheckoutFnbContracts.usecase.test.js",
         "backend/tests/posSalesReconciliation.db.integration.test.js",
         "backend/tests/posUsecases.applicationResult.test.js",
         "docs/api/specification.md",
@@ -100,6 +101,7 @@
       ],
       "required_tests": [
         "npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js",
+        "npm --prefix backend test -- --runInBand tests/posCheckoutFnbContracts.usecase.test.js",
         "npm --prefix frontend exec vitest run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
         "npm --prefix frontend exec vitest run src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js",
         "npm --prefix frontend run build:pos",
@@ -113,6 +115,11 @@
           "command": "npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js",
           "status": "pass",
           "evidence": "clean-release-branch b0174ef6: 1 backend suite and 36 POS use-case tests passed"
+        },
+        {
+          "command": "npm --prefix backend test -- --runInBand tests/posCheckoutFnbContracts.usecase.test.js",
+          "status": "pass",
+          "evidence": "clean-release-branch follow-up: 1 backend POS checkout F&B contract suite and 16 tests passed after aligning logical terminal and DGFY identity fixtures"
         },
         {
           "command": "npm --prefix frontend exec vitest run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",

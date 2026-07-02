@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal,settings,users
 reason_codes_impacted: POS_OPERATOR_IDENTITY_INVALID,POS_OPERATOR_PROFILE_INACTIVE,TERMINAL_ID_REQUIRED_FOR_ENFORCED_REGISTRY,TERMINAL_ID_NOT_REGISTERED,TERMINAL_HOME_LOCATION_REQUIRED,LOCATION_SCOPE_DENIED
 policy_version: 2026.07.02
-verification_evidence: npm run check:architecture,npm run check:compliance,npm run lint:docs,npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js,npm --prefix frontend exec vitest run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js,npm --prefix frontend run build:pos,git diff --check
+verification_evidence: npm run check:architecture,npm run check:compliance,npm run lint:docs,npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js,npm --prefix backend test -- --runInBand tests/posCheckoutFnbContracts.usecase.test.js,npm --prefix frontend exec vitest run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js,npm --prefix frontend run build:pos,git diff --check
 preflight_result: no_breach
 preflight_reason_code: POS_LOGICAL_TERMINAL_SHIFT_OPEN
 preflight_run_at: 2026-07-02T00:00:00+08:00

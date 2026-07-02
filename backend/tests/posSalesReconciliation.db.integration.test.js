@@ -368,6 +368,15 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     const terminalId = options.terminalId || payload.terminal_id || `COUNTER-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
     const requestedLocationId = options.locationId ?? payload.location_id ?? null;
     const locationId = requestedLocationId || (await createTenantLocation()).location_id;
+    await models.UserLocationGrant.findOrCreate({
+      where: {
+        user_id: cashierId,
+        location_id: locationId
+      },
+      defaults: {
+        created_by: cashierId
+      }
+    });
     await setSetting(
       'pos_terminal_registry',
       JSON.stringify([
