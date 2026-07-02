@@ -1,5 +1,9 @@
 import { compareTenantSyncFailures } from '../scripts/check-tenant-schema-sync-regressions.js';
-import { normalizeErrorSignature } from '../scripts/sync-tenant-schemas.js';
+import {
+  buildTenantSchemaRepairSql,
+  createSyncFailureRecord,
+  normalizeErrorSignature
+} from '../scripts/sync-tenant-schemas.js';
 
 describe('tenant schema sync script contracts', () => {
   it('normalizes known too-many-keys failures with stable fingerprint', () => {
@@ -75,5 +79,34 @@ describe('tenant schema sync script contracts', () => {
     expect(comparison.summary.mutated_failure_count).toBe(1);
     expect(comparison.new_failures).toHaveLength(2);
     expect(comparison.mutated_failures[0].tenant_db).toBe('tenant_a');
+  });
+
+  it('builds declared additive repair SQL for required POS schema columns', () => {
+    const repairs = buildTenantSchemaRepairSql([
+      { table: 'pos_catalog_overrides', column: 'pos_always_available' },
+      { table: 'pos_transaction_lines', column: 'stock_effect_type' },
+      { table: 'pos_transaction_lines', column: 'stock_exempt_reason' }
+    ]);
+
+    expect(repairs).toHaveLength(3);
+    expect(repairs[0].sql).toContain('ADD COLUMN `pos_always_available`');
+    expect(repairs[1].sql).toContain("ENUM('inventory_issue','stock_exempt')");
+    expect(repairs[2].sql).toContain('ADD COLUMN `stock_exempt_reason`');
+  });
+
+  it('preserves missing-column evidence in tenant sync failure records', () => {
+    const error = new Error('Missing required tenant schema columns: pos_catalog_overrides.pos_always_available');
+    error.missing_columns = [{ table: 'pos_catalog_overrides', column: 'pos_always_available' }];
+    error.repair_sql = buildTenantSchemaRepairSql(error.missing_columns);
+
+    const record = createSyncFailureRecord({
+      id: 'tenant-1',
+      name: 'Tenant 1',
+      db_name: 'sku_tenant_test'
+    }, error);
+
+    expect(record.status).toBe('failed');
+    expect(record.missing_columns).toEqual(error.missing_columns);
+    expect(record.repair_sql[0].sql).toContain('pos_always_available');
   });
 });

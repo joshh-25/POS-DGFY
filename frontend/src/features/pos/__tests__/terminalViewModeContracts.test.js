@@ -11,6 +11,7 @@ const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/Term
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/TerminalOperationsPanels.jsx');
+const posTenantSetupModalPath = path.resolve(__dirname, '../components/PosTenantSetupModal.jsx');
 const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/PosReportsAnalyticsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const skupervisorCheckoutTerminalPath = path.resolve(__dirname, '../components/SkupervisorPOSCheckoutTerminal.jsx');
@@ -26,6 +27,7 @@ describe('POS terminal view-mode contracts', () => {
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
   let terminalOperationsPanelsContent = '';
+  let posTenantSetupModalContent = '';
   let posReportsAnalyticsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
   let skupervisorCheckoutTerminalContent = '';
@@ -41,6 +43,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     terminalOperationsPanelsContent = fs.readFileSync(terminalOperationsPanelsPath, 'utf8');
+    posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
     posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = fs.readFileSync(posCheckoutTerminalPath, 'utf8');
     skupervisorCheckoutTerminalContent = fs.readFileSync(skupervisorCheckoutTerminalPath, 'utf8');
@@ -69,18 +72,34 @@ describe('POS terminal view-mode contracts', () => {
     expect(skupervisorCheckoutTerminalContent).toContain("item?.pos_always_available === true");
   });
 
-  it('finalizes created POS items even when post-create visibility sync is only partially successful', () => {
-    expect(terminalOperationsWorkspaceContent).toContain("const finalizeCreatedItem = async ({ barcode = '', warningMessage = '' } = {}) => {");
+  it('preserves created POS item identity and retries post-create setup without duplicates', () => {
+    expect(terminalOperationsWorkspaceContent).toContain("const runPostCreateStages = async ({ itemId, itemName, imageFile, posAlwaysAvailable }) => {");
+    expect(terminalOperationsWorkspaceContent).toContain('setPendingCreateRecovery({');
+    expect(terminalOperationsWorkspaceContent).toContain('Resume Item Setup');
+    expect(terminalOperationsWorkspaceContent).toContain('will not create a duplicate item');
+    expect(terminalOperationsWorkspaceContent).toContain("runStage('pos_image'");
+    expect(terminalOperationsWorkspaceContent).toContain("runStage('storefront_image'");
+    expect(terminalOperationsWorkspaceContent).toContain("runStage('barcode'");
+    expect(terminalOperationsWorkspaceContent).toContain("runStage('storefront_visibility'");
+    expect(terminalOperationsWorkspaceContent).toContain("runStage('always_available'");
+    expect(terminalOperationsWorkspaceContent).toContain("runStage('pos_visibility'");
     expect(terminalOperationsWorkspaceContent).toContain('closeCreate({ force: true });');
-    expect(terminalOperationsWorkspaceContent).toContain('pos_always_available: createForm.pos_always_available === true');
-    expect(terminalOperationsWorkspaceContent).toContain('Item created, but the Always Available setting could not be saved automatically.');
-    expect(terminalOperationsWorkspaceContent).toContain('Item created, but POS visibility is blocked until readiness requirements are completed.');
-    expect(terminalOperationsWorkspaceContent).toContain('Item created, but POS visibility could not be enabled automatically.');
+    expect(terminalOperationsWorkspaceContent).toContain('pos_always_available: posAlwaysAvailable === true');
+  });
+
+  it('validates POS onboarding starter item cost and stock before calling the onboarding API', () => {
+    expect(posTenantSetupModalContent).toContain('const parsedCost = cost === \'\' ? null : Number(cost);');
+    expect(posTenantSetupModalContent).toContain('const parsedStock = stock === \'\' ? 0 : Number(stock);');
+    expect(posTenantSetupModalContent).toContain("toast.error('Starter item cost cannot be negative.');");
+    expect(posTenantSetupModalContent).toContain("toast.error('Starter item stock cannot be negative.');");
+    expect(posTenantSetupModalContent).toContain('current_stock: parsedStock');
+    expect(posTenantSetupModalContent).toContain('if (parsedCost !== null) row.cost_per_unit = parsedCost;');
   });
 
   it('keeps tenant onboarding restriction tied to live readiness state, not only the URL query', () => {
     expect(terminalPageContent).toContain('const tenantSetupIncomplete = !setupFlowState.loading');
     expect(terminalPageContent).toContain('const tenantSetupRequestedOrRequired = tenantSetupFlowRequested || tenantSetupIncomplete;');
+    expect(terminalPageContent).toContain("const PosTenantSetupModal = lazy(() => import('../components/PosTenantSetupModal.jsx'));");
     expect(terminalPageContent).toContain('if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {');
     expect(terminalPageContent).toContain('clearTenantSetupQueryState();');
     expect(terminalPageContent).not.toContain('shouldForceSelectedTenantOnboarding');
@@ -392,7 +411,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');
     expect(terminalLockDrawerContent).not.toContain('Company Token (Optional)');
-    expect(terminalLockDrawerContent).toContain('Email or Cashier Username');
+    expect(terminalLockDrawerContent).toContain('DGFY Email');
     expect(terminalLockDrawerContent).toContain('Company');
     expect(terminalLockDrawerContent).toContain('Continue to POS');
     expect(terminalLockDrawerContent).toContain('Select accessible company');

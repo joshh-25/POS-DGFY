@@ -15,11 +15,14 @@ import {
 } from '@/components/ui/dialog';
 import { updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
 import { createTenantLocation, updateTenantLocation } from '@/services/tenantLocationService.js';
+import { bulkCreateOnboardingItems } from '@/services/onboardingService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { verifyPosTerminal } from '../services/posService.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
+import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
+import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 
 const MapPinPicker = React.lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
 
@@ -44,6 +47,13 @@ const STEP_CONFIG = {
     summary: 'Complete the storefront branding required for this tenant.',
     description: 'Upload the company icon and cover image from the existing storefront fields in POS Settings.',
     actionLabel: 'Open Storefront'
+  },
+  [POS_TERMINAL_SETUP_STEPS.STARTER_ITEM]: {
+    title: 'Starter Item',
+    icon: Store,
+    summary: 'Create one sellable starter item through the governed onboarding item contract.',
+    description: 'This uses the existing onboarding bulk item API, shared mode taxonomy, row validation, and completion readiness.',
+    actionLabel: 'Open Items'
   }
 };
 
@@ -99,6 +109,28 @@ const resolvePrimaryLocation = (locations = []) => {
   return activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0] || null;
 };
 
+const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
+  food_manufacturing: ['finished_product'],
+  msme: ['product'],
+  services: ['service', 'physical_add_on'],
+  fnb: ['menu_item']
+});
+
+const fallbackStarterPreset = Object.freeze({
+  key: 'product',
+  label: 'Product Item'
+});
+
+const resolveStarterPresetOptions = (workflowMode = '') => {
+  const taxonomy = resolveModeItemTaxonomy(workflowMode);
+  const presets = Array.isArray(taxonomy?.presets) && taxonomy.presets.length > 0
+    ? taxonomy.presets
+    : [fallbackStarterPreset];
+  const preferredKeys = ONBOARDING_CUSTOMER_FACING_PRESETS[normalizeWorkflowMode(workflowMode)] || [];
+  const preferredPresets = presets.filter((preset) => preferredKeys.includes(preset.key));
+  return preferredPresets.length > 0 ? preferredPresets : presets;
+};
+
 export default function PosTenantSetupModal({
   open = false,
   currentStep = POS_TERMINAL_SETUP_STEPS.PROFILE,
@@ -106,6 +138,8 @@ export default function PosTenantSetupModal({
   profileData = {},
   posRequirements = {},
   storefrontRequirements = {},
+  starterItemRequirements = {},
+  workflowMode = '',
   terminalRegistry = [],
   terminalLocations = [],
   tenantUsers = [],
@@ -126,6 +160,15 @@ export default function PosTenantSetupModal({
   const [terminalSaving, setTerminalSaving] = useState(false);
   const [assetUploadingType, setAssetUploadingType] = useState('');
   const [locationSaving, setLocationSaving] = useState(false);
+  const [starterItemSaving, setStarterItemSaving] = useState(false);
+  const starterPresetOptions = useMemo(() => resolveStarterPresetOptions(workflowMode), [workflowMode]);
+  const [starterItemForm, setStarterItemForm] = useState(() => ({
+    mode_item_preset: starterPresetOptions[0]?.key || 'product',
+    name: '',
+    default_sale_price: '',
+    cost_per_unit: '',
+    current_stock: '0'
+  }));
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
   const [pairingTerminalId, setPairingTerminalId] = useState('');
   const [locationDraft, setLocationDraft] = useState(() => createLocationDraft(
@@ -144,6 +187,16 @@ export default function PosTenantSetupModal({
     const primaryLocation = resolvePrimaryLocation(terminalLocations);
     setLocationDraft(createLocationDraft(primaryLocation, companyName, { defaultPrimary: primaryLocation == null }));
   }, [companyName, open, terminalLocations]);
+
+  useEffect(() => {
+    if (!open) return;
+    setStarterItemForm((current) => ({
+      ...current,
+      mode_item_preset: starterPresetOptions.some((preset) => preset.key === current.mode_item_preset)
+        ? current.mode_item_preset
+        : (starterPresetOptions[0]?.key || 'product')
+    }));
+  }, [open, starterPresetOptions]);
 
   const normalizedLocations = useMemo(
     () => (Array.isArray(terminalLocations) ? terminalLocations : []).map((location) => ({
@@ -401,6 +454,67 @@ export default function PosTenantSetupModal({
     }
   };
 
+  const handleCreateStarterItem = async () => {
+    const name = String(starterItemForm.name || '').trim();
+    const salePrice = Number(String(starterItemForm.default_sale_price || '').trim());
+    const cost = String(starterItemForm.cost_per_unit || '').trim();
+    const stock = String(starterItemForm.current_stock || '0').trim();
+    const parsedCost = cost === '' ? null : Number(cost);
+    const parsedStock = stock === '' ? 0 : Number(stock);
+    const presetKey = String(starterItemForm.mode_item_preset || starterPresetOptions[0]?.key || 'product').trim();
+
+    if (!name) {
+      toast.error('Starter item name is required.');
+      return;
+    }
+    if (!Number.isFinite(salePrice) || salePrice <= 0) {
+      toast.error('Starter item selling price must be greater than zero.');
+      return;
+    }
+    if (parsedCost !== null && (!Number.isFinite(parsedCost) || parsedCost < 0)) {
+      toast.error('Starter item cost cannot be negative.');
+      return;
+    }
+    if (!Number.isFinite(parsedStock) || parsedStock < 0) {
+      toast.error('Starter item stock cannot be negative.');
+      return;
+    }
+
+    setStarterItemSaving(true);
+    try {
+      const row = {
+        client_row_id: `pos-starter-${Date.now()}`,
+        mode_item_preset: presetKey,
+        name,
+        default_sale_price: salePrice,
+        current_stock: parsedStock
+      };
+      if (parsedCost !== null) row.cost_per_unit = parsedCost;
+      if (primaryLocationId) row.location_id = primaryLocationId;
+
+      const result = await bulkCreateOnboardingItems({ rows: [row] });
+      const failures = Array.isArray(result?.rows)
+        ? result.rows.filter((entry) => entry?.status === 'failed')
+        : [];
+      if (failures.length > 0) {
+        throw new Error(failures[0]?.message || 'Starter item was rejected by onboarding validation.');
+      }
+      await onSetupDataChanged();
+      setStarterItemForm((current) => ({
+        ...current,
+        name: '',
+        default_sale_price: '',
+        cost_per_unit: '',
+        current_stock: '0'
+      }));
+      toast.success('Starter item created.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to create starter item.');
+    } finally {
+      setStarterItemSaving(false);
+    }
+  };
+
   return (
     <>
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onSkip(); }}>
@@ -484,6 +598,88 @@ export default function PosTenantSetupModal({
                     <p className="text-[12px] text-slate-500">
                       These values are reused from registration and the shared account profile.
                     </p>
+                  </div>
+                </div>
+              ) : null}
+
+              {currentStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                    POS onboarding uses the existing starter-item API and shared mode taxonomy. Create one customer-facing item here, then configure richer catalog details from Items later.
+                  </div>
+                  {starterItemRequirements.starterItemReady ? (
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                      Starter item ready{starterItemRequirements.starterItemId ? `: item #${starterItemRequirements.starterItemId}` : ''}.
+                    </div>
+                  ) : null}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Starter Type</Label>
+                      <select
+                        value={starterItemForm.mode_item_preset}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, mode_item_preset: event.target.value }))}
+                        className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-[#0F172A] outline-none focus:border-[#2563EB]"
+                      >
+                        {starterPresetOptions.map((preset) => (
+                          <option key={preset.key} value={preset.key}>{preset.label || preset.key}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Item Name</Label>
+                      <Input
+                        value={starterItemForm.name}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, name: event.target.value }))}
+                        placeholder="Starter menu item"
+                        className="h-11 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A]"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Selling Price</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={starterItemForm.default_sale_price}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, default_sale_price: event.target.value }))}
+                        placeholder="150.00"
+                        className="h-11 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A]"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Initial Stock</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={starterItemForm.current_stock}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, current_stock: event.target.value }))}
+                        placeholder="0"
+                        className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Optional Cost</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={starterItemForm.cost_per_unit}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, cost_per_unit: event.target.value }))}
+                        placeholder="Optional"
+                        className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+                      onClick={handleCreateStarterItem}
+                      disabled={starterItemSaving}
+                    >
+                      {starterItemSaving ? 'Creating...' : 'Create Starter Item'}
+                    </Button>
                   </div>
                 </div>
               ) : null}

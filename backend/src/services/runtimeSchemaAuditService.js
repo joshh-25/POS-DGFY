@@ -36,7 +36,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260429000001-add-storefront-v2-profile-fields-to-discovery-index.cjs',
     '20260429000002-create-storefront-follows.cjs',
     '20260504000001-add-customer-access-fields-to-discovery-index.cjs',
-    '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs'
+    '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs',
+    '20260629000001-add-pos-always-available-contract.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -60,7 +61,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
     items: ['item_id', 'vat_type'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter'],
-    pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url'],
+    pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available'],
     pos_transactions: [
         'pos_transaction_id',
         'document_type',
@@ -109,7 +110,15 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'is_shared',
         'verification_status'
     ],
-    pos_transaction_lines: ['line_id', 'vat_type_snapshot', 'vat_rate_snapshot', 'sale_price_overridden', 'price_override_reason'],
+    pos_transaction_lines: [
+        'line_id',
+        'vat_type_snapshot',
+        'vat_rate_snapshot',
+        'sale_price_overridden',
+        'price_override_reason',
+        'stock_effect_type',
+        'stock_exempt_reason'
+    ],
     pos_terminal_shifts: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'cashier_id', 'status'],
     pos_cash_drawer_events: ['pos_cash_drawer_event_id', 'pos_terminal_shift_id', 'event_type', 'amount', 'recorded_by'],
     pos_operation_replays: ['pos_operation_replay_id', 'operation_key', 'idempotency_key', 'request_hash', 'replay_status'],
@@ -145,6 +154,13 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
 });
 
 const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
+    pos_catalog_overrides: {
+        pos_always_available: { allowNull: false }
+    },
+    pos_transaction_lines: {
+        stock_effect_type: { allowNull: false },
+        stock_exempt_reason: { allowNull: true }
+    },
     pos_transactions: {
         cashier_id: { allowNull: true },
         buyer_tin: { allowNull: true },
