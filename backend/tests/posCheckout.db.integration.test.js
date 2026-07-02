@@ -116,6 +116,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             opening_float_amount: 0,
             status: 'open'
         });
+        cashier.posTestTerminalId = terminalId;
         cashier.posTestLocationId = location.location_id;
         return cashier;
     };
@@ -204,7 +205,11 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         return runInTenantContext(() => checkoutPosUseCase({
             userId: cashier.user_id,
             user: cashier,
-            payload
+            payload: {
+                ...payload,
+                terminal_id: cashier.posTestTerminalId,
+                location_id: cashier.posTestLocationId
+            }
         }));
     };
 
