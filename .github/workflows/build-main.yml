@@ -16,8 +16,14 @@ jobs:
   build-and-push:
     uses: ./.github/workflows/deployment-orchestrator.yml
     with:
-      environment: PROD
-      image_tags: "latest"
+      # BETA CUTOVER: beta.dgfy.ph is standing in for production for now.
+      # When the real dgfy.ph cutover happens, switch these two lines back
+      # to `environment: PROD` / `image_tags: "latest"` -- PROD's own vars
+      # (VITE_DGFY_AUTH_URL etc., currently unset) need the real dgfy.ph
+      # values set first. See the BETA GitHub Environment for the vars/
+      # secrets shape to replicate.
+      environment: BETA
+      image_tags: "beta"
       publish: true
     secrets: inherit
     permissions:

@@ -20,12 +20,29 @@ ARG VITE_PAYMENTS_ENABLED=false
 # marker; falls back to the build timestamp if unset, so a stable value
 # (e.g. the git SHA) is preferable for reproducible CI builds.
 ARG VITE_BUILD_STAMP=""
+# Cross-app (storefront <-> skupervisor) link overrides. Not strictly
+# required for correctness -- frontend/apps/store/src/businessRegistrationUrl.js
+# and frontend/src/features/pos/utils/skupervisorHandoff.js already derive
+# the right sibling domain from window.location.origin at runtime when
+# these are unset (what lets one shared image serve multiple domains
+# correctly). Left empty by default; set explicitly per-environment as a
+# belt-and-suspenders layer, independent of that runtime heuristic.
+ARG VITE_DGFY_AUTH_URL=""
+ARG VITE_SKUPERVISOR_REGISTRATION_URL=""
+ARG VITE_DGFY_RESET_URL=""
+ARG VITE_SKUPERVISOR_BASE_URL=""
+ARG VITE_STOREFRONT_ACCOUNT_URL=""
 ENV VITE_API_URL=${VITE_API_URL} \
     VITE_STORE_BASE_PATH=${VITE_STORE_BASE_PATH} \
     VITE_TENANT_STORE_BASE_PATH=${VITE_TENANT_STORE_BASE_PATH} \
     VITE_ROOT_TENANT_SLUGS=${VITE_ROOT_TENANT_SLUGS} \
     VITE_PAYMENTS_ENABLED=${VITE_PAYMENTS_ENABLED} \
-    VITE_BUILD_STAMP=${VITE_BUILD_STAMP}
+    VITE_BUILD_STAMP=${VITE_BUILD_STAMP} \
+    VITE_DGFY_AUTH_URL=${VITE_DGFY_AUTH_URL} \
+    VITE_SKUPERVISOR_REGISTRATION_URL=${VITE_SKUPERVISOR_REGISTRATION_URL} \
+    VITE_DGFY_RESET_URL=${VITE_DGFY_RESET_URL} \
+    VITE_SKUPERVISOR_BASE_URL=${VITE_SKUPERVISOR_BASE_URL} \
+    VITE_STOREFRONT_ACCOUNT_URL=${VITE_STOREFRONT_ACCOUNT_URL}
 
 RUN npm run build:all
 

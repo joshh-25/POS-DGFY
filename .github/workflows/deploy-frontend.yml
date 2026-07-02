@@ -61,6 +61,16 @@ jobs:
       # back cleanly to relative/same-origin behavior when unset (see
       # frontend/src/utils/runtimeConfig.js resolveApiBaseUrl/
       # resolveAssetOrigin).
+      #
+      # VITE_DGFY_AUTH_URL/VITE_SKUPERVISOR_REGISTRATION_URL/
+      # VITE_DGFY_RESET_URL/VITE_SKUPERVISOR_BASE_URL/
+      # VITE_STOREFRONT_ACCOUNT_URL are NOT strictly required for
+      # correctness -- businessRegistrationUrl.js and skupervisorHandoff.js
+      # already derive the right cross-app URL from window.location.origin
+      # at runtime when these are unset, which is what makes one shared
+      # image serve multiple domains (beta.dgfy.ph, eventually dgfy.ph)
+      # correctly without a rebuild. Set explicitly anyway as a deliberate
+      # belt-and-suspenders layer, independent of that runtime heuristic.
       - name: Build and push frontend image
         uses: docker/build-push-action@v6
         with:
@@ -77,6 +87,11 @@ jobs:
             VITE_ROOT_TENANT_SLUGS=${{ vars.VITE_ROOT_TENANT_SLUGS }}
             VITE_PAYMENTS_ENABLED=${{ vars.VITE_PAYMENTS_ENABLED }}
             VITE_BUILD_STAMP=${{ github.sha }}
+            VITE_DGFY_AUTH_URL=${{ vars.VITE_DGFY_AUTH_URL }}
+            VITE_SKUPERVISOR_REGISTRATION_URL=${{ vars.VITE_SKUPERVISOR_REGISTRATION_URL }}
+            VITE_DGFY_RESET_URL=${{ vars.VITE_DGFY_RESET_URL }}
+            VITE_SKUPERVISOR_BASE_URL=${{ vars.VITE_SKUPERVISOR_BASE_URL }}
+            VITE_STOREFRONT_ACCOUNT_URL=${{ vars.VITE_STOREFRONT_ACCOUNT_URL }}
 
       # PROD server pull/restart happens in the `publish` job of
       # deployment-orchestrator.yml -> publish-platform.yml, keyed off
