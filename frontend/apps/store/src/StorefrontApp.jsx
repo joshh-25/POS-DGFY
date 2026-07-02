@@ -96,7 +96,8 @@ import {
   canViewCatalog,
   getAccessCapabilities,
   getInventoryDisplayLabel,
-  getStorefrontAccessBlockMessage
+  getStorefrontAccessBlockMessage,
+  shouldClearStorefrontCart
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getDiscoveryMarkerKey } from './discoveryMapDom.js';
@@ -8978,13 +8979,17 @@ export default function StorefrontApp() {
   }, []);
 
   useEffect(() => {
-    if (productCartPermitted && checkoutPermitted && bookingPermitted) return;
-    if (cart.length === 0 && !quoteResult && !isCheckoutOpen) return;
+    if (!shouldClearStorefrontCart({
+      cart,
+      productCartPermitted,
+      checkoutPermitted,
+      bookingPermitted
+    })) return;
     setCart([]);
     setQuoteResult(null);
     setQuoteNeedsRefresh(true);
     setIsCheckoutOpen(false);
-  }, [productCartPermitted, checkoutPermitted, bookingPermitted, cart.length, quoteResult, isCheckoutOpen]);
+  }, [productCartPermitted, checkoutPermitted, bookingPermitted, cart]);
   useEffect(() => {
     if (!isBookingSubpage) return;
     setIsCheckoutOpen(false);
