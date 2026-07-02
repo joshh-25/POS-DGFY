@@ -1,0 +1,235 @@
+# Host-based reverse proxy for the SKUpervisor / POS / Storefront domains,
+# all pointing at this server's IP. Domain names are parameterized via
+# environment variables (see docker-compose.yml's nginx.environment block
+# and .env.example) so the SAME template serves DEV/QA/PROD/beta with just
+# different values -- no per-environment nginx image or config file.
+#
+# This is a stock `nginx:alpine` image (not a custom-built one): this file
+# is mounted at /etc/nginx/templates/default.conf.template, and the
+# official image's built-in docker-entrypoint.d/20-envsubst-on-templates.sh
+# runs `envsubst` against it automatically on container start, restricted
+# to names that are actually set as container environment variables --
+# nginx's own runtime variables ($host, $scheme, $remote_addr, etc.) are
+# never OS env vars, so they pass through untouched. Output lands at
+# /etc/nginx/conf.d/default.conf.
+#
+# Unlike the earlier custom-baked nginx image (infrastructure/docker/nginx/
+# conf.d/*.conf, now removed), this outer layer does the /api, /uploads,
+# and /openfreemap proxying itself -- the `frontend` service behind it is
+# pure static-file serving on 3 internal ports (8081/8082/8083), one image
+# for all three SPAs (see infrastructure/docker/frontend/Dockerfile).
+#
+# TLS is provided by Let's Encrypt via the `certbot` service in
+# docker-compose.yml. See init-letsencrypt.sh for the one-time bootstrap
+# needed before this config's `ssl_certificate` paths exist.
+
+resolver 127.0.0.11 valid=10s;
+
+# Reject requests with an unrecognized Host header (direct-IP hits, scans)
+# instead of silently falling through to whichever server block nginx
+# picks by default.
+server {
+    listen 80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
+    return 444;
+}
+
+# Plain HTTP: serve ACME HTTP-01 challenges (needed for both initial
+# issuance and renewal), redirect everything else to HTTPS.
+server {
+    listen 80;
+    server_name ${SKUPERVISOR_DOMAIN} ${POS_DOMAIN} ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name ${SKUPERVISOR_DOMAIN};
+    client_max_body_size 8m;
+
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
+
+    location /api {
+        proxy_pass http://backend:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /uploads {
+        proxy_pass http://backend:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Same-origin OpenFreeMap tile proxy -- see
+    # frontend/src/components/maps/mapLibreShared.js. In the old PM2/
+    # vite-preview production topology this was handled by Vite's own
+    # preview-server proxy, not nginx; replicated here since the frontend
+    # container is static-only.
+    location /openfreemap/ {
+        set $openfreemap_upstream tiles.openfreemap.org;
+        rewrite ^/openfreemap/(.*)$ /$1 break;
+        proxy_pass https://$openfreemap_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $openfreemap_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://frontend:8081;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name ${POS_DOMAIN};
+    client_max_body_size 8m;
+
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
+
+    location /api {
+        proxy_pass http://backend:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /uploads {
+        proxy_pass http://backend:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # POS intentionally has no /openfreemap proxy -- the app calls
+    # tiles.openfreemap.org directly when VITE_APP_SURFACE=pos and no
+    # VITE_TILE_BASE is set (see mapLibreShared.js shouldUseLocalTileProxy).
+    # This matches confirmed live production behavior, not an oversight.
+
+    location / {
+        proxy_pass http://frontend:8082;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN};
+    client_max_body_size 8m;
+
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
+
+    location /api {
+        proxy_pass http://backend:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /uploads {
+        proxy_pass http://backend:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /openfreemap/ {
+        set $openfreemap_upstream tiles.openfreemap.org;
+        rewrite ^/openfreemap/(.*)$ /$1 break;
+        proxy_pass https://$openfreemap_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $openfreemap_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /tenant-store {
+        return 301 /tenant-store/;
+    }
+
+    location /tenant-store/ {
+        rewrite ^/tenant-store/(.*)$ /$1 break;
+        proxy_pass http://frontend:8083;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location / {
+        proxy_pass http://frontend:8083;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}

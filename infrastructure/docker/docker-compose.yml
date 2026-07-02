@@ -1,15 +1,46 @@
+# ==============================================================================
+# dgfy-platform -- reusable production/beta Docker Compose
+# ==============================================================================
+# Self-contained: only references pre-built images from GHCR, EXCEPT for
+# nginx/nginx.conf.template and nginx/init-letsencrypt.sh (copy the
+# infrastructure/docker/nginx/ directory alongside this file on the server
+# too). Copy this file + a filled-in .env (start from .env.example) +
+# nginx/ to the server and run:
+#
+#   docker compose up -d
+#
+# Docker creates the ./data/* bind-mount directories automatically on first
+# run if they don't already exist.
+#
+# Domains (SKUPERVISOR_DOMAIN / POS_DOMAIN / STOREFRONT_DOMAIN / CERT_DOMAIN
+# in .env) are what let the SAME compose file + images serve DEV/QA/PROD/
+# beta -- only .env differs per environment, see .env.example.
+#
+# --- First-time HTTPS setup ---------------------------------------------
+#
+# skupervisor/pos/storefront are only reachable through the bundled nginx
+# service, which needs a Let's Encrypt certificate before it can serve
+# HTTPS. After the FIRST `docker compose up -d` on a fresh server, run once:
+#
+#   ./nginx/init-letsencrypt.sh
+#
+# Not needed again after that -- the `certbot` service renews the
+# certificate automatically, but nginx needs a manual reload after a
+# renewal actually happens (see init-letsencrypt.sh's closing note).
+# ==============================================================================
+
 name: dgfy-platform
 
 services:
   mysql:
     image: mysql:8.0
     restart: unless-stopped
-    # log_bin_trust_function_creators: some migrations create triggers
-    # (e.g. 20260406000001-add-tenant-compliance-program.cjs). MySQL 8 ships
+    # log_bin_trust_function_creators: a migration creates a trigger
+    # (20260406000001-add-tenant-compliance-program.cjs). MySQL 8 ships
     # with binary logging on by default and requires SUPER privilege to
-    # create triggers/functions while it's on — the app's DB_USER is
-    # intentionally not a SUPER/root user, so this flag is needed instead of
-    # granting SUPER.
+    # create triggers/functions while it's on -- the app's DB_USER below
+    # is intentionally a scoped, non-root/non-SUPER user, so this flag is
+    # needed instead.
     command: --log-bin-trust-function-creators=1
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
@@ -17,17 +48,20 @@ services:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ./data/mysql:/var/lib/mysql
     networks: [dgfy_internal]
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    volumes:
+      - ./data/redis:/data
     networks: [dgfy_internal]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -36,7 +70,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/sieitzz/dgfy-platform-backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-platform/backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -46,9 +80,9 @@ services:
       REDIS_URL: redis://redis:6379
       PORT: 5000
     volumes:
-      - backend_uploads:/app/uploads
-      - backend_storage:/app/storage
-      - backend_logs:/app/logs
+      - ./data/backend/uploads:/app/uploads
+      - ./data/backend/storage:/app/storage
+      - ./data/backend/logs:/app/logs
     depends_on:
       mysql:
         condition: service_healthy
@@ -60,11 +94,13 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
 
   frontend:
-    image: ghcr.io/sieitzz/dgfy-platform-frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-platform/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    # No host port: reachable only via dgfy_internal, through the nginx
+    # service below.
     networks: [dgfy_internal]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8081/"]
@@ -72,14 +108,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # Reverse proxy routing SKUPERVISOR_DOMAIN / POS_DOMAIN /
+  # STOREFRONT_DOMAIN (+STOREFRONT_ALT_DOMAIN) to `backend`/`frontend` by
+  # Host header. Stock image, not custom-built -- nginx.conf.template is
+  # bind-mounted and rendered via the official image's built-in envsubst
+  # entrypoint step using the environment vars below. See
+  # nginx/nginx.conf.template and nginx/init-letsencrypt.sh (one-time HTTPS
+  # bootstrap, run once manually after the first `docker compose up -d` on
+  # a fresh server).
   nginx:
-    image: ghcr.io/sieitzz/dgfy-platform-nginx:${IMAGE_TAG:-latest}
+    image: nginx:1.27-alpine
     restart: unless-stopped
+    environment:
+      SKUPERVISOR_DOMAIN: ${SKUPERVISOR_DOMAIN}
+      POS_DOMAIN: ${POS_DOMAIN}
+      STOREFRONT_DOMAIN: ${STOREFRONT_DOMAIN}
+      STOREFRONT_ALT_DOMAIN: ${STOREFRONT_ALT_DOMAIN:-}
+      CERT_DOMAIN: ${CERT_DOMAIN}
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./data/certbot/conf:/etc/letsencrypt:ro
+      - ./data/certbot/www:/var/www/certbot:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -87,12 +139,21 @@ services:
         condition: service_healthy
     networks: [dgfy_internal]
 
+  # Renews the Let's Encrypt certificate automatically (only actually
+  # renews within 30 days of expiry, so roughly every ~60 days). nginx
+  # must be reloaded after a renewal to pick up the new cert -- this is
+  # NOT automated (would require giving this container Docker socket
+  # access); see nginx/init-letsencrypt.sh's closing note.
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;"
+    networks: [dgfy_internal]
+
 networks:
   dgfy_internal:
     driver: bridge
-
-volumes:
-  mysql_data:
-  backend_uploads:
-  backend_storage:
-  backend_logs:

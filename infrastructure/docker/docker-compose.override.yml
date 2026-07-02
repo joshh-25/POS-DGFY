@@ -3,6 +3,13 @@
 # exposes a few convenience ports. Do not use this file on a server.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.override.yml up --build
+#
+# nginx needs a cert at ./data/certbot/conf/live/dev.localhost/ before it
+# will start (its config has no HTTP-only fallback) -- generate one first:
+#   ./nginx/dev-certs/generate.sh
+#
+# Then add to /etc/hosts to exercise the real domain routing locally:
+#   127.0.0.1 skupervisor.localhost pos.localhost localhost
 
 services:
   backend:
@@ -23,20 +30,12 @@ services:
         VITE_STORE_BASE_PATH: /
 
   nginx:
-    image: dgfy-platform-nginx:dev
-    build:
-      context: ../..
-      dockerfile: infrastructure/docker/nginx/Dockerfile
-    # nginx's `ssl_certificate` directives are not optional — the container
-    # won't start without something at /etc/letsencrypt/live/dgfy.ph/. Run
-    # infrastructure/docker/nginx/dev-certs/generate.sh once to create a
-    # throwaway self-signed cert with the same layout as the real
-    # /etc/letsencrypt tree before bringing this stack up locally.
-    volumes:
-      - ./nginx/dev-certs:/etc/letsencrypt:ro
-    ports:
-      - "80:80"
-      - "443:443"
+    environment:
+      SKUPERVISOR_DOMAIN: skupervisor.localhost
+      POS_DOMAIN: pos.localhost
+      STOREFRONT_DOMAIN: localhost
+      STOREFRONT_ALT_DOMAIN: ""
+      CERT_DOMAIN: dev.localhost
 
   mysql:
     ports:

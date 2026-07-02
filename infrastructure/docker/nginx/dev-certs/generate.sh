@@ -1,31 +1,30 @@
 #!/usr/bin/env bash
-# Generates a throwaway self-signed cert laid out the same way /etc/letsencrypt
-# is on the VPS, so the nginx edge container's conf.d/*.conf files (which
-# hardcode /etc/letsencrypt/live/dgfy.ph/... paths) can start locally without
-# modification. Not for production use — see infrastructure/docker/nginx/conf.d
-# for the real, certbot-managed cert paths.
+# Generates a throwaway self-signed cert at the same path structure certbot
+# would use (./data/certbot/conf/live/<domain>/), so docker-compose.yml's
+# nginx service (which always mounts ./data/certbot/conf at
+# /etc/letsencrypt) works unmodified for local dev -- no override needed
+# for its volumes, just different domain env vars (see
+# docker-compose.override.yml).
+#
+# Usage: ./generate.sh [cert-domain]   (default: dev.localhost)
+#
+# Not for production use -- see infrastructure/docker/nginx/init-letsencrypt.sh
+# for the real, certbot-managed flow.
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"
+CERT_DOMAIN="${1:-dev.localhost}"
+# dev-certs/generate.sh -> nginx -> docker/ (where docker-compose.yml and
+# ./data/ live) is two levels up, not three.
+DATA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/data/certbot/conf/live/${CERT_DOMAIN}"
 
-mkdir -p live/dgfy.ph
+mkdir -p "$DATA_DIR"
 
 openssl req -x509 -nodes -newkey rsa:2048 \
-  -keyout live/dgfy.ph/privkey.pem \
-  -out live/dgfy.ph/fullchain.pem \
+  -keyout "$DATA_DIR/privkey.pem" \
+  -out "$DATA_DIR/fullchain.pem" \
   -days 365 \
-  -subj "/CN=dgfy.ph" \
-  -addext "subjectAltName=DNS:skupervisor.dgfy.ph,DNS:pos.dgfy.ph,DNS:dgfy.ph,DNS:store.dgfy.ph"
+  -subj "/CN=${CERT_DOMAIN}" \
+  -addext "subjectAltName=DNS:skupervisor.localhost,DNS:pos.localhost,DNS:localhost,DNS:${CERT_DOMAIN}"
 
-cat > options-ssl-nginx.conf <<'EOF'
-ssl_session_cache shared:le_nginx_SSL:10m;
-ssl_session_timeout 1440m;
-ssl_session_tickets off;
-
-ssl_protocols TLSv1.2 TLSv1.3;
-ssl_prefer_server_ciphers off;
-EOF
-
-openssl dhparam -out ssl-dhparams.pem 2048
-
-echo "Dev certs generated under $(pwd). Mounted by docker-compose.override.yml at /etc/letsencrypt."
+echo "Dev cert generated at $DATA_DIR (CERT_DOMAIN=${CERT_DOMAIN})."
+echo "docker-compose.yml's nginx service already mounts ./data/certbot/conf -- no extra volume needed."
