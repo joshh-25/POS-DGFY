@@ -67,12 +67,14 @@ export const resolvePosSetupReadiness = (settingsPayload = {}, usersPayload = nu
   const hasReadyTerminal = terminalRegistry.some((entry) => (
     entry?.is_active !== false
     && Number(entry?.location_id || 0) > 0
-    && entry?.has_password === true
   ));
   const cashierCheckRequired = Array.isArray(usersPayload);
   const hasActiveCashier = !cashierCheckRequired || usersPayload.some((user) => (
     user?.is_active !== false
-    && String(user?.role || '').trim().toLowerCase() === 'cashier'
+    && (
+      String(user?.role || '').trim().toLowerCase() === 'cashier'
+      || user?.is_master_admin === true
+    )
   ));
 
   return {

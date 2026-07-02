@@ -2454,26 +2454,26 @@ eligible POS row sellable at zero stock. Checkout persists an immutable
 Inventory stock movement for that line.
 
 ### POST /pos/terminal/pair
-Verify the selected registered terminal after DGFY/legacy tenant authentication.
+Enroll the current physical POS device against a selected registered terminal after DGFY master-admin authentication.
 
 **Permission**: `pos:view`
 
 **Request Body**
 ```json
 {
-  "terminal_id": "FRONT-01",
-  "terminal_password": "operator-entered-secret"
+  "terminal_id": "FRONT-01"
 }
 ```
 
 Success sets the HttpOnly `sku_pos_terminal_pairing` cookie. The response does
-not expose the token or terminal-password hash. Pairing is bound to the current
-tenant, terminal, location, tenant authorization profile, and DGFY membership
-when applicable.
+not expose the token. Enrollment requires the company master admin and is bound
+to the current tenant, terminal, location, and rotatable pairing version.
+Cashiers use their accepted DGFY membership and assigned location grants; no
+reusable terminal password exists.
 
 ### GET /pos/terminal/paired
 Return sanitized current pairing metadata after revalidating the terminal,
-location, user authorization profile, and DGFY membership bindings.
+location, pairing version, user authorization profile, and DGFY membership.
 
 ### DELETE /pos/terminal/paired
 Clear the pairing cookie. Explicit terminal lock uses this endpoint before

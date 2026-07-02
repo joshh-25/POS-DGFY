@@ -33,7 +33,7 @@ describe('setupFlow', () => {
             location_id: 1,
             is_active: true,
             is_default: true,
-            has_password: true
+            pairing_version: 'pairing-v1'
           }
         ]
       }
@@ -50,7 +50,7 @@ describe('setupFlow', () => {
           terminal_id: 'COUNTER-01',
           location_id: 1,
           is_active: true,
-          has_password: true
+          pairing_version: 'pairing-v1'
         }]
       }
     };
@@ -60,6 +60,7 @@ describe('setupFlow', () => {
       terminalRegistryReady: true,
       cashierReady: false
     });
+    expect(resolvePosSetupReadiness(settings, [{ role: 'admin', is_master_admin: true, is_active: true }]).ready).toBe(true);
     expect(resolvePosSetupReadiness(settings, [{ role: 'cashier', is_active: true }]).ready).toBe(true);
     expect(resolvePosSetupReadiness(settings, [{ role: 'cashier', is_active: false }]).ready).toBe(false);
   });

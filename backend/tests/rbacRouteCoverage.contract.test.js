@@ -135,7 +135,7 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
             method: 'post',
             routePath: '/terminal/shifts/:id/close',
             requiredFragments: [
-                'checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS)',
+                'checkPermission(PERMISSIONS.POS.actions.CLOSE_SHIFT_POS)',
                 'validateShiftIdParam',
                 'validateCloseTerminalShift',
                 'posController.closeTerminalShift'

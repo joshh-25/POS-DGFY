@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import {
     sanitizePosSettingsAccessPinForRead,
     sanitizePosSettingsAccessPinSingleSettingForRead
@@ -16,6 +16,7 @@ const normalizeRegistryEntry = (entry = {}) => ({
     location_id: parsePositiveInt(entry.location_id),
     is_active: entry.is_active !== false,
     is_default: entry.is_default === true,
+    pairing_version: String(entry.pairing_version || '').trim(),
     terminal_password_hash: String(entry.terminal_password_hash || '').trim()
 });
 
@@ -33,14 +34,14 @@ export const hashTerminalRegistrySecrets = async ({ incomingEntries = [], curren
         if (!entry.terminal_id) continue;
 
         const current = currentById.get(entry.terminal_id);
-        const nextPassword = String(rawEntry.terminal_password || '');
-        if (nextPassword) {
-            entry.terminal_password_hash = await bcrypt.hash(nextPassword, 12);
-        } else if (rawEntry.clear_terminal_password === true) {
-            entry.terminal_password_hash = '';
-        } else if (current?.terminal_password_hash) {
-            entry.terminal_password_hash = current.terminal_password_hash;
-        }
+        const bindingChanged = current && (
+            Number(current.location_id || 0) !== Number(entry.location_id || 0)
+            || current.is_active !== entry.is_active
+        );
+        entry.pairing_version = !current?.pairing_version || bindingChanged || rawEntry.rotate_pairing === true
+            ? crypto.randomUUID()
+            : current.pairing_version;
+        entry.terminal_password_hash = '';
         merged.push(entry);
     }
 
@@ -56,7 +57,8 @@ export const sanitizeTerminalRegistryForRead = (entries = []) => (
             location_id: normalized.location_id,
             is_active: normalized.is_active,
             is_default: normalized.is_default,
-            has_terminal_password: Boolean(normalized.terminal_password_hash)
+            pairing_version: normalized.pairing_version,
+            paired_device_ready: Boolean(normalized.pairing_version || normalized.terminal_password_hash)
         };
     })
 );

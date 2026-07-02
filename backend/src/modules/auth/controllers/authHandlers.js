@@ -15,6 +15,7 @@ import { requestEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpS
 import {
   clearTenantSessionCookies,
   getTenantRefreshToken,
+  issueCsrfToken,
   setTenantSessionCookies,
   stripBrowserRefreshToken
 } from '../../../utils/browserSessionCookies.js';
@@ -223,6 +224,16 @@ export const refreshToken = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+export const issueBrowserCsrfToken = async (_req, res) => {
+  issueCsrfToken(res);
+  return res.status(200).json({
+    success: true,
+    data: null,
+    message: 'CSRF token issued',
+    timestamp: timestamp()
+  });
 };
 
 export const logout = async (req, res, next) => {
@@ -443,6 +454,7 @@ export default {
   requestAuthEmailOtp,
   login,
   refreshToken,
+  issueBrowserCsrfToken,
   logout,
   lookupEmail,
   validateToken,

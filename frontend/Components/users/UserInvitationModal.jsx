@@ -41,7 +41,15 @@ const getSearchErrorMessage = (error) => {
     return `${message} Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`;
 };
 
-export default function UserInvitationModal({ open, onOpenChange, onSuccess, roleCatalog = null }) {
+export default function UserInvitationModal({
+    open,
+    onOpenChange,
+    onSuccess,
+    roleCatalog = null,
+    fixedRole = '',
+    title = 'Invite DGFY Account',
+    submitLabel = 'Send DGFY Invitation'
+}) {
     const [accountQuery, setAccountQuery] = useState('');
     const [accountResults, setAccountResults] = useState([]);
     const [accountSearchLoading, setAccountSearchLoading] = useState(false);
@@ -55,8 +63,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
 
     const roleOptions = useMemo(() => {
         const presets = Array.isArray(roleCatalog?.presets) ? roleCatalog.presets : [];
-        if (presets.length === 0) return LEGACY_ROLE_OPTIONS;
-        return presets.map((preset) => ({
+        const options = presets.length === 0 ? LEGACY_ROLE_OPTIONS : presets.map((preset) => ({
             key: preset.key,
             label: preset.label,
             role: preset.role,
@@ -64,7 +71,11 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
             description: `${preset.label} uses ${preset.role} compatibility and grants ${preset.permissions?.length || 0} default permissions.`,
             rolePresetKey: preset.key
         }));
-    }, [roleCatalog]);
+        const normalizedFixedRole = String(fixedRole || '').trim().toLowerCase();
+        return normalizedFixedRole
+            ? options.filter((option) => option.role === normalizedFixedRole)
+            : options;
+    }, [fixedRole, roleCatalog]);
     const selectedRoleOption = roleOptions.find((option) => option.key === role) || roleOptions[0] || LEGACY_ROLE_OPTIONS[0];
     const requiresAssignedLocation = selectedRoleOption?.location_scope === 'assigned';
     const activeLocations = useMemo(() => locations.filter((location) => location.is_active !== false), [locations]);
@@ -75,7 +86,10 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
         setAccountResults([]);
         setAccountSearchError('');
         setSelectedDgfyAccount(null);
-        const firstAssignableRole = roleOptions.find((option) => option.role !== 'admin') || roleOptions[0];
+        const normalizedFixedRole = String(fixedRole || '').trim().toLowerCase();
+        const firstAssignableRole = normalizedFixedRole
+            ? roleOptions.find((option) => option.role === normalizedFixedRole)
+            : (roleOptions.find((option) => option.role !== 'admin') || roleOptions[0]);
         if (firstAssignableRole && !roleOptions.some((option) => option.key === role)) {
             setRole(firstAssignableRole.key);
         }
@@ -88,7 +102,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                 }
             })
             .catch(() => setLocations([]));
-    }, [open, roleOptions, role]);
+    }, [fixedRole, open, roleOptions, role]);
 
     useEffect(() => {
         if (!open) return undefined;
@@ -157,7 +171,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
             return;
         }
 
-        if (requiresAssignedLocation && activeLocations.length > 1 && selectedLocationIds.length === 0) {
+        if (requiresAssignedLocation && selectedLocationIds.length === 0) {
             toast.error('Select at least one location for this role');
             return;
         }
@@ -182,7 +196,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
             setAccountQuery('');
             setAccountResults([]);
             setSelectedDgfyAccount(null);
-            setRole((roleOptions.find((option) => option.role !== 'admin') || roleOptions[0] || LEGACY_ROLE_OPTIONS[0]).key);
+            setRole((roleOptions[0] || LEGACY_ROLE_OPTIONS[0]).key);
             setSelectedLocationIds(activeLocations.length === 1 ? [Number(activeLocations[0].location_id)] : []);
 
             // Refresh parent list
@@ -202,12 +216,12 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <UserPlus className="w-5 h-5 text-teal-600" />
-                        Invite DGFY Account
+                        {title}
                     </DialogTitle>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-                    <div className="grid gap-2">
+                    {!fixedRole ? <div className="grid gap-2">
                         <Label htmlFor="dgfy-account-search">Search registered DGFY account</Label>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -276,7 +290,11 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                                 No registered active DGFY account found for this search.
                             </p>
                         ) : null}
-                    </div>
+                    </div> : (
+                        <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                            This invitation creates a cashier authorization profile after acceptance. The DGFY account password remains the only operator credential.
+                        </div>
+                    )}
 
                     <div className="grid gap-2">
                         <Label htmlFor="role">Role</Label>
@@ -324,7 +342,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                             Cancel
                         </Button>
                         <Button type="submit" className="bg-teal-600 hover:bg-teal-700" disabled={loading || accountSearchLoading}>
-                            {loading ? 'Sending...' : 'Send DGFY Invitation'}
+                            {loading ? 'Sending...' : submitLabel}
                         </Button>
                     </DialogFooter>
                 </form>

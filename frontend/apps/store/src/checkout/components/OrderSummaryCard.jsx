@@ -6,6 +6,7 @@ export function OrderSummaryCard({
   statusRows = [],
   lineItems = [],
   totalsRows = [],
+  promoSlot = null,
   itemsTitle = 'Your Items',
   bodyFont = "'Avenir Next', 'Segoe UI', sans-serif",
   displayFont = "'Avenir Next', 'Segoe UI', sans-serif",
@@ -26,6 +27,7 @@ export function OrderSummaryCard({
           ))}
         </div>
       )}
+      {promoSlot ? <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>{promoSlot}</div> : null}
       {lineItems.length > 0 && (
         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'grid', gap: 12 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', fontFamily: displayFont }}>{itemsTitle}</div>

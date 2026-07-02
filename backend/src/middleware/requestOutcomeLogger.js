@@ -28,6 +28,7 @@ export const buildRequestOutcome = (req, res, startedAt = Date.now()) => {
         tenant_id: req.tenant?.id || req.tenantId || res.locals?.tenantId || null,
         user_id: req.user?.user_id || req.user?.id || res.locals?.userId || null,
         error_code: res.locals?.errorCode || null,
+        csrf_failure_reason: req.csrfFailureReason || null,
         ip_hash: hashIp(req.ip || req.connection?.remoteAddress),
         user_agent_family: resolveUserAgentFamily(req.get?.('user-agent'))
     };
