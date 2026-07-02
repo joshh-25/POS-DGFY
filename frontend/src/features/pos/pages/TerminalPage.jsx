@@ -2029,6 +2029,45 @@ export default function TerminalPage() {
     }
   };
 
+  const resetDgfyPosIdentity = useCallback(({ nextEmail = '', revokeServerSession = false } = {}) => {
+    const activeDgfyToken = getStoredDgfyToken();
+    if (revokeServerSession && (dgfyPosState.authenticated || activeDgfyToken)) {
+      logoutDgfyAccount(activeDgfyToken).catch(() => clearDgfySession());
+    } else {
+      clearDgfySession();
+    }
+    clearBrowserSession();
+    setDgfyPosState({
+      authenticated: false,
+      account: null,
+      companies: [],
+      loadingCompanies: false
+    });
+    setFormData((previous) => ({
+      ...previous,
+      email: nextEmail,
+      password: '',
+      dgfyTenantId: ''
+    }));
+    setCashierUnlockSession(null);
+    setPairedTerminalContext(null);
+    setDgfyAdminBypassActive(false);
+  }, [dgfyPosState.authenticated]);
+
+  const handleDgfyPosIdentityChange = useCallback((nextEmail) => {
+    const normalizedCurrent = String(formData.email || '').trim().toLowerCase();
+    const normalizedNext = String(nextEmail || '').trim().toLowerCase();
+    if (dgfyPosState.authenticated && normalizedNext !== normalizedCurrent) {
+      resetDgfyPosIdentity({ nextEmail, revokeServerSession: true });
+      return;
+    }
+    setFormData((previous) => ({ ...previous, email: nextEmail }));
+  }, [dgfyPosState.authenticated, formData.email, resetDgfyPosIdentity]);
+
+  const handleUseDifferentDgfyAccount = useCallback(() => {
+    resetDgfyPosIdentity({ nextEmail: '', revokeServerSession: true });
+  }, [resetDgfyPosIdentity]);
+
   const authenticateCashierCredentials = async ({ identifier, password, companyTokenHint = '' }) => {
     const normalizedIdentifier = String(identifier || '').trim();
     const normalizedPassword = String(password || '');
@@ -2069,80 +2108,6 @@ export default function TerminalPage() {
     }
 
     return { cashierUser, companyToken: resolvedCompanyToken };
-  };
-
-  const handleCashierLogin = async () => {
-    const identifier = String(formData.email || '').trim();
-    const password = String(formData.password || '');
-
-    if (!identifier || !password) {
-      toast.error('Cashier username/email and password are required.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      setDgfyAdminBypassActive(false);
-      const { cashierUser, companyToken: resolvedCompanyToken } = await authenticateCashierCredentials({
-        identifier,
-        password
-      });
-
-      let pairedTerminal = null;
-      try {
-        pairedTerminal = await fetchPairedPosTerminal();
-      } catch {
-        pairedTerminal = null;
-      }
-
-      const selectedTerminalId = sanitizeTerminalId(
-        pairedTerminal?.terminal_identity_policy?.registry_entry?.terminal_id
-      ) || sanitizeTerminalId(formData.terminalId)
-        || sanitizeTerminalId(readStoredTerminalId())
-        || sanitizeTerminalId(readInitialTerminalId());
-
-      setDgfyPosState({
-        authenticated: false,
-        account: null,
-        companies: [],
-        loadingCompanies: false
-      });
-      setCashierUnlockSession({
-        email: String(cashierUser?.email || '').trim(),
-        companyToken: resolvedCompanyToken,
-        user: cashierUser
-      });
-      setPairedTerminalContext(pairedTerminal?.paired ? pairedTerminal : null);
-      setTerminalUser(cashierUser);
-      setTerminalRegistry([]);
-      setTerminalRegistryMode('warn');
-      setLocationsState({
-        loading: false,
-        locations: []
-      });
-      setLocked(false);
-      setDrawerOpen(false);
-      setTerminalUnlockRequired(true);
-      setTerminalUnlockMode('shift_start');
-      setTerminalUnlockForm((prev) => ({
-        ...prev,
-        terminalId: selectedTerminalId,
-        terminalPassword: '',
-        cashierEmail: String(cashierUser?.email || '').trim(),
-        cashierPassword: '',
-        openingFloatAmount: '',
-        openingNote: ''
-      }));
-      setFormData((prev) => ({ ...prev, terminalId: selectedTerminalId }));
-      setStoredTerminalLock(true);
-      setStoredTerminalLockReason('shift_start_required');
-      setTerminalUnlockModalOpen(true);
-      await hydrateTerminalMeta({ suppressGlobalErrors: true });
-    } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
-    } finally {
-      setSubmitting(false);
-    }
   };
 
   const handleCashierResumeSubmit = async (event) => {
@@ -4121,7 +4086,8 @@ export default function TerminalPage() {
           dgfyPosState={dgfyPosState}
           submitting={submitting}
           handleLogin={handleDgfyPosLogin}
-          handleCashierLogin={handleCashierLogin}
+          handleIdentityChange={handleDgfyPosIdentityChange}
+          handleUseDifferentAccount={handleUseDifferentDgfyAccount}
           handleLegacyLogin={handleLogin}
         />
       </>

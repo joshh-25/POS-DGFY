@@ -12,6 +12,7 @@ let tenantRegistrationLimiter;
 let storeTrackingLimiter;
 let storeTrackingReadLimiter;
 let logger;
+let defaultAuthRateLimitWindowMs;
 
 beforeAll(async () => {
   process.env.NODE_ENV = 'development';
@@ -35,6 +36,7 @@ beforeAll(async () => {
   const limiterModule = await import('../src/middleware/rateLimiter.js');
   generalLimiter = limiterModule.generalLimiter;
   authLimiter = limiterModule.authLimiter;
+  defaultAuthRateLimitWindowMs = limiterModule.DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS;
   dgfyTenantSessionLimiter = limiterModule.dgfyTenantSessionLimiter;
   lookupLimiter = limiterModule.lookupLimiter;
   tenantRegistrationLimiter = limiterModule.tenantRegistrationLimiter;
@@ -51,6 +53,10 @@ beforeEach(() => {
 });
 
 describe('Rate limiter behavior', () => {
+  it('defaults authentication lockout to five minutes', () => {
+    expect(defaultAuthRateLimitWindowMs).toBe(5 * 60 * 1000);
+  });
+
   it('returns standardized 429 payload + Retry-After for general limiter', async () => {
     const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
 

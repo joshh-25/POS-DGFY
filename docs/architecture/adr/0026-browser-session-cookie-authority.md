@@ -19,6 +19,8 @@ Refresh rotates both refresh authority and the CSRF cookie. A browser retry afte
 
 `POST /api/v1/auth/refresh-token` is a strict tenant route, but its tenant context can be recovered from the signed HttpOnly tenant refresh cookie when the companion tenant-context cookie/header is missing. Recovery verifies the refresh JWT with `REFRESH_TOKEN_SECRET`, reads the embedded `tenant_id`, resolves the landlord tenant row, and restores the request tenant token before the normal refresh use case runs. The refresh use case still owns blacklist/replay checks, token type validation, tenant mismatch rejection, active-user checks, rotation, and refresh-token revocation.
 
+Pre-login identity operations, including `POST /api/v1/auth/lookup`, must never preflight tenant-session refresh or attach stale tenant authorization headers. A missing tenant refresh cookie is normal on login surfaces and must not produce a browser-visible refresh failure before company identification. When an operator changes account identity after company resolution, clients must invalidate the previous company selection and ignore any older in-flight lookup response.
+
 ## Consequences
 
 - Backend controllers may set and clear cookies as transport details, but token issuance, rotation, and validation remain in usecases/services.

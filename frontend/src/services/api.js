@@ -107,10 +107,11 @@ const NON_REFRESHABLE_401_REASONS = new Set([
   'POS_TERMINAL_PAIRING_INVALID'
 ]);
 
-const isPublicOrAuthRequest = (url = '') => {
+export const isPublicOrAuthRequest = (url = '') => {
   const path = resolveRequestPath(url);
   return (
     path.endsWith('/auth/login') ||
+    path.endsWith('/auth/lookup') ||
     path.endsWith('/auth/register') ||
     path.endsWith('/auth/email-otp/request') ||
     path.includes('/dgfy/auth/') ||

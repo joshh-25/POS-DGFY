@@ -116,7 +116,8 @@ export default function TerminalPageLayout({
     dgfyPosState = {},
     submitting,
     handleLogin,
-    handleCashierLogin = null,
+    handleIdentityChange = null,
+    handleUseDifferentAccount = null,
     handleLegacyLogin = null
 }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -613,7 +614,8 @@ export default function TerminalPageLayout({
           registryEnforced={registryEnforced}
           submitting={submitting}
           onSubmit={handleLogin}
-          onCashierSubmit={handleCashierLogin}
+          onIdentityChange={handleIdentityChange}
+          onUseDifferentAccount={handleUseDifferentAccount}
           onLegacySubmit={handleLegacyLogin}
         />
       </Suspense>

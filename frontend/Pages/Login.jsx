@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { login } from '../src/services/authService.js';
 import api from '../src/services/api.js';
@@ -39,6 +39,28 @@ export default function Login() {
   const [actionSent, setActionSent] = useState(false);
   const [actionError, setActionError] = useState('');
   const [lastLookupEmail, setLastLookupEmail] = useState(initialRegistrationEmail.toLowerCase());
+  const lookupGenerationRef = useRef(0);
+
+  const resetResolvedIdentity = ({ clearPassword = false } = {}) => {
+    lookupGenerationRef.current += 1;
+    setFormData((previous) => ({
+      ...previous,
+      ...(clearPassword ? { password: '' } : {}),
+      companyToken: ''
+    }));
+    setShowTokenField(false);
+    setIsLookingUp(false);
+    setAvailableTenants([]);
+    setLookupDone(false);
+    setLookupError('');
+    setTenantStatus(null);
+    setRejectionReason('');
+    setIdentifiedToken('');
+    setActionSent(false);
+    setActionError('');
+    setLastLookupEmail('');
+    setError('');
+  };
 
   // Clear stale company token when landing on login page
   // and reset any stale in-memory state from a previous user session.
@@ -67,6 +89,7 @@ export default function Login() {
       return formData.companyToken;
     }
 
+    const lookupGeneration = ++lookupGenerationRef.current;
     setIsLookingUp(true);
     setLookupError('');
     setAvailableTenants([]);
@@ -82,8 +105,9 @@ export default function Login() {
       const response = await api.post(
         '/auth/lookup',
         { email: normalizedEmail },
-        { timeout: 8000 }
+        { timeout: 8000, skipAuthRefresh: true, skipTenantAuthHeaders: true }
       );
+      if (lookupGeneration !== lookupGenerationRef.current) return null;
       const data = response.data.data;
       console.log('✅ [Login] Lookup success:', data);
 
@@ -116,6 +140,7 @@ export default function Login() {
       setLastLookupEmail(normalizedEmail);
       setLookupDone(true);
     } catch (err) {
+      if (lookupGeneration !== lookupGenerationRef.current) return null;
       console.error('❌ [Login] Lookup failed:', err.response?.status, err.response?.data || err.message);
       if (err.response?.status === 404) {
         setLookupError('Email not found. Enter your company token manually.');
@@ -127,7 +152,7 @@ export default function Login() {
       }
       setLookupDone(true);
     } finally {
-      setIsLookingUp(false);
+      if (lookupGeneration === lookupGenerationRef.current) setIsLookingUp(false);
     }
     return resolvedToken;
   };
@@ -255,11 +280,15 @@ export default function Login() {
                   placeholder="admin@test.com"
                   value={formData.email}
                   onChange={(e) => {
-                    setFormData({ ...formData, email: e.target.value });
-                    // Reset lookup state when email changes
-                    setLookupDone(false);
-                    setLastLookupEmail('');
-                    setLookupError('');
+                    const nextEmail = e.target.value;
+                    const identityWasResolved = Boolean(
+                      formData.companyToken
+                      || identifiedToken
+                      || availableTenants.length
+                      || lookupDone
+                    );
+                    resetResolvedIdentity({ clearPassword: identityWasResolved });
+                    setFormData((previous) => ({ ...previous, email: nextEmail }));
                   }}
                   onBlur={handleEmailBlur}
                   required
