@@ -214,6 +214,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('No open shift is active. Enter opening cash to start a new shift before using POS.');
     expect(terminalPageContent).toContain('You cannot use the POS because the shift is closed.');
     expect(terminalPageContent).toContain('Shift opened successfully.');
+    expect(terminalPageContent).toContain('terminalIdOverride: terminalId,');
+    expect(terminalPageContent).toContain('operatingLocationIdOverride: scopedOperatingLocationId');
+    expect(terminalPageContent).toContain('terminalIdOverride: selectedTerminalId,');
+    expect(terminalPageContent).toContain('operatingLocationIdOverride,');
     expect(terminalPageContent).toContain('closeShiftConfirmOpen');
     expect(terminalPageContent).toContain('handleConfirmCloseShift');
     expect(terminalPageContent).toContain('Are you sure you want to close this shift?');
