@@ -180,13 +180,229 @@
       "verdict": "ship",
       "payment_sensitive": false,
       "payment_sensitive_files": [],
-      "high_risk_path": true,
-      "high_risk_files": [
-        "backend/src/middleware/errorHandler.js",
-        "backend/src/modules/inventory/repositories/itemRepository.js",
-        "backend/src/services/csvImportService.js",
-        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js"
-      ]
+      "high_risk_path": false,
+      "high_risk_files": []
+    },
+    {
+      "id": "auth-account-switch-pos-cashier-repair",
+      "slice_name": "Authentication account switch and POS cashier login repair",
+      "name": "Authentication account switch and POS cashier login repair",
+      "plain_english_purpose": "Prevents IMS/POS login sessions from keeping stale company/account choices after switching users and clarifies POS cashier login paths.",
+      "purpose": "Repair account replacement and POS terminal login behavior while preserving CSRF enforcement, governed DGFY membership checks, terminal/location gates, and the separately labelled legacy grace path.",
+      "implementation_summary": "Resets stale identity/company selection during login account changes, adjusts the credentialed auth rate-limit window documentation and behavior, removes the confusing standalone POS tenant-local cashier login action from the locked terminal flow, keeps DGFY sign-in and legacy grace login distinct, updates ADR and tenant-management docs, and adds focused backend/frontend regression coverage.",
+      "included_files": [
+        "backend/src/middleware/rateLimiter.js",
+        "backend/tests/rateLimiter.behavior.test.js",
+        "docs/architecture/adr/0026-browser-session-cookie-authority.md",
+        "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+        "docs/compliance/impact-declarations/2026-07-02-auth-account-switch-pos-cashier-repair.md",
+        "docs/features/TENANT_MANAGEMENT.md",
+        "docs/setup/COLLABORATOR_LOCAL_ENV.md",
+        "frontend/Pages/Login.jsx",
+        "frontend/Pages/__tests__/Login.identityReset.test.jsx",
+        "frontend/src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx",
+        "frontend/src/features/pos/components/TerminalLockDrawer.jsx",
+        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
+        "frontend/src/features/pos/pages/TerminalPage.jsx",
+        "frontend/src/services/__tests__/api.publicAuthPolicy.test.js",
+        "frontend/src/services/api.js"
+      ],
+      "included_features": [
+        "IMS login identity reset when a different account replaces the current session",
+        "POS locked-terminal DGFY sign-in and legacy grace login labeling cleanup",
+        "Credentialed authentication limiter window correction",
+        "ADR and tenant-management documentation alignment",
+        "Regression tests for account switching, public-auth request policy, POS terminal lock drawer contract, and rate limiter behavior"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "PayMongo or payment-channel work",
+        "Physical POS pairing contract removal",
+        "Shift-opening authorization changes",
+        "Checkout totals, payment handling, fiscal receipt calculation, and tenant lifecycle changes",
+        "Database migrations"
+      ],
+      "owner_attribution": "BabyBaBab owner-authorized staging repair request",
+      "source_branch": "codex/staging-auth-account-switch",
+      "source_pr": "https://github.com/BBLabs-Albert/SKU-Inventory-Manager/pull/47",
+      "source_type": "owner_direct_staging",
+      "source_type_allowed_values": [
+        "developer_pr",
+        "owner_direct_staging",
+        "controller_promotion"
+      ],
+      "affected_surfaces": [
+        "backend",
+        "frontend",
+        "docs",
+        "compliance",
+        "POS",
+        "DGFY"
+      ],
+      "affected_surface_map": {
+        "backend": true,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": true,
+        "POS": true,
+        "Storefront": false,
+        "DGFY": true,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "high",
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "Login/session reset and POS terminal-lock behavior may regress if a valid operator loses the intended company context or if the legacy grace path is hidden incorrectly.",
+      "potentially_affected_existing_behaviors": [
+        "IMS login account replacement and company-selection persistence",
+        "POS locked terminal sign-in and legacy grace login entry points",
+        "Credentialed authentication rate limiting",
+        "DGFY membership-based company selection after account switch"
+      ],
+      "evidence_covering_regression_risk": [
+        "Compliance declaration docs/compliance/impact-declarations/2026-07-02-auth-account-switch-pos-cashier-repair.md records preconditions and verification scope",
+        "Targeted backend tests required: tests/rateLimiter.behavior.test.js and tests/auth.ratelimit.e2e.test.js",
+        "Targeted frontend tests required: Login.identityReset, terminalLockDrawer contract, and api.publicAuthPolicy",
+        "Architecture, compliance, docs lint, frontend build, and diff whitespace gates must pass before promotion"
+      ],
+      "evidence_gaps": [
+        "Rendered QA must still prove IMS Account A to Account B replacement does not retain Account A company choices",
+        "Rendered QA must still prove POS shows DGFY sign-in and Legacy Grace Login without a standalone Login as Cashier action",
+        "Production smoke must still confirm a real POS operator can reach the intended terminal login path after deployment"
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting this auth/POS repair release together if valid users cannot reauthenticate or reach the expected POS login path",
+        "Monitor credentialed auth rate-limit responses, DGFY auth lookup failures, and POS terminal-lock login events after deployment"
+      ],
+      "required_tests": [
+        "npm --prefix backend test -- --runInBand tests/rateLimiter.behavior.test.js tests/auth.ratelimit.e2e.test.js",
+        "npm --prefix frontend test -- --run Pages/__tests__/Login.identityReset.test.jsx src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/services/__tests__/api.publicAuthPolicy.test.js",
+        "npm --prefix frontend run build:all",
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "git diff --check"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm --prefix backend test -- --runInBand tests/rateLimiter.behavior.test.js tests/auth.ratelimit.e2e.test.js",
+          "status": "pass",
+          "evidence": "2026-07-02 aggregate staging validation: 9 backend auth/rate-limit tests passed using the ignored local backend DB env; initial clean-worktree run without DB env failed before exercising code."
+        },
+        {
+          "command": "npm --prefix frontend test -- --run Pages/__tests__/Login.identityReset.test.jsx src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/services/__tests__/api.publicAuthPolicy.test.js",
+          "status": "pass",
+          "evidence": "2026-07-02 aggregate staging validation: 10 frontend auth/POS contract tests passed."
+        },
+        {
+          "command": "npm --prefix frontend run build:all",
+          "status": "pass",
+          "evidence": "2026-07-02 aggregate staging validation: SKUpervisor, POS, and Storefront production builds passed with existing bundle-size/browser-data warnings only."
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "2026-07-02 aggregate staging validation: docs lint passed for 20 governed docs."
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "2026-07-02 aggregate staging validation: architecture guardrails and controller boundaries passed."
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "2026-07-02 aggregate staging validation: compliance impact/API contract checks passed."
+        },
+        {
+          "command": "git diff --check",
+          "status": "pass",
+          "evidence": "2026-07-02 aggregate staging validation: no whitespace errors."
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/architecture/adr/0026-browser-session-cookie-authority.md",
+        "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+        "docs/compliance/impact-declarations/2026-07-02-auth-account-switch-pos-cashier-repair.md",
+        "docs/features/TENANT_MANAGEMENT.md",
+        "docs/setup/COLLABORATOR_LOCAL_ENV.md",
+        "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "architecture_classification_allowed_values": [
+        "no-architecture-impact",
+        "within-existing-boundary",
+        "cross-boundary"
+      ],
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-authorized Codex documentation review",
+        "reviewed_at": "2026-07-02T17:35:00.000+08:00",
+        "rationale": "The ADR/doc updates and compliance declaration record the auth/session and POS terminal-lock behavior being promoted with this staging candidate.",
+        "documents": [
+          {
+            "path": "docs/compliance/impact-declarations/2026-07-02-auth-account-switch-pos-cashier-repair.md",
+            "action": "updated",
+            "evidence": "Records compliance preconditions, affected surfaces, verification evidence, and rollback for the auth/POS repair."
+          },
+          {
+            "path": "docs/architecture/adr/0026-browser-session-cookie-authority.md",
+            "action": "updated",
+            "evidence": "Documents browser-session and cookie authority expectations relevant to the login repair."
+          },
+          {
+            "path": "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+            "action": "updated",
+            "evidence": "Documents DGFY account and company switching expectations."
+          },
+          {
+            "path": "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+            "action": "updated",
+            "evidence": "Documents POS terminal lock/login expectations retained by the repair."
+          },
+          {
+            "path": "docs/features/TENANT_MANAGEMENT.md",
+            "action": "updated",
+            "evidence": "Documents the tenant-management auth lookup rate-limit correction."
+          },
+          {
+            "path": "docs/setup/COLLABORATOR_LOCAL_ENV.md",
+            "action": "updated",
+            "evidence": "Documents collaborator local environment wording aligned with the repair."
+          },
+          {
+            "path": "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
+            "action": "updated",
+            "evidence": "Reviewed manifest covers this slice and the F&B hotfix slice in the exact staging candidate."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "The 2026-07-02 auth account switch and POS cashier repair compliance declaration governs this regulatory/auth-sensitive slice; no new ADR is required because the changes update existing ADRs and stay inside established auth/session and POS terminal-lock boundaries.",
+      "rollback_notes": "Revert the identity-reset UI, POS terminal-lock labeling changes, API auth helper change, and rate limiter window correction together if valid users cannot reauthenticate; no migration rollback is required.",
+      "production_proof_required": [
+        "Production remote HEAD, .deploy-state/last_deployed_commit, newest deploy summary, production contract, and /api/v1/health runtime SHA must match the final origin/master SHA",
+        "Production smoke must verify IMS login account replacement clears stale company context",
+        "Production smoke must verify POS locked-terminal login renders DGFY sign-in and Legacy Grace Login without a standalone Login as Cashier action"
+      ],
+      "production_accuracy_checks_required": [
+        "Verify IMS Account A to Account B switch does not retain Account A company choices",
+        "Verify POS terminal lock login path labels DGFY sign-in and Legacy Grace Login distinctly",
+        "Verify auth lookup/rate-limit behavior remains client-visible and not a server 500"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
     }
   ]
 }
