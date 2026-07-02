@@ -1,7 +1,6 @@
 import { jest } from '@jest/globals';
 import { Op } from 'sequelize';
 import dbStore from '../src/utils/dbStore.js';
-import logger from '../src/config/logger.js';
 import { itemRepository, inventoryRepositoryDependencies } from '../src/modules/inventory/repositories/itemRepository.js';
 
 const DEFAULT_REPOSITORY_DEPENDENCIES = {
@@ -230,86 +229,6 @@ describe('inventory itemRepository', () => {
       where: { item_id: 901 },
       attributes: expect.arrayContaining(['storefront_catalog_override_id', 'item_id'])
     }));
-  });
-
-  it('retries Storefront override updates without gallery when tenant schema is missing the gallery column', async () => {
-    const missingGalleryColumnError = {
-      name: 'SequelizeDatabaseError',
-      original: {
-        code: 'ER_BAD_FIELD_ERROR',
-        sqlMessage: "Unknown column 'storefront_image_gallery' in 'field list'"
-      }
-    };
-    const update = jest.fn()
-      .mockRejectedValueOnce(missingGalleryColumnError)
-      .mockResolvedValueOnce();
-    const existing = {
-      storefront_catalog_override_id: 77,
-      item_id: 901,
-      storefront_visible: true,
-      storefront_image_path: null,
-      storefront_image_url: null,
-      storefront_image_gallery: [],
-      update
-    };
-    const StorefrontCatalogOverride = {
-      findOne: jest.fn().mockResolvedValue(existing)
-    };
-
-    jest.spyOn(logger, 'warn').mockImplementation(() => {});
-    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
-      if (name === 'StorefrontCatalogOverride') return StorefrontCatalogOverride;
-      return {};
-    });
-    jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'gallery-update-fallback-test' });
-
-    await itemRepository.updateStorefrontCatalogImage(901, {
-      path: 'storefront/iced-tea.png',
-      url: '/uploads/storefront/iced-tea.png',
-      gallery: [{ path: 'storefront/iced-tea.png', url: '/uploads/storefront/iced-tea.png' }]
-    });
-
-    expect(update).toHaveBeenCalledTimes(2);
-    expect(update.mock.calls[0][0]).toHaveProperty('storefront_image_gallery');
-    expect(update.mock.calls[1][0]).not.toHaveProperty('storefront_image_gallery');
-  });
-
-  it('retries Storefront override creates without gallery when tenant schema is missing the gallery column', async () => {
-    const missingGalleryColumnError = {
-      name: 'SequelizeDatabaseError',
-      original: {
-        code: 'ER_BAD_FIELD_ERROR',
-        sqlMessage: "Unknown column 'storefront_image_gallery' in 'field list'"
-      }
-    };
-    const created = { storefront_catalog_override_id: 88, item_id: 902 };
-    const StorefrontCatalogOverride = {
-      findOne: jest.fn().mockResolvedValue(null),
-      create: jest.fn()
-        .mockRejectedValueOnce(missingGalleryColumnError)
-        .mockResolvedValueOnce(created)
-    };
-
-    jest.spyOn(logger, 'warn').mockImplementation(() => {});
-    jest.spyOn(itemRepository, 'getStorefrontCatalogReadinessByItemId').mockResolvedValue({
-      storefront_visible: true
-    });
-    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
-      if (name === 'StorefrontCatalogOverride') return StorefrontCatalogOverride;
-      return {};
-    });
-    jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'gallery-create-fallback-test' });
-
-    const result = await itemRepository.updateStorefrontCatalogImage(902, {
-      path: 'storefront/lemonade.png',
-      url: '/uploads/storefront/lemonade.png',
-      gallery: [{ path: 'storefront/lemonade.png', url: '/uploads/storefront/lemonade.png' }]
-    });
-
-    expect(result).toBe(created);
-    expect(StorefrontCatalogOverride.create).toHaveBeenCalledTimes(2);
-    expect(StorefrontCatalogOverride.create.mock.calls[0][0]).toHaveProperty('storefront_image_gallery');
-    expect(StorefrontCatalogOverride.create.mock.calls[1][0]).not.toHaveProperty('storefront_image_gallery');
   });
 
   it('maps list payload for product compositions in getItems', async () => {

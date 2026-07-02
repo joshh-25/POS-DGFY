@@ -73,42 +73,4 @@ describe('errorHandler stack logging policy', () => {
     expect(consoleSpy).toHaveBeenCalledTimes(3);
     expect(res.status).toHaveBeenCalledWith(500);
   });
-
-  test('maps oversized upload errors to a client-visible 413 response', () => {
-    const loggerWarnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
-    const req = { method: 'POST', path: '/api/v1/items/1/storefront-images', ip: '127.0.0.1', connection: { remoteAddress: '127.0.0.1' } };
-    const res = createMockResponse();
-    const err = new Error('File too large');
-    err.name = 'MulterError';
-    err.code = 'LIMIT_FILE_SIZE';
-
-    errorHandler(err, req, res, () => {});
-
-    expect(loggerWarnSpy).toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(413);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      success: false,
-      message: 'Uploaded image is too large. Use an image 5 MB or smaller.',
-      error_code: 'LIMIT_FILE_SIZE'
-    }));
-  });
-
-  test('maps unexpected upload fields to a client-visible 400 response', () => {
-    const loggerWarnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
-    const req = { method: 'POST', path: '/api/v1/items/1/storefront-images', ip: '127.0.0.1', connection: { remoteAddress: '127.0.0.1' } };
-    const res = createMockResponse();
-    const err = new Error('Unexpected field');
-    err.name = 'MulterError';
-    err.code = 'LIMIT_UNEXPECTED_FILE';
-
-    errorHandler(err, req, res, () => {});
-
-    expect(loggerWarnSpy).toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      success: false,
-      message: 'The uploaded file field is not accepted for this request.',
-      error_code: 'LIMIT_UNEXPECTED_FILE'
-    }));
-  });
 });

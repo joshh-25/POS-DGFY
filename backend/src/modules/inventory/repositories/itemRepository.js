@@ -74,12 +74,7 @@ const isMissingStorefrontCatalogGalleryColumnError = (error) => {
     const code = error.original?.code || error.parent?.code || error.code;
     const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
     return code === 'ER_BAD_FIELD_ERROR'
-        && message.includes('storefront_image_gallery');
-};
-
-const withoutStorefrontImageGallery = (payload = {}) => {
-    const { storefront_image_gallery: _storefrontImageGallery, ...rest } = payload;
-    return rest;
+        && message.includes('storefrontCatalogOverride.storefront_image_gallery');
 };
 
 const isMissingStorefrontLocationItemOverrideTableError = (error) => {
@@ -2301,29 +2296,11 @@ export const itemRepository = {
         };
 
         if (existing) {
-            try {
-                await existing.update(nextPayload, { transaction });
-            } catch (error) {
-                if (!isMissingStorefrontCatalogGalleryColumnError(error)) throw error;
-                logger.warn('Storefront catalog gallery column missing; retrying override update without gallery payload', {
-                    item_id: itemId,
-                    tenant_id: dbStore.getStore?.()?.tenantId || null
-                });
-                await existing.update(withoutStorefrontImageGallery(nextPayload), { transaction });
-            }
+            await existing.update(nextPayload, { transaction });
             return existing;
         }
 
-        try {
-            return await StorefrontCatalogOverride.create(nextPayload, { transaction });
-        } catch (error) {
-            if (!isMissingStorefrontCatalogGalleryColumnError(error)) throw error;
-            logger.warn('Storefront catalog gallery column missing; retrying override create without gallery payload', {
-                item_id: itemId,
-                tenant_id: dbStore.getStore?.()?.tenantId || null
-            });
-            return StorefrontCatalogOverride.create(withoutStorefrontImageGallery(nextPayload), { transaction });
-        }
+        return StorefrontCatalogOverride.create(nextPayload, { transaction });
     },
     async updateStorefrontCatalogImage(itemId, imageData = {}, options = {}) {
         const payload = {
@@ -2343,21 +2320,11 @@ export const itemRepository = {
     async clearStorefrontCatalogImage(itemId, options = {}) {
         const existing = await this.findStorefrontCatalogOverrideByItemId(itemId, options);
         if (!existing) return null;
-        const clearPayload = {
+        await existing.update({
             storefront_image_path: null,
             storefront_image_url: null,
             storefront_image_gallery: null
-        };
-        try {
-            await existing.update(clearPayload, { transaction: options.transaction });
-        } catch (error) {
-            if (!isMissingStorefrontCatalogGalleryColumnError(error)) throw error;
-            logger.warn('Storefront catalog gallery column missing; retrying image clear without gallery payload', {
-                item_id: itemId,
-                tenant_id: dbStore.getStore?.()?.tenantId || null
-            });
-            await existing.update(withoutStorefrontImageGallery(clearPayload), { transaction: options.transaction });
-        }
+        }, { transaction: options.transaction });
         return existing;
     },
     async listItemBarcodes(itemId, { includeInactive = true } = {}) {
