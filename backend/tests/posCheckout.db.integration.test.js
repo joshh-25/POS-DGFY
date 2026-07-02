@@ -87,6 +87,8 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         const location = await models.TenantLocation.create({
             name: `POS Test ${suffix}`,
             address_line: 'Rizal Street, Lapaz, Iloilo City',
+            latitude: 10.7202,
+            longitude: 122.5621,
             is_open: true,
             is_active: true,
             allow_out_of_stock_sales: false,
