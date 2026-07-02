@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "merge_name": "pr51-storefront-checkout-cart-preservation-2026-07-02",
+  "target_branch": "staging",
+  "source_refs": [
+    {
+      "ref": "origin/codex/hotfix-storefront-checkout",
+      "base": "origin/staging"
+    }
+  ],
+  "explicitly_rejected_files": [],
+  "semantic_conflict_review": {
+    "status": "none",
+    "notes": "This isolated hotfix does not adopt or reconcile another branch and has no semantic merge conflict. It preserves the current Storefront checkout, DGFY account, guest draft, quote, payment, and capability contracts while correcting capability-specific cart cleanup.",
+    "user_approved_decisions": []
+  },
+  "feature_areas": [
+    {
+      "id": "storefront-checkout-cart-preservation",
+      "decision": "adopt",
+      "intent": "Tenant-store product carts remain available through guest and DGFY-account checkout when product cart and checkout capabilities are enabled, regardless of the unrelated service-booking capability. Service carts remain governed by booking capability.",
+      "source_refs": [
+        "origin/codex/hotfix-storefront-checkout"
+      ],
+      "master_behaviors_preserved": [
+        "Product carts still fail closed when product-cart or checkout capability is disabled.",
+        "Service carts still fail closed when booking capability is disabled.",
+        "Guest checkout drafts, DGFY authenticated checkout, quote refresh, payment validation, stock validation, and order submission contracts are unchanged.",
+        "No payment routing, API payload, database, migration, or tenant authorization behavior changes."
+      ],
+      "proof": {
+        "required_files_present": [
+          "frontend/apps/store/src/StorefrontApp.jsx",
+          "frontend/apps/store/src/customerAccess.js",
+          "frontend/apps/store/src/__tests__/customerAccess.test.js"
+        ],
+        "required_strings_present": [
+          {
+            "file": "frontend/apps/store/src/customerAccess.js",
+            "text": "export const shouldClearStorefrontCart"
+          },
+          {
+            "file": "frontend/apps/store/src/StorefrontApp.jsx",
+            "text": "if (!shouldClearStorefrontCart({"
+          },
+          {
+            "file": "frontend/apps/store/src/__tests__/customerAccess.test.js",
+            "text": "preserves a tenant-store product cart for %s checkout when booking is unavailable"
+          }
+        ],
+        "required_strings_absent": [
+          {
+            "file": "frontend/apps/store/src/StorefrontApp.jsx",
+            "text": "if (productCartPermitted && checkoutPermitted && bookingPermitted) return;"
+          }
+        ],
+        "tests": [
+          "npm --prefix frontend test -- --run apps/store/src/__tests__/customerAccess.test.js apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/guestCheckoutDraft.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js --testTimeout 20000",
+          "npm --prefix frontend test -- --run apps/store/src/__tests__/fnbOrderTracking.contract.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/customerAccess.test.js apps/store/src/__tests__/guestCheckoutDraft.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontFollow.integration.test.jsx apps/store/src/__tests__/storefrontErrorMessages.test.js apps/store/src/__tests__/normalizeStorefrontPageModel.test.js --testTimeout 20000",
+          "npm --prefix backend test -- --runTestsByPath tests/storeAuth.dgfyFallback.test.js tests/dgfyAuthMiddleware.test.js",
+          "npm --prefix frontend run build:store",
+          "npm run check:architecture",
+          "npm run check:compliance"
+        ],
+        "rendered_evidence": [
+          "Live pre-deploy Eatery ni Doe guest journey retained Kare-kare, PHP 70.70 total, and promo entry through the payment review. Post-deploy proof must repeat the tenant journey and verify the served production SHA."
+        ],
+        "production_evidence_required": [
+          "Prove production runtime and deploy markers match the exact origin/master SHA.",
+          "On Eatery ni Doe, verify a guest product cart retains its item and non-zero total through payment review and promo entry without submitting an order.",
+          "Verify DGFY-authenticated checkout retains the same product cart through auth resume using the controlled production UAT account, without adopting guest activity by email or phone.",
+          "Verify a product cart still clears when product checkout is intentionally unavailable and a service cart still clears when booking is intentionally unavailable."
+        ]
+      }
+    }
+  ]
+}
