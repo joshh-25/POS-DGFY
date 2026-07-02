@@ -35,7 +35,6 @@ const VALID_ALLERGENS = ['milk', 'eggs', 'fish', 'shellfish', 'tree_nuts', 'pean
 const VALID_TEMPLATE_WORKFLOW_MODES = ['manufacturing', ...CORRECTED_ITEM_TAXONOMY_MODES];
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 export const TEMPLATE_SCHEMA_VERSION = 'v1';
-export const CSV_IMPORT_ROW_CONCURRENCY = 3;
 const BARCODE_TEMPLATE_HEADERS = Object.freeze([
     'barcode',
     'barcode_source',
@@ -1103,7 +1102,7 @@ export const confirmImport = async (rows, userId) => {
 
         // UPDATE simple items (still one-by-one but concurrent)
         if (toUpdate.length > 0) {
-            const CONCURRENCY = CSV_IMPORT_ROW_CONCURRENCY;
+            const CONCURRENCY = 10;
             for (let i = 0; i < toUpdate.length; i += CONCURRENCY) {
                 const batch = toUpdate.slice(i, i + CONCURRENCY);
                 const promises = batch.map(async (row) => {
@@ -1169,7 +1168,7 @@ export const confirmImport = async (rows, userId) => {
     // === BATCH 2: Process products (need itemService for related tables) ===
     // These use itemService which handles nutrition, allergens, etc.
     if (productItems.length > 0) {
-        const CONCURRENCY = CSV_IMPORT_ROW_CONCURRENCY;
+        const CONCURRENCY = 10;
 
         for (let i = 0; i < productItems.length; i += CONCURRENCY) {
             const batch = productItems.slice(i, i + CONCURRENCY);
