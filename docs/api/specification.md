@@ -2454,7 +2454,7 @@ eligible POS row sellable at zero stock. Checkout persists an immutable
 Inventory stock movement for that line.
 
 ### POST /pos/terminal/pair
-Enroll the current physical POS device against a selected registered terminal after DGFY master-admin authentication.
+Optionally enroll the current physical POS device against a selected registered terminal after DGFY master-admin authentication. This endpoint is retained for compatibility and hardware-specific flows; normal shift opening and checkout do not require a pairing cookie.
 
 **Permission**: `pos:view`
 
@@ -2474,6 +2474,8 @@ reusable terminal password exists.
 ### GET /pos/terminal/paired
 Return sanitized current pairing metadata after revalidating the terminal,
 location, pairing version, user authorization profile, and DGFY membership.
+Missing, expired, stale, or rotated pairing state must not block normal
+shift opening or checkout when the operator is otherwise authorized.
 
 ### DELETE /pos/terminal/paired
 Clear the pairing cookie. Explicit terminal lock uses this endpoint before
@@ -2546,8 +2548,10 @@ Execute a POS checkout transaction (atomic). Creates:
 2. `pos_transaction_lines` with immutable VAT snapshots
 3. `stock_movements` entries (`movement_type='goods_issue'`, `reference_type='POS'`) for stock-controlled product lines only
 
-The route requires a valid terminal pairing and an open shift. POS Always
-Available lines create no `stock_movements` row and instead retain the explicit
+The route requires an authenticated POS operator with `pos:transact`, a selected
+active registered terminal, a terminal location matching the checkout location,
+authorized access to that location, and an open shift. POS Always Available
+lines create no `stock_movements` row and instead retain the explicit
 stock-exempt snapshot on `pos_transaction_lines`.
 
 Route mapping note:
@@ -2695,6 +2699,10 @@ Open a terminal shift for cashier operations.
 
 **Permission**: `pos:transact`
 **Plan Gate**: Premium (`requirePremium`)
+
+Shift opening uses a logical terminal contract. The selected `terminal_id` must
+be active in the terminal registry and assigned to a location that the operator
+is authorized to use. A physical-device pairing cookie is not required.
 
 **Request Body**
 ```json
