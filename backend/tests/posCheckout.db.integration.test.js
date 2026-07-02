@@ -76,6 +76,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
     const createCashier = async () => {
         const suffix = crypto.randomUUID().slice(0, 8);
+        const terminalId = `POS-TEST-${suffix}`.toUpperCase();
         const cashier = await models.User.create({
             username: `cashier_${suffix}`,
             email: `cashier_${suffix}@pos.test`,
@@ -83,13 +84,37 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             role: 'staff',
             is_active: true
         });
+        const location = await models.TenantLocation.create({
+            name: `POS Test ${suffix}`,
+            address_line: 'Rizal Street, Lapaz, Iloilo City',
+            is_open: true,
+            is_active: true,
+            allow_out_of_stock_sales: false,
+            supports_delivery: true,
+            supports_pickup: true,
+            supports_dine_in: true
+        });
+        await models.UserLocationGrant.create({
+            user_id: cashier.user_id,
+            location_id: location.location_id,
+            created_by: cashier.user_id
+        });
+        await setSetting('pos_terminal_registry', JSON.stringify([{
+            terminal_id: terminalId,
+            label: terminalId,
+            is_active: true,
+            is_default: true,
+            location_id: location.location_id
+        }]), 'json');
         await models.PosTerminalShift.create({
             business_date: new Date().toISOString().slice(0, 10),
-            terminal_id: `POS-TEST-${suffix}`.toUpperCase(),
+            terminal_id: terminalId,
+            location_id: location.location_id,
             cashier_id: cashier.user_id,
             opening_float_amount: 0,
             status: 'open'
         });
+        cashier.posTestLocationId = location.location_id;
         return cashier;
     };
 
@@ -162,6 +187,25 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         await row.update(updatePayload);
     };
 
+    const checkoutAsCashier = async (cashier, payload) => {
+        const itemIds = [...new Set((payload.lines || []).map((line) => Number(line.item_id)))];
+        for (const itemId of itemIds) {
+            const item = await models.Item.findByPk(itemId);
+            if (!item) continue;
+            await models.ItemLocationStock.upsert({
+                item_id: itemId,
+                location_id: cashier.posTestLocationId,
+                quantity_on_hand: Number(item.current_stock || 0),
+                updated_by: null
+            });
+        }
+        return runInTenantContext(() => checkoutPosUseCase({
+            userId: cashier.user_id,
+            user: cashier,
+            payload
+        }));
+    };
+
     beforeAll(async () => {
         await landlordSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
         runMigrationsForDb(dbName);
@@ -202,9 +246,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         const product = await createFinishedGood({ current_stock: 10 });
         const idempotencyKey = `idem-success-${crypto.randomUUID()}`;
 
-        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
-            userId: cashier.user_id,
-            payload: {
+        const checkoutResult = await checkoutAsCashier(cashier, {
                 idempotency_key: idempotencyKey,
                 payment_type: 'cash',
                 order_method: 'dine_in',
@@ -215,8 +257,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                         sale_price: null
                     }
                 ]
-            }
-        }));
+        });
 
         expect(checkoutResult.success).toBe(true);
         expect(checkoutResult.data.idempotent_replay).toBe(false);
@@ -253,15 +294,12 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(catalogBeforeEnable.success).toBe(true);
         expect(catalogBeforeEnable.data.some((row) => Number(row.item_id) === Number(rawMaterial.item_id))).toBe(false);
 
-        const checkoutBeforeEnable = await runInTenantContext(() => checkoutPosUseCase({
-            userId: cashier.user_id,
-            payload: {
+        const checkoutBeforeEnable = await checkoutAsCashier(cashier, {
                 idempotency_key: `idem-rm-default-hidden-${crypto.randomUUID()}`,
                 payment_type: 'cash',
                 order_method: 'dine_in',
                 lines: [{ item_id: rawMaterial.item_id, quantity: 1, sale_price: null }]
-            }
-        }));
+        });
         expect(checkoutBeforeEnable.success).toBe(false);
 
         await models.PosCatalogOverride.create({
@@ -276,15 +314,12 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(catalogAfterEnable.success).toBe(true);
         expect(catalogAfterEnable.data.some((row) => Number(row.item_id) === Number(rawMaterial.item_id))).toBe(true);
 
-        const checkoutAfterEnable = await runInTenantContext(() => checkoutPosUseCase({
-            userId: cashier.user_id,
-            payload: {
+        const checkoutAfterEnable = await checkoutAsCashier(cashier, {
                 idempotency_key: `idem-rm-enabled-${crypto.randomUUID()}`,
                 payment_type: 'cash',
                 order_method: 'dine_in',
                 lines: [{ item_id: rawMaterial.item_id, quantity: 1, sale_price: null }]
-            }
-        }));
+        });
         expect(checkoutAfterEnable.success).toBe(true);
 
         await models.PosCatalogOverride.update({
@@ -300,15 +335,12 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(catalogAfterHide.success).toBe(true);
         expect(catalogAfterHide.data.some((row) => Number(row.item_id) === Number(rawMaterial.item_id))).toBe(false);
 
-        const checkoutAfterHide = await runInTenantContext(() => checkoutPosUseCase({
-            userId: cashier.user_id,
-            payload: {
+        const checkoutAfterHide = await checkoutAsCashier(cashier, {
                 idempotency_key: `idem-rm-hidden-${crypto.randomUUID()}`,
                 payment_type: 'cash',
                 order_method: 'dine_in',
                 lines: [{ item_id: rawMaterial.item_id, quantity: 1, sale_price: null }]
-            }
-        }));
+        });
         expect(checkoutAfterHide.success).toBe(false);
         expect(checkoutAfterHide.error.message).toContain('POS-visible active items');
     });
@@ -323,9 +355,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             where: { reference_type: 'POS' }
         });
 
-        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
-            userId: cashier.user_id,
-            payload: {
+        const checkoutResult = await checkoutAsCashier(cashier, {
                 idempotency_key: idempotencyKey,
                 payment_type: 'cash',
                 order_method: 'dine_in',
@@ -333,8 +363,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                     { item_id: product.item_id, quantity: 6, sale_price: null },
                     { item_id: product.item_id, quantity: 6, sale_price: null }
                 ]
-            }
-        }));
+        });
 
         expect(checkoutResult.success).toBe(false);
         expect(checkoutResult.error.code).toBe('VALIDATION_FAILED');
@@ -370,9 +399,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         });
 
         const idempotencyKey = `idem-fifo-drift-${crypto.randomUUID()}`;
-        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
-            userId: cashier.user_id,
-            payload: {
+        const checkoutResult = await checkoutAsCashier(cashier, {
                 idempotency_key: idempotencyKey,
                 payment_type: 'cash',
                 order_method: 'dine_in',
@@ -383,8 +410,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                         sale_price: null
                     }
                 ]
-            }
-        }));
+        });
 
         expect(checkoutResult.success).toBe(true);
 
@@ -411,9 +437,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         });
 
         const idempotencyKey = `idem-method-fee-${crypto.randomUUID()}`;
-        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
-            userId: cashier.user_id,
-            payload: {
+        const checkoutResult = await checkoutAsCashier(cashier, {
                 idempotency_key: idempotencyKey,
                 payment_type: 'cash',
                 order_method: 'delivery',
@@ -425,8 +449,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                         sale_price: 112
                     }
                 ]
-            }
-        }));
+        });
 
         expect(checkoutResult.success).toBe(true);
         const persistedTx = await models.PosTransaction.findOne({
