@@ -401,6 +401,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         });
 
         await createFifoBatch(product.item_id, {
+            location_id: cashier.posTestLocationId,
             quantity: 0.2,
             quantity_consumed: 0.0
         });
