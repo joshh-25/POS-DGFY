@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-06-29
-last_reviewed: 2026-07-01
+last_reviewed: 2026-07-02
 classification: authoritative
 ---
 
@@ -51,6 +51,13 @@ preserving DGFY tenant context and current terminal possession proof.
    admin authority to set or clear the PIN.
 10. A location may own multiple active terminals/counters. Terminal IDs remain
     unique and exactly one active terminal may be the tenant default.
+11. The locked-terminal account picker must provide an explicit account-switch
+    boundary. Switching accounts revokes or clears the prior DGFY session,
+    companies, selected tenant, tenant session, and password before accepting the
+    next identity. The drawer exposes one DGFY sign-in path for admins and
+    cashiers; direct tenant-local cashier-password login is not a normal path.
+    Eligible historical users retain the separately labelled legacy grace login
+    through the ADR 0028 deadline.
 11. The company founder/master admin remains an administrator and is treated as
     POS-operator ready without creating a duplicate cashier role or user row.
 12. Cashier defaults follow least privilege: catalog view, checkout, shift open

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-27
+last_reviewed: 2026-07-02
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -187,6 +187,8 @@ CREATE TABLE Tenants (
 The `UserTenantMapping` table in the main DB maps email addresses to tenant IDs. This powers the login pre-screen: users enter their email and the system resolves which company (or companies) they belong to, returning the `company_token` without the user needing to memorize it.
 
 `POST /api/v1/auth/lookup` is a pre-login identification endpoint. It remains rate-limited to reduce tenant enumeration risk, but it must not require CSRF even when the browser still carries stale HttpOnly session cookies from a previous login; otherwise users can be blocked before they can identify their company or enter a manual token. The lookup limiter is scoped by client IP plus normalized email, not IP alone, and defaults to a 5-minute retry window so shared store networks do not cross-throttle different POS cashiers while repeated lookup attempts for the same email remain controlled.
+
+The credentialed IMS/DGFY login limiter also defaults to five attempts in a five-minute window, keyed by client IP plus normalized email. IMS and POS intentionally share that identity bucket so alternating surfaces cannot bypass brute-force protection. Login clients must use `Retry-After`, must not loop automatic retries, and must reset stale company/account state before a changed identity can submit. Public lookup does not preflight `/auth/refresh-token` and does not inherit stale tenant headers.
 
 ### Endpoint
 ```

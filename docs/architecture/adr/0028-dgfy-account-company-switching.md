@@ -1,7 +1,7 @@
 ---
 status: authoritative
 authority_level: authoritative
-last_reviewed: 2026-06-17
+last_reviewed: 2026-07-02
 ---
 
 # ADR 0028: DGFY-Only Company Access And Switching
@@ -45,6 +45,7 @@ The hardening contract for this rollout requires explicit proof for replay, fail
 - Company founders/master admins are POS-operator ready without changing their `admin` role or creating a duplicate cashier profile.
 - A paired POS device uses administrator-authorized, versioned device enrollment rather than a reusable terminal password. Operator authentication and terminal possession remain separate checks.
 - Legacy POS unlock is available only as a dated grace fallback for eligible existing users and must be presented separately from the DGFY POS drawer path.
+- POS and IMS account changes are authentication boundaries. Changing identity after company resolution must clear the previous company list, selected tenant, tenant session, password, and stale lookup state before another login attempt. The ordinary POS drawer must not expose a separate tenant-local `Login as Cashier` action; DGFY cashiers use the same DGFY sign-in and company-selection path, while eligible historical users retain only the separately labelled legacy grace path.
 - Switch success/failure and invitation accept success/failure are landlord-audited without secrets.
 - IMS users who entered SKUpervisor through ordinary tenant auth can still see switcher choices when their tenant-local user is explicitly linked to a DGFY account membership. Legacy master-admin/founder tenant users can receive an accepted founder membership through the verified-email bootstrap; non-founder users without a membership link will see a closed-state message until a DGFY account invitation is accepted.
 - Platform-admin owner assignment creates or updates explicit accepted membership state with `source='admin_handover'` and updates `tenants.owner_dgfy_account_id`; it does not edit DGFY email/password from tenant settings.
