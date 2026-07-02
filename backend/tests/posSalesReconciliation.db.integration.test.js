@@ -364,6 +364,22 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     status: 'open'
   });
 
+  const seedCheckoutLineLocationStock = async ({ payload, locationId }) => {
+    const itemIds = [...new Set((payload.lines || [])
+      .map((line) => Number.parseInt(line?.item_id, 10))
+      .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+
+    for (const itemId of itemIds) {
+      const item = await models.Item.findByPk(itemId);
+      if (!item) continue;
+      await seedItemLocationStock({
+        itemId,
+        locationId,
+        quantityOnHand: Number(item.current_stock || 0)
+      });
+    }
+  };
+
   const checkoutPayloadWithOpenShift = async (cashierId, payload, options = {}) => {
     const terminalId = options.terminalId || payload.terminal_id || `COUNTER-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
     const requestedLocationId = options.locationId ?? payload.location_id ?? null;
@@ -390,6 +406,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       ]),
       'json'
     );
+    await seedCheckoutLineLocationStock({ payload, locationId });
     const shift = await createOpenTerminalShift({ cashierId, terminalId, locationId });
 
     return {
