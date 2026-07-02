@@ -25,6 +25,20 @@ export const canUseCheckout = (store = null) => getAccessCapabilities(store).che
 export const canUseBooking = (store = null) => getAccessCapabilities(store).booking === true;
 export const canViewCatalog = (store = null) => getAccessCapabilities(store).catalog === true;
 
+export const shouldClearStorefrontCart = ({
+  cart = [],
+  productCartPermitted = false,
+  checkoutPermitted = false,
+  bookingPermitted = false
+} = {}) => {
+  const lines = Array.isArray(cart) ? cart : [];
+  const hasServiceLines = lines.some((line) => line?.category === 'service');
+  const hasProductLines = lines.some((line) => line?.category !== 'service');
+
+  return (hasProductLines && (!productCartPermitted || !checkoutPermitted))
+    || (hasServiceLines && !bookingPermitted);
+};
+
 export const getInventoryDisplayLabel = (item = {}) => {
   const label = item?.inventory_display?.label;
   return typeof label === 'string' && label.trim() ? label.trim() : null;
