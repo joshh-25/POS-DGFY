@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "merge_name": "Staging POS DGFY changes with pre-existing display-only Storefront promo",
+  "target_branch": "master",
+  "source_refs": [{"ref": "origin/staging", "base": "origin/master"}],
+  "explicitly_rejected_files": [],
+  "semantic_conflict_review": {"status": "user-approved", "notes": "The production POS map hotfix merged cleanly into staging without semantic conflicts. The existing staging promo UI remains display-only and payment routing is excluded.", "user_approved_decisions": [{"area": "combined-staging-candidate", "question_asked": "Ship the reviewed POS and DGFY work while preserving the staged Storefront promo UI?", "resolution": "combine", "approved_by": "BabyBaBab", "rationale": "The requested release keeps the qualified staging behavior and excludes payment processing changes."}]},
+  "feature_areas": [{
+    "id": "pos-dgfy-storefront-promo",
+    "decision": "combine",
+    "intent": "Preserve company-aware POS onboarding and the staged display-only promo interface without changing payment calculation or routing.",
+    "source_refs": ["origin/staging"],
+    "master_behaviors_preserved": ["Production POS map hotfix", "Existing checkout totals and payment routing"],
+    "proof": {
+      "required_files_present": ["frontend/src/features/pos/pages/TerminalPage.jsx", "frontend/apps/store/src/checkout/components/PromoCodePanel.jsx"],
+      "required_files_absent": [],
+      "required_strings_present": [{"file": "frontend/apps/store/src/checkout/components/PromoCodePanel.jsx", "text": "Promo"}],
+      "required_strings_absent": [],
+      "tests": ["npm run gate:release:local", "npm run smoke:pos-terminal-ui"],
+      "rendered_evidence": ["Local POS entry screen verified in the in-app browser with no console errors; desktop, tablet, and mobile UI smoke passed."],
+      "production_evidence_required": ["Verify exact served asset SHA and read-only POS/Storefront behavior after deployment."]
+    }
+  }]
+}
