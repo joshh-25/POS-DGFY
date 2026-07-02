@@ -10,14 +10,50 @@ export const shouldLogStackToConsole = () => {
   return process.env.NODE_ENV === 'development';
 };
 
+const mapUploadErrorToHttp = (err) => {
+  const code = err?.code || null;
+  if (code === 'LIMIT_FILE_SIZE') {
+    return {
+      statusCode: 413,
+      payload: {
+        message: 'Uploaded image is too large. Use an image 5 MB or smaller.',
+        code
+      }
+    };
+  }
+
+  if (code === 'LIMIT_FILE_COUNT') {
+    return {
+      statusCode: 400,
+      payload: {
+        message: 'Too many files were uploaded for this request.',
+        code
+      }
+    };
+  }
+
+  if (code === 'LIMIT_UNEXPECTED_FILE') {
+    return {
+      statusCode: 400,
+      payload: {
+        message: 'The uploaded file field is not accepted for this request.',
+        code
+      }
+    };
+  }
+
+  return null;
+};
+
 export const errorHandler = (err, req, res, _next) => {
   void _next;
   const stackLoggingEnabled = shouldLogStackToConsole();
-  const mappedDomainError = mapDomainErrorToHttp(err);
-  const statusCode = mappedDomainError?.statusCode || err.statusCode || 500;
-  const message = mappedDomainError?.payload?.message || err.message || 'Internal Server Error';
+  const mappedUploadError = mapUploadErrorToHttp(err);
+  const mappedDomainError = mappedUploadError ? null : mapDomainErrorToHttp(err);
+  const statusCode = mappedUploadError?.statusCode || mappedDomainError?.statusCode || err.statusCode || 500;
+  const message = mappedUploadError?.payload?.message || mappedDomainError?.payload?.message || err.message || 'Internal Server Error';
   const errors = mappedDomainError?.payload?.details || err.errors || null;
-  const errorCode = mappedDomainError?.payload?.code || err.code || null;
+  const errorCode = mappedUploadError?.payload?.code || mappedDomainError?.payload?.code || err.code || null;
   const requestId = req.requestId || res.locals.requestId || null;
   const traceId = req.traceId || res.locals.traceId || requestId;
   res.locals.errorCode = errorCode;
