@@ -33,6 +33,10 @@ const mockResolveMovementLocation = jest.fn(async ({ requestedLocationId }) => (
     location_id: requestedLocationId || 3,
     name: 'Main'
 }));
+const mockResolveIdentityStatus = jest.fn(async () => ({
+    identity_mode: 'dgfy_membership',
+    membership_id: 44
+}));
 
 jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
     getAllSettingsUseCase: mockGetAllSettingsUseCase
@@ -44,6 +48,10 @@ jest.unstable_mockModule('../src/modules/compliance/index.js', () => ({
         POS_CHECKOUT: 'pos.checkout',
         POS_TERMINAL_OPERATION: 'pos.terminal.operation'
     }
+}));
+
+jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
+    resolveMovementLocation: mockResolveMovementLocation
 }));
 
 jest.unstable_mockModule('../src/services/locationInventoryService.js', () => ({
@@ -78,6 +86,11 @@ beforeAll(async () => {
         buildUpdateESalesReportStatusUseCase,
         buildUpsertFiscalTerminalRegistrationUseCase
     } = await import('../src/modules/pos/usecases/posUseCases.js'));
+});
+
+const buildCheckoutContractUseCase = (dependencies) => buildCheckoutPosUseCase({
+    ...dependencies,
+    resolveIdentityStatus: mockResolveIdentityStatus
 });
 
 const createTransaction = () => {
@@ -137,6 +150,18 @@ const createOpenShift = ({
     opening_float_amount: 100
 });
 
+const activeTerminalRegistry = [{
+    terminal_id: 'TERM-01',
+    label: 'Term 01',
+    is_active: true,
+    location_id: 3
+}];
+
+const terminalIdentityPolicy = () => ({
+    mode: 'warn',
+    active_registry: activeTerminalRegistry
+});
+
 describe('POS checkout F&B contracts', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -175,7 +200,7 @@ describe('POS checkout F&B contracts', () => {
         });
         let createdTransaction = null;
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 1,
@@ -218,7 +243,7 @@ describe('POS checkout F&B contracts', () => {
         const inventoryCommandService = {
             issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 1 })
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, inventoryCommandService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, inventoryCommandService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
@@ -361,7 +386,7 @@ describe('POS checkout F&B contracts', () => {
             lines: []
         };
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             getVerifiedFiscalTerminalRegistration: jest.fn().mockResolvedValue({
                 pos_fiscal_terminal_registration_id: 44,
                 terminal_id: 'TERM-01',
@@ -374,7 +399,7 @@ describe('POS checkout F&B contracts', () => {
         const stockMovementService = {
             createStockMovement: jest.fn()
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
@@ -408,7 +433,7 @@ describe('POS checkout F&B contracts', () => {
 
     it('blocks checkout when the cashier has no open shift', async () => {
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findOpenTerminalShift: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
@@ -427,7 +452,7 @@ describe('POS checkout F&B contracts', () => {
         const stockMovementService = {
             createStockMovement: jest.fn()
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
@@ -456,7 +481,7 @@ describe('POS checkout F&B contracts', () => {
     it('validates modifiers from configured groups, taxes taxable restaurant service charge, and deducts recipe ingredients', async () => {
         let createdTransaction = null;
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 1,
@@ -518,13 +543,14 @@ describe('POS checkout F&B contracts', () => {
         const stockMovementService = {
             createStockMovement: jest.fn().mockResolvedValue({ movement_id: 1 })
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
             user: { user_id: 12, permissions: [] },
             payload: {
                 idempotency_key: 'fnb-checkout-contract-1',
+                terminal_id: 'TERM-01',
                 location_id: 3,
                 document_context: 'non_fiscal',
                 payment_type: 'cash',
@@ -607,7 +633,7 @@ describe('POS checkout F&B contracts', () => {
     it('fails F&B recipe checkout before commit when selected location lacks ingredient stock', async () => {
         let transactionRef = null;
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 1,
@@ -644,7 +670,7 @@ describe('POS checkout F&B contracts', () => {
         const stockMovementService = {
             createStockMovement: jest.fn()
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
 
         const result = await runInTenantContext(({ transaction }) => {
             transactionRef = transaction;
@@ -653,6 +679,7 @@ describe('POS checkout F&B contracts', () => {
                 user: { user_id: 12, permissions: [] },
                 payload: {
                     idempotency_key: 'fnb-checkout-contract-location-insufficient',
+                    terminal_id: 'TERM-01',
                     location_id: 3,
                     document_context: 'non_fiscal',
                     payment_type: 'cash',
@@ -687,7 +714,7 @@ describe('POS checkout F&B contracts', () => {
 
     it('rejects F&B POS recipes when recipe and ingredient UOMs are incompatible', async () => {
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 1,
@@ -726,13 +753,14 @@ describe('POS checkout F&B contracts', () => {
         const stockMovementService = {
             createStockMovement: jest.fn()
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
             user: { user_id: 12, permissions: [] },
             payload: {
                 idempotency_key: 'fnb-checkout-contract-uom-incompatible',
+                terminal_id: 'TERM-01',
                 location_id: 3,
                 document_context: 'non_fiscal',
                 payment_type: 'cash',
@@ -761,7 +789,7 @@ describe('POS checkout F&B contracts', () => {
     it('keeps pure service POS lines stock-exempt while physical add-on lines deduct at the checkout location', async () => {
         let createdTransaction = null;
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([
                 {
@@ -806,13 +834,14 @@ describe('POS checkout F&B contracts', () => {
         const stockMovementService = {
             createStockMovement: jest.fn().mockResolvedValue({ movement_id: 2 })
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
             user: { user_id: 12, permissions: [] },
             payload: {
                 idempotency_key: 'pos-service-plus-addon-contract',
+                terminal_id: 'TERM-01',
                 location_id: 3,
                 document_context: 'non_fiscal',
                 payment_type: 'cash',
@@ -844,7 +873,7 @@ describe('POS checkout F&B contracts', () => {
     it('persists Always Available as an explicit POS-only stock exemption without inventory movement', async () => {
         let createdTransaction = null;
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 12,
@@ -873,13 +902,14 @@ describe('POS checkout F&B contracts', () => {
             getTransactionById: jest.fn(async () => createdTransaction)
         };
         const stockMovementService = { createStockMovement: jest.fn() };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
             user: { user_id: 12, permissions: [] },
             payload: {
                 idempotency_key: 'pos-always-available-contract',
+                terminal_id: 'TERM-01',
                 location_id: 3,
                 document_context: 'non_fiscal',
                 payment_type: 'cash',
@@ -901,7 +931,7 @@ describe('POS checkout F&B contracts', () => {
     it('does not validate or deduct accidental recipe compositions for pure service F&B lines', async () => {
         let createdTransaction = null;
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 20,
@@ -936,13 +966,14 @@ describe('POS checkout F&B contracts', () => {
         const stockMovementService = {
             createStockMovement: jest.fn()
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
             user: { user_id: 12, permissions: [] },
             payload: {
                 idempotency_key: 'fnb-service-composition-ignore-contract',
+                terminal_id: 'TERM-01',
                 location_id: 3,
                 document_context: 'non_fiscal',
                 payment_type: 'cash',
@@ -968,7 +999,7 @@ describe('POS checkout F&B contracts', () => {
 
     it('fails F&B POS checkout when kitchen order persistence is unavailable', async () => {
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 1,
@@ -996,13 +1027,14 @@ describe('POS checkout F&B contracts', () => {
         const stockMovementService = {
             createStockMovement: jest.fn()
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
             user: { user_id: 12, permissions: [] },
             payload: {
                 idempotency_key: 'fnb-checkout-kitchen-unavailable',
+                terminal_id: 'TERM-01',
                 location_id: 3,
                 document_context: 'non_fiscal',
                 payment_type: 'cash',
