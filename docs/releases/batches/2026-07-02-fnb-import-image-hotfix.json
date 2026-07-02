@@ -22,14 +22,13 @@
         "docs/compliance/impact-declarations/2026-07-02-fnb-import-image-hotfix.md",
         "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
         "frontend/src/features/inventory/__tests__/itemProductWizard.contract.test.js",
-        "frontend/src/features/inventory/pages/ItemsPage.jsx",
-        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js"
+        "frontend/src/features/inventory/pages/ItemsPage.jsx"
       ],
       "included_features": [
         "F&B CSV import write-pressure reduction",
         "Exact 5 MB item-image validation feedback",
         "Storefront catalog image gallery-column fallback",
-        "Regression tests for import concurrency, upload errors, repository fallback, and current POS contracts"
+        "Regression tests for import concurrency, upload errors, and repository fallback"
       ],
       "excluded_files": [],
       "excluded_features": [
@@ -44,7 +43,7 @@
       "source_pr": "https://github.com/BBLabs-Albert/SKU-Inventory-Manager/pull/47",
       "source_type": "owner_direct_staging",
       "source_type_allowed_values": ["developer_pr", "owner_direct_staging", "controller_promotion"],
-      "affected_surfaces": ["backend", "frontend", "docs", "compliance", "POS", "Storefront"],
+      "affected_surfaces": ["backend", "frontend", "docs", "compliance", "Storefront"],
       "affected_surface_map": {
         "backend": true,
         "frontend": true,
@@ -52,7 +51,7 @@
         "scripts/deploy": false,
         "docs": true,
         "compliance": true,
-        "POS": true,
+        "POS": false,
         "Storefront": true,
         "DGFY": false,
         "tenant lifecycle": false,
@@ -66,12 +65,11 @@
         "IMS Items CSV import duration",
         "IMS item image selection and upload feedback",
         "Storefront image metadata persistence on lagging tenant schemas",
-        "Storefront item-image upload feedback",
-        "POS login-label and settings-navigation contract coverage"
+        "Storefront item-image upload feedback"
       ],
       "evidence_covering_regression_risk": [
         "Targeted backend import, upload-error, and repository tests",
-        "Targeted frontend item-image and POS contract tests",
+        "Targeted frontend item-image contract tests",
         "F&B readiness, architecture, compliance, docs, and build gates"
       ],
       "evidence_gaps": [
@@ -84,7 +82,7 @@
       ],
       "required_tests": [
         "npm --prefix backend test -- --runInBand tests/errorHandler.loggingPolicy.test.js tests/csvImportService.workflowMode.test.js tests/inventoryItemRepository.test.js",
-        "npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js",
+        "npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js",
         "npm run qa:fnb-readiness",
         "npm run check:architecture",
         "npm run check:compliance",
@@ -98,9 +96,9 @@
           "evidence": "2026-07-02: 3 suites and 64 tests passed."
         },
         {
-          "command": "npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js",
+          "command": "npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js",
           "status": "pass",
-          "evidence": "2026-07-02: item-image contract passed within a 3-file, 60-test focused frontend run."
+          "evidence": "2026-07-02: item-image contract passed; the broader focused frontend run also passed 60 tests."
         },
         {
           "command": "npm run qa:fnb-readiness",
