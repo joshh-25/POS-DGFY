@@ -26,7 +26,6 @@
         "docs/releases/batches/2026-07-02-pos-logical-terminal-shift-open.json",
         "docs/testing/dgfy-company-access-security-control-matrix.md",
         "docs/testing/pos-e2e-uat-checklist.md",
-        "frontend/src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
         "frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js",
         "frontend/src/features/pos/__tests__/terminalPairing.contract.test.js",
         "frontend/src/features/pos/__tests__/terminalSessionSource.contract.test.js",

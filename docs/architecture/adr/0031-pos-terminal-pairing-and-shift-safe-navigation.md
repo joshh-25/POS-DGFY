@@ -85,3 +85,11 @@ profiles inside the selected tenant, not a separate credential authority.
 3. POS and SKUpervisor production builds.
 4. Rendered desktop, tablet, and mobile terminal evidence before merge approval.
 5. Docs, architecture, compliance, merge-adoption, and reviewed-batch gates.
+
+## Addendum (2026-07-02): POS Item Creation And Starter-Item Setup
+
+1. POS terminal onboarding includes a starter-item step that reuses the tenant onboarding bulk item API and the ADR 0013 mode-aware starter-item taxonomy.
+2. POS > Items > Add POS Item is a staged mutation. The durable item create must complete before optional images, barcode generation, Storefront visibility, POS Always Available, POS visibility, and catalog readback run.
+3. Optional image upload failure must be reported as recoverable post-create work, not as item creation failure. The UI must preserve the created item ID and retry unfinished post-create stages without creating a duplicate item.
+4. Runtime schema health and tenant schema report mode must verify the POS Always Available contract columns: `pos_catalog_overrides.pos_always_available`, `pos_transaction_lines.stock_effect_type`, and `pos_transaction_lines.stock_exempt_reason`.
+5. Tenant repair for these columns is additive and declared-column-only. Full tenant `sync({ alter: true })` is not the default repair path for this contract.

@@ -1154,6 +1154,8 @@ function ItemsWorkspace({
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
+  const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
+  const [postCreateSaving, setPostCreateSaving] = useState(false);
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
 
   useEffect(() => {
@@ -1495,17 +1497,25 @@ function ItemsWorkspace({
   const openCreate = () => {
     setCreateForm(createEmptyPosItemForm());
     setSelectedImageFile(null);
+    setPendingCreateRecovery(null);
     setShowCreateModal(true);
   };
 
   const closeCreate = ({ force = false } = {}) => {
-    if (creatingItem && !force) return;
+    if ((creatingItem || postCreateSaving) && !force) return;
     setShowCreateModal(false);
     setCreateForm(createEmptyPosItemForm());
     setSelectedImageFile(null);
+    if (force) setPendingCreateRecovery(null);
   };
 
   const parseMoneyValue = (rawValue) => Number(String(rawValue || '').trim());
+
+  const getStageErrorMessage = (error) => (
+    error?.response?.data?.message
+    || error?.message
+    || 'Unexpected error'
+  );
 
   const handleSave = async () => {
     if (!activeEditItem) return;
@@ -1580,6 +1590,59 @@ function ItemsWorkspace({
     }
   };
 
+  const runPostCreateStages = async ({ itemId, itemName, imageFile, posAlwaysAvailable }) => {
+    const failedStages = [];
+    let barcodeCode = '';
+
+    const runStage = async (key, label, action) => {
+      try {
+        return await action();
+      } catch (error) {
+        failedStages.push({
+          key,
+          label,
+          message: getStageErrorMessage(error),
+          readinessBlocked: error?.is_pos_readiness_blocked === true
+        });
+        return null;
+      }
+    };
+
+    if (imageFile) {
+      await runStage('pos_image', 'POS image upload', () => uploadPosCatalogImage(itemId, imageFile));
+      await runStage('storefront_image', 'Storefront image upload', () => uploadStorefrontCatalogImage(itemId, imageFile));
+    }
+
+    const generatedBarcode = await runStage('barcode', 'barcode generation', () => generateItemBarcode(itemId, {
+      scope: 'pos',
+      packaging_level: 'unit'
+    }));
+    barcodeCode = String(generatedBarcode?.code || generatedBarcode?.barcode?.code || '').trim();
+
+    await runStage('storefront_visibility', 'Storefront visibility', () => updateStorefrontCatalogOverride(itemId, { storefront_visible: true }));
+    await runStage('always_available', 'Always Available', () => updatePosCatalogOverride(itemId, {
+      pos_always_available: posAlwaysAvailable === true
+    }));
+    await runStage('pos_visibility', 'POS visibility', () => updatePosCatalogOverride(itemId, {
+      pos_visible: true
+    }));
+
+    if (failedStages.length > 0) {
+      setPendingCreateRecovery({
+        itemId,
+        name: itemName,
+        imageFile,
+        posAlwaysAvailable,
+        failedStages
+      });
+      const labels = failedStages.map((stage) => stage.label).join(', ');
+      throw new Error(`Item #${itemId} was created, but these post-create steps still need retry: ${labels}.`);
+    }
+
+    setPendingCreateRecovery(null);
+    return { barcodeCode };
+  };
+
   const handleCreateItem = async () => {
     const name = String(createForm.name || '').trim();
     const description = String(createForm.description || '').trim();
@@ -1639,16 +1702,34 @@ function ItemsWorkspace({
       status: 'active'
     };
 
-    const finalizeCreatedItem = async ({ barcode = '', warningMessage = '' } = {}) => {
+    const finalizeCreatedItem = async ({ barcode = '', warningMessage = '', action = 'created' } = {}) => {
       closeCreate({ force: true });
       await loadItems();
-      setSavedMessage({ name, barcode, action: 'created' });
+      setSavedMessage({ name, barcode, action });
       if (warningMessage) {
         toast.warning(warningMessage);
       }
     };
 
     try {
+      setPostCreateSaving(true);
+      if (pendingCreateRecovery?.itemId) {
+        const recoveryName = pendingCreateRecovery.name || name;
+        const result = await runPostCreateStages({
+          itemId: pendingCreateRecovery.itemId,
+          itemName: recoveryName,
+          imageFile: pendingCreateRecovery.imageFile || selectedImageFile,
+          posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable
+        });
+        await finalizeCreatedItem({
+          barcode: result.barcodeCode,
+          action: 'created',
+          warningMessage: `Post-create setup completed for item #${pendingCreateRecovery.itemId}.`
+        });
+        toast.success('POS item setup resumed successfully.');
+        return;
+      }
+
       const resolvedFoodCategory = await ensureFoodCategoryFolder(createForm.pos_category);
       payload.product_folder = resolvedFoodCategory.name;
       if (resolvedFoodCategory.folder_id) {
@@ -1668,48 +1749,24 @@ function ItemsWorkspace({
         });
       }
 
-      if (selectedImageFile) {
-        await Promise.all([
-          uploadPosCatalogImage(itemId, selectedImageFile),
-          uploadStorefrontCatalogImage(itemId, selectedImageFile)
-        ]);
-      }
-
-      const generatedBarcode = await generateItemBarcode(itemId, {
-        scope: 'pos',
-        packaging_level: 'unit'
+      const result = await runPostCreateStages({
+        itemId,
+        itemName: name,
+        imageFile: selectedImageFile,
+        posAlwaysAvailable: createForm.pos_always_available === true
       });
-      const barcodeCode = String(generatedBarcode?.code || generatedBarcode?.barcode?.code || '').trim();
 
-      let postCreateWarning = '';
-
-      try {
-        await updateStorefrontCatalogOverride(itemId, { storefront_visible: true });
-      } catch (overrideError) {
-        postCreateWarning = 'Item created, but storefront visibility could not be enabled automatically.';
-      }
-
-      try {
-        await updatePosCatalogOverride(itemId, {
-          pos_always_available: createForm.pos_always_available === true
-        });
-      } catch (overrideError) {
-        postCreateWarning = 'Item created, but the Always Available setting could not be saved automatically.';
-      }
-
-      try {
-        await updatePosCatalogOverride(itemId, {
-          pos_visible: true
-        });
-      } catch (overrideError) {
-        postCreateWarning = overrideError?.is_pos_readiness_blocked
-          ? 'Item created, but POS visibility is blocked until readiness requirements are completed.'
-          : 'Item created, but POS visibility could not be enabled automatically.';
-      }
-
-      await finalizeCreatedItem({ barcode: barcodeCode, warningMessage: postCreateWarning });
+      await finalizeCreatedItem({ barcode: result.barcodeCode });
+      toast.success('POS item created.');
     } catch (createError) {
-      toast.error(createError?.response?.data?.message || createError?.message || 'Failed to create item.');
+      if (pendingCreateRecovery?.itemId || /post-create steps still need retry/i.test(String(createError?.message || ''))) {
+        await loadItems().catch(() => {});
+        toast.warning(createError.message);
+      } else {
+        toast.error(createError?.response?.data?.message || createError?.message || 'Failed to create item.');
+      }
+    } finally {
+      setPostCreateSaving(false);
     }
   };
 
@@ -2103,7 +2160,7 @@ function ItemsWorkspace({
                 <button
                   type="button"
                   onClick={closeCreate}
-                  disabled={creatingItem}
+                  disabled={creatingItem || postCreateSaving}
                   className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-[#334155] hover:bg-slate-50"
                 >
                   Close
@@ -2130,13 +2187,25 @@ function ItemsWorkspace({
                       type="file"
                       accept="image/*"
                       className="mt-2 h-11 cursor-pointer"
-                      disabled={creatingItem}
+                      disabled={creatingItem || postCreateSaving}
                       onChange={(event) => setSelectedImageFile(event.target.files?.[0] || null)}
                     />
                   </div>
                 </div>
 
                 <div className="grid gap-4">
+                  {pendingCreateRecovery?.itemId ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      <p className="font-bold">Item #{pendingCreateRecovery.itemId} was created. Resume setup retries only unfinished post-create stages and will not create a duplicate item.</p>
+                      {Array.isArray(pendingCreateRecovery.failedStages) && pendingCreateRecovery.failedStages.length > 0 ? (
+                        <ul className="mt-2 list-disc space-y-1 pl-5">
+                          {pendingCreateRecovery.failedStages.map((stage) => (
+                            <li key={stage.key}>{stage.label}: {stage.message}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="block sm:col-span-2">
                       <span className="text-[13px] font-semibold text-[#334155]">Item name</span>
@@ -2144,7 +2213,7 @@ function ItemsWorkspace({
                         value={createForm.name}
                         onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))}
                         className="mt-2 h-11"
-                        disabled={creatingItem}
+                        disabled={creatingItem || postCreateSaving}
                         placeholder="Classic Milk Tea"
                       />
                     </label>
@@ -2154,7 +2223,7 @@ function ItemsWorkspace({
                         value={createForm.pos_category}
                         onChange={(event) => setCreateForm((current) => ({ ...current, pos_category: event.target.value }))}
                         className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
-                        disabled={creatingItem}
+                        disabled={creatingItem || postCreateSaving}
                       >
                         {foodCategoryOptions.map((option) => (
                           <option key={option.value} value={option.name}>
@@ -2172,7 +2241,7 @@ function ItemsWorkspace({
                         value={createForm.current_stock}
                         onChange={(event) => setCreateForm((current) => ({ ...current, current_stock: event.target.value }))}
                         className="mt-2 h-11"
-                        disabled={creatingItem}
+                        disabled={creatingItem || postCreateSaving}
                       />
                     </label>
                     <button
@@ -2183,7 +2252,7 @@ function ItemsWorkspace({
                         ...current,
                         pos_always_available: !current.pos_always_available
                       }))}
-                      disabled={creatingItem}
+                      disabled={creatingItem || postCreateSaving}
                       className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <span>
@@ -2203,7 +2272,7 @@ function ItemsWorkspace({
                         value={createForm.default_sale_price}
                         onChange={(event) => setCreateForm((current) => ({ ...current, default_sale_price: event.target.value }))}
                         className="mt-2 h-11"
-                        disabled={creatingItem}
+                        disabled={creatingItem || postCreateSaving}
                       />
                     </label>
                     <label className="block">
@@ -2215,7 +2284,7 @@ function ItemsWorkspace({
                         value={createForm.cost_per_unit}
                         onChange={(event) => setCreateForm((current) => ({ ...current, cost_per_unit: event.target.value }))}
                         className="mt-2 h-11"
-                        disabled={creatingItem}
+                        disabled={creatingItem || postCreateSaving}
                       />
                     </label>
                     <label className="block sm:col-span-2">
@@ -2239,7 +2308,7 @@ function ItemsWorkspace({
                         value={createForm.description}
                         onChange={(event) => setCreateForm((current) => ({ ...current, description: event.target.value }))}
                         className="mt-2 min-h-28 w-full rounded-lg border border-slate-200 px-3 py-3 text-sm text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
-                        disabled={creatingItem}
+                        disabled={creatingItem || postCreateSaving}
                         placeholder="Optional notes for the POS item record"
                       />
                     </label>
@@ -2248,11 +2317,11 @@ function ItemsWorkspace({
               </div>
 
               <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <Button type="button" variant="outline" onClick={closeCreate} disabled={creatingItem} className="h-11 rounded-lg">
+                <Button type="button" variant="outline" onClick={closeCreate} disabled={creatingItem || postCreateSaving} className="h-11 rounded-lg">
                   Cancel
                 </Button>
-                <Button type="button" onClick={handleCreateItem} disabled={creatingItem || locked} className="h-11 rounded-lg bg-[#1A4E8D] text-white hover:bg-[#143F73]">
-                  {creatingItem ? 'Saving to IMS...' : 'Save Item'}
+                <Button type="button" onClick={handleCreateItem} disabled={creatingItem || postCreateSaving || locked} className="h-11 rounded-lg bg-[#1A4E8D] text-white hover:bg-[#143F73]">
+                  {creatingItem || postCreateSaving ? 'Saving...' : (pendingCreateRecovery?.itemId ? 'Resume Item Setup' : 'Save Item')}
                 </Button>
               </div>
             </div>
