@@ -22,6 +22,7 @@
         "docs/compliance/impact-declarations/2026-07-02-pos-item-creation-onboarding-schema-repair.md",
         "docs/releases/batches/2026-07-02-pos-item-creation-onboarding-schema-hotfix.json",
         "frontend/src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
+        "frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js",
         "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js",
         "frontend/src/features/pos/components/PosTenantSetupModal.jsx",
         "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
@@ -91,7 +92,7 @@
         {
           "command": "npm exec vitest run src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx --pool=threads",
           "status": "pass",
-          "evidence": "2026-07-02 local frontend run: 72 tests passed"
+          "evidence": "2026-07-02 final focused frontend run: 73 tests passed"
         },
         {
           "command": "npm run check:architecture",

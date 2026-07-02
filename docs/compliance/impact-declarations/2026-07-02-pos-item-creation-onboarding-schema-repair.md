@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal,onboarding,tenant_schema,storefront_catalog
 reason_codes_impacted: POS_READINESS_INCOMPLETE
 policy_version: 2026.07.02
-verification_evidence: npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js,npm --prefix frontend exec vitest run src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js --pool=threads,npm run check:architecture,npm run lint:docs
+verification_evidence: npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js,npm --prefix frontend exec vitest run src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js --pool=threads,npm run check:architecture,npm run lint:docs
 preflight_result: no_breach
 preflight_reason_code: POS_ITEM_CREATION_ONBOARDING_SCHEMA_REPAIR
 preflight_run_at: 2026-07-02T13:30:00+08:00
@@ -38,6 +38,7 @@ Major.
 ## Verification Evidence
 - `npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js`
 - `npm --prefix frontend exec vitest run src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js --pool=threads`
+- Final focused frontend verification also includes `src/features/pos/__tests__/posSettingsCashier.contract.test.js`; 73 tests passed after aligning the contract assertions with the DGFY Email label and batched terminal-metadata refresh.
 - `npm run check:architecture`
 - `npm run lint:docs`
 
