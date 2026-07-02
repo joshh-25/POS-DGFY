@@ -15,6 +15,7 @@
       "included_files": [
         "backend/src/modules/pos/usecases/posUseCases.js",
         "backend/src/routes/pos.js",
+        "backend/tests/posSalesReconciliation.db.integration.test.js",
         "backend/tests/posUsecases.applicationResult.test.js",
         "docs/api/specification.md",
         "docs/architecture/adr/0028-dgfy-account-company-switching.md",
@@ -24,6 +25,7 @@
         "docs/releases/batches/2026-07-02-pos-logical-terminal-shift-open.json",
         "docs/testing/dgfy-company-access-security-control-matrix.md",
         "docs/testing/pos-e2e-uat-checklist.md",
+        "frontend/src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
         "frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js",
         "frontend/src/features/pos/__tests__/terminalPairing.contract.test.js",
         "frontend/src/features/pos/__tests__/terminalSessionSource.contract.test.js",
@@ -84,12 +86,13 @@
       "evidence_covering_regression_risk": [
         "Backend POS use-case test proves active logical terminals can open shifts without pairing cookies and inactive or unauthorized terminal/location cases fail closed.",
         "Frontend POS contract tests prove TerminalPage no longer imports pairing as the unlock authority and preserves terminal selection copy.",
+        "POS reconciliation integration test harness now seeds active logical terminal registry state for direct checkout use-case calls.",
         "Architecture, docs, compliance, and POS production build checks passed on the clean release branch."
       ],
       "evidence_gaps": [
         "No seeded staging or production DGFY cashier/admin end-to-end mutation UAT has been run for this exact release SHA.",
         "Rendered local proof reached the DGFY terminal login screen; post-login terminal selection copy remains credential/session-gated.",
-        "Full backend matrix and full frontend suite were not rerun for this narrow POS slice."
+        "Full backend matrix and full frontend suite must be confirmed by GitHub CI after the follow-up test-fixture update."
       ],
       "rollback_or_monitoring_notes": [
         "Rollback by reverting this release commit and redeploying through the same governed flow.",
@@ -97,6 +100,7 @@
       ],
       "required_tests": [
         "npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js",
+        "npm --prefix frontend exec vitest run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
         "npm --prefix frontend exec vitest run src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js",
         "npm --prefix frontend run build:pos",
         "npm run check:architecture",
@@ -109,6 +113,11 @@
           "command": "npm --prefix backend test -- --runInBand tests/posUsecases.applicationResult.test.js",
           "status": "pass",
           "evidence": "clean-release-branch b0174ef6: 1 backend suite and 36 POS use-case tests passed"
+        },
+        {
+          "command": "npm --prefix frontend exec vitest run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
+          "status": "pass",
+          "evidence": "clean-release-branch a1cda76a follow-up: 1 frontend DGFY drawer file and 2 tests passed after label assertion update"
         },
         {
           "command": "npm --prefix frontend exec vitest run src/features/pos/__tests__/terminalPairing.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js",
