@@ -120,6 +120,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
   let runtimeReady = true;
   let runtimeSkipReason = '';
   let runtimeSkipLogged = false;
+  const checkoutSessionByCashier = new Map();
 
   const ensureRuntimeReady = () => {
     if (!runtimeReady) {
@@ -381,8 +382,12 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
   };
 
   const checkoutPayloadWithOpenShift = async (cashierId, payload, options = {}) => {
-    const terminalId = options.terminalId || payload.terminal_id || `COUNTER-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
-    const requestedLocationId = options.locationId ?? payload.location_id ?? null;
+    const existingSession = checkoutSessionByCashier.get(cashierId);
+    const terminalId = options.terminalId
+      || payload.terminal_id
+      || existingSession?.terminalId
+      || `COUNTER-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const requestedLocationId = options.locationId ?? payload.location_id ?? existingSession?.locationId ?? null;
     const locationId = requestedLocationId || (await createTenantLocation()).location_id;
     await models.UserLocationGrant.findOrCreate({
       where: {
@@ -407,7 +412,10 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       'json'
     );
     await seedCheckoutLineLocationStock({ payload, locationId });
-    const shift = await createOpenTerminalShift({ cashierId, terminalId, locationId });
+    const shift = existingSession?.terminalId === terminalId && existingSession?.locationId === locationId
+      ? existingSession.shift
+      : await createOpenTerminalShift({ cashierId, terminalId, locationId });
+    checkoutSessionByCashier.set(cashierId, { terminalId, locationId, shift });
 
     return {
       ...payload,
