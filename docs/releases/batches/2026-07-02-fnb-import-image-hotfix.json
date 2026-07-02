@@ -2,7 +2,7 @@
   "schema": "sku-reviewed-batch-manifest/v1",
   "review_status": "reviewed",
   "reviewed_by": "BabyBaBab owner-authorized Codex hotfix review",
-  "reviewed_at": "2026-07-02T17:12:00.000+08:00",
+  "reviewed_at": "2026-07-02T17:50:00.000+08:00",
   "source_pr": "https://github.com/BBLabs-Albert/SKU-Inventory-Manager/pull/47",
   "release_slices": [
     {
@@ -20,8 +20,7 @@
         "backend/tests/errorHandler.loggingPolicy.test.js",
         "backend/tests/inventoryItemRepository.test.js",
         "docs/compliance/impact-declarations/2026-07-02-fnb-import-image-hotfix.md",
-        "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
-        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js"
+        "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json"
       ],
       "included_features": [
         "F&B CSV import write-pressure reduction",
@@ -184,219 +183,213 @@
       "high_risk_files": []
     },
     {
-      "id": "auth-account-switch-pos-cashier-repair",
-      "slice_name": "Authentication account switch and POS cashier login repair",
-      "name": "Authentication account switch and POS cashier login repair",
-      "plain_english_purpose": "Prevents IMS/POS login sessions from keeping stale company/account choices after switching users and clarifies POS cashier login paths.",
-      "purpose": "Repair account replacement and POS terminal login behavior while preserving CSRF enforcement, governed DGFY membership checks, terminal/location gates, and the separately labelled legacy grace path.",
-      "implementation_summary": "Resets stale identity/company selection during login account changes, adjusts the credentialed auth rate-limit window documentation and behavior, removes the confusing standalone POS tenant-local cashier login action from the locked terminal flow, keeps DGFY sign-in and legacy grace login distinct, updates ADR and tenant-management docs, and adds focused backend/frontend regression coverage.",
+      "id": "pos-item-creation-onboarding-schema-hotfix",
+      "slice_name": "POS item creation, onboarding starter item, and tenant schema hotfix",
+      "name": "POS item creation, onboarding starter item, and tenant schema hotfix",
+      "plain_english_purpose": "Make POS item setup complete reliably, require a starter sellable item during POS onboarding, and prevent operators from missing required POS tenant schema drift.",
+      "purpose": "Repair production POS item creation and onboarding readiness without payment, checkout, or broad tenant-schema alter changes.",
+      "implementation_summary": "Stages POS item creation post-create work so image, barcode, Storefront visibility, Always Available, POS visibility, and catalog reload failures remain recoverable without duplicate item creation; adds the POS onboarding starter-item step using the existing onboarding bulk item API and shared taxonomy; extends runtime and tenant schema checks for POS Always Available stock-effect columns; documents ADR and compliance impact; updates focused backend/frontend tests.",
       "included_files": [
-        "backend/src/middleware/rateLimiter.js",
-        "backend/tests/rateLimiter.behavior.test.js",
-        "docs/architecture/adr/0026-browser-session-cookie-authority.md",
-        "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+        "backend/scripts/sync-tenant-schemas.js",
+        "backend/src/services/runtimeSchemaAuditService.js",
+        "backend/tests/runtimeSchemaAuditService.test.js",
+        "backend/tests/tenantSchemaSyncScripts.test.js",
+        "docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md",
         "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
-        "docs/compliance/impact-declarations/2026-07-02-auth-account-switch-pos-cashier-repair.md",
-        "docs/features/TENANT_MANAGEMENT.md",
-        "docs/setup/COLLABORATOR_LOCAL_ENV.md",
-        "frontend/Pages/Login.jsx",
-        "frontend/Pages/__tests__/Login.identityReset.test.jsx",
-        "frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js",
+        "docs/compliance/impact-declarations/2026-07-02-pos-item-creation-onboarding-schema-repair.md",
         "frontend/src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
-        "frontend/src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx",
-        "frontend/src/features/pos/components/TerminalLockDrawer.jsx",
-        "frontend/src/features/pos/components/TerminalPageLayout.jsx",
+        "frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js",
+        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js",
+        "frontend/src/features/pos/components/PosTenantSetupModal.jsx",
+        "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
         "frontend/src/features/pos/pages/TerminalPage.jsx",
-        "frontend/src/services/__tests__/api.publicAuthPolicy.test.js",
-        "frontend/src/services/api.js"
+        "frontend/src/features/pos/utils/__tests__/setupFlow.test.js",
+        "frontend/src/features/pos/utils/setupFlow.js"
       ],
       "included_features": [
-        "IMS login identity reset when a different account replaces the current session",
-        "POS locked-terminal DGFY sign-in and legacy grace login labeling cleanup",
-        "Credentialed authentication limiter window correction",
-        "ADR and tenant-management documentation alignment",
-        "Regression tests for account switching, public-auth request policy, POS terminal lock drawer contract, and rate limiter behavior"
+        "POS Add Item recoverable post-create setup",
+        "POS onboarding starter item step through existing onboarding API",
+        "Tenant schema required POS column detection and declared repair SQL",
+        "Runtime schema audit coverage for POS Always Available columns",
+        "DGFY Email terminal login copy cleanup"
       ],
       "excluded_files": [],
       "excluded_features": [
-        "PayMongo or payment-channel work",
-        "Physical POS pairing contract removal",
-        "Shift-opening authorization changes",
-        "Checkout totals, payment handling, fiscal receipt calculation, and tenant lifecycle changes",
-        "Database migrations"
+        "PayMongo and payment routing changes",
+        "Checkout payment behavior",
+        "Broad tenant sync({ alter: true }) as the default repair path",
+        "Unrelated auth/account-switch branch work",
+        "Local stashes including stash@{8}"
       ],
-      "owner_attribution": "BabyBaBab owner-authorized staging repair request",
-      "source_branch": "codex/staging-auth-account-switch",
+      "owner_attribution": "BabyBaBab with Codex implementation",
+      "source_branch": "codex/repair-production-pos-item-creation",
       "source_pr": "https://github.com/BBLabs-Albert/SKU-Inventory-Manager/pull/47",
       "source_type": "owner_direct_staging",
-      "source_type_allowed_values": [
-        "developer_pr",
-        "owner_direct_staging",
-        "controller_promotion"
-      ],
       "affected_surfaces": [
         "backend",
         "frontend",
+        "database",
         "docs",
         "compliance",
         "POS",
-        "DGFY"
+        "Storefront",
+        "tenant lifecycle"
       ],
       "affected_surface_map": {
         "backend": true,
         "frontend": true,
-        "database": false,
+        "database": true,
         "scripts/deploy": false,
         "docs": true,
         "compliance": true,
         "POS": true,
-        "Storefront": false,
-        "DGFY": true,
-        "tenant lifecycle": false,
+        "Storefront": true,
+        "DGFY": false,
+        "tenant lifecycle": true,
         "payments": false
       },
       "risk_level": "high",
-      "regression_risk_level": "high",
-      "regression_warning_required": true,
-      "regression_warning_summary": "Login/session reset and POS terminal-lock behavior may regress if a valid operator loses the intended company context or if the legacy grace path is hidden incorrectly.",
-      "potentially_affected_existing_behaviors": [
-        "IMS login account replacement and company-selection persistence",
-        "POS locked terminal sign-in and legacy grace login entry points",
-        "Credentialed authentication rate limiting",
-        "DGFY membership-based company selection after account switch"
-      ],
-      "evidence_covering_regression_risk": [
-        "Compliance declaration docs/compliance/impact-declarations/2026-07-02-auth-account-switch-pos-cashier-repair.md records preconditions and verification scope",
-        "Targeted backend tests required: tests/rateLimiter.behavior.test.js and tests/auth.ratelimit.e2e.test.js",
-        "Targeted frontend tests required: Login.identityReset, terminalLockDrawer contract, and api.publicAuthPolicy",
-        "Architecture, compliance, docs lint, frontend build, and diff whitespace gates must pass before promotion"
-      ],
-      "evidence_gaps": [
-        "Rendered QA must still prove IMS Account A to Account B replacement does not retain Account A company choices",
-        "Rendered QA must still prove POS shows DGFY sign-in and Legacy Grace Login without a standalone Login as Cashier action",
-        "Production smoke must still confirm a real POS operator can reach the intended terminal login path after deployment"
-      ],
-      "rollback_or_monitoring_notes": [
-        "Rollback by reverting this auth/POS repair release together if valid users cannot reauthenticate or reach the expected POS login path",
-        "Monitor credentialed auth rate-limit responses, DGFY auth lookup failures, and POS terminal-lock login events after deployment"
-      ],
       "required_tests": [
-        "npm --prefix backend test -- --runInBand tests/rateLimiter.behavior.test.js tests/auth.ratelimit.e2e.test.js",
-        "npm --prefix frontend test -- --run Pages/__tests__/Login.identityReset.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/posSettingsCashier.contract.test.js src/services/__tests__/api.publicAuthPolicy.test.js",
-        "npm --prefix frontend run build:all",
-        "npm run lint:docs",
+        "npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js tests/onboardingUsecases.applicationResult.test.js tests/onboardingRepository.schemaCompatibility.test.js tests/inventoryItemRepository.test.js tests/posUsecases.applicationResult.test.js",
+        "npm exec vitest run src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx --pool=threads",
         "npm run check:architecture",
         "npm run check:compliance",
+        "npm run lint:docs",
+        "npm --prefix frontend run build:pos",
+        "node backend/scripts/sync-tenant-schemas.js --mode repair-dry-run --report-file .tmp/pos-item-repair/tenant-schema-repair-dry-run-final.json",
         "git diff --check"
       ],
       "completed_tests": [
         {
-          "command": "npm --prefix backend test -- --runInBand tests/rateLimiter.behavior.test.js tests/auth.ratelimit.e2e.test.js",
+          "command": "npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js tests/onboardingUsecases.applicationResult.test.js tests/onboardingRepository.schemaCompatibility.test.js tests/inventoryItemRepository.test.js tests/posUsecases.applicationResult.test.js",
           "status": "pass",
-          "evidence": "2026-07-02 aggregate staging validation: 9 backend auth/rate-limit tests passed using the ignored local backend DB env; initial clean-worktree run without DB env failed before exercising code."
+          "evidence": "2026-07-02 local run: 97 tests passed"
         },
         {
-          "command": "npm --prefix frontend test -- --run Pages/__tests__/Login.identityReset.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/posSettingsCashier.contract.test.js src/services/__tests__/api.publicAuthPolicy.test.js",
+          "command": "npm exec vitest run src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx --pool=threads",
           "status": "pass",
-          "evidence": "2026-07-02 aggregate staging validation: 16 targeted Login, TerminalLockDrawer, POS settings cashier, and public-auth policy tests passed after stale POS contract assertions were aligned."
-        },
-        {
-          "command": "npm --prefix frontend run build:all",
-          "status": "pass",
-          "evidence": "2026-07-02 aggregate staging validation: SKUpervisor, POS, and Storefront production builds passed with existing bundle-size/browser-data warnings only."
-        },
-        {
-          "command": "npm run lint:docs",
-          "status": "pass",
-          "evidence": "2026-07-02 aggregate staging validation: docs lint passed for 20 governed docs."
+          "evidence": "2026-07-02 local frontend run: 72 tests passed"
         },
         {
           "command": "npm run check:architecture",
           "status": "pass",
-          "evidence": "2026-07-02 aggregate staging validation: architecture guardrails and controller boundaries passed."
+          "evidence": "ArchitectureGuardrails OK; ControllerBoundary OK"
         },
         {
           "command": "npm run check:compliance",
           "status": "pass",
-          "evidence": "2026-07-02 aggregate staging validation: compliance impact/API contract checks passed."
+          "evidence": "Compliance impact declaration accepted"
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "docs-lint OK"
+        },
+        {
+          "command": "npm --prefix frontend run build:pos",
+          "status": "pass",
+          "evidence": "Vite POS production build completed; existing large-chunk warnings only"
+        },
+        {
+          "command": "node backend/scripts/sync-tenant-schemas.js --mode repair-dry-run --report-file .tmp/pos-item-repair/tenant-schema-repair-dry-run-final.json",
+          "status": "pass",
+          "evidence": ".tmp/pos-item-repair/tenant-schema-repair-dry-run-final.json showed 5 local active tenants OK, 0 failed"
         },
         {
           "command": "git diff --check",
           "status": "pass",
-          "evidence": "2026-07-02 aggregate staging validation: no whitespace errors."
+          "evidence": "No whitespace errors"
         }
       ],
       "docs_required": true,
       "required_docs": [
-        "docs/architecture/adr/0026-browser-session-cookie-authority.md",
-        "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+        "docs/START_HERE.md",
+        "docs/architecture/ARCHITECTURE_BOUNDARIES.md",
+        "docs/architecture/ARCHITECTURE_GOVERNANCE.md",
+        "docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md",
         "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
-        "docs/compliance/impact-declarations/2026-07-02-auth-account-switch-pos-cashier-repair.md",
-        "docs/features/TENANT_MANAGEMENT.md",
-        "docs/setup/COLLABORATOR_LOCAL_ENV.md",
+        "docs/compliance/impact-declarations/2026-07-02-pos-item-creation-onboarding-schema-repair.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/testing/pos-readiness-status.md",
+        "docs/testing/pos-e2e-uat-checklist.md",
         "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json"
       ],
-      "architecture_classification": "within-existing-boundary",
-      "architecture_classification_allowed_values": [
-        "no-architecture-impact",
-        "within-existing-boundary",
-        "cross-boundary"
-      ],
+      "architecture_classification": "cross-boundary",
       "documentation_closure": {
         "decision": "updated",
-        "reviewed_by": "BabyBaBab owner-authorized Codex documentation review",
-        "reviewed_at": "2026-07-02T17:35:00.000+08:00",
-        "rationale": "The ADR/doc updates and compliance declaration record the auth/session and POS terminal-lock behavior being promoted with this staging candidate.",
+        "reviewed_by": "BabyBaBab-owner",
+        "reviewed_at": "2026-07-02T05:50:00.000Z",
+        "rationale": "The POS onboarding contract crosses frontend POS setup, onboarding API reuse, Storefront catalog visibility, tenant schema audit/repair, and compliance-sensitive POS item behavior, so the governing ADRs and compliance declaration were updated.",
         "documents": [
           {
-            "path": "docs/compliance/impact-declarations/2026-07-02-auth-account-switch-pos-cashier-repair.md",
-            "action": "updated",
-            "evidence": "Records compliance preconditions, affected surfaces, verification evidence, and rollback for the auth/POS repair."
+            "path": "docs/START_HERE.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed mandatory documentation discovery order before hotfix planning."
           },
           {
-            "path": "docs/architecture/adr/0026-browser-session-cookie-authority.md",
-            "action": "updated",
-            "evidence": "Documents browser-session and cookie authority expectations relevant to the login repair."
+            "path": "docs/architecture/ARCHITECTURE_BOUNDARIES.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed controllers/usecases/repositories/model boundaries for the scoped POS changes."
           },
           {
-            "path": "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+            "path": "docs/architecture/ARCHITECTURE_GOVERNANCE.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed cross-boundary ADR update and release gate obligations."
+          },
+          {
+            "path": "docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md",
             "action": "updated",
-            "evidence": "Documents DGFY account and company switching expectations."
+            "evidence": "Added POS onboarding starter-item reuse contract."
           },
           {
             "path": "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
             "action": "updated",
-            "evidence": "Documents POS terminal lock/login expectations retained by the repair."
+            "evidence": "Added staged POS item create and tenant schema drift repair contract."
           },
           {
-            "path": "docs/features/TENANT_MANAGEMENT.md",
+            "path": "docs/compliance/impact-declarations/2026-07-02-pos-item-creation-onboarding-schema-repair.md",
             "action": "updated",
-            "evidence": "Documents the tenant-management auth lookup rate-limit correction."
+            "evidence": "Declared POS, Storefront visibility, tenant schema, and compliance impact with payments excluded."
           },
           {
-            "path": "docs/setup/COLLABORATOR_LOCAL_ENV.md",
-            "action": "updated",
-            "evidence": "Documents collaborator local environment wording aligned with the repair."
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed normal staging to master to production promotion expectations."
+          },
+          {
+            "path": "docs/testing/pos-readiness-status.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed POS readiness and UAT evidence expectations for residual authenticated QA gaps."
+          },
+          {
+            "path": "docs/testing/pos-e2e-uat-checklist.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed POS item/catalog and Always Available UAT expectations."
           },
           {
             "path": "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
             "action": "updated",
-            "evidence": "Reviewed manifest covers this slice and the F&B hotfix slice in the exact staging candidate."
+            "evidence": "Aggregate reviewed manifest covers this POS item creation slice together with the F&B import/image slice for the exact staging candidate."
           }
         ]
       },
       "adr_compliance_declaration_required": true,
-      "adr_or_compliance": "The 2026-07-02 auth account switch and POS cashier repair compliance declaration governs this regulatory/auth-sensitive slice; no new ADR is required because the changes update existing ADRs and stay inside established auth/session and POS terminal-lock boundaries.",
-      "rollback_notes": "Revert the identity-reset UI, POS terminal-lock labeling changes, API auth helper change, and rate limiter window correction together if valid users cannot reauthenticate; no migration rollback is required.",
+      "adr_or_compliance": "Governed by ADR 0013, ADR 0031, architecture boundaries/governance, and the 2026-07-02 POS item creation onboarding schema repair compliance declaration.",
+      "rollback_notes": "If the hotfix regresses production, revert the exact promoted master commit, qualify the revert SHA through the same local gates, and deploy through the signed release controller. For tenant schema repair, the added columns are additive; rollback should leave harmless extra columns in place unless a separate database rollback is explicitly approved.",
       "production_proof_required": [
-        "Production remote HEAD, .deploy-state/last_deployed_commit, newest deploy summary, production contract, and /api/v1/health runtime SHA must match the final origin/master SHA",
-        "Production smoke must verify IMS login account replacement clears stale company context",
-        "Production smoke must verify POS locked-terminal login renders DGFY sign-in and Legacy Grace Login without a standalone Login as Cashier action"
+        "Exact production runtime SHA equals target SHA",
+        "Remote .deploy-state/last_deployed_commit equals target SHA",
+        "Newest deploy summary expected_commit, remote_head, and deployed_head equal target SHA",
+        "Production /api/v1/health returns target runtime SHA",
+        "Read-only tenant schema audit/report confirms required POS columns are present or repair_required is explicit",
+        "POS app asset parity includes the target POS bundle"
       ],
       "production_accuracy_checks_required": [
-        "Verify IMS Account A to Account B switch does not retain Account A company choices",
-        "Verify POS terminal lock login path labels DGFY sign-in and Legacy Grace Login distinctly",
-        "Verify auth lookup/rate-limit behavior remains client-visible and not a server 500"
+        "POS Add Item can create a product and recover post-create setup without duplicate creation",
+        "Created item has barcode, POS visibility, Storefront visibility, and catalog readback",
+        "POS onboarding starter item step uses POST /api/v1/onboarding/items/bulk and blocks completion until a starter item is present",
+        "Tenant schema report fails or returns repair_required when required POS columns are missing",
+        "No PayMongo/payment behavior changed"
       ],
       "can_ship_independently": true,
       "promotion_eligibility": "eligible",
@@ -404,7 +397,38 @@
       "payment_sensitive": false,
       "payment_sensitive_files": [],
       "high_risk_path": false,
-      "high_risk_files": []
+      "high_risk_files": [],
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "POS item setup, onboarding gating, Storefront/POS visibility toggles, barcode creation, and tenant schema deployment checks could regress if the staged post-create flow or schema repair contract behaves differently in production.",
+      "potentially_affected_existing_behaviors": [
+        "POS Items > Add POS Item",
+        "POS onboarding step navigation",
+        "Storefront/POS catalog visibility after item creation",
+        "Barcode generation after item creation",
+        "Tenant schema deploy reporting and repair operations"
+      ],
+      "evidence_covering_regression_risk": [
+        "Focused backend schema/onboarding/inventory/POS tests passed",
+        "Focused frontend POS/onboarding tests passed",
+        "Architecture, compliance, docs lint, and POS production build passed",
+        "Local tenant schema repair dry-run after additive repair showed 5/5 active tenants OK",
+        "Rendered unauthenticated POS terminal shell desktop/mobile check passed earlier in this hotfix run"
+      ],
+      "evidence_gaps": [
+        "Authenticated isolated QA tenant session was unavailable, so Add POS Item and POS onboarding starter-item modal were not rendered end-to-end against a production-like QA environment before promotion.",
+        "Production behavior still requires read-only post-deploy proof and deployed-change accuracy review."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Monitor POS item create/update errors, catalog override errors, barcode generation errors, and tenant schema sync reports immediately after deployment.",
+        "If post-create setup fails in production, preserve item IDs from recovery UI and retry before rollback.",
+        "Use signed-controller rollback; do not use local deploy scripts as production authority."
+      ],
+      "source_type_allowed_values": [
+        "developer_pr",
+        "owner_direct_staging",
+        "controller_promotion"
+      ]
     }
   ]
 }
