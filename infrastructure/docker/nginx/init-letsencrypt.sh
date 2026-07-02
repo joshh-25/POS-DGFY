@@ -22,7 +22,7 @@ set -euo pipefail
 #
 # Usage (from infrastructure/docker/): ./nginx/init-letsencrypt.sh
 
-COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE_DIR="${COMPOSE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$COMPOSE_DIR"
 
 # shellcheck disable=SC1091
@@ -48,12 +48,17 @@ if [ -d "$DATA_PATH/conf/live/$CERT_DOMAIN" ]; then
 fi
 
 echo "### Creating a temporary self-signed certificate for $CERT_DOMAIN ..."
-mkdir -p "$DATA_PATH/conf/live/$CERT_DOMAIN"
+# mkdir runs inside the container (root there regardless of the host's
+# deploy user) rather than directly on the host -- ./data/certbot/conf is
+# commonly root-owned (Docker auto-creates missing bind-mount source
+# directories as root on first `up`), which an unprivileged deploy user
+# like a CI/SSH-deploy account typically can't write into directly.
 docker compose run --rm --entrypoint "\
+  sh -c 'mkdir -p /etc/letsencrypt/live/$CERT_DOMAIN && \
   openssl req -x509 -nodes -newkey rsa:$RSA_KEY_SIZE -days 1 \
-    -keyout '/etc/letsencrypt/live/$CERT_DOMAIN/privkey.pem' \
-    -out '/etc/letsencrypt/live/$CERT_DOMAIN/fullchain.pem' \
-    -subj '/CN=localhost'" certbot
+    -keyout /etc/letsencrypt/live/$CERT_DOMAIN/privkey.pem \
+    -out /etc/letsencrypt/live/$CERT_DOMAIN/fullchain.pem \
+    -subj /CN=localhost'" certbot
 
 echo "### Starting nginx ..."
 docker compose up -d nginx

@@ -31,8 +31,24 @@ read -r -p "Continue? [y/N] " CONFIRM
 
 echo "==> Ensuring mysql is up..."
 docker compose up -d mysql
-docker compose exec -T mysql sh -c \
-  'until mysqladmin ping -h localhost -u root -p"${MYSQL_ROOT_PASSWORD}" --silent; do sleep 1; done'
+# Poll compose's own reported health status directly rather than `docker
+# compose up --wait` (observed to report a container as unhealthy in this
+# environment even while its actual health log showed nothing but passing
+# checks the whole time -- an unreliable signal here) or a bare `docker
+# compose exec` right after `up -d` (can hit "container is restarting,
+# wait until running" if mysql's init/health cycle hasn't settled yet).
+MYSQL_WAIT_RETRIES=60
+i=0
+while true; do
+  STATUS="$(docker compose ps mysql --format json | python3 -c 'import json,sys; print(json.loads(sys.stdin.read().splitlines()[0]).get("Health",""))' 2>/dev/null || true)"
+  [ "$STATUS" = "healthy" ] && break
+  i=$((i + 1))
+  if [ "$i" -ge "$MYSQL_WAIT_RETRIES" ]; then
+    echo "mysql did not become healthy after ${MYSQL_WAIT_RETRIES} attempts (last status: ${STATUS:-unknown})." >&2
+    exit 1
+  fi
+  sleep 2
+done
 
 echo "==> Restoring database from ${DB_DUMP}..."
 gunzip -c "$DB_DUMP" | docker compose exec -T mysql sh -c \
