@@ -2,7 +2,7 @@ name: Build Images (main)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, ci/DGFY-33-dockerization-cicd ]
 
 concurrency:
   group: build-main-${{ github.ref }}
