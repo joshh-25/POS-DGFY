@@ -1,0 +1,181 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-authorized Codex emergency production review",
+  "reviewed_at": "2026-07-03T05:18:00.000Z",
+  "source_pr": "64",
+  "payment_sensitive": false,
+  "payment_authorization_required": false,
+  "high_risk_path": false,
+  "status": "pass",
+  "promotion_eligibility": "eligible",
+  "release_slices": [
+    {
+      "id": "dgfy-invite-refresh-token-preservation-hotfix",
+      "slice_name": "DGFY invite refresh token preservation hotfix",
+      "name": "DGFY invite refresh token preservation hotfix",
+      "plain_english_purpose": "Restore IMS and POS DGFY cashier/user invitation search when session refresh fails but the current browser still has a valid tenant user bearer token.",
+      "purpose": "Restore IMS and POS DGFY cashier/user invitation search when session refresh fails but the current browser still has a valid tenant user bearer token.",
+      "implementation_summary": "The shared API interceptor no longer drops the already-present bearer token when the tenant-context preflight refresh returns an error. This lets the backend derive tenant context from the authenticated user for DGFY account-search/invite requests instead of receiving an unauthenticated tenantless request.",
+      "included_files": [
+        "docs/releases/batches/2026-07-03-dgfy-invite-refresh-token-preservation-hotfix.json",
+        "frontend/src/services/api.js",
+        "frontend/src/services/__tests__/api.interceptor.test.js"
+      ],
+      "included_features": [
+        "POS cashier invitation account search preserves current bearer token after refresh-token 400",
+        "IMS user invitation account search receives the same shared interceptor protection",
+        "Regression test for DGFY account search when refresh fails and company token is absent"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Backend authorization relaxation",
+        "Database migrations",
+        "Payment, checkout, fiscal, order placement, and unrelated POS device-status behavior",
+        "Production mutation UAT; only read-only smoke is planned for this emergency release"
+      ],
+      "owner_attribution": "BabyBaBab owner-authorized emergency hotfix and production deployment",
+      "source_branch": "codex/hotfix-dgfy-invite-refresh-preserve-token",
+      "source_pr": "63",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "DGFY",
+        "IMS",
+        "POS",
+        "auth/session",
+        "frontend",
+        "docs"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": false,
+        "POS": true,
+        "Storefront": false,
+        "DGFY": true,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "medium",
+      "regression_risk_level": "critical",
+      "regression_warning_required": true,
+      "regression_warning_summary": "This changes shared browser-session request behavior. A regression could affect authenticated IMS/POS requests when refresh-token fails, but the intended behavior is conservative: preserve an existing bearer token rather than omitting it.",
+      "potentially_affected_existing_behaviors": [
+        "Authenticated IMS/POS API calls after browser session refresh failure",
+        "DGFY account search and invitation search",
+        "Tenant-context recovery for requests with token but missing company token"
+      ],
+      "evidence_covering_regression_risk": [
+        {
+          "command": "npm --prefix frontend test -- --run src/services/__tests__/api.interceptor.test.js",
+          "status": "pass",
+          "evidence": "21 interceptor tests passed, including refresh-failure DGFY account search preserving the original POS bearer token."
+        },
+        {
+          "command": "npm --prefix frontend run build:skupervisor",
+          "status": "pass",
+          "evidence": "SKUpervisor production build passed."
+        },
+        {
+          "command": "npm --prefix frontend run build:pos",
+          "status": "pass",
+          "evidence": "POS production build passed."
+        },
+        {
+          "command": "pre-commit compliance impact guardrail",
+          "status": "pass",
+          "evidence": "No compliance-sensitive changes detected; API contract checks passed."
+        }
+      ],
+      "evidence_gaps": [
+        "Full rendered browser QA is deferred under the owner-approved emergency lane.",
+        "Production invitation mutation smoke is deferred unless the owner provides a safe target DGFY account."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting this release SHA through the signed controller.",
+        "After deployment, verify live runtime SHA and confirm unauthenticated DGFY search remains protected."
+      ],
+      "required_tests": [
+        "npm --prefix frontend test -- --run src/services/__tests__/api.interceptor.test.js",
+        "npm --prefix frontend run build:skupervisor",
+        "npm --prefix frontend run build:pos"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm --prefix frontend test -- --run src/services/__tests__/api.interceptor.test.js",
+          "status": "pass",
+          "evidence": "21 tests passed."
+        },
+        {
+          "command": "npm --prefix frontend run build:skupervisor",
+          "status": "pass",
+          "evidence": "Build completed."
+        },
+        {
+          "command": "npm --prefix frontend run build:pos",
+          "status": "pass",
+          "evidence": "Build completed."
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/releases/batches/2026-07-03-dgfy-invite-refresh-token-preservation-hotfix.json",
+        "docs/architecture/adr/0026-browser-session-cookie-authority.md",
+        "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-authorized Codex emergency documentation review",
+        "reviewed_at": "2026-07-03T05:18:00.000Z",
+        "rationale": "This release manifest records the exact emergency follow-up fix, scope, exclusions, validation, rollback, and accuracy checks. ADR 0026 and ADR 0028 already cover browser-session authority and DGFY tenant-authenticated invitation boundaries; no new ADR is required.",
+        "documents": [
+          {
+            "path": "docs/releases/batches/2026-07-03-dgfy-invite-refresh-token-preservation-hotfix.json",
+            "action": "updated",
+            "evidence": "Records exact scope, emergency risk, validation, rollback, and post-deploy accuracy requirements for this follow-up invite hotfix."
+          },
+          {
+            "path": "docs/architecture/adr/0026-browser-session-cookie-authority.md",
+            "action": "reviewed_current",
+            "evidence": "Existing browser-session authority remains unchanged; this fix only preserves an already-present bearer token after failed refresh."
+          },
+          {
+            "path": "docs/architecture/adr/0028-dgfy-account-company-switching.md",
+            "action": "reviewed_current",
+            "evidence": "Existing DGFY invitation/account membership boundary remains unchanged."
+          },
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "reviewed_current",
+            "evidence": "Defines the signed emergency QA lane and mandatory post-deploy accuracy finalization used for this release."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No new ADR or compliance declaration is required because the change stays within the existing browser-session and DGFY invitation boundaries and changes no backend authorization, fiscal, payment, database, or API contract.",
+      "rollback_notes": "Revert this exact release SHA or apply a follow-up revert, rerun focused validation, and deploy the revert through the signed controller.",
+      "production_proof_required": [
+        "Production remote HEAD, deploy state, deploy summary, runtime health SHA, and frontend asset parity equal the promoted master SHA.",
+        "Production source contains the token-preservation fallback in frontend/src/services/api.js.",
+        "Unauthenticated /api/v1/dgfy/accounts/search remains protected and does not return 500."
+      ],
+      "production_accuracy_checks_required": [
+        "Deployed api.js preserves the current bearer token when refreshBrowserSession fails during DGFY account search.",
+        "Deployed tests include refresh-failure DGFY account-search regression coverage.",
+        "IMS and POS built assets both include the shared API interceptor change."
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}
