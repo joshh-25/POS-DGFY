@@ -137,6 +137,7 @@ import {
 import { SolutionsPage } from './Components/storefront/pages/SolutionsPage.jsx';
 import { FnbProductDetailsPage } from './Components/storefront/pages/FnbProductDetailsPage.jsx';
 import { DgfyCustomerAccountPage } from './Components/storefront/pages/DgfyCustomerAccountPage.jsx';
+import { buildStorefrontQrUrl } from './storefrontQrUrl.js';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './Components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './Components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from './Components/storefront/hero/StorefrontShareQr.jsx';
@@ -1164,8 +1165,6 @@ const configuredApiOrigin = resolveConfiguredOrigin(import.meta.env.VITE_API_BAS
 const apiOrigin = configuredApiOrigin || inferRuntimeApiOrigin();
 const configuredAssetOrigin = resolveConfiguredOrigin(import.meta.env.VITE_ASSET_BASE_URL);
 const assetOrigin = configuredAssetOrigin || apiOrigin;
-const configuredPublicStorefrontOrigin = resolveConfiguredOrigin(import.meta.env.VITE_PUBLIC_STOREFRONT_ORIGIN);
-const publicStorefrontOrigin = configuredPublicStorefrontOrigin || 'https://dgfy.ph';
 const buildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim();
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
@@ -1192,12 +1191,6 @@ const withAssetOrigin = (url) => {
     return '';
   }
 };
-const buildPublicStorefrontUrl = (slug) => {
-  const normalizedSlug = toSlug(slug);
-  if (!normalizedSlug) return '';
-  return `${publicStorefrontOrigin}${storePath(normalizedSlug)}`;
-};
-
 const parseOptionalArray = (value) => {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string' || !value.trim()) return [];
@@ -1922,72 +1915,210 @@ const downloadDataUrl = (dataUrl, filename) => {
 
 const loadImage = (src) => new Promise((resolve, reject) => {
   const image = new Image();
+  image.crossOrigin = 'anonymous';
   image.onload = () => resolve(image);
   image.onerror = reject;
   image.src = src;
 });
 
-const buildTicketImage = async ({ result = {}, storeName = '', cartLines = [], totals = {} } = {}) => {
+const fillRoundedRect = (ctx, x, y, width, height, radius, fillStyle) => {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, radius);
+  ctx.arcTo(x + width, y + height, x, y + height, radius);
+  ctx.arcTo(x, y + height, x, y, radius);
+  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.closePath();
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  ctx.restore();
+};
+
+const strokeRoundedRect = (ctx, x, y, width, height, radius, strokeStyle, lineWidth = 1) => {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, radius);
+  ctx.arcTo(x + width, y + height, x, y + height, radius);
+  ctx.arcTo(x, y + height, x, y, radius);
+  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.closePath();
+  ctx.lineWidth = lineWidth;
+  ctx.strokeStyle = strokeStyle;
+  ctx.stroke();
+  ctx.restore();
+};
+
+const drawImageCover = (ctx, image, x, y, width, height, radius = 0) => {
+  const imageRatio = image.width / image.height;
+  const frameRatio = width / height;
+  let drawWidth = width;
+  let drawHeight = height;
+  let drawX = x;
+  let drawY = y;
+
+  if (imageRatio > frameRatio) {
+    drawWidth = height * imageRatio;
+    drawX = x - ((drawWidth - width) / 2);
+  } else {
+    drawHeight = width / imageRatio;
+    drawY = y - ((drawHeight - height) / 2);
+  }
+
+  ctx.save();
+  if (radius > 0) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + width, y, x + width, y + height, radius);
+    ctx.arcTo(x + width, y + height, x, y + height, radius);
+    ctx.arcTo(x, y + height, x, y, radius);
+    ctx.arcTo(x, y, x + width, y, radius);
+    ctx.closePath();
+    ctx.clip();
+  }
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  ctx.restore();
+};
+
+const buildTicketImage = async ({ result = {}, storeName = '', storeLogoUrl = '', cartLines = [], totals = {} } = {}) => {
   const booking = result.booking || null;
   const reference = booking?.public_reference || result.tracking_pin || result.order?.tracking_pin || 'PENDING';
   const typeLabel = booking ? 'SERVICE TICKET' : 'ORDER RECEIPT';
   const paymentStatus = booking?.payment_status || result.order?.payment_status || result.payment_status || 'unpaid';
+  const exportScale = 2;
+  const width = 920;
+  const height = 1280;
   const canvas = document.createElement('canvas');
-  canvas.width = 900;
-  canvas.height = 1250;
+  canvas.width = width * exportScale;
+  canvas.height = height * exportScale;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(exportScale, exportScale);
+
+  fillRoundedRect(ctx, 0, 0, width, height, 0, '#f8fafc');
+  fillRoundedRect(ctx, 28, 28, width - 56, height - 56, 28, '#ffffff');
+  strokeRoundedRect(ctx, 28, 28, width - 56, height - 56, 28, '#dbe5ee', 1.5);
+
+  fillRoundedRect(ctx, 52, 52, width - 104, 164, 24, '#f8fbff');
+  strokeRoundedRect(ctx, 52, 52, width - 104, 164, 24, '#dbe5ee', 1);
+
+  const fallbackLogoSrc = dgfySymbolLogo || dgfyHeaderLogo;
+  try {
+    const logoImage = await loadImage(storeLogoUrl || fallbackLogoSrc);
+    fillRoundedRect(ctx, 76, 78, 72, 72, 20, '#ffffff');
+    strokeRoundedRect(ctx, 76, 78, 72, 72, 20, '#dbe5ee', 1);
+    drawImageCover(ctx, logoImage, 84, 86, 56, 56, 14);
+  } catch {
+    fillRoundedRect(ctx, 76, 78, 72, 72, 20, '#eff6ff');
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '700 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(storeName || DGFY_BRAND_NAME).slice(0, 1).toUpperCase(), 112, 122);
+    ctx.textAlign = 'left';
+  }
+
   ctx.fillStyle = '#0f172a';
-  ctx.font = '700 42px Arial';
-  ctx.fillText(typeLabel, 64, 88);
-  ctx.font = '700 26px Arial';
-  ctx.fillText(storeName || DGFY_BRAND_NAME, 64, 132);
-  ctx.font = '400 22px Arial';
+  ctx.font = '700 18px Arial';
+  ctx.fillText(typeLabel, 168, 96);
+  ctx.font = '700 28px Arial';
+  ctx.fillText(storeName || DGFY_BRAND_NAME, 168, 132);
+  ctx.font = '400 15px Arial';
   ctx.fillStyle = '#475569';
-  ctx.fillText(`Reference: ${reference}`, 64, 182);
-  ctx.fillText(`Payment: ${paymentStatus}`, 64, 218);
-  if (booking?.start_at) ctx.fillText(`Appointment: ${formatTicketDate(booking.start_at)}`, 64, 254);
-  if (booking?.service?.name || booking?.service_name) ctx.fillText(`Service: ${booking.service?.name || booking.service_name}`, 64, 290);
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.beginPath();
-  ctx.moveTo(64, 330);
-  ctx.lineTo(836, 330);
-  ctx.stroke();
+  ctx.fillText(`Reference: ${reference}`, 168, 162);
+  ctx.fillText(`Payment: ${paymentStatus}`, 168, 184);
+
+  const qrCardX = width - 288;
+  const qrCardY = 72;
+  const qrCardWidth = 184;
+  const qrCardHeight = 184;
+  fillRoundedRect(ctx, qrCardX, qrCardY, qrCardWidth, qrCardHeight, 24, '#ffffff');
+  strokeRoundedRect(ctx, qrCardX, qrCardY, qrCardWidth, qrCardHeight, 24, '#cfe7dd', 2);
+
+  const qrPayload = JSON.stringify({ type: booking ? 'service_booking' : 'store_order', reference, store: storeName || '' });
+  const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+    margin: 1,
+    width: 320,
+    errorCorrectionLevel: 'H',
+    color: { dark: '#0f172a', light: '#ffffff' }
+  });
+  const qrImage = await loadImage(qrDataUrl);
+  ctx.drawImage(qrImage, qrCardX + 24, qrCardY + 20, 136, 136);
+  fillRoundedRect(ctx, qrCardX + 67, qrCardY + 63, 50, 50, 16, 'rgba(255,255,255,0.94)');
+  strokeRoundedRect(ctx, qrCardX + 67, qrCardY + 63, 50, 50, 16, '#dbe5ee', 1);
+  try {
+    const qrLogo = await loadImage(storeLogoUrl || fallbackLogoSrc);
+    drawImageCover(ctx, qrLogo, qrCardX + 77, qrCardY + 73, 30, 30, 10);
+  } catch {
+    try {
+      const dgfyLogo = await loadImage(fallbackLogoSrc);
+      drawImageCover(ctx, dgfyLogo, qrCardX + 77, qrCardY + 73, 30, 30, 10);
+    } catch {
+      ctx.fillStyle = '#1d4ed8';
+      ctx.beginPath();
+      ctx.arc(qrCardX + 92, qrCardY + 88, 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   ctx.fillStyle = '#0f172a';
-  ctx.font = '700 24px Arial';
-  ctx.fillText('Line Items', 64, 382);
-  ctx.font = '400 22px Arial';
-  let y = 426;
+  ctx.font = '700 13px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Scan for booking details', qrCardX + (qrCardWidth / 2), qrCardY + 168);
+  ctx.textAlign = 'left';
+
+  let metadataY = 266;
+  ctx.font = '400 18px Arial';
+  ctx.fillStyle = '#475569';
+  if (booking?.start_at) {
+    ctx.fillText(`Appointment: ${formatTicketDate(booking.start_at)}`, 64, metadataY);
+    metadataY += 30;
+  }
+  if (booking?.service?.name || booking?.service_name) {
+    ctx.fillText(`Service: ${booking.service?.name || booking.service_name}`, 64, metadataY);
+    metadataY += 30;
+  }
+
+  ctx.strokeStyle = '#dbe5ee';
+  ctx.beginPath();
+  ctx.moveTo(64, metadataY + 18);
+  ctx.lineTo(width - 64, metadataY + 18);
+  ctx.stroke();
+
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '700 21px Arial';
+  ctx.fillText('Line Items', 64, metadataY + 58);
+  ctx.font = '400 18px Arial';
+  let y = metadataY + 96;
   cartLines.slice(0, 10).forEach((line) => {
     ctx.fillStyle = '#0f172a';
     ctx.fillText(`${Number(line.quantity || 1)} x ${line.name}`, 64, y);
     ctx.fillStyle = '#475569';
-    ctx.fillText(money(Number(line.quantity || 1) * Number(line.price || 0)), 650, y);
-    y += 38;
+    ctx.fillText(money(Number(line.quantity || 1) * Number(line.price || 0)), width - 260, y);
+    y += 30;
   });
-  ctx.strokeStyle = '#cbd5e1';
+  ctx.strokeStyle = '#dbe5ee';
   ctx.beginPath();
   ctx.moveTo(64, y + 8);
-  ctx.lineTo(836, y + 8);
+  ctx.lineTo(width - 64, y + 8);
   ctx.stroke();
-  y += 58;
+  y += 44;
   ctx.fillStyle = '#0f172a';
-  ctx.font = '700 28px Arial';
+  ctx.font = '700 24px Arial';
   ctx.fillText('Total', 64, y);
-  ctx.fillText(money(totals.total_amount || booking?.total_amount || result.order?.total_amount || 0), 650, y);
-  y += 56;
-  ctx.font = '400 20px Arial';
+  ctx.fillText(money(totals.total_amount || booking?.total_amount || result.order?.total_amount || 0), width - 260, y);
+  y += 42;
+  ctx.font = '400 16px Arial';
   ctx.fillStyle = '#64748b';
   ctx.fillText(booking ? 'Booking ticket - not a fiscal receipt unless marked paid.' : 'Digital order receipt/ticket. Keep this image for your records.', 64, y);
-  const qrPayload = JSON.stringify({ type: booking ? 'service_booking' : 'store_order', reference, store: storeName || '' });
-  const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 1, width: 220 });
-  const qrImage = await loadImage(qrDataUrl);
-  ctx.drawImage(qrImage, 340, 900, 220, 220);
-  ctx.font = '700 22px Arial';
+
+  fillRoundedRect(ctx, 64, height - 168, width - 128, 90, 20, '#f8fbff');
+  strokeRoundedRect(ctx, 64, height - 168, width - 128, 90, 20, '#dbe5ee', 1);
+  ctx.font = '700 18px Arial';
   ctx.fillStyle = '#0f172a';
   ctx.textAlign = 'center';
-  ctx.fillText(reference, 450, 1156);
+  ctx.fillText(reference, width / 2, height - 122);
+  ctx.font = '400 14px Arial';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('Saved storefront ticket QR', width / 2, height - 96);
   ctx.textAlign = 'left';
   return canvas.toDataURL('image/png');
 };
@@ -3259,8 +3390,11 @@ const FnbHero = ({
   ), [heroSectionModel.deliveryPartners]);
   const storefrontShareUrl = useMemo(() => {
     if (!selectedStore?.slug) return '';
-    return buildPublicStorefrontUrl(selectedStore.slug);
-  }, [selectedStore]);
+    return buildStorefrontQrUrl({
+      slug: selectedStore.slug,
+      currentPath: typeof window !== 'undefined' ? window.location.pathname : '/'
+    });
+  }, [selectedStore?.slug]);
   return (
     <section style={{ marginBottom: 40 }}>
       <SharedStorefrontHeaderNav
@@ -3354,6 +3488,8 @@ const FnbHero = ({
       >
         <SharedStorefrontShareQr
           storeUrl={storefrontShareUrl}
+          storeName={heroSectionModel.storeName || selectedStore?.tenant_name || 'Storefront'}
+          storeLogoUrl={heroSectionModel.profileImageUrl || ''}
           isMobileViewport={isMobileViewport}
           accentColor={heroTheme.accent || '#f97316'}
           shareEnabled={shareEnabled}
@@ -3665,7 +3801,20 @@ const FnbHero = ({
                           {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: heroTheme.bodyFont }}>{addressText}</div> : null}
                           {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: heroTheme.bodyFont }}>{storefrontCityLabel}</div> : null}
                        </div>
-                       <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
+                       <button
+                         type="button"
+                         onClick={(event) => {
+                           event.preventDefault();
+                           event.stopPropagation();
+                           const addressRow = visibleContactRows.find((row) => row.label === 'Address' && row.actionHref);
+                           if (addressRow?.actionHref) {
+                             openStorefrontActionLink(addressRow.actionHref);
+                             return;
+                           }
+                           setIsExpandedMapOpen(true);
+                         }}
+                         style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}
+                       >
                          Get directions
                        </button>
                     </div>
@@ -4418,8 +4567,11 @@ const ServicesHero = ({
   const servicesMobileInfoCardWidth = 'calc(100% - 32px)';
   const storefrontShareUrl = useMemo(() => {
     if (!selectedStore?.slug) return '';
-    return buildPublicStorefrontUrl(selectedStore.slug);
-  }, [selectedStore]);
+    return buildStorefrontQrUrl({
+      slug: selectedStore.slug,
+      currentPath: typeof window !== 'undefined' ? window.location.pathname : '/'
+    });
+  }, [selectedStore?.slug]);
 
   return (
     <section style={{ marginBottom: 40 }}>
@@ -4514,6 +4666,8 @@ const ServicesHero = ({
       >
         <SharedStorefrontShareQr
           storeUrl={storefrontShareUrl}
+          storeName={serviceHeroModel.storeName || selectedStore?.tenant_name || 'Storefront'}
+          storeLogoUrl={serviceHeroModel.profileImageUrl || ''}
           isMobileViewport={servicesResponsiveLayout.isMobileViewport}
           accentColor={servicesPrimary}
           shareEnabled={shareEnabled}
@@ -4766,7 +4920,20 @@ const ServicesHero = ({
                           {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: servicesBodyFont }}>{addressText}</div> : null}
                           {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: servicesBodyFont }}>{storefrontCityLabel}</div> : null}
                        </div>
-                       <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: servicesBodyFont }}>
+                       <button
+                         type="button"
+                         onClick={(event) => {
+                           event.preventDefault();
+                           event.stopPropagation();
+                           const addressRow = visibleContactRows.find((row) => row.label === 'Address' && row.actionHref);
+                           if (addressRow?.actionHref) {
+                             openStorefrontActionLink(addressRow.actionHref);
+                             return;
+                           }
+                           setIsExpandedMapOpen(true);
+                         }}
+                         style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: servicesBodyFont }}
+                       >
                          Get directions
                        </button>
                     </div>
@@ -5278,8 +5445,11 @@ const SimpleHero = ({
     : (hasWhyChooseUs ? '1.6fr 0.92fr' : '1fr');
   const storefrontShareUrl = useMemo(() => {
     if (!selectedStore?.slug) return '';
-    return buildPublicStorefrontUrl(selectedStore.slug);
-  }, [selectedStore]);
+    return buildStorefrontQrUrl({
+      slug: selectedStore.slug,
+      currentPath: typeof window !== 'undefined' ? window.location.pathname : '/'
+    });
+  }, [selectedStore?.slug]);
 
   return (
     <section style={{ marginBottom: 40 }}>
@@ -5374,6 +5544,8 @@ const SimpleHero = ({
       >
         <SharedStorefrontShareQr
           storeUrl={storefrontShareUrl}
+          storeName={simpleHeroModel.storeName || selectedStore?.tenant_name || 'Storefront'}
+          storeLogoUrl={simpleHeroModel.profileImageUrl || ''}
           isMobileViewport={isMobileViewport}
           accentColor={heroTheme.accent || '#0f766e'}
           shareEnabled={shareEnabled}
@@ -5700,7 +5872,20 @@ const SimpleHero = ({
                           {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: heroTheme.bodyFont }}>{addressText}</div> : null}
                           {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: heroTheme.bodyFont }}>{storefrontCityLabel}</div> : null}
                        </div>
-                       <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
+                       <button
+                         type="button"
+                         onClick={(event) => {
+                           event.preventDefault();
+                           event.stopPropagation();
+                           const addressRow = visibleContactRows.find((row) => row.label === 'Address' && row.actionHref);
+                           if (addressRow?.actionHref) {
+                             openStorefrontActionLink(addressRow.actionHref);
+                             return;
+                           }
+                           setIsExpandedMapOpen(true);
+                         }}
+                         style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}
+                       >
                          Get directions
                        </button>
                     </div>
@@ -10485,6 +10670,7 @@ export default function StorefrontApp() {
       const dataUrl = await buildTicketImage({
         result: checkoutResult,
         storeName: selectedStore?.tenant_name || routeSlug || DGFY_BRAND_NAME,
+        storeLogoUrl: selectedStore?.profile_image_url || selectedStore?.profile_image || selectedStore?.logo_url || '',
         cartLines: Array.isArray(checkoutResult.cart_lines) ? checkoutResult.cart_lines : cart,
         totals: checkoutResult.totals || totalsForDisplay
       });
