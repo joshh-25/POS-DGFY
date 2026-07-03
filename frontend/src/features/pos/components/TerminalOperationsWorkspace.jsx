@@ -4758,6 +4758,7 @@ function SettingsWorkspace({
         fixedRole="cashier"
         title="Invite DGFY Cashier"
         submitLabel="Send Cashier Invitation"
+        locationOptions={locations}
       />
     </div>
   );

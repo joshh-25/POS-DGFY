@@ -380,6 +380,52 @@ describe('tenantHandler email OTP invitation routing', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
+  it('recovers DGFY account-search tenant context when mounted on the /api/v1/dgfy router', async () => {
+    const jwt = await import('jsonwebtoken');
+    const accessToken = jwt.default.sign({
+      user_id: 13,
+      tenant_id: 'tenant-mounted-search'
+    }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    findTenantById.mockResolvedValueOnce({
+      id: 'tenant-mounted-search',
+      name: 'Mounted Search Cafe',
+      company_token: 'tenant-token-mounted-search',
+      status: 'active',
+      plan: 'premium'
+    });
+    findTenantByToken.mockResolvedValueOnce({
+      id: 'tenant-mounted-search',
+      name: 'Mounted Search Cafe',
+      status: 'active',
+      plan: 'premium'
+    });
+    const req = {
+      path: '/accounts/search',
+      originalUrl: '/api/v1/dgfy/accounts/search?query=ada%40example.test',
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      body: {}
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await tenantHandler(req, res, next);
+
+    expect(findTenantById).toHaveBeenCalledWith('tenant-mounted-search');
+    expect(req.headers['x-company-token']).toBe('tenant-token-mounted-search');
+    expect(findTenantByToken).toHaveBeenCalledWith('tenant-token-mounted-search');
+    expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-mounted-search',
+      tenantToken: 'tenant-token-mounted-search'
+    }), next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
   it('recovers DGFY invitation tenant context from a tenant-bound bearer token before invite authorization', async () => {
     const jwt = await import('jsonwebtoken');
     const accessToken = jwt.default.sign({

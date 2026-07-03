@@ -48,7 +48,8 @@ export default function UserInvitationModal({
     roleCatalog = null,
     fixedRole = '',
     title = 'Invite DGFY Account',
-    submitLabel = 'Send DGFY Invitation'
+    submitLabel = 'Send DGFY Invitation',
+    locationOptions = null
 }) {
     const [accountQuery, setAccountQuery] = useState('');
     const [accountResults, setAccountResults] = useState([]);
@@ -93,6 +94,14 @@ export default function UserInvitationModal({
         if (firstAssignableRole && !roleOptions.some((option) => option.key === role)) {
             setRole(firstAssignableRole.key);
         }
+        if (Array.isArray(locationOptions)) {
+            const normalized = locationOptions;
+            setLocations(normalized);
+            if (normalized.length === 1) {
+                setSelectedLocationIds([Number(normalized[0].location_id)]);
+            }
+            return;
+        }
         listTenantLocations({ include_inactive: false })
             .then((rows) => {
                 const normalized = Array.isArray(rows) ? rows : [];
@@ -102,7 +111,7 @@ export default function UserInvitationModal({
                 }
             })
             .catch(() => setLocations([]));
-    }, [fixedRole, open, roleOptions, role]);
+    }, [fixedRole, locationOptions, open, roleOptions, role]);
 
     useEffect(() => {
         if (!open) return undefined;
