@@ -159,6 +159,7 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
                 'posController.updateOnlineOrderStatus'
             ],
             forbiddenFragments: [
+                // ADR 0031 requires physical-device pairing to stay out of normal online order handling.
                 'posController.requirePairedTerminal'
             ]
         });
