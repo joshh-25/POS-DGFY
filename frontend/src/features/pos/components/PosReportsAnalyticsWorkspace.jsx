@@ -2,15 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownRight,
   ArrowUpRight,
-  BarChart3,
   Calendar,
-  CalendarRange,
   Download,
   Filter,
-  LineChart,
-  PieChart,
-  Printer,
-  Receipt
+  Printer
 } from 'lucide-react';
 import {
   Area,
@@ -32,11 +27,11 @@ import {
 } from '../services/posService.js';
 
 const REPORT_SECTIONS = [
-  { id: 'daily', label: 'Daily Report', icon: Receipt },
-  { id: 'monthly', label: 'Monthly Report', icon: BarChart3 },
-  { id: 'yearly', label: 'Yearly Report', icon: CalendarRange },
-  { id: 'comparison', label: 'Sales Comparison', icon: LineChart },
-  { id: 'profit_loss', label: 'POS Profit/Loss', icon: PieChart }
+  { id: 'daily', label: 'Daily Report' },
+  { id: 'monthly', label: 'Monthly Report' },
+  { id: 'yearly', label: 'Yearly Report' },
+  { id: 'comparison', label: 'Sales Comparison' },
+  { id: 'profit_loss', label: 'POS Profit/Loss' }
 ];
 
 const REPORT_SECTION_GRANULARITY = {
@@ -497,22 +492,16 @@ function PosReportsAnalyticsWorkspace({
       </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {REPORT_SECTIONS.map((section) => {
-          const Icon = section.icon;
-          const active = activeSection === section.id;
-          return (
-            <button
-              key={section.id}
-              type="button"
-              onClick={() => handleSectionChange(section.id)}
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-black transition ${active ? 'border-blue-600 bg-blue-600 text-white shadow-sm shadow-blue-900/20' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}
-            >
-              <Icon className="h-4 w-4" />
-              {section.label}
-            </button>
-          );
-        })}
+      <div className="w-full sm:w-72">
+        <select
+          value={activeSection}
+          onChange={(event) => handleSectionChange(event.target.value)}
+          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 shadow-sm shadow-slate-100 focus:border-[#2563EB] focus:outline-none focus:ring-4 focus:ring-blue-100"
+        >
+          {REPORT_SECTIONS.map((section) => (
+            <option key={section.id} value={section.id}>{section.label}</option>
+          ))}
+        </select>
       </div>
 
       {showInlineError ? (
