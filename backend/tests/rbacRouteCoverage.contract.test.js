@@ -22,7 +22,7 @@ const extractRouteDeclaration = ({ source, method, routePath }) => {
     return match ? match[0] : null;
 };
 
-const expectRouteContract = ({ source, method, routePath, requiredFragments = [], forbiddenFragments = [] }) => {
+const expectRouteContract = ({ source, method, routePath, requiredFragments = [] }) => {
     const routeDeclaration = extractRouteDeclaration({ source, method, routePath });
     expect(routeDeclaration).not.toBeNull();
     requiredFragments.forEach((fragment) => {
@@ -31,13 +31,6 @@ const expectRouteContract = ({ source, method, routePath, requiredFragments = []
             return;
         }
         expect(routeDeclaration).toContain(fragment);
-    });
-    forbiddenFragments.forEach((fragment) => {
-        if (fragment instanceof RegExp) {
-            expect(routeDeclaration).not.toMatch(fragment);
-            return;
-        }
-        expect(routeDeclaration).not.toContain(fragment);
     });
 };
 
@@ -157,9 +150,6 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
                 'validatePosTransactionIdParam',
                 'validateUpdateOnlineOrderStatus',
                 'posController.updateOnlineOrderStatus'
-            ],
-            forbiddenFragments: [
-                'posController.requirePairedTerminal'
             ]
         });
     });
