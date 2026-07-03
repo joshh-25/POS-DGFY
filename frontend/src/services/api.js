@@ -128,6 +128,19 @@ const shouldPreflightBrowserSession = (config = {}) => (
   !isPublicOrAuthRequest(config.url)
 );
 
+const isAdminRequest = (url = '') => {
+  const path = resolveRequestPath(url);
+  return path.startsWith('/admin/') || path.startsWith('/dgfy/admin/');
+};
+
+const shouldRepairTenantContext = (config = {}, token = '', companyToken = '') => (
+  !config.skipTenantAuthHeaders &&
+  shouldPreflightBrowserSession(config) &&
+  !isAdminRequest(config.url) &&
+  Boolean(token) &&
+  !companyToken
+);
+
 const isAlreadyOnPhoneCompletionRoute = () => {
   if (typeof window === 'undefined') return false;
   const pathname = window.location?.pathname || '';
@@ -259,8 +272,13 @@ api.interceptors.request.use(
     let token = getAccessToken();
     let companyToken = getCompanyToken();
 
-    if (!token && shouldPreflightBrowserSession(config)) {
-      token = await refreshBrowserSession().catch(() => '');
+    if (
+      (!token && shouldPreflightBrowserSession(config)) ||
+      shouldRepairTenantContext(config, token, companyToken)
+    ) {
+      const preflightToken = token;
+      const refreshedToken = await refreshBrowserSession().catch(() => '');
+      token = refreshedToken || preflightToken || getAccessToken();
       companyToken = getCompanyToken();
     }
 

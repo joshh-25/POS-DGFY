@@ -84,9 +84,9 @@ export const resolveFrontendPublicAssetUrl = (assetPath = '') => {
 
 export const resolveStorefrontAccountUrl = () => {
   const isDev = isLocalRuntime();
-  const configuredDevPort = String(import.meta.env?.VITE_STOREFRONT_DEV_PORT || '5176').trim() || '5176';
+  const configuredDevPort = String(import.meta.env?.VITE_STOREFRONT_DEV_PORT || '5175').trim() || '5175';
   const defaultUrl = isDev
-    ? `${resolveLocalOriginForPort(configuredDevPort) || 'http://127.0.0.1:5176'}/map-dgfy/account`
+    ? `${resolveLocalOriginForPort(configuredDevPort) || 'http://127.0.0.1:5175'}/map-dgfy/account`
     : 'https://dgfy.ph/map-dgfy/account';
 
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STOREFRONT_ACCOUNT_URL) {

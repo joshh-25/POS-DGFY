@@ -109,6 +109,35 @@ The controls do not protect against a fully compromised controller root account,
 
 When the repository plan supports native branch protection, rulesets, private environment secrets, and required deployment reviewers, enable those controls as defense in depth. Do not remove signed external authorization until a new ADR demonstrates equivalent exact-SHA, replay, evidence-binding, payment-separation, and independent-credential guarantees.
 
+## Amendment (2026-07-02)
+
+For the specific case of Docker/GHCR-based platform deployment, the owner
+decided to supersede rules 1, 16, 18, and 22 above and accept a simpler,
+directly GitHub-held credential instead of the external signed-release
+controller:
+
+- `.github/workflows/build-main.yml` builds and pushes the `backend` and
+  `frontend` images to GHCR, then invokes
+  `.github/workflows/deployment-orchestrator.yml`'s `publish` job, which
+  calls `.github/workflows/publish-platform.yml`.
+- `publish-platform.yml` holds a production SSH private key
+  (`secrets.SSH_PRIVATE_KEY`, scoped to the `PROD` GitHub Environment) and
+  uses it to SSH into the production server and run
+  `docker compose pull && docker compose up -d` directly from the
+  workflow run.
+- This is a deliberate, narrow exception: it applies only to this
+  image-build-and-pull deployment path. It does not amend or relax any
+  other rule in this ADR (signed release tags, the promotion/production
+  authorization lifecycle, payment-sensitive gating, the nonce ledger,
+  etc.), none of which currently have a working implementation outside
+  this document. It also does not bless holding any other production
+  credential (database, signing keys, payment secrets) in GitHub.
+- QA/DEV environments are expected to follow a similar or shared SSH-pull
+  pattern later; this ADR was not written with a non-production carve-out,
+  so extending this exception to QA/DEV does not require a further
+  amendment, but a genuinely different production-adjacent risk (e.g.
+  broader credentials, additional services) should get its own review.
+
 ## Consequences
 
 1. GitHub failures or bypassable repository settings cannot independently authorize production.

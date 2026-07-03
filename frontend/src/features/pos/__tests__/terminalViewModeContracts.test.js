@@ -123,12 +123,16 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('if (!continuingAfterCompanyPicker) {');
     expect(terminalPageContent).toContain('const selectedTenantSession = await startDgfyTenantSession({');
     expect(terminalPageContent).toContain('const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;');
+    expect(terminalPageContent).toContain('const selectedTenantUsersForReadiness = Array.isArray(selectedTenantUsers) && selectedTenantUsers.length > 0');
     expect(terminalPageContent).toContain('const selectedTenantSetupState = buildTenantSetupStateSnapshot({');
     expect(terminalPageContent).toContain('&& selectedTenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE');
-    expect(terminalPageContent).toContain('usersPayload: selectedTenantUsers');
+    expect(terminalPageContent).toContain('usersPayload: selectedTenantUsersForReadiness');
+    expect(terminalPageContent).toContain('const selectedTenantRegistry = normalizeTerminalRegistry(selectedTenantSettings?.pos_terminal_registry?.value || []);');
+    expect(terminalPageContent).toContain("source: 'dgfy_pos'");
     expect(terminalPageContent).toContain("window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);");
     expect(terminalPageContent).toContain("{ registryMode: setupFlowActive ? 'enforce' : 'warn' }");
     expect(terminalPageContent).toContain("toast.error('POS setup is incomplete. An active terminal and cashier account are required before terminal unlock.');");
+    expect(terminalPageContent).toContain('const posSession = await startDgfyPosSession({');
     expect(terminalPageContent).toContain('const posOnboardingUrl = resolvePosTerminalUrl(POS_ONBOARDING_ENTRY_SEARCH);');
     expect(terminalPageContent).toContain('window.location.assign(targetUrl.toString());');
     expect(terminalPageContent).toContain("pathname: '/terminal',");
@@ -214,6 +218,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('No open shift is active. Enter opening cash to start a new shift before using POS.');
     expect(terminalPageContent).toContain('You cannot use the POS because the shift is closed.');
     expect(terminalPageContent).toContain('Shift opened successfully.');
+    expect(terminalPageContent).toContain('terminalIdOverride: terminalId,');
+    expect(terminalPageContent).toContain('operatingLocationIdOverride: scopedOperatingLocationId');
+    expect(terminalPageContent).toContain('terminalIdOverride: selectedTerminalId,');
+    expect(terminalPageContent).toContain('operatingLocationIdOverride,');
     expect(terminalPageContent).toContain('closeShiftConfirmOpen');
     expect(terminalPageContent).toContain('handleConfirmCloseShift');
     expect(terminalPageContent).toContain('Are you sure you want to close this shift?');
@@ -228,6 +236,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !canSubmitOpenShift}');
     expect(terminalSidebarPanelContent).toContain('isValidOpeningCashAmount');
     expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canTransactPos || !canSubmitOpenShift}');
+    expect(terminalPageContent).toContain("const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');");
+    expect(terminalPageContent).toContain('canCloseDay={canCloseShift}');
     expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
     expect(posCheckoutTerminalContent).toContain('notifyPosActionBlocked');
     expect(posCheckoutTerminalContent).toContain('disabled={posActionsBlocked || cart.length === 0}');
@@ -406,7 +416,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('Terminal ID');
     expect(terminalPageContent).toContain('Select registered terminal');
     expect(terminalPageContent).toContain('Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.');
-    expect(terminalPageContent).toContain('This physical POS device is not paired. Ask the company master admin to pair it from POS onboarding.');
+    expect(terminalPageContent).toContain('Authorized DGFY users can open shifts from any logged-in device');
     expect(terminalPageContent).toContain('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');

@@ -1,0 +1,30 @@
+name: Build Images (beta manual)
+
+# Same beta build+deploy as build-main.yml, but triggered on demand from the
+# Actions tab instead of on push to main -- useful for redeploying beta
+# without needing a new commit to main (e.g. after an unrelated merge, or to
+# re-run a deploy that failed for an infra reason unrelated to the code).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-beta-manual-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/deployment-orchestrator.yml
+    with:
+      # BETA CUTOVER: beta.dgfy.ph is standing in for production for now --
+      # keep this in sync with build-main.yml's same inputs.
+      environment: BETA
+      image_tags: "beta"
+      publish: true
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write

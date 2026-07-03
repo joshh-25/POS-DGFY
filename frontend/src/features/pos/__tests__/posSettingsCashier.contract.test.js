@@ -14,6 +14,7 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain('Cashiers are invited through DGFY');
     expect(workspaceSource).toContain('getCashiersForLocation(terminal.location_id)');
     expect(workspaceSource).toContain('fixedRole="cashier"');
+    expect(workspaceSource).toContain('locationOptions={locations}');
     expect(workspaceSource).toContain('Invite DGFY Cashier');
     expect(workspaceSource).not.toContain('createPosSetupCashier');
   });
@@ -38,7 +39,11 @@ describe('regular POS Setup cashier management contract', () => {
     expect(terminalPageSource).toContain("const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items']);");
     expect(terminalPageSource).toContain('if (requiresOpenShift && !isSettingsViewMode && !isPinProtectedViewMode && !canAdminBypassShiftPrompt) {');
     expect(terminalPageSource).toContain('await verifyPosSettingsAccessPin(normalizedPin);');
+    expect(terminalPageSource).toContain('const hydrateTerminalMeta = useCallback');
     expect(terminalPageSource).toContain('hydrateTerminalMeta({ suppressGlobalErrors: true })');
+    expect(terminalPageSource).toContain('setSettingsAccessPinVerified(true);');
+    expect(terminalPageSource).toContain('commitViewModeSelection(nextMode);');
+    expect(terminalPageSource).toContain('await hydrateTerminalMeta({ suppressGlobalErrors: true });');
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('reports')}");
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('items')}");
     expect(sidebarSource).toContain("disabled={locked || onboardingRestricted || !canViewPos}");

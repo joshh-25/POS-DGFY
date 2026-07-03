@@ -438,7 +438,7 @@ export default function TerminalPageLayout({
       {!isDesktopWide && mobileNavOpen && (
         <div className={overlayContainerClassName}>
           <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
-          <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto p-3 shadow-2xl shadow-slate-950/20" style={{ background: 'var(--pos-shell-sidebar)' }}>
+          <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto p-3 shadow-2xl shadow-slate-950/20" style={{ background: 'var(--pos-shell-sidebar, #FFFFFF)' }}>
             <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
               <img
                 src={DGFY_POS_LOGO}
@@ -494,6 +494,7 @@ export default function TerminalPageLayout({
           className="transition"
         >
           {(isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
+            <div key="checkout-workspace" className="max-sm:animate-pos-slide-in">
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
               <POSCheckoutTerminal
                 sessionLocked={locked}
@@ -529,9 +530,11 @@ export default function TerminalPageLayout({
                 onExternalCatalogHydrated={onCatalogSearchHydrated}
               />
             </Suspense>
+            </div>
           )}
 
           {isOperationsWorkspaceMode && (
+            <div key="operations-workspace" className="max-sm:animate-pos-slide-in">
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
               <TerminalOperationsWorkspace
                 viewMode={posViewMode}
@@ -597,6 +600,7 @@ export default function TerminalPageLayout({
                 sectionIds={TERMINAL_SECTION_IDS}
               />
             </Suspense>
+            </div>
           )}
         </div>
       </div>

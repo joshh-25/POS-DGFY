@@ -89,7 +89,12 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('buildBusinessRegistrationUrl');
     expect(solutionsSource).toContain("import { buildBusinessLoginUrl, buildBusinessRegistrationUrl } from '../../../businessRegistrationUrl.js';");
     expect(helperSource).toContain('VITE_SKUPERVISOR_REGISTRATION_URL');
-    expect(helperSource).toContain('https://skupervisor.dgfy.ph/register-company');
+    // The production fallback is derived from the current origin (so it
+    // adapts to beta.dgfy.ph -> skupervisor.beta.dgfy.ph, etc.) rather than
+    // a single hardcoded literal -- assert the derivation function exists
+    // and its SSR-only (no window) fallback still points at production.
+    expect(helperSource).toContain('resolvePublicSkupervisorOrigin');
+    expect(helperSource).toContain("return 'https://skupervisor.dgfy.ph'");
     expect(source).not.toContain("new URL('https://skupervisor.dgfy.ph/register-company')");
     expect(solutionsSource).not.toContain("window.location.href = 'https://skupervisor.dgfy.ph/register-company'");
   });

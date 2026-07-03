@@ -1003,13 +1003,12 @@ function ShiftControlsWorkspace({
           {SHIFT_TABS.map((tab) => {
             const TabIcon = tab.icon;
             const active = activeTab === tab.id;
-            const isShiftLocation = tab.id === 'shift_location';
             return (
               <button
                 key={`mobile-${tab.id}`}
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
-                className={`inline-flex min-h-14 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black transition ${isShiftLocation ? 'min-w-0 flex-1' : 'shrink-0'} ${
+                className={`inline-flex min-h-14 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black transition ${
                   active
                     ? 'bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
                     : 'bg-slate-50 text-[#0F172A] hover:bg-slate-100'
@@ -3871,7 +3870,7 @@ function SettingsWorkspace({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[13px] font-black text-[#0F172A]">Terminal Registry</p>
-                <p className="mt-1 text-[12px] text-[#475569]">Managed POS counters used in pairing and shift-open flows. A store location may have multiple active terminals.</p>
+                <p className="mt-1 text-[12px] text-[#475569]">Managed POS counters used for shift-open and checkout location control. A store location may have multiple active terminals.</p>
               </div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <Button
@@ -4061,12 +4060,12 @@ function SettingsWorkspace({
                           <div className="grid gap-1.5 md:col-span-2">
                             <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
                               <KeyRound className="h-3.5 w-3.5 text-blue-500" />
-                              Device Pairing
+                              Terminal Readiness
                             </Label>
                             <div className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[12px] text-[#475569]">
-                              {terminal.pairing_version
-                                ? 'Registry ready. A master admin pairs each physical device from POS onboarding.'
-                                : 'Save this terminal before pairing a physical device.'}
+                              {terminal.location_id
+                                ? 'Ready for authorized DGFY users with access to this location.'
+                                : 'Assign a store location before this terminal can be used.'}
                             </div>
                           </div>
                         </div>
@@ -4345,14 +4344,50 @@ function SettingsWorkspace({
           <div className="grid gap-3 pt-8 md:grid-cols-2">
             <div className="rounded-lg border border-slate-200 p-3">
               <p className="text-sm font-semibold text-slate-900">Cover photo</p>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <div className="mt-2 flex items-center gap-2 sm:hidden">
+                <input
+                  id="storefront-cover-upload"
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  disabled={locked || assetUploadingType === 'cover' || assetDeletingType === 'cover'}
+                  onChange={(event) => { const file = event.target.files?.[0] || null; handleUploadAsset('cover', file); event.target.value = ''; }}
+                />
+                <label
+                  htmlFor="storefront-cover-upload"
+                  className={`flex flex-1 cursor-pointer items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-extrabold text-[#334155] transition-colors hover:bg-slate-50${locked || assetUploadingType === 'cover' || assetDeletingType === 'cover' ? ' pointer-events-none opacity-50' : ''}`}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  Upload
+                </label>
+                <Button type="button" variant="outline" className="flex-1 h-11 rounded-xl text-[13px] font-extrabold" disabled={locked || !storefrontAssets.cover || assetUploadingType === 'cover' || assetDeletingType === 'cover'} onClick={() => handleDeleteAsset('cover')}>Remove</Button>
+              </div>
+              <div className="mt-2 hidden sm:flex flex-col gap-2 sm:flex-row">
                 <Input type="file" accept="image/*" disabled={locked || assetUploadingType === 'cover' || assetDeletingType === 'cover'} onChange={(event) => { const file = event.target.files?.[0] || null; handleUploadAsset('cover', file); event.target.value = ''; }} />
                 <Button type="button" variant="outline" disabled={locked || !storefrontAssets.cover || assetUploadingType === 'cover' || assetDeletingType === 'cover'} onClick={() => handleDeleteAsset('cover')}>Remove</Button>
               </div>
             </div>
             <div className="rounded-lg border border-slate-200 p-3">
               <p className="text-sm font-semibold text-slate-900">Profile icon</p>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <div className="mt-2 flex items-center gap-2 sm:hidden">
+                <input
+                  id="storefront-profile-upload"
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  disabled={locked || assetUploadingType === 'profile' || assetDeletingType === 'profile'}
+                  onChange={(event) => { const file = event.target.files?.[0] || null; handleUploadAsset('profile', file); event.target.value = ''; }}
+                />
+                <label
+                  htmlFor="storefront-profile-upload"
+                  className={`flex flex-1 cursor-pointer items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-extrabold text-[#334155] transition-colors hover:bg-slate-50${locked || assetUploadingType === 'profile' || assetDeletingType === 'profile' ? ' pointer-events-none opacity-50' : ''}`}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  Upload
+                </label>
+                <Button type="button" variant="outline" className="flex-1 h-11 rounded-xl text-[13px] font-extrabold" disabled={locked || !storefrontAssets.profile || assetUploadingType === 'profile' || assetDeletingType === 'profile'} onClick={() => handleDeleteAsset('profile')}>Remove</Button>
+              </div>
+              <div className="mt-2 hidden sm:flex flex-col gap-2 sm:flex-row">
                 <Input type="file" accept="image/*" disabled={locked || assetUploadingType === 'profile' || assetDeletingType === 'profile'} onChange={(event) => { const file = event.target.files?.[0] || null; handleUploadAsset('profile', file); event.target.value = ''; }} />
                 <Button type="button" variant="outline" disabled={locked || !storefrontAssets.profile || assetUploadingType === 'profile' || assetDeletingType === 'profile'} onClick={() => handleDeleteAsset('profile')}>Remove</Button>
               </div>
@@ -4446,8 +4481,33 @@ function SettingsWorkspace({
             {(Array.isArray(storefrontForm.storefrontGalleryImages) ? storefrontForm.storefrontGalleryImages : []).map((row, index) => (
               <div key={`sf-gallery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_1fr_1fr_1fr_120px_auto]">
                 <Input value={row.path || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'path', event.target.value)} placeholder="storefront-assets/tenant/gallery-1.jpg" />
-                <Input value={row.url || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'url', event.target.value)} placeholder="https://cdn.example.com/gallery-1.jpg" />
-                <Input value={row.caption || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'caption', event.target.value)} placeholder="Caption" />
+                <Input value={row.url || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'url', event.target.value)} placeholder="https://cdn.example.com/gallery-1.jpg" className="max-md:hidden" />
+                <div className="flex items-center gap-2 md:contents">
+                  <div className="md:hidden">
+                    <input
+                      id={`sf-gallery-upload-${index}`}
+                      type="file"
+                      accept="image/*"
+                      aria-label="Upload gallery image"
+                      className="sr-only"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] || null;
+                        if (file) {
+                          handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'url', URL.createObjectURL(file));
+                        }
+                        event.target.value = '';
+                      }}
+                    />
+                    <label
+                      htmlFor={`sf-gallery-upload-${index}`}
+                      className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-[#334155] transition-colors hover:bg-slate-50"
+                      aria-label="Upload image"
+                    >
+                      <ImagePlus className="h-5 w-5" />
+                    </label>
+                  </div>
+                  <Input value={row.caption || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'caption', event.target.value)} placeholder="Caption" className="flex-1 md:flex-none" />
+                </div>
                 <Input value={row.alt || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'alt', event.target.value)} placeholder="Alt text" />
                 <Input value={row.sort_order ?? ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'sort_order', event.target.value)} placeholder="Sort" />
                 <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontObjectRow('storefrontGalleryImages', index, { url: '', path: '', caption: '', alt: '', sort_order: 0 })}><Trash2 className="h-4 w-4" /></Button>
@@ -4758,6 +4818,7 @@ function SettingsWorkspace({
         fixedRole="cashier"
         title="Invite DGFY Cashier"
         submitLabel="Send Cashier Invitation"
+        locationOptions={locations}
       />
     </div>
   );
@@ -5055,7 +5116,9 @@ export default function TerminalOperationsWorkspace({
       locked={locked}
       className={effectiveViewMode === 'items' ? 'px-5 pb-5 pt-2' : 'p-5'}
     >
-      {content}
+      <div key={effectiveViewMode} className="max-sm:animate-pos-slide-in">
+        {content}
+      </div>
       {locked && !isIncomingQueueView && (
         <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           Terminal is locked. Unlock to run protected operational actions.

@@ -1,0 +1,42 @@
+# Local development only. Auto-merged by `docker compose` when run from this
+# directory. Builds images from source instead of pulling from GHCR, and
+# exposes a few convenience ports. Do not use this file on a server.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up --build
+#
+# nginx needs a cert at ./data/certbot/conf/live/dev.localhost/ before it
+# will start (its config has no HTTP-only fallback) -- generate one first:
+#   ./nginx/dev-certs/generate.sh
+#
+# Then add to /etc/hosts to exercise the real domain routing locally:
+#   127.0.0.1 skupervisor.localhost pos.localhost localhost
+
+services:
+  backend:
+    image: dgfy-platform-backend:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend/Dockerfile
+    ports:
+      - "5000:5000"
+
+  frontend:
+    image: dgfy-platform-frontend:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/frontend/Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+        VITE_STORE_BASE_PATH: /
+
+  nginx:
+    environment:
+      SKUPERVISOR_DOMAIN: skupervisor.localhost
+      POS_DOMAIN: pos.localhost
+      STOREFRONT_DOMAIN: localhost
+      STOREFRONT_ALT_DOMAIN: ""
+      CERT_DOMAIN: dev.localhost
+
+  mysql:
+    ports:
+      - "3306:3306"

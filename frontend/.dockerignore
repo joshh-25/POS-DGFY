@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-apps
+.env
+.env.*
+!.env.example
+!.env.*.example
+desktop
+.git
+.gitignore
+*.md
+bun.lock

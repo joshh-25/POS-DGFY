@@ -96,7 +96,8 @@ import {
   canViewCatalog,
   getAccessCapabilities,
   getInventoryDisplayLabel,
-  getStorefrontAccessBlockMessage
+  getStorefrontAccessBlockMessage,
+  shouldClearStorefrontCart
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getDiscoveryMarkerKey } from './discoveryMapDom.js';
@@ -8978,13 +8979,17 @@ export default function StorefrontApp() {
   }, []);
 
   useEffect(() => {
-    if (productCartPermitted && checkoutPermitted && bookingPermitted) return;
-    if (cart.length === 0 && !quoteResult && !isCheckoutOpen) return;
+    if (!shouldClearStorefrontCart({
+      cart,
+      productCartPermitted,
+      checkoutPermitted,
+      bookingPermitted
+    })) return;
     setCart([]);
     setQuoteResult(null);
     setQuoteNeedsRefresh(true);
     setIsCheckoutOpen(false);
-  }, [productCartPermitted, checkoutPermitted, bookingPermitted, cart.length, quoteResult, isCheckoutOpen]);
+  }, [productCartPermitted, checkoutPermitted, bookingPermitted, cart]);
   useEffect(() => {
     if (!isBookingSubpage) return;
     setIsCheckoutOpen(false);
@@ -9483,18 +9488,10 @@ export default function StorefrontApp() {
       toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
     }
   }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
-  const requestDgfyBusinessSecurityCode = useCallback(async () => {
-    await requestJson('/api/v1/dgfy/account/business-step-up/request', {
-      method: 'POST',
-      authToken: readDgfyAuthToken(),
-      cache: 'no-store'
-    });
-  }, []);
-  const handleAcceptDgfyCompanyInvitation = useCallback(async ({ membershipId, emailOtpCode }) => {
+  const handleAcceptDgfyCompanyInvitation = useCallback(async ({ membershipId }) => {
     await requestJson(`/api/v1/dgfy/invitations/${encodeURIComponent(membershipId)}/accept`, {
       method: 'POST',
       authToken: readDgfyAuthToken(),
-      body: { email_otp_code: emailOtpCode },
       cache: 'no-store'
     });
     toast.success('Company invitation accepted.');
@@ -9518,13 +9515,12 @@ export default function StorefrontApp() {
     toast.success('You left the company.');
     await handleLoadAccountPanel();
   }, []);
-  const switchDgfyCompanyFromStorefront = useCallback(async ({ tenantId, emailOtpCode }) => {
+  const switchDgfyCompanyFromStorefront = useCallback(async ({ tenantId }) => {
     const normalizedTenantId = String(tenantId || '').trim();
     if (!normalizedTenantId) throw new Error('Select a company to open in SKUpervisor.');
     await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(normalizedTenantId)}/switch`, {
       method: 'POST',
       authToken: readDgfyAuthToken(),
-      body: { email_otp_code: emailOtpCode },
       cache: 'no-store'
     });
     window.location.href = buildDgfyAuthUrl({ intent: 'customer', mode: 'sign-in', returnTo: '/' });
@@ -12518,7 +12514,6 @@ export default function StorefrontApp() {
         onSignOut={handleStorefrontSignOut}
         onHelp={() => toast.info('Help center is not connected yet.')}
         onRegisterBusiness={openBusinessRegistrationFlow}
-        onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
         onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
         onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
         onLeaveCompany={handleLeaveDgfyCompany}
@@ -21916,7 +21911,6 @@ return (
           onSignOut={handleStorefrontSignOut}
           onHelp={() => toast.info('Help center is not connected yet.')}
           onRegisterBusiness={openBusinessRegistrationFlow}
-          onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
           onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
           onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
           onLeaveCompany={handleLeaveDgfyCompany}

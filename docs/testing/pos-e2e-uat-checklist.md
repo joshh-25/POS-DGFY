@@ -40,7 +40,7 @@ Execution support artifacts:
 7. Admin role has settings + reports/sales visibility permissions.
 8. Terminal identity policy is known for the test tenant (`warn` or `enforce`) and at least one active registry entry exists when `enforce` is enabled.
 9. If testing a DGFY-created company account, confirm `POST /api/v1/auth/lookup` resolves the cashier/admin email to the intended tenant before password validation.
-10. Every physical test device is enrolled once by the company master admin against an active location-bound terminal.
+10. Every tested operator can select an active location-bound logical terminal. Physical-device pairing is not required for normal shift opening or checkout.
 
 ## 3) Admin UAT Scenarios
 
@@ -125,26 +125,26 @@ Expected:
 Evidence:
 - Screenshot of cart before checkout
 
-### 4.1B DGFY Terminal Pairing and Role Navigation
+### 4.1B DGFY Logical Terminal and Role Navigation
 1. Authenticate as the DGFY company master admin, select an authorized company
-   and terminal, then pair the current physical device without a reusable terminal password.
-2. Sign in as an accepted DGFY cashier. Repeat with an unpaired device, inactive
-   terminal, unauthorized location, removed membership, and rotated pairing version.
+   and active location-bound terminal, then open a shift from a fresh browser with no pairing cookie.
+2. Sign in as an accepted DGFY cashier. Repeat with a fresh browser, inactive
+   terminal, missing terminal location, unauthorized location, and removed membership.
 3. As admin, dismiss the open-shift prompt and open Items and Reports.
 4. As cashier, confirm settings/report/admin navigation is hidden.
 5. With no shift, attempt checkout, drawer opening, and receipt printing.
 
 Expected:
-1. Only a master-admin-enrolled device plus a valid identity/company/location combination operates.
-2. Binding changes invalidate the pairing without exposing a hash or token.
+1. Any logged-in authorized DGFY operator can use an active terminal assigned to an allowed location.
+2. Inactive terminals, missing terminal locations, removed memberships, and unauthorized locations fail closed.
 3. Admin read/configuration navigation works without opening a shift.
 4. Cashier navigation remains focused and every transactional action remains
    blocked without a shift.
 
 Evidence:
-- Desktop, tablet, and mobile screenshots of pair, denial, admin, and cashier states
-- Sanitized Network capture for `/pos/terminal/pair` and `/pos/terminal/paired`
-- Backend denial response for a changed terminal or membership binding
+- Desktop, tablet, and mobile screenshots of logical terminal, denial, admin, and cashier states
+- Sanitized Network capture for `/pos/terminal/shifts/open`
+- Backend denial response for inactive terminal, missing location, unauthorized location, or removed membership
 
 ### 4.1C POS Always Available
 1. Configure one POS-visible item as Always Available and leave stock at zero.
