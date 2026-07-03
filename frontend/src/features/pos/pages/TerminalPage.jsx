@@ -607,6 +607,7 @@ export default function TerminalPage() {
   const canTransactPos = hasPermission('pos:transact');
   const canSwitchPosLocation = hasPermission('pos:switch_location');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
+  const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');
   const canCloseDay = hasPermission('pos:close_day');
   const canCreateItems = hasPermission('items:create');
   const canAccessSettingsDirectly = userIsAdminLike || dgfyAdminBypassActive;
@@ -3921,7 +3922,7 @@ export default function TerminalPage() {
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}
           canAdjustCashDrawer={canAdjustCashDrawer}
-          canCloseDay={canCloseDay}
+          canCloseDay={canCloseShift}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           terminalUser={terminalUser}
           posViewMode={posViewMode}
