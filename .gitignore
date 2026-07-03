@@ -91,3 +91,4 @@ bun.lock
 /infrastructure/docker/.env
 
 local-test/
+local-dev/
