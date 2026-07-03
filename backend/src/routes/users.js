@@ -8,6 +8,7 @@ import {
 import {
   validateUpdateProfile,
   validateChangePassword,
+  validateResetLocalCashierPassword,
   validateUpdateUserRole,
   validateUpdateUserStatus,
   validateUpdateUserPermissions,
@@ -31,6 +32,7 @@ router.get('/role-catalog', authenticate, checkPermission(PERMISSIONS.SYSTEM.act
 router.put('/:user_id/role', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserRole, userController.updateUserRole);
 router.put('/:user_id/status', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserStatus, userController.updateUserStatus);
 router.put('/:user_id/permissions', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserPermissions, userController.updateUserPermissions);
+router.put('/:user_id/password', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateResetLocalCashierPassword, userController.resetLocalCashierPassword);
 router.get('/:user_id/location-grants', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), userController.getUserLocationGrants);
 router.put('/:user_id/location-grants', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserLocationGrants, userController.updateUserLocationGrants);
 // Better to strictly require admin here as entry gate, logic inside handles Master check.

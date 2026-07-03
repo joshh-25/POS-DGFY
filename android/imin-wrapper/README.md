@@ -25,6 +25,7 @@ Allowed in-wrapper production hosts are:
 - `skupervisor.dgfy.ph`
 
 The Android emulator path still uses the local development host through `10.0.2.2`.
+Debug APK builds for physical devices use the local LAN host `10.123.37.45` and enable cleartext traffic so they can connect to the local POS/backend stack.
 
 ## What you need to do next
 

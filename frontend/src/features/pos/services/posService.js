@@ -1,6 +1,16 @@
 import api from '@/services/api';
 import { emitPosHardwareMessage } from '../utils/posHardwareMessageBus.js';
 
+const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
+
+const getRegisteredTerminalHeaders = (terminalId = '') => {
+    const storedTerminalId = typeof window !== 'undefined'
+        ? String(window.localStorage.getItem(TERMINAL_ID_STORAGE_KEY) || '').trim().toUpperCase()
+        : '';
+    const resolvedTerminalId = String(terminalId || storedTerminalId).trim().toUpperCase();
+    return resolvedTerminalId ? { 'x-pos-terminal-id': resolvedTerminalId } : undefined;
+};
+
 export const fetchPosCatalog = async (params = {}) => {
     const response = await api.get('/pos/catalog', { params });
     return response.data?.data || [];
@@ -42,18 +52,6 @@ export const createPosSetupCashier = async (payload = {}) => {
 export const fetchPosSetupCashiers = async () => {
     const response = await api.get('/pos/setup/cashiers');
     return response.data?.data?.cashiers || [];
-};
-
-export const verifyPosTerminal = async (payload = {}) => {
-    const response = await api.post('/pos/terminal/verify', payload);
-    return response.data?.data;
-};
-
-export const fetchPairedPosTerminal = async () => {
-    const response = await api.get('/pos/terminal/paired', {
-        skipGlobalErrorToast: true
-    });
-    return response.data?.data;
 };
 
 export const fetchPosDeviceStatus = async () => {
@@ -126,7 +124,9 @@ export const openPosDeviceDrawer = async (payload = {}) => {
 };
 
 export const closePosDay = async (businessDate = null) => {
-    const response = await api.post('/pos/z-reading/close-day', businessDate ? { business_date: businessDate } : {});
+    const response = await api.post('/pos/z-reading/close-day', businessDate ? { business_date: businessDate } : {}, {
+        headers: getRegisteredTerminalHeaders()
+    });
     return response.data?.data;
 };
 
@@ -141,7 +141,9 @@ export const fetchCurrentXReading = async (params = {}) => {
 };
 
 export const incrementGovernedResetCounter = async (payload) => {
-    const response = await api.post('/pos/z-reading/governed-reset', payload);
+    const response = await api.post('/pos/z-reading/governed-reset', payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
     return response.data?.data;
 };
 
@@ -156,12 +158,16 @@ export const openTerminalShift = async (payload = {}) => {
 };
 
 export const switchTerminalShiftLocation = async (shiftId, payload = {}) => {
-    const response = await api.post(`/pos/terminal/shifts/${shiftId}/switch-location`, payload);
+    const response = await api.post(`/pos/terminal/shifts/${shiftId}/switch-location`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
     return response.data?.data;
 };
 
 export const recordCashDrawerEvent = async (shiftId, payload = {}) => {
-    const response = await api.post(`/pos/terminal/shifts/${shiftId}/cash-events`, payload);
+    const response = await api.post(`/pos/terminal/shifts/${shiftId}/cash-events`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
     return response.data?.data;
 };
 
@@ -216,7 +222,9 @@ export const fetchIncomingOnlineOrders = async (params = {}, requestConfig = {})
 };
 
 export const updateOnlineOrderStatus = async (posTransactionId, payload = {}) => {
-    const response = await api.patch(`/pos/orders/${posTransactionId}/status`, payload);
+    const response = await api.patch(`/pos/orders/${posTransactionId}/status`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
     return response.data?.data;
 };
 

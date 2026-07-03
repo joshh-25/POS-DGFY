@@ -101,7 +101,7 @@ export default function Login() {
     let resolvedToken = null;
 
     try {
-      console.log('🔍 [Login] Looking up email:', formData.email);
+      if (import.meta.env.DEV) console.debug('[Login] Looking up email:', formData.email);
       const response = await api.post(
         '/auth/lookup',
         { email: normalizedEmail },
@@ -109,7 +109,7 @@ export default function Login() {
       );
       if (lookupGeneration !== lookupGenerationRef.current) return null;
       const data = response.data.data;
-      console.log('✅ [Login] Lookup success:', data);
+      if (import.meta.env.DEV) console.debug('[Login] Lookup success:', data);
 
       if (!data) {
         throw new Error('Invalid response from server');
@@ -228,7 +228,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      console.log('🔐 [Login] Attempting sign-in for:', { email: formData.email, companyToken: currentToken });
+      if (import.meta.env.DEV) console.debug('[Login] Attempting sign-in for:', { email: formData.email, companyToken: currentToken });
       await login({
         email: effectiveEmail,
         password: effectivePassword,

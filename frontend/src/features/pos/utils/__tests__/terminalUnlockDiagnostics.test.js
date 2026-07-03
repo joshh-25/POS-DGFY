@@ -56,12 +56,25 @@ describe('terminal unlock diagnostics', () => {
 
   it('maps login failures to POS-specific operator messages', () => {
     expect(resolveTerminalLoginErrorMessage(apiError({ status: 401 }))).toBe('Invalid email or password.');
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 401,
+      url: '/dgfy/account/companies/tenant-1/pos-session',
+      data: { message: 'Terminal password is incorrect.' }
+    }))).toBe('Terminal password is incorrect.');
     expect(resolveTerminalLoginErrorMessage(apiError({ status: 404 }))).toBe(
       'No company is registered for this POS login email. Check the email or sign in from SKUpervisor first.'
     );
     expect(resolveTerminalLoginErrorMessage(apiError({ status: 429 }))).toBe(
       'Too many terminal login attempts. Wait a moment, then try again.'
     );
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 403,
+      data: {
+        error_code: 'CSRF_TOKEN_REQUIRED',
+        message: 'CSRF token is required for cookie-authenticated requests.'
+      },
+      url: '/dgfy/auth/tenant-session'
+    }))).toBe('CSRF token is required for cookie-authenticated requests.');
     expect(resolveTerminalLoginErrorMessage(apiErrorWithHeaders({
       status: 429,
       data: { retryAfterSeconds: 125 }
@@ -72,12 +85,26 @@ describe('terminal unlock diagnostics', () => {
     }))).toBe('Your account does not have permission to unlock or operate this POS terminal.');
   });
 
+  it('does not misreport terminal pairing failures as invalid credentials', () => {
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 401,
+      url: '/pos/terminal/paired',
+      data: { message: 'This POS device pairing is missing, expired, or no longer valid.' }
+    }))).toBe('This POS device pairing is missing, expired, or no longer valid.');
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 401,
+      url: '/pos/terminal/pair',
+      data: { message: 'No company token provided.' }
+    }))).toBe('The selected business session is missing or expired. Select the company and continue again.');
+  });
+
   it('preserves multi-tenant and capability-block diagnostics', () => {
     const multipleTenantError = createTerminalLoginError(
-      'This email belongs to multiple companies. Sign in from SKUpervisor once, then reopen POS for the selected company.',
+      'This email belongs to multiple companies. Select the company to continue.',
       POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS
     );
     expect(resolveTerminalLoginErrorMessage(multipleTenantError)).toContain('multiple companies');
+    expect(resolveTerminalLoginErrorMessage(multipleTenantError)).not.toContain('SKUpervisor');
 
     expect(resolveTerminalLoginErrorMessage(apiError({
       status: 403,

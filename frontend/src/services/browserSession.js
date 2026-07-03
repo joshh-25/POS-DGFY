@@ -1,23 +1,11 @@
 const CSRF_COOKIE_KEY = 'sku_csrf_token';
+const IS_STANDALONE_POS_SURFACE = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase() === 'pos';
 
 let accessToken = '';
 let companyToken = '';
 let refreshInFlight = null;
 let csrfBootstrapInFlight = null;
-
-const readRuntimeCompanyToken = () => {
-  if (typeof window === 'undefined') return '';
-  const runtime = window.__DGFY_POS_RUNTIME__;
-  return String(runtime?.companyToken || '').trim();
-};
-
-const resolveCompanyToken = () => {
-  const resolved = companyToken || readRuntimeCompanyToken();
-  if (resolved && resolved !== companyToken) {
-    companyToken = resolved;
-  }
-  return companyToken;
-};
+let standalonePosSessionActivated = false;
 
 const resolveApiBaseUrl = () => {
   const configured = (import.meta.env.VITE_API_URL || '').trim();
@@ -76,7 +64,12 @@ export const ensureCsrfToken = async ({ force = false } = {}) => {
 };
 
 export const setBrowserSession = ({ token, companyToken: nextCompanyToken } = {}) => {
-  if (token !== undefined) accessToken = String(token || '').trim();
+  if (token !== undefined) {
+    accessToken = String(token || '').trim();
+    if (IS_STANDALONE_POS_SURFACE && accessToken) {
+      standalonePosSessionActivated = true;
+    }
+  }
   if (nextCompanyToken !== undefined) companyToken = String(nextCompanyToken || '').trim();
   if (typeof window !== 'undefined') {
     const event = typeof CustomEvent === 'function'
@@ -89,22 +82,26 @@ export const setBrowserSession = ({ token, companyToken: nextCompanyToken } = {}
 export const clearBrowserSession = () => {
   accessToken = '';
   companyToken = '';
+  standalonePosSessionActivated = false;
 };
 
 export const getAccessToken = () => accessToken;
-export const getCompanyToken = () => resolveCompanyToken();
+export const getCompanyToken = () => companyToken;
+export const canRefreshBrowserSession = () => !IS_STANDALONE_POS_SURFACE || standalonePosSessionActivated;
 
 export const getAuthHeaders = ({ includeCsrf = false } = {}) => {
   const headers = {};
-  const resolvedCompanyToken = resolveCompanyToken();
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  if (resolvedCompanyToken) headers['x-company-token'] = resolvedCompanyToken;
+  if (companyToken) headers['x-company-token'] = companyToken;
   const csrfToken = includeCsrf ? getCsrfToken() : '';
   if (csrfToken) headers['x-csrf-token'] = csrfToken;
   return headers;
 };
 
 export const refreshBrowserSession = async () => {
+  // A fresh POS page must authenticate explicitly. Cookie rotation remains
+  // available only after this page has established an authenticated session.
+  if (!canRefreshBrowserSession()) return '';
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
     const controller = new AbortController();

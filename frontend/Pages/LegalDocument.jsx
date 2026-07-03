@@ -1,19 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, Building2, ShieldCheck, Store, UserRound, ChevronRight } from 'lucide-react';
+import NotFoundPage from '../src/components/common/NotFoundPage.jsx';
 
-const providerClause = 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. Online payments are processed by licensed payment partners such as PayMongo; DGFY does not operate a stored-value wallet or hold seller settlement funds. When PayMongo QR Ph checkout is used, the disclosed DGFY platform fee is 1% of the item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce the company net settlement unless a separate signed provider contract says otherwise.';
+const providerClause = 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller\'s net settlement.';
 
 const legalDocuments = {
     '/legal/dgfy-company-terms': {
         title: 'DGFY Company Registration Terms',
-        version: 'dgfy-company-terms-2026-06-08',
+        version: 'dgfy-company-terms-2026-05-26',
         icon: Building2,
         summary: 'These terms govern company registration, founder ownership, seller-of-record obligations, and the required business registration acknowledgement.',
         sections: [
             {
                 heading: 'Company owner of record',
-                body: 'The registered company remains responsible for the products, services, prices, fulfillment, customer support, tax obligations, payout account ownership, and PayMongo/provider fees for transactions entered or operated through DGFY and SKUpervisor.'
+                body: 'The registered company remains responsible for the products, services, prices, fulfillment, customer support, tax obligations, and payout account ownership entered or operated through DGFY and SKUpervisor.'
             },
             {
                 heading: 'Founder account source',
@@ -31,7 +32,7 @@ const legalDocuments = {
     },
     '/legal/dgfy-marketplace-provider-terms': {
         title: 'DGFY Marketplace Provider Terms',
-        version: 'dgfy-marketplace-provider-2026-06-08',
+        version: 'dgfy-marketplace-provider-2026-05-26',
         icon: Store,
         summary: 'These terms describe DGFY as a marketplace/platform service provider and preserve the seller-of-record boundary.',
         sections: [
@@ -45,7 +46,7 @@ const legalDocuments = {
             },
             {
                 heading: 'Payment handling',
-                body: 'Payments are processed through licensed payment partners such as PayMongo. For QR Ph checkout, the DGFY platform fee is 1% of item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce company net settlement unless a separate signed provider contract says otherwise.'
+                body: 'Payments are processed through licensed payment partners. DGFY may collect payment on behalf of the seller, deduct disclosed platform or processing fees, and remit the seller\'s net settlement according to provider availability and applicable rules.'
             },
             {
                 heading: 'No stored-value promise',
@@ -55,7 +56,7 @@ const legalDocuments = {
     },
     '/legal/dgfy-account-terms': {
         title: 'DGFY Account Terms',
-        version: 'dgfy-account-terms-2026-06-08',
+        version: 'dgfy-account-terms-2026-05-26',
         icon: UserRound,
         summary: 'These terms govern the DGFY account used for customer activity, order tracking, company registration, and company invitations.',
         sections: [
@@ -79,7 +80,7 @@ const legalDocuments = {
     },
     '/privacy': {
         title: 'DGFY Privacy Policy',
-        version: 'dgfy-privacy-2026-06-08',
+        version: 'dgfy-privacy-2026-05-26',
         icon: ShieldCheck,
         summary: 'This policy summarizes how DGFY account, registration, order, verification, and support information is handled.',
         sections: [
@@ -105,13 +106,13 @@ const legalDocuments = {
 
 export default function LegalDocument() {
     const location = useLocation();
-    const document = legalDocuments[location.pathname] || legalDocuments['/legal/dgfy-company-terms'];
-    const Icon = document.icon;
+    const document = legalDocuments[location.pathname];
     const returnTo = String(location.state?.returnTo || '/register-company').trim() || '/register-company';
 
     const [activeSection, setActiveSection] = useState('');
 
     useEffect(() => {
+        if (!document) return undefined;
         const handleScroll = () => {
             const sections = document.sections.map(s => s.heading.toLowerCase().replace(/\s+/g, '-'));
             let current = '';
@@ -127,7 +128,20 @@ export default function LegalDocument() {
         };
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
-    }, [document.sections, activeSection]);
+    }, [document?.sections, activeSection]);
+
+    if (!document) {
+        return (
+            <NotFoundPage
+                title="Legal document not found"
+                description="This legal document link is invalid or no longer available. No substitute document has been loaded."
+                homeTo={returnTo}
+                homeLabel="Back to registration"
+            />
+        );
+    }
+
+    const Icon = document.icon;
 
     const scrollToSection = (e, id) => {
         e.preventDefault();

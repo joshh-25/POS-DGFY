@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-06-26
 related_adr: docs/architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md
 declaration_id: 2026-06-26-fnb-pos-inventory-boundary
-classification: major
-surfaces: pos,terminal,inventory,purchase_orders,workflow_mode,storefront
+classification: regulatory
+surfaces: pos,terminal,settings,inventory,purchase_orders,workflow_mode,storefront,compliance
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,CONFLICT,AUTHORIZATION_FAILED
 policy_version: 2026.06.26
 verification_evidence: npm run lint:docs,npm run check:architecture,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/posCheckoutFnbContracts.usecase.test.js tests/posOperationReplayParity.usecase.test.js tests/posUsecases.applicationResult.test.js tests/purchaseOrderUsecases.applicationResult.test.js,npm --prefix frontend test -- --run src/features/settings/__tests__/workflowMode.services.test.js src/features/settings/components/__tests__/WorkflowModeRouteGate.test.jsx --testTimeout 20000,npm --prefix frontend run build:all,git diff --check

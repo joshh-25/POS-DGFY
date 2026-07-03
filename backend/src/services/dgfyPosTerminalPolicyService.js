@@ -35,7 +35,10 @@ const parseJsonSetting = (setting) => {
   }
 };
 
-export const validateDgfyPosTerminalPolicy = async ({ tenantId, terminalId } = {}) => {
+export const validateDgfyPosTerminalPolicy = async ({
+  tenantId,
+  terminalId
+} = {}) => {
   const resolvedTenantId = String(tenantId || '').trim();
   const normalizedTerminalId = sanitizeTerminalId(terminalId);
   if (!resolvedTenantId) {

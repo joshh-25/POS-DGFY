@@ -152,6 +152,11 @@ const hasUsableCoordinates = (entry = {}) => (
     && Number.isFinite(Number(entry.longitude))
 );
 
+const isSearchableNoLocationEntry = (entry = {}) => (
+    !hasUsableCoordinates(entry)
+    && (entry.location_id === null || entry.location_id === undefined || entry.location_id === '')
+);
+
 const parseJsonArray = (value) => {
     if (Array.isArray(value)) return value;
     if (!value) return [];
@@ -915,7 +920,7 @@ const applyDiscoveryQuery = async (entries = [], query = {}) => {
             return storeMatch || itemEligible;
         });
     } else {
-        rows = rows.filter(hasUsableCoordinates);
+        rows = rows.filter((entry) => hasUsableCoordinates(entry) || isSearchableNoLocationEntry(entry));
     }
 
     rows = rows.map((entry) => {

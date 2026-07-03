@@ -37,6 +37,7 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260429000002-create-storefront-follows.cjs',
     '20260504000001-add-customer-access-fields-to-discovery-index.cjs',
     '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs',
+    '20260628000001-add-pos-always-available-to-catalog-overrides.cjs',
     '20260629000001-add-pos-always-available-contract.cjs'
 ]);
 

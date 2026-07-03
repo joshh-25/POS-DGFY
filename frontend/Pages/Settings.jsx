@@ -20,6 +20,7 @@ import {
   Wand2
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import ConfirmActionDialog from "@/components/ui/ConfirmActionDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -42,11 +43,6 @@ import * as userService from '../src/services/userService.js';
 import * as settingsService from '../src/services/settingsService.js';
 import * as paymentService from '../src/services/paymentService.js';
 import * as tenantLocationService from '../src/services/tenantLocationService.js';
-import {
-  getMerchantPinValidationError,
-  getUsableMerchantPin,
-  parseMapCoordinate
-} from '../src/components/maps/mapLibreShared.js';
 import {
   fetchESalesReports,
   fetchFiscalLedgerIntegrity,
@@ -473,8 +469,8 @@ const formatValidationErrorDescription = (apiErrors) => {
 const createDefaultLocationForm = () => ({
   name: '',
   address_line: '',
-  latitude: '',
-  longitude: '',
+  latitude: '10.7202',
+  longitude: '122.5621',
   location_version: '',
   delivery_radius_km: '5',
   current_wait_time_minutes: '15',
@@ -588,66 +584,25 @@ const normalizeStorefrontGallerySettings = (raw) => {
   return normalized.length > 0 ? normalized : [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }];
 };
 
-const normalizeStorefrontGalleryLocalPath = (value) => {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  const normalized = raw.replace(/^\/uploads\//, '').replace(/^[/\\]+/, '');
-  return /^storefront-assets\/[A-Za-z0-9][A-Za-z0-9_-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*\.(?:jpe?g|png|gif|webp|bmp|avif)$/i.test(normalized) ? normalized : '';
-};
-
-const isExpiredSignedStorefrontGalleryUrl = (value) => {
-  const raw = String(value || '').trim();
-  if (!raw || !/^https?:\/\//i.test(raw)) return false;
-  try {
-    const parsed = new URL(raw);
-    if (!parsed.hostname.toLowerCase().endsWith('file.notion.so')) return false;
-    const expiration = Number(parsed.searchParams.get('expirationTimestamp'));
-    return Number.isFinite(expiration) && expiration > 0 && expiration <= Date.now();
-  } catch {
-    return false;
-  }
-};
-
-const getStorefrontGalleryPreviewSource = (entry) => {
-  const path = normalizeStorefrontGalleryLocalPath(entry?.path || entry?.url);
-  if (path) return path;
-  const url = String(entry?.url || '').trim();
-  return isExpiredSignedStorefrontGalleryUrl(url) ? '' : url;
-};
-
-const getStorefrontGalleryRowWarning = (entry) => {
-  if (isExpiredSignedStorefrontGalleryUrl(entry?.url) && !normalizeStorefrontGalleryLocalPath(entry?.path)) {
-    return 'This external image link has expired. Upload a new image to show it on the storefront.';
-  }
-  if (String(entry?.path || '').trim() && !normalizeStorefrontGalleryLocalPath(entry?.path)) {
-    return 'This saved local image path is not a valid storefront gallery asset.';
-  }
-  return '';
-};
-
-const normalizeStorefrontGalleryPayloadEntry = (entry, index) => {
-  const rawUrl = String(entry?.url || '').trim().slice(0, 500);
-  const explicitPath = normalizeStorefrontGalleryLocalPath(entry?.path).slice(0, 500);
-  const urlLocalPath = normalizeStorefrontGalleryLocalPath(rawUrl).slice(0, 500);
-  const path = explicitPath || urlLocalPath;
-  const url = path && (rawUrl.startsWith('/uploads/storefront-assets/') || isExpiredSignedStorefrontGalleryUrl(rawUrl)) ? '' : rawUrl;
-  return {
-    url,
-    path,
-    caption: String(entry?.caption || '').trim().slice(0, 140),
-    alt: String(entry?.alt || '').trim().slice(0, 140),
-    sort_order: Number.isInteger(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
-  };
-};
-
-const getStorefrontUploadErrorMessage = (error, fallback) => {
-  const responseData = error?.response?.data || {};
-  const validationMessages = Array.isArray(responseData.errors)
-    ? responseData.errors
-        .map((entry) => entry?.message || entry?.msg || entry?.error)
-        .filter(Boolean)
-    : [];
-  return validationMessages[0] || responseData.message || error?.message || fallback;
+const serializeStorefrontGallerySettings = (raw) => {
+  const source = Array.isArray(raw) ? raw : [];
+  return source
+    .map((entry, index) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const url = String(entry.url || '').trim().slice(0, 500);
+      const path = String(entry.path || '').trim().slice(0, 500);
+      if (!url && !path) return null;
+      return {
+        url,
+        path,
+        caption: String(entry.caption || '').trim().slice(0, 140),
+        alt: String(entry.alt || '').trim().slice(0, 140),
+        sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 24)
+    .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0));
 };
 
 const normalizeStorefrontDeliveryPartnersSettings = (raw) => {
@@ -687,6 +642,33 @@ const normalizeStorefrontReviewSummarySettings = (raw) => {
     star4: starDistribution[4] == null ? '' : String(starDistribution[4]),
     star5: starDistribution[5] == null ? '' : String(starDistribution[5])
   };
+};
+
+const serializeStorefrontReviewSummary = (settings = {}) => {
+  const starDistribution = {};
+  [
+    ['1', settings.storefrontReviewSummaryStar1],
+    ['2', settings.storefrontReviewSummaryStar2],
+    ['3', settings.storefrontReviewSummaryStar3],
+    ['4', settings.storefrontReviewSummaryStar4],
+    ['5', settings.storefrontReviewSummaryStar5]
+  ].forEach(([star, value]) => {
+    const parsed = parseNullableNumberInput(value, { integer: true, min: 0 });
+    if (parsed !== null) {
+      starDistribution[star] = parsed;
+    }
+  });
+
+  const summary = {
+    score: parseNullableNumberInput(settings.storefrontReviewSummaryScore, { min: 0, max: 5, precision: 1 }),
+    total_count: parseNullableNumberInput(settings.storefrontReviewSummaryTotalCount, { integer: true, min: 0 })
+  };
+
+  if (Object.keys(starDistribution).length > 0) {
+    summary.star_distribution = starDistribution;
+  }
+
+  return summary;
 };
 
 export default function Settings() {
@@ -744,9 +726,8 @@ export default function Settings() {
   const [editingLocationId, setEditingLocationId] = useState(null);
   const [deleteLocationCandidate, setDeleteLocationCandidate] = useState(null);
   const [deleteLocationErrors, setDeleteLocationErrors] = useState([]);
+  const [confirmationAction, setConfirmationAction] = useState(null);
   const [locationForm, setLocationForm] = useState(createDefaultLocationForm());
-  const [locationAddressManuallyEdited, setLocationAddressManuallyEdited] = useState(false);
-  const [locationAddressSuggestion, setLocationAddressSuggestion] = useState('');
   const [storefrontAssets, setStorefrontAssets] = useState({
     cover: '',
     profile: ''
@@ -1001,8 +982,6 @@ export default function Settings() {
   const resetLocationForm = () => {
     setEditingLocationId(null);
     setLocationForm(createDefaultLocationForm());
-    setLocationAddressManuallyEdited(false);
-    setLocationAddressSuggestion('');
   };
 
   // Fetch current user and system settings on mount
@@ -1508,10 +1487,6 @@ export default function Settings() {
   };
 
   const handleLocationFormChange = (key, value) => {
-    if (key === 'address_line') {
-      setLocationAddressManuallyEdited(true);
-      setLocationAddressSuggestion('');
-    }
     setLocationForm((prev) => {
       if (key === 'is_active' && value === false) {
         return {
@@ -1526,58 +1501,21 @@ export default function Settings() {
 
   const handleLocationPinChange = ({ latitude, longitude, address_line }) => {
     const nextAddress = String(address_line || '').trim();
-    const parsedLatitude = parseMapCoordinate(latitude);
-    const parsedLongitude = parseMapCoordinate(longitude);
-
-    if (latitude === '' && longitude === '') {
-      setLocationForm((prev) => ({
-        ...prev,
-        latitude: '',
-        longitude: ''
-      }));
-      if (nextAddress) setLocationAddressSuggestion(nextAddress);
-      return;
-    }
-
-    if (getMerchantPinValidationError({ latitude: parsedLatitude, longitude: parsedLongitude })) {
-      return;
-    }
-
-    setLocationForm((prev) => {
-      const canAutofillAddress = nextAddress
-        && (!locationAddressManuallyEdited || !String(prev.address_line || '').trim());
-      if (nextAddress && !canAutofillAddress) {
-        setLocationAddressSuggestion(nextAddress);
-      } else if (nextAddress) {
-        setLocationAddressSuggestion('');
-      }
-      return {
-        ...prev,
-        latitude: parsedLatitude.toFixed(6),
-        longitude: parsedLongitude.toFixed(6),
-        ...(canAutofillAddress ? { address_line: nextAddress } : {})
-      };
-    });
-  };
-
-  const applySuggestedLocationAddress = () => {
-    if (!locationAddressSuggestion) return;
-    setLocationForm((prev) => ({ ...prev, address_line: locationAddressSuggestion }));
-    setLocationAddressManuallyEdited(true);
-    setLocationAddressSuggestion('');
+    setLocationForm((prev) => ({
+      ...prev,
+      latitude: latitude == null ? '' : String(latitude),
+      longitude: longitude == null ? '' : String(longitude),
+      ...(nextAddress ? { address_line: nextAddress } : {})
+    }));
   };
 
   const handleEditLocation = (location) => {
-    const usablePin = getUsableMerchantPin({
-      latitude: location?.latitude,
-      longitude: location?.longitude
-    });
     setEditingLocationId(location?.location_id || null);
     setLocationForm({
       name: String(location?.name || ''),
       address_line: String(location?.address_line || ''),
-      latitude: usablePin ? String(usablePin.latitude) : '',
-      longitude: usablePin ? String(usablePin.longitude) : '',
+      latitude: location?.latitude == null ? '' : String(location.latitude),
+      longitude: location?.longitude == null ? '' : String(location.longitude),
       location_version: String(location?.updated_at || ''),
       delivery_radius_km: location?.delivery_radius_km == null ? '5' : String(location.delivery_radius_km),
       current_wait_time_minutes: location?.current_wait_time_minutes == null ? '15' : String(location.current_wait_time_minutes),
@@ -1589,18 +1527,14 @@ export default function Settings() {
       supports_pickup: location?.supports_pickup !== false,
       supports_dine_in: location?.supports_dine_in !== false
     });
-    setLocationAddressManuallyEdited(Boolean(String(location?.address_line || '').trim()));
-    setLocationAddressSuggestion('');
   };
 
   const handleSaveLocation = async () => {
-    const parsedLatitude = parseMapCoordinate(locationForm.latitude);
-    const parsedLongitude = parseMapCoordinate(locationForm.longitude);
     const payload = {
       name: String(locationForm.name || '').trim(),
       address_line: String(locationForm.address_line || '').trim(),
-      latitude: parsedLatitude,
-      longitude: parsedLongitude,
+      latitude: Number(locationForm.latitude),
+      longitude: Number(locationForm.longitude),
       delivery_radius_km: Number(locationForm.delivery_radius_km || 0),
       current_wait_time_minutes: Number(locationForm.current_wait_time_minutes || 0),
       is_open: locationForm.is_open === true,
@@ -1620,12 +1554,8 @@ export default function Settings() {
       return;
     }
 
-    const coordinateError = getMerchantPinValidationError({
-      latitude: payload.latitude,
-      longitude: payload.longitude
-    });
-    if (coordinateError) {
-      toast.error(coordinateError);
+    if (!Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude)) {
+      toast.error('Please pin the location on the map.');
       return;
     }
 
@@ -1684,8 +1614,9 @@ export default function Settings() {
   };
 
   const handleDeactivateLocation = async (locationId, { skipConfirm = false } = {}) => {
-    if (!skipConfirm && !window.confirm('Deactivate this location?')) {
-      return;
+    if (!skipConfirm) {
+      setConfirmationAction({ type: 'deactivate-location', locationId });
+      return true;
     }
 
     setLocationSaving(true);
@@ -1700,8 +1631,11 @@ export default function Settings() {
         setDeleteLocationCandidate(null);
         setDeleteLocationErrors([]);
       }
+      return true;
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to deactivate tenant location');
+      const message = error?.response?.data?.message || 'Failed to deactivate tenant location';
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setLocationSaving(false);
     }
@@ -1748,9 +1682,10 @@ export default function Settings() {
     }
   };
 
-  const handleReactivateLocation = async (locationId) => {
-    if (!window.confirm('Reactivate this location?')) {
-      return;
+  const handleReactivateLocation = async (locationId, { skipConfirm = false } = {}) => {
+    if (!skipConfirm) {
+      setConfirmationAction({ type: 'reactivate-location', locationId });
+      return true;
     }
 
     setLocationSaving(true);
@@ -1758,8 +1693,11 @@ export default function Settings() {
       await tenantLocationService.reactivateTenantLocation(locationId);
       toast.success('Tenant location reactivated.');
       await loadTenantLocations();
+      return true;
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to reactivate tenant location');
+      const message = error?.response?.data?.message || 'Failed to reactivate tenant location';
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setLocationSaving(false);
     }
@@ -1983,7 +1921,13 @@ export default function Settings() {
       const storefrontWhyChooseUs = normalizeStringList(settings.storefrontWhyChooseUs, 6, 120);
       const storefrontCategories = normalizeStringList(settings.storefrontCategories, 12, 60);
       const storefrontGalleryImages = (Array.isArray(settings.storefrontGalleryImages) ? settings.storefrontGalleryImages : [])
-        .map(normalizeStorefrontGalleryPayloadEntry)
+        .map((entry, index) => ({
+          url: String(entry?.url || '').trim().slice(0, 500),
+          path: String(entry?.path || '').trim().slice(0, 500),
+          caption: String(entry?.caption || '').trim().slice(0, 140),
+          alt: String(entry?.alt || '').trim().slice(0, 140),
+          sort_order: Number.isInteger(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
+        }))
         .filter((entry) => entry.url || entry.path)
         .slice(0, 24);
       const storefrontDeliveryPartners = (Array.isArray(settings.storefrontDeliveryPartners) ? settings.storefrontDeliveryPartners : [])
@@ -2068,7 +2012,7 @@ export default function Settings() {
           instagram: String(settings.storefrontSocialInstagram || '').trim()
         },
         storefront_review_highlights: storefrontReviewHighlights,
-        storefront_review_summary: storefrontReviewSummary,
+        storefront_review_summary: serializeStorefrontReviewSummary(settings),
         storefront_promo: {
           title: String(settings.storefrontPromoTitle || '').trim(),
           subtitle: String(settings.storefrontPromoSubtitle || '').trim(),
@@ -2078,7 +2022,7 @@ export default function Settings() {
         },
         storefront_ui_v2_enabled: settings.storefrontUiV2Enabled === true,
         storefront_categories: storefrontCategories,
-        storefront_gallery_images: storefrontGalleryImages,
+        storefront_gallery_images: serializeStorefrontGallerySettings(settings.storefrontGalleryImages),
         storefront_delivery_partners: storefrontDeliveryPartners,
         storefront_follow_enabled: settings.storefrontFollowEnabled === true,
         storefront_share_enabled: settings.storefrontShareEnabled === true
@@ -2146,43 +2090,7 @@ export default function Settings() {
       }));
       toast.success(`${assetType === 'cover' ? 'Cover photo' : 'Profile icon'} updated.`);
     } catch (error) {
-      toast.error(getStorefrontUploadErrorMessage(error, `Failed to upload ${assetType} image`));
-    } finally {
-      setAssetUploadingType('');
-    }
-  };
-
-  const handleUploadStorefrontGalleryImage = async (index, file) => {
-    if (!file) return;
-    if (!String(file.type || '').toLowerCase().startsWith('image/')) {
-      toast.error('Only image files can be uploaded to the storefront gallery.');
-      return;
-    }
-    if (Number(file.size || 0) > 5 * 1024 * 1024) {
-      toast.error('Storefront gallery images must be 5 MB or smaller.');
-      return;
-    }
-    const uploadKey = `gallery-${index}`;
-    setAssetUploadingType(uploadKey);
-    try {
-      const result = await settingsService.uploadStorefrontAsset('gallery', file);
-      const imagePath = String(result?.path || '').trim();
-      setSettings((prev) => {
-        const next = Array.isArray(prev.storefrontGalleryImages)
-          ? [...prev.storefrontGalleryImages]
-          : [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }];
-        const current = next[index] || { url: '', path: '', caption: '', alt: '', sort_order: index };
-        next[index] = {
-          ...current,
-          url: '',
-          path: imagePath,
-          sort_order: Number.isInteger(Number(current.sort_order)) ? current.sort_order : index
-        };
-        return { ...prev, storefrontGalleryImages: next };
-      });
-      toast.success('Gallery image uploaded.');
-    } catch (error) {
-      toast.error(getStorefrontUploadErrorMessage(error, 'Failed to upload gallery image'));
+      toast.error(error?.response?.data?.message || `Failed to upload ${assetType} image`);
     } finally {
       setAssetUploadingType('');
     }
@@ -2248,9 +2156,10 @@ export default function Settings() {
     }
   };
 
-  const handleCancelSubscription = async () => {
-    if (!confirm("Are you sure you want to cancel your Premium subscription? You will retain access until the end of your current billing period.")) {
-      return;
+  const handleCancelSubscription = async ({ skipConfirm = false } = {}) => {
+    if (!skipConfirm) {
+      setConfirmationAction({ type: 'cancel-subscription' });
+      return true;
     }
 
     setIsCancelling(true);
@@ -2259,8 +2168,11 @@ export default function Settings() {
       const updatedUser = await userService.getCurrentUser();
       setCurrentUser(updatedUser);
       toast.success(result.message || "Subscription cancelled successfully.");
+      return true;
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to cancel subscription.");
+      const message = err.response?.data?.message || "Failed to cancel subscription.";
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setIsCancelling(false);
     }
@@ -2971,14 +2883,6 @@ export default function Settings() {
                     onChange={(e) => handleLocationFormChange('address_line', e.target.value)}
                     placeholder="Street, City, Province"
                   />
-                  {locationAddressSuggestion ? (
-                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-900">
-                      <span>Suggested address: {locationAddressSuggestion}</span>
-                      <Button type="button" size="sm" variant="outline" onClick={applySuggestedLocationAddress}>
-                        Apply
-                      </Button>
-                    </div>
-                  ) : null}
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label>Map Pin (MapLibre)</Label>
@@ -3310,53 +3214,16 @@ export default function Settings() {
                   <Label>Gallery Images</Label>
                   <Button type="button" variant="outline" size="sm" onClick={addStorefrontGalleryRow}><Plus className="w-4 h-4 mr-1" />Add</Button>
                 </div>
-                {(Array.isArray(settings.storefrontGalleryImages) ? settings.storefrontGalleryImages : []).map((row, index) => {
-                  const previewSource = getStorefrontGalleryPreviewSource(row);
-                  const previewUrl = resolveAssetUrl(previewSource);
-                  const rowWarning = getStorefrontGalleryRowWarning(row);
-                  return (
-                    <div key={`gallery-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-[180px_1fr_1fr_120px_auto]">
-                      <div className="space-y-2">
-                        <div className="h-24 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
-                          {previewUrl ? (
-                            <img
-                              src={previewUrl}
-                              alt={row.alt || row.caption || `Gallery image ${index + 1}`}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full items-center justify-center px-3 text-center text-xs font-medium text-slate-500">
-                              No gallery image uploaded
-                            </div>
-                          )}
-                        </div>
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          aria-label={`Upload gallery image ${index + 1}`}
-                          disabled={!canEditStorefrontBranding || assetUploadingType === `gallery-${index}`}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0] || null;
-                            handleUploadStorefrontGalleryImage(index, file);
-                            e.target.value = '';
-                          }}
-                        />
-                        {rowWarning && (
-                          <p className="text-xs font-medium text-amber-700">{rowWarning}</p>
-                        )}
-                      </div>
-                      <Input value={row.caption || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'caption', e.target.value)} placeholder="Caption" />
-                      <Input value={row.alt || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'alt', e.target.value)} placeholder="Alt text" />
-                      <Input value={row.sort_order ?? ''} onChange={(e) => handleStorefrontGalleryChange(index, 'sort_order', e.target.value)} placeholder="Sort" />
-                      <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontGalleryRow(index)}><Trash2 className="w-4 h-4" /></Button>
-                    </div>
-                  );
-                })}
-                {!canEditStorefrontBranding && (
-                  <p className="text-xs text-amber-700">
-                    Only Admin or Master Admin can upload storefront gallery images unless user has the <code>settings:storefront_branding_edit</code> micropermission.
-                  </p>
-                )}
+                {(Array.isArray(settings.storefrontGalleryImages) ? settings.storefrontGalleryImages : []).map((row, index) => (
+                  <div key={`gallery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_1fr_1fr_1fr_120px_auto]">
+                    <Input value={row.path || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'path', e.target.value)} placeholder="storefront-assets/tenant/gallery-1.jpg" />
+                    <Input value={row.url || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'url', e.target.value)} placeholder="https://cdn.example.com/gallery-1.jpg" />
+                    <Input value={row.caption || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'caption', e.target.value)} placeholder="Caption" />
+                    <Input value={row.alt || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'alt', e.target.value)} placeholder="Alt text" />
+                    <Input value={row.sort_order ?? ''} onChange={(e) => handleStorefrontGalleryChange(index, 'sort_order', e.target.value)} placeholder="Sort" />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontGalleryRow(index)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                ))}
               </div>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -4573,6 +4440,32 @@ export default function Settings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        open={Boolean(confirmationAction)}
+        onOpenChange={(open) => { if (!open) setConfirmationAction(null); }}
+        title={confirmationAction?.type === 'cancel-subscription'
+          ? 'Cancel Premium Subscription'
+          : (confirmationAction?.type === 'reactivate-location' ? 'Reactivate Location' : 'Deactivate Location')}
+        description={confirmationAction?.type === 'cancel-subscription'
+          ? 'Your Premium subscription will stop renewing. You will retain access until the end of the current billing period.'
+          : (confirmationAction?.type === 'reactivate-location'
+            ? 'This location will become available again for storefront and operational use.'
+            : 'This location will be removed from active operational and storefront choices. Historical records will be preserved.')}
+        confirmLabel={confirmationAction?.type === 'cancel-subscription'
+          ? 'Cancel Subscription'
+          : (confirmationAction?.type === 'reactivate-location' ? 'Reactivate' : 'Deactivate')}
+        variant={confirmationAction?.type === 'reactivate-location' ? 'default' : 'destructive'}
+        onConfirm={() => {
+          if (confirmationAction?.type === 'cancel-subscription') {
+            return handleCancelSubscription({ skipConfirm: true });
+          }
+          if (confirmationAction?.type === 'reactivate-location') {
+            return handleReactivateLocation(confirmationAction.locationId, { skipConfirm: true });
+          }
+          return handleDeactivateLocation(confirmationAction?.locationId, { skipConfirm: true });
+        }}
+      />
 
       {/* User Management Modal */}
       {showUserManagement && (

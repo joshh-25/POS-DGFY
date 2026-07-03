@@ -1,0 +1,51 @@
+com.dgfy.standalonepos.app-cardview-1.0.0-0 C:\Users\USER\.gradle\caches\8.13\transforms\00b2213e5bc2b7d0fdf6fb0135eb86a0\transformed\cardview-1.0.0\res
+com.dgfy.standalonepos.app-emoji2-1.3.0-1 C:\Users\USER\.gradle\caches\8.13\transforms\04bfee74156e009f4996563755ffef25\transformed\emoji2-1.3.0\res
+com.dgfy.standalonepos.app-activity-ktx-1.10.1-2 C:\Users\USER\.gradle\caches\8.13\transforms\0712b8ed40cd29c40cd31bce93720a7e\transformed\activity-ktx-1.10.1\res
+com.dgfy.standalonepos.app-core-viewtree-1.0.0-3 C:\Users\USER\.gradle\caches\8.13\transforms\0b3df2f14cd2022a7e72cefa6df633ae\transformed\core-viewtree-1.0.0\res
+com.dgfy.standalonepos.app-room-runtime-2.5.0-4 C:\Users\USER\.gradle\caches\8.13\transforms\0b9c6d9704508243d57f53b58e0a4dae\transformed\room-runtime-2.5.0\res
+com.dgfy.standalonepos.app-savedstate-1.2.1-5 C:\Users\USER\.gradle\caches\8.13\transforms\0ca8c4582a6e67df3de8ac6e9687001c\transformed\savedstate-1.2.1\res
+com.dgfy.standalonepos.app-activity-1.10.1-6 C:\Users\USER\.gradle\caches\8.13\transforms\0ccb71c5f2eb161dd914688fe83a00a1\transformed\activity-1.10.1\res
+com.dgfy.standalonepos.app-work-runtime-ktx-2.9.1-7 C:\Users\USER\.gradle\caches\8.13\transforms\0dd233ca98f4140d6af02dea815f5a44\transformed\work-runtime-ktx-2.9.1\res
+com.dgfy.standalonepos.app-sqlite-framework-2.3.0-8 C:\Users\USER\.gradle\caches\8.13\transforms\11c4df26d74b4d9be4f9ca9a69a7a654\transformed\sqlite-framework-2.3.0\res
+com.dgfy.standalonepos.app-recyclerview-1.1.0-9 C:\Users\USER\.gradle\caches\8.13\transforms\1570345f57e492923cce3cd1c9f8d6f9\transformed\recyclerview-1.1.0\res
+com.dgfy.standalonepos.app-lifecycle-viewmodel-2.6.2-10 C:\Users\USER\.gradle\caches\8.13\transforms\184d115aeca92e48b6b261a1f4c9aca1\transformed\lifecycle-viewmodel-2.6.2\res
+com.dgfy.standalonepos.app-appcompat-resources-1.7.1-11 C:\Users\USER\.gradle\caches\8.13\transforms\1a7c143dbd5c593cb6cddc72cb179289\transformed\appcompat-resources-1.7.1\res
+com.dgfy.standalonepos.app-swiperefreshlayout-1.1.0-12 C:\Users\USER\.gradle\caches\8.13\transforms\1af5ff06994b9339a39e8d22bb4bdf93\transformed\swiperefreshlayout-1.1.0\res
+com.dgfy.standalonepos.app-savedstate-ktx-1.2.1-13 C:\Users\USER\.gradle\caches\8.13\transforms\1c160a63b4b0c9a593b6050fd48813e9\transformed\savedstate-ktx-1.2.1\res
+com.dgfy.standalonepos.app-core-1.13.1-14 C:\Users\USER\.gradle\caches\8.13\transforms\20843adce502773e76f471d485cdfcad\transformed\core-1.13.1\res
+com.dgfy.standalonepos.app-drawee-3.6.0-15 C:\Users\USER\.gradle\caches\8.13\transforms\265c96a78d5ed47648cc0db9855d24ce\transformed\drawee-3.6.0\res
+com.dgfy.standalonepos.app-autofill-1.1.0-16 C:\Users\USER\.gradle\caches\8.13\transforms\2af25673cd6313725cf6c934da9fb866\transformed\autofill-1.1.0\res
+com.dgfy.standalonepos.app-profileinstaller-1.4.0-17 C:\Users\USER\.gradle\caches\8.13\transforms\3875b40fba2dd149cec71a181257bb57\transformed\profileinstaller-1.4.0\res
+com.dgfy.standalonepos.app-lifecycle-viewmodel-savedstate-2.6.2-18 C:\Users\USER\.gradle\caches\8.13\transforms\43badee02259e008fc8f37494b1f56a0\transformed\lifecycle-viewmodel-savedstate-2.6.2\res
+com.dgfy.standalonepos.app-lifecycle-process-2.6.2-19 C:\Users\USER\.gradle\caches\8.13\transforms\46b2978f58d823a70e36b88bcccc79b9\transformed\lifecycle-process-2.6.2\res
+com.dgfy.standalonepos.app-core-runtime-2.2.0-20 C:\Users\USER\.gradle\caches\8.13\transforms\4cc874dad8d182601c687cb0726117e6\transformed\core-runtime-2.2.0\res
+com.dgfy.standalonepos.app-transition-1.5.0-21 C:\Users\USER\.gradle\caches\8.13\transforms\5003a67d44277fa9106f130ce701a85b\transformed\transition-1.5.0\res
+com.dgfy.standalonepos.app-constraintlayout-2.0.1-22 C:\Users\USER\.gradle\caches\8.13\transforms\5134e160b3c2d82bb37bcffe44ffb07e\transformed\constraintlayout-2.0.1\res
+com.dgfy.standalonepos.app-sqlite-2.3.0-23 C:\Users\USER\.gradle\caches\8.13\transforms\5845539995fb2f9bdc6fe4edfad667c8\transformed\sqlite-2.3.0\res
+com.dgfy.standalonepos.app-drawerlayout-1.1.1-24 C:\Users\USER\.gradle\caches\8.13\transforms\5b8517247da9ff2e795bae5c305ffb9e\transformed\drawerlayout-1.1.1\res
+com.dgfy.standalonepos.app-viewpager2-1.0.0-25 C:\Users\USER\.gradle\caches\8.13\transforms\6049b689d4861e52d1e5a89d6295a8ca\transformed\viewpager2-1.0.0\res
+com.dgfy.standalonepos.app-material-1.12.0-26 C:\Users\USER\.gradle\caches\8.13\transforms\6164ff539ea0bcd09cc8dbbbb681af26\transformed\material-1.12.0\res
+com.dgfy.standalonepos.app-emoji2-views-helper-1.3.0-27 C:\Users\USER\.gradle\caches\8.13\transforms\8202c316385b6b0782e8a4ce50e49de1\transformed\emoji2-views-helper-1.3.0\res
+com.dgfy.standalonepos.app-lifecycle-runtime-2.6.2-28 C:\Users\USER\.gradle\caches\8.13\transforms\8774e1872abd62d3272bdd1b3f9231ea\transformed\lifecycle-runtime-2.6.2\res
+com.dgfy.standalonepos.app-lifecycle-livedata-2.6.2-29 C:\Users\USER\.gradle\caches\8.13\transforms\898f4efcf9a2372714de4d97c4b1c819\transformed\lifecycle-livedata-2.6.2\res
+com.dgfy.standalonepos.app-work-runtime-2.9.1-30 C:\Users\USER\.gradle\caches\8.13\transforms\8ab4b3f6a30b9da0d2eba350cef5adea\transformed\work-runtime-2.9.1\res
+com.dgfy.standalonepos.app-tracing-1.1.0-31 C:\Users\USER\.gradle\caches\8.13\transforms\8ed0e9de0284b1d428d8f65651e74e43\transformed\tracing-1.1.0\res
+com.dgfy.standalonepos.app-annotation-experimental-1.4.0-32 C:\Users\USER\.gradle\caches\8.13\transforms\8efc2042ef1fe3c5bf782c61273bae3c\transformed\annotation-experimental-1.4.0\res
+com.dgfy.standalonepos.app-startup-runtime-1.1.1-33 C:\Users\USER\.gradle\caches\8.13\transforms\9f8ea2d6d0202cb41cbe7863446652a6\transformed\startup-runtime-1.1.1\res
+com.dgfy.standalonepos.app-lifecycle-runtime-ktx-2.6.2-34 C:\Users\USER\.gradle\caches\8.13\transforms\a178ae085c4be4a3034e940d1e7a9dce\transformed\lifecycle-runtime-ktx-2.6.2\res
+com.dgfy.standalonepos.app-room-ktx-2.5.0-35 C:\Users\USER\.gradle\caches\8.13\transforms\b672719ee48ed51f18aab247e1773e37\transformed\room-ktx-2.5.0\res
+com.dgfy.standalonepos.app-appcompat-1.7.1-36 C:\Users\USER\.gradle\caches\8.13\transforms\bff4da4784b8c125913fd70fb3d828d6\transformed\appcompat-1.7.1\res
+com.dgfy.standalonepos.app-fragment-1.5.4-37 C:\Users\USER\.gradle\caches\8.13\transforms\c5484bea1cec725b7dc97b619358fa15\transformed\fragment-1.5.4\res
+com.dgfy.standalonepos.app-lifecycle-livedata-core-2.6.2-38 C:\Users\USER\.gradle\caches\8.13\transforms\c833f681fbf59179d6b30033478b07ed\transformed\lifecycle-livedata-core-2.6.2\res
+com.dgfy.standalonepos.app-lifecycle-service-2.6.2-39 C:\Users\USER\.gradle\caches\8.13\transforms\db706f5d3ab2d8ca858deea9bfc586cb\transformed\lifecycle-service-2.6.2\res
+com.dgfy.standalonepos.app-core-ktx-1.13.1-40 C:\Users\USER\.gradle\caches\8.13\transforms\e81eb548aac705fd26fc4cb208cbacad\transformed\core-ktx-1.13.1\res
+com.dgfy.standalonepos.app-lifecycle-viewmodel-ktx-2.6.2-41 C:\Users\USER\.gradle\caches\8.13\transforms\ea933f9b964f94e70d9707901c1cec9e\transformed\lifecycle-viewmodel-ktx-2.6.2\res
+com.dgfy.standalonepos.app-react-android-0.79.6-debug-42 C:\Users\USER\.gradle\caches\8.13\transforms\ec1dfe04e700368301e7500acd39d1a2\transformed\react-android-0.79.6-debug\res
+com.dgfy.standalonepos.app-coordinatorlayout-1.1.0-43 C:\Users\USER\.gradle\caches\8.13\transforms\ff6138a697d9093d67370f947bbe7565\transformed\coordinatorlayout-1.1.0\res
+com.dgfy.standalonepos.app-pngs-44 C:\xampp\htdocs\POS-DGFY\Standalone POS\app\build\generated\res\pngs\debug
+com.dgfy.standalonepos.app-resValues-45 C:\xampp\htdocs\POS-DGFY\Standalone POS\app\build\generated\res\resValues\debug
+com.dgfy.standalonepos.app-packageDebugResources-46 C:\xampp\htdocs\POS-DGFY\Standalone POS\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+com.dgfy.standalonepos.app-packageDebugResources-47 C:\xampp\htdocs\POS-DGFY\Standalone POS\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+com.dgfy.standalonepos.app-debug-48 C:\xampp\htdocs\POS-DGFY\Standalone POS\app\build\intermediates\merged_res\debug\mergeDebugResources
+com.dgfy.standalonepos.app-debug-49 C:\xampp\htdocs\POS-DGFY\Standalone POS\app\src\debug\res
+com.dgfy.standalonepos.app-main-50 C:\xampp\htdocs\POS-DGFY\Standalone POS\app\src\main\res

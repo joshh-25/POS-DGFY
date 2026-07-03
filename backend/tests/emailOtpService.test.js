@@ -31,6 +31,8 @@ describe('email OTP service', () => {
     process.env.EMAIL_OTP_TTL_MINUTES = '10';
     process.env.EMAIL_OTP_MAX_ATTEMPTS = '5';
     process.env.EMAIL_OTP_ENFORCEMENT_ENABLED = 'true';
+    process.env.NODE_ENV = 'test';
+    process.env.EMAIL_OTP_DEV_FALLBACK_ENABLED = 'true';
   });
 
   it('creates a single-use OTP row and sends the code through email service', async () => {
@@ -84,7 +86,41 @@ describe('email OTP service', () => {
     }));
   });
 
-  it('rejects OTP requests when SMTP is unavailable', async () => {
+  it('falls back to a local dev code when email delivery is unavailable outside production', async () => {
+    const otpRow = {
+      otp_id: 'otp-dev',
+      purpose: EMAIL_OTP_PURPOSES.EMAIL_CHANGE,
+      email: 'new@example.com',
+      expires_at: new Date('2026-05-17T04:20:00.000Z'),
+      delivery_status: 'sent',
+      update: jest.fn().mockResolvedValue({})
+    };
+    mockEmailOtp.update.mockResolvedValue([0]);
+    mockEmailOtp.create.mockResolvedValue(otpRow);
+
+    const result = await requestEmailOtp({
+      purpose: EMAIL_OTP_PURPOSES.EMAIL_CHANGE,
+      email: 'new@example.com',
+      emailSender: {
+        isEmailConfigured: jest.fn().mockReturnValue(false)
+      }
+    });
+
+    expect(mockEmailOtp.create).toHaveBeenCalled();
+    expect(otpRow.update).toHaveBeenCalledWith(expect.objectContaining({
+      delivery_status: 'recorded'
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      otp_id: 'otp-dev',
+      delivery_status: 'recorded',
+      dev_mode: true,
+      dev_code: expect.stringMatching(/^\d{6}$/)
+    }));
+  });
+
+  it('rejects OTP requests when email delivery is unavailable in production', async () => {
+    process.env.NODE_ENV = 'production';
+
     await expect(requestEmailOtp({
       purpose: EMAIL_OTP_PURPOSES.EMAIL_CHANGE,
       email: 'new@example.com',
@@ -96,7 +132,7 @@ describe('email OTP service', () => {
       code: 'EMAIL_OTP_DELIVERY_UNAVAILABLE'
     });
 
-    expect(mockEmailOtp.create).not.toHaveBeenCalled();
+    expect(mockEmailOtp.create).toHaveBeenCalled();
   });
 
   it('consumes a matching OTP code', async () => {

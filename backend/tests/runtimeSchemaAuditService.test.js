@@ -37,6 +37,7 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260429000002-create-storefront-follows.cjs' },
         { name: '20260504000001-add-customer-access-fields-to-discovery-index.cjs' },
         { name: '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs' },
+        { name: '20260628000001-add-pos-always-available-to-catalog-overrides.cjs' },
         { name: '20260629000001-add-pos-always-available-contract.cjs' }
     ])),
     getQueryInterface: () => ({

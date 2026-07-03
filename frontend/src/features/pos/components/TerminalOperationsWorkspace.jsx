@@ -12,7 +12,6 @@ import {
   ClipboardList,
   Barcode,
   ImagePlus,
-  KeyRound,
   MapPin,
   Pencil,
   MapPinned,
@@ -56,7 +55,7 @@ import {
 import { updatePosCatalogOverride, uploadPosCatalogImage } from '@/services/posCatalogService.js';
 import { updateStorefrontCatalogOverride, uploadStorefrontCatalogImage } from '@/services/storefrontCatalogService.js';
 import { deleteStorefrontAsset, getCompanyInfo, getAllSettings, updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
-import { updateProfile } from '@/services/userService.js';
+import { getUserLocationGrants, resetLocalCashierPassword, updateProfile, updateUserLocationGrants } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
@@ -483,7 +482,10 @@ function ShiftControlsWorkspace({
   setCashEventForm,
   handleRecordCashEvent,
   sectionId,
-  initialTab = 'shift_location'
+  initialTab = 'shift_location',
+  companyName = '',
+  activeTerminalId = '',
+  terminalUser = null
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const [switchReason, setSwitchReason] = useState('');
@@ -500,6 +502,11 @@ function ShiftControlsWorkspace({
   const activeShift = shiftState?.shift || null;
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
+  const cashierDisplayName = activeShift?.cashier?.username
+    || activeShift?.cashier?.email
+    || terminalUser?.username
+    || terminalUser?.email
+    || 'Current cashier';
   const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;
   const SHIFT_TABS = [
     { id: 'shift_location', label: 'Shift Location', icon: MapPinned },
@@ -575,8 +582,8 @@ function ShiftControlsWorkspace({
   const summaryRows = activeShift ? [
     {
       icon: ClipboardList,
-      label: 'Shift ID:',
-      value: `#${activeShift.pos_terminal_shift_id}`,
+      label: 'Cashier:',
+      value: cashierDisplayName,
       valueClassName: 'text-[18px] font-black text-[#2563EB]'
     },
     {
@@ -621,6 +628,10 @@ function ShiftControlsWorkspace({
     if (!activeShift) {
       return (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+          <div className="mb-3 flex flex-wrap gap-2 text-[11px] font-bold text-slate-600">
+            <span className="rounded-full bg-slate-100 px-3 py-1">Company: {companyName || 'Current company'}</span>
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">Terminal: {activeTerminalId || 'Not selected'}</span>
+          </div>
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
             Shift Closed. Please open your shift before using the POS.
           </p>
@@ -2631,7 +2642,9 @@ function ItemsWorkspace({
 function SettingsWorkspace({
   terminalUser,
   terminalMeta,
+  companyName = '',
   locationsState,
+  operatingLocationId = null,
   queueLocationScopeId,
   setQueueLocationScopeId,
   incomingOrdersState,
@@ -2646,6 +2659,15 @@ function SettingsWorkspace({
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  const lockedTerminalLocationId = useMemo(() => {
+    const activeLocationId = toPositiveInt(operatingLocationId);
+    if (activeLocationId) return activeLocationId;
+    return locations.length === 1 ? toPositiveInt(locations[0]?.location_id) : null;
+  }, [locations, operatingLocationId]);
+  const lockedTerminalLocation = useMemo(
+    () => locations.find((location) => Number(location.location_id) === Number(lockedTerminalLocationId)) || null,
+    [locations, lockedTerminalLocationId]
+  );
   const canManageCashiers = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('users:manage');
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -2662,6 +2684,16 @@ function SettingsWorkspace({
   const [cashierUsers, setCashierUsers] = useState([]);
   const [cashiersLoading, setCashiersLoading] = useState(false);
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
+  const [cashierAccessDialog, setCashierAccessDialog] = useState({
+    open: false,
+    cashier: null,
+    locationIds: [],
+    terminalId: '',
+    newPassword: '',
+    confirmPassword: '',
+    loading: false,
+    saving: false
+  });
   const [profileForm, setProfileForm] = useState({
     username: '',
     email: '',
@@ -2762,6 +2794,20 @@ function SettingsWorkspace({
   const customerAccessLimitation = CUSTOMER_ACCESS_MODE_RANK[requestedCustomerAccessMode] > CUSTOMER_ACCESS_MODE_RANK[maxCustomerAccessMode]
     ? (storefrontForm.customerAccessLimitationReason || `Requested mode is currently capped at ${maxCustomerAccessMode}.`)
     : (storefrontForm.customerAccessLimitationReason || 'Requested mode is currently available.');
+  const lockedTerminalChoices = useMemo(() => {
+    const entries = Array.isArray(posForm.terminalRegistry) ? posForm.terminalRegistry : [];
+    return entries
+      .map((entry) => ({
+        ...entry,
+        terminal_id: sanitizeTerminalId(entry?.terminal_id),
+        location_id: toPositiveInt(entry?.location_id)
+      }))
+      .filter((entry) => (
+        entry.terminal_id
+        && entry.is_active !== false
+        && (!lockedTerminalLocationId || entry.location_id === lockedTerminalLocationId)
+      ));
+  }, [lockedTerminalLocationId, posForm.terminalRegistry]);
   const activeCashierUsers = useMemo(() => (
     cashierUsers.filter((user) => String(user?.role || '').toLowerCase() === 'cashier' && user?.is_active !== false && !user?.deleted_at)
   ), [cashierUsers]);
@@ -2862,6 +2908,99 @@ function SettingsWorkspace({
       setCashiersLoading(false);
     }
   }, [canManageCashiers]);
+  const openCashierAccessEditor = useCallback(async (cashier) => {
+    const cashierId = toPositiveInt(cashier?.user_id);
+    if (!cashierId) {
+      toast.error('Cashier user ID is missing.');
+      return;
+    }
+    const defaultTerminalId = lockedTerminalChoices[0]?.terminal_id || '';
+    const fixedLocationIds = lockedTerminalLocationId ? [lockedTerminalLocationId] : [];
+    setCashierAccessDialog({
+      open: true,
+      cashier,
+      locationIds: fixedLocationIds,
+      terminalId: defaultTerminalId,
+      newPassword: '',
+      confirmPassword: '',
+      loading: true,
+      saving: false
+    });
+    try {
+      const grants = await getUserLocationGrants(cashierId, { include_inactive: true });
+      setCashierAccessDialog((current) => ({
+        ...current,
+        locationIds: fixedLocationIds.length > 0
+          ? fixedLocationIds
+          : (Array.isArray(grants?.granted_location_ids)
+            ? grants.granted_location_ids.map(toPositiveInt).filter(Boolean)
+            : []),
+        loading: false
+      }));
+    } catch (error) {
+      setCashierAccessDialog((current) => ({ ...current, loading: false }));
+      toast.error(error?.response?.data?.message || 'Failed to load cashier branch access.');
+    }
+  }, [lockedTerminalChoices, lockedTerminalLocationId]);
+  const saveCashierAccessEditor = useCallback(async () => {
+    const cashierId = toPositiveInt(cashierAccessDialog.cashier?.user_id);
+    if (!cashierId) {
+      toast.error('Cashier user ID is missing.');
+      return;
+    }
+    const fixedLocationIds = lockedTerminalLocationId ? [lockedTerminalLocationId] : cashierAccessDialog.locationIds;
+    const newPassword = String(cashierAccessDialog.newPassword || '');
+    const confirmPassword = String(cashierAccessDialog.confirmPassword || '');
+    if (newPassword || confirmPassword) {
+      if (newPassword.length < 8) {
+        toast.error('Cashier password must be at least 8 characters.');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        toast.error('Cashier password confirmation does not match.');
+        return;
+      }
+    }
+    setCashierAccessDialog((current) => ({ ...current, saving: true }));
+    try {
+      await updateUserLocationGrants(cashierId, fixedLocationIds);
+      if (newPassword) {
+        await resetLocalCashierPassword(cashierId, newPassword);
+      }
+      toast.success(newPassword ? 'Cashier access and password updated.' : 'Cashier access updated.');
+      setCashierAccessDialog({ open: false, cashier: null, locationIds: [], terminalId: '', newPassword: '', confirmPassword: '', loading: false, saving: false });
+      await loadCashierAccounts({ silent: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update cashier access.');
+      setCashierAccessDialog((current) => ({ ...current, saving: false }));
+    }
+  }, [
+    cashierAccessDialog.cashier?.user_id,
+    cashierAccessDialog.confirmPassword,
+    cashierAccessDialog.locationIds,
+    cashierAccessDialog.newPassword,
+    loadCashierAccounts,
+    lockedTerminalLocationId
+  ]);
+  const removeCashierFromLocation = useCallback(async (cashier, locationId) => {
+    const cashierId = toPositiveInt(cashier?.user_id);
+    const normalizedLocationId = toPositiveInt(locationId);
+    if (!cashierId || !normalizedLocationId) {
+      toast.error('Cashier or branch context is missing.');
+      return;
+    }
+    const currentLocationIds = Array.isArray(cashier?.location_ids)
+      ? cashier.location_ids.map(toPositiveInt).filter(Boolean)
+      : [];
+    const nextLocationIds = currentLocationIds.filter((entry) => entry !== normalizedLocationId);
+    try {
+      await updateUserLocationGrants(cashierId, nextLocationIds);
+      toast.success('Cashier removed from this branch.');
+      await loadCashierAccounts({ silent: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to remove cashier from this branch.');
+    }
+  }, [loadCashierAccounts]);
 
   const hydrateSettingsWorkspace = useCallback(async () => {
     setLoading(true);
@@ -3090,7 +3229,7 @@ function SettingsWorkspace({
         ? current.terminalRegistry.map((entry) => ({
           terminal_id: sanitizeTerminalId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
-          location_id: toPositiveInt(entry?.location_id),
+          location_id: toPositiveInt(entry?.location_id) || lockedTerminalLocationId,
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
           pairing_version: String(entry?.pairing_version || '').trim(),
@@ -3100,7 +3239,7 @@ function SettingsWorkspace({
       const existing = entries[index] || {
         terminal_id: createSuggestedTerminalId(entries),
         label: '',
-        location_id: null,
+        location_id: lockedTerminalLocationId,
         is_active: true,
         is_default: entries.length === 0,
         pairing_version: '',
@@ -3132,7 +3271,7 @@ function SettingsWorkspace({
 
       return { ...current, terminalRegistry: entries };
     });
-  }, []);
+  }, [lockedTerminalLocationId]);
 
   const addTerminalRegistryEntry = useCallback(() => {
     setPosForm((current) => {
@@ -3140,7 +3279,7 @@ function SettingsWorkspace({
         ? current.terminalRegistry.map((entry) => ({
           terminal_id: sanitizeTerminalId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
-          location_id: toPositiveInt(entry?.location_id),
+          location_id: toPositiveInt(entry?.location_id) || lockedTerminalLocationId,
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
           pairing_version: String(entry?.pairing_version || '').trim(),
@@ -3150,7 +3289,7 @@ function SettingsWorkspace({
       entries.push({
         terminal_id: createSuggestedTerminalId(entries),
         label: '',
-        location_id: null,
+        location_id: lockedTerminalLocationId,
         is_active: true,
         is_default: entries.length === 0,
         pairing_version: '',
@@ -3158,7 +3297,7 @@ function SettingsWorkspace({
       });
       return { ...current, terminalRegistry: entries };
     });
-  }, []);
+  }, [lockedTerminalLocationId]);
 
   const removeTerminalRegistryEntry = useCallback((index) => {
     setPosForm((current) => {
@@ -3208,7 +3347,7 @@ function SettingsWorkspace({
       .map((entry) => ({
         terminal_id: sanitizeTerminalId(entry?.terminal_id),
         label: String(entry?.label || '').trim(),
-        location_id: toPositiveInt(entry?.location_id),
+        location_id: lockedTerminalLocationId || toPositiveInt(entry?.location_id),
         is_active: entry?.is_active !== false,
         is_default: entry?.is_default === true,
         pairing_version: String(entry?.pairing_version || '').trim(),
@@ -3257,46 +3396,51 @@ function SettingsWorkspace({
       normalizedRegistryState,
       posTerminalRegistryMode
     };
-  }, [posForm.terminalRegistry, posForm.terminalRegistryMode]);
+  }, [lockedTerminalLocationId, posForm.terminalRegistry, posForm.terminalRegistryMode]);
+
+  const persistTerminalRegistry = useCallback(async () => {
+    const { posTerminalRegistry, normalizedRegistryState, posTerminalRegistryMode } = buildTerminalRegistryPayload();
+
+    const updatedSettings = await updateSettings({
+      pos_terminal_registry: posTerminalRegistry,
+      pos_terminal_registry_mode: posTerminalRegistryMode,
+      pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true
+    });
+
+    const savedRegistry = normalizeTerminalRegistry(
+      updatedSettings?.pos_terminal_registry?.value
+        || updatedSettings?.pos_terminal_registry
+        || normalizedRegistryState
+    );
+
+    setPosForm((current) => ({
+      ...current,
+      terminalRegistry: savedRegistry.map((entry) => ({
+        ...entry,
+        pairing_version: String(entry?.pairing_version || '').trim(),
+        rotate_pairing: false
+      })),
+      terminalRegistryMode: posTerminalRegistryMode
+    }));
+
+    await Promise.all([
+      onRefreshTerminalMeta?.(),
+      onRefreshTerminalUser?.({ suppressGlobalErrors: true })
+    ]);
+    return savedRegistry;
+  }, [buildTerminalRegistryPayload, onRefreshTerminalMeta, onRefreshTerminalUser, posForm.terminalLocationBindingEnforced]);
 
   const handleTerminalRegistrySave = useCallback(async () => {
     setSavingTab('terminal_registry');
     try {
-      const { posTerminalRegistry, normalizedRegistryState, posTerminalRegistryMode } = buildTerminalRegistryPayload();
-
-      const updatedSettings = await updateSettings({
-        pos_terminal_registry: posTerminalRegistry,
-        pos_terminal_registry_mode: posTerminalRegistryMode,
-        pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true
-      });
-
-      const savedRegistry = normalizeTerminalRegistry(
-        updatedSettings?.pos_terminal_registry?.value
-          || updatedSettings?.pos_terminal_registry
-          || normalizedRegistryState
-      );
-
-      setPosForm((current) => ({
-        ...current,
-        terminalRegistry: savedRegistry.map((entry) => ({
-          ...entry,
-          pairing_version: String(entry?.pairing_version || '').trim(),
-          rotate_pairing: false
-        })),
-        terminalRegistryMode: posTerminalRegistryMode
-      }));
-
-      await Promise.all([
-        onRefreshTerminalMeta?.(),
-        onRefreshTerminalUser?.({ suppressGlobalErrors: true })
-      ]);
+      await persistTerminalRegistry();
       toast.success('Terminal registry saved.');
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to save terminal registry.');
     } finally {
       setSavingTab('');
     }
-  }, [buildTerminalRegistryPayload, onRefreshTerminalMeta, onRefreshTerminalUser, posForm.terminalLocationBindingEnforced]);
+  }, [persistTerminalRegistry]);
 
   const handlePosSave = useCallback(async () => {
     setSavingTab('pos_setup');
@@ -3871,7 +4015,7 @@ function SettingsWorkspace({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[13px] font-black text-[#0F172A]">Terminal Registry</p>
-                <p className="mt-1 text-[12px] text-[#475569]">Managed POS counters used in pairing and shift-open flows. A store location may have multiple active terminals.</p>
+                <p className="mt-1 text-[12px] text-[#475569]">Managed POS counters available for authenticated cashier shifts. A store location may have multiple active terminals.</p>
               </div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <Button
@@ -3896,28 +4040,13 @@ function SettingsWorkspace({
                   <option value="enforce">Enforce (registry only)</option>
                 </select>
               </div>
-              <div className="flex items-center rounded-lg border border-slate-200 bg-white px-3 py-3 text-[12px] text-[#475569]">
-                {(posForm.terminalRegistryMode || 'warn') === 'enforce'
-                  ? 'Enforce mode blocks unlock, open-shift, and checkout when the terminal ID is not in the active registry.'
-                  : 'Warn mode still allows manual or fallback terminal IDs, but shows policy warnings.'}
-              </div>
-              <label className="md:col-span-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
+              <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
                 <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={posForm.terminalLocationBindingEnforced === true} onChange={(event) => setPosForm((current) => ({ ...current, terminalLocationBindingEnforced: event.target.checked }))} disabled={locked || loading} />
                 <div>
                   <p className="text-[12px] font-black text-[#0F172A]">Strict Shift Location Binding</p>
                   <p className="text-[11px] text-[#64748B]">When enabled, shift open, checkout, and switch require location-bound terminal policy readiness.</p>
                 </div>
               </label>
-              <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-3">
-                <p className="text-[12px] font-black text-[#0F172A]">
-                  Location Binding Readiness: {readiness?.ready_for_strict_mode ? 'Ready' : 'Needs Review'}
-                </p>
-                <div className="mt-2 grid gap-2 text-[11px] text-[#64748B] md:grid-cols-3">
-                  <p>Migration: <span className="font-semibold text-[#0F172A]">{readiness?.migration_tag || '-'}</span></p>
-                  <p>Unresolved: <span className="font-semibold text-[#0F172A]">{Number(readiness?.unresolved_count || 0)}</span></p>
-                  <p>Low confidence: <span className="font-semibold text-[#0F172A]">{Number(readiness?.low_confidence_count || 0)}</span></p>
-                </div>
-              </div>
             </div>
             {terminalUser?.is_master_admin === true ? (
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -4042,32 +4171,14 @@ function SettingsWorkspace({
                           <div className="grid gap-1.5">
                             <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
                               <MapPin className="h-3.5 w-3.5 text-blue-500" />
-                              Location
+                              Locked Branch / Location
                             </Label>
-                            <select
-                              className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-[14px] font-semibold text-[#0F172A] outline-none focus:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                              value={terminal.location_id || ''}
-                              onChange={(event) => handleTerminalRegistryChange(index, 'location_id', event.target.value)}
-                              disabled={locked || loading}
-                            >
-                              <option value="">Unassigned</option>
-                              {locations.map((location) => (
-                                <option key={`terminal-location-${location.location_id}`} value={location.location_id}>
-                                  {location.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="grid gap-1.5 md:col-span-2">
-                            <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
-                              <KeyRound className="h-3.5 w-3.5 text-blue-500" />
-                              Device Pairing
-                            </Label>
-                            <div className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[12px] text-[#475569]">
-                              {terminal.pairing_version
-                                ? 'Registry ready. A master admin pairs each physical device from POS onboarding.'
-                                : 'Save this terminal before pairing a physical device.'}
+                            <div className="flex min-h-11 items-center rounded-xl border border-blue-100 bg-blue-50 px-3.5 text-[14px] font-semibold text-[#0F172A]">
+                              {lockedTerminalLocation?.name || companyName || 'Current branch'}
                             </div>
+                            <p className="text-[11px] text-[#64748B]">
+                              Terminal location is locked here. Manage additional branches from business location setup.
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -4163,9 +4274,38 @@ function SettingsWorkspace({
                       {getCashiersForLocation(terminal.location_id).length > 0 ? (
                         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                           {getCashiersForLocation(terminal.location_id).map((cashier) => (
-                            <div key={cashier.user_id} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                              <p className="truncate text-[12px] font-black text-emerald-900">{cashier.username || cashier.email}</p>
-                              <p className="mt-0.5 truncate text-[10px] font-semibold text-emerald-700">{cashier.email}</p>
+                            <div key={cashier.user_id} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-[12px] font-black text-emerald-900">{cashier.username || cashier.email}</p>
+                                  <p className="mt-0.5 truncate text-[10px] font-semibold text-emerald-700">{cashier.email}</p>
+                                </div>
+                                <span className="shrink-0 rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
+                                  Cashier
+                                </span>
+                              </div>
+                              <div className="mt-3 grid grid-cols-2 gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="h-8 rounded-lg border-emerald-200 bg-white px-2 text-[11px] font-extrabold text-emerald-800 hover:bg-emerald-100"
+                                  onClick={() => openCashierAccessEditor(cashier)}
+                                  disabled={locked || loading}
+                                >
+                                  <Pencil className="mr-1 h-3 w-3" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="h-8 rounded-lg border-rose-200 bg-white px-2 text-[11px] font-extrabold text-rose-600 hover:bg-rose-50"
+                                  onClick={() => removeCashierFromLocation(cashier, terminal.location_id)}
+                                  disabled={locked || loading}
+                                >
+                                  <Trash2 className="mr-1 h-3 w-3" />
+                                  Remove
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -4759,6 +4899,106 @@ function SettingsWorkspace({
         title="Invite DGFY Cashier"
         submitLabel="Send Cashier Invitation"
       />
+      <Dialog
+        open={cashierAccessDialog.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCashierAccessDialog({ open: false, cashier: null, locationIds: [], terminalId: '', newPassword: '', confirmPassword: '', loading: false, saving: false });
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Cashier</DialogTitle>
+            <DialogDescription>
+              Update this cashier for the locked branch and optional POS password reset.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[12px] font-black text-[#0F172A]">
+                {cashierAccessDialog.cashier?.username || cashierAccessDialog.cashier?.email || 'Cashier'}
+              </p>
+              <p className="mt-0.5 text-[11px] font-semibold text-[#64748B]">
+                {cashierAccessDialog.cashier?.email || 'No email available'}
+              </p>
+            </div>
+            {cashierAccessDialog.loading ? (
+              <p className="rounded-xl border border-slate-200 px-3 py-3 text-[12px] text-[#64748B]">
+                Loading cashier access...
+              </p>
+            ) : (
+              <div className="grid gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                  <Label className="text-[11px] font-black uppercase tracking-[0.14em] text-[#64748B]">Default Branch / Location</Label>
+                  <p className="mt-1 text-[13px] font-black text-[#0F172A]">
+                    {lockedTerminalLocation?.name || companyName || 'Current branch'}
+                  </p>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-[11px] font-black uppercase tracking-[0.14em] text-[#64748B]">Terminal</Label>
+                  <select
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-[#0F172A]"
+                    value={cashierAccessDialog.terminalId || lockedTerminalChoices[0]?.terminal_id || ''}
+                    onChange={(event) => setCashierAccessDialog((current) => ({ ...current, terminalId: sanitizeTerminalId(event.target.value) }))}
+                    disabled={cashierAccessDialog.saving || lockedTerminalChoices.length === 0}
+                  >
+                    {lockedTerminalChoices.length > 0 ? (
+                      lockedTerminalChoices.map((terminal) => (
+                        <option key={`cashier-terminal-choice-${terminal.terminal_id}`} value={terminal.terminal_id}>
+                          {terminal.label ? `${terminal.label} (${terminal.terminal_id})` : terminal.terminal_id}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No active terminal in this branch</option>
+                    )}
+                  </select>
+                </div>
+                <div className="grid gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
+                  <div className="grid gap-1.5">
+                    <Label className="text-[11px] font-black uppercase tracking-[0.14em] text-[#64748B]">New POS Password</Label>
+                    <Input
+                      type="password"
+                      value={cashierAccessDialog.newPassword || ''}
+                      onChange={(event) => setCashierAccessDialog((current) => ({ ...current, newPassword: event.target.value }))}
+                      placeholder="Leave blank to keep current password"
+                      disabled={cashierAccessDialog.saving}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-[11px] font-black uppercase tracking-[0.14em] text-[#64748B]">Confirm POS Password</Label>
+                    <Input
+                      type="password"
+                      value={cashierAccessDialog.confirmPassword || ''}
+                      onChange={(event) => setCashierAccessDialog((current) => ({ ...current, confirmPassword: event.target.value }))}
+                      placeholder="Confirm only when changing password"
+                      disabled={cashierAccessDialog.saving}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCashierAccessDialog({ open: false, cashier: null, locationIds: [], terminalId: '', newPassword: '', confirmPassword: '', loading: false, saving: false })}
+              disabled={cashierAccessDialog.saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+              onClick={saveCashierAccessEditor}
+              disabled={cashierAccessDialog.loading || cashierAccessDialog.saving}
+            >
+              {cashierAccessDialog.saving ? 'Saving...' : 'Save Cashier'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -4774,6 +5014,7 @@ export default function TerminalOperationsWorkspace({
   onStorefrontSetupSaved = async () => {},
   locked,
   terminalMeta,
+  companyName = '',
   shiftState,
   todayDashboard,
   reportRefreshKey = 0,
@@ -4863,7 +5104,9 @@ export default function TerminalOperationsWorkspace({
         <SettingsWorkspace
           terminalUser={terminalUser}
           terminalMeta={terminalMeta}
+          companyName={companyName}
           locationsState={locationsState}
+          operatingLocationId={operatingLocationId}
           queueLocationScopeId={queueLocationScopeId}
           setQueueLocationScopeId={setQueueLocationScopeId}
           incomingOrdersState={incomingOrdersState}
@@ -4910,6 +5153,9 @@ export default function TerminalOperationsWorkspace({
           handleRecordCashEvent={handleRecordCashEvent}
           sectionId={sectionIds.activeShift}
           initialTab={viewMode === 'close_shift' ? 'close_shift' : 'shift_location'}
+          companyName={companyName}
+          activeTerminalId={activeTerminalId}
+          terminalUser={terminalUser}
         />
       );
     case 'cash_drawer':
@@ -4940,6 +5186,9 @@ export default function TerminalOperationsWorkspace({
           handleRecordCashEvent={handleRecordCashEvent}
           sectionId={sectionIds.activeShift}
           initialTab="cash_drawer"
+          companyName={companyName}
+          activeTerminalId={activeTerminalId}
+          terminalUser={terminalUser}
         />
       );
     case 'reports':

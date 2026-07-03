@@ -356,6 +356,7 @@ function PosReportsAnalyticsWorkspace({
             <div class="card"><div class="label">Total Sales</div><div class="value">${money(summaryCards.total_sales, currencySymbol)}</div></div>
             <div class="card"><div class="label">Transactions</div><div class="value">${Number(summaryCards.total_transactions || 0)}</div></div>
             <div class="card"><div class="label">Gross Sales</div><div class="value">${money(summaryCards.gross_sales, currencySymbol)}</div></div>
+            <div class="card"><div class="label">All Discounts</div><div class="value">${money(dailyReport.summary?.discounts, currencySymbol)}</div></div>
             <div class="card"><div class="label">POS Profit/Loss</div><div class="value">${money(summaryCards.pos_profit_loss, currencySymbol)}</div></div>
           </div>
           <h2>Daily Top Items</h2>
@@ -487,6 +488,7 @@ function PosReportsAnalyticsWorkspace({
         <MetricCard label="Total Sales" value={money(summaryCards.total_sales, currencySymbol)} />
         <MetricCard label="Transactions" value={Number(summaryCards.total_transactions || 0)} />
         <MetricCard label="Gross Sales" value={money(summaryCards.gross_sales, currencySymbol)} />
+        <MetricCard label="All Discounts" value={money(dailyReport.summary?.discounts, currencySymbol)} />
         <MetricCard
           label="POS Profit/Loss"
           value={money(summaryCards.pos_profit_loss, currencySymbol)}
@@ -593,6 +595,20 @@ function PosReportsAnalyticsWorkspace({
               </SectionCard>
 
               <div className="grid gap-4 xl:grid-cols-2">
+                <SectionCard title="All Discounts">
+                  <DataTable
+                    columns={[
+                      { key: 'discount_label', label: 'Discount' },
+                      { key: 'discount_type', label: 'Type' },
+                      { key: 'transaction_count', label: 'Transactions', align: 'right' },
+                      { key: 'discount_amount', label: 'Discount Total', align: 'right', render: (row) => money(row.discount_amount, currencySymbol) },
+                      { key: 'vat_removed', label: 'VAT Removed', align: 'right', render: (row) => money(row.vat_removed, currencySymbol) }
+                    ]}
+                    rows={dailyReport.discount_breakdown || []}
+                    emptyMessage="No discounts were recorded for the selected filters."
+                  />
+                </SectionCard>
+
                 <SectionCard title="Payment & Order Method Breakdown">
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-3">
@@ -654,6 +670,12 @@ function PosReportsAnalyticsWorkspace({
                             </span>
                           </div>
                           <p className="mt-2 text-xs font-medium text-slate-500">{entry.shift_ids?.length || 0} shifts, {entry.summary?.total_transactions || 0} transactions</p>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <p className="font-semibold text-slate-500">Expected cash<br /><span className="font-black text-slate-950">{money(entry.shift_money?.expected_cash_amount, currencySymbol)}</span></p>
+                            <p className="font-semibold text-slate-500">Cash after shift<br /><span className="font-black text-slate-950">{money(entry.shift_money?.closing_cash_amount, currencySymbol)}</span></p>
+                            <p className="font-semibold text-slate-500">Variance<br /><span className={Number(entry.shift_money?.cash_variance_amount || 0) === 0 ? 'font-black text-slate-950' : 'font-black text-rose-700'}>{money(entry.shift_money?.cash_variance_amount, currencySymbol)}</span></p>
+                            <p className="font-semibold text-slate-500">Closed shifts<br /><span className="font-black text-slate-950">{entry.shift_money?.closed_shift_count || 0}</span></p>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -669,6 +691,9 @@ function PosReportsAnalyticsWorkspace({
                           </div>
                           <p className="mt-2 text-xs font-medium text-slate-500">
                             {entry.business_date || 'No business date'} • {entry.summary?.total_transactions || 0} transactions
+                          </p>
+                          <p className="mt-2 text-xs font-semibold text-slate-500">
+                            Closing cash: <span className="font-black text-slate-950">{entry.status === 'closed' ? money(entry.closing_cash_amount, currencySymbol) : 'Open shift'}</span>
                           </p>
                         </div>
                       ))}

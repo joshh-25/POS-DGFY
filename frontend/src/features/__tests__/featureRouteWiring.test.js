@@ -15,8 +15,6 @@ const featureStockMovementsPath = path.resolve(__dirname, '../stockMovements/pag
 
 describe('feature route wiring', () => {
   let mainContent = '';
-  let legacyItemsContent = '';
-  let legacyJobOrdersContent = '';
   let legacyStockMovementsContent = '';
   let featureItemsContent = '';
   let featureJobOrdersContent = '';
@@ -24,8 +22,6 @@ describe('feature route wiring', () => {
 
   beforeAll(() => {
     mainContent = fs.readFileSync(mainPath, 'utf8');
-    legacyItemsContent = fs.readFileSync(legacyItemsPath, 'utf8');
-    legacyJobOrdersContent = fs.readFileSync(legacyJobOrdersPath, 'utf8');
     legacyStockMovementsContent = fs.readFileSync(legacyStockMovementsPath, 'utf8');
     featureItemsContent = fs.readFileSync(featureItemsPath, 'utf8');
     featureJobOrdersContent = fs.readFileSync(featureJobOrdersPath, 'utf8');
@@ -44,9 +40,9 @@ describe('feature route wiring', () => {
     expect(mainContent).toContain("const StockMovements = lazy(() => import('./features/stockMovements/pages/StockMovementsPage.jsx'))");
   });
 
-  it('keeps legacy Pages files as facades to feature pages', () => {
-    expect(legacyItemsContent).toContain("import ItemsPage from '../src/features/inventory/pages/ItemsPage.jsx'");
-    expect(legacyJobOrdersContent).toContain("import JobOrdersPage from '../src/features/jobOrders/pages/JobOrdersPage.jsx'");
+  it('removes retired feature facades while preserving the remaining migration facade', () => {
+    expect(fs.existsSync(legacyItemsPath)).toBe(false);
+    expect(fs.existsSync(legacyJobOrdersPath)).toBe(false);
     expect(legacyStockMovementsContent).toContain("import StockMovementsPage from '../src/features/stockMovements/pages/StockMovementsPage.jsx'");
   });
 

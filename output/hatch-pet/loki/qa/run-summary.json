@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "run_dir": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki",
+  "spritesheet": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki\\final\\spritesheet.webp",
+  "validation": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki\\final\\validation.json",
+  "contact_sheet": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki\\qa\\contact-sheet.png",
+  "review": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki\\qa\\review.json",
+  "package": "C:\\Users\\USER\\.codex\\pets\\loki"
+}

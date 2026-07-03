@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-02
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-07-02-fnb-import-image-hotfix
-classification: minor
-surfaces: ims-items,fnb,storefront-catalog
+classification: regulatory
+surfaces: ims-items,fnb,pos-tests,pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.02
 verification_evidence: npm --prefix backend test -- --runInBand tests/errorHandler.loggingPolicy.test.js tests/csvImportService.workflowMode.test.js tests/inventoryItemRepository.test.js,npm run qa:fnb-readiness,npm run check:architecture,npm run check:compliance,git diff --check
@@ -20,19 +20,21 @@ preflight_request_ref: FNB-IMPORT-IMAGE-HOTFIX-2026-07-02
 
 ## Compliance Impact Classification
 
-Minor. This hotfix stabilizes F&B item CSV import write pressure, maps upload-limit errors to client-visible responses, and keeps Storefront catalog image writes usable while tenant schemas catch up to the image-gallery column.
+Major. This hotfix stabilizes F&B item CSV import write pressure, maps upload-limit errors to client-visible responses, keeps Storefront catalog image writes usable while tenant schemas catch up to the image-gallery column, and ships alongside compliance-sensitive POS contract reconciliation.
 
 ## Affected Surfaces
 
 1. IMS Items CSV import confirm path.
 2. IMS Items Storefront Catalog image upload path.
 3. Storefront catalog override repository fallback.
+4. POS terminal contract test expectation only, matching the current DGFY Email label.
 
 ## Compliance Preconditions
 
 1. POS checkout calculations, fiscal receipts, payment behavior, shift rules, and terminal pairing behavior must remain unchanged.
 2. CSV import must keep validating workflow-mode templates and item taxonomy.
 3. Storefront image upload must still reject invalid files and enforce upload limits.
+4. The POS contract test correction must not change runtime POS UI or authentication logic.
 
 ## Verification Evidence
 

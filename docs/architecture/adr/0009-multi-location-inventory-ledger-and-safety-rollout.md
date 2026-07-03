@@ -3,6 +3,8 @@
 ## Status
 Accepted (2026-04-16)
 
+Update note (2026-06-28): POS supports an explicit per-item `pos_always_available` override. It is disabled by default, applies only to direct POS sales, and allows checkout without changing stock when an item has no recipe movements. Recipe ingredient availability and depletion remain enforced.
+
 ## Context
 The platform currently supports tenant locations for storefront and POS lifecycle routing, but inventory stock accounting remains globally scoped to `items.current_stock` and location-agnostic FIFO batches/movements.
 
@@ -74,6 +76,14 @@ Rules:
 4. Services Mode service lines remain stock-exempt only when the sold line is truly a service. Any physical add-on, retail product, consumable, kit, supply deduction, or bundled stocked component in Services Mode is stock-bearing and must use location-scoped FIFO.
 5. F&B recipe/menu depletion uses the same contract: ingredient composition rows deduct FIFO batches at the operating location; menu items without recipe rows deduct the sold item through FIFO when the sold item is stock-bearing.
 6. Customer Access Mode and Inventory Display never change FIFO/location accounting. They only affect customer-facing visibility and action eligibility.
+
+## Addendum (2026-06-28): POS Always-Available Override
+
+1. `pos_catalog_overrides.pos_always_available` is the explicit POS-only exception to the default oversell block and defaults to `false`.
+2. When enabled for a direct, non-recipe POS line, checkout does not require on-hand stock and does not create a stock movement or negative inventory balance.
+3. Recipe-backed lines still require and consume their ingredient movements. The override cannot bypass ingredient availability.
+4. Storefront availability and checkout are unchanged by this POS-only setting.
+5. Voids reverse only stock movements created by the original transaction, so a direct always-available sale cannot add stock during reversal.
 
 ## Safety and Rollout Policy
 1. Additive schema only during rollout (no destructive drops/renames in migration window).

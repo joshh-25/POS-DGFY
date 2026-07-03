@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-06-30
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-06-30-frontend-release-gate-baseline
-classification: major
-surfaces: pos,terminal,storefront
+classification: regulatory
+surfaces: pos,terminal,storefront,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.06.30
 verification_evidence: npm run test:frontend,npm run check:frontend-budgets,npm --prefix frontend run build:all,npm run lint:docs,npm run check:architecture,npm run check:compliance

@@ -1,0 +1,11 @@
+{
+  "extends": "../mobile/hardware-pos/tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "."
+  },
+  "include": [
+    "index.js",
+    "../mobile/hardware-pos/src/**/*.ts",
+    "../mobile/hardware-pos/src/**/*.tsx"
+  ]
+}

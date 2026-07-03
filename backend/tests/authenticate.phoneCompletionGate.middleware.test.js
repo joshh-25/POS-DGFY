@@ -93,6 +93,30 @@ describe('authenticate middleware phone completion gate behavior', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
+  it('restores default POS permissions for an admin with a stale partial permission list', async () => {
+    const loaded = await loadAuthenticate({ enforcePhoneCompletion: false });
+    configureUser(loaded);
+    loaded.mockFindByPk.mockResolvedValue({
+      user_id: 11,
+      username: 'company-admin',
+      email: 'admin@example.com',
+      phone_number: '+639000000000',
+      role: 'admin',
+      permissions: ['users:view'],
+      is_master_admin: false,
+      is_active: true,
+      deleted_at: null
+    });
+    const req = buildRequest();
+    const res = createRes();
+    const next = jest.fn();
+
+    await loaded.authenticate(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.user.permissions).toEqual(expect.arrayContaining(['pos:view', 'pos:transact']));
+  });
+
   it('blocks normal requests when enforcement is active', async () => {
     const loaded = await loadAuthenticate({ enforcePhoneCompletion: true });
     configureUser(loaded);

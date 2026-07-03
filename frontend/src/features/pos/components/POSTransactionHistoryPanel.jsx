@@ -5,6 +5,10 @@ import { Input } from '@/components/ui/input';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
+const formatDiscountDisplay = (value) => {
+    const amount = Number(value || 0);
+    return amount > 0 ? `PHP ${money(amount)}` : '–';
+};
 const ORDER_SOURCE_LABELS = {
     in_store: 'In-Store',
     online_store: 'Online Store'
@@ -118,8 +122,8 @@ export default function POSTransactionHistoryPanel({
     }, []);
 
     return (
-        <section className="space-y-4 rounded-xl bg-white p-1 lg:p-0">
-                <div className="flex flex-col gap-3 border-b border-slate-200 px-3 pb-4 pt-2 xl:flex-row xl:items-start xl:justify-between lg:px-4">
+        <section className="flex h-full min-h-0 flex-col rounded-xl bg-white p-1 lg:p-0">
+                <div className="shrink-0 flex flex-col gap-3 border-b border-slate-200 px-3 pb-4 pt-2 xl:flex-row xl:items-start xl:justify-between lg:px-4">
                     <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto">
                         <IconInput icon={Search}>
                             <Input
@@ -149,7 +153,7 @@ export default function POSTransactionHistoryPanel({
                     </div>
                 </div>
 
-                <div className="px-3 lg:px-4">
+                <div className="shrink-0 px-3 py-4 lg:px-4">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         <SelectField label="Status" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
                             <option value="all">All Status</option>
@@ -249,8 +253,8 @@ export default function POSTransactionHistoryPanel({
                     </div>
                 </div>
 
-                <div className="overflow-hidden border-t border-slate-200">
-                    <div className="dgfy-pos-scrollbar-hidden overflow-x-auto" aria-busy={historyLoading}>
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-slate-200">
+                    <div className="dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-auto overscroll-contain" aria-busy={historyLoading}>
                         <table className={`w-full text-[13px] ${isTabletViewport ? 'min-w-[820px]' : 'min-w-[1220px]'}`} aria-label="POS transaction history table">
                             <caption className="sr-only">POS transaction history with receipt and sales report actions</caption>
                             <thead>
@@ -306,9 +310,7 @@ export default function POSTransactionHistoryPanel({
                                                 {!isTabletViewport && <td className="px-4 py-4 text-[#334155]">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>}
                                                 {!isTabletViewport && (
                                                     <td className="px-4 py-4 text-[#334155]">
-                                                        {row.discount_label_snapshot
-                                                            ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-                                                            : '–'}
+                                                        {formatDiscountDisplay(row.discount_amount)}
                                                     </td>
                                                 )}
                                                 {!isTabletViewport && <td className="w-[1px] px-2 py-4 text-right text-[#334155] whitespace-nowrap">PHP {money(row.service_fee_amount)}</td>}
@@ -362,9 +364,7 @@ export default function POSTransactionHistoryPanel({
                                                             <div>
                                                                 <span className="font-semibold text-[#0F172A]">Discount</span>
                                                                 <p className="mt-1">
-                                                                    {row.discount_label_snapshot
-                                                                        ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-                                                                        : '–'}
+                                                                    {formatDiscountDisplay(row.discount_amount)}
                                                                 </p>
                                                             </div>
                                                             <div>
@@ -398,7 +398,7 @@ export default function POSTransactionHistoryPanel({
                         </table>
                     </div>
 
-                    <div className="flex flex-col gap-4 border-t border-slate-200 px-6 py-4 text-[13px] text-[#334155] lg:flex-row lg:items-center lg:justify-between">
+                    <div className="shrink-0 flex flex-col gap-4 border-t border-slate-200 px-6 py-4 text-[13px] text-[#334155] lg:flex-row lg:items-center lg:justify-between">
                         <p>
                             Showing {pageStart} to {pageEnd || 0} of {totalEntries || historyRows.length} entries
                         </p>

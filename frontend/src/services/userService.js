@@ -42,6 +42,11 @@ export const changePassword = async (passwordData) => {
   return response.data.data;
 };
 
+export const resetLocalCashierPassword = async (userId, newPassword) => {
+  const response = await api.put(`/users/${userId}/password`, { newPassword });
+  return response.data.data;
+};
+
 /**
  * Get all users (admin only)
  * @returns {Promise<Array>} List of all users

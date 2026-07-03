@@ -6,7 +6,8 @@ import org.json.JSONObject
 
 class IminBridge(
     private val drawerController: DrawerController,
-    private val onWebPosReady: (() -> Unit)? = null
+    private val onWebPosReady: (() -> Unit)? = null,
+    private val onShowMessage: ((String, String) -> Unit)? = null
 ) {
     @JavascriptInterface
     fun isIminWrapper(): Boolean = true
@@ -34,6 +35,15 @@ class IminBridge(
             .put("product", Build.PRODUCT)
             .put("sdkInt", Build.VERSION.SDK_INT)
             .put("printer", drawerController.diagnosticsJson())
+            .toString()
+    }
+
+    @JavascriptInterface
+    fun showMessage(title: String, message: String): String {
+        onShowMessage?.invoke(title, message)
+        return JSONObject()
+            .put("success", true)
+            .put("message", "Native message shown")
             .toString()
     }
 

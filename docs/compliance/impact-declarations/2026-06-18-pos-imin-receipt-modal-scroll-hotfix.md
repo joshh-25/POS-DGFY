@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-06-18
 related_adr: docs/architecture/adr/0025-pos-application-shells-and-lan-host-runtime.md
 declaration_id: 2026-06-18-pos-imin-receipt-modal-scroll-hotfix
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.06.18
 verification_evidence: npm --prefix frontend test -- --run src/features/pos/__tests__/terminalViewModeContracts.test.js,npm --prefix frontend run build:pos,npm --prefix frontend run build:skupervisor,git diff --check

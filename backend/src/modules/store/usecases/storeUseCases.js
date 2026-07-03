@@ -421,15 +421,6 @@ const assertCheckoutLocationOperationalReadiness = ({ location, settings, orderM
         );
     }
 
-    const posOpenStatus = parseBooleanSetting(settings?.pos_open_status?.value, true);
-    if (!posOpenStatus) {
-        throw new DomainError(
-            DomainErrorCode.CONFLICT,
-            'Storefront is currently closed and not accepting orders',
-            { statusCode: 409 }
-        );
-    }
-
     if (location.is_open === false) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
@@ -1071,7 +1062,8 @@ const resolveCheckoutContext = async ({
         settings,
         location
     });
-    const storefrontOpen = parseBooleanSetting(settings?.pos_open_status?.value, true) && location.is_open !== false;
+    const storefrontOpen = location.is_open !== false
+        && isDateWithinStorefrontBusinessHours(new Date(), settings?.storefront_hours?.value);
 
     const itemMap = new Map(items.map((item) => [item.item_id, item]));
     if (itemMap.size !== itemIds.length) {
@@ -2084,12 +2076,22 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
             if (!transaction.finished) {
                 await transaction.rollback();
             }
-            logger.warn('[StorefrontCheckout] Failed to complete storefront checkout', {
+            logger.error('[StorefrontCheckout] Failed to complete storefront checkout', {
                 tenant_id: normalizedTenantId,
                 error_name: error?.name || 'Error',
                 error_message: error?.message || 'Unknown error',
                 error_code: error?.code || null,
-                reason_code: error?.details?.reason_code || null
+                error_details: error?.details || null,
+                stack: error?.stack || null
+            });
+            console.error('[StorefrontCheckoutDebug]', {
+                tenant_id: normalizedTenantId,
+                error_name: error?.name || 'Error',
+                error_message: error?.message || 'Unknown error',
+                sql_message: error?.original?.sqlMessage || error?.parent?.sqlMessage || null,
+                sql: error?.sql || error?.original?.sql || error?.parent?.sql || null,
+                error_code: error?.original?.code || error?.parent?.code || error?.code || null,
+                stack: error?.stack || null
             });
             return fail(mapStoreUseCaseError(error, 'Failed to complete storefront checkout'));
         }

@@ -32,8 +32,8 @@ describe('TerminalLockDrawer DGFY access UI', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Terminal Login Required' })).toBeTruthy();
-    expect(screen.getByLabelText('DGFY Email')).toBeTruthy();
-    expect(screen.getByLabelText('DGFY Password')).toBeTruthy();
+    expect(screen.getByLabelText('DGFY or Cashier Email')).toBeTruthy();
+    expect(screen.getByLabelText('Password')).toBeTruthy();
     expect(screen.queryByLabelText('Company')).toBeNull();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
     expect(screen.getByText('Legacy access until June 17, 2027')).toBeTruthy();

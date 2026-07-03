@@ -667,8 +667,7 @@ const buildTenantSnapshot = async (tenant) => {
         .filter(Boolean) : [];
 
     const storefrontHoursStatus = getStorefrontBusinessHoursStatus(settings.storefront_hours);
-    const storefrontOpen = parseBoolean(settings.pos_open_status, true)
-        && (storeHasNoLocation || location.is_open !== false)
+    const storefrontOpen = (storeHasNoLocation || location.is_open !== false)
         && storefrontHoursStatus.is_open_now !== false;
     const storefrontWhyChooseUs = parseJsonArray(settings.storefront_why_choose_us)
         .map((entry) => toTrimmedString(entry, 120))

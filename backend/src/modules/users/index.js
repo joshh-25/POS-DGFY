@@ -3,6 +3,7 @@ import {
   buildGetCurrentUserUseCase,
   buildUpdateProfileUseCase,
   buildChangePasswordUseCase,
+  buildResetLocalCashierPasswordUseCase,
   buildGetAllUsersUseCase,
   buildGetRoleCatalogUseCase,
   buildUpdateUserRoleUseCase,
@@ -20,6 +21,7 @@ import {
 export const getCurrentUserUseCase = buildGetCurrentUserUseCase({ userService });
 export const updateProfileUseCase = buildUpdateProfileUseCase({ userService });
 export const changePasswordUseCase = buildChangePasswordUseCase({ userService });
+export const resetLocalCashierPasswordUseCase = buildResetLocalCashierPasswordUseCase({ userService });
 export const getAllUsersUseCase = buildGetAllUsersUseCase({ userService });
 export const getRoleCatalogUseCase = buildGetRoleCatalogUseCase({ userService });
 export const updateUserRoleUseCase = buildUpdateUserRoleUseCase({ userService });

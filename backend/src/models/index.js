@@ -34,6 +34,9 @@ import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
 import PosTransaction from './PosTransaction.js';
 import PosTransactionLine from './PosTransactionLine.js';
+import PosDiscountRule from './PosDiscountRule.js';
+import PosTransactionDiscount from './PosTransactionDiscount.js';
+import PosTransactionDiscountLine from './PosTransactionDiscountLine.js';
 import PosInvoiceCounter from './PosInvoiceCounter.js';
 import PosZReadingSnapshot from './PosZReadingSnapshot.js';
 import PosOperationReplay from './PosOperationReplay.js';
@@ -374,6 +377,16 @@ PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: '
 PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 PosTransactionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+PosTransaction.hasOne(PosTransactionDiscount, { foreignKey: 'transaction_id', as: 'discount' });
+PosTransactionDiscount.belongsTo(PosTransaction, { foreignKey: 'transaction_id', as: 'transaction' });
+PosDiscountRule.hasMany(PosTransactionDiscount, { foreignKey: 'discount_rule_id', as: 'transactionDiscounts' });
+PosTransactionDiscount.belongsTo(PosDiscountRule, { foreignKey: 'discount_rule_id', as: 'rule' });
+PosTransactionDiscount.hasMany(PosTransactionDiscountLine, { foreignKey: 'transaction_discount_id', as: 'lines' });
+PosTransactionDiscountLine.belongsTo(PosTransactionDiscount, { foreignKey: 'transaction_discount_id', as: 'discount' });
+PosTransactionLine.hasOne(PosTransactionDiscountLine, { foreignKey: 'transaction_line_id', as: 'discountAllocation' });
+PosTransactionDiscountLine.belongsTo(PosTransactionLine, { foreignKey: 'transaction_line_id', as: 'transactionLine' });
+User.hasMany(PosTransactionDiscount, { foreignKey: 'manager_approval_id', as: 'approvedPosDiscounts' });
+PosTransactionDiscount.belongsTo(User, { foreignKey: 'manager_approval_id', as: 'approvedBy' });
 PosFiscalEvent.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 PosFiscalPrintEvent.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 PosFiscalTerminalRegistration.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
@@ -637,6 +650,9 @@ const db = {
   DispatchOrderLine,
   PosTransaction,
   PosTransactionLine,
+  PosDiscountRule,
+  PosTransactionDiscount,
+  PosTransactionDiscountLine,
   PosInvoiceCounter,
   PosZReadingSnapshot,
   PosOperationReplay,
@@ -773,6 +789,9 @@ export {
   DispatchOrderLine,
   PosTransaction,
   PosTransactionLine,
+  PosDiscountRule,
+  PosTransactionDiscount,
+  PosTransactionDiscountLine,
   PosInvoiceCounter,
   PosZReadingSnapshot,
   PosOperationReplay,

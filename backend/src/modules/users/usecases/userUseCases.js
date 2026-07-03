@@ -84,6 +84,39 @@ export const buildChangePasswordUseCase = ({ userService }) => {
   };
 };
 
+export const buildResetLocalCashierPasswordUseCase = ({ userService }) => {
+  return async ({ adminUserId, targetUserId, newPassword }) => {
+    const normalizedAdminUserId = parsePositiveInt(adminUserId);
+    const normalizedTargetUserId = parsePositiveInt(targetUserId);
+    if (!normalizedAdminUserId || !normalizedTargetUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'adminUserId and targetUserId must be positive integers',
+        { statusCode: 400 }
+      ));
+    }
+
+    if (!newPassword || String(newPassword).length < 8) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'newPassword must be at least 8 characters',
+        { statusCode: 400 }
+      ));
+    }
+
+    try {
+      const data = await userService.resetLocalCashierPassword(
+        normalizedAdminUserId,
+        normalizedTargetUserId,
+        newPassword
+      );
+      return ok(data);
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to reset cashier password'));
+    }
+  };
+};
+
 export const buildGetAllUsersUseCase = ({ userService }) => {
   return async ({ includeInvitations = false } = {}) => {
     try {

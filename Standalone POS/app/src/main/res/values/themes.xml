@@ -1,0 +1,11 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.Theme.StandalonePOS" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/standalone_pos_brand</item>
+        <item name="colorSecondary">@color/standalone_pos_brand</item>
+        <item name="android:statusBarColor">@color/standalone_pos_background</item>
+        <item name="android:navigationBarColor">@color/standalone_pos_background</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+    </style>
+
+    <style name="Theme.StandalonePOS" parent="Base.Theme.StandalonePOS" />
+</resources>

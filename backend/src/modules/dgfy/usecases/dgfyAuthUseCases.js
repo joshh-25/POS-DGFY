@@ -1430,7 +1430,10 @@ export const buildStartDgfyPosSessionUseCase = ({
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'This DGFY account does not have POS access for the selected company.', { statusCode: 403 });
         }
         const terminalPolicy = typeof validateTerminalPolicy === 'function'
-            ? await validateTerminalPolicy({ tenantId: resolvedTenantId, terminalId })
+            ? await validateTerminalPolicy({
+                tenantId: resolvedTenantId,
+                terminalId
+            })
             : { terminal_id: terminalId, reason_code: 'NOT_VALIDATED' };
         await repository?.createBusinessAuditLog?.(buildBusinessAuditPayload({
             account,

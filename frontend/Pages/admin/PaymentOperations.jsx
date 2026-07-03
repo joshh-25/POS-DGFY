@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CreditCard, Download, RefreshCw, RotateCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import * as adminService from '@/services/adminService';
@@ -51,6 +52,7 @@ export default function PaymentOperations() {
   const [savingAccount, setSavingAccount] = useState(false);
   const [creatingChildAccount, setCreatingChildAccount] = useState(false);
   const [submittingRefund, setSubmittingRefund] = useState(false);
+  const [refundConfirmation, setRefundConfirmation] = useState(null);
   const [retryingReference, setRetryingReference] = useState('');
   const [providerAction, setProviderAction] = useState('');
   const [sessions, setSessions] = useState([]);
@@ -267,8 +269,10 @@ export default function PaymentOperations() {
     const sessionLabel = selectedRefundSession
       ? `${selectedRefundSession.public_reference} (${money(selectedRefundSession.refundable_amount_centavos)} refundable)`
       : refundForm.payment_session_id;
-    const confirmed = window.confirm(`Submit a ${money(requestedRefundCentavos)} PayMongo refund for ${sessionLabel}? This cannot be cancelled after PayMongo accepts it.`);
-    if (!confirmed) return;
+    setRefundConfirmation({ sessionLabel, amountCentavos: requestedRefundCentavos });
+  };
+
+  const submitConfirmedRefund = async () => {
     setSubmittingRefund(true);
     try {
       await adminService.createCommercePaymentRefund(refundForm.payment_session_id, {
@@ -279,8 +283,11 @@ export default function PaymentOperations() {
       });
       toast.success('Refund submitted to PayMongo. Session status stays pending until provider reconciliation completes.');
       await loadData();
+      return true;
     } catch (error) {
-      toast.error(error.response?.data?.message || error.message || 'Failed to create refund.');
+      const message = error.response?.data?.message || error.message || 'Failed to create refund.';
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setSubmittingRefund(false);
     }
@@ -631,6 +638,15 @@ export default function PaymentOperations() {
           </table>
         </div>
       </div>
+      <ConfirmActionDialog
+        open={Boolean(refundConfirmation)}
+        onOpenChange={(open) => { if (!open) setRefundConfirmation(null); }}
+        title="Submit PayMongo Refund"
+        description={`Submit a ${money(refundConfirmation?.amountCentavos)} PayMongo refund for ${refundConfirmation?.sessionLabel || 'this payment session'}? This cannot be cancelled after PayMongo accepts it.`}
+        confirmLabel="Submit Refund"
+        variant="destructive"
+        onConfirm={submitConfirmedRefund}
+      />
     </div>
   );
 }

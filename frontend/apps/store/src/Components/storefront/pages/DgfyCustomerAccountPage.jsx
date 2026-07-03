@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Bell,
@@ -121,7 +121,7 @@ export function DgfyCustomerAccountPage({
   const accountContactParts = String(accountIdentityContact || '').split(' | ').map((value) => String(value || '').trim());
   const overviewPhone = String(accountPanel?.me?.phone || accountContactParts[0] || '').trim();
   const overviewEmail = String(accountPanel?.me?.email || accountContactParts[1] || '').trim();
-  
+
   const loyalty = accountPanel?.loyalty || { balance: 0, transactions: [] };
   const loyaltyTransactions = Array.isArray(loyalty?.transactions) ? loyalty.transactions.slice(0, 3) : [];
   const businessMemberships = Array.isArray(accountPanel?.memberships)
@@ -129,7 +129,7 @@ export function DgfyCustomerAccountPage({
     : [];
   const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
   const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
-  
+
   const [activeNav, setActiveNav] = useState('overview');
   const [activeActivityTab, setActiveActivityTab] = useState('active_orders');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -182,7 +182,7 @@ export function DgfyCustomerAccountPage({
     const s = String(status).toLowerCase();
     let color = THEME.muted;
     let bg = THEME.border;
-    
+
     if (s.includes('active') || s.includes('progress') || s.includes('preparing') || s.includes('confirmed')) {
       color = THEME.info;
       bg = THEME.infoBg;
@@ -198,15 +198,15 @@ export function DgfyCustomerAccountPage({
     }
 
     return (
-      <span style={{ 
-        display: 'inline-flex', 
-        alignItems: 'center', 
-        padding: '2px 8px', 
-        borderRadius: 999, 
-        fontSize: 12, 
-        fontWeight: 600, 
-        color: color, 
-        background: bg 
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '2px 8px',
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 600,
+        color: color,
+        background: bg
       }}>
         {prettyStatus(status)}
       </span>
@@ -266,10 +266,10 @@ export function DgfyCustomerAccountPage({
 
   const renderOverview = () => (
     <div style={{ display: 'grid', gap: isMobileViewport ? 18 : 24 }}>
-      
+
       {/* 1. Profile Header Section */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1.5fr 1fr', gap: isMobileViewport ? 16 : 24 }}>
-        
+
         {/* Profile Card */}
         <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobileViewport ? 16 : 24, display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: isMobileViewport ? 14 : 20, flexDirection: isMobileViewport ? 'column' : 'row' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 14 : 20 }}>
@@ -358,7 +358,7 @@ export function DgfyCustomerAccountPage({
 
       {/* 3. Main Dashboard & Utility Panel Row */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '2fr 1fr', gap: 24 }}>
-        
+
         {/* Activity Tabs Section */}
         <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {/* Tabs */}
@@ -418,7 +418,7 @@ export function DgfyCustomerAccountPage({
                         <div style={{ fontSize: 12, color: THEME.muted, marginTop: 4 }}>Placed on {formatDate(order.occurred_at)}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <button 
+                        <button
                           onClick={() => onTrackReference(order)}
                           style={{ background: 'transparent', border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: THEME.primary, cursor: 'pointer' }}
                         >
@@ -541,16 +541,16 @@ export function DgfyCustomerAccountPage({
           ].map((action, i) => {
             const Icon = action.icon;
             return (
-              <button 
-                key={i} 
+              <button
+                key={i}
                 onClick={
                   action.label === 'Reorder Items' ? () => setActiveNav('orders') :
                   action.label === 'Add Address' ? () => setActiveNav('addresses') :
                   action.label === 'Update Profile' ? () => setActiveNav('account') :
                   onHelp
                 }
-                style={{ background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}`, padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer', transition: 'background 200ms' }} 
-                onMouseOver={e => e.currentTarget.style.background = THEME.bg} 
+                style={{ background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}`, padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer', transition: 'background 200ms' }}
+                onMouseOver={e => e.currentTarget.style.background = THEME.bg}
                 onMouseOut={e => e.currentTarget.style.background = THEME.surface}
               >
                 <Icon size={18} color={action.color} />
@@ -693,7 +693,7 @@ export function DgfyCustomerAccountPage({
   const renderAccount = () => (
     <div style={{ display: 'grid', gap: 24 }}>
       <h2 style={{ fontSize: 28, fontWeight: 800, color: THEME.text, marginBottom: 8 }}>Account Settings</h2>
-      
+
       {/* Container 1: Profile Overview */}
       <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>Profile Overview</h3>
@@ -736,7 +736,7 @@ export function DgfyCustomerAccountPage({
       <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>Contact Information</h3>
         <div style={{ display: 'grid', gap: 16 }}>
-          
+
           {/* Email Row */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -811,13 +811,13 @@ export function DgfyCustomerAccountPage({
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2499, minHeight: '100vh', background: THEME.bg, display: 'flex', fontFamily: "'Inter', sans-serif" }}>
-      
+
       {/* --- LEFT NAVIGATION SIDEBAR --- */}
-      <aside style={{ 
-        width: 260, 
-        background: THEME.surface, 
-        borderRight: `1px solid ${THEME.border}`, 
-        display: isMobileViewport && !isMobileMenuOpen ? 'none' : 'flex', 
+      <aside style={{
+        width: 260,
+        background: THEME.surface,
+        borderRight: `1px solid ${THEME.border}`,
+        display: isMobileViewport && !isMobileMenuOpen ? 'none' : 'flex',
         flexDirection: 'column',
         position: isMobileViewport ? 'fixed' : 'relative',
         inset: isMobileViewport ? 0 : 'auto',
@@ -831,7 +831,7 @@ export function DgfyCustomerAccountPage({
           <div style={{ fontSize: 10, fontWeight: 600, color: THEME.primary, letterSpacing: '0.02em', marginTop: 2 }}>
             Discover Goods For You
           </div>
-          
+
           {isMobileViewport && (
             <button onClick={() => setIsMobileMenuOpen(false)} style={{ position: 'absolute', top: 24, right: 24, background: 'none', border: 'none' }}>
               <X size={24} color={THEME.muted} />
@@ -892,10 +892,10 @@ export function DgfyCustomerAccountPage({
 
       {/* --- MAIN CONTENT AREA --- */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
-        
+
         {/* Header Shell */}
         <header style={{ height: 72, background: THEME.surface, borderBottom: `1px solid ${THEME.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px', position: 'sticky', top: 0, zIndex: 30, flexShrink: 0 }}>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             {isMobileViewport && (
               <button onClick={() => setIsMobileMenuOpen(true)} style={{ background: 'transparent', border: 'none', color: THEME.text }}>

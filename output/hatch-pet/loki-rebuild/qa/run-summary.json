@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "run_dir": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki-rebuild",
+  "spritesheet": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki-rebuild\\final\\spritesheet.webp",
+  "validation": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki-rebuild\\final\\validation.json",
+  "contact_sheet": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki-rebuild\\qa\\contact-sheet.png",
+  "review": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki-rebuild\\qa\\review.json",
+  "package": "C:\\Users\\USER\\.codex\\pets\\loki"
+}

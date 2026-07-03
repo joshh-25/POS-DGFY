@@ -5,7 +5,7 @@ last_reviewed: 2026-06-15
 related_adr: docs/architecture/adr/0025-pos-application-shells-and-lan-host-runtime.md
 declaration_id: 2026-06-15-pos-terminal-lookup-rate-limit-adjustment
 classification: regulatory
-surfaces: pos,terminal
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,POS_LOGIN_TENANT_NOT_FOUND,POS_LOGIN_COMPANY_TOKEN_UNRESOLVED,RATE_LIMITED
 policy_version: 2026.06.15
 verification_evidence: npm --prefix backend test -- --runTestsByPath tests/rateLimiter.behavior.test.js,npm --prefix frontend test -- --run src/features/pos/utils/__tests__/terminalUnlockDiagnostics.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js,npm --prefix frontend run build:pos,npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check

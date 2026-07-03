@@ -7,6 +7,7 @@ Update note (2026-04-07): regulatory source chain refreshed to include BIR RR 7-
 Update note (2026-04-07): compliance declaration guardrail semantics tightened with path/surface-computed minimum classification floors and strict major/regulatory preflight evidence validation, without changing route/API contracts.
 Update note (2026-04-21): superseded in part by ADR 0011 for governed compliant-to-non-compliant downgrade exceptions (platform force and tenant one-per-cycle revert).
 Update note (2026-06-02): POS receipt print surfaces must classify fiscal/non-fiscal status only from explicit server-provided `document_type` and `document_context`; invoice number prefixes are sequence identifiers only and are not fiscal-status signals.
+Update note (2026-06-28): POS terminal and checkout operation no longer fails closed only because compliance mode choice/readiness is unavailable or incomplete. POS may continue as non-compliant/non-fiscal operation; fiscal/compliant-only output and payment capability enablement remain policy-gated.
 
 ## Context
 The product must support both:
@@ -26,7 +27,7 @@ Update note (2026-05-21): ADR 0022 amends public company registration. New publi
    - `compliant_pending`
    - `compliant_active`
 3. Generic compliant downgrade is forbidden; only governed downgrade exceptions defined in ADR 0011 are allowed at API/use-case/repository/DB-trigger layers.
-4. Existing tenants require one-time mode selection (`compliance_mode_choice_required=true`) before POS/terminal/payment capability operations proceed.
+4. Existing tenants may use POS/terminal operation without one-time mode selection; unresolved mode choice defaults POS to non-compliant/non-fiscal operation. Payment capability enablement remains blocked until mode choice is resolved.
 5. POS output contract is mode-based:
    - non-compliant and compliant-pending -> `non_fiscal_slip`
    - compliant-active -> `fiscal_invoice`
@@ -46,7 +47,7 @@ Update note (2026-05-21): ADR 0022 amends public company registration. New publi
 1. Tenant selects mode at registration.
 2. `compliant` path remains irreversible by default.
 3. Non-compliant tenants may upgrade to compliant later; downgrade is only possible via governed exceptions in ADR 0011.
-4. Legacy tenants must complete one-time mode choice before gated operations continue.
+4. Legacy tenants may continue POS operation as non-compliant/non-fiscal until one-time mode choice is completed; payment capability enablement remains gated.
 5. Non-compliant output is explicitly non-fiscal.
 6. Compliant mode requires accredited/verified peripherals for required classes.
 7. Upgrade is checklist-gated (`compliant_pending` -> `compliant_active`).
@@ -56,7 +57,7 @@ Update note (2026-05-21): ADR 0022 amends public company registration. New publi
 1. No tenant reaches `compliant_active` using unverified self-attested artifact/peripheral status only.
 2. Non-compliant tenants cannot emit fiscal output contracts.
 3. Compliant-active terminal operations fail when terminal-required classes are missing (unless shared fallback satisfies).
-4. Legacy mode choice is enforced exactly once; later downgrade remains governed by ADR 0011 exceptions.
+4. Legacy mode choice is enforced for compliance/payment capability enablement, not for non-fiscal POS operation; later downgrade remains governed by ADR 0011 exceptions.
 5. Runtime policy denials include reason codes and deterministic decision output.
 6. Compliance-sensitive diffs fail CI/pre-commit without valid declaration metadata.
 7. `check:architecture`, `check:compliance`, and docs lint stay mandatory gates.

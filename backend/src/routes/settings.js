@@ -9,8 +9,8 @@ import {
 import { PERMISSIONS } from '../config/permissions.js';
 import { storefrontAssetUpload } from '../config/uploadConfig.js';
 import {
-  validateStorefrontAssetTypeParam,
   validateVerifyPosSettingsAccessPin,
+  validateStorefrontAssetTypeParam,
   validateUpdateSettings,
   validateUpdateSingleSetting
 } from '../validators/settingsValidator.js';

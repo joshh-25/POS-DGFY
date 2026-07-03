@@ -516,7 +516,7 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     expect(result.rows[0].has_in_stock_match).toBe(false);
   });
 
-  it('keeps no-location stores out of default map browsing but includes them in search', async () => {
+  it('includes searchable no-location stores in default discovery browsing and search', async () => {
     const repository = await loadRepository();
     findAllMock.mockResolvedValue([
       makeEntry({
@@ -547,7 +547,12 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     ]);
 
     const defaultBrowse = await repository.listDiscovery({ limit: 10 });
-    expect(defaultBrowse.rows.map((row) => row.tenant_id)).toEqual(['tenant-map']);
+    expect(defaultBrowse.rows.map((row) => row.tenant_id)).toEqual(['tenant-map', 'tenant-search-only']);
+    expect(defaultBrowse.rows[1]).toEqual(expect.objectContaining({
+      tenant_id: 'tenant-search-only',
+      latitude: null,
+      longitude: null
+    }));
 
     const search = await repository.listDiscovery({
       search: 'calamansi',
