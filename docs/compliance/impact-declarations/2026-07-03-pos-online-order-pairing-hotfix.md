@@ -35,6 +35,7 @@ Major
 - `npm run check:architecture`
 - `npm run check:compliance`
 - `node --experimental-vm-modules ...jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/rbacRouteCoverage.contract.test.js tests/posHandlers.transport.test.js tests/posUsecases.applicationResult.test.js`
+- Exact-master release inventory must include this declaration with the POS route and route contract test.
 
 ## Rollback Note
 Revert `backend/src/routes/pos.js` and this declaration if production shows unexpected POS order-status authorization behavior.
