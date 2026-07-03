@@ -232,6 +232,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !canSubmitOpenShift}');
     expect(terminalSidebarPanelContent).toContain('isValidOpeningCashAmount');
     expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canTransactPos || !canSubmitOpenShift}');
+    expect(terminalPageContent).toContain("const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');");
+    expect(terminalPageContent).toContain('canCloseDay={canCloseShift}');
     expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
     expect(posCheckoutTerminalContent).toContain('notifyPosActionBlocked');
     expect(posCheckoutTerminalContent).toContain('disabled={posActionsBlocked || cart.length === 0}');

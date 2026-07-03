@@ -289,4 +289,139 @@ describe('tenantHandler email OTP invitation routing', () => {
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
   });
+
+  it('recovers DGFY account company-list tenant context from a tenant bearer even when the bridge header is absent', async () => {
+    const jwt = await import('jsonwebtoken');
+    const accessToken = jwt.default.sign({
+      user_id: 12,
+      tenant_id: 'tenant-companies-bearer'
+    }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    findTenantById.mockResolvedValueOnce({
+      id: 'tenant-companies-bearer',
+      name: 'Companies Bridge Cafe',
+      company_token: 'tenant-token-companies',
+      status: 'active',
+      plan: 'premium'
+    });
+    findTenantByToken.mockResolvedValueOnce({
+      id: 'tenant-companies-bearer',
+      name: 'Companies Bridge Cafe',
+      status: 'active',
+      plan: 'premium'
+    });
+    const req = {
+      path: '/api/v1/dgfy/account/companies',
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      body: {}
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await tenantHandler(req, res, next);
+
+    expect(findTenantById).toHaveBeenCalledWith('tenant-companies-bearer');
+    expect(req.headers['x-company-token']).toBe('tenant-token-companies');
+    expect(findTenantByToken).toHaveBeenCalledWith('tenant-token-companies');
+    expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-companies-bearer',
+      tenantToken: 'tenant-token-companies'
+    }), next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('recovers DGFY account-search tenant context from a tenant-bound bearer token without an explicit company token', async () => {
+    const jwt = await import('jsonwebtoken');
+    const accessToken = jwt.default.sign({
+      user_id: 10,
+      tenant_id: 'tenant-search-bearer'
+    }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    findTenantById.mockResolvedValueOnce({
+      id: 'tenant-search-bearer',
+      name: 'Search Bridge Cafe',
+      company_token: 'tenant-token-search',
+      status: 'active',
+      plan: 'premium'
+    });
+    findTenantByToken.mockResolvedValueOnce({
+      id: 'tenant-search-bearer',
+      name: 'Search Bridge Cafe',
+      status: 'active',
+      plan: 'premium'
+    });
+    const req = {
+      path: '/api/v1/dgfy/accounts/search',
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      body: {}
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await tenantHandler(req, res, next);
+
+    expect(findTenantById).toHaveBeenCalledWith('tenant-search-bearer');
+    expect(req.headers['x-company-token']).toBe('tenant-token-search');
+    expect(findTenantByToken).toHaveBeenCalledWith('tenant-token-search');
+    expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-search-bearer',
+      tenantToken: 'tenant-token-search'
+    }), next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('recovers DGFY invitation tenant context from a tenant-bound bearer token before invite authorization', async () => {
+    const jwt = await import('jsonwebtoken');
+    const accessToken = jwt.default.sign({
+      user_id: 11,
+      tenant_id: 'tenant-invite-bearer'
+    }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    findTenantById.mockResolvedValueOnce({
+      id: 'tenant-invite-bearer',
+      name: 'Invite Bridge Cafe',
+      company_token: 'tenant-token-invite',
+      status: 'active',
+      plan: 'premium'
+    });
+    findTenantByToken.mockResolvedValueOnce({
+      id: 'tenant-invite-bearer',
+      name: 'Invite Bridge Cafe',
+      status: 'active',
+      plan: 'premium'
+    });
+    const req = {
+      path: '/api/v1/dgfy/invitations',
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      body: {}
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await tenantHandler(req, res, next);
+
+    expect(findTenantById).toHaveBeenCalledWith('tenant-invite-bearer');
+    expect(req.headers['x-company-token']).toBe('tenant-token-invite');
+    expect(findTenantByToken).toHaveBeenCalledWith('tenant-token-invite');
+    expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-invite-bearer',
+      tenantToken: 'tenant-token-invite'
+    }), next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
 });

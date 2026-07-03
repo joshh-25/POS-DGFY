@@ -124,6 +124,12 @@ const isDgfyTenantMembershipBridgeRequest = (req, path) => (
     && String(req.headers?.['x-dgfy-auth-mode'] || '').trim().toLowerCase() === 'tenant_membership'
 );
 
+const isDgfyTenantAuthenticatedBusinessRequest = (path) => (
+    /^\/api\/v1\/dgfy\/account\b/i.test(path)
+    || /^\/api\/v1\/dgfy\/accounts\/search\b/i.test(path)
+    || /^\/api\/v1\/dgfy\/invitations(?:\/|$)/i.test(path)
+);
+
 export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = null } = {}) => {
     if (companyToken) {
         tenantCache.delete(String(companyToken));
@@ -165,7 +171,7 @@ export const tenantHandler = async (req, res, next) => {
                 req.headers['x-company-token'] = companyToken;
             }
         }
-        if (!companyToken && isDgfyTenantMembershipBridgeRequest(req, path)) {
+        if (!companyToken && (isDgfyTenantMembershipBridgeRequest(req, path) || isDgfyTenantAuthenticatedBusinessRequest(path))) {
             companyToken = getTenantContextToken(req);
             if (!companyToken) {
                 companyToken = await resolveTenantTokenFromBearerToken(req);
