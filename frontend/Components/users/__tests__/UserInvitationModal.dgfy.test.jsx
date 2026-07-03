@@ -78,6 +78,37 @@ describe('UserInvitationModal DGFY-only invitations', () => {
     expect(screen.getByRole('button', { name: /Grace Hopper/i }).disabled).toBe(true);
   });
 
+  it('keeps DGFY account search available when POS fixes the invitation role to cashier', async () => {
+    render(
+      <UserInvitationModal
+        open
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+        fixedRole="cashier"
+        title="Invite DGFY Cashier"
+        submitLabel="Send Cashier Invitation"
+      />
+    );
+
+    expect(screen.getByText('Invite DGFY Cashier')).toBeTruthy();
+    expect(screen.getByText(/cashier authorization profile/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Search registered DGFY account'), {
+      target: { value: 'ada' }
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/i }));
+    fireEvent.click(await screen.findByLabelText('Main Branch'));
+    fireEvent.click(screen.getByRole('button', { name: 'Send Cashier Invitation' }));
+
+    await waitFor(() => expect(mocks.userService.inviteDgfyAccountToCompany).toHaveBeenCalledWith({
+      dgfyAccountId: 'dgfy-new',
+      role: 'cashier',
+      rolePresetKey: null,
+      locationIds: [1]
+    }));
+  });
+
   it('requires a selected registered DGFY account before submit', async () => {
     render(
       <UserInvitationModal
