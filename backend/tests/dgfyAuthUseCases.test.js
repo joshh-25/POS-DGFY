@@ -642,7 +642,7 @@ describe('dgfyAuthUseCases', () => {
         }));
     });
 
-    it('switches DGFY companies only after business email step-up', async () => {
+    it('switches DGFY companies without sending or requiring a business email code', async () => {
         const account = createAccount();
         const membership = {
             id: 12,
@@ -676,17 +676,12 @@ describe('dgfyAuthUseCases', () => {
         const result = await useCase({
             account,
             tenantId: 'tenant-1',
-            body: { email_otp_code: '123456' },
+            body: {},
             metadata: { request_id: 'req-switch' }
         });
 
         expect(result.success).toBe(true);
-        expect(verifyEmailOtp).toHaveBeenCalledWith(expect.objectContaining({
-            purpose: 'dgfy_business_step_up',
-            email: account.email,
-            code: '123456',
-            tenantId: null
-        }));
+        expect(verifyEmailOtp).not.toHaveBeenCalled();
         expect(createTenantSessionForDgfyAccount).toHaveBeenCalledWith({
             account,
             tenantId: 'tenant-1'
@@ -749,7 +744,7 @@ describe('dgfyAuthUseCases', () => {
         });
     });
 
-    it('accepts a pending DGFY invitation with email step-up and does not return a company token', async () => {
+    it('accepts a pending DGFY invitation without email step-up and does not return a company token', async () => {
         const account = createAccount();
         const membership = {
             id: 21,
@@ -778,7 +773,7 @@ describe('dgfyAuthUseCases', () => {
             createBusinessAuditLog: jest.fn().mockResolvedValue(null),
             markBusinessStepUpVerified: jest.fn().mockResolvedValue(null)
         };
-        const verifyEmailOtp = jest.fn().mockResolvedValue({ verified: true });
+        const verifyEmailOtp = jest.fn();
         const useCase = buildAcceptDgfyInvitationUseCase({
             repository,
             verifyEmailOtp
@@ -787,16 +782,11 @@ describe('dgfyAuthUseCases', () => {
         const result = await useCase({
             account,
             membershipId: '21',
-            body: { email_otp_code: '123456' }
+            body: {}
         });
 
         expect(result.success).toBe(true);
-        expect(verifyEmailOtp).toHaveBeenCalledWith(expect.objectContaining({
-            purpose: 'dgfy_business_step_up',
-            email: account.email,
-            code: '123456',
-            tenantId: null
-        }));
+        expect(verifyEmailOtp).not.toHaveBeenCalled();
         expect(repository.acceptInvitationMembership).toHaveBeenCalledWith({ membership, account });
         expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-invite-token');
         expect(result.data.payload.data.membership.company).toEqual(expect.objectContaining({
@@ -1477,7 +1467,7 @@ describe('dgfyAuthUseCases', () => {
         }));
     });
 
-    it('audits invitation acceptance failure when business step-up OTP is invalid or replayed', async () => {
+    it('audits invitation acceptance failure when membership activation fails', async () => {
         const account = createAccount();
         const membership = {
             id: 94,
@@ -1497,30 +1487,28 @@ describe('dgfyAuthUseCases', () => {
         };
         const repository = {
             findMembershipById: jest.fn().mockResolvedValue(membership),
-            acceptInvitationMembership: jest.fn(),
+            acceptInvitationMembership: jest.fn().mockRejectedValue(new Error('Tenant activation failed.')),
             createBusinessAuditLog: jest.fn().mockResolvedValue(null),
             markBusinessStepUpVerified: jest.fn()
         };
-        const verifyEmailOtp = jest.fn().mockRejectedValue(Object.assign(
-            new Error('Invalid or expired security code.'),
-            { statusCode: 401 }
-        ));
+        const verifyEmailOtp = jest.fn();
         const useCase = buildAcceptDgfyInvitationUseCase({ repository, verifyEmailOtp });
 
         const result = await useCase({
             account,
             membershipId: '94',
-            body: { email_otp_code: '123456' },
+            body: {},
             metadata: { request_id: 'req-invite-replay' }
         });
 
         expect(result.success).toBe(false);
-        expect(repository.acceptInvitationMembership).not.toHaveBeenCalled();
+        expect(verifyEmailOtp).not.toHaveBeenCalled();
+        expect(repository.acceptInvitationMembership).toHaveBeenCalledWith({ membership, account });
         expect(repository.markBusinessStepUpVerified).not.toHaveBeenCalled();
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: 'invitation_accept_failed',
             result: 'failure',
-            reason: 'Invalid or expired security code.',
+            reason: 'Tenant activation failed.',
             request_id: 'req-invite-replay'
         }));
         expect(JSON.stringify(result)).not.toContain('secret-replay-token');
