@@ -156,7 +156,7 @@ Supported purposes:
 - `invitation_acceptance`: body requires `invitation_token`; the backend resolves tenant context and invited email from the invitation when `x-company-token` is absent.
 - `dgfy_account_verification`: body requires `email` for DGFY account registration before account creation. The public request is landlord-global, does not require a company token, and must ignore stale browser tenant context because `/dgfy/auth/register` verifies only a global OTP. Existing signed-in accounts can also request this purpose through the authenticated DGFY account endpoint.
 - `dgfy_password_reset`: requested through the DGFY password recovery flow before changing a global DGFY account password.
-- `dgfy_business_step_up`: requested through the authenticated DGFY business-management surface before accepting an invitation or switching companies. This version is email-only and does not use mobile/SMS OTP.
+- `dgfy_business_step_up`: requested through the authenticated DGFY business-management surface for owner-sensitive actions such as ownership transfer. Routine invitation accept/reject and company switch/open-inventory actions do not send or require this OTP.
 - `dgfy_legacy_link`: requested from an authenticated legacy IMS/POS tenant session before linking that tenant-local authorization profile to a DGFY account during the migration grace period.
 
 Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed with a conditional update so a concurrently submitted request cannot reuse a code after it is consumed. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch.
@@ -4974,14 +4974,12 @@ Public, rate-limited. Verify a `dgfy_password_reset` code and set the new DGFY a
 
 Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
-Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local authorization profile from the authenticated DGFY account, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted. DGFY password hashes are not copied into tenant-local users. The request requires a `dgfy_business_step_up` email OTP code sent to the DGFY account email unless the account has a still-valid recent business step-up.
+Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, a tenant-local password setup form, or an email verification code. The backend activates the matching tenant-local authorization profile from the authenticated DGFY account, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted. DGFY password hashes are not copied into tenant-local users.
 
 **Request**
 
 ```json
-{
-  "email_otp_code": "123456"
-}
+{}
 ```
 
 **Response (200)**
@@ -5164,20 +5162,18 @@ Requires an authenticated DGFY account with accepted membership, POS permission/
 
 Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
-Send a six-digit `dgfy_business_step_up` email OTP to the DGFY account email for business-sensitive actions. This version is email-only and does not use mobile/SMS OTP. A successfully verified business action refreshes a short recent-step-up window; while that window is valid, additional business switching/invitation actions do not require another code.
+Send a six-digit `dgfy_business_step_up` email OTP to the DGFY account email for owner-sensitive actions such as ownership transfer. This version is email-only and does not use mobile/SMS OTP. Invitation accept/reject and company switch/open-inventory actions are intentionally not gated by this code.
 
 ### POST /dgfy/account/companies/:tenant_id/switch
 
 Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
-Switch into an accepted active company membership after email OTP step-up, or while the account has a still-valid recent business step-up window. The response sets normal SKUpervisor tenant refresh/company cookies and returns the standard tenant access session payload without exposing the refresh token.
+Switch into an accepted active company membership without sending or requiring an email verification code. The response sets normal SKUpervisor tenant refresh/company cookies and returns the standard tenant access session payload without exposing the refresh token.
 
 **Request**
 
 ```json
-{
-  "email_otp_code": "123456"
-}
+{}
 ```
 
 ### DGFY Platform Admin Account Endpoints
