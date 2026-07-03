@@ -276,7 +276,9 @@ api.interceptors.request.use(
       (!token && shouldPreflightBrowserSession(config)) ||
       shouldRepairTenantContext(config, token, companyToken)
     ) {
-      token = await refreshBrowserSession().catch(() => '');
+      const preflightToken = token;
+      const refreshedToken = await refreshBrowserSession().catch(() => '');
+      token = refreshedToken || preflightToken || getAccessToken();
       companyToken = getCompanyToken();
     }
 

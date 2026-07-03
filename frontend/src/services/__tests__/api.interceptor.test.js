@@ -405,6 +405,51 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     document.cookie = 'sku_csrf_token=csrf-tenant-interceptor';
   });
 
+  it('preserves the existing POS bearer token for DGFY account search when tenant refresh fails', async () => {
+    const session = await import('../browserSession.js');
+    session.setBrowserSession({ token: 'pos-admin-token-without-company', companyToken: '' });
+    document.cookie = '';
+    const capturedHeaders = [];
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url, options = {}) => {
+      if (String(url).includes('/auth/csrf-token')) {
+        document.cookie = 'sku_csrf_token=csrf-refresh-bootstrap';
+        return { ok: true, json: async () => ({ success: true }) };
+      }
+      if (String(url).includes('/auth/refresh-token')) {
+        expect(options.headers.Authorization).toBe('Bearer pos-admin-token-without-company');
+        expect(options.headers['x-csrf-token']).toBe('csrf-refresh-bootstrap');
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({
+            success: false,
+            message: 'Session refresh failed'
+          })
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
+    mockApi.onGet('/dgfy/accounts/search').reply((config) => {
+      capturedHeaders.push({ ...config.headers });
+      return [200, { data: { accounts: [] } }];
+    });
+
+    const result = await api.get('/dgfy/accounts/search', {
+      params: { query: 'kitcole314@gmail.com' }
+    });
+
+    expect(result.data).toEqual({ data: { accounts: [] } });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh-token'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' })
+    );
+    expect(capturedHeaders[0].Authorization).toBe('Bearer pos-admin-token-without-company');
+    expect(capturedHeaders[0]['x-company-token']).toBeUndefined();
+    document.cookie = 'sku_csrf_token=csrf-tenant-interceptor';
+  });
+
   it('repairs missing tenant context before IMS tenant-bridge company requests', async () => {
     const session = await import('../browserSession.js');
     session.setBrowserSession({ token: 'ims-token-without-company', companyToken: '' });
