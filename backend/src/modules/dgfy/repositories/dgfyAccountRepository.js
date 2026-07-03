@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { DataTypes, Op } from 'sequelize';
 import {
     DgfyAccount,
     DgfyAccountAdminAuditLog,
@@ -57,6 +57,95 @@ const buildUniqueUsername = async (User, baseName, currentUserId = null, options
         suffix += 1;
         candidate = `${base}${suffix}`;
     }
+};
+
+export const ensureTenantUserInvitationSchema = async (sequelizeInstance) => {
+    if (!sequelizeInstance?.getQueryInterface) return;
+    const queryInterface = sequelizeInstance.getQueryInterface();
+    const tableInfo = await queryInterface.describeTable('users');
+    const addColumnIfMissing = async (column, definition) => {
+        if (!tableInfo[column]) {
+            await queryInterface.addColumn('users', column, definition);
+            tableInfo[column] = definition;
+        }
+    };
+
+    await addColumnIfMissing('phone_number', {
+        type: DataTypes.STRING(40),
+        allowNull: true
+    });
+    await addColumnIfMissing('role_preset_key', {
+        type: DataTypes.STRING(80),
+        allowNull: true
+    });
+    await addColumnIfMissing('permissions', {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: []
+    });
+    await addColumnIfMissing('is_master_admin', {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    });
+    await addColumnIfMissing('invitation_token', {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    });
+    await addColumnIfMissing('invitation_expires_at', {
+        type: DataTypes.DATE,
+        allowNull: true
+    });
+    await addColumnIfMissing('invited_by', {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    });
+    await addColumnIfMissing('invitation_status', {
+        type: DataTypes.ENUM('pending', 'accepted', 'expired', 'cancelled', 'declined'),
+        allowNull: true
+    });
+    await addColumnIfMissing('invitation_delivery_status', {
+        type: DataTypes.ENUM('not_configured', 'sent', 'failed', 'manual_link'),
+        allowNull: true
+    });
+    await addColumnIfMissing('invitation_delivery_error', {
+        type: DataTypes.STRING(500),
+        allowNull: true
+    });
+    await addColumnIfMissing('invitation_last_sent_at', {
+        type: DataTypes.DATE,
+        allowNull: true
+    });
+    await addColumnIfMissing('invitation_accepted_at', {
+        type: DataTypes.DATE,
+        allowNull: true
+    });
+    await addColumnIfMissing('invitation_cancelled_at', {
+        type: DataTypes.DATE,
+        allowNull: true
+    });
+    await addColumnIfMissing('invitation_cancelled_by', {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    });
+    await addColumnIfMissing('deleted_at', {
+        type: DataTypes.DATE,
+        allowNull: true
+    });
+    await addColumnIfMissing('deleted_by', {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    });
+
+    await queryInterface.changeColumn('users', 'role', {
+        type: DataTypes.ENUM('admin', 'manager', 'staff', 'cashier', 'po', 'do', 'jo'),
+        allowNull: true,
+        defaultValue: 'staff'
+    });
+    await queryInterface.changeColumn('users', 'invitation_status', {
+        type: DataTypes.ENUM('pending', 'accepted', 'expired', 'cancelled', 'declined'),
+        allowNull: true
+    });
 };
 
 export const dgfyAccountRepository = {
@@ -609,6 +698,8 @@ export const dgfyAccountRepository = {
             ...tenantModels
         };
 
+        await ensureTenantUserInvitationSchema(sequelizeInstance);
+
         return dbStore.run(context, async () => {
             const User = dbStore.get('User');
             const UserLocationGrant = dbStore.get('UserLocationGrant');
@@ -829,6 +920,8 @@ export const dgfyAccountRepository = {
             ...tenantModels
         };
 
+        await ensureTenantUserInvitationSchema(sequelizeInstance);
+
         return dbStore.run(context, async () => {
             const User = dbStore.get('User');
             const tenantUserId = parsePositiveInt(membership.tenant_user_id);
@@ -928,6 +1021,7 @@ export const dgfyAccountRepository = {
         if (membership?.tenant?.company_token && membership.tenant_user_id) {
             const sequelizeInstance = await tenantConnector.getConnection(membership.tenant);
             const tenantModels = getTenantModels(sequelizeInstance);
+            await ensureTenantUserInvitationSchema(sequelizeInstance);
             await dbStore.run({
                 sequelize: sequelizeInstance,
                 tenantId: membership.tenant.id,
