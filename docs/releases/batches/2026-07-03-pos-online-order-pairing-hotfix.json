@@ -2,7 +2,7 @@
   "schema": "sku-reviewed-batch-manifest/v1",
   "review_status": "reviewed",
   "reviewed_by": "BabyBaBab emergency owner approval via Codex",
-  "reviewed_at": "2026-07-03T04:14:30.000Z",
+  "reviewed_at": "2026-07-03T04:18:30.000Z",
   "source_pr": "PR-57-and-PR-58-emergency-pos-pairing-hotfix",
   "release_slices": [
     {
@@ -110,8 +110,8 @@
       "documentation_closure": {
         "decision": "updated",
         "reviewed_by": "BabyBaBab emergency owner approval via Codex",
-        "reviewed_at": "2026-07-03T04:14:30.000Z",
-        "rationale": "The behavior is already governed by ADR 0031, which says physical-device pairing must not block normal authorized POS order handling. This release updates the compliance declaration and reviewed batch manifest so the emergency hotfix has auditable scope, risk, rollback, and production proof requirements.",
+        "reviewed_at": "2026-07-03T04:18:30.000Z",
+        "rationale": "The behavior is already governed by ADR 0031, which says physical-device pairing must not block normal authorized POS order handling. This release keeps the POS route, route contract test, compliance declaration, and reviewed batch manifest together so the emergency hotfix has auditable scope, risk, rollback, and production proof requirements.",
         "documents": [
           {
             "path": "docs/compliance/impact-declarations/2026-07-03-pos-online-order-pairing-hotfix.md",
