@@ -109,6 +109,28 @@ describe('UserInvitationModal DGFY-only invitations', () => {
     }));
   });
 
+  it('uses provided company locations instead of refetching ambient tenant locations', async () => {
+    render(
+      <UserInvitationModal
+        open
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+        fixedRole="cashier"
+        title="Invite DGFY Cashier"
+        submitLabel="Send Cashier Invitation"
+        locationOptions={[
+          { location_id: 41, name: 'Selected Company Branch', is_active: true },
+          { location_id: 42, name: 'Selected Company Counter', is_active: true }
+        ]}
+      />
+    );
+
+    expect(mocks.locationService.listTenantLocations).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Selected Company Branch')).toBeTruthy();
+    expect(screen.getByLabelText('Selected Company Counter')).toBeTruthy();
+    expect(screen.queryByLabelText('Main Branch')).toBeNull();
+  });
+
   it('requires a selected registered DGFY account before submit', async () => {
     render(
       <UserInvitationModal

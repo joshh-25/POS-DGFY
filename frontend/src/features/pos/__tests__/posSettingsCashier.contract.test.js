@@ -14,6 +14,7 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain('Cashiers are invited through DGFY');
     expect(workspaceSource).toContain('getCashiersForLocation(terminal.location_id)');
     expect(workspaceSource).toContain('fixedRole="cashier"');
+    expect(workspaceSource).toContain('locationOptions={locations}');
     expect(workspaceSource).toContain('Invite DGFY Cashier');
     expect(workspaceSource).not.toContain('createPosSetupCashier');
   });
