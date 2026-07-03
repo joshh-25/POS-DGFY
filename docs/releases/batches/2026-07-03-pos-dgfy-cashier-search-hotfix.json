@@ -1,0 +1,121 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-authorized Codex production review",
+  "reviewed_at": "2026-07-03T03:20:00.000Z",
+  "source_pr": "54",
+  "release_slices": [
+    {
+      "id": "pos-dgfy-cashier-account-search-hotfix",
+      "slice_name": "POS DGFY cashier account search hotfix",
+      "name": "POS DGFY cashier account search hotfix",
+      "plain_english_purpose": "Restore registered DGFY account search and selection in the POS cashier invitation dialog so an invitation can be submitted.",
+      "purpose": "Restore registered DGFY account search and selection in the POS cashier invitation dialog so an invitation can be submitted.",
+      "implementation_summary": "Always render the existing registered DGFY account search when the invitation caller fixes the role to cashier. The fixed cashier role, selected-account requirement, tenant-scoped API, payload, and location grants stay unchanged. This manifest records the exact reviewed production candidate.",
+      "included_files": [
+        "docs/releases/batches/2026-07-03-pos-dgfy-cashier-search-hotfix.json",
+        "frontend/Components/users/UserInvitationModal.jsx",
+        "frontend/Components/users/__tests__/UserInvitationModal.dgfy.test.jsx"
+      ],
+      "included_features": [
+        "Registered DGFY account search in fixed-role cashier invitations",
+        "Account selection and exact cashier invitation payload regression coverage",
+        "Governed release evidence for the hotfix"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Backend DGFY API, tenant membership, authentication, authorization, database, payment, or fiscal changes",
+        "Checkout, Storefront, shift-open, terminal-pairing, and unrelated dirty-worktree changes"
+      ],
+      "owner_attribution": "BabyBaBab owner-authorized hotfix and production deployment",
+      "source_branch": "codex/hotfix-pos-dgfy-cashier-search",
+      "source_pr": "54",
+      "source_type": "developer_pr",
+      "affected_surfaces": ["frontend", "docs", "POS", "DGFY"],
+      "affected_surface_map": {
+        "backend": false, "frontend": true, "database": false, "scripts/deploy": false,
+        "docs": true, "compliance": false, "POS": true, "Storefront": false,
+        "DGFY": true, "tenant lifecycle": false, "payments": false
+      },
+      "risk_level": "medium",
+      "regression_risk_level": "medium",
+      "regression_warning_required": true,
+      "regression_warning_summary": "The shared invitation modal changes fixed-role rendering. A regression could break account selection in POS cashier invitations or disturb other invitation entry points.",
+      "potentially_affected_existing_behaviors": [
+        "POS cashier invitation account search and selection",
+        "Shared user invitation modal rendering",
+        "DGFY account search rate-limit handling",
+        "Location-scoped cashier invitation submission"
+      ],
+      "evidence_covering_regression_risk": [
+        "Three focused frontend test files and 25 tests passed, including fixedRole cashier search, selection, and exact payload.",
+        "SKUpervisor and POS production builds passed.",
+        "Architecture, controller-boundary, compliance/API-contract, and whitespace checks passed.",
+        "Local POS shell loaded without console errors; authentication prevented uncredentialed mutation."
+      ],
+      "evidence_gaps": [
+        "The authenticated modal could not be rendered locally because the clean environment has no seeded operator credentials.",
+        "Post-deploy smoke must confirm the live tenant search without sending an unintended invitation."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Revert the hotfix and release-manifest commits, then deploy the revert through the signed controller.",
+        "Monitor DGFY search 400/429/500 responses and POS invitation validation errors."
+      ],
+      "required_tests": [
+        "npm --prefix frontend test -- --run Components/users/__tests__/UserInvitationModal.dgfy.test.jsx src/features/pos/__tests__/posSettingsCashier.contract.test.js src/services/__tests__/dgfyAuthService.cookieSession.test.js",
+        "npm --prefix frontend run build:skupervisor",
+        "npm --prefix frontend run build:pos",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "git diff --check"
+      ],
+      "completed_tests": [
+        {"command": "npm --prefix frontend test -- --run Components/users/__tests__/UserInvitationModal.dgfy.test.jsx src/features/pos/__tests__/posSettingsCashier.contract.test.js src/services/__tests__/dgfyAuthService.cookieSession.test.js", "status": "pass", "evidence": "Clean release worktree: 3 files and 25 tests passed."},
+        {"command": "npm --prefix frontend run build:skupervisor", "status": "pass", "evidence": "SKUpervisor production build passed."},
+        {"command": "npm --prefix frontend run build:pos", "status": "pass", "evidence": "POS production build passed."},
+        {"command": "npm run check:architecture", "status": "pass", "evidence": "Architecture and controller boundaries passed."},
+        {"command": "npm run check:compliance", "status": "pass", "evidence": "Compliance and API contracts passed."},
+        {"command": "git diff --check", "status": "pass", "evidence": "Whitespace check passed."}
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/releases/batches/2026-07-03-pos-dgfy-cashier-search-hotfix.json",
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-authorized Codex documentation review",
+        "reviewed_at": "2026-07-03T03:20:00.000Z",
+        "rationale": "ADR 0031 already defines POS setup using DGFY account search with a fixed cashier role. This release manifest documents the restored behavior, risk, evidence, rollback, and production proof without changing architecture or API contracts.",
+        "documents": [
+          {"path": "docs/releases/batches/2026-07-03-pos-dgfy-cashier-search-hotfix.json", "action": "updated", "evidence": "Records exact scope, regression warning, validation, rollback, and production accuracy requirements."},
+          {"path": "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md", "action": "reviewed_current", "evidence": "Already requires DGFY account search and invitation with fixed cashier role during POS setup."},
+          {"path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md", "action": "reviewed_current", "evidence": "Normal exact-SHA signed-controller flow remains applicable."}
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No new ADR or compliance declaration is required because the fix restores ADR 0031 behavior and changes no backend authorization, fiscal, payment, or data contract.",
+      "rollback_notes": "Revert the hotfix and manifest commits, rerun focused tests, builds, governance gates, and deploy the revert through the signed controller.",
+      "production_proof_required": [
+        "Production remote HEAD, deploy state, deploy summary, runtime health SHA, and frontend assets equal promoted master",
+        "Live POS cashier invitation visibly exposes DGFY account search with fixed cashier role",
+        "Controlled search can select an eligible account and enable submission when a location is selected"
+      ],
+      "production_accuracy_checks_required": [
+        "Deployed UserInvitationModal renders search outside the non-fixed-role conditional",
+        "Deployed test source contains fixedRole cashier search and exact payload regression case",
+        "Live search returns eligible accounts or a truthful tenant/rate-limit response without an unintended invitation",
+        "Non-fixed-role invitation entry points retain role selector and account picker"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}
