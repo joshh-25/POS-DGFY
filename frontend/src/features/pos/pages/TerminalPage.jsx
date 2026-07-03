@@ -26,6 +26,7 @@ import {
   loginDgfyAccount,
   logoutDgfyAccount,
   requestDgfyLegacyLinkEmailOtp,
+  startDgfyPosSession,
   startDgfyTenantSession,
   startDgfyLegacyRegistrationHandoff
 } from '@/services/dgfyAuthService.js';
@@ -1889,6 +1890,7 @@ export default function TerminalPage() {
             phone_number: selectedTenantSession.phone_number || null,
             role: selectedTenantSession.role,
             permissions: Array.isArray(selectedTenantSession.permissions) ? selectedTenantSession.permissions : [],
+            is_active: true,
             is_master_admin: selectedTenantSession.is_master_admin === true
           }
         : null;
@@ -1905,12 +1907,15 @@ export default function TerminalPage() {
         fetchPosCatalog({ limit: 1 }).catch(() => [])
       ]);
       const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;
+      const selectedTenantUsersForReadiness = Array.isArray(selectedTenantUsers) && selectedTenantUsers.length > 0
+        ? selectedTenantUsers
+        : (effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : []);
       const selectedUserIsAdmin = effectiveSelectedTenantUser?.is_master_admin === true
         || String(effectiveSelectedTenantUser?.role || '').trim().toLowerCase() === 'admin';
       const selectedTenantSetupState = buildTenantSetupStateSnapshot({
         settingsPayload: selectedTenantSettings || {},
         companyPayload: selectedTenantCompany || {},
-        usersPayload: selectedTenantUsers,
+        usersPayload: selectedTenantUsersForReadiness,
         locationsPayload: selectedTenantLocations,
         itemsPayload: selectedTenantItems
       });
@@ -1929,6 +1934,16 @@ export default function TerminalPage() {
       setDgfyAdminBypassActive(selectedUserIsAdmin);
       setAdminShiftPromptSkipped(false);
       setSetupFlowState(selectedTenantSetupState);
+      const selectedTenantRegistry = normalizeTerminalRegistry(selectedTenantSettings?.pos_terminal_registry?.value || []);
+      const selectedTenantRegistryModeRaw = String(selectedTenantSettings?.pos_terminal_registry_mode?.value || '')
+        .trim()
+        .toLowerCase();
+      const selectedTenantRegistryMode = TERMINAL_REGISTRY_MODES.has(selectedTenantRegistryModeRaw)
+        ? selectedTenantRegistryModeRaw
+        : 'warn';
+      const selectedTenantActiveRegistry = selectedTenantRegistry.filter((entry) => entry?.is_active !== false);
+      setTerminalRegistry(selectedTenantRegistry);
+      setTerminalRegistryMode(selectedTenantRegistryMode);
       setLocked(false);
       setDrawerOpen(false);
       if (
@@ -1977,16 +1992,41 @@ export default function TerminalPage() {
         toast.error('POS setup is incomplete. An active terminal and cashier account are required before terminal unlock.');
         return;
       }
-      const selectedTerminalId = sanitizeTerminalId(resolveSelectedLoginTerminalId());
-      if (!validateSelectedTerminalForUnlock(selectedTerminalId)) {
+      const selectedTerminalId = resolvePreferredTerminalId(
+        selectedTenantActiveRegistry,
+        sanitizeTerminalId(formData.terminalId) || readStoredTerminalId(),
+        { registryMode: selectedTenantRegistryMode }
+      );
+      const selectedTenantRegistryEntry = selectedTenantActiveRegistry.find((entry) => String(entry?.terminal_id || '') === selectedTerminalId);
+      if (selectedTenantActiveRegistry.length === 0) {
         setTerminalUnlockModalOpen(false);
+        toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
         return;
       }
-      const selectedRegistryEntry = terminalRegistryLookup.get(selectedTerminalId);
-      const selectedLocationId = Number(selectedRegistryEntry?.location_id || 0);
+      if (!selectedTerminalId || !selectedTenantRegistryEntry) {
+        setTerminalUnlockModalOpen(false);
+        toast.error('Select an active terminal before opening a shift.');
+        return;
+      }
+      const selectedLocationId = Number(selectedTenantRegistryEntry?.location_id || 0);
+      if (!Number.isInteger(selectedLocationId) || selectedLocationId <= 0) {
+        setTerminalUnlockModalOpen(false);
+        toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
+        return;
+      }
       if (Number.isInteger(selectedLocationId) && selectedLocationId > 0) {
         setOperatingLocationId(selectedLocationId);
       }
+      setCashierUnlockSession({
+        source: 'dgfy_pos',
+        email: String(effectiveSelectedTenantUser?.email || email).trim(),
+        userId: effectiveSelectedTenantUser?.user_id || selectedTenantSession?.user_id || null,
+        role: effectiveSelectedTenantUser?.role || selectedTenantSession?.role || 'cashier',
+        permissions: Array.isArray(effectiveSelectedTenantUser?.permissions) ? effectiveSelectedTenantUser.permissions : [],
+        tenantId: selectedTenantId,
+        companyToken: selectedTenantSession?.company?.token || getCompanyToken() || '',
+        terminalId: selectedTerminalId
+      });
       setTerminalUnlockForm((prev) => ({
         ...prev,
         terminalId: selectedTerminalId
@@ -2244,14 +2284,17 @@ export default function TerminalPage() {
   const handleTerminalUnlockSubmit = async (event) => {
     event.preventDefault();
     const cashierSessionActive = Boolean(cashierUnlockSession?.email);
-    const selectedTenantId = cashierSessionActive ? '' : await resolveTenantIdForTerminalUnlock();
+    const dgfyCashierSessionActive = cashierUnlockSession?.source === 'dgfy_pos';
+    const selectedTenantId = cashierSessionActive
+      ? String(cashierUnlockSession?.tenantId || '').trim()
+      : await resolveTenantIdForTerminalUnlock();
     const selectedTerminalId = sanitizeTerminalId(terminalUnlockForm.terminalId || resolveSelectedLoginTerminalId());
     const requiresOpeningCash = terminalUnlockMode !== 'relock';
     const rawOpeningFloat = String(terminalUnlockForm.openingFloatAmount ?? '').trim();
     const openingFloatAmount = Number(rawOpeningFloat);
     const selectedRegistryEntry = terminalRegistryLookup.get(selectedTerminalId);
 
-    if (!cashierSessionActive && !selectedTenantId) {
+    if (!selectedTenantId) {
       toast.error('Select the company before unlocking the terminal.');
       return;
     }
@@ -2295,7 +2338,40 @@ export default function TerminalPage() {
           toast.error('Unable to resolve the selected company session for cashier sign-in.');
           return;
         }
-        if (!cashierSessionActive) {
+        if (dgfyCashierSessionActive) {
+          const dgfyToken = getStoredDgfyToken();
+          if (!dgfyToken) {
+            toast.error('Your DGFY account session expired. Sign in again to unlock the terminal.');
+            return;
+          }
+          const posSession = await startDgfyPosSession({
+            tenantId: selectedTenantId,
+            terminalId: selectedTerminalId
+          }, dgfyToken);
+          const nextTerminalUser = {
+            user_id: posSession?.user_id || cashierUnlockSession?.userId || null,
+            username: posSession?.username || cashierUnlockSession?.email || '',
+            email: posSession?.email || cashierUnlockSession?.email || '',
+            role: posSession?.role || cashierUnlockSession?.role || 'cashier',
+            permissions: Array.isArray(posSession?.permissions)
+              ? posSession.permissions
+              : (Array.isArray(cashierUnlockSession?.permissions) ? cashierUnlockSession.permissions : []),
+            is_active: true,
+            is_master_admin: posSession?.is_master_admin === true
+          };
+          setTerminalUser(nextTerminalUser);
+          setCashierUnlockSession((prev) => ({
+            ...(prev || {}),
+            source: 'dgfy_pos',
+            email: nextTerminalUser.email,
+            userId: nextTerminalUser.user_id,
+            role: nextTerminalUser.role,
+            permissions: nextTerminalUser.permissions,
+            tenantId: selectedTenantId,
+            terminalId: selectedTerminalId,
+            companyToken: posSession?.company?.token || prev?.companyToken || getCompanyToken() || ''
+          }));
+        } else if (!cashierSessionActive) {
           await loginWithCredentials({
             email: String(terminalUnlockForm.cashierEmail || '').trim(),
             password: String(terminalUnlockForm.cashierPassword || ''),

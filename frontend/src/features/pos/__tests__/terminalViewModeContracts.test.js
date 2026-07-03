@@ -123,12 +123,16 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('if (!continuingAfterCompanyPicker) {');
     expect(terminalPageContent).toContain('const selectedTenantSession = await startDgfyTenantSession({');
     expect(terminalPageContent).toContain('const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;');
+    expect(terminalPageContent).toContain('const selectedTenantUsersForReadiness = Array.isArray(selectedTenantUsers) && selectedTenantUsers.length > 0');
     expect(terminalPageContent).toContain('const selectedTenantSetupState = buildTenantSetupStateSnapshot({');
     expect(terminalPageContent).toContain('&& selectedTenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE');
-    expect(terminalPageContent).toContain('usersPayload: selectedTenantUsers');
+    expect(terminalPageContent).toContain('usersPayload: selectedTenantUsersForReadiness');
+    expect(terminalPageContent).toContain('const selectedTenantRegistry = normalizeTerminalRegistry(selectedTenantSettings?.pos_terminal_registry?.value || []);');
+    expect(terminalPageContent).toContain("source: 'dgfy_pos'");
     expect(terminalPageContent).toContain("window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);");
     expect(terminalPageContent).toContain("{ registryMode: setupFlowActive ? 'enforce' : 'warn' }");
     expect(terminalPageContent).toContain("toast.error('POS setup is incomplete. An active terminal and cashier account are required before terminal unlock.');");
+    expect(terminalPageContent).toContain('const posSession = await startDgfyPosSession({');
     expect(terminalPageContent).toContain('const posOnboardingUrl = resolvePosTerminalUrl(POS_ONBOARDING_ENTRY_SEARCH);');
     expect(terminalPageContent).toContain('window.location.assign(targetUrl.toString());');
     expect(terminalPageContent).toContain("pathname: '/terminal',");
