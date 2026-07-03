@@ -14,6 +14,7 @@ import {
     buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildRejectDgfyInvitationUseCase,
     buildSearchDgfyBusinessAccountsUseCase,
     buildStartDgfyPosSessionUseCase,
     buildStartDgfyTenantSessionUseCase,
@@ -1126,6 +1127,96 @@ describe('dgfyAuthUseCases', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.message).toBe('Invitation id is required.');
+    });
+
+    it('loads tenant db_name before accepting a DGFY invitation', async () => {
+        const account = createAccount({ id: 'dgfy-accept-db' });
+        const membership = {
+            id: 38,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-accept',
+            tenant_user_id: 2,
+            role: 'cashier',
+            status: 'pending',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-accept',
+                name: 'Kusina & Café',
+                status: 'active',
+                plan: 'premium',
+                db_name: 'sku_tenant_kusinacaf_9277ba56'
+            }
+        };
+        const repository = {
+            findMembershipById: jest.fn().mockResolvedValue(membership),
+            acceptInvitationMembership: jest.fn().mockResolvedValue({
+                ...membership,
+                status: 'accepted',
+                accepted_at: new Date('2026-07-03T08:00:00Z')
+            }),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildAcceptDgfyInvitationUseCase({ repository });
+
+        const result = await useCase({
+            account,
+            membershipId: 38,
+            metadata: { request_id: 'req-accept-db-name' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.findMembershipById).toHaveBeenCalledWith(38, {
+            include: [{
+                association: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name']
+            }]
+        });
+        expect(repository.acceptInvitationMembership).toHaveBeenCalledWith({ membership, account });
+    });
+
+    it('loads tenant db_name before rejecting a DGFY invitation', async () => {
+        const account = createAccount({ id: 'dgfy-reject-db' });
+        const membership = {
+            id: 39,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-reject',
+            tenant_user_id: 3,
+            role: 'cashier',
+            status: 'pending',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-reject',
+                name: 'Eatery ni Doe',
+                status: 'active',
+                plan: 'premium',
+                db_name: 'sku_tenant_eaterynidoe_2e561dbb',
+                owner_dgfy_account_id: 'owner-dgfy'
+            }
+        };
+        const repository = {
+            findMembershipById: jest.fn().mockResolvedValue(membership),
+            declineInvitationMembership: jest.fn().mockResolvedValue({
+                ...membership,
+                status: 'declined'
+            }),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildRejectDgfyInvitationUseCase({ repository });
+
+        const result = await useCase({
+            account,
+            membershipId: 39,
+            metadata: { request_id: 'req-reject-db-name' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.findMembershipById).toHaveBeenCalledWith(39, {
+            include: [{
+                association: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name', 'owner_dgfy_account_id']
+            }]
+        });
+        expect(repository.declineInvitationMembership).toHaveBeenCalledWith({ membership });
     });
 
     it('starts a DGFY POS session with membership and terminal audit evidence', async () => {

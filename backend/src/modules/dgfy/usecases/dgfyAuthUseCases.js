@@ -1080,7 +1080,7 @@ export const buildAcceptDgfyInvitationUseCase = ({
         membership = await repository.findMembershipById(id, {
             include: [{
                 association: 'tenant',
-                attributes: ['id', 'name', 'company_token', 'status', 'plan']
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name']
             }]
         });
 
@@ -1174,7 +1174,7 @@ export const buildRejectDgfyInvitationUseCase = ({
         membership = await repository.findMembershipById(id, {
             include: [{
                 association: 'tenant',
-                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name', 'owner_dgfy_account_id']
             }]
         });
         if (!membership || membership.dgfy_account_id !== account.id || membership.source !== 'invite') {
