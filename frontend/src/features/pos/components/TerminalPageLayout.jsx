@@ -438,7 +438,7 @@ export default function TerminalPageLayout({
       {!isDesktopWide && mobileNavOpen && (
         <div className={overlayContainerClassName}>
           <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
-          <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto p-3 shadow-2xl shadow-slate-950/20" style={{ background: 'var(--pos-shell-sidebar)' }}>
+          <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto p-3 shadow-2xl shadow-slate-950/20" style={{ background: 'var(--pos-shell-sidebar, #FFFFFF)' }}>
             <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
               <img
                 src={DGFY_POS_LOGO}
