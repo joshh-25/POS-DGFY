@@ -55,6 +55,24 @@ const discountBeneficiarySchema = Joi.object({
     id_number: Joi.string().trim().min(2).max(120).required()
 });
 
+const governedDiscountSchema = Joi.object({
+    type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').required(),
+    label: Joi.string().trim().max(100).required(),
+    method: Joi.string().valid('percentage', 'fixed').required(),
+    rate: Joi.number().min(0).max(100).allow(null).optional(),
+    amount: Joi.number().min(0).allow(null).optional(),
+    customer_name: Joi.string().trim().max(255).allow('', null).optional(),
+    id_number: Joi.string().trim().max(100).allow('', null).optional(),
+    employee_name: Joi.string().trim().max(255).allow('', null).optional(),
+    employee_id: Joi.string().trim().max(100).allow('', null).optional(),
+    reason: Joi.string().trim().max(500).allow('', null).optional(),
+    manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
+    eligible_item_ids: Joi.array().items(Joi.number().integer().positive()).unique().default([]),
+    vat_removed: Joi.number().min(0).optional(),
+    vat_exempt_amount: Joi.number().min(0).optional(),
+    discount_amount: Joi.number().min(0).optional()
+});
+
 const checkoutPosSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required().messages({
         'any.required': 'idempotency_key is required'
@@ -66,6 +84,8 @@ const checkoutPosSchema = Joi.object({
     order_method: Joi.string().valid(...ORDER_METHODS).default('dine_in'),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).default('cash'),
     payment_handoff_mode: Joi.string().valid(...PAYMENT_HANDOFF_MODES).optional(),
+    cash_received: Joi.number().min(0).precision(4).allow(null).optional(),
+    change_amount: Joi.number().min(0).precision(4).allow(null).optional(),
     service_fee_amount: Joi.number().min(0).precision(4).allow(null).optional().messages({
         'number.min': 'Service fee amount must be 0 or greater'
     }),
@@ -93,6 +113,7 @@ const checkoutPosSchema = Joi.object({
     buyer_address: Joi.string().trim().max(1000).allow('', null).optional(),
     special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
     discount_beneficiary: discountBeneficiarySchema.optional(),
+    governed_discount: governedDiscountSchema.optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
     })
@@ -160,6 +181,12 @@ const posCatalogQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
     limit: Joi.number().integer().min(1).max(500).default(100),
     folder_id: Joi.number().integer().positive().optional(),
+    location_id: Joi.number().integer().positive().optional()
+});
+
+const mobilePosCatalogBootstrapQuerySchema = Joi.object({
+    search: Joi.string().allow('', null).default(''),
+    limit: Joi.number().integer().min(1).max(500).default(100),
     location_id: Joi.number().integer().positive().optional()
 });
 
@@ -363,6 +390,51 @@ const fiscalTerminalRegistrationSchema = Joi.object({
     evidence_ref: Joi.string().trim().max(255).allow('', null).optional()
 });
 
+const mobilePosCheckoutSyncEntrySchema = Joi.object({
+    local_transaction_id: Joi.string().trim().max(120).required(),
+    payload: Joi.object().required().unknown(true)
+});
+
+const mobilePosCheckoutSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(120).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosCheckoutSyncEntrySchema).required()
+});
+
+const mobilePosShiftSyncEntrySchema = Joi.object({
+    local_operation_id: Joi.string().trim().max(120).required(),
+    operation_type: Joi.string().valid('shift_open', 'switch_location', 'cash_event', 'shift_close').required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    payload: Joi.object().required().unknown(true)
+});
+
+const mobilePosShiftSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(120).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosShiftSyncEntrySchema).required()
+});
+
+const mobilePosHardwareEventSyncEntrySchema = Joi.object({
+    local_event_id: Joi.string().trim().max(120).required(),
+    event_type: Joi.string().trim().max(120).required(),
+    payload: Joi.object().unknown(true).default({})
+});
+
+const mobilePosHardwareEventSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(120).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosHardwareEventSyncEntrySchema).required()
+});
+
+const mobilePosCheckpointAckSchema = Joi.object({
+    checkpoint_token: Joi.string().trim().min(8).max(512).required(),
+    consumed_slot: Joi.boolean().optional(),
+    last_successful_sync_at: Joi.date().iso().allow(null).optional()
+});
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -391,6 +463,7 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 export const validatePosCheckout = validateSchema(checkoutPosSchema, 'body', 'validatedData');
 export const validatePosTransactionsQuery = validateSchema(listTransactionsQuerySchema, 'query', 'validatedQuery');
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
+export const validateMobilePosCatalogBootstrapQuery = validateSchema(mobilePosCatalogBootstrapQuerySchema, 'query', 'validatedQuery');
 export const validatePosScan = validateSchema(posScanSchema, 'body', 'validatedData');
 export const validateVerifyTerminal = validateSchema(verifyTerminalSchema, 'body', 'validatedData');
 export const validatePosCashierLogin = validateSchema(posCashierLoginSchema, 'body', 'validatedData');
@@ -419,3 +492,7 @@ export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchem
 export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema, 'body', 'validatedData');
 export const validateUpdateESalesReportStatus = validateSchema(esalesStatusSchema, 'body', 'validatedData');
 export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalRegistrationSchema, 'body', 'validatedData');
+export const validateMobilePosCheckoutSync = validateSchema(mobilePosCheckoutSyncSchema, 'body', 'validatedData');
+export const validateMobilePosShiftSync = validateSchema(mobilePosShiftSyncSchema, 'body', 'validatedData');
+export const validateMobilePosHardwareEventSync = validateSchema(mobilePosHardwareEventSyncSchema, 'body', 'validatedData');
+export const validateMobilePosCheckpointAck = validateSchema(mobilePosCheckpointAckSchema, 'body', 'validatedData');

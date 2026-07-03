@@ -33,6 +33,8 @@ import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
+import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
+import { POS_SETTINGS_ACCESS_PIN_HASH_KEY, verifyPosSettingsAccessPin } from '../../settings/usecases/posSettingsAccessPinPolicy.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -338,6 +340,60 @@ const toSerializable = (value) => (
         ? value.toJSON()
         : value
 );
+
+export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => async ({ query = {}, filters = query } = {}) => {
+    try {
+        const dateFrom = String(filters.date_from || nowInManilaBusinessDate()).slice(0, 10);
+        const dateTo = String(filters.date_to || dateFrom).slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Report dates must use YYYY-MM-DD format', { statusCode: 400 });
+        }
+        if (dateFrom > dateTo) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date_from must not be after date_to', { statusCode: 400 });
+        }
+        const data = await posRepository.getReportsOverview({
+            ...filters,
+            date_from: dateFrom,
+            date_to: dateTo
+        });
+        return ok(data);
+    } catch (error) {
+        return fail(mapPosUseCaseError(error, 'Failed to retrieve POS reports'));
+    }
+};
+
+const escapeCsvValue = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ query = {} } = {}) => {
+    try {
+        const overviewResult = await buildGetPosReportsOverviewUseCase({ posRepository })({ query });
+        if (!overviewResult.success) return overviewResult;
+        const summary = overviewResult.data?.daily_report?.summary || {};
+        const discountRows = overviewResult.data?.daily_report?.discount_breakdown || [];
+        const cashierRows = overviewResult.data?.daily_report?.cashier_summary || [];
+        const rows = [
+            ['Metric', 'Value'],
+            ['Gross Sales', summary.gross_sales || 0],
+            ['Net Sales', summary.net_sales || 0],
+            ['All Discounts', summary.discounts || 0],
+            ['Transactions', summary.total_transactions || 0],
+            [],
+            ['Discount', 'Type', 'Transactions', 'Discount Total', 'VAT Removed'],
+            ...discountRows.map((row) => [row.discount_label, row.discount_type, row.transaction_count, row.discount_amount, row.vat_removed]),
+            [],
+            ['Cashier', 'Closed Shifts', 'Expected Cash', 'Cash After Shift', 'Variance'],
+            ...cashierRows.map((row) => [row.cashier_name, row.shift_money?.closed_shift_count, row.shift_money?.expected_cash_amount, row.shift_money?.closing_cash_amount, row.shift_money?.cash_variance_amount])
+        ];
+        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
+        return ok({
+            filename: `pos-${section}-report.csv`,
+            content_type: 'text/csv; charset=utf-8',
+            content: rows.map((row) => row.map(escapeCsvValue).join(',')).join('\n')
+        });
+    } catch (error) {
+        return fail(mapPosUseCaseError(error, 'Failed to export POS reports'));
+    }
+};
 
 const buildZReadingIdentifier = ({ businessDate, zCounterValue }) => (
     `ZR-${String(businessDate || '').replace(/-/g, '')}-${String(zCounterValue || 0).padStart(8, '0')}`
@@ -1011,11 +1067,10 @@ export const buildVerifyPosTerminalUseCase = ({
 
 export const buildGetPairedPosTerminalUseCase = ({
     posRepository,
-    terminalPairingService,
     resolveIdentityStatus = resolvePairingIdentityStatus,
     resolveLocationScope = resolvePosOperationalLocationScope
 }) => {
-    return async ({ pairingToken = '', user = null } = {}) => {
+    return async ({ terminalId = '', user = null } = {}) => {
         try {
             const userId = parsePositiveInt(user?.user_id);
             const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
@@ -1023,39 +1078,38 @@ export const buildGetPairedPosTerminalUseCase = ({
                 throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated tenant user is required.', { statusCode: 401 });
             }
             requirePosPermissionForPairing(user);
-            const claims = terminalPairingService.verify(pairingToken);
-            const policy = await posRepository.getTerminalPairingPolicySettings();
-            const entry = (policy.active_registry || []).find((candidate) => candidate.terminal_id === claims.terminal_id);
-            if (!entry || !entry.pairing_version || !parsePositiveInt(entry.location_id)) {
-                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'The paired terminal is no longer active or fully configured.', {
-                    statusCode: 401,
-                    details: { reason_code: 'POS_TERMINAL_PAIRING_INVALID' }
+            const normalizedTerminalId = sanitizeTerminalId(terminalId);
+            if (!normalizedTerminalId) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'A registered terminal ID is required.', {
+                    statusCode: 422,
+                    details: { reason_code: 'POS_TERMINAL_ID_REQUIRED' }
                 });
             }
-            terminalPairingService.assertBinding({
-                claims,
-                tenantId,
-                terminalId: entry.terminal_id,
-                pairingVersion: entry.pairing_version,
-                locationId: entry.location_id
-            });
+            const policy = await posRepository.getTerminalPairingPolicySettings();
+            const entry = (policy.active_registry || []).find((candidate) => candidate.terminal_id === normalizedTerminalId);
+            if (!entry || entry.is_active === false || !parsePositiveInt(entry.location_id)) {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'The selected terminal is not active or registered for this business.', {
+                    statusCode: 403,
+                    details: { reason_code: 'POS_TERMINAL_INACTIVE_OR_UNKNOWN' }
+                });
+            }
 
             const identity = await resolveIdentityStatus({ tenantId, user });
             await resolveLocationScope({
                 requestedLocationId: entry.location_id,
                 userId,
-                operationLabel: 'paired POS terminal use'
+                operationLabel: 'registered POS terminal use'
             });
 
             return ok({
-                paired: true,
+                registered: true,
                 terminal_id: entry.terminal_id,
                 location_id: entry.location_id,
                 terminal_label: entry.label || entry.terminal_id,
                 identity_mode: identity.identity_mode
             });
         } catch (error) {
-            return fail(mapPosUseCaseError(error, 'Failed to verify paired POS terminal'));
+            return fail(mapPosUseCaseError(error, 'Failed to verify registered POS terminal'));
         }
     };
 };
@@ -2240,6 +2294,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
                     line_subtotal: lineSubtotal,
                     vat_type_snapshot: item.vat_type || 'vatable',
                     vat_rate_snapshot: VAT_RATE,
+                    senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
                     fnb_course_snapshot: normalizeFnbCourse(line.course),
                     fnb_modifiers_snapshot: modifierResolution.modifiersSnapshot,
                     fnb_special_instructions: String(line.special_instructions || '').trim().slice(0, 1000) || null,
@@ -2251,7 +2306,33 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
             }
 
             subtotalAmount = round4(subtotalAmount);
-            const discountResolution = resolveCheckoutDiscount({ payload, subtotalAmount, settings });
+            const governedApplication = isPlainObject(payload.governed_discount) ? payload.governed_discount : null;
+            if (governedApplication && ['employee', 'manual'].includes(governedApplication.type)) {
+                const SystemSetting = dbStore.get('SystemSetting');
+                const pinSetting = await SystemSetting.findOne({
+                    where: { setting_key: POS_SETTINGS_ACCESS_PIN_HASH_KEY },
+                    transaction
+                });
+                await verifyPosSettingsAccessPin({
+                    pin: governedApplication.manager_pin,
+                    currentHash: pinSetting?.setting_value || ''
+                });
+            }
+            const governedCalculation = governedApplication ? calculatePosDiscount({
+                lines: preparedLines,
+                application: {
+                    type: governedApplication.type,
+                    method: governedApplication.method,
+                    rate: governedApplication.rate,
+                    amount: governedApplication.amount,
+                    lines: (governedApplication.eligible_item_ids || []).map((itemId) => ({ item_id: itemId }))
+                }
+            }) : null;
+            const discountResolution = governedCalculation ? {
+                discountAmount: governedCalculation.discount_amount,
+                discountLabelSnapshot: governedApplication.label,
+                discountRateSnapshot: governedCalculation.rate
+            } : resolveCheckoutDiscount({ payload, subtotalAmount, settings });
             const discountAmount = round4(discountResolution.discountAmount);
             const discountBeneficiary = normalizeDiscountBeneficiary({
                 payload,
@@ -2262,7 +2343,9 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
                 discountBeneficiary,
                 receiptContract: resolvedReceiptContract
             });
-            const netItemsTotal = round4(subtotalAmount - discountAmount);
+            const netItemsTotal = governedCalculation
+                ? round4(governedCalculation.total_amount)
+                : round4(subtotalAmount - discountAmount);
             const serviceFeeResolution = resolveCheckoutServiceFee({
                 payload: { ...payload, order_method: normalizedOrderMethod },
                 grossSubtotal: subtotalAmount
@@ -2278,8 +2361,10 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
             const totalAmount = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
             const adjustmentFactor = subtotalAmount > 0 ? (netItemsTotal / subtotalAmount) : 1;
 
-            for (const line of preparedLines) {
-                line.line_subtotal = round4(line.line_subtotal * adjustmentFactor);
+            for (const [index, line] of preparedLines.entries()) {
+                line.line_subtotal = governedCalculation
+                    ? round4(governedCalculation.lines[index].final_line_amount)
+                    : round4(line.line_subtotal * adjustmentFactor);
             }
 
             const adjustedSubtotal = round4(
@@ -2295,8 +2380,11 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
             let vatExemptSales = 0;
             let zeroRatedSales = 0;
 
-            for (const line of preparedLines) {
-                if (line.vat_type_snapshot === 'vatable') {
+            for (const [index, line] of preparedLines.entries()) {
+                const governedLine = governedCalculation?.lines?.[index];
+                if (governedLine && Number(governedLine.vat_exempt_amount || 0) > 0) {
+                    vatExemptSales += line.line_subtotal;
+                } else if (line.vat_type_snapshot === 'vatable') {
                     vatableGross += line.line_subtotal;
                 } else if (line.vat_type_snapshot === 'vat_exempt') {
                     vatExemptSales += line.line_subtotal;
@@ -2404,6 +2492,8 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
                     buyer_address: isFiscalReceipt ? buyerFiscalDetails.address : null,
                     special_instructions: transactionSpecialInstructions,
                     payment_type: payload.payment_type || 'cash',
+                    cash_received: payload.cash_received == null ? null : round4(payload.cash_received),
+                    change_amount: payload.change_amount == null ? null : round4(payload.change_amount),
                     subtotal_amount: subtotalAmount,
                     vatable_sales: vatableSales,
                     vat_amount: vatAmount,
@@ -2450,6 +2540,13 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
                 },
                 lines: preparedLines
             }, { transaction });
+            if (governedCalculation && typeof posRepository.createGovernedTransactionDiscount === 'function') {
+                await posRepository.createGovernedTransactionDiscount({
+                    transactionId: posTransactionId,
+                    application: governedApplication,
+                    calculation: governedCalculation
+                }, { transaction });
+            }
 
             if (isFiscalReceipt && typeof posRepository.createFiscalEvent === 'function') {
                 await posRepository.createFiscalEvent({
@@ -4472,16 +4569,54 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
                 });
             }
 
-            const created = await posRepository.createTerminalShift({
-                business_date: businessDate,
-                terminal_id: terminalId,
-                location_id: enforcedShiftLocationId,
-                cashier_id: normalizedUserId,
-                opening_float_amount: openingFloatAmount,
-                opening_note: openingNote,
-                opened_at: new Date(),
-                status: 'open'
+            const terminalShift = await posRepository.findOpenTerminalShift({
+                terminalId
             });
+            if (terminalShift) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This terminal already has an active shift. Close the current shift before another cashier starts.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            existing_shift_id: terminalShift.pos_terminal_shift_id,
+                            terminal_id: terminalId,
+                            active_cashier_id: terminalShift.cashier_id || null,
+                            requested_cashier_id: normalizedUserId
+                        }
+                    }
+                );
+            }
+
+            let created;
+            try {
+                created = await posRepository.createTerminalShift({
+                    business_date: businessDate,
+                    terminal_id: terminalId,
+                    location_id: enforcedShiftLocationId,
+                    cashier_id: normalizedUserId,
+                    opening_float_amount: openingFloatAmount,
+                    opening_note: openingNote,
+                    opened_at: new Date(),
+                    status: 'open'
+                });
+            } catch (error) {
+                const duplicateOpenTerminal = error?.name === 'SequelizeUniqueConstraintError'
+                    || error?.parent?.code === 'ER_DUP_ENTRY'
+                    || error?.original?.code === 'ER_DUP_ENTRY';
+                if (!duplicateOpenTerminal) throw error;
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This terminal already has an active shift. Close the current shift before another cashier starts.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            terminal_id: terminalId,
+                            requested_cashier_id: normalizedUserId
+                        }
+                    }
+                );
+            }
             const hydratedCreated = await posRepository.getTerminalShiftById(
                 created.pos_terminal_shift_id
             );
@@ -4980,6 +5115,20 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                     DomainErrorCode.VALIDATION_FAILED,
                     'Only open shifts can be closed',
                     { statusCode: 422 }
+                );
+            }
+            if (Number(shift.cashier_id) !== normalizedUserId && user?.is_master_admin !== true) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Only the shift cashier or company master admin can close this shift.',
+                    {
+                        statusCode: 403,
+                        details: {
+                            reason_code: 'POS_SHIFT_CLOSE_ACTOR_MISMATCH',
+                            shift_cashier_id: shift.cashier_id || null,
+                            actor_user_id: normalizedUserId
+                        }
+                    }
                 );
             }
 

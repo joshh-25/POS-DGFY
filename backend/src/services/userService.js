@@ -413,6 +413,36 @@ export const changePassword = async (userId, currentPassword, newPassword) => {
   await user.update({ password_hash });
 };
 
+export const resetLocalCashierPassword = async (adminUserId, targetUserId, newPassword) => {
+  const User = dbStore.get('User');
+  const adminUser = await findVisibleUserById(User, adminUserId);
+  const targetUser = await findVisibleUserById(User, targetUserId);
+
+  if (!adminUser) throw notFoundError('Admin user not found');
+  if (!targetUser) throw notFoundError('Cashier user not found');
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+  validateAdminHierarchy(adminUser, targetUser, 'reset password for');
+
+  if (String(targetUser.role || '').toLowerCase() !== 'cashier') {
+    throw createError('Only cashier passwords can be reset from POS setup', 422);
+  }
+  if (!newPassword || String(newPassword).length < 8) {
+    throw createError('Cashier password must be at least 8 characters', 422);
+  }
+
+  const password_hash = await hashPassword(newPassword);
+  await targetUser.update({ password_hash });
+
+  const workflowMode = await readCurrentWorkflowMode();
+  return buildUserPayload(targetUser, workflowMode, {
+    is_active: targetUser.is_active,
+    permissions: resolveEffectivePermissions(targetUser),
+    is_master_admin: targetUser.is_master_admin
+  });
+};
+
 /**
  * Get all users (admin only)
  * Excludes users who have been removed from the company (soft-deleted)

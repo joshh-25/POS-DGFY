@@ -216,15 +216,20 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     const receiptContractVersion = safeText(contractMetadata?.version, '2026.04.08');
     const restaurantServiceChargeAmount = Number(transaction?.restaurant_service_charge_amount || 0);
     const receiptRows = [];
+    const taxpayerType = safeText(businessSettings.pos_taxpayer_type).toLowerCase();
+    const vatRegistered = !taxpayerType.includes('non');
 
+    if (businessSettings.pos_registered_name) {
+        receiptRows.push(center(String(businessSettings.pos_registered_name).toUpperCase()));
+    }
     if (businessSettings.pos_business_name) {
         receiptRows.push(center(businessSettings.pos_business_name));
     }
     if (businessSettings.pos_address) {
         pushCenteredWrapped(receiptRows, businessSettings.pos_address);
     }
-    if (isFiscal && businessSettings.pos_tin_branch) {
-        receiptRows.push(center(`TIN/Branch: ${businessSettings.pos_tin_branch}`));
+    if (businessSettings.pos_tin_branch) {
+        receiptRows.push(center(`${vatRegistered ? 'VAT REG TIN' : 'NON-VAT REG TIN'}: ${businessSettings.pos_tin_branch}`));
     }
     if (isFiscal && businessSettings.pos_ptu_number) {
         receiptRows.push(center(`PTU: ${businessSettings.pos_ptu_number}`));
@@ -247,7 +252,7 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
 
     receiptRows.push(
         line(),
-        center(resolveDocumentLabel(transaction, receiptContract)),
+        center(isFiscal ? (vatRegistered ? 'VAT INVOICE' : 'NON-VAT INVOICE') : resolveDocumentLabel(transaction, receiptContract)),
     );
 
     if (!isFiscal) {
@@ -258,9 +263,16 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     }
 
     receiptRows.push(
-        center(transaction?.invoice_number || 'NO INVOICE NUMBER'),
-        center(printedAt)
+        `Invoice No.: ${transaction?.invoice_number || '-'}`,
+        `Date/Time: ${printedAt}`,
+        `Terminal: ${transaction?.terminal_id || '-'}`,
+        `Cashier: ${transaction?.cashier?.username || transaction?.acceptedByUser?.username || '-'}`
     );
+
+    receiptRows.push('SOLD TO:');
+    pushCenteredWrapped(receiptRows, `Customer: ${transaction?.customer_name || '________________'}`);
+    receiptRows.push(`TIN: ${transaction?.buyer_tin || '________________'}`);
+    pushCenteredWrapped(receiptRows, `Address: ${transaction?.buyer_address || '________________'}`);
 
     if (transaction?.fnb_check_id || transaction?.fnb_table_label_snapshot || transaction?.fnb_guest_count) {
         const fnbParts = [
@@ -297,7 +309,7 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
 
     receiptRows.push(
         line(),
-        pair('Subtotal', money(transaction?.subtotal_amount)),
+        pair('TOTAL SALES', money(transaction?.subtotal_amount)),
         pair('Vatable Sales', money(transaction?.vatable_sales)),
         pair('VAT Amount', money(transaction?.vat_amount)),
         pair('VAT Exempt Sales', money(transaction?.vat_exempt_sales)),
@@ -329,19 +341,25 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
 
     receiptRows.push(
         line('='),
-        pair('TOTAL', money(transaction?.total_amount)),
+        pair('TOTAL AMOUNT DUE', money(transaction?.total_amount)),
         line()
     );
 
     receiptRows.push(
-        center(`Document context: ${documentContext}`),
-        center(`Receipt contract version: ${receiptContractVersion}`)
+        `Payment Method: ${safeText(transaction?.payment_type, '-').toUpperCase()}`,
+        pair('Cash Received', money(transaction?.cash_received)),
+        pair('Change', money(transaction?.change_amount)),
+        line(),
+        `BIR Permit No.: ${businessSettings.pos_ptu_number || '-'}`,
+        `ATP/OCN No.: ${businessSettings.pos_accreditation_number || '-'}`,
+        `MIN: ${businessSettings.pos_min_number || '-'}`
     );
-    pushCenteredWrapped(receiptRows, 'Sequence control: invoice number is system-generated and immutable.');
 
     if (businessSettings.pos_receipt_footer_message) {
         pushCenteredWrapped(receiptRows, businessSettings.pos_receipt_footer_message);
     }
+    receiptRows.push(center('Thank you. Please come again.'));
+    receiptRows.push(center('Powered by DGFY POS'));
 
     return receiptRows.join('\n');
 };

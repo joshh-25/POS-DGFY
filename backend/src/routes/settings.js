@@ -11,7 +11,6 @@ import { storefrontAssetUpload } from '../config/uploadConfig.js';
 import {
   validateVerifyPosSettingsAccessPin,
   validateStorefrontAssetTypeParam,
-  validateVerifyPosSettingsAccessPin,
   validateUpdateSettings,
   validateUpdateSingleSetting
 } from '../validators/settingsValidator.js';
@@ -70,13 +69,6 @@ router.put(
   checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
   validateUpdateSingleSetting,
   settingsController.updateSettingByKey
-);
-
-router.post(
-  '/verify-pos-access-pin',
-  authenticate,
-  validateVerifyPosSettingsAccessPin,
-  settingsController.verifyPosSettingsAccessPin
 );
 
 router.post(

@@ -59,7 +59,19 @@ describe('posRepository reports analytics', () => {
                 order_method: 'dine_in',
                 cashier_id: 9,
                 cashier: { user_id: 9, username: 'cashier-1' },
-                shift: { pos_terminal_shift_id: 3, business_date: '2026-06-22', terminal_id: 'POS-01', location_id: 12 },
+                discount: { discount_type: 'senior', discount_amount: 10, vat_removed: 2 },
+                discount_label_snapshot: 'Senior Citizen',
+                shift: {
+                    pos_terminal_shift_id: 3,
+                    business_date: '2026-06-22',
+                    terminal_id: 'POS-01',
+                    location_id: 12,
+                    status: 'closed',
+                    opening_float_amount: 500,
+                    expected_cash_amount: 590,
+                    closing_cash_amount: 585,
+                    cash_variance_amount: -5
+                },
                 lines: [{
                     item_id: 1,
                     quantity: 2,
@@ -154,6 +166,22 @@ describe('posRepository reports analytics', () => {
             cogs: 20,
             pos_profit_loss: 30
         }));
+        expect(result.daily_report.discount_breakdown).toEqual([
+            expect.objectContaining({
+                discount_type: 'senior',
+                discount_label: 'Senior Citizen',
+                transaction_count: 1,
+                discount_amount: 10,
+                vat_removed: 2
+            })
+        ]);
+        expect(result.daily_report.cashier_summary[0].shift_money).toEqual({
+            opening_float_amount: 500,
+            expected_cash_amount: 590,
+            closing_cash_amount: 585,
+            cash_variance_amount: -5,
+            closed_shift_count: 1
+        });
     });
 
     it('normalizes refunded sales as refunds/voids deductions and applies category filter', async () => {

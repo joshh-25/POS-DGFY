@@ -1,91 +1,66 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import dbStore from '../src/utils/dbStore.js';
-import {
-  buildGetPairedPosTerminalUseCase,
-  buildVerifyPosTerminalUseCase
-} from '../src/modules/pos/usecases/posUseCases.js';
+import { buildGetPairedPosTerminalUseCase } from '../src/modules/pos/usecases/posUseCases.js';
 
-const masterAdmin = { user_id: 15, permissions: ['pos:view', 'pos:transact'], is_master_admin: true };
 const cashier = { user_id: 16, permissions: ['pos:view', 'pos:transact'], is_master_admin: false };
 
-describe('POS passwordless device pairing use cases', () => {
-  it('lets a DGFY-linked master admin pair an active location-bound terminal', async () => {
-    const issue = jest.fn().mockReturnValue('paired-token');
+describe('POS registered terminal authorization', () => {
+  it('authorizes an active terminal from the authenticated business registry', async () => {
     const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 3 });
     const resolveIdentityStatus = jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership', membership_id: 44 });
-    const useCase = buildVerifyPosTerminalUseCase({
-      posRepository: {
-        getTerminalPairingPolicySettings: jest.fn().mockResolvedValue({
-          active_registry: [{ terminal_id: 'COUNTER-01', location_id: 3, is_active: true, pairing_version: 'version-1' }]
-        })
-      },
-      terminalPairingService: { issue },
-      resolveLocationScope,
-      resolveIdentityStatus
-    });
-    const result = await dbStore.run({ tenantId: 'tenant-1' }, () => useCase({
-      payload: { terminal_id: 'COUNTER-01' },
-      user: masterAdmin
-    }));
-    expect(result.success).toBe(true);
-    expect(issue).toHaveBeenCalledWith({
-      tenantId: 'tenant-1', terminalId: 'COUNTER-01', locationId: 3, pairingVersion: 'version-1'
-    });
-  });
-
-  it('rejects pairing enrollment by a cashier and rejects unauthorized locations', async () => {
-    const base = {
-      posRepository: {
-        getTerminalPairingPolicySettings: jest.fn().mockResolvedValue({
-          active_registry: [{ terminal_id: 'COUNTER-01', location_id: 3, is_active: true, pairing_version: 'version-1' }]
-        })
-      },
-      terminalPairingService: { issue: jest.fn() },
-      resolveIdentityStatus: jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership', membership_id: 44 })
-    };
-    const cashierResult = await dbStore.run({ tenantId: 'tenant-1' }, () => buildVerifyPosTerminalUseCase({
-      ...base, resolveLocationScope: jest.fn()
-    })({ payload: { terminal_id: 'COUNTER-01' }, user: cashier }));
-    expect(cashierResult.success).toBe(false);
-    expect(cashierResult.error.statusCode).toBe(403);
-
-    const deniedResult = await dbStore.run({ tenantId: 'tenant-1' }, () => buildVerifyPosTerminalUseCase({
-      ...base,
-      resolveLocationScope: jest.fn().mockRejectedValue(Object.assign(new Error('denied'), { statusCode: 403 }))
-    })({ payload: { terminal_id: 'COUNTER-01' }, user: masterAdmin }));
-    expect(deniedResult.success).toBe(false);
-    expect(deniedResult.error.statusCode).toBe(403);
-  });
-
-  it('revalidates terminal version, location, and current DGFY identity on every paired use', async () => {
-    const assertBinding = jest.fn().mockReturnValue(true);
     const useCase = buildGetPairedPosTerminalUseCase({
       posRepository: {
         getTerminalPairingPolicySettings: jest.fn().mockResolvedValue({
-          active_registry: [{ terminal_id: 'COUNTER-01', location_id: 3, is_active: true, pairing_version: 'version-1' }]
+          active_registry: [{ terminal_id: 'COUNTER-01', location_id: 3, is_active: true }]
         })
       },
-      terminalPairingService: {
-        verify: jest.fn().mockReturnValue({ tenant_id: 'tenant-1', terminal_id: 'COUNTER-01', location_id: 3 }),
-        assertBinding
-      },
-      resolveIdentityStatus: jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership', membership_id: 44 }),
-      resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 3 })
+      resolveIdentityStatus,
+      resolveLocationScope
     });
-    const result = await dbStore.run({ tenantId: 'tenant-1' }, () => useCase({ pairingToken: 'cookie-token', user: cashier }));
+
+    const result = await dbStore.run({ tenantId: 'tenant-1' }, () => useCase({
+      terminalId: 'counter-01',
+      user: cashier
+    }));
+
     expect(result.success).toBe(true);
-    expect(assertBinding).toHaveBeenCalledWith(expect.objectContaining({ pairingVersion: 'version-1' }));
+    expect(result.data).toEqual(expect.objectContaining({
+      registered: true,
+      terminal_id: 'COUNTER-01',
+      location_id: 3
+    }));
+    expect(resolveIdentityStatus).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
+    expect(resolveLocationScope).toHaveBeenCalledWith(expect.objectContaining({ requestedLocationId: 3, userId: 16 }));
   });
 
-  it('rejects a deactivated terminal', async () => {
+  it('rejects a terminal that is not active in the selected business', async () => {
     const useCase = buildGetPairedPosTerminalUseCase({
       posRepository: { getTerminalPairingPolicySettings: jest.fn().mockResolvedValue({ active_registry: [] }) },
-      terminalPairingService: { verify: jest.fn().mockReturnValue({ terminal_id: 'COUNTER-01' }), assertBinding: jest.fn() },
       resolveIdentityStatus: jest.fn(),
       resolveLocationScope: jest.fn()
     });
-    const result = await dbStore.run({ tenantId: 'tenant-1' }, () => useCase({ pairingToken: 'token', user: cashier }));
+
+    const result = await dbStore.run({ tenantId: 'tenant-1' }, () => useCase({
+      terminalId: 'COUNTER-01',
+      user: cashier
+    }));
+
     expect(result.success).toBe(false);
-    expect(result.error.statusCode).toBe(401);
+    expect(result.error.statusCode).toBe(403);
+    expect(result.error.details.reason_code).toBe('POS_TERMINAL_INACTIVE_OR_UNKNOWN');
+  });
+
+  it('requires an explicit terminal ID instead of a device cookie', async () => {
+    const useCase = buildGetPairedPosTerminalUseCase({
+      posRepository: { getTerminalPairingPolicySettings: jest.fn() },
+      resolveIdentityStatus: jest.fn(),
+      resolveLocationScope: jest.fn()
+    });
+
+    const result = await dbStore.run({ tenantId: 'tenant-1' }, () => useCase({ user: cashier }));
+
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.details.reason_code).toBe('POS_TERMINAL_ID_REQUIRED');
   });
 });

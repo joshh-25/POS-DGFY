@@ -1,0 +1,211 @@
+{
+  "pet_id": "loki",
+  "display_name": "Loki",
+  "description": "A chubby orange tabby desk companion with sarcastic feline behavior, hover-triggered laptop smashing, and laptop-plus-lasagna desk behavior across work and waiting states.",
+  "created_at": "2026-07-03T04:16:52.477063+00:00",
+  "atlas": {
+    "columns": 8,
+    "rows": 9,
+    "cell_width": 192,
+    "cell_height": 208,
+    "width": 1536,
+    "height": 1872
+  },
+  "rows": [
+    {
+      "state": "idle",
+      "row": 0,
+      "frames": 6,
+      "purpose": "calm resting, breathing, and blinking loop"
+    },
+    {
+      "state": "running-right",
+      "row": 1,
+      "frames": 8,
+      "purpose": "rightward drag movement loop"
+    },
+    {
+      "state": "running-left",
+      "row": 2,
+      "frames": 8,
+      "purpose": "leftward drag movement loop"
+    },
+    {
+      "state": "waving",
+      "row": 3,
+      "frames": 4,
+      "purpose": "greeting or attention gesture"
+    },
+    {
+      "state": "jumping",
+      "row": 4,
+      "frames": 5,
+      "purpose": "hover or playful jump"
+    },
+    {
+      "state": "failed",
+      "row": 5,
+      "frames": 8,
+      "purpose": "blocked, failed, or cancelled reaction"
+    },
+    {
+      "state": "waiting",
+      "row": 6,
+      "frames": 6,
+      "purpose": "waiting for approval, help, or user input"
+    },
+    {
+      "state": "running",
+      "row": 7,
+      "frames": 6,
+      "purpose": "active task work or processing"
+    },
+    {
+      "state": "review",
+      "row": 8,
+      "frames": 6,
+      "purpose": "ready or completed output review"
+    }
+  ],
+  "layout_guides": [
+    {
+      "state": "idle",
+      "path": "references\\layout-guides\\idle.png",
+      "width": 1152,
+      "height": 208,
+      "frames": 6,
+      "cell_width": 192,
+      "cell_height": 208,
+      "safe_margin_x": 18,
+      "safe_margin_y": 16,
+      "usage": "layout guide input only; do not copy visible guide lines into generated sprite strips"
+    },
+    {
+      "state": "running-right",
+      "path": "references\\layout-guides\\running-right.png",
+      "width": 1536,
+      "height": 208,
+      "frames": 8,
+      "cell_width": 192,
+      "cell_height": 208,
+      "safe_margin_x": 18,
+      "safe_margin_y": 16,
+      "usage": "layout guide input only; do not copy visible guide lines into generated sprite strips"
+    },
+    {
+      "state": "running-left",
+      "path": "references\\layout-guides\\running-left.png",
+      "width": 1536,
+      "height": 208,
+      "frames": 8,
+      "cell_width": 192,
+      "cell_height": 208,
+      "safe_margin_x": 18,
+      "safe_margin_y": 16,
+      "usage": "layout guide input only; do not copy visible guide lines into generated sprite strips"
+    },
+    {
+      "state": "waving",
+      "path": "references\\layout-guides\\waving.png",
+      "width": 768,
+      "height": 208,
+      "frames": 4,
+      "cell_width": 192,
+      "cell_height": 208,
+      "safe_margin_x": 18,
+      "safe_margin_y": 16,
+      "usage": "layout guide input only; do not copy visible guide lines into generated sprite strips"
+    },
+    {
+      "state": "jumping",
+      "path": "references\\layout-guides\\jumping.png",
+      "width": 960,
+      "height": 208,
+      "frames": 5,
+      "cell_width": 192,
+      "cell_height": 208,
+      "safe_margin_x": 18,
+      "safe_margin_y": 16,
+      "usage": "layout guide input only; do not copy visible guide lines into generated sprite strips"
+    },
+    {
+      "state": "failed",
+      "path": "references\\layout-guides\\failed.png",
+      "width": 1536,
+      "height": 208,
+      "frames": 8,
+      "cell_width": 192,
+      "cell_height": 208,
+      "safe_margin_x": 18,
+      "safe_margin_y": 16,
+      "usage": "layout guide input only; do not copy visible guide lines into generated sprite strips"
+    },
+    {
+      "state": "waiting",
+      "path": "references\\layout-guides\\waiting.png",
+      "width": 1152,
+      "height": 208,
+      "frames": 6,
+      "cell_width": 192,
+      "cell_height": 208,
+      "safe_margin_x": 18,
+      "safe_margin_y": 16,
+      "usage": "layout guide input only; do not copy visible guide lines into generated sprite strips"
+    },
+    {
+      "state": "running",
+      "path": "references\\layout-guides\\running.png",
+      "width": 1152,
+      "height": 208,
+      "frames": 6,
+      "cell_width": 192,
+      "cell_height": 208,
+      "safe_margin_x": 18,
+      "safe_margin_y": 16,
+      "usage": "layout guide input only; do not copy visible guide lines into generated sprite strips"
+    },
+    {
+      "state": "review",
+      "path": "references\\layout-guides\\review.png",
+      "width": 1152,
+      "height": 208,
+      "frames": 6,
+      "cell_width": 192,
+      "cell_height": 208,
+      "safe_margin_x": 18,
+      "safe_margin_y": 16,
+      "usage": "layout guide input only; do not copy visible guide lines into generated sprite strips"
+    }
+  ],
+  "references": [
+    {
+      "path": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki-waiting-repair\\references\\reference-01.png",
+      "width": 768,
+      "height": 1134,
+      "mode": "RGB",
+      "format": "PNG",
+      "source_path": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki-hover-work-repair\\qa\\contact-sheet.png",
+      "copied_path": "C:\\xampp\\htdocs\\POS-DGFY\\output\\hatch-pet\\loki-waiting-repair\\references\\reference-01.png"
+    }
+  ],
+  "chroma_key": {
+    "hex": "#0000FF",
+    "rgb": [
+      0,
+      0,
+      255
+    ],
+    "name": "blue",
+    "selection": "auto",
+    "score": 208.39
+  },
+  "pet_notes": "Loki is a chubby orange tabby cat with bold black stripes, cream belly and muzzle, sleepy half-lidded sarcastic eyes, compact rounded proportions, and clean polished 2D mascot illustration styling. Preserve his established identity from the supplied contact-sheet reference. He hates Mondays and behaves like a real expressive cat. Lasagna is his signature comfort food. State requirements: jumping hover trigger is angry laptop smashing. waiting must be seated at a small open laptop while watching the screen and repeatedly eating or holding lasagna, mildly annoyed and expectant, no standing, no typing, no walking, no smashing. running remains seated at a small open laptop while watching the screen and repeatedly eating or holding lasagna, focused and mildly annoyed, no typing, no walking, no smashing. Keep all other states visually consistent with the current Loki asset. No text, speech bubbles, floating symbols, scenery, shadows, detached effects, speed lines, dust, or guide marks.",
+  "style_preset": "auto",
+  "style_notes": "Match the established polished 2D orange-tabby mascot illustration exactly; crisp black outline, readable compact sprite silhouette.",
+  "style_contract": "Pet-safe sprite: compact full-body mascot, readable in a 192x208 cell, clear silhouette, simple face, stable palette/materials, and crisp edges for chroma-key extraction. Style `auto`: Infer the most appropriate pet-safe style from the user request and reference images, then keep that exact style consistent across every row. User style notes: Match the established polished 2D orange-tabby mascot illustration exactly; crisp black outline, readable compact sprite silhouette..",
+  "brand_name": "",
+  "brand_brief": "",
+  "brand_sources": [],
+  "pet_safe_style": "Pet-safe sprite: compact full-body mascot, readable in a 192x208 cell, clear silhouette, simple face, stable palette/materials, and crisp edges for chroma-key extraction.",
+  "primary_generation_skill": "$imagegen"
+}

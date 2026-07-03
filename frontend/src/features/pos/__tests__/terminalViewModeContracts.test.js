@@ -104,8 +104,11 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('if (!continuingAfterCompanyPicker) {');
     expect(terminalPageContent).toContain('const selectedTenantSession = await startDgfyTenantSession({');
     expect(terminalPageContent).toContain('const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;');
+    expect(terminalPageContent).toContain('const selectedUserIsAdmin = effectiveSelectedTenantUser?.is_master_admin === true');
     expect(terminalPageContent).toContain('const selectedTenantSetupState = buildTenantSetupStateSnapshot({');
-    expect(terminalPageContent).toContain('&& selectedTenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE');
+    expect(terminalPageContent).toContain('isMasterAdmin: selectedUserIsAdmin');
+    expect(terminalPageContent).toContain('selectedUserIsAdmin');
+    expect(terminalPageContent).toContain('&& !selectedTenantSetupState.posSetupReady');
     expect(terminalPageContent).toContain('usersPayload: selectedTenantUsers');
     expect(terminalPageContent).toContain("window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);");
     expect(terminalPageContent).toContain("{ registryMode: setupFlowActive ? 'enforce' : 'warn' }");
@@ -127,7 +130,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageLayoutContent).toContain("const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';");
     expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSurfaceClassName}`');
     expect(terminalPageLayoutContent).toContain('lg:px-7 ${lockedSurfaceClassName}');
-    expect(terminalPageLayoutContent).toContain('xl:touch-pan-y ${lockedSurfaceClassName}');
+    expect(terminalPageLayoutContent).toContain('${workspaceDesktopOverflowClassName} ${lockedSurfaceClassName}');
   });
 
   it('persists manual POS terminal lock across refresh until login succeeds', () => {
@@ -191,6 +194,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('<Dialog open={shiftOpeningModalOpen}');
     expect(terminalPageContent).toContain('canSubmitOpenShift');
     expect(terminalPageContent).toContain('required');
+    expect(terminalWorkspaceSidebarContent).toContain('Lock Terminal');
     expect(terminalPageContent).not.toContain('openingFloatAmount: configuredPettyCash.toFixed(2)');
     expect(terminalPageContent).toContain('No open shift is active. Enter opening cash to start a new shift before using POS.');
     expect(terminalPageContent).toContain('You cannot use the POS because the shift is closed.');
@@ -245,23 +249,27 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('Go to History');
   });
 
-  it('supports manual POS discounts by percentage or fixed amount', () => {
-    expect(posCheckoutTerminalContent).toContain("const [manualDiscountMode, setManualDiscountMode] = useState('none');");
-    expect(posCheckoutTerminalContent).toContain("const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');");
-    expect(posCheckoutTerminalContent).toContain('Discount Type');
-    expect(posCheckoutTerminalContent).toContain('<option value="none">No Manual Discount</option>');
-    expect(posCheckoutTerminalContent).toContain('<option value="percentage">Percentage</option>');
-    expect(posCheckoutTerminalContent).toContain('<option value="amount">Manual Amount</option>');
-    expect(posCheckoutTerminalContent).toContain("manualDiscountMode !== 'none'");
-    expect(posCheckoutTerminalContent).toContain("discount_mode: selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none')");
-    expect(posCheckoutTerminalContent).toContain("manualDiscountMode === 'amount' ? 'Manual Discount Amount' : 'Manual Discount Percentage'");
-    expect(posCheckoutTerminalContent).toContain('Manual amount is capped at the item subtotal.');
+  it('supports governed POS discounts with statutory VAT and Admin PIN approval', () => {
+    expect(posCheckoutTerminalContent).toContain('Apply Discount');
+    expect(posCheckoutTerminalContent).toContain('<option value="senior">Senior Citizen</option>');
+    expect(posCheckoutTerminalContent).toContain('<option value="pwd">PWD</option>');
+    expect(posCheckoutTerminalContent).toContain('<option value="employee">Employee Discount</option>');
+    expect(posCheckoutTerminalContent).toContain('<option value="promo">Promo Discount</option>');
+    expect(posCheckoutTerminalContent).toContain('<option value="manual">Manual Discount</option>');
+    expect(posCheckoutTerminalContent).toContain('verifyPosSettingsAccessPin(discountDraft.manager_pin)');
+    expect(posCheckoutTerminalContent).toContain('VAT-Exempt Amount');
+    expect(posCheckoutTerminalContent).toContain('governed_discount: appliedDiscount');
+    expect(posCheckoutTerminalContent).toContain('discount_profile_name: appliedDiscount ? undefined');
+    expect(posCheckoutTerminalContent).toContain('discount_rate: appliedDiscount');
+    expect(posCheckoutTerminalContent).toContain('? undefined');
+    expect(posCheckoutTerminalContent).not.toContain('View Setup Details');
   });
 
   it('keeps history receipt modal close action in the header and print action in the footer', () => {
     expect(posCheckoutTerminalContent).toContain('aria-label="Close receipt preview"');
     expect(posCheckoutTerminalContent).toContain("onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}");
     expect(posCheckoutTerminalContent).toContain("{receiptPrinting ? 'Printing...' : 'Print'}");
+    expect(posCheckoutTerminalContent).toContain('DialogFooter className="flex flex-wrap items-center justify-between gap-2 border-t');
     expect(posCheckoutTerminalContent).not.toContain('<X className="h-5 w-5" />\n                                </button>\n                            </div>\n                        </div>\n                        <div className="pos-receipt-print-content');
   });
 
@@ -289,10 +297,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(receiptPrintViewContent).toContain('resolveReceiptLineUnitPrice');
     expect(receiptPrintViewContent).toContain('resolveReceiptLineTotal');
     expect(receiptPrintViewContent).toContain('splitReceiptItemName');
-    expect(receiptPrintViewContent).toContain("RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.75rem 1.5rem 3.75rem'");
+    expect(receiptPrintViewContent).toContain("RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.25rem 1.25rem 3.25rem'");
     expect(receiptPrintViewContent).toContain('itemNameParts.firstLine');
     expect(receiptPrintViewContent).toContain('itemNameParts.secondLine');
-    expect(receiptPrintViewContent).toContain('pr-24 text-[13px] font-medium leading-snug text-slate-900');
+    expect(receiptPrintViewContent).toContain('pr-16 text-[10px] font-medium leading-snug text-slate-900');
     expect(receiptPrintViewContent).toContain('last:border-b-0 last:pb-0');
   });
 
@@ -387,12 +395,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('Terminal ID');
     expect(terminalPageContent).toContain('Select registered terminal');
     expect(terminalPageContent).toContain('Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.');
-    expect(terminalPageContent).toContain('This physical POS device is not paired. Ask the company master admin to pair it from POS onboarding.');
+    expect(terminalPageContent).toContain('Select a terminal registered to this business and locked branch.');
     expect(terminalPageContent).toContain('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');
     expect(terminalLockDrawerContent).not.toContain('Company Token (Optional)');
-    expect(terminalLockDrawerContent).toContain('DGFY Email');
+    expect(terminalLockDrawerContent).toContain('DGFY or Cashier Email');
     expect(terminalLockDrawerContent).toContain('Company');
     expect(terminalLockDrawerContent).toContain('Continue to POS');
     expect(terminalLockDrawerContent).toContain('Select accessible company');
@@ -426,5 +434,19 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('checkoutGridClassName');
     expect(posCheckoutTerminalContent).toContain('checkoutPaneClassName');
     expect(posCheckoutTerminalContent).not.toContain('calc(100vh-13.5rem)');
+  });
+
+  it('defaults shift opening cash and identifies its company and terminal scope', () => {
+    expect(terminalPageContent).toContain("openingFloatAmount: '0.00'");
+    expect(terminalOperationsWorkspaceContent).toContain("Company: {companyName || 'Current company'}");
+    expect(terminalOperationsWorkspaceContent).toContain("Terminal: {activeTerminalId || 'Not selected'}");
+  });
+
+  it('shows cashier identity instead of raw shift id in shift summaries', () => {
+    expect(terminalOperationsWorkspaceContent).toContain("label: 'Cashier:'");
+    expect(terminalOperationsWorkspaceContent).toContain('cashierDisplayName');
+    expect(terminalOperationsWorkspaceContent).not.toContain("label: 'Shift ID:'");
+    expect(terminalSidebarPanelContent).toContain('<span className="text-slate-600">Cashier</span>');
+    expect(terminalSidebarPanelContent).not.toContain('<span className="text-slate-600">Shift ID</span>');
   });
 });

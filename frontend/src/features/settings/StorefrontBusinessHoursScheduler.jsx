@@ -87,11 +87,12 @@ function TimeField({
 
 function DayChip({
   label,
+  accessibleLabel = label,
   checked,
   disabled,
   onMouseDown,
   onMouseEnter,
-  onChange,
+  onClick,
   variant = 'default'
 }) {
   const checkedClasses = variant === 'success'
@@ -99,25 +100,23 @@ function DayChip({
     : 'border-blue-600 bg-blue-600 text-white shadow-[0_12px_24px_rgba(37,99,235,0.24)]';
 
   return (
-    <label
+    <button
+      type="button"
+      aria-label={accessibleLabel}
+      aria-pressed={checked}
+      disabled={disabled}
       className={`inline-flex min-h-10 select-none items-center gap-2 rounded-2xl border px-3.5 py-2 text-[13px] font-semibold transition ${checked ? checkedClasses : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-blue-700'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
       onMouseDown={onMouseDown}
       onMouseEnter={onMouseEnter}
+      onClick={onClick}
     >
-      <input
-        type="checkbox"
-        className="sr-only"
-        checked={checked}
-        disabled={disabled}
-        onChange={onChange}
-      />
       {checked && variant !== 'success' ? (
         <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M5 10.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       ) : null}
       {label}
-    </label>
+    </button>
   );
 }
 
@@ -314,9 +313,10 @@ export default function StorefrontBusinessHoursScheduler({
               <div className="flex flex-wrap gap-2">
                 <DayChip
                   label="All Days"
+                  accessibleLabel="Select All Days"
                   checked={allDaysSelected}
                   disabled={disabled}
-                  onChange={(event) => setSelectedDays(event.target.checked ? ALL_DAY_KEYS : [])}
+                  onClick={() => setSelectedDays(allDaysSelected ? [] : ALL_DAY_KEYS)}
                 />
 
                 {STOREFRONT_BUSINESS_DAY_OPTIONS.slice(1).concat(STOREFRONT_BUSINESS_DAY_OPTIONS.slice(0, 1)).map((day) => {
@@ -325,20 +325,18 @@ export default function StorefrontBusinessHoursScheduler({
                     <DayChip
                       key={`business-day-select-${day.key}`}
                       label={day.label}
+                      accessibleLabel={`Select ${day.label}`}
                       checked={checked}
                       disabled={disabled}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
+                      onMouseDown={() => {
                         if (disabled) return;
-                        const nextChecked = !checked;
-                        setDragState({ checked: nextChecked });
-                        setDaySelected(day.key, nextChecked);
+                        setDragState({ checked: !checked });
                       }}
                       onMouseEnter={() => {
                         if (!dragState || disabled) return;
                         setDaySelected(day.key, dragState.checked);
                       }}
-                      onChange={(event) => setDaySelected(day.key, event.target.checked)}
+                      onClick={() => setDaySelected(day.key, !checked)}
                     />
                   );
                 })}

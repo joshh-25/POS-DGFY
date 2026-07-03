@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React, { useState } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import StorefrontBusinessHoursScheduler from '../StorefrontBusinessHoursScheduler.jsx';
@@ -31,16 +31,16 @@ describe('StorefrontBusinessHoursScheduler', () => {
     await user.click(alwaysOpen);
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       weekly: expect.objectContaining({
-        sun: { enabled: true, open: '00:00', close: '00:00' },
-        mon: { enabled: true, open: '00:00', close: '00:00' }
+        sun: expect.objectContaining({ enabled: true, open: '00:00', close: '00:00' }),
+        mon: expect.objectContaining({ enabled: true, open: '00:00', close: '00:00' })
       })
     }));
 
     await user.click(alwaysOpen);
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       weekly: expect.objectContaining({
-        sun: { enabled: false, open: '09:00', close: '18:00' },
-        mon: { enabled: true, open: '09:00', close: '18:00' }
+        sun: expect.objectContaining({ enabled: false, open: '09:00', close: '18:00' }),
+        mon: expect.objectContaining({ enabled: true, open: '09:00', close: '18:00' })
       })
     }));
   });
@@ -56,12 +56,27 @@ describe('StorefrontBusinessHoursScheduler', () => {
 
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       weekly: expect.objectContaining({
-        mon: { enabled: true, open: '10:00', close: '17:00' },
-        fri: { enabled: true, open: '10:00', close: '17:00' },
-        sat: { enabled: true, open: '09:00', close: '18:00' }
+        mon: expect.objectContaining({ enabled: true, open: '10:00', close: '17:00' }),
+        fri: expect.objectContaining({ enabled: true, open: '10:00', close: '17:00' }),
+        sat: expect.objectContaining({ enabled: true, open: '09:00', close: '18:00' })
       })
     }));
     expect(screen.getByText(/10:00 AM - 05:00 PM/i)).toBeTruthy();
+  });
+
+  it('persists weekday selection after clicking a day chip', async () => {
+    const user = userEvent.setup();
+    cleanup();
+    const view = render(<ControlledScheduler />);
+
+    const saturday = within(view.container).getByRole('button', { name: 'Select Sat' });
+    expect(saturday.getAttribute('aria-pressed')).toBe('false');
+
+    await user.click(saturday);
+    expect(saturday.getAttribute('aria-pressed')).toBe('true');
+
+    await user.click(saturday);
+    expect(saturday.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('confirms before applying a new all-days time set over existing schedules', async () => {
@@ -78,9 +93,9 @@ describe('StorefrontBusinessHoursScheduler', () => {
 
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       weekly: expect.objectContaining({
-        sun: { enabled: true, open: '10:00', close: '21:00' },
-        mon: { enabled: true, open: '10:00', close: '21:00' },
-        sat: { enabled: true, open: '10:00', close: '21:00' }
+        sun: expect.objectContaining({ enabled: true, open: '10:00', close: '21:00' }),
+        mon: expect.objectContaining({ enabled: true, open: '10:00', close: '21:00' }),
+        sat: expect.objectContaining({ enabled: true, open: '10:00', close: '21:00' })
       })
     }));
   });

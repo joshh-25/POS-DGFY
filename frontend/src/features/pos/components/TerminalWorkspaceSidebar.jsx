@@ -200,17 +200,19 @@ export default function TerminalWorkspaceSidebar({
           )}
         </div>
 
-        {locked ? (
-          <Button type="button" className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73]" onClick={onUnlock}>
-            <LogIn className="h-4 w-4" />
-            Unlock Terminal
-          </Button>
-        ) : (
-          <Button type="button" variant="outline" className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-50 text-[13px] font-extrabold text-[#0F172A] transition hover:bg-slate-100" onClick={onLock}>
-            <Lock className="h-4 w-4" />
-            Lock Terminal
-          </Button>
-        )}
+        <div data-testid="pos-sidebar-session-action" className="mt-5 border-t border-slate-200 pt-5">
+          {locked ? (
+            <Button type="button" className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73]" onClick={onUnlock}>
+              <LogIn className="h-4 w-4" />
+              Unlock Terminal
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-50 text-[13px] font-extrabold text-[#0F172A] transition hover:bg-slate-100" onClick={onLock}>
+              <Lock className="h-4 w-4" />
+              Lock Terminal
+            </Button>
+          )}
+        </div>
       </div>
       </div>
     </aside>

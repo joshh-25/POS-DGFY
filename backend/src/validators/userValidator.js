@@ -52,6 +52,18 @@ export const changePasswordSchema = Joi.object({
     })
 });
 
+export const resetLocalCashierPasswordSchema = Joi.object({
+  newPassword: Joi.string()
+    .min(8)
+    .max(128)
+    .required()
+    .messages({
+      'string.min': 'New password must be at least 8 characters',
+      'string.max': 'New password must not exceed 128 characters',
+      'any.required': 'New password is required'
+    })
+});
+
 // Schema for updating user role (admin only)
 export const updateUserRoleSchema = Joi.object({
   role: Joi.string().valid(...USER_ROLES).optional().messages({
@@ -106,6 +118,28 @@ export const validateUpdateProfile = (req, res, next) => {
  */
 export const validateChangePassword = (req, res, next) => {
   const { error, value } = changePasswordSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    const errors = error.details.map(detail => ({
+      field: detail.path[0],
+      message: detail.message
+    }));
+
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.validatedData = value;
+  next();
+};
+
+export const validateResetLocalCashierPassword = (req, res, next) => {
+  const { error, value } = resetLocalCashierPasswordSchema.validate(req.body, { abortEarly: false });
 
   if (error) {
     const errors = error.details.map(detail => ({

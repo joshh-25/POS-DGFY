@@ -33,13 +33,13 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.queryByPlaceholderText(/Auto-lookup runs when left blank/i)).toBeNull();
   });
 
-  it('shows DGFY-first terminal login before company and terminal unlock', () => {
+  it('accepts DGFY owner or assigned cashier credentials before terminal unlock', () => {
     render(<TerminalLockDrawer {...buildProps()} />);
 
     expect(screen.getByText('Terminal Login Required')).toBeTruthy();
-    expect(screen.getByLabelText('DGFY Email')).toBeTruthy();
-    expect(screen.getByLabelText('DGFY Password')).toBeTruthy();
-    expect(screen.getByText(/Sign in with your DGFY account first/i)).toBeTruthy();
+    expect(screen.getByLabelText('DGFY or Cashier Email')).toBeTruthy();
+    expect(screen.getByLabelText('Password')).toBeTruthy();
+    expect(screen.getByText(/Assigned cashiers continue directly/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
     expect(screen.queryByText(/Terminal ID/i)).toBeNull();
   });
@@ -55,6 +55,26 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.getByLabelText('Company')).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Select accessible company' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Main Company' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue to POS' }).disabled).toBe(true);
+  });
+
+  it('lets a multi-company cashier select a company directly in POS', () => {
+    render(<TerminalLockDrawer {...buildProps({
+      dgfyPosState: {
+        authenticated: false,
+        cashierCompanySelection: true,
+        companies: [
+          { company_token: 'token-masu', company_name: 'Masu Cafe' },
+          { company_token: 'token-second', company_name: 'Second Company' }
+        ]
+      }
+    })} />);
+
+    expect(screen.getByLabelText('Company')).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Masu Cafe' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Second Company' })).toBeTruthy();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(screen.getByText(/cashier will open a shift/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue to POS' }).disabled).toBe(true);
   });
 

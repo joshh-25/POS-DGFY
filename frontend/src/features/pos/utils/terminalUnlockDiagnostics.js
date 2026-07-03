@@ -91,7 +91,7 @@ export const resolveTerminalLoginErrorMessage = (error) => {
   const requestPath = getRequestPath(error);
 
   if (code === POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS) {
-    return responseMessage || 'This email belongs to multiple companies. Sign in from SKUpervisor once, then reopen POS for the selected company.';
+    return responseMessage || 'This email belongs to multiple companies. Select the company to continue.';
   }
 
   if (code === POS_TERMINAL_LOGIN_ERROR_CODES.TENANT_NOT_FOUND || code === POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED) {
@@ -108,6 +108,14 @@ export const resolveTerminalLoginErrorMessage = (error) => {
 
   if (!status) {
     return 'Unable to reach the POS backend. Check the server connection and try again.';
+  }
+
+  if (status === 401 && requestPath.includes('/pos/terminal/')) {
+    const lowerMessage = responseMessage.toLowerCase();
+    if (lowerMessage.includes('company token') || lowerMessage.includes('tenant')) {
+      return 'The selected business session is missing or expired. Select the company and continue again.';
+    }
+    return responseMessage || 'This POS device is not paired to the selected business terminal.';
   }
 
   if (status === 401) {

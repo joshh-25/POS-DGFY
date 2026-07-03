@@ -69,6 +69,7 @@ export const createItemSchema = Joi.object({
     }),
     otherwise: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').allow(null, '').optional()
   }),
+  senior_pwd_discount_eligible: Joi.boolean().default(false),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),
@@ -189,6 +190,7 @@ export const createItemDraftSchema = Joi.object({
   cost_per_unit: Joi.number().min(0).allow(null, ''),
   default_sale_price: Joi.number().min(0).precision(4).allow(null, '').optional(),
   vat_type: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').allow(null, ''),
+  senior_pwd_discount_eligible: Joi.boolean().default(false),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),
@@ -299,6 +301,7 @@ export const updateItemSchema = Joi.object({
   cost_per_unit: Joi.number().min(0).allow(null),
   default_sale_price: Joi.number().min(0).precision(4).allow(null).optional(),
   vat_type: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').allow(null),
+  senior_pwd_discount_eligible: Joi.boolean(),
   labor_cost: Joi.number().min(0).allow(null, ''),
   overhead_cost: Joi.number().min(0).allow(null, ''),
   additional_packaging_cost: Joi.number().min(0).allow(null, ''),

@@ -202,6 +202,15 @@ export default function TerminalPageLayout({
     ? 'fixed inset-0 z-50 lg:hidden'
     : 'fixed inset-0 z-50 xl:hidden';
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
+  const workspaceDesktopOverflowClassName = isCheckoutWorkspaceMode
+    ? 'xl:flex xl:flex-col xl:overflow-hidden'
+    : 'xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y';
+  const workspaceContentClassName = isCheckoutWorkspaceMode
+    ? 'grid grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]'
+    : 'grid grid-cols-1 gap-2 p-2';
+  const workspaceSectionClassName = isCheckoutWorkspaceMode
+    ? 'h-full min-h-0 transition'
+    : 'min-h-0 transition';
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -386,7 +395,7 @@ export default function TerminalPageLayout({
 
       <div
         ref={workspacePaneRef}
-        className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${lockedSurfaceClassName}`}
+        className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y ${workspaceDesktopOverflowClassName} ${lockedSurfaceClassName}`}
       >
       {modeChangeNotice && (
         <div className="mx-4 mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
@@ -488,10 +497,10 @@ export default function TerminalPageLayout({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
+      <div className={workspaceContentClassName}>
         <div
           id={TERMINAL_SECTION_IDS.checkoutWorkspace}
-          className="transition"
+          className={workspaceSectionClassName}
         >
           {(isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>

@@ -85,12 +85,26 @@ describe('terminal unlock diagnostics', () => {
     }))).toBe('Your account does not have permission to unlock or operate this POS terminal.');
   });
 
+  it('does not misreport terminal pairing failures as invalid credentials', () => {
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 401,
+      url: '/pos/terminal/paired',
+      data: { message: 'This POS device pairing is missing, expired, or no longer valid.' }
+    }))).toBe('This POS device pairing is missing, expired, or no longer valid.');
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 401,
+      url: '/pos/terminal/pair',
+      data: { message: 'No company token provided.' }
+    }))).toBe('The selected business session is missing or expired. Select the company and continue again.');
+  });
+
   it('preserves multi-tenant and capability-block diagnostics', () => {
     const multipleTenantError = createTerminalLoginError(
-      'This email belongs to multiple companies. Sign in from SKUpervisor once, then reopen POS for the selected company.',
+      'This email belongs to multiple companies. Select the company to continue.',
       POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS
     );
     expect(resolveTerminalLoginErrorMessage(multipleTenantError)).toContain('multiple companies');
+    expect(resolveTerminalLoginErrorMessage(multipleTenantError)).not.toContain('SKUpervisor');
 
     expect(resolveTerminalLoginErrorMessage(apiError({
       status: 403,

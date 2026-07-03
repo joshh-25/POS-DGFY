@@ -18,6 +18,8 @@ export default function TerminalLockDrawer({
 }) {
   const dgfyCompanies = Array.isArray(dgfyPosState?.companies) ? dgfyPosState.companies : [];
   const dgfyAuthenticated = Boolean(dgfyPosState?.authenticated);
+  const cashierCompanySelection = Boolean(dgfyPosState?.cashierCompanySelection);
+  const companySelectionActive = dgfyAuthenticated || cashierCompanySelection;
   const hasCompanyOptions = dgfyCompanies.length > 0;
   const companySelected = Boolean(String(formData.dgfyTenantId || '').trim());
 
@@ -46,8 +48,8 @@ export default function TerminalLockDrawer({
         <form onSubmit={onSubmit} className="space-y-4 p-6">
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-3">
-              <Label htmlFor="dgfy-pos-email" className="text-[13px] font-bold text-[#0F172A]">DGFY Email</Label>
-              {dgfyAuthenticated && onUseDifferentAccount ? (
+              <Label htmlFor="dgfy-pos-email" className="text-[13px] font-bold text-[#0F172A]">DGFY or Cashier Email</Label>
+              {companySelectionActive && onUseDifferentAccount ? (
                 <button
                   type="button"
                   className="text-xs font-bold text-[#1A4E8D] hover:underline"
@@ -72,19 +74,21 @@ export default function TerminalLockDrawer({
               className="h-12 rounded-2xl border-blue-200 bg-[#f2f7ff] text-sm text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:border-[#93C5FD] focus-visible:ring-[#93C5FD]"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="dgfy-pos-password" className="text-[13px] font-bold text-[#0F172A]">DGFY Password</Label>
-            <Input
-              id="dgfy-pos-password"
-              type="password"
-              value={formData.password}
-              onChange={(event) => setFormData((prev) => ({ ...prev, password: event.target.value }))}
-              placeholder="Enter your password"
-              autoComplete="current-password"
-              className="h-12 rounded-2xl border-blue-200 bg-[#f2f7ff] text-sm text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:border-[#93C5FD] focus-visible:ring-[#93C5FD]"
-            />
-          </div>
-          {dgfyAuthenticated ? (
+          {!companySelectionActive ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="dgfy-pos-password" className="text-[13px] font-bold text-[#0F172A]">Password</Label>
+              <Input
+                id="dgfy-pos-password"
+                type="password"
+                value={formData.password}
+                onChange={(event) => setFormData((prev) => ({ ...prev, password: event.target.value }))}
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                className="h-12 rounded-2xl border-blue-200 bg-[#f2f7ff] text-sm text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:border-[#93C5FD] focus-visible:ring-[#93C5FD]"
+              />
+            </div>
+          ) : null}
+          {companySelectionActive ? (
             <div className="space-y-1.5">
               <Label htmlFor="dgfy-pos-company" className="text-[13px] font-bold text-[#0F172A]">Company</Label>
               <select
@@ -98,29 +102,36 @@ export default function TerminalLockDrawer({
                   {dgfyPosState?.loadingCompanies ? 'Loading companies...' : 'Select accessible company'}
                 </option>
                 {dgfyCompanies.map((company) => (
-                  <option key={company.tenant_id} value={company.tenant_id}>
-                    {company.company_name}
+                  <option
+                    key={cashierCompanySelection ? company.company_token : company.tenant_id}
+                    value={cashierCompanySelection ? company.company_token : company.tenant_id}
+                  >
+                    {company.company_name || company.name}
                   </option>
                 ))}
               </select>
               <p className="text-[11px] leading-5 text-[#64748B]">
-                Choose the company to continue. POS will open onboarding first when setup is incomplete.
+                {cashierCompanySelection
+                  ? 'Choose the company where this cashier will open a shift.'
+                  : 'Choose the company to continue. POS will open onboarding first when setup is incomplete.'}
               </p>
             </div>
           ) : null}
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] leading-5 text-[#64748B]">
-            {dgfyAuthenticated
-              ? 'After company selection, POS will continue to onboarding or terminal unlock based on company setup.'
-              : 'Sign in with your DGFY account first. Company selection and terminal unlock appear after login succeeds.'}
+            {companySelectionActive
+              ? (cashierCompanySelection
+                  ? 'POS will load this company’s registered terminals and cashier shift.'
+                  : 'After company selection, POS will continue to onboarding or terminal unlock based on company setup.')
+              : 'Owners can sign in with a DGFY account. Assigned cashiers continue directly to their registered terminal and shift.'}
           </div>
           <Button
             type="submit"
             className="h-12 w-full rounded-2xl !bg-[#1A4E8D] text-sm font-extrabold text-white shadow-none hover:!bg-[#143F73] focus-visible:!ring-[#93C5FD]"
-            disabled={submitting || (dgfyAuthenticated && hasCompanyOptions && !companySelected)}
+            disabled={submitting || (companySelectionActive && hasCompanyOptions && !companySelected)}
           >
             {submitting
               ? 'Continuing...'
-              : (dgfyAuthenticated ? 'Continue to POS' : 'Sign in')}
+              : (companySelectionActive ? 'Continue to POS' : 'Sign in')}
           </Button>
         </form>
         {onLegacySubmit && (

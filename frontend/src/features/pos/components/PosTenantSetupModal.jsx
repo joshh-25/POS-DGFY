@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ImagePlus, Settings2, Store, Trash2, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,6 @@ import { updateSettings, uploadStorefrontAsset } from '@/services/settingsServic
 import { createTenantLocation, updateTenantLocation } from '@/services/tenantLocationService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
-import { verifyPosTerminal } from '../services/posService.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
 
@@ -125,9 +124,10 @@ export default function PosTenantSetupModal({
   const [terminalDrafts, setTerminalDrafts] = useState(() => normalizeTerminalDrafts(terminalRegistry));
   const [terminalSaving, setTerminalSaving] = useState(false);
   const [assetUploadingType, setAssetUploadingType] = useState('');
+  const [localStorefrontAssets, setLocalStorefrontAssets] = useState({ profile: '', cover: '' });
   const [locationSaving, setLocationSaving] = useState(false);
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
-  const [pairingTerminalId, setPairingTerminalId] = useState('');
+  const localPreviewUrlsRef = useRef(new Set());
   const [locationDraft, setLocationDraft] = useState(() => createLocationDraft(
     resolvePrimaryLocation(terminalLocations),
     companyName,
@@ -138,6 +138,20 @@ export default function PosTenantSetupModal({
     if (!open) return;
     setTerminalDrafts(normalizeTerminalDrafts(terminalRegistry));
   }, [open, terminalRegistry]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLocalStorefrontAssets({
+      profile: storefrontRequirements.profileImageUrl || '',
+      cover: storefrontRequirements.coverImageUrl || ''
+    });
+  }, [open, storefrontRequirements.coverImageUrl, storefrontRequirements.profileImageUrl]);
+
+  useEffect(() => () => {
+    if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') return;
+    localPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    localPreviewUrlsRef.current.clear();
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -179,6 +193,11 @@ export default function PosTenantSetupModal({
     )),
     [cashierUsers]
   );
+
+  const effectiveStorefrontProfileImageUrl = localStorefrontAssets.profile || storefrontRequirements.profileImageUrl || '';
+  const effectiveStorefrontCoverImageUrl = localStorefrontAssets.cover || storefrontRequirements.coverImageUrl || '';
+  const effectiveProfileImageReady = Boolean(effectiveStorefrontProfileImageUrl) || storefrontRequirements.profileImageReady === true;
+  const effectiveCoverImageReady = Boolean(effectiveStorefrontCoverImageUrl) || storefrontRequirements.coverImageReady === true;
 
   useEffect(() => {
     const fallbackLocationId = primaryLocationId || (normalizedLocations.length === 1 ? normalizedLocations[0].location_id : null);
@@ -241,18 +260,6 @@ export default function PosTenantSetupModal({
       }
       return next;
     });
-  };
-
-  const handlePairDevice = async (terminalId) => {
-    setPairingTerminalId(terminalId);
-    try {
-      await verifyPosTerminal({ terminal_id: terminalId });
-      toast.success(`This device is now paired to ${terminalId}.`);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to pair this POS device.');
-    } finally {
-      setPairingTerminalId('');
-    }
   };
 
   const handleSaveTerminals = async () => {
@@ -325,14 +332,39 @@ export default function PosTenantSetupModal({
 
   const handleUploadAsset = async (assetType, file) => {
     if (!file) return;
+    const previewUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+      ? URL.createObjectURL(file)
+      : '';
+    if (previewUrl) {
+      localPreviewUrlsRef.current.add(previewUrl);
+      setLocalStorefrontAssets((current) => ({
+        ...current,
+        [assetType]: previewUrl
+      }));
+    }
     setAssetUploadingType(assetType);
     try {
-      await uploadStorefrontAsset(assetType, file);
-      await onSetupDataChanged();
+      const result = await uploadStorefrontAsset(assetType, file);
+      const uploadedUrl = result?.image_url || result?.url || result?.path || '';
+      if (uploadedUrl) {
+        setLocalStorefrontAssets((current) => ({
+          ...current,
+          [assetType]: uploadedUrl
+        }));
+      }
+      await onSetupDataChanged({ scope: 'storefront-assets' });
       toast.success(assetType === 'profile' ? 'Company icon uploaded.' : 'Company cover image uploaded.');
     } catch (error) {
+      setLocalStorefrontAssets((current) => ({
+        ...current,
+        [assetType]: storefrontRequirements[assetType === 'profile' ? 'profileImageUrl' : 'coverImageUrl'] || ''
+      }));
       toast.error(error?.response?.data?.message || 'Failed to upload storefront asset.');
     } finally {
+      if (previewUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(previewUrl);
+        localPreviewUrlsRef.current.delete(previewUrl);
+      }
       setAssetUploadingType('');
     }
   };
@@ -599,15 +631,6 @@ export default function PosTenantSetupModal({
                           />
                           Default
                         </label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-11"
-                          disabled={!terminal.terminal_id || !terminal.location_id || (!terminal.pairing_version && !terminal.paired_device_ready) || pairingTerminalId === terminal.terminal_id}
-                          onClick={() => handlePairDevice(terminal.terminal_id)}
-                        >
-                          {pairingTerminalId === terminal.terminal_id ? 'Pairing...' : 'Pair This Device'}
-                        </Button>
                       </div>
                     </div>
                   ))}
@@ -641,9 +664,9 @@ export default function PosTenantSetupModal({
                     <div className="rounded-2xl border border-slate-200 p-4">
                       <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Icon</p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                        {storefrontRequirements.profileImageUrl ? (
+                        {effectiveStorefrontProfileImageUrl ? (
                           <img
-                            src={resolveAssetUrl(storefrontRequirements.profileImageUrl)}
+                            src={resolveAssetUrl(effectiveStorefrontProfileImageUrl)}
                             alt="Company icon preview"
                             className="h-full w-full object-cover"
                           />
@@ -660,16 +683,19 @@ export default function PosTenantSetupModal({
                           accept="image/*"
                           className="h-11 rounded-lg border-slate-200 text-[13px]"
                           disabled={assetUploadingType === 'profile'}
-                          onChange={(event) => handleUploadAsset('profile', event.target.files?.[0])}
+                          onChange={(event) => {
+                            handleUploadAsset('profile', event.target.files?.[0]);
+                            event.target.value = '';
+                          }}
                         />
                       </div>
                     </div>
                     <div className="rounded-2xl border border-slate-200 p-4">
                       <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Cover Image</p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                        {storefrontRequirements.coverImageUrl ? (
+                        {effectiveStorefrontCoverImageUrl ? (
                           <img
-                            src={resolveAssetUrl(storefrontRequirements.coverImageUrl)}
+                            src={resolveAssetUrl(effectiveStorefrontCoverImageUrl)}
                             alt="Company cover preview"
                             className="h-full w-full object-cover"
                           />
@@ -686,7 +712,10 @@ export default function PosTenantSetupModal({
                           accept="image/*"
                           className="h-11 rounded-lg border-slate-200 text-[13px]"
                           disabled={assetUploadingType === 'cover'}
-                          onChange={(event) => handleUploadAsset('cover', event.target.files?.[0])}
+                          onChange={(event) => {
+                            handleUploadAsset('cover', event.target.files?.[0]);
+                            event.target.value = '';
+                          }}
                         />
                       </div>
                     </div>
@@ -761,11 +790,11 @@ export default function PosTenantSetupModal({
                     </div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                    <p className={storefrontRequirements.profileImageReady ? 'text-emerald-700' : 'text-rose-600'}>
-                      {storefrontRequirements.profileImageReady ? 'Complete' : 'Required'}: company icon
+                    <p className={effectiveProfileImageReady ? 'text-emerald-700' : 'text-rose-600'}>
+                      {effectiveProfileImageReady ? 'Complete' : 'Required'}: company icon
                     </p>
-                    <p className={`mt-2 ${storefrontRequirements.coverImageReady ? 'text-emerald-700' : 'text-rose-600'}`}>
-                      {storefrontRequirements.coverImageReady ? 'Complete' : 'Required'}: company cover image
+                    <p className={`mt-2 ${effectiveCoverImageReady ? 'text-emerald-700' : 'text-rose-600'}`}>
+                      {effectiveCoverImageReady ? 'Complete' : 'Required'}: company cover image
                     </p>
                     <p className={`mt-2 ${locationDraft.location_id ? 'text-emerald-700' : 'text-rose-600'}`}>
                       {locationDraft.location_id ? 'Complete' : 'Required'}: primary store location and map pin

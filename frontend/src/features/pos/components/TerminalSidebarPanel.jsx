@@ -288,8 +288,10 @@ export default function TerminalSidebarPanel({
           ) : shiftState.shift ? (
             <div className="space-y-1 text-sm">
               <div className="flex items-center justify-between">
-                <span className="text-slate-600">Shift ID</span>
-                <span className="font-semibold text-slate-900">#{shiftState.shift.pos_terminal_shift_id}</span>
+                <span className="text-slate-600">Cashier</span>
+                <span className="font-semibold text-slate-900">
+                  {shiftState.shift?.cashier?.username || shiftState.shift?.cashier?.email || terminalUser?.username || terminalUser?.email || 'Current cashier'}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Business Date</span>

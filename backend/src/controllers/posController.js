@@ -3,10 +3,7 @@
  */
 
 export {
-    verifyTerminal,
-    getPairedTerminal,
-    clearPairedTerminal,
-    requirePairedTerminal,
+    requireRegisteredTerminal,
     createSetupCashier,
     listSetupCashiers,
     loginCashier,
@@ -43,14 +40,13 @@ export {
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,
-    openDeviceDrawer
+    openDeviceDrawer,
+    getReportsOverview,
+    exportReports
 } from '../modules/pos/controllers/posHandlers.js';
 
 import {
-    verifyTerminal,
-    getPairedTerminal,
-    clearPairedTerminal,
-    requirePairedTerminal,
+    requireRegisteredTerminal,
     createSetupCashier,
     listSetupCashiers,
     loginCashier,
@@ -87,14 +83,15 @@ import {
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,
-    openDeviceDrawer
+    openDeviceDrawer,
+    getReportsOverview,
+    exportReports
 } from '../modules/pos/controllers/posHandlers.js';
 
 export default {
-    verifyTerminal,
-    getPairedTerminal,
-    clearPairedTerminal,
-    requirePairedTerminal,
+    getReportsOverview,
+    exportReports,
+    requireRegisteredTerminal,
     createSetupCashier,
     listSetupCashiers,
     loginCashier,

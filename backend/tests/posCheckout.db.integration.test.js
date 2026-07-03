@@ -218,7 +218,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             }
         }));
 
-        expect(checkoutResult.success).toBe(true);
+        expect(checkoutResult).toEqual(expect.objectContaining({ success: true }));
         expect(checkoutResult.data.idempotent_replay).toBe(false);
 
         const persistedTx = await models.PosTransaction.findOne({
@@ -240,6 +240,55 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
         const refreshedItem = await models.Item.findByPk(product.item_id);
         expect(Number(refreshedItem.current_stock)).toBe(8);
+    });
+
+    it('persists governed discount allocations against the real transaction line primary key', async () => {
+        const cashier = await createCashier();
+        const product = await createFinishedGood({
+            current_stock: 10,
+            senior_pwd_discount_eligible: true
+        });
+
+        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
+            userId: cashier.user_id,
+            payload: {
+                idempotency_key: `idem-governed-${crypto.randomUUID()}`,
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                discount_beneficiary: {
+                    category: 'senior',
+                    name: 'Integration Customer',
+                    id_number: 'SC-INTEGRATION'
+                },
+                governed_discount: {
+                    type: 'senior',
+                    label: 'Senior Citizen',
+                    method: 'percentage',
+                    rate: 20,
+                    customer_name: 'Integration Customer',
+                    id_number: 'SC-INTEGRATION'
+                },
+                lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
+            }
+        }));
+
+        expect(checkoutResult).toEqual(expect.objectContaining({ success: true }));
+
+        const transaction = await models.PosTransaction.findOne({
+            where: { pos_transaction_id: checkoutResult.data.transaction.pos_transaction_id },
+            include: [{ model: models.PosTransactionLine, as: 'lines' }]
+        });
+        const discount = await models.PosTransactionDiscount.findOne({
+            where: { transaction_id: transaction.pos_transaction_id }
+        });
+        const allocation = await models.PosTransactionDiscountLine.findOne({
+            where: { transaction_discount_id: discount.id }
+        });
+
+        expect(transaction.lines).toHaveLength(1);
+        expect(allocation.transaction_line_id).toBe(transaction.lines[0].line_id);
+        expect(allocation.item_id).toBe(product.item_id);
+        expect(Number(allocation.gross_eligible_amount)).toBeGreaterThan(0);
     });
 
     it('sells an always-available POS item at zero stock without creating a stock movement', async () => {
