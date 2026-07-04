@@ -28,5 +28,13 @@
         "react": {
             "version": "detect"
         }
-    }
+    },
+    "overrides": [
+        {
+            "files": ["apps/store/src/StorefrontApp.jsx"],
+            "rules": {
+                "react-hooks/preserve-manual-memoization": "warn"
+            }
+        }
+    ]
 }

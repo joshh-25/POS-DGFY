@@ -3,9 +3,10 @@ package com.dgfy.iminwrapper
 import android.os.Build
 
 object AppConfig {
-    private const val LIVE_POS_ORIGIN = "https://pos.dgfy.ph"
-    private const val LIVE_POS_HOST = "pos.dgfy.ph"
-    private const val SKUPERVISOR_HOST = "skupervisor.dgfy.ph"
+    // Sourced from the active product flavor (prod/beta) in app/build.gradle.kts.
+    private val LIVE_POS_ORIGIN = BuildConfig.LIVE_POS_ORIGIN
+    private val LIVE_POS_HOST = BuildConfig.LIVE_POS_HOST
+    private val SKUPERVISOR_HOST = BuildConfig.SKUPERVISOR_HOST
     private const val LOCAL_LAN_HOST = "10.123.37.45"
     private const val EMULATOR_HOST = "10.0.2.2"
     private const val POS_PORT = 5174

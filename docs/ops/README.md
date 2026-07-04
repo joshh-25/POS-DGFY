@@ -15,5 +15,6 @@ Key runbooks:
 7. `docs/ops/WORKSPACE_CLEANUP_AND_BRANCH_POLICY.md`
 8. `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`
 9. `docs/ops/QA_ISOLATION_PROFILE.md`
+10. `docs/ops/BETA_TENANT_PROVISIONING_INCIDENT_2026-07-04.md`
 
 Production authorization for the private GitHub Free repository is enforced by ADR 0030 at the root-owned external signed release controller. GitHub workflows create candidate evidence and PRs only.

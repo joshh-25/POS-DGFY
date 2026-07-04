@@ -82,6 +82,12 @@
       "expected_authority_level": "reference"
     },
     {
+      "path": "docs/ops/BETA_TENANT_PROVISIONING_INCIDENT_2026-07-04.md",
+      "topic": "beta_tenant_provisioning_incident_2026_07_04",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
       "path": "docs/testing/ai-doc-discovery-validation.md",
       "topic": "ai_doc_discovery_validation",
       "expected_status": "authoritative",

@@ -16,7 +16,7 @@ jobs:
   build-and-push:
     uses: ./.github/workflows/deployment-orchestrator.yml
     with:
-      environment: QA
+      environment: STAGING
       image_tags: "staging"
     secrets: inherit
     permissions:
