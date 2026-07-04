@@ -1046,24 +1046,7 @@ function ShiftControlsWorkspace({
   );
 }
 
-const POS_FOOD_CATEGORY_LABELS = Object.freeze([
-  'Add Ons',
-  'Appetizers',
-  'Burgers And Sandwiches',
-  'Espresso Based Beverages',
-  'Frappe',
-  'Fruit Shakes',
-  'Mains',
-  'Mocktails',
-  'Non Espresso Based Beverages',
-  'Pasta',
-  'Rice Bowls',
-  'Rice Meals',
-  'Space Bar Exclusive',
-  'Waffle'
-]);
-
-const DEFAULT_POS_FOOD_CATEGORY = 'Mains';
+const DEFAULT_POS_FOOD_CATEGORY = '';
 
 const normalizeFolderNameKey = (value = '') => (
   String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()
@@ -1087,7 +1070,7 @@ const createFoodCategoryOption = (folder = {}) => {
   };
 };
 
-const createEmptyPosItemForm = () => ({
+const createEmptyPosItemForm = (defaultCategory = DEFAULT_POS_FOOD_CATEGORY) => ({
   name: '',
   default_sale_price: '',
   cost_per_unit: '',
@@ -1095,7 +1078,7 @@ const createEmptyPosItemForm = () => ({
   pos_always_available: false,
   description: '',
   sku_code: '',
-  pos_category: DEFAULT_POS_FOOD_CATEGORY
+  pos_category: String(defaultCategory || '').trim()
 });
 
 const resolveSellablePosItemPreset = (workflowMode = '') => {
@@ -1244,60 +1227,29 @@ function ItemsWorkspace({
       .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
   ), []);
 
-  const loadPosFolders = useCallback(async ({ seedFoodCategories = false } = {}) => {
+  const loadPosFolders = useCallback(async () => {
     if (!canViewPos) {
       setPosFolders([]);
       return [];
     }
 
     try {
-      let folders = normalizePosFolders(await getFolders());
-
-      if (seedFoodCategories && canCreateItems) {
-        const byName = new Map(folders.map((folder) => [normalizeFolderNameKey(folder.name), folder]));
-        let changed = false;
-
-        for (const label of POS_FOOD_CATEGORY_LABELS) {
-          const key = normalizeFolderNameKey(label);
-          const existing = byName.get(key);
-          if (existing) {
-            if (existing.show_in_pos_filter === false) {
-              await updateFolder(existing.folder_id, { show_in_pos_filter: true });
-              changed = true;
-            }
-            continue;
-          }
-
-          await createFolder({
-            name: label,
-            description: 'POS food category'
-          });
-          changed = true;
-        }
-
-        if (changed) {
-          folders = normalizePosFolders(await getFolders());
-        }
-      }
-
+      const folders = normalizePosFolders(await getFolders());
       setPosFolders(folders);
       return folders;
     } catch (folderError) {
       setPosFolders([]);
-      if (seedFoodCategories) {
-        toast.error(folderError?.response?.data?.message || folderError?.message || 'Failed to prepare POS food categories.');
-      }
       return [];
     }
-  }, [canCreateItems, canViewPos, normalizePosFolders]);
+  }, [canViewPos, normalizePosFolders]);
 
   useEffect(() => {
     loadItems();
   }, [loadItems]);
 
   useEffect(() => {
-    loadPosFolders({ seedFoodCategories: canCreateItems });
-  }, [canCreateItems, loadPosFolders]);
+    loadPosFolders();
+  }, [loadPosFolders]);
 
   useEffect(() => {
     if (!showCreateModal || !canCreateItems) return;
@@ -1361,17 +1313,28 @@ function ItemsWorkspace({
     [items]
   );
 
+  const savedFoodCategoryOptions = useMemo(() => (
+    [...posFolders]
+      .filter((folder) => folder?.show_in_pos_filter !== false && folder?.name)
+      .sort((left, right) => {
+        const leftId = Number(left?.folder_id || 0);
+        const rightId = Number(right?.folder_id || 0);
+        if (leftId > 0 && rightId > 0 && leftId !== rightId) return leftId - rightId;
+        return String(left?.name || '').localeCompare(String(right?.name || ''));
+      })
+      .map((folder) => createFoodCategoryOption(folder))
+  ), [posFolders]);
+
+  const defaultCreatePosCategory = useMemo(
+    () => savedFoodCategoryOptions[0]?.name || DEFAULT_POS_FOOD_CATEGORY,
+    [savedFoodCategoryOptions]
+  );
+
   const foodCategoryOptions = useMemo(() => {
     const byName = new Map();
-    POS_FOOD_CATEGORY_LABELS.forEach((label) => {
-      const name = String(label || '').trim();
-      byName.set(normalizeFolderNameKey(name), createFoodCategoryOption({ name }));
+    savedFoodCategoryOptions.forEach((option) => {
+      byName.set(normalizeFolderNameKey(option.name), option);
     });
-    posFolders
-      .filter((folder) => folder?.show_in_pos_filter !== false)
-      .forEach((folder) => {
-        byName.set(normalizeFolderNameKey(folder.name), createFoodCategoryOption(folder));
-      });
     sortedItems.forEach((item) => {
       const folderName = String(item?.folder?.name || item?.product_folder || '').trim();
       if (!folderName) return;
@@ -1381,7 +1344,7 @@ function ItemsWorkspace({
       }));
     });
     return Array.from(byName.values()).filter((option) => option.name);
-  }, [posFolders, sortedItems]);
+  }, [savedFoodCategoryOptions, sortedItems]);
 
   const categoryOptions = useMemo(() => ['all', ...foodCategoryOptions.map((option) => option.value)], [foodCategoryOptions]);
 
@@ -1398,18 +1361,26 @@ function ItemsWorkspace({
       : normalizedSelection;
     const selectedOption = foodCategoryOptions.find((option) => option.value === normalizedSelection)
       || foodCategoryOptions.find((option) => normalizeFolderNameKey(option.name) === normalizeFolderNameKey(selectionName))
-      || createFoodCategoryOption({ name: selectionName || DEFAULT_POS_FOOD_CATEGORY });
+      || createFoodCategoryOption({ name: selectionName || defaultCreatePosCategory || DEFAULT_POS_FOOD_CATEGORY });
     return selectedOption;
-  }, [foodCategoryOptions]);
+  }, [defaultCreatePosCategory, foodCategoryOptions]);
 
   const ensureFoodCategoryFolder = useCallback(async (selection = '') => {
-    const selectedOption = resolveFoodCategorySelection(selection);
+    const rawSelection = String(selection || '').trim();
+    const selectedOption = resolveFoodCategorySelection(rawSelection);
     if (selectedOption.folder_id) return selectedOption;
 
-    const label = String(selectedOption.name || DEFAULT_POS_FOOD_CATEGORY).trim();
+    const label = String(selectedOption.name || rawSelection || defaultCreatePosCategory || DEFAULT_POS_FOOD_CATEGORY).trim();
+    if (!label) {
+      throw new Error('Food category is required.');
+    }
     const key = normalizeFolderNameKey(label);
     const existing = posFolders.find((folder) => normalizeFolderNameKey(folder.name) === key);
     if (existing) {
+      if (existing.show_in_pos_filter === false) {
+        await updateFolder(existing.folder_id, { show_in_pos_filter: true });
+        await loadPosFolders();
+      }
       return createFoodCategoryOption(existing);
     }
 
@@ -1426,7 +1397,17 @@ function ItemsWorkspace({
       folder_id: created?.folder_id,
       name: created?.name || label
     });
-  }, [canCreateItems, loadPosFolders, posFolders, resolveFoodCategorySelection]);
+  }, [canCreateItems, defaultCreatePosCategory, loadPosFolders, posFolders, resolveFoodCategorySelection]);
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    setCreateForm((current) => {
+      const currentCategory = String(current?.pos_category || '').trim();
+      if (currentCategory) return current;
+      if (!defaultCreatePosCategory) return current;
+      return { ...current, pos_category: defaultCreatePosCategory };
+    });
+  }, [defaultCreatePosCategory, showCreateModal]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = String(searchQuery || '').trim().toLowerCase();
@@ -1505,7 +1486,7 @@ function ItemsWorkspace({
   };
 
   const openCreate = () => {
-    setCreateForm(createEmptyPosItemForm());
+    setCreateForm(createEmptyPosItemForm(defaultCreatePosCategory));
     setSelectedImageFile(null);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
@@ -1514,7 +1495,7 @@ function ItemsWorkspace({
   const closeCreate = ({ force = false } = {}) => {
     if ((creatingItem || postCreateSaving) && !force) return;
     setShowCreateModal(false);
-    setCreateForm(createEmptyPosItemForm());
+    setCreateForm(createEmptyPosItemForm(defaultCreatePosCategory));
     setSelectedImageFile(null);
     if (force) setPendingCreateRecovery(null);
   };
@@ -1661,7 +1642,9 @@ function ItemsWorkspace({
     const cost = parseMoneyValue(createForm.cost_per_unit);
     const stock = Number(String(createForm.current_stock || '0').trim());
     const skuCode = String(createForm.sku_code || '').trim();
-    const foodCategory = resolveFoodCategorySelection(createForm.pos_category);
+    const categoryInput = String(createForm.pos_category || '').trim();
+    const resolvedCategoryInput = categoryInput || defaultCreatePosCategory;
+    const foodCategory = resolveFoodCategorySelection(resolvedCategoryInput);
 
     if (!name) {
       toast.error('Item name is required.');
@@ -1685,6 +1668,10 @@ function ItemsWorkspace({
     }
     if (!Number.isFinite(stock) || stock < 0) {
       toast.error('Stock quantity cannot be negative.');
+      return;
+    }
+    if (!resolvedCategoryInput) {
+      toast.error('Food category is required.');
       return;
     }
 
@@ -1740,7 +1727,7 @@ function ItemsWorkspace({
         return;
       }
 
-      const resolvedFoodCategory = await ensureFoodCategoryFolder(createForm.pos_category);
+      const resolvedFoodCategory = await ensureFoodCategoryFolder(resolvedCategoryInput);
       payload.product_folder = resolvedFoodCategory.name;
       if (resolvedFoodCategory.folder_id) {
         payload.folder_id = resolvedFoodCategory.folder_id;
@@ -1904,7 +1891,7 @@ function ItemsWorkspace({
               >
                 {categoryOptions.map((option) => (
                   <option key={option} value={option}>
-                    {option === 'all' ? 'All Filters' : option}
+                    {option === 'all' ? 'All Filters' : (categoryOptionLabels.get(option) || option)}
                   </option>
                 ))}
               </select>
@@ -2229,18 +2216,35 @@ function ItemsWorkspace({
                     </label>
                     <label className="block sm:col-span-2">
                       <span className="text-[13px] font-semibold text-[#334155]">Food category</span>
-                      <select
-                        value={createForm.pos_category}
-                        onChange={(event) => setCreateForm((current) => ({ ...current, pos_category: event.target.value }))}
-                        className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
-                        disabled={creatingItem || postCreateSaving}
-                      >
-                        {foodCategoryOptions.map((option) => (
+                      <div className="mt-2 flex gap-2">
+                        <Input
+                          list="pos-food-category-options"
+                          value={createForm.pos_category}
+                          onChange={(event) => setCreateForm((current) => ({ ...current, pos_category: event.target.value }))}
+                          className="h-11"
+                          disabled={creatingItem || postCreateSaving}
+                          placeholder={defaultCreatePosCategory || 'Type or choose a food category'}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setCreateForm((current) => ({ ...current, pos_category: '' }))}
+                          disabled={creatingItem || postCreateSaving || !String(createForm.pos_category || '').trim()}
+                          className="h-11 rounded-lg border-slate-200 px-3 text-xs font-bold text-[#334155] hover:bg-slate-50"
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                      <datalist id="pos-food-category-options">
+                        {savedFoodCategoryOptions.map((option) => (
                           <option key={option.value} value={option.name}>
                             {option.label}
                           </option>
                         ))}
-                      </select>
+                      </datalist>
+                      <p className="mt-2 text-[11px] text-[#64748B]">
+                        Choose an existing POS category or type a new one to save it with this item.
+                      </p>
                     </label>
                     <label className="block">
                       <span className="text-[13px] font-semibold text-[#334155]">Stock quantity</span>
@@ -2760,6 +2764,12 @@ function SettingsWorkspace({
     storefrontPromoTitle: '',
     storefrontPromoSubtitle: '',
     storefrontPromoBadge: '',
+    storefrontPromoCode: '',
+    storefrontPromoDiscountValue: '',
+    storefrontPromoUsageLimit: '',
+    storefrontPromoUsedCount: '',
+    storefrontPromoValidTimeStart: '',
+    storefrontPromoValidTimeEnd: '',
     storefrontPromoValidityText: '',
     storefrontPromoActive: false,
     storefrontFollowEnabled: false,
@@ -3100,6 +3110,12 @@ function SettingsWorkspace({
         storefrontPromoTitle: String(storefrontPromo.title || ''),
         storefrontPromoSubtitle: String(storefrontPromo.subtitle || ''),
         storefrontPromoBadge: String(storefrontPromo.badge || ''),
+        storefrontPromoCode: String(storefrontPromo.code || ''),
+        storefrontPromoDiscountValue: String(storefrontPromo.discount_value || ''),
+        storefrontPromoUsageLimit: storefrontPromo.usage_limit == null ? '' : String(storefrontPromo.usage_limit),
+        storefrontPromoUsedCount: storefrontPromo.used_count == null ? '' : String(storefrontPromo.used_count),
+        storefrontPromoValidTimeStart: String(storefrontPromo.valid_time_start || ''),
+        storefrontPromoValidTimeEnd: String(storefrontPromo.valid_time_end || ''),
         storefrontPromoValidityText: String(storefrontPromo.validity_text || ''),
         storefrontPromoActive: storefrontPromo.active === true,
         storefrontFollowEnabled: settingsPayload?.storefront_follow_enabled?.value === true,
@@ -3560,6 +3576,12 @@ function SettingsWorkspace({
           title: String(storefrontForm.storefrontPromoTitle || '').trim(),
           subtitle: String(storefrontForm.storefrontPromoSubtitle || '').trim(),
           badge: String(storefrontForm.storefrontPromoBadge || '').trim(),
+          code: String(storefrontForm.storefrontPromoCode || '').trim().toUpperCase(),
+          discount_value: String(storefrontForm.storefrontPromoDiscountValue || '').trim(),
+          usage_limit: storefrontForm.storefrontPromoUsageLimit === '' ? 0 : Math.max(0, Number(storefrontForm.storefrontPromoUsageLimit) || 0),
+          used_count: storefrontForm.storefrontPromoUsedCount === '' ? 0 : Math.max(0, Number(storefrontForm.storefrontPromoUsedCount) || 0),
+          valid_time_start: String(storefrontForm.storefrontPromoValidTimeStart || '').trim(),
+          valid_time_end: String(storefrontForm.storefrontPromoValidTimeEnd || '').trim(),
           validity_text: String(storefrontForm.storefrontPromoValidityText || '').trim(),
           active: storefrontForm.storefrontPromoActive === true
         },
@@ -4719,21 +4741,113 @@ function SettingsWorkspace({
               <Input value={storefrontForm.storefrontReviewSummaryStar1} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryStar1: event.target.value }))} placeholder="1★ count" />
             </div>
           </div>
-          <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
-            <div className="flex items-center justify-between">
-              <Label>Promo Card</Label>
-              <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoActive === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoActive: event.target.checked }))} />
+          <div className={`space-y-4 rounded-[22px] border p-4 transition-colors sm:p-5 ${storefrontForm.storefrontPromoActive === true ? 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 shadow-sm shadow-amber-100/60' : 'border-slate-200 bg-slate-50/90'}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-1">
+                <Label className="text-[13px] font-black text-[#0F172A]">Promo Card</Label>
+                <p className="text-[12px] leading-5 text-[#64748B]">
+                  Control the storefront discount banner and keep its message ready for customers.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-pressed={storefrontForm.storefrontPromoActive === true}
+                disabled={locked || loading || savingTab === 'storefront'}
+                onClick={() => setStorefrontForm((current) => ({ ...current, storefrontPromoActive: current.storefrontPromoActive !== true }))}
+                className={`inline-flex min-h-[52px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-[260px] ${storefrontForm.storefrontPromoActive === true ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-[#1A4E8D]/25 hover:bg-[#143F73]' : 'border-slate-200 bg-white text-[#0F172A] hover:border-slate-300 hover:bg-slate-100'}`}
+              >
+                <span className="flex items-center gap-3">
+                  <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${storefrontForm.storefrontPromoActive === true ? 'bg-white/16 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                    <Tags className="h-4 w-4" />
+                  </span>
+                  <span className="space-y-0.5">
+                    <span className="block text-[13px] font-black">Enable Discount</span>
+                    <span className={`block text-[11px] font-semibold ${storefrontForm.storefrontPromoActive === true ? 'text-blue-100' : 'text-[#64748B]'}`}>
+                      {storefrontForm.storefrontPromoActive === true ? 'Promo card is visible on the storefront.' : 'Promo card is disabled and kept muted.'}
+                    </span>
+                  </span>
+                </span>
+                <span className={`inline-flex min-w-[82px] items-center justify-center rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] ${storefrontForm.storefrontPromoActive === true ? 'bg-white text-[#1A4E8D]' : 'bg-slate-100 text-slate-500'}`}>
+                  {storefrontForm.storefrontPromoActive === true ? 'Active' : 'Inactive'}
+                </span>
+              </button>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Input value={storefrontForm.storefrontPromoTitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoTitle: event.target.value }))} placeholder="10% OFF" />
-              <Input value={storefrontForm.storefrontPromoBadge} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoBadge: event.target.value }))} placeholder="Today's Promo" />
-              <Input value={storefrontForm.storefrontPromoSubtitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoSubtitle: event.target.value }))} placeholder="All BBQ items, min order ₱100" className="md:col-span-2" />
-              <Input value={storefrontForm.storefrontPromoValidityText} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidityText: event.target.value }))} placeholder="Valid today only" className="md:col-span-2" />
+            <div className={`grid gap-3 md:grid-cols-2 ${storefrontForm.storefrontPromoActive === true ? '' : 'opacity-70'}`}>
+              <Input
+                value={storefrontForm.storefrontPromoTitle}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoTitle: event.target.value }))}
+                placeholder="10% OFF"
+                disabled={storefrontForm.storefrontPromoActive !== true}
+                className={storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500 placeholder:text-slate-400'}
+              />
+              <Input
+                value={storefrontForm.storefrontPromoBadge}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoBadge: event.target.value }))}
+                placeholder="Today's Promo"
+                disabled={storefrontForm.storefrontPromoActive !== true}
+                className={storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500 placeholder:text-slate-400'}
+              />
+              <Input
+                value={storefrontForm.storefrontPromoCode}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoCode: String(event.target.value || '').toUpperCase() }))}
+                placeholder="PROMO20"
+                disabled={storefrontForm.storefrontPromoActive !== true}
+                className={storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500 placeholder:text-slate-400'}
+              />
+              <Input
+                value={storefrontForm.storefrontPromoDiscountValue}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoDiscountValue: event.target.value }))}
+                placeholder="20%"
+                disabled={storefrontForm.storefrontPromoActive !== true}
+                className={storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500 placeholder:text-slate-400'}
+              />
+              <Input
+                value={storefrontForm.storefrontPromoUsageLimit}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoUsageLimit: event.target.value.replace(/[^\d]/g, '') }))}
+                placeholder="30"
+                disabled={storefrontForm.storefrontPromoActive !== true}
+                className={storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500 placeholder:text-slate-400'}
+              />
+              <Input
+                value={storefrontForm.storefrontPromoUsedCount}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoUsedCount: event.target.value.replace(/[^\d]/g, '') }))}
+                placeholder="0"
+                disabled={storefrontForm.storefrontPromoActive !== true}
+                className={storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500 placeholder:text-slate-400'}
+              />
+              <Input
+                type="time"
+                value={storefrontForm.storefrontPromoValidTimeStart}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeStart: event.target.value }))}
+                disabled={storefrontForm.storefrontPromoActive !== true}
+                className={storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500'}
+              />
+              <Input
+                type="time"
+                value={storefrontForm.storefrontPromoValidTimeEnd}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeEnd: event.target.value }))}
+                disabled={storefrontForm.storefrontPromoActive !== true}
+                className={storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500'}
+              />
+              <Input
+                value={storefrontForm.storefrontPromoSubtitle}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoSubtitle: event.target.value }))}
+                placeholder="All BBQ items, min order ₱100"
+                className={`md:col-span-2 ${storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500 placeholder:text-slate-400'}`}
+                disabled={storefrontForm.storefrontPromoActive !== true}
+              />
+              <Input
+                value={storefrontForm.storefrontPromoValidityText}
+                onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidityText: event.target.value }))}
+                placeholder="Valid today only"
+                className={`md:col-span-2 ${storefrontForm.storefrontPromoActive === true ? '' : 'border-slate-200 bg-slate-100 text-slate-500 placeholder:text-slate-400'}`}
+                disabled={storefrontForm.storefrontPromoActive !== true}
+              />
             </div>
           </div>
         </div>
         <div className="mt-4 flex justify-end">
-          <Button type="button" className="h-10 rounded-lg bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white hover:bg-[#143F73]" disabled={locked || loading || savingTab === 'storefront'} onClick={handleStorefrontSave}>
+          <Button type="button" className="h-10 w-full rounded-lg bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white hover:bg-[#143F73] sm:w-auto" disabled={locked || loading || savingTab === 'storefront'} onClick={handleStorefrontSave}>
             {savingTab === 'storefront' ? 'Saving...' : 'Save Storefront'}
           </Button>
         </div>

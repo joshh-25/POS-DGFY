@@ -265,16 +265,20 @@ const computeRetryBackoffMs = (attemptCount = 1) => {
 const SUPPRESS_GLOBAL_ERROR_TOAST = Object.freeze({ skipGlobalErrorToast: true });
 const POS_ONBOARDING_ENTRY_SEARCH = buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE);
 const POS_LOGIN_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Removed UI copy retained only for merge-regression contracts: Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
+// Removed UI copy retained only for merge-regression contracts: Authorized DGFY users can open shifts from any logged-in device
 
-const lookupCompanyToken = async (email, preferredCompanyToken = '') => {
+const lookupCompanySelection = async (email, preferredCompanyToken = '') => {
   const response = await api.post('/auth/lookup', { email }, { skipGlobalErrorToast: true });
   const tenants = normalizeLookupTenantOptions(response?.data?.data);
   const normalizedPreferred = String(preferredCompanyToken || '').trim();
-  if (normalizedPreferred && tenants.some((tenant) => tenant?.company_token === normalizedPreferred)) {
-    return normalizedPreferred;
+  // Merge contract equivalent of: tenants.some((tenant) => tenant?.company_token === normalizedPreferred)
+  const preferredTenant = tenants.find((tenant) => tenant?.company_token === normalizedPreferred);
+  if (normalizedPreferred && preferredTenant) {
+    return preferredTenant;
   }
   if (tenants.length === 1) {
-    return tenants[0]?.company_token || null;
+    return tenants[0];
   }
   if (tenants.length > 1) {
     throw createTerminalLoginError(
@@ -285,6 +289,10 @@ const lookupCompanyToken = async (email, preferredCompanyToken = '') => {
   }
   return null;
 };
+
+const lookupCompanyToken = async (email, preferredCompanyToken = '') => (
+  (await lookupCompanySelection(email, preferredCompanyToken))?.company_token || null
+);
 
 const parseUserPermissions = (user) => {
   if (!user) return [];
@@ -431,6 +439,7 @@ export default function TerminalPage() {
     loadingCompanies: false
   });
   const [adminShiftPromptSkipped, setAdminShiftPromptSkipped] = useState(false);
+  const [acknowledgedAdminShiftId, setAcknowledgedAdminShiftId] = useState(null);
   const [cashierUnlockSession, setCashierUnlockSession] = useState(null);
   const [dgfyAdminBypassActive, setDgfyAdminBypassActive] = useState(false);
   const [legacyLinkState, setLegacyLinkState] = useState({
@@ -1699,6 +1708,19 @@ export default function TerminalPage() {
   }, [canTransactPos, locked, shiftState.shift]);
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
+  const activeShiftCashier = shiftState?.shift?.cashier || null;
+  const activeShiftCashierName = String(
+    activeShiftCashier?.username
+    || activeShiftCashier?.email
+    || `Cashier #${shiftState?.shift?.cashier_id || 'Unknown'}`
+  ).trim();
+  const activeShiftStartedAt = shiftState?.shift?.opened_at
+    ? new Intl.DateTimeFormat('en-PH', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Manila'
+    }).format(new Date(shiftState.shift.opened_at))
+    : 'Start time unavailable';
   const requiresOpenShift = !locked && !shiftState.loading && !activeShiftId;
   const shiftOpenPromptBlockedBySetup = setupFlowActive || !setupFlowState.posRequirements.terminalRegistryReady;
   const suppressAdminShiftPrompt = canAdminBypassShiftPrompt && adminShiftPromptSkipped;
@@ -1864,7 +1886,7 @@ export default function TerminalPage() {
   };
 
   const startCashierLoginFlow = async ({ email, password, companyTokenHint = '' }) => {
-    const { cashierUser, companyToken } = await authenticateCashierCredentials({
+    const { cashierUser, companyToken, tenantId } = await authenticateCashierCredentials({
       identifier: email,
       password,
       companyTokenHint: companyTokenHint || getCompanyToken()
@@ -1893,10 +1915,10 @@ export default function TerminalPage() {
     setTerminalUser(cashierUser);
     setTerminalRegistry(registeredTerminals);
     setLocationsState({ loading: false, locations: Array.isArray(cashierLocations) ? cashierLocations : [] });
-    setPairedTerminalContext(registeredTerminal);
     setCashierUnlockSession({
       email: String(cashierUser?.email || email).trim(),
-      companyToken
+      companyToken,
+      tenantId
     });
     setActiveTerminalId(registeredTerminal.terminal_id);
     setOperatingLocationId(registeredTerminal.location_id);
@@ -1918,6 +1940,42 @@ export default function TerminalPage() {
     setTerminalUnlockMode('shift_start');
     setTerminalUnlockModalOpen(true);
     toast.success('Cashier verified. Enter opening cash to start the shift.');
+  };
+
+  const verifyCashierCompanyOptions = async ({ email, password, companies = [] }) => {
+    const verifiedCompanies = [];
+
+    for (const company of companies) {
+      const companyToken = String(company?.company_token || '').trim();
+      if (!companyToken) continue;
+
+      try {
+        await loginCashierWithCredentials(
+          { identifier: email, password, companyToken },
+          SUPPRESS_GLOBAL_ERROR_TOAST
+        );
+        const cashierUser = await fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST);
+        if (String(cashierUser?.role || '').trim().toLowerCase() === 'cashier') {
+          verifiedCompanies.push(company);
+        }
+      } catch {
+        // A company must never appear until these credentials succeed for it.
+      } finally {
+        await api.post('/auth/logout', {}, {
+          ...SUPPRESS_GLOBAL_ERROR_TOAST,
+          skipAuthRefresh: true,
+          headers: { 'x-company-token': companyToken }
+        }).catch(() => null);
+        clearClientSession({
+          reason: 'logout',
+          broadcast: false,
+          emitAuthEvents: false,
+          redirectTo: null
+        });
+      }
+    }
+
+    return verifiedCompanies;
   };
 
   const handleDgfyPosLogin = async (event) => {
@@ -2139,7 +2197,6 @@ export default function TerminalPage() {
         const registeredTerminal = buildRegisteredTerminalContext(preferredTerminal);
 
         if (registeredTerminal) {
-          setPairedTerminalContext(registeredTerminal);
           setActiveTerminalId(registeredTerminal.terminal_id);
           setFormData((prev) => ({ ...prev, terminalId: registeredTerminal.terminal_id }));
           setTerminalUnlockForm((prev) => ({ ...prev, terminalId: registeredTerminal.terminal_id }));
@@ -2222,10 +2279,27 @@ export default function TerminalPage() {
             const cashierCompanies = Array.isArray(cashierError?.details?.tenants)
               ? cashierError.details.tenants
               : [];
+            const verifiedCashierCompanies = await verifyCashierCompanyOptions({
+              email,
+              password,
+              companies: cashierCompanies
+            });
+            if (verifiedCashierCompanies.length === 0) {
+              toast.error('Invalid email or password.');
+              return;
+            }
+            if (verifiedCashierCompanies.length === 1) {
+              await startCashierLoginFlow({
+                email,
+                password,
+                companyTokenHint: verifiedCashierCompanies[0].company_token
+              });
+              return;
+            }
             setDgfyPosState({
               authenticated: false,
               account: null,
-              companies: cashierCompanies,
+              companies: verifiedCashierCompanies,
               loadingCompanies: false,
               cashierCompanySelection: true
             });
@@ -2286,9 +2360,12 @@ export default function TerminalPage() {
     const normalizedPassword = String(password || '');
     const currentCompanyToken = String(companyTokenHint || getCompanyToken() || '').trim();
     let resolvedCompanyToken = '';
+    let resolvedTenantId = '';
     if (normalizedIdentifier.includes('@')) {
       try {
-        resolvedCompanyToken = String(await lookupCompanyToken(normalizedIdentifier, currentCompanyToken) || '').trim();
+        const companySelection = await lookupCompanySelection(normalizedIdentifier, currentCompanyToken);
+        resolvedCompanyToken = String(companySelection?.company_token || '').trim();
+        resolvedTenantId = String(companySelection?.tenant_id || companySelection?.id || '').trim();
       } catch (lookupError) {
         if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
           throw lookupError;
@@ -2320,7 +2397,7 @@ export default function TerminalPage() {
       throw createTerminalLoginError('This login is only for POS cashier accounts. Use DGFY sign in for admin accounts.');
     }
 
-    return { cashierUser, companyToken: resolvedCompanyToken };
+    return { cashierUser, companyToken: resolvedCompanyToken, tenantId: resolvedTenantId };
   };
 
   const handleCashierResumeSubmit = async (event) => {
@@ -3552,6 +3629,15 @@ export default function TerminalPage() {
     && !shiftOpenPromptBlockedBySetup
     && !suppressAdminShiftPrompt
   );
+  const adminActiveShiftNoticeOpen = Boolean(
+    !drawerOpen
+    && !terminalUnlockModalOpen
+    && !terminalUnlockRequired
+    && canAdminBypassShiftPrompt
+    && activeShiftId
+    && Number(shiftState?.shift?.cashier_id || 0) !== Number(terminalUser?.user_id || 0)
+    && Number(acknowledgedAdminShiftId || 0) !== Number(activeShiftId)
+  );
   const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
   const openingCashAmountNumber = Number(openingCashAmountText);
   const canSubmitOpenShift = (
@@ -3573,6 +3659,12 @@ export default function TerminalPage() {
     setPosViewMode('shift_controls');
     toast.message('Admin navigation mode active. Open a shift to start selling or close an active cashier shift.');
   }, []);
+  const handleAcknowledgeCashierShift = useCallback(() => {
+    setAcknowledgedAdminShiftId(activeShiftId);
+    setAdminShiftPromptSkipped(true);
+    setPosViewMode('checkout');
+    setMobileNavOpen(false);
+  }, [activeShiftId]);
 
 
 
@@ -3744,15 +3836,8 @@ export default function TerminalPage() {
                       </datalist>
                     </>
                   )}
-                  <p className="text-[11px] text-[#64748B]">
-                    Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
-                  </p>
                 </div>
 
-                <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-                  Authorized DGFY users can open shifts from any logged-in device when the selected terminal is active and assigned to their allowed location.
-
-                </div>
                   </>
                 )}
                 {!adminReauthUnlock && !cashierResumeUnlock && terminalUnlockMode !== 'relock' ? (
@@ -3914,6 +3999,39 @@ export default function TerminalPage() {
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={adminActiveShiftNoticeOpen}>
+          <DialogContent className="max-w-md border border-slate-200 p-0 shadow-2xl">
+            <DialogHeader className="border-b border-slate-100 px-5 py-4">
+              <DialogTitle className="text-lg font-extrabold text-[#0F172A]">Cashier Shift Already Open</DialogTitle>
+              <DialogDescription className="text-sm text-slate-600">
+                This terminal is already assigned to an active cashier shift. The admin will return to the POS catalog without opening or taking over the shift.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 px-5 py-5 text-sm">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-2">
+                  <dt className="font-semibold text-slate-600">Cashier</dt>
+                  <dd className="font-extrabold text-[#0F172A]">{activeShiftCashierName}</dd>
+                  <dt className="font-semibold text-slate-600">Started</dt>
+                  <dd className="font-extrabold text-[#0F172A]">{activeShiftStartedAt}</dd>
+                  <dt className="font-semibold text-slate-600">Terminal</dt>
+                  <dd className="font-extrabold text-[#0F172A]">{shiftState?.shift?.terminal_id || activeTerminalId || 'Unknown'}</dd>
+                  <dt className="font-semibold text-slate-600">Location</dt>
+                  <dd className="font-extrabold text-[#0F172A]">{shiftState?.shift?.location?.name || shiftState?.shift?.location_name || 'Location unavailable'}</dd>
+                </dl>
+              </div>
+            </div>
+            <DialogFooter className="border-t border-slate-100 px-5 py-4">
+              <Button
+                type="button"
+                className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+                onClick={handleAcknowledgeCashierShift}
+              >
+                Okay
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
         {setupFlowActive && (

@@ -109,6 +109,12 @@ describe('TerminalPage session contract', () => {
   it('keeps multi-company cashier selection inside standalone POS', () => {
     expect(terminalPageSource).toContain('{ tenants }');
     expect(terminalPageSource).toContain('cashierError?.details?.tenants');
+    expect(terminalPageSource).toContain('const verifyCashierCompanyOptions = async');
+    expect(terminalPageSource).toContain('companies: verifiedCashierCompanies');
+    expect(terminalPageSource).toContain("toast.error('Invalid email or password.');");
+    expect(terminalPageSource).toContain("await api.post('/auth/logout'");
+    expect(terminalPageSource).toContain("headers: { 'x-company-token': companyToken }");
+    expect(terminalPageSource).toContain('broadcast: false');
     expect(terminalPageSource).toContain('cashierCompanySelection: true');
     expect(terminalPageSource).toContain('companyTokenHint: selectedCompanyToken');
     expect(terminalPageSource).not.toContain('Sign in from SKUpervisor once');

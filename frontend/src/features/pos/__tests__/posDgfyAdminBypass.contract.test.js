@@ -24,6 +24,16 @@ describe('DGFY POS administrator bypass contract', () => {
     expect(terminalPageSource).toContain('<Dialog open={shiftOpeningModalOpen} onOpenChange={handleShiftOpeningModalOpenChange}>');
   });
 
+  it('shows an acknowledgment-only notice when an admin finds a cashier-owned shift', () => {
+    expect(terminalPageSource).toContain('const adminActiveShiftNoticeOpen = Boolean(');
+    expect(terminalPageSource).toContain('Cashier Shift Already Open');
+    expect(terminalPageSource).toContain('activeShiftCashierName');
+    expect(terminalPageSource).toContain('activeShiftStartedAt');
+    expect(terminalPageSource).toContain('onClick={handleAcknowledgeCashierShift}');
+    expect(terminalPageSource).toContain('Okay');
+    expect(terminalPageSource).toContain("setPosViewMode('checkout')");
+  });
+
   it('restores admin bypass on refresh but not across manual lock', () => {
     expect(terminalPageSource).toContain('const [dgfyAdminBypassActive, setDgfyAdminBypassActive] = useState(false);');
     expect(terminalPageSource).toContain('const userIsAdmin = user?.is_master_admin === true;');

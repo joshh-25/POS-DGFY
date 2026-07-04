@@ -193,8 +193,36 @@ const storefrontPromoSchema = Joi.object({
   subtitle: Joi.string().trim().max(160).allow('', null).optional(),
   badge: Joi.string().trim().max(60).allow('', null).optional(),
   validity_text: Joi.string().trim().max(120).allow('', null).optional(),
+  code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+  discount_value: Joi.string().trim().max(20).pattern(/^$|^(100(?:\.0{1,2})?|[1-9]\d?(?:\.\d{1,2})?)%$/).allow('', null).optional().messages({
+    'string.pattern.base': 'Promo discount value must use percent format such as 20%'
+  }),
+  usage_limit: Joi.number().integer().min(0).max(100000).allow(null).optional(),
+  used_count: Joi.number().integer().min(0).max(100000).allow(null).optional(),
+  valid_time_start: Joi.string().trim().pattern(/^$|^([01]\d|2[0-3]):[0-5]\d$/).allow('', null).optional().messages({
+    'string.pattern.base': 'Promo valid start time must use HH:mm format'
+  }),
+  valid_time_end: Joi.string().trim().pattern(/^$|^([01]\d|2[0-3]):[0-5]\d$/).allow('', null).optional().messages({
+    'string.pattern.base': 'Promo valid end time must use HH:mm format'
+  }),
   active: Joi.boolean().default(false)
-}).optional();
+}).custom((value, helpers) => {
+  const start = String(value?.valid_time_start || '').trim();
+  const end = String(value?.valid_time_end || '').trim();
+  if ((start && !end) || (!start && end)) {
+    return helpers.error('any.invalid', {
+      message: 'Promo valid time range requires both start and end times'
+    });
+  }
+  const usageLimit = Number(value?.usage_limit ?? 0);
+  const usedCount = Number(value?.used_count ?? 0);
+  if (Number.isFinite(usageLimit) && Number.isFinite(usedCount) && usageLimit > 0 && usedCount > usageLimit) {
+    return helpers.error('any.invalid', {
+      message: 'Promo used count cannot exceed the usage limit'
+    });
+  }
+  return value;
+}, 'storefront promo range validation').optional();
 const businessHoursIntervalSchema = Joi.object({
   open: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
     'string.pattern.base': 'Business hours opening time must use HH:mm format'

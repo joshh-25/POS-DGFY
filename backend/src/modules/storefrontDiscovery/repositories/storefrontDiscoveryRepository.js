@@ -353,6 +353,17 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSign
     const whyChooseUs = parseJsonArray(settingsMap.storefront_why_choose_us).map((entry) => toTrimmedString(entry, 120)).filter(Boolean);
     const social = parseJsonObject(settingsMap.storefront_social_links) || null;
     const promo = parseJsonObject(settingsMap.storefront_promo) || null;
+    const normalizedPromo = promo && typeof promo === 'object'
+        ? {
+            ...promo,
+            code: toTrimmedString(promo.code, 40).toUpperCase(),
+            discount_value: toTrimmedString(promo.discount_value, 20),
+            usage_limit: Number.isFinite(Number(promo.usage_limit)) ? Math.max(0, Number(promo.usage_limit)) : 0,
+            used_count: Number.isFinite(Number(promo.used_count)) ? Math.max(0, Number(promo.used_count)) : 0,
+            valid_time_start: toTrimmedString(promo.valid_time_start, 5),
+            valid_time_end: toTrimmedString(promo.valid_time_end, 5)
+        }
+        : null;
     const reviewHighlights = parseJsonArray(settingsMap.storefront_review_highlights)
         .map((entry) => {
             const comment = toTrimmedString(entry?.comment, 280);
@@ -387,7 +398,7 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSign
         storefront_why_choose_us: whyChooseUs,
         storefront_social_links: social,
         storefront_review_highlights: reviewHighlights,
-        storefront_promo: promo,
+        storefront_promo: normalizedPromo,
         storefront_ui_v2_enabled: parseBoolean(settingsMap.storefront_ui_v2_enabled, false),
         storefront_categories: normalizeStringList(settingsMap.storefront_categories, 12, 60),
         storefront_gallery_images: normalizeStorefrontGalleryImages(settingsMap.storefront_gallery_images),
@@ -641,7 +652,19 @@ const toPlainEntry = (row) => {
             };
         })
         .filter(Boolean),
-    storefront_promo: parseJsonObject(plain.storefront_promo) || null,
+    storefront_promo: (() => {
+        const promo = parseJsonObject(plain.storefront_promo) || null;
+        if (!promo || typeof promo !== 'object') return null;
+        return {
+            ...promo,
+            code: toTrimmedString(promo.code, 40).toUpperCase(),
+            discount_value: toTrimmedString(promo.discount_value, 20),
+            usage_limit: Number.isFinite(Number(promo.usage_limit)) ? Math.max(0, Number(promo.usage_limit)) : 0,
+            used_count: Number.isFinite(Number(promo.used_count)) ? Math.max(0, Number(promo.used_count)) : 0,
+            valid_time_start: toTrimmedString(promo.valid_time_start, 5),
+            valid_time_end: toTrimmedString(promo.valid_time_end, 5)
+        };
+    })(),
     storefront_ui_v2_enabled: parseBoolean(plain.storefront_ui_v2_enabled, false),
     storefront_categories: normalizeStringList(plain.storefront_categories, 12, 60),
     storefront_gallery_images: normalizeStorefrontGalleryImages(plain.storefront_gallery_images),

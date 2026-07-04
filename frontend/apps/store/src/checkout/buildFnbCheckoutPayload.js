@@ -16,7 +16,8 @@ export const buildFnbCheckoutPayload = ({
   fnbScheduleMode,
   fnbScheduledFor,
   fnbSpecialInstructions,
-  cart
+  cart,
+  promoCode
 }) => ({
   location_id: selectedLocationId ?? selectedStore?.location_id,
   order_method: orderMethod,
@@ -28,6 +29,7 @@ export const buildFnbCheckoutPayload = ({
   delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
   scheduled_for: fnbScheduleMode === 'schedule' && fnbScheduledFor ? new Date(fnbScheduledFor).toISOString() : null,
   special_instructions: String(fnbSpecialInstructions || '').trim(),
+  promo_code: String(promoCode || '').trim().toUpperCase(),
   lines: (Array.isArray(cart) ? cart : []).map((line) => ({
     item_id: Number(line.item_id),
     quantity: Number(line.quantity),

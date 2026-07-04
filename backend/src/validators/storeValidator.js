@@ -47,7 +47,8 @@ const storeQuoteSchema = Joi.object({
     delivery_latitude: Joi.number().min(-90).max(90).allow(null).optional(),
     delivery_longitude: Joi.number().min(-180).max(180).allow(null).optional(),
     scheduled_for: Joi.date().iso().allow(null).optional(),
-    special_instructions: Joi.string().trim().max(2000).allow('', null).optional()
+    special_instructions: Joi.string().trim().max(2000).allow('', null).optional(),
+    promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional()
 });
 
 const storeCheckoutSchema = storeQuoteSchema.keys({

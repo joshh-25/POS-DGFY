@@ -27,4 +27,55 @@ describe('POS terminal readiness context', () => {
             unresolved_count: 1
         }));
     });
+
+    it('lets an admin inspect the cashier shift on the requested terminal', async () => {
+        const findOpenTerminalShift = jest.fn().mockResolvedValue({
+            pos_terminal_shift_id: 41,
+            cashier_id: 12,
+            opened_at: '2026-07-04T05:30:00.000Z',
+            cashier: {
+                user_id: 12,
+                username: 'Cashier One',
+                email: 'cashier@example.test'
+            }
+        });
+        const useCase = buildGetCurrentTerminalShiftUseCase({
+            posRepository: {
+                getShiftLocationBindingReadinessSummary: jest.fn().mockResolvedValue(null),
+                findOpenTerminalShift,
+                getShiftCashSalesTotal: jest.fn().mockResolvedValue(0)
+            }
+        });
+
+        const result = await useCase({
+            query: { terminal_id: 'COUNTER-01' },
+            user: { user_id: 7, role: 'admin' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(findOpenTerminalShift).toHaveBeenCalledWith(expect.objectContaining({
+            terminalId: 'COUNTER-01',
+            cashierId: null
+        }));
+        expect(result.data.shift.cashier.username).toBe('Cashier One');
+    });
+
+    it('keeps cashier shift reads scoped to the authenticated cashier', async () => {
+        const findOpenTerminalShift = jest.fn().mockResolvedValue(null);
+        const useCase = buildGetCurrentTerminalShiftUseCase({
+            posRepository: {
+                getShiftLocationBindingReadinessSummary: jest.fn().mockResolvedValue(null),
+                findOpenTerminalShift
+            }
+        });
+
+        await useCase({
+            query: { terminal_id: 'COUNTER-01' },
+            user: { user_id: 12, role: 'cashier' }
+        });
+
+        expect(findOpenTerminalShift).toHaveBeenCalledWith(expect.objectContaining({
+            cashierId: 12
+        }));
+    });
 });

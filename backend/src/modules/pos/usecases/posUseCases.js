@@ -5033,6 +5033,8 @@ export const buildGetCurrentTerminalShiftUseCase = ({ posRepository }) => {
         }
 
         try {
+            const normalizedRole = String(user?.role || '').trim().toLowerCase();
+            const canInspectTerminalShift = user?.is_master_admin === true || normalizedRole === 'admin';
             const readinessSummary = typeof posRepository?.getShiftLocationBindingReadinessSummary === 'function'
                 ? await posRepository.getShiftLocationBindingReadinessSummary()
                 : null;
@@ -5041,7 +5043,7 @@ export const buildGetCurrentTerminalShiftUseCase = ({ posRepository }) => {
                 : parsePositiveInt(query.location_id);
             const shift = await posRepository.findOpenTerminalShift({
                 terminalId: String(query?.terminal_id || '').trim() || null,
-                cashierId: normalizedUserId,
+                cashierId: canInspectTerminalShift ? null : normalizedUserId,
                 locationId: requestedLocationId
             });
 

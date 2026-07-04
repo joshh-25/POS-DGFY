@@ -6,9 +6,9 @@ import ErrorBoundary from '../../../src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../src/components/common/GlobalApiErrorListener.jsx';
 import { PermissionProvider } from '../../../src/store/PermissionContext.jsx';
 import { WorkflowModeProvider } from '../../../src/features/settings/WorkflowModeContext.jsx';
-import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import { login as loginTenantSession } from '../../../src/services/authService.js';
+import PosToaster from './components/PosToaster.jsx';
 import '../../../src/index.css';
 
 function PosRouteNotFound() {
@@ -86,7 +86,7 @@ const mountApp = () => {
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />
-              <Toaster position="top-right" />
+              <PosToaster />
               <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading...</div>}>
                 <Routes>
                   <Route

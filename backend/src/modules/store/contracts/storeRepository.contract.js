@@ -18,6 +18,7 @@ const REQUIRED_METHODS = Object.freeze([
     'listActiveLocations',
     'findLocationById',
     'getSettingsByKeys',
+    'updateSettingByKey',
     'findTransactionByIdempotencyKey',
     'isTrackingPinTaken',
     'nextInvoiceNumber',

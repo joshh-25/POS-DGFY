@@ -605,10 +605,7 @@ export default function POSCheckoutTerminal({
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
-    const [catalogAutoPageSize, setCatalogAutoPageSize] = useState(16);
-    const catalogSectionRef = useRef(null);
-    const catalogViewportRef = useRef(null);
-    const catalogGridRef = useRef(null);
+    const catalogScrollRef = useRef(null);
     const previousCatalogPageRef = useRef(1);
     const searchBackspaceTimeoutRef = useRef(null);
     const searchBackspaceIntervalRef = useRef(null);
@@ -649,10 +646,10 @@ export default function POSCheckoutTerminal({
     const terminalIdentityLabel = normalizedTerminalId
         ? `Terminal ${normalizedTerminalId}`
         : 'No terminal selected';
-    const TABLET_CATALOG_PAGE_SIZE = 18;
-    const DESKTOP_CATALOG_PAGE_SIZE = sidebarCollapsed ? 20 : 16;
-    const fallbackCatalogPageSize = isTabletViewport ? TABLET_CATALOG_PAGE_SIZE : DESKTOP_CATALOG_PAGE_SIZE;
-    const catalogPageSize = Math.max(1, catalogAutoPageSize || fallbackCatalogPageSize);
+    const catalogPageSize = 12;
+    const selectedCatalogItemIds = useMemo(() => new Set(
+        cart.map((line) => Number(line.item_id)).filter(Number.isFinite)
+    ), [cart]);
     const selectedFolder = useMemo(() => (
         posFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
     ), [posFolders, selectedFolderId]);
@@ -1268,66 +1265,6 @@ export default function POSCheckoutTerminal({
     }, []);
 
     useEffect(() => {
-        if (!IS_DGFY_POS_SURFACE || !isTabletViewport) {
-            setCatalogAutoPageSize(TABLET_CATALOG_PAGE_SIZE);
-            return undefined;
-        }
-        if (typeof window === 'undefined') return undefined;
-
-        const viewport = catalogViewportRef.current;
-        const grid = catalogGridRef.current;
-        if (!viewport || !grid) return undefined;
-
-        let frameId = 0;
-        const measurePageSize = () => {
-            frameId = 0;
-            const viewportNode = catalogViewportRef.current;
-            const gridNode = catalogGridRef.current;
-            if (!viewportNode || !gridNode) return;
-
-            const viewportRect = viewportNode.getBoundingClientRect();
-            const gridRect = gridNode.getBoundingClientRect();
-            const availableHeight = Math.max(0, viewportRect.bottom - gridRect.top);
-            const computedStyles = window.getComputedStyle(gridNode);
-            const rowGap = Number.parseFloat(computedStyles.rowGap || computedStyles.gap || '0') || 0;
-            const rowHeight = Number.parseFloat(computedStyles.gridAutoRows || '0') || 128;
-            const columnCount = Math.max(
-                1,
-                computedStyles.gridTemplateColumns
-                    .split(' ')
-                    .map((part) => part.trim())
-                    .filter(Boolean)
-                    .length
-            );
-            const visibleRows = Math.max(1, Math.floor((availableHeight + rowGap) / (rowHeight + rowGap)));
-            const nextPageSize = Math.max(
-                columnCount,
-                Math.min(catalog.length || fallbackCatalogPageSize, visibleRows * columnCount)
-            );
-            setCatalogAutoPageSize((previous) => (previous === nextPageSize ? previous : nextPageSize));
-        };
-        const scheduleMeasure = () => {
-            if (frameId) window.cancelAnimationFrame(frameId);
-            frameId = window.requestAnimationFrame(measurePageSize);
-        };
-
-        scheduleMeasure();
-
-        const resizeObserver = new ResizeObserver(() => {
-            scheduleMeasure();
-        });
-        resizeObserver.observe(viewport);
-        resizeObserver.observe(grid);
-        window.addEventListener('resize', scheduleMeasure);
-
-        return () => {
-            if (frameId) window.cancelAnimationFrame(frameId);
-            resizeObserver.disconnect();
-            window.removeEventListener('resize', scheduleMeasure);
-        };
-    }, [catalog.length, catalogFiltersOpen, fallbackCatalogPageSize, posFolders.length, posFoldersLoading]);
-
-    useEffect(() => {
         setCatalogPage(1);
     }, [search, selectedFolderId, selectedLocationId]);
 
@@ -1341,14 +1278,9 @@ export default function POSCheckoutTerminal({
         if (previousCatalogPageRef.current === catalogPage) return;
         previousCatalogPageRef.current = catalogPage;
 
-        const section = catalogSectionRef.current;
-        if (section) {
-            section.scrollIntoView({ block: 'start', behavior: 'auto' });
-        }
-
-        const viewport = catalogViewportRef.current;
-        if (!viewport) return;
-        viewport.scrollTop = 0;
+        const scrollRegion = catalogScrollRef.current;
+        if (!scrollRegion) return;
+        scrollRegion.scrollTop = 0;
     }, [catalogPage]);
 
     useEffect(() => {
@@ -2232,12 +2164,12 @@ export default function POSCheckoutTerminal({
             )}
 
             {currentViewMode === 'checkout' && (
-                <div key="view-checkout" className="max-sm:animate-pos-slide-in">
+                <div key="view-checkout" className="h-full min-h-0 max-sm:animate-pos-slide-in">
                 <>
                 <div className={checkoutGridClassName}>
-            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
+            <section className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
                     {isTabletViewport && renderViewModeControls()}
-                    <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
+                    <div className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
                 <div className={`${isTabletViewport ? 'mb-3 gap-2.5' : 'mb-5 gap-4'} flex min-w-0 flex-col ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
                     <div className={`${isTabletViewport ? 'flex-col items-stretch sm:flex-col' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 max-sm:relative`}>
                         {/* Mobile: collapsed search icon button */}
@@ -2467,8 +2399,9 @@ export default function POSCheckoutTerminal({
                 </div>
                 )}
                 <div
+                    ref={catalogScrollRef}
                     data-testid="pos-catalog-scroll"
-                    className="dgfy-pos-scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pb-3 touch-pan-y select-none"
+                    className="dgfy-pos-scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-1 pb-3 touch-pan-y select-none"
                     tabIndex={0}
                     onTouchStart={(event) => {
                         const touch = event.touches?.[0];
@@ -2497,7 +2430,7 @@ export default function POSCheckoutTerminal({
                     <p className="text-sm text-slate-500">Loading catalog...</p>
                 ) : (
                     <>
-                    <div ref={catalogGridRef} className={catalogGridClassName}>
+                    <div className={catalogGridClassName}>
                         {visibleCatalogItems.map((item) => {
                             const isServiceItem = isServiceCatalogItem(item);
                             const isAlwaysAvailable = item?.pos_always_available === true;
@@ -2507,6 +2440,7 @@ export default function POSCheckoutTerminal({
                             const fallbackPosImageSrc = resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE);
                             const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
+                            const isSelected = selectedCatalogItemIds.has(Number(item.item_id));
                             return (
                                 <div
                                     key={item.item_id}
@@ -2527,10 +2461,15 @@ export default function POSCheckoutTerminal({
                                     role={isOutOfStock || posActionsBlocked ? 'group' : 'button'}
                                     tabIndex={isOutOfStock || posActionsBlocked ? -1 : 0}
                                     aria-disabled={isOutOfStock || posActionsBlocked}
+                                    aria-pressed={isOutOfStock || posActionsBlocked ? undefined : isSelected}
                                     className={`${catalogCardClassName} ${
                                         isOutOfStock || posActionsBlocked
                                             ? 'cursor-not-allowed opacity-75 blur-[0.5px]'
-                                            : 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md'
+                                            : `cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md ${
+                                                isSelected
+                                                    ? '!border-blue-300 !bg-blue-50 ring-1 ring-blue-200'
+                                                    : ''
+                                            }`
                                     }`}
                                 >
                                 <div className="mb-1 max-sm:mb-0 max-sm:self-stretch">

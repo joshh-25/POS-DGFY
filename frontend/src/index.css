@@ -200,15 +200,11 @@ body {
   background-clip: padding-box;
 }
 
-.dgfy-pos-scrollbar-auto-hide:hover,
-.dgfy-pos-scrollbar-auto-hide:focus,
-.dgfy-pos-scrollbar-auto-hide:focus-within {
+.dgfy-pos-scrollbar-auto-hide:hover {
   scrollbar-color: #94a3b8 transparent;
 }
 
-.dgfy-pos-scrollbar-auto-hide:hover::-webkit-scrollbar-thumb,
-.dgfy-pos-scrollbar-auto-hide:focus::-webkit-scrollbar-thumb,
-.dgfy-pos-scrollbar-auto-hide:focus-within::-webkit-scrollbar-thumb {
+.dgfy-pos-scrollbar-auto-hide:hover::-webkit-scrollbar-thumb {
   background-color: #94a3b8;
 }
 

@@ -2423,6 +2423,12 @@ export const posRepository = {
                     model: dbStore.get('TenantLocation'),
                     as: 'location',
                     required: false
+                },
+                {
+                    model: dbStore.get('User'),
+                    as: 'cashier',
+                    attributes: ['user_id', 'username', 'email'],
+                    required: false
                 }
             ],
             order: [['opened_at', 'DESC']],

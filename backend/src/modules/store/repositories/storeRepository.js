@@ -1287,9 +1287,38 @@ export const storeRepository = {
             where: {
                 setting_key: { [Op.in]: keys }
             },
-            transaction: options.transaction
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
         return rows.map(toPlain);
+    },
+
+    async updateSettingByKey(key, value, options = {}) {
+        const SystemSetting = dbStore.get('SystemSetting');
+        let row = await SystemSetting.findOne({
+            where: { setting_key: key },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        const serializedValue = typeof value === 'string' ? value : JSON.stringify(value ?? null);
+        if (!row) {
+            row = await SystemSetting.create({
+                setting_key: key,
+                setting_value: serializedValue,
+                data_type: 'json',
+                description: `Auto-created by store repository for key '${key}'`
+            }, {
+                transaction: options.transaction
+            });
+        } else {
+            await row.update({
+                setting_value: serializedValue,
+                data_type: 'json'
+            }, {
+                transaction: options.transaction
+            });
+        }
+        return toPlain(row);
     },
 
     async findTransactionByIdempotencyKey(idempotencyKey, options = {}) {

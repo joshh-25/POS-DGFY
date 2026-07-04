@@ -10,18 +10,21 @@ const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLa
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const posHistoryPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
 const terminalSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
+const globalStylesPath = path.resolve(__dirname, '../../../index.css');
 
 describe('POS terminal responsive scroll contracts', () => {
   let terminalLayoutContent = '';
   let posCheckoutContent = '';
   let posHistoryContent = '';
   let terminalSidebarContent = '';
+  let globalStylesContent = '';
 
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
     posCheckoutContent = fs.readFileSync(posCheckoutPath, 'utf8');
     posHistoryContent = fs.readFileSync(posHistoryPath, 'utf8');
     terminalSidebarContent = fs.readFileSync(terminalSidebarPath, 'utf8');
+    globalStylesContent = fs.readFileSync(globalStylesPath, 'utf8');
   });
 
   it('keeps terminal shell viewport-safe and avoids hard xl screen lock', () => {
@@ -56,6 +59,15 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('Open Cash Drawer');
   });
 
+  it('limits catalog pages to twelve equal-height item cards', () => {
+    expect(posCheckoutContent).toContain('const catalogPageSize = 12;');
+    expect(posCheckoutContent).toContain('return catalog.slice(pageStart, pageStart + catalogPageSize);');
+    expect(posCheckoutContent).toContain('auto-rows-[7rem]');
+    expect(posCheckoutContent).toContain('auto-rows-[11rem]');
+    expect(posCheckoutContent).not.toContain('catalogAutoPageSize');
+    expect(posCheckoutContent).not.toContain('ResizeObserver');
+  });
+
   it('removes legacy scroll badges without restoring split-pane detection', () => {
     expect(posCheckoutContent).not.toContain("window.matchMedia('(min-width: 1536px)')");
     expect(posCheckoutContent).not.toContain('const hasSplitPaneScroll');
@@ -69,7 +81,7 @@ describe('POS terminal responsive scroll contracts', () => {
   it('keeps scrolling scoped to catalog cards and current-sale content', () => {
     expect(posCheckoutContent).toContain('aria-label="POS catalog contents"');
     expect(posCheckoutContent).toContain('aria-label="Current sale contents"');
-    expect(posCheckoutContent).toContain('flex-1 overflow-y-auto overscroll-contain pr-1 pb-3');
+    expect(posCheckoutContent).toContain('flex-1 overflow-y-auto overscroll-y-contain pr-1 pb-3');
     expect(posCheckoutContent).not.toContain('onKeyDown={handleScrollPaneKeyDown}');
     expect(posCheckoutContent).not.toContain('onScroll={syncCatalogPaneScrollState}');
     expect(posCheckoutContent).not.toContain('onScroll={syncCurrentSalePaneScrollState}');
@@ -109,6 +121,8 @@ describe('POS terminal responsive scroll contracts', () => {
   });
 
   it('keeps catalog and current-sale panes equal-height with scoped scroll regions', () => {
+    expect(terminalLayoutContent).toContain('<div key="checkout-workspace" className="h-full min-h-0 max-sm:animate-pos-slide-in">');
+    expect(posCheckoutContent).toContain('<div key="view-checkout" className="h-full min-h-0 max-sm:animate-pos-slide-in">');
     expect(posCheckoutContent).toContain("const checkoutPaneClassName = 'h-full max-h-full';");
     expect(posCheckoutContent).toContain("const catalogPaneHeightClassName = 'h-full max-h-full';");
     expect(posCheckoutContent).toContain("const currentSalePaneHeightClassName = 'h-full max-h-full';");
@@ -116,9 +130,23 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-scroll"');
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-header"');
     expect(posCheckoutContent).toContain("const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-hidden pr-0 pb-3';");
-    expect(posCheckoutContent).toContain("const currentSaleBodyClassName = 'min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y';");
+    expect(posCheckoutContent).toContain("const currentSaleBodyClassName = 'dgfy-pos-scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y';");
     expect(posCheckoutContent).toContain("const currentSaleItemsListClassName = 'pr-1';");
     expect(posCheckoutContent).toContain('md:overflow-hidden md:pointer-events-auto');
+  });
+
+  it('shows both pane scrollbars only while the pointer hovers the scroll region', () => {
+    expect(posCheckoutContent.match(/dgfy-pos-scrollbar-auto-hide/g)).toHaveLength(2);
+    expect(globalStylesContent).toContain('.dgfy-pos-scrollbar-auto-hide:hover');
+    expect(globalStylesContent).not.toContain('.dgfy-pos-scrollbar-auto-hide:focus');
+    expect(globalStylesContent).not.toContain('.dgfy-pos-scrollbar-auto-hide:focus-within');
+  });
+
+  it('highlights cart-selected catalog items without obscuring their content', () => {
+    expect(posCheckoutContent).toContain('const selectedCatalogItemIds = useMemo(() => new Set(');
+    expect(posCheckoutContent).toContain('aria-pressed={isOutOfStock || posActionsBlocked ? undefined : isSelected}');
+    expect(posCheckoutContent).toContain('!border-blue-300 !bg-blue-50 ring-1 ring-blue-200');
+    expect(posCheckoutContent).toContain('className="h-full w-full object-cover object-center"');
   });
 
   it('keeps the terminal session action inside the scrollable sidebar navigation', () => {

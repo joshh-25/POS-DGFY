@@ -704,6 +704,12 @@ const buildTenantSnapshot = async (tenant) => {
             subtitle: toTrimmedString(storefrontPromoRaw.subtitle, 160),
             badge: toTrimmedString(storefrontPromoRaw.badge, 60),
             validity_text: toTrimmedString(storefrontPromoRaw.validity_text, 120),
+            code: toTrimmedString(storefrontPromoRaw.code, 40).toUpperCase(),
+            discount_value: toTrimmedString(storefrontPromoRaw.discount_value, 20),
+            usage_limit: Number.isFinite(Number(storefrontPromoRaw.usage_limit)) ? Math.max(0, Number(storefrontPromoRaw.usage_limit)) : 0,
+            used_count: Number.isFinite(Number(storefrontPromoRaw.used_count)) ? Math.max(0, Number(storefrontPromoRaw.used_count)) : 0,
+            valid_time_start: toTrimmedString(storefrontPromoRaw.valid_time_start, 5),
+            valid_time_end: toTrimmedString(storefrontPromoRaw.valid_time_end, 5),
             active: storefrontPromoRaw.active === true
         }
         : null;
