@@ -86,8 +86,17 @@ jobs:
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
           VITE_PROXY_TARGET: http://127.0.0.1:5000
         run: |
-          npm run dev:local-pos-stack > /tmp/pos-stack.log 2>&1 &
-          echo $! > /tmp/pos-stack.pid
+          npm --prefix backend start > /tmp/pos-backend.log 2>&1 &
+          echo $! > /tmp/pos-backend.pid
+
+          npm --prefix frontend run dev:skupervisor > /tmp/pos-skupervisor.log 2>&1 &
+          echo $! > /tmp/pos-skupervisor.pid
+
+          npm --prefix frontend run dev:pos > /tmp/pos-terminal.log 2>&1 &
+          echo $! > /tmp/pos-terminal.pid
+
+          npm --prefix frontend run dev:store > /tmp/pos-storefront.log 2>&1 &
+          echo $! > /tmp/pos-storefront.pid
 
           wait_for_http() {
             local name="$1"
@@ -110,8 +119,14 @@ jobs:
             done
 
             echo "::error::$name did not become ready at $url"
-            echo "----- POS stack log -----"
-            tail -n 200 /tmp/pos-stack.log || true
+            echo "----- backend log -----"
+            tail -n 200 /tmp/pos-backend.log || true
+            echo "----- skupervisor log -----"
+            tail -n 120 /tmp/pos-skupervisor.log || true
+            echo "----- pos terminal log -----"
+            tail -n 120 /tmp/pos-terminal.log || true
+            echo "----- storefront log -----"
+            tail -n 120 /tmp/pos-storefront.log || true
             return 1
           }
 
@@ -181,5 +196,8 @@ jobs:
           name: playwright-report
           path: |
             frontend/playwright-report/
-            /tmp/pos-stack.log
+            /tmp/pos-backend.log
+            /tmp/pos-skupervisor.log
+            /tmp/pos-terminal.log
+            /tmp/pos-storefront.log
           retention-days: 30
