@@ -2,7 +2,6 @@ import bcrypt from 'bcryptjs';
 
 const E2E_TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const E2E_TENANT_TOKEN = 'token-tenant-a';
-const E2E_TENANT_DB = 'pos_dgfy_test';
 const E2E_EMAILS = ['admin@test.com', 'admin@tenant-a.com'];
 
 export default {
@@ -71,11 +70,9 @@ export default {
           name: 'Tenant A',
           domain: null,
           subdomain: null,
-          db_name: E2E_TENANT_DB,
+          db_name: process.env.DB_NAME || process.env.DB_NAME_TEST || 'sku_inventory_manager_test',
           company_token: E2E_TENANT_TOKEN,
           db_host: process.env.DB_HOST || 'localhost',
-          db_username: process.env.DB_USER || null,
-          db_password: process.env.DB_PASSWORD || null,
           status: 'active',
           plan: 'premium',
           settings: JSON.stringify({ seeded_for: 'playwright_qa' }),
