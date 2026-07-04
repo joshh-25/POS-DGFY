@@ -14,6 +14,7 @@ import {
     buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildRejectDgfyInvitationUseCase,
     buildSearchDgfyBusinessAccountsUseCase,
     buildStartDgfyPosSessionUseCase,
     buildStartDgfyTenantSessionUseCase,
@@ -664,7 +665,7 @@ describe('dgfyAuthUseCases', () => {
         }));
     });
 
-    it('switches DGFY companies only after business email step-up', async () => {
+    it('switches DGFY companies without sending or requiring a business email code', async () => {
         const account = createAccount();
         const membership = {
             id: 12,
@@ -698,17 +699,12 @@ describe('dgfyAuthUseCases', () => {
         const result = await useCase({
             account,
             tenantId: 'tenant-1',
-            body: { email_otp_code: '123456' },
+            body: {},
             metadata: { request_id: 'req-switch' }
         });
 
         expect(result.success).toBe(true);
-        expect(verifyEmailOtp).toHaveBeenCalledWith(expect.objectContaining({
-            purpose: 'dgfy_business_step_up',
-            email: account.email,
-            code: '123456',
-            tenantId: null
-        }));
+        expect(verifyEmailOtp).not.toHaveBeenCalled();
         expect(createTenantSessionForDgfyAccount).toHaveBeenCalledWith({
             account,
             tenantId: 'tenant-1'
@@ -771,7 +767,7 @@ describe('dgfyAuthUseCases', () => {
         });
     });
 
-    it('accepts a pending DGFY invitation with email step-up and does not return a company token', async () => {
+    it('accepts a pending DGFY invitation without email step-up and does not return a company token', async () => {
         const account = createAccount();
         const membership = {
             id: 21,
@@ -800,7 +796,7 @@ describe('dgfyAuthUseCases', () => {
             createBusinessAuditLog: jest.fn().mockResolvedValue(null),
             markBusinessStepUpVerified: jest.fn().mockResolvedValue(null)
         };
-        const verifyEmailOtp = jest.fn().mockResolvedValue({ verified: true });
+        const verifyEmailOtp = jest.fn();
         const useCase = buildAcceptDgfyInvitationUseCase({
             repository,
             verifyEmailOtp
@@ -809,16 +805,11 @@ describe('dgfyAuthUseCases', () => {
         const result = await useCase({
             account,
             membershipId: '21',
-            body: { email_otp_code: '123456' }
+            body: {}
         });
 
         expect(result.success).toBe(true);
-        expect(verifyEmailOtp).toHaveBeenCalledWith(expect.objectContaining({
-            purpose: 'dgfy_business_step_up',
-            email: account.email,
-            code: '123456',
-            tenantId: null
-        }));
+        expect(verifyEmailOtp).not.toHaveBeenCalled();
         expect(repository.acceptInvitationMembership).toHaveBeenCalledWith({ membership, account });
         expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-invite-token');
         expect(result.data.payload.data.membership.company).toEqual(expect.objectContaining({
@@ -1158,6 +1149,96 @@ describe('dgfyAuthUseCases', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.message).toBe('Invitation id is required.');
+    });
+
+    it('loads tenant db_name before accepting a DGFY invitation', async () => {
+        const account = createAccount({ id: 'dgfy-accept-db' });
+        const membership = {
+            id: 38,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-accept',
+            tenant_user_id: 2,
+            role: 'cashier',
+            status: 'pending',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-accept',
+                name: 'Kusina & Café',
+                status: 'active',
+                plan: 'premium',
+                db_name: 'sku_tenant_kusinacaf_9277ba56'
+            }
+        };
+        const repository = {
+            findMembershipById: jest.fn().mockResolvedValue(membership),
+            acceptInvitationMembership: jest.fn().mockResolvedValue({
+                ...membership,
+                status: 'accepted',
+                accepted_at: new Date('2026-07-03T08:00:00Z')
+            }),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildAcceptDgfyInvitationUseCase({ repository });
+
+        const result = await useCase({
+            account,
+            membershipId: 38,
+            metadata: { request_id: 'req-accept-db-name' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.findMembershipById).toHaveBeenCalledWith(38, {
+            include: [{
+                association: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name']
+            }]
+        });
+        expect(repository.acceptInvitationMembership).toHaveBeenCalledWith({ membership, account });
+    });
+
+    it('loads tenant db_name before rejecting a DGFY invitation', async () => {
+        const account = createAccount({ id: 'dgfy-reject-db' });
+        const membership = {
+            id: 39,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-reject',
+            tenant_user_id: 3,
+            role: 'cashier',
+            status: 'pending',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-reject',
+                name: 'Eatery ni Doe',
+                status: 'active',
+                plan: 'premium',
+                db_name: 'sku_tenant_eaterynidoe_2e561dbb',
+                owner_dgfy_account_id: 'owner-dgfy'
+            }
+        };
+        const repository = {
+            findMembershipById: jest.fn().mockResolvedValue(membership),
+            declineInvitationMembership: jest.fn().mockResolvedValue({
+                ...membership,
+                status: 'declined'
+            }),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildRejectDgfyInvitationUseCase({ repository });
+
+        const result = await useCase({
+            account,
+            membershipId: 39,
+            metadata: { request_id: 'req-reject-db-name' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.findMembershipById).toHaveBeenCalledWith(39, {
+            include: [{
+                association: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name', 'owner_dgfy_account_id']
+            }]
+        });
+        expect(repository.declineInvitationMembership).toHaveBeenCalledWith({ membership });
     });
 
     it('starts a DGFY POS session with membership and terminal audit evidence', async () => {
@@ -1552,7 +1633,7 @@ describe('dgfyAuthUseCases', () => {
         }));
     });
 
-    it('audits invitation acceptance failure when business step-up OTP is invalid or replayed', async () => {
+    it('audits invitation acceptance failure when membership activation fails', async () => {
         const account = createAccount();
         const membership = {
             id: 94,
@@ -1572,30 +1653,28 @@ describe('dgfyAuthUseCases', () => {
         };
         const repository = {
             findMembershipById: jest.fn().mockResolvedValue(membership),
-            acceptInvitationMembership: jest.fn(),
+            acceptInvitationMembership: jest.fn().mockRejectedValue(new Error('Tenant activation failed.')),
             createBusinessAuditLog: jest.fn().mockResolvedValue(null),
             markBusinessStepUpVerified: jest.fn()
         };
-        const verifyEmailOtp = jest.fn().mockRejectedValue(Object.assign(
-            new Error('Invalid or expired security code.'),
-            { statusCode: 401 }
-        ));
+        const verifyEmailOtp = jest.fn();
         const useCase = buildAcceptDgfyInvitationUseCase({ repository, verifyEmailOtp });
 
         const result = await useCase({
             account,
             membershipId: '94',
-            body: { email_otp_code: '123456' },
+            body: {},
             metadata: { request_id: 'req-invite-replay' }
         });
 
         expect(result.success).toBe(false);
-        expect(repository.acceptInvitationMembership).not.toHaveBeenCalled();
+        expect(verifyEmailOtp).not.toHaveBeenCalled();
+        expect(repository.acceptInvitationMembership).toHaveBeenCalledWith({ membership, account });
         expect(repository.markBusinessStepUpVerified).not.toHaveBeenCalled();
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: 'invitation_accept_failed',
             result: 'failure',
-            reason: 'Invalid or expired security code.',
+            reason: 'Tenant activation failed.',
             request_id: 'req-invite-replay'
         }));
         expect(JSON.stringify(result)).not.toContain('secret-replay-token');

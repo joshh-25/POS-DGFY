@@ -87,7 +87,6 @@ export function DgfyCustomerAccountPage({
   onSignOut,
   onHelp,
   onRegisterBusiness,
-  onRequestBusinessStepUp,
   onAcceptCompanyInvitation,
   onRejectCompanyInvitation,
   onLeaveCompany,
@@ -128,14 +127,14 @@ export function DgfyCustomerAccountPage({
     ? accountPanel.memberships.filter((membership) => membership?.company)
     : [];
   const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
+
   const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
+
 
   const [activeNav, setActiveNav] = useState('overview');
   const [activeActivityTab, setActiveActivityTab] = useState('active_orders');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
-  const [businessStepUpAction, setBusinessStepUpAction] = useState(null);
-  const [businessEmailOtpCode, setBusinessEmailOtpCode] = useState('');
   const [businessActionLoading, setBusinessActionLoading] = useState(false);
   const [businessActionError, setBusinessActionError] = useState('');
 
@@ -213,34 +212,18 @@ export function DgfyCustomerAccountPage({
     );
   };
 
-  const performBusinessAction = async (action, emailOtpCode = '') => {
-    if (action.type === 'accept') return onAcceptCompanyInvitation?.({ membershipId: action.company.membership_id, emailOtpCode });
+  const performBusinessAction = async (action) => {
+    if (action.type === 'accept') return onAcceptCompanyInvitation?.({ membershipId: action.company.membership_id });
     if (action.type === 'reject') return onRejectCompanyInvitation?.({ membershipId: action.company.membership_id });
     if (action.type === 'leave') return onLeaveCompany?.({ tenantId: action.company.tenant_id });
-    if (action.type === 'switch') return onSwitchCompany?.({ tenantId: action.company.tenant_id, emailOtpCode });
+    if (action.type === 'switch') return onSwitchCompany?.({ tenantId: action.company.tenant_id });
     return undefined;
   };
   const startBusinessAction = async (type, company) => {
     const action = { type, company };
     setBusinessActionError('');
-    if (type === 'reject' || type === 'leave' || businessStepUp?.verified === true) {
-      setBusinessActionLoading(true);
-      try { await performBusinessAction(action); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
-      return;
-    }
-    setBusinessStepUpAction(action);
-    setBusinessEmailOtpCode('');
     setBusinessActionLoading(true);
-    try { await onRequestBusinessStepUp?.(); } catch (error) { setBusinessStepUpAction(null); setBusinessActionError(error?.message || 'Unable to send the security code.'); } finally { setBusinessActionLoading(false); }
-  };
-  const submitBusinessStepUpAction = async () => {
-    if (!/^\d{6}$/.test(businessEmailOtpCode) || !businessStepUpAction) {
-      setBusinessActionError('Enter the 6-digit security code sent to your DGFY email.');
-      return;
-    }
-    setBusinessActionLoading(true);
-    setBusinessActionError('');
-    try { await performBusinessAction(businessStepUpAction, businessEmailOtpCode); setBusinessStepUpAction(null); setBusinessEmailOtpCode(''); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
+    try { await performBusinessAction(action); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
   };
 
   const renderBusiness = () => {
@@ -257,7 +240,6 @@ export function DgfyCustomerAccountPage({
         </div>
         {businessActionError ? <div role="alert" style={{ borderRadius: 10, background: '#FEF2F2', color: '#991B1B', padding: 12 }}>{businessActionError}</div> : null}
         {pending.length > 0 ? <section style={{ display: 'grid', gap: 10 }}><strong>Pending invitations</strong>{pending.map((company) => <div key={`invite-${company.membership_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, background: THEME.infoBg, padding: 14, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{company.company_name || company.name || 'Company invitation'}</strong><div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>Invitation from IMS</div></div><div style={{ display: 'flex', gap: 8 }}><button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('reject', company)}>Reject</button><button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('accept', company)}>Accept</button></div></div>)}</section> : null}
-        {businessStepUpAction ? <section style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, padding: 14, display: 'grid', gap: 10 }}><strong>Email security check</strong><span style={{ color: THEME.muted, fontSize: 13 }}>Enter the 6-digit code sent to your DGFY email.</span><input inputMode="numeric" value={businessEmailOtpCode} onChange={(event) => setBusinessEmailOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} aria-label="Business security code" /><div style={{ display: 'flex', gap: 8 }}><button type="button" onClick={() => setBusinessStepUpAction(null)}>Cancel</button><button type="button" disabled={businessActionLoading} onClick={submitBusinessStepUpAction}>Verify and continue</button></div></section> : null}
         {accepted.length > 0 ? <div style={{ display: 'grid', gap: 14 }}>{accepted.map((company) => { const name=company.company_name || company.name || 'Business'; const owned=company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner'; return <article key={`company-${company.membership_id || company.tenant_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 18, overflow: 'hidden', background: '#fff' }}><div style={{ height: isMobileViewport ? 72 : 104, background: 'linear-gradient(135deg,#1A4E8D,#4F8CC9,#AEE8F4)' }} /><div style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>{name}</div><div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>{owned ? 'Company you own' : 'Company membership'}</div></div><div style={{ display: 'flex', gap: 8 }} >{!owned && company.can_leave !== false ? <button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('leave', company)}>Leave</button> : null}<button type="button" disabled={businessActionLoading} onClick={() => company.tenant_id ? startBusinessAction('switch', company) : onOpenBusinessInventory?.(company)}>Go to Inventory</button></div></div></article>; })}</div> : <div style={{ border: `1px solid ${THEME.border}`, borderRadius: 16, padding: 28, textAlign: 'center' }}><Store size={36} color={THEME.primary} /><h3>No registered business yet</h3><p style={{ color: THEME.muted }}>Register a business or accept an IMS invitation.</p></div>}
       </div>
     );

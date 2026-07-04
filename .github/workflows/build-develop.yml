@@ -1,0 +1,24 @@
+name: Build Images (develop)
+
+on:
+  push:
+    branches: [ develop ]
+
+concurrency:
+  group: build-develop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/deployment-orchestrator.yml
+    with:
+      environment: DEV
+      image_tags: "develop"
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write

@@ -360,6 +360,153 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     document.cookie = 'sku_csrf_token=csrf-tenant-interceptor';
   });
 
+  it('repairs missing tenant context before DGFY account search when an IMS access token is already in memory', async () => {
+    const session = await import('../browserSession.js');
+    session.setBrowserSession({ token: 'ims-token-without-company', companyToken: '' });
+    document.cookie = '';
+    const capturedHeaders = [];
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url, options = {}) => {
+      if (String(url).includes('/auth/csrf-token')) {
+        document.cookie = 'sku_csrf_token=csrf-refresh-bootstrap';
+        return { ok: true, json: async () => ({ success: true }) };
+      }
+      if (String(url).includes('/auth/refresh-token')) {
+        expect(options.headers['x-csrf-token']).toBe('csrf-refresh-bootstrap');
+        return {
+          ok: true,
+          json: async () => ({
+            data: {
+              token: 'ims-repaired-token',
+              company: { token: 'ims-repaired-company-token' }
+            }
+          })
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
+    mockApi.onGet('/dgfy/accounts/search').reply((config) => {
+      capturedHeaders.push({ ...config.headers });
+      return [200, { data: { accounts: [] } }];
+    });
+
+    const result = await api.get('/dgfy/accounts/search', {
+      params: { query: 'skupervisor' }
+    });
+
+    expect(result.data).toEqual({ data: { accounts: [] } });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh-token'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' })
+    );
+    expect(capturedHeaders[0].Authorization).toBe('Bearer ims-repaired-token');
+    expect(capturedHeaders[0]['x-company-token']).toBe('ims-repaired-company-token');
+    document.cookie = 'sku_csrf_token=csrf-tenant-interceptor';
+  });
+
+  it('preserves the existing POS bearer token for DGFY account search when tenant refresh fails', async () => {
+    const session = await import('../browserSession.js');
+    session.setBrowserSession({ token: 'pos-admin-token-without-company', companyToken: '' });
+    document.cookie = '';
+    const capturedHeaders = [];
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url, options = {}) => {
+      if (String(url).includes('/auth/csrf-token')) {
+        document.cookie = 'sku_csrf_token=csrf-refresh-bootstrap';
+        return { ok: true, json: async () => ({ success: true }) };
+      }
+      if (String(url).includes('/auth/refresh-token')) {
+        expect(options.headers.Authorization).toBe('Bearer pos-admin-token-without-company');
+        expect(options.headers['x-csrf-token']).toBe('csrf-refresh-bootstrap');
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({
+            success: false,
+            message: 'Session refresh failed'
+          })
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
+    mockApi.onGet('/dgfy/accounts/search').reply((config) => {
+      capturedHeaders.push({ ...config.headers });
+      return [200, { data: { accounts: [] } }];
+    });
+
+    const result = await api.get('/dgfy/accounts/search', {
+      params: { query: 'kitcole314@gmail.com' }
+    });
+
+    expect(result.data).toEqual({ data: { accounts: [] } });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh-token'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' })
+    );
+    expect(capturedHeaders[0].Authorization).toBe('Bearer pos-admin-token-without-company');
+    expect(capturedHeaders[0]['x-company-token']).toBeUndefined();
+    document.cookie = 'sku_csrf_token=csrf-tenant-interceptor';
+  });
+
+  it('repairs missing tenant context before IMS tenant-bridge company requests', async () => {
+    const session = await import('../browserSession.js');
+    session.setBrowserSession({ token: 'ims-token-without-company', companyToken: '' });
+    const capturedHeaders = [];
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url) => {
+      if (String(url).includes('/auth/refresh-token')) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: {
+              token: 'ims-bridge-repaired-token',
+              company: { token: 'ims-bridge-company-token' }
+            }
+          })
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
+    mockApi.onGet('/dgfy/account/companies').reply((config) => {
+      capturedHeaders.push({ ...config.headers });
+      return [200, { data: { companies: [] } }];
+    });
+
+    const result = await api.get('/dgfy/account/companies', {
+      headers: { 'x-dgfy-auth-mode': 'tenant_membership' }
+    });
+
+    expect(result.data).toEqual({ data: { companies: [] } });
+    expect(capturedHeaders[0].Authorization).toBe('Bearer ims-bridge-repaired-token');
+    expect(capturedHeaders[0]['x-company-token']).toBe('ims-bridge-company-token');
+    expect(capturedHeaders[0]['x-dgfy-auth-mode']).toBe('tenant_membership');
+  });
+
+  it('does not force tenant-context repair for platform admin requests', async () => {
+    const session = await import('../browserSession.js');
+    session.setBrowserSession({ token: 'admin-token-without-company', companyToken: '' });
+    const capturedHeaders = [];
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url) => {
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }));
+
+    mockApi.onGet('/admin/accounts').reply((config) => {
+      capturedHeaders.push({ ...config.headers });
+      return [200, { data: { accounts: [] } }];
+    });
+
+    const result = await api.get('/admin/accounts');
+
+    expect(result.data).toEqual({ data: { accounts: [] } });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(capturedHeaders[0].Authorization).toBe('Bearer admin-token-without-company');
+    expect(capturedHeaders[0]['x-company-token']).toBeUndefined();
+  });
+
   it('adds the browser CSRF cookie to unsafe protected requests', async () => {
     const capturedHeaders = [];
 

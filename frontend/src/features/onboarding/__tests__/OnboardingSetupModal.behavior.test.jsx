@@ -351,6 +351,60 @@ describe('OnboardingSetupModal behavior', () => {
     });
   });
 
+  it('remaps stale default Food Manufacturing starter rows after settings resolve to F&B', async () => {
+    const user = userEvent.setup();
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValue({
+      ops_workflow_mode: { value: 'fnb' },
+      store_is_visible: { value: false }
+    });
+
+    renderModal({
+      workflowMode: 'food_manufacturing',
+      onboarding: {
+        ...baseOnboarding,
+        tenant_onboarding_progress: {
+          step_payloads: {
+            brand_assets: { skipped: true },
+            primary_location: {
+              location_id: 5,
+              public_storefront_visible: true
+            }
+          },
+          checklist_snapshot: {
+            required_total: 3,
+            completed_required_count: 2,
+            missing_requirements: ['has_priced_starter_item']
+          }
+        }
+      }
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Mode: Food & Beverage\./i)).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Step 3: Menu Item/i }));
+
+    const itemType = screen.getByLabelText(/Item type/i);
+    expect(itemType.value).toBe('menu_item');
+
+    await user.type(screen.getByLabelText(/Item name/i), 'Chicken Rice Bowl');
+    await user.type(screen.getByLabelText(/Selling price/i), '149');
+    await user.click(screen.getByRole('button', { name: /Save Items/i }));
+
+    await waitFor(() => {
+      expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems).toHaveBeenCalledWith({
+        rows: [
+          expect.objectContaining({
+            name: 'Chicken Rice Bowl',
+            mode_item_preset: 'menu_item',
+            default_sale_price: '149'
+          })
+        ]
+      });
+    });
+  });
+
   it('retries optional item image upload without resubmitting the created item', async () => {
     const user = userEvent.setup();
     mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages

@@ -9,7 +9,8 @@ export default function POSBarcodeScanner({
     sessionLocked = false,
     selectedLocationId = null,
     terminalId = '',
-    onAddToCart = null
+    onAddToCart = null,
+    className = ''
 }) {
     const [scannerCode, setScannerCode] = useState('');
     const [scannerStatus, setScannerStatus] = useState(null);
@@ -152,7 +153,7 @@ export default function POSBarcodeScanner({
                 type="button"
                 disabled={sessionLocked || scannerLoading}
                 onClick={openScannerModal}
-                className="flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-extrabold text-[#0F172A] shadow-sm transition hover:border-slate-400 hover:bg-white disabled:opacity-50"
+                className={`flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-extrabold text-[#0F172A] shadow-sm transition hover:border-slate-400 hover:bg-white disabled:opacity-50${className ? ` ${className}` : ''}`}
             >
                 <ScanLine size={20} />
                 {scannerLoading ? 'Resolving...' : 'Scan'}

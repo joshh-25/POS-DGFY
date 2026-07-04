@@ -48,7 +48,10 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('refreshBrowserSession()');
     expect(terminalPageSource).toContain('storedReason !== \'shift_closed\'');
     expect(terminalPageSource).toContain('storedReason !== \'terminal_reunlock\'');
-    expect(terminalPageSource).toContain('buildRegisteredTerminalContext(terminalRegistryLookup.get(storedTerminalId))');
+
+    expect(terminalPageSource).toContain('const storedRegistryEntry = terminalRegistryLookup.get(storedTerminalId);');
+    expect(terminalPageSource).toContain('operatingLocationIdOverride: storedLocationId');
+
     expect(terminalPageSource).toContain('allowWhileLocked: true');
     expect(terminalPageSource).toContain('if (operationalContext?.shift) {');
     expect(terminalPageSource).toContain('setLocked(true);');
@@ -82,7 +85,8 @@ describe('TerminalPage session contract', () => {
     expect(loginFlow).toContain(
       "let token = continuingAfterCompanyPicker ? String(getStoredDgfyToken() || '').trim() : '';"
     );
-    expect(loginFlow).toContain('if (!token) {\n        const loginResult = await loginDgfyAccount({ email, password });');
+    expect(loginFlow).toContain('if (!token) {');
+    expect(loginFlow).toContain('const loginResult = await loginDgfyAccount({ email, password });');
     expect(loginFlow).toContain('if (!getAccessToken() || !selectedCompanyToken) {');
     expect(loginFlow).toContain("setStoredTerminalLockReason('shift_start_required');");
     expect(loginFlow).toContain('setLocked(true);\n      setDrawerOpen(false);');

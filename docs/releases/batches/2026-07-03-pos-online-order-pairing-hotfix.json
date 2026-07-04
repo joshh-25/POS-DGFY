@@ -1,0 +1,152 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab emergency owner approval via Codex",
+  "reviewed_at": "2026-07-03T04:18:30.000Z",
+  "source_pr": "PR-57-and-PR-58-emergency-pos-pairing-hotfix",
+  "release_slices": [
+    {
+      "id": "pos-online-order-pairing-hotfix",
+      "slice_name": "POS online order pairing hotfix",
+      "name": "POS online order pairing hotfix",
+      "plain_english_purpose": "Allow authorized POS staff to confirm or reject incoming online orders without being blocked by missing physical device pairing.",
+      "purpose": "Allow authorized POS staff to confirm or reject incoming online orders without being blocked by missing physical device pairing.",
+      "implementation_summary": "Removed the physical-device pairing middleware from the POS online-order status route while preserving tenant authentication, POS capability enforcement, pos:transact permission, request validation, authenticated user checks, and open-shift/location checks inside the use case. Added route contract coverage and a compliance declaration for the POS route change.",
+      "included_files": [
+        "backend/src/routes/pos.js",
+        "backend/tests/rbacRouteCoverage.contract.test.js",
+        "docs/compliance/impact-declarations/2026-07-03-pos-online-order-pairing-hotfix.md",
+        "docs/releases/batches/2026-07-03-pos-online-order-pairing-hotfix.json"
+      ],
+      "included_features": [
+        "POS incoming online order confirmation and rejection without physical-device pairing"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "No changes to checkout stock deduction logic",
+        "No changes to payment, PayMongo, fiscal print, cash drawer, void, Z-reading, or database migration behavior",
+        "No frontend bundle or POS UI behavior changes"
+      ],
+      "owner_attribution": "BabyBaBab emergency production approval",
+      "source_branch": "codex/emergency-pos-order-pairing-hotfix",
+      "source_pr": "PR-57-and-PR-58-emergency-pos-pairing-hotfix",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "backend",
+        "docs",
+        "compliance",
+        "POS"
+      ],
+      "affected_surface_map": {
+        "backend": true,
+        "frontend": false,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": true,
+        "POS": true,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "medium",
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "This changes middleware on a POS order mutation. Existing tenant authentication, POS capability, pos:transact permission, validation, authenticated-user, open-shift, and order-location safeguards remain in place, but production should be watched for unexpected order-status authorization behavior.",
+      "potentially_affected_existing_behaviors": [
+        "POS incoming online order confirmation and rejection authorization",
+        "Operator handling of placed online orders in the POS Orders view",
+        "Route-level pairing error handling for the online order status endpoint"
+      ],
+      "evidence_covering_regression_risk": [
+        "Route contract test now asserts the online order status route keeps pos:transact permission and does not include physical-device pairing middleware.",
+        "POS transport tests passed and preserve the online order status response contract.",
+        "POS use-case tests passed and cover order status lifecycle, inventory deduction on completion, open-shift requirement, and replay behavior.",
+        "Architecture, compliance, and docs lint gates passed locally."
+      ],
+      "evidence_gaps": [
+        "Production live order confirmation smoke still requires the deployed target SHA and a safe operator read/write check after deployment.",
+        "Broad GitHub staging and exact-master qualification must pass for the final target SHA before signed controller deployment."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting this batch commit or restoring the pairing middleware on PATCH /api/v1/pos/orders/:id/status.",
+        "After deployment, monitor POS order status 401 responses, POS order confirmation/rejection success, and runtime health."
+      ],
+      "required_tests": [
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "node --experimental-vm-modules C:\\xampp\\htdocs\\SKU-Inventory-Manager\\backend\\node_modules\\jest\\bin\\jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/rbacRouteCoverage.contract.test.js tests/posHandlers.transport.test.js tests/posUsecases.applicationResult.test.js"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "Local run passed: docs-lint OK, validated governed docs."
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "Local run passed: architecture guardrails and controller boundaries OK."
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "Local run passed after adding compliance declaration; compliance impact and API contract checks passed."
+        },
+        {
+          "command": "node --experimental-vm-modules C:\\xampp\\htdocs\\SKU-Inventory-Manager\\backend\\node_modules\\jest\\bin\\jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/rbacRouteCoverage.contract.test.js tests/posHandlers.transport.test.js tests/posUsecases.applicationResult.test.js",
+          "status": "pass",
+          "evidence": "Local focused backend route, transport, and POS use-case suites passed: 52 tests passed."
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/compliance/impact-declarations/2026-07-03-pos-online-order-pairing-hotfix.md",
+        "docs/releases/batches/2026-07-03-pos-online-order-pairing-hotfix.json"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab emergency owner approval via Codex",
+        "reviewed_at": "2026-07-03T04:18:30.000Z",
+        "rationale": "The behavior is already governed by ADR 0031, which says physical-device pairing must not block normal authorized POS order handling. This release keeps the POS route, route contract test, compliance declaration, and reviewed batch manifest together so the emergency hotfix has auditable scope, risk, rollback, and production proof requirements.",
+        "documents": [
+          {
+            "path": "docs/compliance/impact-declarations/2026-07-03-pos-online-order-pairing-hotfix.md",
+            "action": "updated",
+            "evidence": "Documents the POS route authorization change, compliance preconditions, verification evidence, and rollback note."
+          },
+          {
+            "path": "docs/releases/batches/2026-07-03-pos-online-order-pairing-hotfix.json",
+            "action": "updated",
+            "evidence": "Provides the reviewed batch inventory, regression warning, completed test evidence, rollback, and production accuracy requirements."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "ADR 0031 already governs this behavior: physical-device pairing is optional compatibility state and must not block normal authorized POS order handling. Compliance declaration 2026-07-03-pos-online-order-pairing-hotfix records the route-level impact.",
+      "rollback_notes": "Revert this batch commit or restore posController.requirePairedTerminal on PATCH /api/v1/pos/orders/:id/status, then rerun focused POS route/usecase tests and compliance checks.",
+      "production_proof_required": [
+        "Remote HEAD and .deploy-state/last_deployed_commit equal the authorized target SHA",
+        "Newest production deploy summary records deployed_head, remote_head, and expected_commit equal to the target SHA",
+        "Live /api/v1/health reports the same runtime SHA",
+        "Read-only or operator-approved POS Orders smoke proves Confirmed or Rejected no longer returns POS_TERMINAL_PAIRING_INVALID"
+      ],
+      "production_accuracy_checks_required": [
+        "Verify the deployed route no longer includes the pairing middleware for PATCH /api/v1/pos/orders/:id/status",
+        "Verify production POS order status mutation still requires authenticated POS permission and an open shift",
+        "Verify the device status 503 remains a hardware bridge warning and not the order status blocker",
+        "Confirm no payment, fiscal print, cash drawer, void, Z-reading, or migration scope shipped in this slice"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}

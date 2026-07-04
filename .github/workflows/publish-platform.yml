@@ -1,0 +1,55 @@
+# Deploys already-pushed GHCR images to a running server over SSH.
+#
+# NOTE: this workflow gives GitHub Actions a production SSH private key,
+# which docs/architecture/adr/0030-free-tier-signed-release-authorization.md
+# (rules 1, 16, 18, 22) explicitly prohibits. See that ADR's "Amendment
+# (2026-07-02)" section for the scoped decision that supersedes those rules
+# for this specific image-based deployment path.
+#
+# Assumes infrastructure/docker/docker-compose.yml + a filled-in .env +
+# nginx/ have already been copied to /opt/dgfy-platform on the target
+# server (see that file's header comment) and, for a fresh server,
+# ./nginx/init-letsencrypt.sh has been run once manually.
+name: Publish Platform (SSH Deploy)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub Environment to resolve SSH_PRIVATE_KEY/SSH_TARGET secrets from
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${SSH_TARGET#*@}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pull and restart platform containers
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Token is piped over the existing SSH stdin into `docker login
+          # --password-stdin` on the remote -- never an argv or env var on
+          # that host, so it can't leak via `ps aux` there.
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && cd /opt/dgfy-platform && docker compose pull && docker compose up -d --remove-orphans && docker logout ghcr.io" \
+            <<< "$GITHUB_TOKEN"

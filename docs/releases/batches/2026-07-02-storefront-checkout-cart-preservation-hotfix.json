@@ -1,0 +1,181 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-authorized Codex production review",
+  "reviewed_at": "2026-07-02T16:14:00.000Z",
+  "source_pr": "51",
+  "release_slices": [
+    {
+      "id": "storefront-checkout-cart-preservation-hotfix",
+      "slice_name": "Storefront checkout cart preservation hotfix",
+      "name": "Storefront checkout cart preservation hotfix",
+      "plain_english_purpose": "Keep an eligible tenant-store order and its totals in checkout for both guests and signed-in DGFY customers when an unrelated service-booking capability is unavailable.",
+      "purpose": "Keep an eligible tenant-store order and its totals in checkout for both guests and signed-in DGFY customers when an unrelated service-booking capability is unavailable.",
+      "implementation_summary": "Replaces the Storefront cart cleanup rule that required product cart, checkout, and service booking capabilities simultaneously with line-type-aware cleanup. Product lines require product-cart and checkout capability; service lines require booking capability. Existing guest drafts, DGFY auth resume, quote, stock, payment, tenant, and order submission contracts remain unchanged.",
+      "included_files": [
+        "docs/release/merge-adoption/pr51-storefront-checkout-cart-preservation-2026-07-02.json",
+        "docs/releases/batches/2026-07-02-storefront-checkout-cart-preservation-hotfix.json",
+        "frontend/apps/store/src/StorefrontApp.jsx",
+        "frontend/apps/store/src/__tests__/customerAccess.test.js",
+        "frontend/apps/store/src/customerAccess.js"
+      ],
+      "included_features": [
+        "Capability-aware preservation of product checkout carts",
+        "Independent fail-closed handling for service booking carts",
+        "Guest and DGFY-account regression coverage for the tenant-store checkout condition"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Payment routing, PayMongo, QR Ph, billing, settlement, or fee changes",
+        "Database migrations or schema changes",
+        "Tenant authorization or DGFY membership changes",
+        "Catalog, stock, quote, price, fulfillment, or order-submission API changes",
+        "Unrelated local inventory, CSV import, error-handler, and POS work"
+      ],
+      "owner_attribution": "BabyBaBab owner-authorized hotfix and production deployment",
+      "source_branch": "codex/hotfix-storefront-checkout",
+      "source_pr": "51",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "frontend",
+        "docs",
+        "Storefront",
+        "DGFY"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": false,
+        "POS": false,
+        "Storefront": true,
+        "DGFY": true,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "medium",
+      "regression_risk_level": "medium",
+      "regression_warning_required": true,
+      "regression_warning_summary": "The hotfix changes when Storefront cart state is discarded. A regression could retain a cart after its relevant checkout capability is revoked or still erase a valid cart during guest or DGFY-account checkout.",
+      "potentially_affected_existing_behaviors": [
+        "Tenant-store product cart retention during checkout",
+        "Service booking cart capability enforcement",
+        "Guest checkout draft restoration",
+        "DGFY-authenticated checkout resume",
+        "Quote and payment-review totals"
+      ],
+      "evidence_covering_regression_risk": [
+        "Unit tests cover guest and DGFY-account product carts when booking is unavailable, product checkout revocation, service booking preservation, and service booking revocation.",
+        "PR #51 CI passed the full backend matrix, full frontend suite, all frontend app builds, bundle budgets, architecture, compliance, docs, dependency, merge-adoption, and batch-inventory gates.",
+        "Live pre-deploy Eatery ni Doe guest checkout retained Kare-kare, PHP 70.70 total, and promo entry through payment review without submitting an order.",
+        "Backend DGFY/store-auth fallback tests passed and continued to require explicit DGFY linkage rather than email matching."
+      ],
+      "evidence_gaps": [
+        "A controlled signed-in DGFY production checkout-resume smoke still requires the dedicated production UAT account and must be completed after deployment.",
+        "The live tenant currently advertises booking capability as enabled, so post-deploy production proof must supplement the real tenant journey with exact-bundle source proof for the booking-disabled branch."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting the hotfix and release-evidence commits, rebuilding Storefront, and redeploying through the signed controller.",
+        "Monitor Storefront quote failures, empty-cart checkout states, DGFY auth-resume failures, guest draft restoration errors, and checkout validation errors after deployment."
+      ],
+      "required_tests": [
+        "npm run lint:docs",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run test:frontend",
+        "npm --prefix frontend run build:all",
+        "npm run check:frontend-budgets",
+        "npm run check:merge-adoption-required"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "PR #51 CI run 28603871550 lint-docs passed"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "PR #51 CI run 28603871550 backend job passed architecture guardrails and controller boundaries"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "PR #51 CI run 28603871550 backend job passed compliance impact and API contract checks"
+        },
+        {
+          "command": "npm run test:frontend",
+          "status": "pass",
+          "evidence": "PR #51 CI run 28603871550 test-frontend passed the full frontend test suite"
+        },
+        {
+          "command": "npm --prefix frontend run build:all",
+          "status": "pass",
+          "evidence": "PR #51 CI run 28603871550 built Storefront, POS, and SKUpervisor applications"
+        },
+        {
+          "command": "npm run check:frontend-budgets",
+          "status": "pass",
+          "evidence": "PR #51 CI run 28603871550 test-frontend passed frontend bundle budgets"
+        },
+        {
+          "command": "npm run check:merge-adoption-required",
+          "status": "pass",
+          "evidence": "PR #51 CI run 28603871550 validated pr51-storefront-checkout-cart-preservation-2026-07-02.json"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/release/merge-adoption/pr51-storefront-checkout-cart-preservation-2026-07-02.json",
+        "docs/releases/batches/2026-07-02-storefront-checkout-cart-preservation-hotfix.json"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-authorized Codex documentation review",
+        "reviewed_at": "2026-07-02T16:14:00.000Z",
+        "rationale": "The implementation stays within the existing Storefront customer-access boundary and does not change architecture or API contracts. Release documentation is updated because this is a high-risk customer-flow hotfix requiring explicit adoption, regression, rollback, and production-accuracy evidence.",
+        "documents": [
+          {
+            "path": "docs/release/merge-adoption/pr51-storefront-checkout-cart-preservation-2026-07-02.json",
+            "action": "updated",
+            "evidence": "Records the exact preserved Storefront behaviors, changed source anchors, tests, rendered proof, and production proof required for PR #51."
+          },
+          {
+            "path": "docs/releases/batches/2026-07-02-storefront-checkout-cart-preservation-hotfix.json",
+            "action": "updated",
+            "evidence": "Provides the reviewed batch inventory, regression warning, completed test evidence, rollback, and production accuracy requirements for this exact hotfix slice."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No ADR or compliance declaration is required because the fix stays within the accepted Storefront customer-access boundary and changes no payment, persistence, authorization, or compliance contract.",
+      "rollback_notes": "Revert the checkout hotfix and its release evidence as one release slice, rebuild all frontend apps, rerun frontend, architecture, compliance, docs, merge-adoption, and regression-risk gates, then redeploy through the signed controller.",
+      "production_proof_required": [
+        "Production remote HEAD, last_deployed_commit, deploy summary, runtime health SHA, and frontend asset parity equal the exact promoted origin/master SHA",
+        "Eatery ni Doe guest checkout retains an item and non-zero total through payment review and promo entry without submitting an order",
+        "Controlled DGFY-account checkout resumes the same tenant cart and retains non-zero totals without email or phone based guest adoption"
+      ],
+      "production_accuracy_checks_required": [
+        "Verify the deployed Storefront bundle contains shouldClearStorefrontCart and no longer contains the all-three-capabilities cleanup condition",
+        "Verify product lines remain when product-cart and checkout are enabled while booking is unavailable",
+        "Verify product lines clear when product checkout is unavailable",
+        "Verify service lines clear when booking is unavailable",
+        "Verify guest and DGFY-account checkout preserve item names, quantities, subtotal, fees, and total through payment review"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": true,
+      "high_risk_files": [
+        "frontend/apps/store/src/StorefrontApp.jsx",
+        "frontend/apps/store/src/__tests__/customerAccess.test.js",
+        "frontend/apps/store/src/customerAccess.js"
+      ]
+    }
+  ]
+}

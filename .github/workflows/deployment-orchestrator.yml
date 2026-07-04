@@ -1,0 +1,62 @@
+name: Deployment Orchestrator
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub Environment to resolve build-arg vars / deploy secrets from (PROD/QA/DEV)
+        required: true
+        type: string
+      image_tags:
+        description: Comma-separated branch tags, e.g. "latest,beta"
+        required: true
+        type: string
+      publish:
+        description: Whether to SSH-deploy to the target server after images are pushed
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      backend_sha_tag:
+        value: ${{ jobs.backend.outputs.sha_tag }}
+      frontend_sha_tag:
+        value: ${{ jobs.frontend.outputs.sha_tag }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  backend:
+    uses: ./.github/workflows/deploy-backend.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  frontend:
+    # Builds/pushes the single combined `frontend` image (skupervisor + pos
+    # + storefront, all 3 SPAs, one nginx serving them on 3 internal ports)
+    # -- see infrastructure/docker/frontend/Dockerfile.
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  publish:
+    needs: [ backend, frontend ]
+    if: inputs.publish
+    uses: ./.github/workflows/publish-platform.yml
+    with:
+      environment: ${{ inputs.environment }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: read

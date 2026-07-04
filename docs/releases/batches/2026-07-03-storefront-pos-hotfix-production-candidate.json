@@ -1,0 +1,299 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab owner-authorized Codex production review",
+  "reviewed_at": "2026-07-02T17:15:00.000Z",
+  "source_pr": "owner-directed-staging-hotfix-candidate-2026-07-03",
+  "release_slices": [
+    {
+      "id": "storefront-checkout-cart-preservation-hotfix",
+      "slice_name": "Storefront checkout cart preservation hotfix",
+      "name": "Storefront checkout cart preservation hotfix",
+      "plain_english_purpose": "Keep an eligible tenant-store product order and its totals in checkout when an unrelated service-booking capability is unavailable.",
+      "purpose": "Keep an eligible tenant-store product order and its totals in checkout when an unrelated service-booking capability is unavailable.",
+      "implementation_summary": "Uses line-type-aware Storefront cart cleanup so product carts require product-cart and checkout capability while service lines require booking capability. Guest draft, DGFY checkout resume, quote, stock, payment review, tenant, and order-submission contracts remain unchanged.",
+      "included_files": [
+        "docs/release/merge-adoption/pr51-storefront-checkout-cart-preservation-2026-07-02.json",
+        "docs/releases/batches/2026-07-02-storefront-checkout-cart-preservation-hotfix.json",
+        "frontend/apps/store/src/StorefrontApp.jsx",
+        "frontend/apps/store/src/__tests__/customerAccess.test.js",
+        "frontend/apps/store/src/customerAccess.js"
+      ],
+      "included_features": [
+        "Capability-aware preservation of product checkout carts",
+        "Independent fail-closed handling for service booking carts",
+        "Guest and DGFY-account regression coverage for the tenant-store checkout condition"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Payment routing, PayMongo, QR Ph, billing, settlement, or fee changes",
+        "Database migrations or schema changes",
+        "Tenant authorization or DGFY membership changes",
+        "Catalog, stock, quote, price, fulfillment, or order-submission API changes",
+        "Unrelated local inventory, CSV import, error-handler, and POS work outside this release"
+      ],
+      "owner_attribution": "BabyBaBab owner-authorized hotfix and production deployment",
+      "source_branch": "codex/hotfix-storefront-checkout",
+      "source_pr": "51",
+      "source_type": "developer_pr",
+      "affected_surfaces": [
+        "frontend",
+        "docs",
+        "Storefront",
+        "DGFY"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": false,
+        "POS": false,
+        "Storefront": true,
+        "DGFY": true,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "medium",
+      "regression_risk_level": "medium",
+      "regression_warning_required": true,
+      "regression_warning_summary": "The hotfix changes when Storefront cart state is discarded. A regression could retain a cart after its relevant checkout capability is revoked or still erase a valid cart during guest or DGFY-account checkout.",
+      "potentially_affected_existing_behaviors": [
+        "Tenant-store product cart retention during checkout",
+        "Service booking cart capability enforcement",
+        "Guest checkout draft restoration",
+        "DGFY-authenticated checkout resume",
+        "Quote and payment-review totals"
+      ],
+      "evidence_covering_regression_risk": [
+        "Unit tests cover guest and DGFY-account product carts when booking is unavailable, product checkout revocation, service booking preservation, and service booking revocation.",
+        "PR #51 CI passed the full backend matrix, full frontend suite, all frontend app builds, bundle budgets, architecture, compliance, docs, dependency, merge-adoption, and batch-inventory gates.",
+        "Live pre-deploy Eatery ni Doe guest checkout retained item, non-zero total, and promo entry through payment review without submitting an order."
+      ],
+      "evidence_gaps": [
+        "Controlled signed-in DGFY production checkout-resume smoke still requires the dedicated production UAT account after deployment.",
+        "The live tenant may not expose every disabled-capability branch, so production proof must supplement live UI proof with exact-bundle/source proof for disabled booking cleanup."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting the Storefront checkout hotfix and release-evidence commits, rebuilding Storefront, and redeploying through the signed controller.",
+        "Monitor Storefront quote failures, empty-cart checkout states, DGFY auth-resume failures, guest draft restoration errors, and checkout validation errors after deployment."
+      ],
+      "required_tests": [
+        "PR #51 CI full frontend/backend/release gate set"
+      ],
+      "completed_tests": [
+        {
+          "command": "PR #51 CI full frontend/backend/release gate set",
+          "status": "pass",
+          "evidence": "PR #51 CI run 28603871550 passed frontend, backend, build, architecture, compliance, docs, merge-adoption, and batch-inventory gates for the Storefront hotfix before it merged into origin/staging."
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/release/merge-adoption/pr51-storefront-checkout-cart-preservation-2026-07-02.json",
+        "docs/releases/batches/2026-07-02-storefront-checkout-cart-preservation-hotfix.json"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "no_change_required",
+        "reviewed_by": "BabyBaBab owner-authorized Codex documentation review",
+        "reviewed_at": "2026-07-02T17:15:00.000Z",
+        "rationale": "The implementation stays within the existing Storefront customer-access boundary and does not change architecture or API contracts. Existing reviewed release documentation remains current for PR #51 inside this aggregate candidate.",
+        "documents": [
+          {
+            "path": "docs/release/merge-adoption/pr51-storefront-checkout-cart-preservation-2026-07-02.json",
+            "action": "reviewed_current",
+            "evidence": "Records the exact preserved Storefront behaviors, changed source anchors, tests, rendered proof, and production proof required for PR #51."
+          },
+          {
+            "path": "docs/releases/batches/2026-07-02-storefront-checkout-cart-preservation-hotfix.json",
+            "action": "reviewed_current",
+            "evidence": "Provides reviewed batch inventory, regression warning, completed test evidence, rollback, and production accuracy requirements for the Storefront hotfix slice."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": false,
+      "adr_or_compliance": "No ADR or compliance declaration is required because the fix stays within the accepted Storefront customer-access boundary and changes no payment, persistence, authorization, or compliance contract.",
+      "rollback_notes": "Revert the checkout hotfix and its release evidence as one release slice, rebuild frontend apps, rerun frontend, architecture, compliance, docs, merge-adoption, and regression-risk gates, then redeploy through the signed controller.",
+      "production_proof_required": [
+        "Production remote HEAD, last_deployed_commit, deploy summary, runtime health SHA, and frontend asset parity equal the exact promoted origin/master SHA",
+        "Guest checkout retains an item and non-zero total through payment review without submitting an order",
+        "Controlled DGFY-account checkout resumes the same tenant cart and retains non-zero totals without email or phone based guest adoption"
+      ],
+      "production_accuracy_checks_required": [
+        "Verify the deployed Storefront bundle contains shouldClearStorefrontCart and no longer contains the all-three-capabilities cleanup condition",
+        "Verify product lines remain when product-cart and checkout are enabled while booking is unavailable",
+        "Verify product lines clear when product checkout is unavailable",
+        "Verify service lines clear when booking is unavailable",
+        "Verify guest and DGFY-account checkout preserve item names, quantities, subtotal, fees, and total through payment review"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": true,
+      "high_risk_files": [
+        "frontend/apps/store/src/StorefrontApp.jsx",
+        "frontend/apps/store/src/__tests__/customerAccess.test.js",
+        "frontend/apps/store/src/customerAccess.js"
+      ]
+    },
+    {
+      "id": "pos-shift-open-refresh-context-hotfix",
+      "slice_name": "POS shift-open refresh context hotfix",
+      "name": "POS shift-open refresh context hotfix",
+      "plain_english_purpose": "After a successful POS Open Shift action, immediately show the new active shift instead of leaving legacy/admin users stuck on the Open Shift modal.",
+      "purpose": "After a successful POS Open Shift action, immediately show the new active shift instead of leaving legacy/admin users stuck on the Open Shift modal.",
+      "implementation_summary": "Passes the exact selected terminal and resolved terminal-location context into the post-success POS operational refresh for both terminal unlock and in-session Open Shift flows. Backend authorization and shift lookup stay strict by terminal, cashier, and location.",
+      "included_files": [
+        "docs/compliance/impact-declarations/2026-07-03-pos-shift-open-refresh-context-hotfix.md",
+        "docs/releases/batches/2026-07-03-storefront-pos-hotfix-production-candidate.json",
+        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js",
+        "frontend/src/features/pos/pages/TerminalPage.jsx"
+      ],
+      "included_features": [
+        "Post-open shift refresh uses the exact terminal id used for the successful mutation",
+        "Post-open shift refresh uses the exact resolved terminal registry location",
+        "Contract test prevents regressing to stale location refresh after a successful shift open"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "Backend POS authorization, permissions, compliance gates, idempotency, or location-scope weakening",
+        "Payment routing, PayMongo, QR Ph, billing, settlement, or fee changes",
+        "Database migrations or schema changes",
+        "Tenant identity, DGFY membership, invite, or account-linking changes",
+        "Unrelated local backend inventory, CSV import, and error-handler edits from the dirty checkout"
+      ],
+      "owner_attribution": "BabyBaBab owner-authorized POS bug hotfix and production deployment",
+      "source_branch": "codex/pos-shift-refresh-staging",
+      "source_pr": "owner-directed-staging-hotfix-candidate-2026-07-03",
+      "source_type": "owner_direct_staging",
+      "affected_surfaces": [
+        "frontend",
+        "docs",
+        "compliance",
+        "POS"
+      ],
+      "affected_surface_map": {
+        "backend": false,
+        "frontend": true,
+        "database": false,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": true,
+        "POS": true,
+        "Storefront": false,
+        "DGFY": false,
+        "tenant lifecycle": false,
+        "payments": false
+      },
+      "risk_level": "medium",
+      "regression_risk_level": "medium",
+      "regression_warning_required": true,
+      "regression_warning_summary": "The hotfix changes frontend refresh timing and scope after POS shift open. A regression could keep the modal stuck after success, show the wrong shift context, or hide a real shift-open failure behind stale UI state.",
+      "potentially_affected_existing_behaviors": [
+        "POS Open Shift modal close behavior",
+        "Legacy grace/admin POS shift-start flow",
+        "Terminal unlock flow that opens a shift",
+        "Location-scoped active shift display",
+        "Checkout availability after shift open"
+      ],
+      "evidence_covering_regression_risk": [
+        "Video evidence showed the backend mutation succeeded with a Shift opened successfully toast while the modal stayed open.",
+        "Source review confirmed the frontend opened the shift with the terminal registry location but refreshed without passing that exact location.",
+        "Targeted POS contract tests passed on the clean staging-based worktree.",
+        "POS production build passed on the clean staging-based worktree.",
+        "Architecture and whitespace checks passed on the clean staging-based worktree."
+      ],
+      "evidence_gaps": [
+        "Rendered browser/UAT proof for the exact legacy production account has not yet been run after this candidate reaches staging.",
+        "Production post-deploy proof must verify the actual legacy/admin account no longer remains stuck on the Open Shift modal."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Rollback by reverting the POS shift-refresh hotfix and redeploying through the signed controller.",
+        "Monitor POS shift-open success toasts, repeated open-shift attempts, active shift API responses, and checkout blocked-state reports after deployment."
+      ],
+      "required_tests": [
+        "npm test -- --run src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js",
+        "npm run build:pos",
+        "npm run check:architecture",
+        "git diff --check"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm test -- --run src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js",
+          "status": "pass",
+          "evidence": "Clean staging-based worktree C:\\xampp\\htdocs\\SKU-Inventory-Manager-pos-shift-refresh-staging: 2 POS frontend contract files and 45 tests passed."
+        },
+        {
+          "command": "npm run build:pos",
+          "status": "pass",
+          "evidence": "Clean staging-based worktree C:\\xampp\\htdocs\\SKU-Inventory-Manager-pos-shift-refresh-staging: standalone POS production build passed with existing Browserslist and large-chunk warnings only."
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "Clean staging-based worktree: 36 modules, 329 code files, and 69 controllers passed architecture guardrails and controller boundaries."
+        },
+        {
+          "command": "git diff --check",
+          "status": "pass",
+          "evidence": "Clean staging-based worktree: whitespace check passed."
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/compliance/impact-declarations/2026-07-03-pos-shift-open-refresh-context-hotfix.md",
+        "docs/releases/batches/2026-07-03-storefront-pos-hotfix-production-candidate.json",
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md"
+      ],
+      "architecture_classification": "within-existing-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab owner-authorized Codex documentation review",
+        "reviewed_at": "2026-07-02T17:15:00.000Z",
+        "rationale": "The code fix stays within the accepted ADR 0031 POS terminal and shift-safe navigation contract. The governing ADR remains current, and this reviewed release manifest records the new bug-specific evidence, regression warning, rollback notes, and production accuracy requirements.",
+        "documents": [
+          {
+            "path": "docs/compliance/impact-declarations/2026-07-03-pos-shift-open-refresh-context-hotfix.md",
+            "action": "updated",
+            "evidence": "Declares the POS-sensitive frontend refresh-context change, unchanged backend/fiscal/payment contracts, validation, and rollback path."
+          },
+          {
+            "path": "docs/releases/batches/2026-07-03-storefront-pos-hotfix-production-candidate.json",
+            "action": "updated",
+            "evidence": "Adds exact candidate inventory for the POS shift-refresh hotfix and the already-staged Storefront checkout hotfix."
+          },
+          {
+            "path": "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+            "action": "reviewed_current",
+            "evidence": "ADR 0031 already states shift opening requires selected active terminal, terminal location assignment, and location grant; the hotfix preserves that contract and only corrects frontend refresh context."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "A compliance impact declaration is included because POS frontend files are compliance-sensitive. No new ADR is required because the fix preserves the accepted POS authorization boundary and changes no backend authorization, payment, database, or fiscal behavior.",
+      "rollback_notes": "Revert this frontend hotfix and release manifest update, rebuild POS, rerun targeted POS contract tests, POS build, architecture, batch inventory, regression-risk, and whitespace checks, then redeploy through the governed controller flow.",
+      "production_proof_required": [
+        "Production remote HEAD, last_deployed_commit, deploy summary, runtime health SHA, and POS asset parity equal the exact promoted origin/master SHA",
+        "The legacy/admin POS account from the reported video can open a shift and the Open Shift modal closes or the active shift state appears without a reload",
+        "Active shift API and dashboard context return the same terminal and location used during the successful open-shift mutation"
+      ],
+      "production_accuracy_checks_required": [
+        "Verify deployed TerminalPage passes terminalIdOverride and operatingLocationIdOverride into refreshOperationalContext after successful Open Shift",
+        "Verify deployed terminal unlock completion passes operatingLocationIdOverride into refreshOperationalContext",
+        "Run a controlled POS legacy/admin shift-open UAT proving the modal no longer remains stuck after the success toast",
+        "Run a negative POS check proving invalid terminal or missing terminal location still fails closed"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": []
+    }
+  ]
+}

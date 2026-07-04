@@ -24,8 +24,7 @@ import {
   CalendarCheck,
   BedDouble,
   Utensils,
-  RefreshCw,
-  ShieldCheck
+  RefreshCw
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
 import { logout, getCurrentUser } from './src/services/authService.js';
@@ -43,7 +42,6 @@ import { mergeCurrentCompanyWithMemberships } from './src/utils/companySwitcherR
 import {
   acceptDgfyCompanyInvitationForTenantSession,
   listDgfyAccountCompaniesForTenantSession,
-  requestDgfyBusinessStepUpForTenantSession,
   switchDgfyCompanyForTenantSession
 } from './src/services/dgfyAuthService.js';
 
@@ -96,11 +94,7 @@ const CompanySwitcher = ({ user }) => {
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [companies, setCompanies] = useState(() => mergeCurrentCompanyWithMemberships(user));
   const [loadError, setLoadError] = useState('');
-  const [stepUpTarget, setStepUpTarget] = useState(null);
-  const [emailOtpCode, setEmailOtpCode] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [businessStepUp, setBusinessStepUp] = useState({ verified: false });
 
   const currentCompany = companies.find((company) => company.is_current)
     || companies.find((company) => company.can_switch)
@@ -115,10 +109,8 @@ const CompanySwitcher = ({ user }) => {
     try {
       const payload = await listDgfyAccountCompaniesForTenantSession();
       setCompanies(mergeCurrentCompanyWithMemberships(user, payload?.companies));
-      setBusinessStepUp(payload?.business_step_up || { verified: false });
     } catch (error) {
       setCompanies(mergeCurrentCompanyWithMemberships(user));
-      setBusinessStepUp({ verified: false });
       setLoadError(getSwitchErrorMessage(error, 'Current company loaded. Extra DGFY businesses are unavailable.'));
     } finally {
       setLoadingCompanies(false);
@@ -135,8 +127,7 @@ const CompanySwitcher = ({ user }) => {
   const performCompanyAction = async (target, code = '') => {
     if (target.type === 'switch') {
       await switchDgfyCompanyForTenantSession({
-        tenantId: target.company.tenant_id,
-        emailOtpCode: code
+        tenantId: target.company.tenant_id
       });
       toast.success(`Switched to ${target.company.company_name}.`);
       window.location.assign('/');
@@ -144,57 +135,19 @@ const CompanySwitcher = ({ user }) => {
     }
     if (target.type === 'accept') {
       await acceptDgfyCompanyInvitationForTenantSession({
-        membershipId: target.company.membership_id,
-        emailOtpCode: code
+        membershipId: target.company.membership_id
       });
       toast.success('Invitation accepted.');
-      setStepUpTarget(null);
-      setEmailOtpCode('');
-      setOtpSent(false);
       await loadCompanies();
     }
   };
 
-  const beginStepUp = async (target) => {
-    if (businessStepUp?.verified === true) {
-      setActionLoading(true);
-      try {
-        await performCompanyAction(target);
-      } catch (error) {
-        toast.error(getSwitchErrorMessage(error, 'Unable to complete this company action.'));
-      } finally {
-        setActionLoading(false);
-      }
-      return;
-    }
-
-    setStepUpTarget(target);
-    setEmailOtpCode('');
-    setOtpSent(false);
+  const beginCompanyAction = async (target) => {
     setActionLoading(true);
     try {
-      await requestDgfyBusinessStepUpForTenantSession();
-      setOtpSent(true);
-      toast.success('Security code sent to your DGFY email.');
+      await performCompanyAction(target);
     } catch (error) {
-      toast.error(getSwitchErrorMessage(error, 'Unable to send security code.'));
-      setStepUpTarget(null);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const completeStepUp = async () => {
-    if (!stepUpTarget) return;
-    if (!/^\d{6}$/.test(emailOtpCode.trim())) {
-      toast.error('Enter the 6-digit security code sent to your DGFY email.');
-      return;
-    }
-    setActionLoading(true);
-    try {
-      await performCompanyAction(stepUpTarget, emailOtpCode.trim());
-    } catch (error) {
-      toast.error(getSwitchErrorMessage(error, 'Security code failed. Try again.'));
+      toast.error(getSwitchErrorMessage(error, 'Unable to complete this company action.'));
     } finally {
       setActionLoading(false);
     }
@@ -268,7 +221,7 @@ const CompanySwitcher = ({ user }) => {
                     {isPending ? (
                       <button
                         type="button"
-                        onClick={() => beginStepUp({ type: 'accept', company })}
+                        onClick={() => beginCompanyAction({ type: 'accept', company })}
                         disabled={actionLoading}
                         className="inline-flex flex-1 items-center justify-center rounded-md bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-50"
                       >
@@ -277,7 +230,7 @@ const CompanySwitcher = ({ user }) => {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => beginStepUp({ type: 'switch', company })}
+                        onClick={() => beginCompanyAction({ type: 'switch', company })}
                         disabled={actionLoading || company.is_current || !company.can_switch}
                         className="inline-flex flex-1 items-center justify-center rounded-md bg-teal-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 disabled:bg-slate-300"
                       >
@@ -289,44 +242,6 @@ const CompanySwitcher = ({ user }) => {
               );
             })}
           </div>
-
-          {stepUpTarget ? (
-            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
-              <div className="flex items-start gap-2">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-700" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-blue-950">Email security check</p>
-                  <p className="mt-1 text-[11px] leading-4 text-blue-800">
-                    {otpSent ? 'Enter the 6-digit code sent to your DGFY email.' : 'Sending code...'}
-                  </p>
-                </div>
-              </div>
-              <input
-                value={emailOtpCode}
-                onChange={(event) => setEmailOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                inputMode="numeric"
-                placeholder="000000"
-                className="mt-2 w-full rounded-md border border-blue-200 bg-white px-2 py-2 text-sm font-semibold tracking-widest text-slate-900 outline-none focus:border-blue-500"
-              />
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setStepUpTarget(null)}
-                  className="flex-1 rounded-md border border-blue-200 bg-white px-2 py-1.5 text-xs font-semibold text-blue-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={completeStepUp}
-                  disabled={actionLoading}
-                  className="flex-1 rounded-md bg-blue-700 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  {actionLoading ? 'Verifying...' : 'Verify'}
-                </button>
-              </div>
-            </div>
-          ) : null}
 
           <Link
             to="/register-company?source=dgfy&auth=login#business-registration"

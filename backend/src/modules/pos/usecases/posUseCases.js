@@ -981,6 +981,104 @@ const resolvePairingIdentityStatus = async ({ tenantId, user }) => {
     );
 };
 
+const resolvePosOperatorIdentityStatus = async ({ tenantId, user }) => {
+    try {
+        return await resolvePairingIdentityStatus({ tenantId, user });
+    } catch (error) {
+        if (error instanceof DomainError && error?.details?.reason_code === 'POS_PAIRING_IDENTITY_INVALID') {
+            throw new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'A current DGFY membership or active legacy-grace identity is required for POS terminal use.',
+                { statusCode: 403, details: { reason_code: 'POS_OPERATOR_IDENTITY_INVALID' } }
+            );
+        }
+        throw error;
+    }
+};
+
+const assertPosOperatorIdentity = async ({ tenantId, user, resolveIdentityStatus = resolvePosOperatorIdentityStatus }) => {
+    const userId = parsePositiveInt(user?.user_id);
+    if (!userId || !tenantId || tenantId === 'default') {
+        throw new DomainError(
+            DomainErrorCode.AUTHENTICATION_FAILED,
+            'Authenticated tenant user is required for POS terminal use.',
+            { statusCode: 401 }
+        );
+    }
+    if (user?.is_active === false || user?.deleted_at) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Active tenant user profile is required for POS terminal use.',
+            { statusCode: 403, details: { reason_code: 'POS_OPERATOR_PROFILE_INACTIVE' } }
+        );
+    }
+    return resolveIdentityStatus({ tenantId, user });
+};
+
+const requireRegisteredTerminalContext = ({ terminalId, policy = {}, operation }) => {
+    const context = evaluateTerminalIdentityPolicy({ terminalId, policy, operation });
+    if (!Array.isArray(policy?.active_registry) || policy.active_registry.length === 0) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'At least one active terminal must be configured before POS terminal use.',
+            {
+                statusCode: 422,
+                details: {
+                    terminal_identity_policy: {
+                        ...context,
+                        reason_code: TERMINAL_POLICY_REASON_CODES.REGISTRY_REQUIRED
+                    }
+                }
+            }
+        );
+    }
+    if (!context.terminal_id) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'terminal_id is required for POS terminal use.',
+            {
+                statusCode: 422,
+                details: {
+                    terminal_identity_policy: {
+                        ...context,
+                        reason_code: TERMINAL_POLICY_REASON_CODES.TERMINAL_ID_REQUIRED
+                    }
+                }
+            }
+        );
+    }
+    if (!context.registry_entry) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `terminal_id "${context.terminal_id}" is not an active registry terminal.`,
+            {
+                statusCode: 422,
+                details: {
+                    terminal_identity_policy: {
+                        ...context,
+                        reason_code: TERMINAL_POLICY_REASON_CODES.TERMINAL_NOT_REGISTERED
+                    }
+                }
+            }
+        );
+    }
+    if (!parsePositiveInt(context.registry_entry.location_id)) {
+        throw buildLocationScopeDeniedError({
+            message: 'Terminal home location is not configured.',
+            reasonCode: LOCATION_SCOPE_REASON_CODES.TERMINAL_HOME_LOCATION_REQUIRED,
+            statusCode: 422,
+            details: {
+                terminal_id: context.terminal_id
+            }
+        });
+    }
+    return {
+        ...context,
+        reason_code: TERMINAL_POLICY_ALLOWED_REASON_CODE,
+        warning: null
+    };
+};
+
 const requirePosPermissionForPairing = (user) => {
     if (user?.is_master_admin === true) return;
     const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
@@ -1857,7 +1955,13 @@ const buildFiscalDocumentSnapshot = ({
     }))
 });
 
-export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService, stockMovementService }) => {
+export const buildCheckoutPosUseCase = ({
+    posRepository,
+    inventoryCommandService,
+    stockMovementService,
+    resolveIdentityStatus = resolvePosOperatorIdentityStatus,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
     const stockCommands = inventoryCommandService || stockMovementService;
     return async ({ payload, userId, user }) => {
         const normalizedUserId = parsePositiveInt(userId);
@@ -1985,8 +2089,10 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
         const transaction = await sequelize.transaction();
 
         try {
+            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+            await assertPosOperatorIdentity({ tenantId, user, resolveIdentityStatus });
             const settings = await getPosSettings();
-            const resolvedCheckoutLocation = await resolvePosOperationalLocationScope({
+            const resolvedCheckoutLocation = await resolveLocationScope({
                 requestedLocationId,
                 userId: normalizedUserId,
                 transaction,
@@ -1999,20 +2105,20 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
                 settings,
                 options: { transaction }
             });
-            const terminalPolicyContext = evaluateTerminalIdentityPolicy({
+            const terminalPolicyContext = requireRegisteredTerminalContext({
                 terminalId: requestedTerminalId,
                 policy: terminalPolicySettings,
                 operation: 'checkout'
             });
             const normalizedTerminalId = terminalPolicyContext.terminal_id;
             const enforcedCheckoutLocationId = enforceTerminalHomeLocationPolicy({
-                bindingEnforced: terminalPolicySettings.binding_enforced === true,
+                bindingEnforced: true,
                 terminalPolicyContext,
-                targetLocationId: scopedCheckoutLocationId
+                targetLocationId: scopedCheckoutLocationId || terminalPolicyContext.registry_entry?.location_id
             });
-            if (terminalPolicySettings.binding_enforced === true && !enforcedCheckoutLocationId) {
+            if (!enforcedCheckoutLocationId) {
                 throw buildLocationScopeDeniedError({
-                    message: 'POS checkout requires a valid location scope while terminal location binding is enforced.',
+                    message: 'POS checkout requires a valid terminal location scope.',
                     reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_SCOPE_UNRESOLVED,
                     statusCode: 422
                 });
@@ -2130,7 +2236,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService
             });
             const normalizedShiftId = parsePositiveInt(activeShift?.pos_terminal_shift_id);
             const shiftLocationId = parsePositiveInt(activeShift?.location_id);
-            if (!shiftLocationId && terminalPolicySettings.binding_enforced === true) {
+            if (!shiftLocationId) {
                 throw buildLocationScopeDeniedError({
                     message: 'Active shift is missing location binding.',
                     reasonCode: LOCATION_SCOPE_REASON_CODES.SHIFT_LOCATION_MISMATCH,
@@ -4410,7 +4516,11 @@ const buildShiftCashSummary = ({ shift, cashSalesAmount }) => {
     };
 };
 
-export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
+export const buildOpenTerminalShiftUseCase = ({
+    posRepository,
+    resolveIdentityStatus = resolvePosOperatorIdentityStatus,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
     return async ({ payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
         if (!normalizedUserId) {
@@ -4462,30 +4572,32 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
         }
 
         try {
+            const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+            await assertPosOperatorIdentity({ tenantId, user, resolveIdentityStatus });
             const terminalPolicySettings = await resolveTerminalIdentityPolicySettings({
                 posRepository,
                 settings: {}
             });
-            const terminalPolicyContext = evaluateTerminalIdentityPolicy({
+            const terminalPolicyContext = requireRegisteredTerminalContext({
                 terminalId: requestedTerminalId,
                 policy: terminalPolicySettings,
                 operation: 'open_shift'
             });
             const terminalId = terminalPolicyContext.terminal_id;
-            const locationScope = await resolvePosOperationalLocationScope({
-                requestedLocationId,
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: requestedLocationId || terminalPolicyContext.registry_entry?.location_id,
                 userId: normalizedUserId,
                 operationLabel: 'POS shift open',
                 allowNullWhenUnresolved: true
             });
             const enforcedShiftLocationId = enforceTerminalHomeLocationPolicy({
-                bindingEnforced: terminalPolicySettings.binding_enforced === true,
+                bindingEnforced: true,
                 terminalPolicyContext,
                 targetLocationId: locationScope.location_id
             });
-            if (terminalPolicySettings.binding_enforced === true && !enforcedShiftLocationId) {
+            if (!enforcedShiftLocationId) {
                 throw buildLocationScopeDeniedError({
-                    message: 'POS shift opening requires a valid location scope while terminal location binding is enforced.',
+                    message: 'POS shift opening requires a valid terminal location scope.',
                     reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_SCOPE_UNRESOLVED,
                     statusCode: 422
                 });

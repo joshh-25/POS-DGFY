@@ -170,7 +170,9 @@ export default function PosTenantSetupModal({
     current_stock: '0'
   }));
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
+
   const localPreviewUrlsRef = useRef(new Set());
+
   const [locationDraft, setLocationDraft] = useState(() => createLocationDraft(
     resolvePrimaryLocation(terminalLocations),
     companyName,
@@ -805,9 +807,9 @@ export default function PosTenantSetupModal({
                           </Button>
                         </div>
                       </div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
+                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          Pair this physical device once as the company master admin. Cashiers then use DGFY sign-in without a terminal password.
+                          Create one logical terminal for each counter or station. Authorized DGFY users can open shifts from any logged-in device.
                         </div>
                         <label className="flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-[13px] font-semibold text-[#0F172A]">
                           <input

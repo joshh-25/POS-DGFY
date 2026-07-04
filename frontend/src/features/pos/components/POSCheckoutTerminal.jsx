@@ -524,6 +524,7 @@ export default function POSCheckoutTerminal({
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
     const [catalogFiltersOpen, setCatalogFiltersOpen] = useState(false);
+    const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
     const [posFoldersLoading, setPosFoldersLoading] = useState(true);
     const [posFoldersError, setPosFoldersError] = useState('');
     const [catalogLoading, setCatalogLoading] = useState(true);
@@ -622,8 +623,8 @@ export default function POSCheckoutTerminal({
                 : 'mt-4 grid grid-cols-3 auto-rows-[11rem] gap-1.5';
         }
         return sidebarCollapsed
-            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
-            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
+            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-auto md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
+            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-auto md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
     }, [isTabletViewport, sidebarCollapsed]);
     const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-hidden pr-0 pb-3';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
@@ -636,12 +637,12 @@ export default function POSCheckoutTerminal({
         ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
         : isTabletViewport
             ? 'group flex h-[11rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 md:h-[11rem] md:p-1.5 xl:h-full';
+            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-auto max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-full';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
         : isTabletViewport
             ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
-            : 'flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md md:h-16 xl:h-24';
+            : 'flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md max-sm:h-full max-sm:w-24 max-sm:self-stretch max-sm:rounded-r-none max-sm:rounded-l-[calc(0.5rem-1px)] md:h-16 xl:h-24';
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
@@ -2194,6 +2195,7 @@ export default function POSCheckoutTerminal({
         <div className={modalOnly ? 'hidden' : shellClassName} aria-hidden={modalOnly ? 'true' : undefined}>
             <section className={currentViewMode === 'checkout' ? 'contents' : 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5'}>
             {currentViewMode === 'history' && (
+                <div key="view-history" className="max-sm:animate-pos-slide-in">
                 <Suspense fallback={<section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS sales history...</section>}>
                     <POSTransactionHistoryPanel
                         historySearch={historySearch}
@@ -2226,17 +2228,63 @@ export default function POSCheckoutTerminal({
                         syncDisabled={sessionLocked || Boolean(checkoutBlockedReason) || (typeof navigator !== 'undefined' && navigator.onLine === false)}
                     />
                 </Suspense>
+                </div>
             )}
 
             {currentViewMode === 'checkout' && (
+                <div key="view-checkout" className="max-sm:animate-pos-slide-in">
                 <>
                 <div className={checkoutGridClassName}>
             <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
                     {isTabletViewport && renderViewModeControls()}
                     <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
                 <div className={`${isTabletViewport ? 'mb-3 gap-2.5' : 'mb-5 gap-4'} flex min-w-0 flex-col ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
-                    <div className={`${isTabletViewport ? 'flex-col items-stretch sm:flex-col' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3`}>
-                        <label className={`flex h-11 min-w-0 items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 text-[13px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100 ${isTabletViewport ? 'w-full' : 'flex-1'}`}>
+                    <div className={`${isTabletViewport ? 'flex-col items-stretch sm:flex-col' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 max-sm:relative`}>
+                        {/* Mobile: collapsed search icon button */}
+                        {!isTabletViewport && !(mobileSearchExpanded || search) && (
+                            <button
+                                type="button"
+                                aria-label="Search POS-visible items"
+                                onClick={() => setMobileSearchExpanded(true)}
+                                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white shadow-sm transition hover:bg-slate-50 sm:hidden"
+                            >
+                                <Search size={20} className="text-[#1A4E8D]" />
+                            </button>
+                        )}
+                        {/* Mobile: expanded full-width search with correction icon inside */}
+                        {!isTabletViewport && (mobileSearchExpanded || Boolean(search)) && (
+                            <div className="absolute inset-0 z-10 flex items-center sm:hidden">
+                                <Search size={16} className="pointer-events-none absolute left-3 text-[#1A4E8D]" />
+                                <input
+                                    type="text"
+                                    value={search}
+                                    onChange={(event) => setSearch(event.target.value)}
+                                    placeholder="Search POS-visible items..."
+                                    autoFocus
+                                    onBlur={() => {
+                                        if (!search) setMobileSearchExpanded(false);
+                                    }}
+                                    className="h-11 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-10 text-[13px] text-[#0F172A] shadow-sm placeholder:text-[#64748B] transition focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                                />
+                                <button
+                                    type="button"
+                                    aria-label="Clear search"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                        setSearch('');
+                                        setMobileSearchExpanded(false);
+                                    }}
+                                    className={`absolute right-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition ${search ? 'hover:bg-slate-100' : ''}`}
+                                >
+                                    <Delete
+                                        className="h-4 w-4"
+                                        style={{ color: search ? '#000000' : '#cbd5e1' }}
+                                    />
+                                </button>
+                            </div>
+                        )}
+                        {/* Desktop / tablet: original search label */}
+                        <label className={`flex h-11 min-w-0 items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 text-[13px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100 max-sm:hidden ${isTabletViewport ? 'w-full' : 'flex-1'}`}>
                             <Search size={20} className="shrink-0 text-[#1A4E8D]" />
                             <span className="sr-only">Search POS-visible items</span>
                             <input
@@ -2304,7 +2352,7 @@ export default function POSCheckoutTerminal({
                             <>
                                 <button
                                     type="button"
-                                    className={`flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border px-5 text-[13px] font-bold shadow-sm transition ${
+                                    className={`flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border px-5 text-[13px] font-bold shadow-sm transition max-sm:flex-1 max-sm:min-w-0 ${
                                         catalogFiltersOpen || selectedFolder
                                             ? 'border-[#1A4E8D] bg-blue-50 text-[#1A4E8D] hover:bg-blue-100'
                                             : 'border-slate-300 bg-white text-[#0F172A] hover:bg-slate-50'
@@ -2322,7 +2370,7 @@ export default function POSCheckoutTerminal({
                                 <button
                                     type="button"
                                     disabled
-                                    className="flex h-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-bold text-slate-400"
+                                    className="flex h-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-bold text-slate-400 max-sm:flex-1 max-sm:min-w-0"
                                 >
                                     Scan
                                 </button>
@@ -2332,6 +2380,7 @@ export default function POSCheckoutTerminal({
                                     selectedLocationId={selectedLocationId}
                                     terminalId={normalizedTerminalId}
                                     onAddToCart={addToCart}
+                                    className="max-sm:flex-1 max-sm:min-w-0"
                                 />
                             </Suspense>
                             </>
@@ -2484,7 +2533,7 @@ export default function POSCheckoutTerminal({
                                             : 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md'
                                     }`}
                                 >
-                                <div className="mb-1">
+                                <div className="mb-1 max-sm:mb-0 max-sm:self-stretch">
                                     <div
                                         className={`${catalogCardImageWrapClassName} relative`}
                                         aria-hidden="true"
@@ -2537,7 +2586,29 @@ export default function POSCheckoutTerminal({
                                 </div>
                                 {!(IS_DGFY_POS_SURFACE && isTabletViewport) && (
                                     <>
-                                        <div className="flex items-start justify-between gap-1.5">
+                                        {/* Mobile layout (<640px): horizontal card right column */}
+                                        <div className="flex flex-1 min-w-0 flex-col justify-between p-2.5 sm:hidden">
+                                            <div className="flex items-start justify-between gap-1">
+                                                <p className="min-w-0 text-[13px] font-black leading-tight text-[#0F172A] line-clamp-1">{item.name}</p>
+                                                <div className={`ml-1 mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${isOutOfStock ? 'bg-rose-500' : 'bg-emerald-500'}`} aria-hidden="true" />
+                                            </div>
+                                            <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10.5px] text-[#64748B]">
+                                                <span className="font-semibold">Stock:</span>
+                                                <span className="font-semibold">Price:</span>
+                                                <span className="font-bold text-emerald-700 whitespace-nowrap">
+                                                    {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toFixed(2)}
+                                                </span>
+                                                <span className="font-black text-[#1A4E8D] whitespace-nowrap">
+                                                    {Number(item.default_sale_price || 0) > 0 ? `PHP ${money(item.default_sale_price)}` : 'Not set'}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 flex items-center justify-between gap-1 text-[10px] text-[#64748B]">
+                                                <span className="shrink-0 font-semibold">VAT: <span className="font-extrabold text-[#334155]">{VAT_TYPE_LABEL[item.vat_type || 'vatable'] || 'VATable'}</span></span>
+                                                <span className="min-w-0 truncate text-right font-extrabold tracking-wide">{item.sku_code}</span>
+                                            </div>
+                                        </div>
+                                        {/* Desktop layout (≥640px): direct flex children, no wrapper div */}
+                                        <div className="flex items-start justify-between gap-1.5 max-sm:hidden">
                                             <p className="min-w-0 pr-1 text-[13.5px] font-black leading-tight text-[#0F172A] line-clamp-2">{item.name}</p>
                                             {isServiceItem ? (
                                                 <span className="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#1A4E8D]">
@@ -2549,9 +2620,7 @@ export default function POSCheckoutTerminal({
                                                 </span>
                                             ) : null}
                                         </div>
-                                        <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#64748B]">
-                                            {item.sku_code}
-                                        </p>
+                                        <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#64748B] max-sm:hidden">{item.sku_code}</p>
                                     </>
                                 )}
                                 {IS_DGFY_POS_SURFACE && isTabletViewport ? (
@@ -2564,7 +2633,7 @@ export default function POSCheckoutTerminal({
                                     </div>
                                 ) : (
                                     <>
-                                        <div className={`${isTabletViewport ? 'mt-1.5' : 'mt-3'} grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B]`}>
+                                        <div className={`${isTabletViewport ? 'mt-1.5' : 'mt-3'} grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B] max-sm:hidden`}>
                                             <span className="font-semibold">Stock:</span>
                                             <span className="text-right font-bold text-emerald-700 whitespace-nowrap">
                                                 {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toFixed(2)}
@@ -2581,7 +2650,7 @@ export default function POSCheckoutTerminal({
                                             </span>
                                         </div>
                                         {isOutOfStock && (
-                                            <p className="mt-auto pt-1 text-[10.5px] font-medium text-slate-500">
+                                            <p className="mt-auto pt-1 text-[10.5px] font-medium text-slate-500 max-sm:hidden">
                                                 Unavailable for checkout.
                                             </p>
                                         )}
@@ -2970,6 +3039,7 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
                 </>
+                </div>
             )}
 
             {currentViewMode === 'receipt' && (

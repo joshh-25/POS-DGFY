@@ -1016,12 +1016,9 @@ export const buildRequestDgfyBusinessStepUpUseCase = ({
 
 export const buildSwitchDgfyCompanyUseCase = ({
     repository,
-    createTenantSessionForDgfyAccount,
-    verifyEmailOtp,
-    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+    createTenantSessionForDgfyAccount
 }) => async ({ account, tenantId, body = {}, metadata = {} }) => {
     const resolvedTenantId = String(tenantId || body?.tenant_id || body?.tenantId || '').trim();
-    const emailOtpCode = String(body?.email_otp_code || body?.emailOtpCode || body?.code || '').trim();
 
     if (!resolvedTenantId) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Company id is required.', { statusCode: 400 }));
@@ -1038,14 +1035,6 @@ export const buildSwitchDgfyCompanyUseCase = ({
         if (!membership || !membership.tenant || membership.tenant.status !== 'active') {
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'No active accepted company membership is available for this DGFY account.', { statusCode: 403 });
         }
-
-        await verifyBusinessStepUp({
-            account,
-            code: emailOtpCode,
-            repository,
-            verifyEmailOtp,
-            emailOtpPurposes
-        });
 
         const session = await createTenantSessionForDgfyAccount({
             account,
@@ -1087,9 +1076,7 @@ export const buildSwitchDgfyCompanyUseCase = ({
 };
 
 export const buildAcceptDgfyInvitationUseCase = ({
-    repository,
-    verifyEmailOtp = null,
-    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+    repository
 }) => async ({ account, membershipId, body = {}, metadata = {} }) => {
     const id = parsePositiveInt(membershipId);
     if (!id) {
@@ -1101,7 +1088,7 @@ export const buildAcceptDgfyInvitationUseCase = ({
         membership = await repository.findMembershipById(id, {
             include: [{
                 association: 'tenant',
-                attributes: ['id', 'name', 'company_token', 'status', 'plan']
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name']
             }]
         });
 
@@ -1131,14 +1118,6 @@ export const buildAcceptDgfyInvitationUseCase = ({
         if (membership.status !== 'pending') {
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Only pending DGFY invitations can be accepted.', { statusCode: 409 });
         }
-
-        await verifyBusinessStepUp({
-            account,
-            code: String(body?.email_otp_code || body?.emailOtpCode || body?.code || '').trim(),
-            repository,
-            verifyEmailOtp,
-            emailOtpPurposes
-        });
 
         const acceptedMembership = await repository.acceptInvitationMembership({ membership, account });
         await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
@@ -1203,7 +1182,7 @@ export const buildRejectDgfyInvitationUseCase = ({
         membership = await repository.findMembershipById(id, {
             include: [{
                 association: 'tenant',
-                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name', 'owner_dgfy_account_id']
             }]
         });
         if (!membership || membership.dgfy_account_id !== account.id || membership.source !== 'invite') {
