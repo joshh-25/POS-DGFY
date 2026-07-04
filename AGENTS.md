@@ -2,6 +2,18 @@
 
 These instructions are for any AI agent, IDE assistant, or extension operating in this repository.
 
+## MANDATORY: Pull Request Conventions
+
+Before creating, updating, or describing any pull request in this repository, **read and follow `docs/ai/PR.md` in full**. This is not optional. It governs:
+
+1. **Commit message format** — Conventional Commits (`type(scope): subject`), types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `build`, `ci`, `revert`.
+2. **PR body format** — every PR body must include `## Summary`, `## Motivation`, and `## Testing` sections.
+3. **PR base branch** — non-`rc/*` branches (features, fixes, chores, docs) target `develop`; `rc/*` branches target `main`.
+4. **Pre-commit safety check** — scan for `DO NOT COMMIT` markers (`rg "DO NOT COMMIT"`) across changed files before staging/committing, and exclude any matches.
+5. **Batch commits by domain** — group changed files into logical batches (new modules → dependents → docs → CI config) and commit each batch separately with its own Conventional Commits message, so history stays bisectable and reviewable.
+
+If any part of a requested change conflicts with `docs/ai/PR.md`, flag the conflict explicitly rather than silently picking one convention over the other.
+
 ## Communication and Critical Thinking Preferences
 1. Address the user as **BabyBaBab** naturally when starting responses or giving important feedback. Do not overuse the name in every sentence.
 2. Be direct, practical, and precise. Prefer clear, copy-paste-ready answers.
