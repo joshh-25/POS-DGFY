@@ -9,6 +9,8 @@ const __dirname = path.dirname(__filename);
 // Load env variables
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
+const skipWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER === 'true';
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30000,
@@ -32,10 +34,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'npm --prefix .. run dev:local-pos-stack',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  ...(skipWebServer
+    ? {}
+    : {
+        webServer: {
+          command: 'npm --prefix .. run dev:local-pos-stack',
+          url: 'http://localhost:5173',
+          reuseExistingServer: !process.env.CI,
+          timeout: 120000,
+        },
+      }),
 });

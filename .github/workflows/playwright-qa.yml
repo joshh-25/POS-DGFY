@@ -72,6 +72,54 @@ jobs:
         run: |
           npm run build
 
+      - name: Start local POS stack
+        env:
+          NODE_ENV: development
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+          VITE_PROXY_TARGET: http://127.0.0.1:5000
+        run: |
+          npm run dev:local-pos-stack > /tmp/pos-stack.log 2>&1 &
+          echo $! > /tmp/pos-stack.pid
+
+          wait_for_http() {
+            local name="$1"
+            local url="$2"
+            local accept_any_status="${3:-false}"
+
+            for attempt in {1..60}; do
+              if [ "$accept_any_status" = "true" ]; then
+                status="$(curl -sS --max-time 2 -o /tmp/pos-stack-health.txt -w "%{http_code}" "$url" || true)"
+                if [ "$status" != "000" ]; then
+                  echo "$name is reachable at $url with HTTP $status"
+                  return 0
+                fi
+              elif curl -fsS --max-time 2 "$url" >/dev/null 2>&1; then
+                echo "$name is ready at $url"
+                return 0
+              fi
+
+              sleep 2
+            done
+
+            echo "::error::$name did not become ready at $url"
+            echo "----- POS stack log -----"
+            tail -n 200 /tmp/pos-stack.log || true
+            return 1
+          }
+
+          wait_for_http "Backend API" "http://127.0.0.1:5000/health" true
+          wait_for_http "Skupervisor" "http://127.0.0.1:5173/login"
+          wait_for_http "POS" "http://127.0.0.1:5174/"
+          wait_for_http "Storefront" "http://127.0.0.1:5175/"
+
       - name: Run E2E Tests
         env:
           NODE_ENV: development
@@ -93,6 +141,7 @@ jobs:
           POS_URL: http://localhost:5174
           STOREFRONT_URL: http://localhost:5175
           API_BASE_URL: http://localhost:5000
+          PLAYWRIGHT_SKIP_WEBSERVER: 'true'
         run: |
           cd frontend && npm run test:e2e
 
@@ -117,6 +166,7 @@ jobs:
           POS_URL: http://localhost:5174
           STOREFRONT_URL: http://localhost:5175
           API_BASE_URL: http://localhost:5000
+          PLAYWRIGHT_SKIP_WEBSERVER: 'true'
         run: |
           cd frontend && npm run test:security
 
@@ -129,5 +179,7 @@ jobs:
         if: always()
         with:
           name: playwright-report
-          path: frontend/playwright-report/
+          path: |
+            frontend/playwright-report/
+            /tmp/pos-stack.log
           retention-days: 30
