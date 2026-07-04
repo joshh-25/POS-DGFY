@@ -100,7 +100,15 @@ echo "==> Importing filtered dump..."
 docker compose exec -T mysql sh -c "mysql -u root -p\"\${MYSQL_ROOT_PASSWORD}\"" < "$FILTERED_DUMP"
 
 echo "==> Granting ${DB_USER} access to all imported databases..."
-GRANT_SQL=""
+# Wildcard grant first: the app dynamically creates a new sku_tenant_<slug>_<id>
+# database on every business registration (see backend/src/services/
+# tenantProvisioningService.js), and that new database's name can't be known
+# in advance -- an enumerated per-database GRANT list (below) only ever
+# covers databases that already existed at import time. Without this, every
+# registration after the import silently fails with "Access denied ... to
+# database 'sku_tenant_...'" (root-caused on beta 2026-07-04; see
+# docs/ops/BETA_TENANT_PROVISIONING_INCIDENT_2026-07-04.md).
+GRANT_SQL="GRANT ALL PRIVILEGES ON \`sku_tenant_%\`.* TO '${DB_USER}'@'%'; "
 while IFS= read -r dbname; do
   GRANT_SQL="${GRANT_SQL}GRANT ALL PRIVILEGES ON \`${dbname}\`.* TO '${DB_USER}'@'%'; "
 done < <(LC_ALL=C grep '^-- Current Database: `' "$FILTERED_DUMP" | LC_ALL=C sed -E 's/^-- Current Database: `(.*)`$/\1/')

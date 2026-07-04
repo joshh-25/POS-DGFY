@@ -46,10 +46,11 @@ jobs:
           SSH_TARGET: ${{ secrets.SSH_TARGET }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKER_DIR: ${{ secrets.DOCKER_DIR }}
         run: |
           # Token is piped over the existing SSH stdin into `docker login
           # --password-stdin` on the remote -- never an argv or env var on
           # that host, so it can't leak via `ps aux` there.
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
-            "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && cd /opt/dgfy-platform && docker compose pull && docker compose up -d --remove-orphans && docker logout ghcr.io" \
+            "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && cd $DOCKER_DIR && docker compose pull && docker compose up -d --remove-orphans && docker logout ghcr.io" \
             <<< "$GITHUB_TOKEN"
