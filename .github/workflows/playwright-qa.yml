@@ -14,23 +14,59 @@ jobs:
   qa-tests:
     timeout-minutes: 20
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: sku_inventory_manager_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-size: '>=18.0.0'
-          cache: 'npm'
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Install dependencies
         run: |
           npm ci
-          cd frontend && npm ci
+          npm --prefix backend ci
+          npm --prefix frontend ci
+
+      - name: Prepare test database
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+        run: |
+          npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
+          npx sequelize-cli db:seed:all --env development --config src/config/sequelize.config.cjs --seeders-path src/seeders
 
       - name: Install Playwright Browsers
         run: |
-          cd frontend && npx playwright install --with-deps chromium
+          npm --prefix frontend exec playwright install --with-deps chromium
 
       - name: Run Build
         run: |
@@ -38,21 +74,49 @@ jobs:
 
       - name: Run E2E Tests
         env:
-          VITE_TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-          VITE_TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
-          VITE_TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
-          VITE_TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+          VITE_TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'admin@test.com' }}
+          VITE_TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD || 'Admin123!' }}
+          VITE_TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL || secrets.TEST_USER_EMAIL || 'admin@test.com' }}
+          VITE_TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD || secrets.TEST_USER_PASSWORD || 'Admin123!' }}
           VITE_TEST_BASE_URL: http://localhost:5173
+          SKUPERVISOR_URL: http://localhost:5173
+          POS_URL: http://localhost:5174
+          STOREFRONT_URL: http://localhost:5175
+          API_BASE_URL: http://localhost:5000
         run: |
           cd frontend && npm run test:e2e
 
       - name: Run Security E2E Tests
         env:
-          VITE_TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-          VITE_TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
-          VITE_TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
-          VITE_TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+          VITE_TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'admin@test.com' }}
+          VITE_TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD || 'Admin123!' }}
+          VITE_TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL || secrets.TEST_USER_EMAIL || 'admin@test.com' }}
+          VITE_TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD || secrets.TEST_USER_PASSWORD || 'Admin123!' }}
           VITE_TEST_BASE_URL: http://localhost:5173
+          SKUPERVISOR_URL: http://localhost:5173
+          POS_URL: http://localhost:5174
+          STOREFRONT_URL: http://localhost:5175
+          API_BASE_URL: http://localhost:5000
         run: |
           cd frontend && npm run test:security
 
