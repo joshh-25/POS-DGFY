@@ -1,0 +1,50 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventional-commits:
+    uses: ./.github/workflows/pr-conventional-commits.yml
+
+  code-quality:
+    uses: ./.github/workflows/pr-code-checks.yml
+
+  backend-build-check:
+    needs: [conventional-commits, code-quality]
+    uses: ./.github/workflows/pr-backend-build-checks.yml
+
+  frontend-build-check:
+    needs: [conventional-commits, code-quality]
+    uses: ./.github/workflows/pr-frontend-build-checks.yml
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [conventional-commits, code-quality, backend-build-check, frontend-build-check]
+    if: always()
+    steps:
+      - name: PR checks summary
+        run: |
+          echo "## PR Checks Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Conventional Commits | ${{ needs.conventional-commits.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Build | ${{ needs.backend-build-check.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Build | ${{ needs.frontend-build-check.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any check failed
+        if: contains(needs.*.result, 'failure')
+        run: exit 1
