@@ -32,7 +32,10 @@ describe('TerminalLockDrawer DGFY access UI', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Terminal Login Required' })).toBeTruthy();
-    expect(screen.getByLabelText('DGFY or Cashier Email')).toBeTruthy();
+    const emailInput = screen.getByLabelText('DGFY or Cashier Email');
+    expect(emailInput).toBeTruthy();
+    expect(emailInput.type).toBe('email');
+    expect(emailInput.required).toBe(true);
     expect(screen.getByLabelText('Password')).toBeTruthy();
     expect(screen.queryByLabelText('Company')).toBeNull();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();

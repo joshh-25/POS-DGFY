@@ -251,6 +251,7 @@ export default function PosTenantSetupModal({
   const effectiveStorefrontCoverImageUrl = localStorefrontAssets.cover || storefrontRequirements.coverImageUrl || '';
   const effectiveProfileImageReady = Boolean(effectiveStorefrontProfileImageUrl) || storefrontRequirements.profileImageReady === true;
   const effectiveCoverImageReady = Boolean(effectiveStorefrontCoverImageUrl) || storefrontRequirements.coverImageReady === true;
+  const effectiveStorefrontSetupReady = effectiveProfileImageReady && effectiveCoverImageReady && Boolean(locationDraft.location_id);
 
   useEffect(() => {
     const fallbackLocationId = primaryLocationId || (normalizedLocations.length === 1 ? normalizedLocations[0].location_id : null);
@@ -405,7 +406,6 @@ export default function PosTenantSetupModal({
           [assetType]: uploadedUrl
         }));
       }
-      await onSetupDataChanged({ scope: 'storefront-assets' });
       toast.success(assetType === 'profile' ? 'Company icon uploaded.' : 'Company cover image uploaded.');
     } catch (error) {
       setLocalStorefrontAssets((current) => ({
@@ -1013,7 +1013,13 @@ export default function PosTenantSetupModal({
             <Button type="button" variant="outline" onClick={() => onOpenSettingsStep(currentStep)}>
               {stepConfig.actionLabel}
             </Button>
-            <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={onContinue}>
+            <Button
+              type="button"
+              className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+              onClick={() => onContinue({
+                storefrontSetupReady: effectiveStorefrontSetupReady
+              })}
+            >
               {continueLabel}
             </Button>
           </div>

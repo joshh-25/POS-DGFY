@@ -96,6 +96,20 @@ describe('POS terminal view-mode contracts', () => {
     expect(posTenantSetupModalContent).toContain('if (parsedCost !== null) row.cost_per_unit = parsedCost;');
   });
 
+  it('keeps POS onboarding storefront uploads local to avoid modal flicker', () => {
+    const uploadAssetBody = posTenantSetupModalContent.slice(
+      posTenantSetupModalContent.indexOf('const handleUploadAsset = async'),
+      posTenantSetupModalContent.indexOf('const handleLocationPinChange')
+    );
+
+    expect(uploadAssetBody).toContain('setLocalStorefrontAssets((current) => ({');
+    expect(uploadAssetBody).toContain("toast.success(assetType === 'profile' ? 'Company icon uploaded.' : 'Company cover image uploaded.');");
+    expect(uploadAssetBody).not.toContain('onSetupDataChanged');
+    expect(posTenantSetupModalContent).toContain('const effectiveStorefrontSetupReady = effectiveProfileImageReady && effectiveCoverImageReady && Boolean(locationDraft.location_id);');
+    expect(posTenantSetupModalContent).toContain('storefrontSetupReady: effectiveStorefrontSetupReady');
+    expect(terminalPageContent).toContain('modalState?.storefrontSetupReady !== true');
+  });
+
   it('keeps tenant onboarding restriction tied to live readiness state, not only the URL query', () => {
     expect(terminalPageContent).toContain('const tenantSetupIncomplete = !setupFlowState.loading');
     expect(terminalPageContent).toContain('const tenantSetupRequestedOrRequired = tenantSetupFlowRequested || tenantSetupIncomplete;');
@@ -453,6 +467,13 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('checkoutGridClassName');
     expect(posCheckoutTerminalContent).toContain('checkoutPaneClassName');
     expect(posCheckoutTerminalContent).not.toContain('calc(100vh-13.5rem)');
+  });
+
+  it('auto-hides only the catalog and current-sale scrollbars until interaction', () => {
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-catalog-scroll"');
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-current-sale-scroll"');
+    expect(posCheckoutTerminalContent.match(/dgfy-pos-scrollbar-auto-hide/g)).toHaveLength(2);
+    expect(posCheckoutTerminalContent).toContain('tabIndex={0}');
   });
 
   it('defaults shift opening cash and identifies its company and terminal scope', () => {

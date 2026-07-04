@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: pos,terminal,settings,authentication,receipt,checkout,shift,storefront,compliance
 reason_codes_impacted: ALLOWED,AUTHENTICATION_FAILED,AUTHORIZATION_FAILED,VALIDATION_FAILED
 policy_version: 2026.07.04
-verification_evidence: npm --prefix backend test -- --runInBand tests/posCashierLoginRoute.transport.test.js tests/posDiscountCalculator.test.js tests/posGovernedDiscountLineId.contract.test.js tests/rbacRouteCoverage.contract.test.js,npm --prefix frontend test -- src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js,npm exec eslint -- src/features/pos/components/PosTenantSetupModal.jsx src/features/pos/pages/TerminalPage.jsx
+verification_evidence: npm --prefix backend test -- --runInBand tests/posCashierLoginRoute.transport.test.js tests/posDiscountCalculator.test.js tests/posGovernedDiscountLineId.contract.test.js tests/rbacRouteCoverage.contract.test.js,npm --prefix frontend test -- src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js,npm --prefix frontend run build:pos,npm exec eslint -- src/features/pos/components/PosTenantSetupModal.jsx src/features/pos/pages/TerminalPage.jsx
 rollback_note: Revert the POS development bundle as one branch-level rollback if terminal login, shift control, checkout, governed discount, receipt, or storefront onboarding regressions appear. Preserve tenant data and do not drop POS transaction or discount records during rollback.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -33,6 +33,7 @@ This bundle changes POS terminal authentication, terminal setup, cashier access,
 5. POS receipt preview and print contract rendering.
 6. POS history and reporting views.
 7. POS onboarding storefront asset upload behavior.
+8. POS build chunking and Browserslist warning suppression for the standalone POS app.
 
 ## Compliance Preconditions
 
@@ -51,3 +52,4 @@ Run the commands listed in the front matter before promotion. Manual QA should a
 2. Cashier can sign in, open shift, checkout items, view history, and close shift.
 3. Company icon and cover upload in POS onboarding updates smoothly without remounting the modal.
 4. Receipt preview remains compact for receipt paper width.
+5. POS production build keeps the terminal layout and operations workspace split into separate chunks without hiding real build failures.

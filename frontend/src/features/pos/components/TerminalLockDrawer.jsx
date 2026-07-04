@@ -62,7 +62,7 @@ export default function TerminalLockDrawer({
             </div>
             <Input
               id="dgfy-pos-email"
-              type="text"
+              type="email"
               value={formData.email}
               onChange={(event) => {
                 const nextEmail = event.target.value;
@@ -71,6 +71,7 @@ export default function TerminalLockDrawer({
               }}
               placeholder="admin@company.com"
               autoComplete="username"
+              required
               className="h-12 rounded-2xl border-blue-200 bg-[#f2f7ff] text-sm text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:border-[#93C5FD] focus-visible:ring-[#93C5FD]"
             />
           </div>

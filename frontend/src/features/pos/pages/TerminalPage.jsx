@@ -263,6 +263,7 @@ const computeRetryBackoffMs = (attemptCount = 1) => {
 
 const SUPPRESS_GLOBAL_ERROR_TOAST = Object.freeze({ skipGlobalErrorToast: true });
 const POS_ONBOARDING_ENTRY_SEARCH = buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE);
+const POS_LOGIN_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const lookupCompanyToken = async (email, preferredCompanyToken = '') => {
   const response = await api.post('/auth/lookup', { email }, { skipGlobalErrorToast: true });
@@ -1949,6 +1950,10 @@ export default function TerminalPage() {
       setDgfyAdminBypassActive(false);
       if (!email || (!continuingAfterCompanyPicker && !password)) {
         toast.error('Email and password are required.');
+        return;
+      }
+      if (!continuingAfterCompanyPicker && !continuingCashierCompanyPicker && !POS_LOGIN_EMAIL_PATTERN.test(email)) {
+        toast.error('Enter the registered DGFY or cashier email address. Business names and usernames cannot be used here.');
         return;
       }
       if (continuingCashierCompanyPicker) {
@@ -3980,14 +3985,14 @@ export default function TerminalPage() {
               openTenantSetupStep(previousStep);
             }
           }}
-          onContinue={() => {
+          onContinue={(modalState = {}) => {
             const nextStep = getNextTenantSetupStep(tenantSetupStep);
             if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE) {
               openTenantSetupStep(nextStep);
               return;
             }
             if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
-              if (!setupFlowState.storefrontSetupReady) {
+              if (!setupFlowState.storefrontSetupReady && modalState?.storefrontSetupReady !== true) {
                 toast.error('Finish Storefront Setup before continuing to POS Setup.');
                 openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
                 return;

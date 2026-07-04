@@ -22,6 +22,7 @@ const DEFAULT_EMAIL_OTP_PURPOSES = Object.freeze({
 });
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const DGFY_LOGIN_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
 const DGFY_ACCOUNT_ALREADY_EXISTS_DETAILS = Object.freeze({
     error_code: 'DGFY_ACCOUNT_ALREADY_EXISTS'
@@ -445,6 +446,13 @@ export const buildLoginDgfyAccountUseCase = ({
     const password = String(body?.password || '');
     if (!email || !password) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Email and password are required.', { statusCode: 400 }));
+    }
+    if (!DGFY_LOGIN_EMAIL_PATTERN.test(email)) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Enter the registered DGFY email address. Business names and usernames cannot be used to sign in.',
+            { statusCode: 400 }
+        ));
     }
 
     const account = await repository.findByEmail(email);

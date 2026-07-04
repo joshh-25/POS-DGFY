@@ -106,6 +106,13 @@ describe('terminal unlock diagnostics', () => {
     expect(resolveTerminalLoginErrorMessage(multipleTenantError)).toContain('multiple companies');
     expect(resolveTerminalLoginErrorMessage(multipleTenantError)).not.toContain('SKUpervisor');
 
+    const unresolvedCompanyError = createTerminalLoginError(
+      'Username login requires this POS to be linked to its company. Sign in as the company admin once, or use the cashier email.',
+      POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
+    );
+    expect(resolveTerminalLoginErrorMessage(unresolvedCompanyError)).toContain('use the cashier email');
+    expect(resolveTerminalLoginErrorMessage(unresolvedCompanyError)).not.toContain('No company is registered');
+
     expect(resolveTerminalLoginErrorMessage(apiError({
       status: 403,
       data: {

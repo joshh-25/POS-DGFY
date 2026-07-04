@@ -14,7 +14,8 @@ describe('DGFY route helper contracts', () => {
     expect(routeHelperSource).toContain("export const resolvePosTerminalUrl = (search = '') => {");
     expect(routeHelperSource).toContain("import.meta.env?.VITE_POS_TERMINAL_URL");
     expect(routeHelperSource).toContain('configured.search = terminalPath.includes');
-    expect(routeHelperSource).toContain('`${window.location.origin}${terminalPath}`');
+    expect(routeHelperSource).toContain("import.meta.env?.VITE_POS_DEV_PORT || '5174'");
+    expect(routeHelperSource).toContain("currentOrigin.replace('skupervisor.', 'pos.')");
   });
 
   it('keeps the SKUpervisor terminal route on the governed terminal page', () => {

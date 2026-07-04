@@ -3404,7 +3404,11 @@ function SettingsWorkspace({
     const updatedSettings = await updateSettings({
       pos_terminal_registry: posTerminalRegistry,
       pos_terminal_registry_mode: posTerminalRegistryMode,
-      pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true
+      pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true,
+      ...(terminalUser?.is_master_admin === true ? {
+        pos_settings_access_pin: String(posForm.settingsAccessPin || '').trim(),
+        clear_pos_settings_access_pin: posForm.clearSettingsAccessPin === true
+      } : {})
     });
 
     const savedRegistry = normalizeTerminalRegistry(
@@ -3424,17 +3428,27 @@ function SettingsWorkspace({
     }));
 
     await Promise.all([
+      hydrateSettingsWorkspace(),
       onRefreshTerminalMeta?.(),
       onRefreshTerminalUser?.({ suppressGlobalErrors: true })
     ]);
     return savedRegistry;
-  }, [buildTerminalRegistryPayload, onRefreshTerminalMeta, onRefreshTerminalUser, posForm.terminalLocationBindingEnforced]);
+  }, [
+    buildTerminalRegistryPayload,
+    hydrateSettingsWorkspace,
+    onRefreshTerminalMeta,
+    onRefreshTerminalUser,
+    posForm.clearSettingsAccessPin,
+    posForm.settingsAccessPin,
+    posForm.terminalLocationBindingEnforced,
+    terminalUser?.is_master_admin
+  ]);
 
   const handleTerminalRegistrySave = useCallback(async () => {
     setSavingTab('terminal_registry');
     try {
       await persistTerminalRegistry();
-      toast.success('Terminal registry saved.');
+      toast.success('Terminal registry and access PIN settings saved.');
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to save terminal registry.');
     } finally {

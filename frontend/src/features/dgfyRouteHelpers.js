@@ -123,7 +123,15 @@ export const resolvePosTerminalUrl = (search = '') => {
   }
 
   if (typeof window !== 'undefined') {
-    return `${window.location.origin}${terminalPath}`;
+    const currentOrigin = window.location.origin;
+    if (isLocalRuntime()) {
+      const configuredDevPort = String(import.meta.env?.VITE_POS_DEV_PORT || '5174').trim() || '5174';
+      return `${resolveLocalOriginForPort(configuredDevPort)}${terminalPath}`;
+    }
+    if (currentOrigin.includes('skupervisor.')) {
+      return `${currentOrigin.replace('skupervisor.', 'pos.')}${terminalPath}`;
+    }
+    return `${currentOrigin}${terminalPath}`;
   }
 
   return terminalPath;

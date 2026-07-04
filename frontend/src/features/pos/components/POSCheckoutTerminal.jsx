@@ -627,7 +627,7 @@ export default function POSCheckoutTerminal({
     }, [isTabletViewport, sidebarCollapsed]);
     const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-hidden pr-0 pb-3';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
-    const currentSaleBodyClassName = 'min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y';
+    const currentSaleBodyClassName = 'dgfy-pos-scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y';
     const currentSaleItemsListClassName = 'pr-1';
     const checkoutPaneClassName = 'h-full max-h-full';
     const catalogPaneHeightClassName = 'h-full max-h-full';
@@ -2419,7 +2419,8 @@ export default function POSCheckoutTerminal({
                 )}
                 <div
                     data-testid="pos-catalog-scroll"
-                    className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pb-3 touch-pan-y select-none"
+                    className="dgfy-pos-scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pb-3 touch-pan-y select-none"
+                    tabIndex={0}
                     onTouchStart={(event) => {
                         const touch = event.touches?.[0];
                         if (!touch) return;

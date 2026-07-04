@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../src/services/api.js';
 import {
     clearDgfySession,
@@ -13,8 +13,7 @@ import {
     loginDgfyAccount,
     logoutDgfyAccount,
     requestDgfyPasswordReset,
-    registerDgfyAccount,
-    startDgfyTenantSession
+    registerDgfyAccount
 } from '../src/services/dgfyAuthService.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +21,8 @@ import { Label } from "@/components/ui/label";
 import { AlertTriangle, Building2, CheckCircle2, Eye, EyeOff, LogOut, UserRound } from 'lucide-react';
 import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
-import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY } from '../src/features/dgfyRouteHelpers.js';
+import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY, resolvePosTerminalUrl } from '../src/features/dgfyRouteHelpers.js';
+import { buildTenantSetupSearch, POS_TERMINAL_SETUP_STEPS } from '../src/features/pos/utils/setupFlow.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -37,29 +37,11 @@ const hasCompanyLegalVersions = (snapshot = {}) => Boolean(
     snapshot.company_terms_version
     && snapshot.marketplace_terms_version
 );
-const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const POS_ONBOARDING_LOGIN_SEARCH = buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE);
+export const resolveRegisterCompanyPosLoginUrl = () => resolvePosTerminalUrl(POS_ONBOARDING_LOGIN_SEARCH);
 
-const getStatusCode = (error) => Number(error?.response?.status || error?.status || 0);
-
-const getRetryAfterSeconds = (error) => {
-    const retryAfterSeconds = Number(error?.response?.data?.retryAfterSeconds || error?.retryAfterSeconds || 0);
-    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) return Math.ceil(retryAfterSeconds);
-
-    const retryAfterHeader = error?.response?.headers?.['retry-after'] || error?.response?.headers?.get?.('retry-after');
-    const retryAfter = Number(retryAfterHeader || 0);
-    return Number.isFinite(retryAfter) && retryAfter > 0 ? Math.ceil(retryAfter) : 0;
-};
-
-const getTenantSessionFallbackMessage = (error) => {
-    if (getStatusCode(error) !== 429) {
-        return error?.response?.data?.message || 'Company created. Use the button below to sign in to SKUpervisor with this company prefilled.';
-    }
-
-    const retryAfterSeconds = getRetryAfterSeconds(error);
-    const retryCopy = retryAfterSeconds > 0
-        ? ` Please wait about ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} minute${Math.ceil(retryAfterSeconds / 60) === 1 ? '' : 's'} before trying the automatic handoff again.`
-        : ' Please wait before trying the automatic handoff again.';
-    return `Company created. Business session opening is temporarily rate-limited.${retryCopy} You can still use the button below to continue through SKUpervisor login.`;
+export const registerCompanyBrowserNavigation = {
+    openPosLogin: () => window.location.assign(resolveRegisterCompanyPosLoginUrl())
 };
 
 const PasswordInput = ({
@@ -345,31 +327,6 @@ export default function RegisterCompany() {
         }).catch(() => {});
     };
 
-    const startTenantSessionWithRetry = useCallback(async (tenantData = {}, token = dgfyToken) => {
-        const tenantId = String(tenantData?.id || '').trim();
-        const companyToken = String(tenantData?.company_token || '').trim();
-        if (!tenantId || !companyToken) {
-            throw new Error('Company session handoff is missing the required tenant identity.');
-        }
-
-        let lastError = null;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-            try {
-                return await startDgfyTenantSession({
-                    tenantId,
-                    companyToken
-                }, token);
-            } catch (error) {
-                lastError = error;
-                if (getStatusCode(error) === 429) break;
-                if (attempt === 2) break;
-                await wait(350 * (attempt + 1));
-            }
-        }
-
-        throw lastError || new Error('Company session handoff failed.');
-    }, [dgfyToken]);
-
     useEffect(() => {
         const handoffToken = String(searchParams.get('handoff_token') || '').trim();
         if (!handoffToken || handoffExchangeStartedRef.current) return undefined;
@@ -522,7 +479,6 @@ export default function RegisterCompany() {
         setError('');
         setSuccess(null);
 
-        const activeDgfyToken = dgfyToken || getStoredDgfyToken();
         if (!dgfyAccount) {
             setError('Sign in with your DGFY account before registering a business.');
             return;
@@ -561,14 +517,8 @@ export default function RegisterCompany() {
             setSuccess(registrationSuccess);
             setCompanyForm((current) => ({ ...current, acceptedCompanyTerms: false }));
             if (registrationSuccess.data?.company_token && registrationSuccess.data?.status === 'active') {
-                try {
-                    await startTenantSessionWithRetry(registrationSuccess.data, activeDgfyToken);
-                    navigate('/', { replace: true });
-                    return;
-                } catch (sessionError) {
-                    setNotice(getTenantSessionFallbackMessage(sessionError));
-                    return;
-                }
+                registerCompanyBrowserNavigation.openPosLogin();
+                return;
             }
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Registration failed. Please try again.');
@@ -576,40 +526,6 @@ export default function RegisterCompany() {
             setIsLoading(false);
         }
     };
-
-    const goToManualSkupervisorLogin = useCallback(() => {
-        navigate('/login', {
-            state: {
-                registration: {
-                    email: dgfyAccount?.email,
-                    companyToken: success?.data?.company_token,
-                    companyName: success?.data?.name
-                }
-            }
-        });
-    }, [dgfyAccount?.email, navigate, success?.data?.company_token, success?.data?.name]);
-
-    const handleProceedToSkupervisor = useCallback(async () => {
-        setError('');
-        setNotice('');
-
-        const activeDgfyToken = dgfyToken || getStoredDgfyToken();
-        if (!success?.data?.company_token || success?.data?.status !== 'active') {
-            goToManualSkupervisorLogin();
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            await startTenantSessionWithRetry(success.data, activeDgfyToken);
-            navigate('/', { replace: true });
-        } catch (sessionError) {
-            setNotice(getTenantSessionFallbackMessage(sessionError));
-            goToManualSkupervisorLogin();
-        } finally {
-            setIsLoading(false);
-        }
-    }, [dgfyToken, goToManualSkupervisorLogin, navigate, startTenantSessionWithRetry, success?.data?.company_token, success?.data?.id, success?.data?.status]);
 
     const handleSignOutDgfy = async () => {
         dgfySessionGenerationRef.current += 1;
@@ -639,10 +555,10 @@ export default function RegisterCompany() {
                         </div>
                         <Button
                             className="mt-6 w-full bg-[#1f5f9f] hover:bg-[#174f86]"
-                            onClick={handleProceedToSkupervisor}
+                            onClick={registerCompanyBrowserNavigation.openPosLogin}
                             disabled={isLoading}
                         >
-                            {isLoading ? 'Opening SKUpervisor...' : 'Proceed to SKUpervisor'}
+                            Sign in to DGFY POS
                         </Button>
                     </div>
                 </div>
@@ -777,9 +693,9 @@ export default function RegisterCompany() {
 
                 <div className="mt-6 text-center text-sm text-slate-600">
                     Already have a company?{' '}
-                    <Link to="/login" className="font-medium text-[#1f5f9f] hover:text-[#174f86]">
-                        Sign in to SKUpervisor
-                    </Link>
+                    <a href={resolvePosTerminalUrl()} className="font-medium text-[#1f5f9f] hover:text-[#174f86]">
+                        Sign in to DGFY POS
+                    </a>
                 </div>
             </div>
         );

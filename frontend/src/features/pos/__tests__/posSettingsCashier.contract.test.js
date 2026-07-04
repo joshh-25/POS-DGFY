@@ -50,4 +50,16 @@ describe('regular POS Setup cashier management contract', () => {
     expect(sidebarSource).toContain("disabled={locked || onboardingRestricted || !canViewPos}");
     expect(sidebarSource).toContain('Protected by POS access PIN');
   });
+
+  it('persists and refreshes the access PIN from the terminal registry Save button', () => {
+    const registrySaveStart = workspaceSource.indexOf('const persistTerminalRegistry = useCallback');
+    const registrySaveEnd = workspaceSource.indexOf('const handleTerminalRegistrySave', registrySaveStart);
+    const registrySaveFlow = workspaceSource.slice(registrySaveStart, registrySaveEnd);
+
+    expect(registrySaveFlow).toContain("pos_settings_access_pin: String(posForm.settingsAccessPin || '').trim()");
+    expect(registrySaveFlow).toContain('clear_pos_settings_access_pin: posForm.clearSettingsAccessPin === true');
+    expect(registrySaveFlow).toContain('terminalUser?.is_master_admin === true');
+    expect(registrySaveFlow).toContain('hydrateSettingsWorkspace()');
+    expect(workspaceSource).toContain('Terminal registry and access PIN settings saved.');
+  });
 });

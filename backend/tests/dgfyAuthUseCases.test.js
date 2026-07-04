@@ -419,6 +419,28 @@ describe('dgfyAuthUseCases', () => {
         expect(result.data.payload.data.token).toBeTruthy();
     });
 
+    it('rejects business names before attempting DGFY account authentication', async () => {
+        const repository = {
+            findByEmail: jest.fn()
+        };
+        const useCase = buildLoginDgfyAccountUseCase({
+            repository,
+            comparePassword: jest.fn()
+        });
+
+        const result = await useCase({
+            body: {
+                email: 'Hubomoto-Corp',
+                password: 'password123'
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(400);
+        expect(result.error.message).toContain('registered DGFY email address');
+        expect(repository.findByEmail).not.toHaveBeenCalled();
+    });
+
     it('requests and verifies DGFY account email OTP', async () => {
         const account = createAccount();
         const requestUseCase = buildRequestDgfyEmailVerificationUseCase({

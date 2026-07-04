@@ -42,7 +42,10 @@ vi.mock('@lottiefiles/react-lottie-player', () => ({
 import DgfyAuthPage from '../DgfyAuthPage.jsx';
 import DgfyResetPasswordPage from '../DgfyResetPasswordPage.jsx';
 import LegalDocument from '../LegalDocument.jsx';
-import RegisterCompany from '../RegisterCompany.jsx';
+import RegisterCompany, {
+  registerCompanyBrowserNavigation,
+  resolveRegisterCompanyPosLoginUrl
+} from '../RegisterCompany.jsx';
 import {
   appendDgfyHandoffToken,
   normalizeDgfyReturnTarget
@@ -136,6 +139,7 @@ describe('DGFY auth and business registration routes', () => {
     dgfyAuthMock.verifyDgfyEmail.mockReset();
     dgfyAuthMock.requestDgfyPasswordReset.mockReset();
     dgfyAuthMock.startDgfyTenantSession.mockReset();
+    vi.spyOn(registerCompanyBrowserNavigation, 'openPosLogin').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -366,14 +370,19 @@ describe('DGFY auth and business registration routes', () => {
     expect(screen.getByRole('button', { name: /create dgfy account/i })).toBeTruthy();
   });
 
-  it('shows business-only registration fields after a valid DGFY session and creates the company', async () => {
+  it('builds the company-completion redirect for POS login and onboarding', () => {
+    const target = new URL(resolveRegisterCompanyPosLoginUrl());
+
+    expect(target.port).toBe('5174');
+    expect(target.pathname).toBe('/terminal');
+    expect(target.searchParams.get('setup_flow')).toBe('tenant_onboarding');
+    expect(target.searchParams.get('setup_step')).toBe('profile');
+  });
+
+  it('creates the company and redirects the owner to DGFY POS login', async () => {
     dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
       token: 'dgfy-token',
       account: dgfyAccount
-    });
-    dgfyAuthMock.startDgfyTenantSession.mockResolvedValue({
-      token: 'ims-token',
-      company: { token: 'token-autofoods-12345678' }
     });
     apiMock.post.mockResolvedValueOnce({
       data: {
@@ -395,6 +404,7 @@ describe('DGFY auth and business registration routes', () => {
     expect(screen.queryByLabelText('Last Name')).toBeNull();
     expect(screen.getByLabelText('Company Name')).toBeTruthy();
     expect(screen.getByLabelText('Business Industry')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Sign in to DGFY POS' })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
@@ -411,23 +421,16 @@ describe('DGFY auth and business registration routes', () => {
       skipTenantAuthHeaders: true,
       withCredentials: true
     })));
-    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
-      tenantId: 'tenant-1',
-      companyToken: 'token-autofoods-12345678'
-    }, 'dgfy-token'));
-    expect(await screen.findByText('Dashboard screen')).toBeTruthy();
+    await waitFor(() => expect(registerCompanyBrowserNavigation.openPosLogin).toHaveBeenCalledOnce());
+    expect(dgfyAuthMock.startDgfyTenantSession).not.toHaveBeenCalled();
   });
 
-  it('uses cookie-backed DGFY auth for company registration and tenant-session handoff when no bearer token is in memory', async () => {
+  it('uses cookie-backed DGFY auth for company registration before redirecting to POS', async () => {
     dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
       account: dgfyAccount
     });
     dgfyAuthMock.getStoredDgfyToken.mockReturnValue('');
     dgfyAuthMock.dgfyAuthHeader.mockReturnValue({});
-    dgfyAuthMock.startDgfyTenantSession.mockResolvedValue({
-      token: 'ims-token',
-      company: { token: 'token-cookiefoods-12345678' }
-    });
     apiMock.post.mockResolvedValueOnce({
       data: {
         success: true,
@@ -456,94 +459,8 @@ describe('DGFY auth and business registration routes', () => {
       skipTenantAuthHeaders: true,
       withCredentials: true
     })));
-    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
-      tenantId: 'tenant-2',
-      companyToken: 'token-cookiefoods-12345678'
-    }, ''));
-    expect(await screen.findByText('Dashboard screen')).toBeTruthy();
-  });
-
-  it('falls back to SKUpervisor login when the automatic IMS session cannot start', async () => {
-    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
-      token: 'dgfy-token',
-      account: dgfyAccount
-    });
-    dgfyAuthMock.startDgfyTenantSession.mockRejectedValue({
-      response: { data: { message: 'Unable to start a SKUpervisor session for this DGFY account.' } }
-    });
-    apiMock.post.mockResolvedValueOnce({
-      data: {
-        success: true,
-        message: 'Company registered and activated successfully. You can sign in now.',
-        data: {
-          id: 'tenant-1',
-          name: 'Auto Foods',
-          status: 'active',
-          company_token: 'token-autofoods-12345678',
-          workflow_mode: 'food_manufacturing'
-        }
-      }
-    });
-
-    renderRoutes(['/register-company#business-registration']);
-
-    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
-    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
-
-    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
-      tenantId: 'tenant-1',
-      companyToken: 'token-autofoods-12345678'
-    }, 'dgfy-token'));
-    expect(await screen.findByText('Company Created')).toBeTruthy();
-    expect(screen.getByText(/company registered and activated successfully/i)).toBeTruthy();
-    await waitFor(() => {
-      expect(screen.getByText(/unable to start a skupervisor session/i)).toBeTruthy();
-      expect(screen.getByRole('button', { name: /proceed to skupervisor/i })).toBeTruthy();
-    }, { timeout: 3000 });
-  });
-
-  it('does not retry tenant-session handoff when business session opening is rate-limited', async () => {
-    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
-      token: 'dgfy-token',
-      account: dgfyAccount
-    });
-    dgfyAuthMock.startDgfyTenantSession.mockRejectedValue({
-      response: {
-        status: 429,
-        data: {
-          message: 'Too many business session attempts. Please wait before opening this company again.',
-          retryAfterSeconds: 180
-        }
-      }
-    });
-    apiMock.post.mockResolvedValueOnce({
-      data: {
-        success: true,
-        message: 'Company registered and activated successfully. You can sign in now.',
-        data: {
-          id: 'tenant-429',
-          name: 'Retry Foods',
-          status: 'active',
-          company_token: 'token-retryfoods-12345678',
-          workflow_mode: 'food_manufacturing'
-        }
-      }
-    });
-
-    renderRoutes(['/register-company#business-registration']);
-
-    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Retry Foods' } });
-    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
-
-    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText('Company Created')).toBeTruthy();
-    expect(screen.getByText(/business session opening is temporarily rate-limited/i)).toBeTruthy();
-    expect(screen.getByText(/about 3 minutes/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /proceed to skupervisor/i })).toBeTruthy();
+    await waitFor(() => expect(registerCompanyBrowserNavigation.openPosLogin).toHaveBeenCalledOnce());
+    expect(dgfyAuthMock.startDgfyTenantSession).not.toHaveBeenCalled();
   });
 
   it('shows the sign-in form instead of auto-restoring a cookie session after explicit sign-out', async () => {

@@ -21,6 +21,7 @@ const proxyTargets = {
   }
 };
 const frontendNodeModules = path.resolve(frontendRoot, 'node_modules');
+process.env.BROWSERSLIST_IGNORE_OLD_DATA = process.env.BROWSERSLIST_IGNORE_OLD_DATA || 'true';
 const reactAliases = [
   { find: /^react$/, replacement: path.resolve(frontendNodeModules, 'react') },
   { find: /^react\/jsx-runtime$/, replacement: path.resolve(frontendNodeModules, 'react/jsx-runtime.js') },
@@ -70,6 +71,30 @@ export default defineConfig({
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/pos'),
-    emptyOutDir: true
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+            return 'vendor-react';
+          }
+          if (id.includes('maplibre-gl')) {
+            return 'vendor-maps';
+          }
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'vendor-charts';
+          }
+          if (id.includes('qrcode')) {
+            return 'vendor-qrcode';
+          }
+          if (id.includes('lucide-react') || id.includes('@radix-ui')) {
+            return 'vendor-ui';
+          }
+          return undefined;
+        }
+      }
+    }
   }
 });

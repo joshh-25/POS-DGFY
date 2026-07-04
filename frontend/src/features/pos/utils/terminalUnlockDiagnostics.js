@@ -94,8 +94,12 @@ export const resolveTerminalLoginErrorMessage = (error) => {
     return responseMessage || 'This email belongs to multiple companies. Select the company to continue.';
   }
 
-  if (code === POS_TERMINAL_LOGIN_ERROR_CODES.TENANT_NOT_FOUND || code === POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED) {
+  if (code === POS_TERMINAL_LOGIN_ERROR_CODES.TENANT_NOT_FOUND) {
     return 'No company is registered for this POS login email. Check the email or sign in from SKUpervisor first.';
+  }
+
+  if (code === POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED) {
+    return responseMessage || 'Enter the registered DGFY or cashier email address to select a company.';
   }
 
   if (code === 'TENANT_CAPABILITY_DISABLED') {
