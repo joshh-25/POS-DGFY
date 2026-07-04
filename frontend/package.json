@@ -26,7 +26,7 @@
     "test:lighthouse": "lhci autorun",
     "test:load": "k6 run tests/load/smoke-load.js",
     "test:load:api": "k6 run tests/load/api-load.js",
-    "test:security": "playwright test tests/e2e/security-auth.spec.js tests/e2e/security-input.spec.js tests/e2e/security-headers.spec.js",
+    "test:security": "playwright test tests/e2e/security/security-auth.spec.js tests/e2e/security/security-input.spec.js tests/e2e/security/security-headers.spec.js",
     "security:audit": "npm audit",
     "security:all": "npm audit && npm run test:security"
   },
