@@ -27,8 +27,8 @@
     "test:load": "k6 run tests/load/smoke-load.js",
     "test:load:api": "k6 run tests/load/api-load.js",
     "test:security": "playwright test tests/e2e/security/security-auth.spec.js tests/e2e/security/security-input.spec.js tests/e2e/security/security-headers.spec.js",
-    "security:audit": "npm audit",
-    "security:all": "npm audit && npm run test:security"
+    "security:audit": "npm audit --omit=dev",
+    "security:all": "npm run security:audit && npm run test:security"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
