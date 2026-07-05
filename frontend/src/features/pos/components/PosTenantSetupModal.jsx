@@ -651,8 +651,8 @@ export default function PosTenantSetupModal({
       if (primaryLocationId) row.location_id = primaryLocationId;
 
       const result = await bulkCreateOnboardingItems({ rows: [row] });
-      const failures = Array.isArray(result?.rows)
-        ? result.rows.filter((entry) => entry?.status === 'failed')
+      const failures = Array.isArray(result?.results)
+        ? result.results.filter((entry) => entry?.status === 'failed')
         : [];
       if (failures.length > 0) {
         throw new Error(failures[0]?.message || 'Starter item was rejected by onboarding validation.');
