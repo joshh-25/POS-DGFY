@@ -728,7 +728,7 @@ export default function TerminalPage() {
         getCompanyInfo().catch(() => null),
         getAllUsers({ include_invitations: true }).catch(() => []),
         listTenantLocations({ include_inactive: false }).catch(() => []),
-        fetchPosCatalog({ limit: 1 }).catch(() => [])
+        fetchPosCatalog({ limit: 200 }).catch(() => [])
       ]);
       const profileRequirements = resolveProfileSetupReadiness(companyPayload, settingsPayload);
       const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
@@ -1905,7 +1905,7 @@ export default function TerminalPage() {
         getCompanyInfo().catch(() => null),
         getAllUsers({ include_invitations: true }).catch(() => []),
         listTenantLocations({ include_inactive: false }).catch(() => []),
-        fetchPosCatalog({ limit: 1 }).catch(() => [])
+        fetchPosCatalog({ limit: 200 }).catch(() => [])
       ]);
       const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;
       const selectedTenantUsersForReadiness = Array.isArray(selectedTenantUsers) && selectedTenantUsers.length > 0

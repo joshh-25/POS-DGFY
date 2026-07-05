@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: POS_STARTER_ITEM_SILENT_FAILURE
 policy_version: 2026.07.06
-verification_evidence: npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js,npm --prefix backend run lint,npm --prefix frontend run lint,npm run check:architecture,npm run lint:docs,docker --context dgfy compose --env-file infrastructure/docker/local-test/.env.compose up -d --build (backend/frontend healthy; RuntimeSchemaAudit logs Healthy)
+verification_evidence: npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js tests/inventoryItemRepository.test.js,npm --prefix backend run lint,npm --prefix frontend run lint,npm run check:architecture,npm run lint:docs,docker --context dgfy compose --env-file infrastructure/docker/local-test/.env.compose up -d --build (backend/frontend healthy; RuntimeSchemaAudit logs Healthy)
 preflight_result: no_breach
 preflight_reason_code: POS_STARTER_ITEM_SILENT_FAILURE
 preflight_run_at: 2026-07-06T02:00:00+08:00
@@ -25,6 +25,8 @@ Major.
 - POS tenant onboarding "Starter Item" creation step (`PosTenantSetupModal.jsx`).
 - Tenant schema drift detection (`runtimeSchemaAuditService.js`) and repair tooling
   (`sync-tenant-schemas.js`) for the `items.category` column.
+- Generic item creation (`itemRepository.createItem`) service-item catalog visibility, and the POS
+  terminal onboarding readiness check (`TerminalPage.jsx`).
 
 ## Compliance Preconditions
 - No new API endpoint or item model is introduced; the fix corrects which existing response field
@@ -36,10 +38,20 @@ Major.
   dropped, no data is mutated, and no other business logic changes.
 - Repair remains dry-run-first via the existing `report` / `repair-dry-run` / `repair-apply` modes in
   `sync-tenant-schemas.js`; no tenant database is auto-repaired without an explicit operator run.
+- `itemRepository.createItem` now also creates a `ServiceItemDetail` row (using only the model's own
+  field defaults — `bookable`, `visible_in_pos`, `visible_in_storefront`, etc. — no new fields or
+  tables) whenever a `category: 'service'` item is created, matching the existing pattern already used
+  by the dedicated Services-management use case (`buildCreateServiceCatalogItemUseCase`). This closes
+  a gap where service items created outside that dedicated flow (onboarding, the generic Items "Add
+  Item" modal) were invisible in the POS/Storefront catalog by default.
+- The POS terminal onboarding readiness check no longer artificially caps its catalog fetch at
+  `limit: 1` (raised to `limit: 200`, matching the limit already used elsewhere in the same file for
+  catalog browsing) — this was causing the SQL-level `LIMIT` to truncate before visibility filtering,
+  so the readiness check could see an empty result even when visible items existed.
 - No PayMongo/payment files are changed.
 
 ## Verification Evidence
-- `npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js` — 14 tests passed, including a new regression test asserting the audit reports `degraded` when `items.category` is missing the `'service'` enum value.
+- `npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js tests/inventoryItemRepository.test.js` — all tests passed, including two new regression tests asserting `ServiceItemDetail.create` is called for `category: 'service'` items and not for other categories.
 - `npm --prefix backend run lint` — 0 errors.
 - `npm --prefix frontend run lint` — 0 errors (pre-existing warnings only, unrelated to this change).
 - `npm run check:architecture` — OK.

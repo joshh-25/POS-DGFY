@@ -965,6 +965,97 @@ describe('inventory itemRepository', () => {
     expect(result).toEqual({ item_id: 1001, name: 'Milk' });
   });
 
+  it('creates a ServiceItemDetail row when creating a service-category item', async () => {
+    const itemRecord = { item_id: 3003 };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const ServiceItemDetail = {
+      create: jest.fn().mockResolvedValue({ service_detail_id: 1, item_id: 3003 })
+    };
+    const transaction = {
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 3003, category: 'service' });
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 1 });
+    inventoryRepositoryDependencies.syncItemEmbedding = jest.fn().mockResolvedValue(undefined);
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-create-service' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ServiceItemDetail') return ServiceItemDetail;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await itemRepository.createItem({
+      status: 'active',
+      category: 'service',
+      sku_code: 'SVC-001',
+      name: 'Computer Repair',
+      unit_of_measure: 'service',
+      default_sale_price: 5000,
+      current_stock: 100
+    }, 7);
+
+    expect(ServiceItemDetail.create).toHaveBeenCalledWith(
+      { item_id: 3003 },
+      { transaction }
+    );
+    expect(inventoryRepositoryDependencies.createStockMovement).not.toHaveBeenCalled();
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
+  });
+
+  it('does not create a ServiceItemDetail row for non-service items', async () => {
+    const itemRecord = { item_id: 4004 };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const ServiceItemDetail = {
+      create: jest.fn().mockResolvedValue({})
+    };
+    const transaction = {
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 4004, category: 'product' });
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 1 });
+    inventoryRepositoryDependencies.syncItemEmbedding = jest.fn().mockResolvedValue(undefined);
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-create-product' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ServiceItemDetail') return ServiceItemDetail;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await itemRepository.createItem({
+      status: 'active',
+      category: 'product',
+      product_type: 'finished_goods',
+      sku_code: 'PROD-001',
+      name: 'Widget'
+    }, 7);
+
+    expect(ServiceItemDetail.create).not.toHaveBeenCalled();
+    expect(transaction.commit).toHaveBeenCalled();
+  });
+
   it('creates draft item without sku uniqueness check and stores wizard metadata', async () => {
     const itemRecord = { item_id: 2002, status: 'draft' };
     const Item = {
