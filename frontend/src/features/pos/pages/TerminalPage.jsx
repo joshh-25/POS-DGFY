@@ -1895,27 +1895,29 @@ export default function TerminalPage() {
           }
         : null;
 
-      const [selectedTenantUser, selectedTenantSettings, selectedTenantCompany, selectedTenantUsers, selectedTenantLocations, selectedTenantItems] = await Promise.all([
+      const [selectedTenantUser, selectedTenantSettings, selectedTenantLocations, selectedTenantItems] = await Promise.all([
         fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => null),
         getAllSettings({
           force: true,
           requestConfig: SUPPRESS_GLOBAL_ERROR_TOAST
         }).catch(() => ({})),
-        getCompanyInfo().catch(() => null),
-        getAllUsers({ include_invitations: true }).catch(() => []),
         listTenantLocations({ include_inactive: false }).catch(() => []),
         fetchPosCatalog({ limit: 1 }).catch(() => [])
       ]);
       const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;
-      const selectedTenantUsersForReadiness = Array.isArray(selectedTenantUsers) && selectedTenantUsers.length > 0
-        ? selectedTenantUsers
-        : (effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : []);
       const selectedUserIsAdmin = effectiveSelectedTenantUser?.is_master_admin === true
         || String(effectiveSelectedTenantUser?.role || '').trim().toLowerCase() === 'admin';
+      const selectedTenantAdminPayloads = selectedUserIsAdmin
+        ? await Promise.all([
+            getCompanyInfo().catch(() => null),
+            getAllUsers({ include_invitations: true }).catch(() => [])
+          ])
+        : [null, effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : []];
+      const [selectedTenantCompany, selectedTenantUsers] = selectedTenantAdminPayloads;
       const selectedTenantSetupState = buildTenantSetupStateSnapshot({
         settingsPayload: selectedTenantSettings || {},
         companyPayload: selectedTenantCompany || {},
-        usersPayload: selectedTenantUsersForReadiness,
+        usersPayload: selectedTenantUsers,
         locationsPayload: selectedTenantLocations,
         itemsPayload: selectedTenantItems
       });
@@ -1985,11 +1987,6 @@ export default function TerminalPage() {
         setTerminalUnlockModalOpen(false);
         setDrawerOpen(false);
         toast.success('DGFY administrator access opened. Open a shift to start selling.');
-        return;
-      }
-      if (!selectedTenantSetupState.posSetupReady) {
-        setTerminalUnlockModalOpen(false);
-        toast.error('POS setup is incomplete. An active terminal and cashier account are required before terminal unlock.');
         return;
       }
       const selectedTerminalId = resolvePreferredTerminalId(

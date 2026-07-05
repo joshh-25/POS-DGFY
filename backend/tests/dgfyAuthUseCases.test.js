@@ -621,6 +621,99 @@ describe('dgfyAuthUseCases', () => {
         }));
     });
 
+    it('lists only companies owned by or explicitly accepted for the signed-in DGFY account', async () => {
+        const account = createAccount({ id: 'dgfy-user-b', email: 'cashier-b@example.test' });
+        const membershipRows = [{
+            id: 20,
+            dgfy_account_id: account.id,
+            tenant_id: 'company-b-owned',
+            tenant_user_id: 20,
+            role: 'admin',
+            status: 'accepted',
+            source: 'founder',
+            tenant: {
+                id: 'company-b-owned',
+                name: 'B Owned Company',
+                company_token: 'secret-b-owned',
+                status: 'active',
+                plan: 'premium',
+                owner_dgfy_account_id: account.id
+            }
+        }, {
+            id: 21,
+            dgfy_account_id: account.id,
+            tenant_id: 'company-1-invited',
+            tenant_user_id: 21,
+            role: 'cashier',
+            status: 'accepted',
+            source: 'invite',
+            tenant: {
+                id: 'company-1-invited',
+                name: 'Company 1',
+                company_token: 'secret-company-1',
+                status: 'active',
+                plan: 'standard',
+                owner_dgfy_account_id: 'dgfy-user-a'
+            }
+        }, {
+            id: 22,
+            dgfy_account_id: account.id,
+            tenant_id: 'company-2-pending',
+            tenant_user_id: 22,
+            role: 'cashier',
+            status: 'pending',
+            source: 'invite',
+            tenant: {
+                id: 'company-2-pending',
+                name: 'Company 2 Pending',
+                company_token: 'secret-company-2',
+                status: 'active',
+                plan: 'standard',
+                owner_dgfy_account_id: 'dgfy-user-a'
+            }
+        }];
+        const repository = {
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([]),
+            listMemberships: jest.fn().mockResolvedValue(membershipRows)
+        };
+        const useCase = buildListDgfyAccountCompaniesUseCase({ repository });
+
+        const result = await useCase({ account });
+
+        expect(result.success).toBe(true);
+        expect(repository.listMemberships).toHaveBeenCalledWith(account.id);
+        expect(result.data.payload.data.owned_companies).toEqual([
+            expect.objectContaining({
+                tenant_id: 'company-b-owned',
+                is_owner: true,
+                can_switch: true
+            })
+        ]);
+        expect(result.data.payload.data.invited_companies).toEqual([
+            expect.objectContaining({
+                tenant_id: 'company-1-invited',
+                company_name: 'Company 1',
+                is_owner: false,
+                can_switch: true
+            })
+        ]);
+        expect(result.data.payload.data.pending_invitations).toEqual([
+            expect.objectContaining({
+                tenant_id: 'company-2-pending',
+                can_switch: false,
+                requires_action: 'accept_invitation'
+            })
+        ]);
+        expect(result.data.payload.data.companies.map((company) => company.tenant_id)).toEqual([
+            'company-b-owned',
+            'company-1-invited',
+            'company-2-pending'
+        ]);
+        expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-company-1');
+        expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-company-2');
+    });
+
     it('requests a DGFY business step-up code for the account email', async () => {
         const requestEmailOtp = jest.fn().mockResolvedValue({
             otp_id: 'otp-step-up',
@@ -1272,7 +1365,10 @@ describe('dgfyAuthUseCases', () => {
         });
         expect(validateTerminalPolicy).toHaveBeenCalledWith({
             tenantId: 'tenant-pos',
-            terminalId: 'COUNTER-01'
+            terminalId: 'COUNTER-01',
+            tenantUserId: 8,
+            userRole: '',
+            isMasterAdmin: false
         });
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: 'pos_unlock_attempted',
@@ -1631,13 +1727,17 @@ describe('dgfyAuthUseCases', () => {
             findMembershipForAccount: jest.fn().mockResolvedValue(membership),
             createBusinessAuditLog: jest.fn().mockResolvedValue(null)
         };
+        const validateTerminalPolicy = jest.fn().mockRejectedValue(terminalError);
         const useCase = buildStartDgfyPosSessionUseCase({
             repository,
             createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                user_id: 8,
+                role: 'cashier',
+                is_master_admin: false,
                 permissions: ['pos:view'],
                 company: { id: 'tenant-pos', token: 'secret-pos-token' }
             }),
-            validateTerminalPolicy: jest.fn().mockRejectedValue(terminalError)
+            validateTerminalPolicy
         });
 
         const result = await useCase({
@@ -1649,6 +1749,13 @@ describe('dgfyAuthUseCases', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.statusCode).toBe(422);
+        expect(validateTerminalPolicy).toHaveBeenCalledWith({
+            tenantId: 'tenant-pos',
+            terminalId: 'COUNTER-99',
+            tenantUserId: 8,
+            userRole: 'cashier',
+            isMasterAdmin: false
+        });
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: 'pos_unlock_attempted',
             result: 'success',
