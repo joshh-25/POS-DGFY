@@ -107,7 +107,40 @@ const renderRoutes = (initialEntries = ['/dgfy/auth']) => render(
 );
 
 describe('DGFY auth and business registration routes', () => {
+  let locationUrl;
+  let mockLocation;
+
   beforeEach(() => {
+    locationUrl = new URL('http://localhost/register-company');
+    mockLocation = {
+      assign: vi.fn((value) => {
+        locationUrl = new URL(String(value || ''), locationUrl.toString());
+      }),
+      replace: vi.fn((value) => {
+        locationUrl = new URL(String(value || ''), locationUrl.toString());
+      }),
+      reload: vi.fn(),
+      toString: () => locationUrl.toString(),
+      get href() { return locationUrl.toString(); },
+      set href(value) { locationUrl = new URL(String(value || ''), locationUrl.toString()); },
+      get origin() { return locationUrl.origin; },
+      get protocol() { return locationUrl.protocol; },
+      get host() { return locationUrl.host; },
+      get hostname() { return locationUrl.hostname; },
+      get port() { return locationUrl.port; },
+      get pathname() { return locationUrl.pathname; },
+      set pathname(value) { locationUrl.pathname = String(value || ''); },
+      get search() { return locationUrl.search; },
+      set search(value) { locationUrl.search = String(value || ''); },
+      get hash() { return locationUrl.hash; },
+      set hash(value) { locationUrl.hash = String(value || ''); }
+    };
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: mockLocation
+    });
+
     apiMock.post.mockReset();
     apiMock.get.mockReset();
     dgfyAuthMock.clearDgfySession.mockReset();
@@ -415,7 +448,9 @@ describe('DGFY auth and business registration routes', () => {
       tenantId: 'tenant-1',
       companyToken: 'token-autofoods-12345678'
     }, 'dgfy-token'));
-    expect(await screen.findByText('Dashboard screen')).toBeTruthy();
+    await waitFor(() => expect(mockLocation.assign).toHaveBeenCalledWith(
+      expect.stringContaining('/terminal?setup_flow=tenant_onboarding&setup_step=storefront_setup')
+    ));
   });
 
   it('uses cookie-backed DGFY auth for company registration and tenant-session handoff when no bearer token is in memory', async () => {
@@ -460,16 +495,18 @@ describe('DGFY auth and business registration routes', () => {
       tenantId: 'tenant-2',
       companyToken: 'token-cookiefoods-12345678'
     }, ''));
-    expect(await screen.findByText('Dashboard screen')).toBeTruthy();
+    await waitFor(() => expect(mockLocation.assign).toHaveBeenCalledWith(
+      expect.stringContaining('/terminal?setup_flow=tenant_onboarding&setup_step=storefront_setup')
+    ));
   });
 
-  it('falls back to SKUpervisor login when the automatic IMS session cannot start', async () => {
+  it('falls back to POS sign-in when the automatic POS session cannot start', async () => {
     dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
       token: 'dgfy-token',
       account: dgfyAccount
     });
     dgfyAuthMock.startDgfyTenantSession.mockRejectedValue({
-      response: { data: { message: 'Unable to start a SKUpervisor session for this DGFY account.' } }
+      response: { data: { message: 'Unable to start a POS session for this DGFY account.' } }
     });
     apiMock.post.mockResolvedValueOnce({
       data: {
@@ -499,8 +536,8 @@ describe('DGFY auth and business registration routes', () => {
     expect(await screen.findByText('Company Created')).toBeTruthy();
     expect(screen.getByText(/company registered and activated successfully/i)).toBeTruthy();
     await waitFor(() => {
-      expect(screen.getByText(/unable to start a skupervisor session/i)).toBeTruthy();
-      expect(screen.getByRole('button', { name: /proceed to skupervisor/i })).toBeTruthy();
+      expect(screen.getByText(/unable to start a pos session/i)).toBeTruthy();
+      expect(screen.getByRole('button', { name: /proceed to pos/i })).toBeTruthy();
     }, { timeout: 3000 });
   });
 
@@ -541,9 +578,9 @@ describe('DGFY auth and business registration routes', () => {
 
     await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('Company Created')).toBeTruthy();
-    expect(screen.getByText(/business session opening is temporarily rate-limited/i)).toBeTruthy();
+    expect(screen.getByText(/pos session opening is temporarily rate-limited/i)).toBeTruthy();
     expect(screen.getByText(/about 3 minutes/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /proceed to skupervisor/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /proceed to pos/i })).toBeTruthy();
   });
 
   it('shows the sign-in form instead of auto-restoring a cookie session after explicit sign-out', async () => {
