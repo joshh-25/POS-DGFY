@@ -227,6 +227,81 @@ export const getWelcomeTemplate = ({ username, role, tenantName, appUrl }) => {
   `.trim();
 };
 
+export const getCashierCredentialTemplate = ({
+  tenantName,
+  cashierEmail,
+  temporaryPassword,
+  loginUrl,
+  resetPasswordUrl,
+  terminalLabel,
+  storeName
+}) => {
+  const safeTenantName = escapeHtml(tenantName || 'DGFY');
+  const safeCashierEmail = escapeHtml(cashierEmail || '');
+  const safeTemporaryPassword = escapeHtml(temporaryPassword || '');
+  const safeLoginUrl = escapeHtml(appendUtm(loginUrl, 'cashier_credentials') || '');
+  const safeResetPasswordUrl = escapeHtml(appendUtm(resetPasswordUrl || '', 'cashier_reset_password') || '');
+  const safeTerminalLabel = escapeHtml(terminalLabel || 'Assigned terminal');
+  const safeStoreName = escapeHtml(storeName || 'Assigned store');
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your cashier access for ${safeTenantName}</title>
+</head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f3f4f6;line-height:1.6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:40px 20px;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;">
+          <tr>
+            <td style="background:linear-gradient(135deg,#1A4E8D 0%,#2563EB 100%);padding:30px 40px;border-radius:12px 12px 0 0;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Cashier Login Details</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#ffffff;padding:40px;border-radius:0 0 12px 12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+              <p style="margin:0 0 16px;color:#1f2937;font-size:16px;">
+                Your cashier access for <strong>${safeTenantName}</strong> is ready.
+              </p>
+              <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px 18px;margin-bottom:20px;">
+                <p style="margin:0 0 8px;color:#1e3a8a;font-size:14px;"><strong>Cashier Gmail:</strong> ${safeCashierEmail}</p>
+                <p style="margin:0 0 8px;color:#1e3a8a;font-size:14px;"><strong>Temporary Password:</strong> ${safeTemporaryPassword}</p>
+                <p style="margin:0 0 8px;color:#1e3a8a;font-size:14px;"><strong>Terminal:</strong> ${safeTerminalLabel}</p>
+                <p style="margin:0;color:#1e3a8a;font-size:14px;"><strong>Store:</strong> ${safeStoreName}</p>
+              </div>
+              <div style="text-align:center;margin:24px 0;">
+                <a href="${safeLoginUrl}" style="display:inline-block;background:linear-gradient(135deg,#1A4E8D 0%,#2563EB 100%);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:700;font-size:16px;">
+                  Open Login
+                </a>
+              </div>
+              <div style="text-align:center;margin:0 0 24px;">
+                <a href="${safeResetPasswordUrl}" style="display:inline-block;background:#ffffff;color:#1A4E8D;text-decoration:none;padding:12px 28px;border-radius:8px;border:1px solid #bfdbfe;font-weight:700;font-size:14px;">
+                  Reset Password
+                </a>
+              </div>
+              <div style="background-color:#f8fafc;border-left:4px solid #2563eb;padding:14px 16px;border-radius:0 8px 8px 0;margin-bottom:16px;">
+                <p style="margin:0;color:#334155;font-size:14px;">
+                  <strong>Reset Password Instructions:</strong> Use the reset-password link above if you want to set your own password immediately, or sign in with the temporary password first and change it in account settings.
+                </p>
+              </div>
+              <p style="margin:0;color:#64748b;font-size:13px;">
+                If you cannot sign in, contact your company admin and request a new cashier password reset.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+};
+
 /**
  * Generate company approval notification email template
  * @param {Object} params - Template parameters

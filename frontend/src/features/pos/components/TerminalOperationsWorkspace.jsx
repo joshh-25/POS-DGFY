@@ -4886,7 +4886,7 @@ export default function TerminalOperationsWorkspace({
   isOnline = true,
   sectionIds = {}
 }) {
-  const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'settings_profile', 'settings_pos', 'settings_storefront', 'cash_drawer', 'reports', 'terminal_setup']);
+  const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'settings_profile', 'settings_pos', 'settings_storefront', 'cash_drawer', 'terminal_setup']);
   const effectiveViewMode = (isMsmeMode && restrictedMsmeModes.has(viewMode))
     ? 'shift_controls'
     : viewMode;
