@@ -98,6 +98,28 @@ export const buildBusinessLoginUrl = () => {
   return target.toString();
 };
 
+export const buildPosTerminalUrl = (search = '') => {
+  const normalizedSearch = String(search || '').trim();
+  const terminalPath = `/terminal${normalizedSearch && normalizedSearch.startsWith('?') ? normalizedSearch : (normalizedSearch ? `?${normalizedSearch}` : '')}`;
+  const configured = String(import.meta.env?.VITE_POS_TERMINAL_URL || '').trim();
+  if (configured) {
+    try {
+      const target = new URL(configured);
+      target.pathname = '/terminal';
+      target.search = terminalPath.includes('?') ? terminalPath.slice(terminalPath.indexOf('?')) : '';
+      return target.toString();
+    } catch {
+      return configured;
+    }
+  }
+  if (typeof window === 'undefined') return terminalPath;
+  const { protocol, hostname } = window.location;
+  if (isLocalRuntime()) return `${resolveLocalOriginForPort(String(import.meta.env?.VITE_POS_DEV_PORT || '5180').trim() || '5180')}${terminalPath}`;
+  if (hostname.startsWith('store.')) return `${protocol}//${hostname.replace(/^store\./, 'pos.')}${terminalPath}`;
+  if (hostname.startsWith('pos.')) return `${protocol}//${hostname}${terminalPath}`;
+  return `${protocol}//pos.${hostname}${terminalPath}`;
+};
+
 export const buildDgfyAuthUrl = ({
   intent = 'customer',
   mode = 'sign-in',

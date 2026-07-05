@@ -90,7 +90,6 @@ export function DgfyCustomerAccountPage({
   onAcceptCompanyInvitation,
   onRejectCompanyInvitation,
   onLeaveCompany,
-  onSwitchCompany,
   onClearSavedDetails,
   onUseAddressForCheckout,
   onSaveAddress,
@@ -108,7 +107,7 @@ export function DgfyCustomerAccountPage({
   trackedCustomerActivity,
   customerTrackLoadingReference,
   customerTrackError,
-  onOpenBusinessInventory,
+  onOpenBusinessPos,
   accountAddressActionId = ''
 }) {
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
@@ -213,7 +212,7 @@ export function DgfyCustomerAccountPage({
     if (action.type === 'accept') return onAcceptCompanyInvitation?.({ membershipId: action.company.membership_id });
     if (action.type === 'reject') return onRejectCompanyInvitation?.({ membershipId: action.company.membership_id });
     if (action.type === 'leave') return onLeaveCompany?.({ tenantId: action.company.tenant_id });
-    if (action.type === 'switch') return onSwitchCompany?.({ tenantId: action.company.tenant_id });
+    if (action.type === 'open-pos') return onOpenBusinessPos?.(action.company);
     return undefined;
   };
   const startBusinessAction = async (type, company) => {
@@ -237,7 +236,49 @@ export function DgfyCustomerAccountPage({
         </div>
         {businessActionError ? <div role="alert" style={{ borderRadius: 10, background: '#FEF2F2', color: '#991B1B', padding: 12 }}>{businessActionError}</div> : null}
         {pending.length > 0 ? <section style={{ display: 'grid', gap: 10 }}><strong>Pending invitations</strong>{pending.map((company) => <div key={`invite-${company.membership_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, background: THEME.infoBg, padding: 14, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{company.company_name || company.name || 'Company invitation'}</strong><div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>Invitation from IMS</div></div><div style={{ display: 'flex', gap: 8 }}><button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('reject', company)}>Reject</button><button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('accept', company)}>Accept</button></div></div>)}</section> : null}
-        {accepted.length > 0 ? <div style={{ display: 'grid', gap: 14 }}>{accepted.map((company) => { const name=company.company_name || company.name || 'Business'; const owned=company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner'; return <article key={`company-${company.membership_id || company.tenant_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 18, overflow: 'hidden', background: '#fff' }}><div style={{ height: isMobileViewport ? 72 : 104, background: 'linear-gradient(135deg,#1A4E8D,#4F8CC9,#AEE8F4)' }} /><div style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>{name}</div><div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>{owned ? 'Company you own' : 'Company membership'}</div></div><div style={{ display: 'flex', gap: 8 }} >{!owned && company.can_leave !== false ? <button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('leave', company)}>Leave</button> : null}<button type="button" disabled={businessActionLoading} onClick={() => company.tenant_id ? startBusinessAction('switch', company) : onOpenBusinessInventory?.(company)}>Go to Inventory</button></div></div></article>; })}</div> : <div style={{ border: `1px solid ${THEME.border}`, borderRadius: 16, padding: 28, textAlign: 'center' }}><Store size={36} color={THEME.primary} /><h3>No registered business yet</h3><p style={{ color: THEME.muted }}>Register a business or accept an IMS invitation.</p></div>}
+        {accepted.length > 0 ? (
+          <div style={{ display: 'grid', gap: 14 }}>
+            {accepted.map((company) => {
+              const name = company.company_name || company.name || 'Business';
+              const owned = company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner';
+              return (
+                <article key={`company-${company.membership_id || company.tenant_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 18, overflow: 'hidden', background: '#fff' }}>
+                  <div style={{ height: isMobileViewport ? 72 : 104, background: 'linear-gradient(135deg,#1A4E8D,#4F8CC9,#AEE8F4)' }} />
+                  <div style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 18, fontWeight: 800 }}>{name}</div>
+                      <div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>{owned ? 'Company you own' : 'Company membership'}</div>
+                      {!owned && company.can_leave !== false ? (
+                        <button
+                          type="button"
+                          disabled={businessActionLoading}
+                          onClick={() => startBusinessAction('leave', company)}
+                          style={{ marginTop: 8, border: 0, background: 'none', padding: 0, color: THEME.muted, fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}
+                        >
+                          Leave this business
+                        </button>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={businessActionLoading}
+                      onClick={() => startBusinessAction('open-pos', company)}
+                      style={{ border: 0, borderRadius: 10, background: THEME.primary, color: '#fff', minHeight: 42, padding: '0 16px', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Go to POS
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ border: `1px solid ${THEME.border}`, borderRadius: 16, padding: 28, textAlign: 'center' }}>
+            <Store size={36} color={THEME.primary} />
+            <h3>No registered business yet</h3>
+            <p style={{ color: THEME.muted }}>Register a business or accept an IMS invitation.</p>
+          </div>
+        )}
       </div>
     );
   };

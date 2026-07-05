@@ -160,7 +160,8 @@ import {
 import {
   buildBusinessLoginUrl,
   buildBusinessRegistrationUrl,
-  buildDgfyAuthUrl
+  buildDgfyAuthUrl,
+  buildPosTerminalUrl
 } from './businessRegistrationUrl.js';
 import {
   clearDgfyAuthToken,
@@ -9700,16 +9701,6 @@ export default function StorefrontApp() {
     toast.success('You left the company.');
     await handleLoadAccountPanel();
   }, []);
-  const switchDgfyCompanyFromStorefront = useCallback(async ({ tenantId }) => {
-    const normalizedTenantId = String(tenantId || '').trim();
-    if (!normalizedTenantId) throw new Error('Select a company to open in SKUpervisor.');
-    await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(normalizedTenantId)}/switch`, {
-      method: 'POST',
-      authToken: readDgfyAuthToken(),
-      cache: 'no-store'
-    });
-    window.location.href = buildDgfyAuthUrl({ intent: 'customer', mode: 'sign-in', returnTo: '/' });
-  }, []);
   const openAccountPanel = () => {
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
@@ -11383,30 +11374,33 @@ export default function StorefrontApp() {
     toast.success('Signed out.');
   }, [currentPathSubpage, routeSlug, routeSubpage]);
 
-  const handleOpenBusinessInventory = useCallback(async (membership) => {
-    const company = membership?.company || {};
+  const handleOpenBusinessPos = useCallback(async (company = {}) => {
+    const tenantId = company.tenant_id ?? company.id ?? null;
     const companyToken = String(company.company_token || '').trim();
-    const tenantId = company.id ?? membership?.tenant_id ?? null;
-    if (!companyToken || !tenantId) {
-      toast.error('Business session details are unavailable.');
-      return;
-    }
-    if (!dgfyAuthToken) {
-      toast.error('Sign in again to open this business inventory.');
-      return;
-    }
     try {
-      await startDgfyTenantSession({
-        tenantId,
-        companyToken
-      }, dgfyAuthToken);
-      const imsRootUrl = new URL(buildBusinessLoginUrl());
-      imsRootUrl.pathname = '/';
-      imsRootUrl.search = '';
-      imsRootUrl.hash = '';
-      window.location.href = imsRootUrl.toString();
+      if (company.tenant_id) {
+        await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(String(tenantId))}/switch`, {
+          method: 'POST',
+          authToken: readDgfyAuthToken(),
+          cache: 'no-store'
+        });
+      } else {
+        if (!companyToken || !tenantId) {
+          toast.error('Business session details are unavailable.');
+          return;
+        }
+        if (!dgfyAuthToken) {
+          toast.error('Sign in again to open this business in POS.');
+          return;
+        }
+        await startDgfyTenantSession({
+          tenantId,
+          companyToken
+        }, dgfyAuthToken);
+      }
+      window.open(buildPosTerminalUrl('?setup_flow=tenant_onboarding&setup_step=storefront_setup'), '_blank', 'noopener,noreferrer');
     } catch (error) {
-      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to open the business inventory right now.'));
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to open POS right now.'));
     }
   }, [dgfyAuthToken]);
 
@@ -12703,7 +12697,7 @@ export default function StorefrontApp() {
         onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
         onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
         onLeaveCompany={handleLeaveDgfyCompany}
-        onSwitchCompany={switchDgfyCompanyFromStorefront}
+        onOpenBusinessPos={handleOpenBusinessPos}
         onClearSavedDetails={clearSavedCustomerDetailsForDevice}
         onUseAddressForCheckout={useAccountAddressForCheckout}
         onSaveAddress={handleSaveAccountAddress}
@@ -22100,7 +22094,6 @@ return (
           onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
           onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
           onLeaveCompany={handleLeaveDgfyCompany}
-          onSwitchCompany={switchDgfyCompanyFromStorefront}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
           onUseAddressForCheckout={useAccountAddressForCheckout}
           onSaveAddress={handleSaveAccountAddress}
@@ -22120,7 +22113,7 @@ return (
           customerTrackError={customerTrackError}
           accountOrderActionReference={accountOrderActionReference}
           accountAddressActionId={accountAddressActionId}
-          onOpenBusinessInventory={handleOpenBusinessInventory}
+          onOpenBusinessPos={handleOpenBusinessPos}
         />
       )}
       {isGuestTrackingDrawerOpen && canOpenTrackingDrawer && !isStandaloneTrackingPage && (

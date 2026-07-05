@@ -164,6 +164,7 @@ export default function PosTenantSetupModal({
   const [assetUploadingType, setAssetUploadingType] = useState('');
   const [localStorefrontAssets, setLocalStorefrontAssets] = useState({ profile: '', cover: '' });
   const [locationSaving, setLocationSaving] = useState(false);
+  const [storefrontContinueAttempted, setStorefrontContinueAttempted] = useState(false);
   const [starterItemSaving, setStarterItemSaving] = useState(false);
   const starterPresetOptions = useMemo(() => resolveStarterPresetOptions(workflowMode), [workflowMode]);
   const [starterItemForm, setStarterItemForm] = useState(() => ({
@@ -196,6 +197,7 @@ export default function PosTenantSetupModal({
       profile: storefrontRequirements.profileImageUrl || '',
       cover: storefrontRequirements.coverImageUrl || ''
     });
+    setStorefrontContinueAttempted(false);
   }, [open, storefrontRequirements.coverImageUrl, storefrontRequirements.profileImageUrl]);
 
   useEffect(() => () => {
@@ -266,7 +268,11 @@ export default function PosTenantSetupModal({
   const effectiveStorefrontCoverImageUrl = localStorefrontAssets.cover || storefrontRequirements.coverImageUrl || '';
   const effectiveProfileImageReady = Boolean(effectiveStorefrontProfileImageUrl) || storefrontRequirements.profileImageReady === true;
   const effectiveCoverImageReady = Boolean(effectiveStorefrontCoverImageUrl) || storefrontRequirements.coverImageReady === true;
-  const effectiveStorefrontSetupReady = effectiveProfileImageReady && effectiveCoverImageReady && Boolean(locationDraft.location_id);
+  const effectivePrimaryLocationReady = Boolean(toPositiveInt(locationDraft.location_id) || primaryLocationId);
+  const effectiveStorefrontSetupReady = effectiveProfileImageReady && effectiveCoverImageReady && effectivePrimaryLocationReady;
+  const highlightMissingStorefrontProfile = storefrontContinueAttempted && !effectiveProfileImageReady;
+  const highlightMissingStorefrontCover = storefrontContinueAttempted && !effectiveCoverImageReady;
+  const highlightMissingStorefrontLocation = storefrontContinueAttempted && !effectivePrimaryLocationReady;
 
   useEffect(() => {
     const fallbackLocationId = primaryLocationId || (normalizedLocations.length === 1 ? normalizedLocations[0].location_id : null);
@@ -667,6 +673,15 @@ export default function PosTenantSetupModal({
     }
   };
 
+  const handleContinue = () => {
+    if (currentStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
+      setStorefrontContinueAttempted(true);
+    }
+    onContinue({
+      storefrontSetupReady: effectiveStorefrontSetupReady
+    });
+  };
+
   return (
     <>
     <Dialog open={open} onOpenChange={() => {}}>
@@ -1039,8 +1054,8 @@ export default function PosTenantSetupModal({
               {currentStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP ? (
                 <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Icon</p>
+                    <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontProfile ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
+                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Icon <span className="text-red-600">*</span></p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                         {effectiveStorefrontProfileImageUrl ? (
                           <img
@@ -1068,8 +1083,8 @@ export default function PosTenantSetupModal({
                         />
                       </div>
                     </div>
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Cover Image</p>
+                    <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontCover ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
+                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Cover Image <span className="text-red-600">*</span></p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                         {effectiveStorefrontCoverImageUrl ? (
                           <img
@@ -1098,9 +1113,9 @@ export default function PosTenantSetupModal({
                       </div>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 p-4">
+                  <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontLocation ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <Label className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Business Locations</Label>
+                      <Label className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Business Location <span className="text-red-600">*</span></Label>
                       <Button type="button" variant="outline" onClick={handleStartNewLocation}>Add Another Location</Button>
                     </div>
                     {normalizedLocations.length > 0 ? (
@@ -1167,16 +1182,8 @@ export default function PosTenantSetupModal({
                       </Button>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                    <p className={effectiveProfileImageReady ? 'text-emerald-700' : 'text-rose-600'}>
-                      {effectiveProfileImageReady ? 'Complete' : 'Required'}: company icon
-                    </p>
-                    <p className={`mt-2 ${effectiveCoverImageReady ? 'text-emerald-700' : 'text-rose-600'}`}>
-                      {effectiveCoverImageReady ? 'Complete' : 'Required'}: company cover image
-                    </p>
-                    <p className={`mt-2 ${locationDraft.location_id ? 'text-emerald-700' : 'text-rose-600'}`}>
-                      {locationDraft.location_id ? 'Complete' : 'Required'}: primary store location and map pin
-                    </p>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Complete the marked fields to continue: company icon, cover image, and primary business location.
                   </div>
                 </div>
               ) : null}
@@ -1198,9 +1205,7 @@ export default function PosTenantSetupModal({
             <Button
               type="button"
               className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
-              onClick={() => onContinue({
-                storefrontSetupReady: effectiveStorefrontSetupReady
-              })}
+              onClick={handleContinue}
             >
               {continueLabel}
             </Button>

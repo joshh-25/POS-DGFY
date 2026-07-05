@@ -44,14 +44,14 @@ describe('Food & Beverage storefront contract', () => {
     const source = appSource();
     const accountSource = accountPageSource();
 
-    expect(source).toContain('handleOpenBusinessInventory');
+    expect(source).toContain('handleOpenBusinessPos');
     expect(source).toContain('trackedCustomerActivity');
     expect(accountSource).toContain('Your businesses');
     expect(accountSource).toContain('Pending invitations');
     expect(accountSource).toContain("startBusinessAction('accept'");
-    expect(accountSource).toContain('Go to Inventory');
+    expect(accountSource).toContain('Go to POS');
     expect(accountSource).toContain('businessMemberships');
-    expect(accountSource).toContain('onOpenBusinessInventory');
+    expect(accountSource).toContain('onOpenBusinessPos');
     expect(source).toContain('Use Current Location');
     expect(source).toContain('deliverySavedLocations');
     expect(source).toContain('applySavedDeliveryLocation');
