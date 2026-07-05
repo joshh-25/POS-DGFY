@@ -1069,7 +1069,7 @@ export const buildSwitchDgfyCompanyUseCase = ({
 
 export const buildAcceptDgfyInvitationUseCase = ({
     repository
-}) => async ({ account, membershipId, body = {}, metadata = {} }) => {
+}) => async ({ account, membershipId, metadata = {} }) => {
     const id = parsePositiveInt(membershipId);
     if (!id) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invitation id is required.', { statusCode: 400 }));

@@ -473,7 +473,7 @@ export const resetLocalCashierPassword = async (adminUserId, targetUserId, newPa
   const tenantName = dbStore.getStore()?.tenantName || 'DGFY';
 
   let credentialEmailSent = false;
-  let credentialEmailStatus = 'skipped';
+  let credentialEmailStatus = notifyUser ? null : 'skipped';
   let credentialEmailError = null;
 
   if (notifyUser) {
@@ -1530,7 +1530,7 @@ export const provisionCashierFromGmail = async (adminUserId, cashierData = {}) =
   });
 
   let credentialEmailSent = false;
-  let credentialEmailStatus = 'skipped';
+  let credentialEmailStatus;
   let credentialEmailError = null;
 
   if (!String(account?.email || '').trim()) {

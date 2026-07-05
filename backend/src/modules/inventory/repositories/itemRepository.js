@@ -78,7 +78,8 @@ const isMissingStorefrontCatalogGalleryColumnError = (error) => {
 };
 
 const withoutStorefrontImageGallery = (payload = {}) => {
-    const { storefront_image_gallery: _storefrontImageGallery, ...rest } = payload;
+    const rest = { ...payload };
+    delete rest.storefront_image_gallery;
     return rest;
 };
 
