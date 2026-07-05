@@ -259,7 +259,9 @@ describe('POS terminal view-mode contracts', () => {
 
   it('adds report navigation with horizontal report tabs', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-reports"');
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
+    expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode(settingsTargetViewMode)}");
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
     expect(posReportsAnalyticsWorkspaceContent).toContain('Daily Report');
     expect(posReportsAnalyticsWorkspaceContent).toContain('Monthly Report');
@@ -447,6 +449,7 @@ describe('POS terminal view-mode contracts', () => {
 
   it('exposes deterministic sidebar test hook for history mode switching', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-history"');
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
     expect(terminalWorkspaceSidebarContent).toContain('data-testid={testId || undefined}');
   });
 

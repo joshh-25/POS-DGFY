@@ -364,6 +364,7 @@ export const tenantHandler = async (req, res, next) => {
             tenantId: tenant.id,
             tenantToken: companyToken,
             tenantName: tenant.name,
+            tenantDbName: tenant.db_name || null,
             tenantPlan: tenant.plan,
             tenantSubscriptionStatus: tenant.subscription_status,
             tenantGracePeriodEnd: tenant.grace_period_end,

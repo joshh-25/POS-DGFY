@@ -8,81 +8,82 @@ const __dirname = path.dirname(__filename);
 
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+const posHistoryPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
+const terminalSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 
 describe('POS terminal responsive scroll contracts', () => {
   let terminalLayoutContent = '';
   let posCheckoutContent = '';
+  let posHistoryContent = '';
+  let terminalSidebarContent = '';
 
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
     posCheckoutContent = fs.readFileSync(posCheckoutPath, 'utf8');
+    posHistoryContent = fs.readFileSync(posHistoryPath, 'utf8');
+    terminalSidebarContent = fs.readFileSync(terminalSidebarPath, 'utf8');
   });
 
-  it('keeps terminal shell viewport-safe and avoids hard xl screen lock', () => {
+  it('keeps the terminal shell viewport-safe without restoring hard xl screen locks', () => {
     expect(terminalLayoutContent).toContain('min-h-[100dvh]');
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
+    expect(terminalLayoutContent).toContain("const shellLayoutClassName = IS_DGFY_POS_SURFACE");
+    expect(terminalLayoutContent).toContain("? 'lg:grid lg:grid-cols-[244px_minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain(": 'xl:grid xl:grid-cols-[244px_minmax(0,1fr)]'");
   });
 
-  it('lets checkout cards expand naturally and avoids legacy 100vh calc sizing', () => {
+  it('keeps the workspace pane scrollable inside the fixed shell', () => {
+    expect(terminalLayoutContent).toContain('flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y');
+    expect(terminalLayoutContent).toContain('xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y');
+    expect(terminalLayoutContent).toContain('grid grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]');
+    expect(terminalLayoutContent).toContain('<div key="checkout-workspace" className="max-sm:animate-pos-slide-in">');
+  });
+
+  it('keeps checkout split into catalog and current-sale panes', () => {
     expect(posCheckoutContent).toContain("const shellClassName = 'space-y-5';");
     expect(posCheckoutContent).toContain("const checkoutGridClassName = 'grid grid-cols-1 gap-4 pb-24 md:pb-0 md:grid-cols-[minmax(0,1fr)_325px] 2xl:gap-6';");
-    expect(posCheckoutContent).toContain("const checkoutPaneClassName = '2xl:min-h-[32rem] 2xl:max-h-none';");
-    expect(posCheckoutContent).not.toContain('min-h-0 overflow-hidden');
-    expect(posCheckoutContent).not.toContain('splitPaneScrollClassName');
-    expect(posCheckoutContent).not.toContain('calc(100vh-13.5rem)');
-  });
-
-  it('keeps checkout catalog and current-sale panes in the current responsive layout', () => {
-    expect(posCheckoutContent).toContain('md:grid-cols-[minmax(0,1fr)_325px]');
     expect(posCheckoutContent).toContain('aria-label="POS catalog contents"');
     expect(posCheckoutContent).toContain('aria-label="Current sale contents"');
-    expect(posCheckoutContent).toContain('fixed inset-x-0 bottom-0 z-50 max-h-[88vh]');
-    expect(posCheckoutContent).toContain('md:static md:z-auto md:max-h-none md:translate-y-0 md:overflow-visible');
+    expect(posCheckoutContent).toContain("const checkoutPaneClassName = '2xl:min-h-[32rem] 2xl:max-h-none';");
   });
 
-  it('pins current-sale terminal actions with sticky footer controls', () => {
-    expect(posCheckoutContent).toContain('grid grid-cols-2 gap-2 border-t border-slate-200 pt-3');
+  it('keeps responsive catalog cards and paginated catalog slices', () => {
+    expect(posCheckoutContent).toContain('auto-rows-[7rem]');
+    expect(posCheckoutContent).toContain('md:auto-rows-[11rem]');
+    expect(posCheckoutContent).toContain('const TABLET_CATALOG_PAGE_SIZE = 18;');
+    expect(posCheckoutContent).toContain('const DESKTOP_CATALOG_PAGE_SIZE = sidebarCollapsed ? 20 : 16;');
+    expect(posCheckoutContent).toContain('return catalog.slice(pageStart, pageStart + catalogPageSize);');
+    expect(posCheckoutContent).toContain('Swipe left or right to browse catalog pages. Page {catalogPage} of {totalCatalogPages}');
+  });
+
+  it('keeps catalog interaction swipe-safe without pointer capture hacks', () => {
+    expect(posCheckoutContent).toContain("if (event.pointerType !== 'mouse' && event.pointerType !== 'touch' && event.pointerType !== 'pen') return;");
+    expect(posCheckoutContent).not.toContain('setPointerCapture');
+    expect(posCheckoutContent).not.toContain('releasePointerCapture');
+    expect(posCheckoutContent).toContain('addToCart(item);');
+  });
+
+  it('keeps current-sale actions and mobile sheet behavior intact', () => {
+    expect(posCheckoutContent).toContain('fixed inset-x-0 bottom-0 z-50 max-h-[88vh]');
+    expect(posCheckoutContent).toContain('md:static md:z-auto md:max-h-none md:translate-y-0 md:overflow-visible md:pointer-events-auto');
     expect(posCheckoutContent).toContain('Checkout');
     expect(posCheckoutContent).toContain('Close Day / Z-Reading');
     expect(posCheckoutContent).toContain('Print Last Receipt');
     expect(posCheckoutContent).toContain('Open Cash Drawer');
   });
 
-  it('removes legacy scroll badges without restoring split-pane detection', () => {
-    expect(posCheckoutContent).not.toContain("window.matchMedia('(min-width: 1536px)')");
-    expect(posCheckoutContent).not.toContain('const hasSplitPaneScroll');
-    expect(posCheckoutContent).not.toContain('isAtLeast2xlViewport');
-    expect(posCheckoutContent).not.toContain('Page scroll');
-    expect(posCheckoutContent).not.toContain('Catalog scroll');
-    expect(posCheckoutContent).not.toContain('Sale scroll');
-    expect(posCheckoutContent).not.toContain('Hover or focus a pane to scroll it.');
+  it('keeps history filters and table scrolling inside the history panel', () => {
+    expect(posHistoryContent).toContain('grid grid-cols-2 gap-4 xl:grid-cols-4');
+    expect(posHistoryContent).toContain('overflow-hidden border-t border-slate-200');
+    expect(posHistoryContent).toContain('dgfy-pos-scrollbar-hidden overflow-x-auto');
+    expect(posHistoryContent).toContain('aria-label="POS transaction history table"');
   });
 
-  it('keeps catalog/current-sale content exposed as non-scroll regions', () => {
-    expect(posCheckoutContent).toContain('aria-label="POS catalog contents"');
-    expect(posCheckoutContent).toContain('aria-label="Current sale contents"');
-    expect(posCheckoutContent).not.toContain('onKeyDown={handleScrollPaneKeyDown}');
-    expect(posCheckoutContent).not.toContain('onScroll={syncCatalogPaneScrollState}');
-    expect(posCheckoutContent).not.toContain('onScroll={syncCurrentSalePaneScrollState}');
-    expect(posCheckoutContent).not.toContain('handlePaneScrollKeyDown(event)');
-  });
-
-  it('does not render split-pane overflow cues', () => {
-    expect(posCheckoutContent).not.toContain('catalogPaneScrollState.canScroll');
-    expect(posCheckoutContent).not.toContain('currentSalePaneScrollState.canScroll');
-    expect(posCheckoutContent).not.toContain('!catalogPaneScrollState.atTop');
-    expect(posCheckoutContent).not.toContain('!currentSalePaneScrollState.atBottom');
-    expect(posCheckoutContent).not.toContain('bg-gradient-to-b from-white to-transparent');
-    expect(posCheckoutContent).not.toContain('bg-gradient-to-t from-white to-transparent');
-  });
-
-  it('removes custom ArrowUp/ArrowDown interception in quantity and price inputs', () => {
-    expect(posCheckoutContent).not.toContain('updateCartQuantity(line.item_id, Number(line.quantity || 0) + delta);');
-    expect(posCheckoutContent).not.toContain('const nextValue = Math.max(0, Number(line.sale_price || 0) + delta);');
-  });
-
-  it('keeps workspace container scroll fallback enabled in checkout mode', () => {
-    expect(terminalLayoutContent).toContain('xl:overflow-y-auto xl:overscroll-contain');
-    expect(terminalLayoutContent).not.toContain("isCheckoutWorkspaceMode ? 'xl:overflow-hidden'");
+  it('keeps the sidebar locked open with settings navigation available', () => {
+    expect(terminalSidebarContent).toContain('dgfy-pos-sidebar-scroll min-h-0 flex-1 overflow-y-auto');
+    expect(terminalSidebarContent).toContain('testId="pos-nav-settings"');
+    expect(terminalSidebarContent).toContain('my-5 border-t border-slate-200');
+    expect(terminalSidebarContent).toContain('Lock Terminal');
+    expect(terminalSidebarContent).not.toContain('data-testid="pos-sidebar-session-footer"');
   });
 });

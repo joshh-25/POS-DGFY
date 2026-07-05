@@ -130,9 +130,10 @@ const OPERATIONS_VIEW_MODES = [
   'items',
   'terminal_setup'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'settings_profile', 'settings_pos', 'settings_storefront'];
+const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'settings_profile', 'settings_pos', 'settings_storefront'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'terminal_setup']);
-const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items']);
+const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items']);
+const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);
 const CASHIER_ALLOWED_VIEW_MODES = new Set([
   ...CHECKOUT_VIEW_MODES,
   'incoming_queue',
@@ -3125,6 +3126,7 @@ export default function TerminalPage() {
       return;
     }
     const isSettingsViewMode = SETTINGS_VIEW_MODES.has(nextMode);
+    const isShiftExemptViewMode = SHIFT_EXEMPT_VIEW_MODES.has(nextMode);
     const isPinProtectedViewMode = PIN_PROTECTED_VIEW_MODES.has(nextMode);
     if (setupFlowActive) {
       const allowedSetupModes = new Set(['settings_profile', 'settings_pos', 'settings_storefront']);
@@ -3144,7 +3146,7 @@ export default function TerminalPage() {
         return;
       }
     }
-    if (requiresOpenShift && !isSettingsViewMode && !isPinProtectedViewMode && !canAdminBypassShiftPrompt) {
+    if (requiresOpenShift && !isSettingsViewMode && !isShiftExemptViewMode && !canAdminBypassShiftPrompt) {
       toast.error('You cannot use the POS because the shift is closed.');
       setMobileNavOpen(false);
       return;
@@ -3693,7 +3695,7 @@ export default function TerminalPage() {
                 : `Finish POS Setup next. Missing: ${
                   [
                     setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store',
-                    setupFlowState.posRequirements.cashierReady ? null : 'active cashier account'
+                    setupFlowState.posRequirements.cashierReady ? null : 'provisioned cashier access'
                   ].filter(Boolean).join(', ')
                 }.`)}
           </div>

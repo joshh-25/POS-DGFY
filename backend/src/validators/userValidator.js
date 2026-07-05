@@ -52,6 +52,39 @@ export const changePasswordSchema = Joi.object({
     })
 });
 
+export const resetLocalCashierPasswordSchema = Joi.object({
+  newPassword: Joi.string()
+    .min(8)
+    .max(128)
+    .required()
+    .messages({
+      'string.min': 'New password must be at least 8 characters',
+      'string.max': 'New password must not exceed 128 characters',
+      'any.required': 'New password is required'
+    }),
+  notifyUser: Joi.boolean().optional(),
+  terminalLabel: Joi.string().trim().max(80).allow('', null).optional(),
+  storeName: Joi.string().trim().max(120).allow('', null).optional()
+});
+
+export const provisionCashierFromGmailSchema = Joi.object({
+  email: Joi.string().trim().lowercase().pattern(/^[A-Z0-9._%+-]+@gmail\.com$/i).required().messages({
+    'string.pattern.base': 'Cashier email must be a valid Gmail address.',
+    'any.required': 'Cashier email is required.'
+  }),
+  password: Joi.string().min(8).max(128).required().messages({
+    'string.min': 'Cashier password must be at least 8 characters.',
+    'string.max': 'Cashier password must not exceed 128 characters.',
+    'any.required': 'Cashier password is required.'
+  }),
+  location_ids: Joi.array().items(Joi.number().integer().positive()).min(1).required().messages({
+    'array.base': 'location_ids must be an array.',
+    'array.min': 'Assign at least one location.'
+  }),
+  terminal_label: Joi.string().trim().max(80).allow('', null).optional(),
+  store_name: Joi.string().trim().max(120).allow('', null).optional()
+});
+
 // Schema for updating user role (admin only)
 export const updateUserRoleSchema = Joi.object({
   role: Joi.string().valid(...USER_ROLES).optional().messages({
@@ -106,6 +139,50 @@ export const validateUpdateProfile = (req, res, next) => {
  */
 export const validateChangePassword = (req, res, next) => {
   const { error, value } = changePasswordSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    const errors = error.details.map(detail => ({
+      field: detail.path[0],
+      message: detail.message
+    }));
+
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.validatedData = value;
+  next();
+};
+
+export const validateProvisionCashierFromGmail = (req, res, next) => {
+  const { error, value } = provisionCashierFromGmailSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    const errors = error.details.map(detail => ({
+      field: detail.path[0],
+      message: detail.message
+    }));
+
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.validatedData = value;
+  next();
+};
+
+export const validateResetLocalCashierPassword = (req, res, next) => {
+  const { error, value } = resetLocalCashierPasswordSchema.validate(req.body, { abortEarly: false });
 
   if (error) {
     const errors = error.details.map(detail => ({
