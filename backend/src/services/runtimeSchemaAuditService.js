@@ -38,7 +38,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260504000001-add-customer-access-fields-to-discovery-index.cjs',
     '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs',
     '20260629000001-add-pos-always-available-contract.cjs',
-    '20260705000001-add-admin-provisioned-membership-source.cjs'
+    '20260705000001-add-admin-provisioned-membership-source.cjs',
+    '20260502000001-add-services-mode-booking-tables.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -156,6 +157,11 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
 });
 
 const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
+    items: {
+        category: {
+            enumValues: ['raw_material', 'packaging', 'product', 'supplies', 'service']
+        }
+    },
     pos_catalog_overrides: {
         pos_always_available: { allowNull: false }
     },

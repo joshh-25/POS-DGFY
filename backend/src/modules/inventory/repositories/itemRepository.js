@@ -1130,6 +1130,11 @@ export const itemRepository = {
 
             const item = await Item.create(dataToCreate, { transaction });
 
+            if (isServiceItem) {
+                const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+                await ServiceItemDetail.create({ item_id: item.item_id }, { transaction });
+            }
+
             if (initialStock > 0) {
                 await inventoryRepositoryDependencies.createStockMovement({
                     item_id: item.item_id,

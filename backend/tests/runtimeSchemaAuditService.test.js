@@ -38,7 +38,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260504000001-add-customer-access-fields-to-discovery-index.cjs' },
         { name: '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs' },
         { name: '20260629000001-add-pos-always-available-contract.cjs' },
-        { name: '20260705000001-add-admin-provisioned-membership-source.cjs' }
+        { name: '20260705000001-add-admin-provisioned-membership-source.cjs' },
+        { name: '20260502000001-add-services-mode-booking-tables.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -73,7 +74,8 @@ const buildHealthySequelizeMock = () => ({
                 },
                 items: {
                     item_id: {},
-                    vat_type: {}
+                    vat_type: {},
+                    category: { type: "ENUM('raw_material','packaging','product','supplies','service')" }
                 },
                 item_folders: {
                     folder_id: {},
@@ -479,6 +481,44 @@ describe('runtimeSchemaAuditService', () => {
                 column: 'source',
                 expected: { enumValues: ['founder', 'invite', 'admin_handover', 'admin_provisioned'] },
                 actual: { enumValues: ['founder', 'invite', 'admin_handover'] }
+            })
+        ]));
+    });
+
+    it('returns degraded when items.category enum is missing the service-mode value', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20260502000001-add-services-mode-booking-tables.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'items') {
+                    return {
+                        ...table,
+                        category: { type: "ENUM('raw_material','packaging','product','supplies')" }
+                    };
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({
+            sequelizeInstance: mock
+        });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                scope: 'schema',
+                type: 'invalid_column_contract',
+                table: 'items',
+                column: 'category',
+                expected: { enumValues: ['raw_material', 'packaging', 'product', 'supplies', 'service'] },
+                actual: { enumValues: ['raw_material', 'packaging', 'product', 'supplies'] }
             })
         ]));
     });
