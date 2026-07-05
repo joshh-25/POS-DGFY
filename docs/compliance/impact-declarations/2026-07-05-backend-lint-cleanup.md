@@ -5,7 +5,7 @@ last_reviewed: 2026-07-05
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-07-05-backend-lint-cleanup
 classification: major
-surfaces: pos,terminal,dgfy,inventory,health
+surfaces: pos,terminal,settings,dgfy,inventory,health
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.05
 verification_evidence: npm --prefix backend run lint,npm run check:compliance,git diff --check
@@ -22,7 +22,7 @@ preflight_request_ref: BACKEND-LINT-CLEANUP-2026-07-05
 
 Major.
 
-This declaration covers non-functional backend lint cleanup in DGFY invitation handling, inventory repository payload filtering, POS use cases, health runtime SHA reading, and cashier credential email status initialization. The POS use-case file is compliance-sensitive, but this change removes unused variables and preserves existing behavior.
+This declaration covers non-functional backend lint cleanup in DGFY invitation handling, inventory repository payload filtering, POS use cases, health runtime SHA reading, and cashier credential email status initialization. The PR diff also includes settings-sensitive POS terminal registry/configuration files, so the declaration covers the required settings surface while this cleanup itself removes unused variables and preserves existing behavior.
 
 ## Affected Surfaces
 
@@ -35,7 +35,7 @@ This declaration covers non-functional backend lint cleanup in DGFY invitation h
 1. POS checkout stock effects, recipe movement planning, pricing, payment capture, and receipt issuance remain unchanged.
 2. Retired local cashier creation still returns the same `410` validation failure.
 3. Cashier reset and provisioning email status values remain `skipped`, `missing_email`, `not_configured`, `sent`, or `failed` as before.
-4. No database migration, public API field, fiscal document behavior, or compliance lifecycle policy is included.
+4. No database migration, public API field, settings behavior, fiscal document behavior, or compliance lifecycle policy is included.
 
 ## Verification Evidence
 
