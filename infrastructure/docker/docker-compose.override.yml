@@ -20,6 +20,14 @@ services:
     ports:
       - "5000:5000"
 
+  dgfy-api:
+    image: dgfy-platform-dgfy-api:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/dgfy-api/Dockerfile
+    ports:
+      - "5100:5100"
+
   frontend:
     image: dgfy-platform-frontend:dev
     build:
