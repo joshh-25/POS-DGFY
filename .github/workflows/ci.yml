@@ -233,6 +233,36 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
+  test-dgfy-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ./apps/dgfy-api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/dgfy-api/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Enforce architecture guardrails
+        working-directory: .
+        run: npm run check:architecture:dgfy-api
+
+      - name: Run tests
+        run: npm test
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+
   test-frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 30
