@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ develop ]
+    branches: [ master ]
   pull_request:
-    branches: [ master, staging ]
+    branches: [ master ]
   workflow_dispatch:
 
 concurrency:
