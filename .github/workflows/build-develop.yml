@@ -2,7 +2,7 @@ name: Build Images (develop)
 
 on:
   push:
-    branches: [ develop, ci/ovpn-integration ] # TEMPORARY TRIGGER: Remove after testing
+    branches: [ develop ]
 
 concurrency:
   group: build-develop-${{ github.ref }}
