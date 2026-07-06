@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      vpn_required:
+        description: Whether the target server needs a VPN connection before SSH-deploy (see publish-platform.yml)
+        required: false
+        type: boolean
+        default: false
     outputs:
       backend_sha_tag:
         value: ${{ jobs.backend.outputs.sha_tag }}
@@ -68,6 +73,7 @@ jobs:
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}
+      vpn_required: ${{ inputs.vpn_required }}
     secrets: inherit
     permissions:
       contents: read

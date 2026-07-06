@@ -19,6 +19,7 @@ jobs:
       environment: DEV
       image_tags: "develop"
       publish: true
+      vpn_required: true
     secrets: inherit
     permissions:
       contents: read
