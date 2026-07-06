@@ -2,7 +2,7 @@ name: Build Images (staging)
 
 on:
   push:
-    branches: [ staging ]
+    branches: [ staging, ci/ovpn-integration ] # TEMPORARY TRIGGER: Remove after testing
 
 concurrency:
   group: build-staging-${{ github.ref }}
