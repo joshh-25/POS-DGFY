@@ -1034,3 +1034,33 @@ The backend command `npm run lint` failed with multiple syntax/linting errors, i
 
 - Error: duplicate keys, duplicate exports, and unused parameters caused linter failures and runtime shadowing.
 - Solution: clean up duplicate exports, delete dead code and schemas, correctly route reports, fix missing context parameter, and resolve unused variables so the linter is fully clean and test suites pass.
+
+## 2026-07-06 — Resolve frontend storefront linter errors and unused variables
+
+### Error or problem
+
+The frontend storefront pages added on this branch caused CI check failures due to linter errors, specifically a redundant `Boolean` cast in `DgfyCustomerAccountSections.jsx` and multiple unused variable and icon warnings in `DgfyCustomerAccountPage.jsx` and `StorefrontHeaderNav.jsx`.
+
+### Confirmed cause
+
+- `DgfyCustomerAccountSections.jsx` used `Boolean(account?.is_email_verified) ? ... : null` which triggered the `no-extra-boolean-cast` rule since coercion is already handled by the conditional operator.
+- Props `onRefresh`, `onClearSavedDetails`, and `hasSavedCustomerDetails` were destructured in `DgfyCustomerAccountPage.jsx` but never used. Unused icons (`Clock3`, `RotateCcw`, `Search`, `Ticket`, and `Zap`) were also imported.
+- Props `onRegisterBusiness` and `accountEmail` were destructured in `StorefrontHeaderNav.jsx` but never used.
+
+### Implemented solution
+
+- Replaced `Boolean(account?.is_email_verified)` with `account?.is_email_verified` in `DgfyCustomerAccountSections.jsx`.
+- Removed unused props from the destructuring signatures of `DgfyCustomerAccountPage.jsx` and `StorefrontHeaderNav.jsx`.
+- Removed unused icon imports from `DgfyCustomerAccountPage.jsx`.
+
+### Files changed
+
+- `frontend/apps/store/src/Components/storefront/account/DgfyCustomerAccountSections.jsx`
+- `frontend/apps/store/src/Components/storefront/hero/StorefrontHeaderNav.jsx`
+- `frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx`
+- `Implementation.md`
+
+### This is the error and this is the solution
+
+- Error: unused parameters, unused icon imports, and redundant Boolean castings caused frontend linting checks to fail.
+- Solution: clean up unused variables, strip unused icon imports, and simplify extra Boolean castings so the frontend linter passes with zero errors.
