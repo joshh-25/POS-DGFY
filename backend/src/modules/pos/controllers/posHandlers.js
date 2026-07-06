@@ -3,6 +3,8 @@ import {
     scanPosBarcodeUseCase,
     checkoutPosUseCase,
     listPosTransactionsUseCase,
+    getPosReportsOverviewUseCase,
+    exportPosReportsUseCase,
     getPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase,
     voidPosTransactionUseCase,
@@ -40,7 +42,7 @@ import {
     getPairedPosTerminalUseCase,
     posTerminalPairingMaxAgeMs
 } from '../index.js';
-import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
+import { resolveDomainFailure, sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import {
     SESSION_COOKIE_NAMES,
@@ -807,6 +809,44 @@ export const listTransactions = async (req, res, next) => {
     }
 };
 
+export const getReportsOverview = async (req, res, next) => {
+    try {
+        const result = await getPosReportsOverviewUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const exportReports = async (req, res, next) => {
+    try {
+        const result = await exportPosReportsUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        if (!result?.success) {
+            const failure = resolveDomainFailure(result);
+            return res.status(failure.statusCode).json(defaultErrorPayload(req, res, failure));
+        }
+        res.setHeader('Content-Type', result.data?.content_type || 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${result.data?.filename || 'pos-report.csv'}"`);
+        return res.status(200).send(result.data?.content || '');
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getTransactionById = async (req, res, next) => {
     try {
         const result = await getPosTransactionByIdUseCase({
@@ -1086,6 +1126,8 @@ export default {
     scanBarcode,
     checkout,
     listTransactions,
+    getReportsOverview,
+    exportReports,
     getTransactionById,
     closeDayZReading,
     getDailyZReading,

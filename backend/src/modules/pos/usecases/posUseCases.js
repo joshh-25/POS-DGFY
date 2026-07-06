@@ -3284,6 +3284,54 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
     };
 };
 
+const buildReadScopedPosReportUseCase = ({ posRepository, repositoryMethod, failureMessage }) => {
+    return async ({ query, user }) => {
+        if (query !== undefined && !isPlainObject(query)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'query must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view POS reports',
+                { statusCode: 401 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolvePosReadLocationScope({
+                requestedLocationId: query?.location_id,
+                userId: normalizedUserId,
+                operationLabel: 'POS reports read'
+            });
+            const data = await repositoryMethod.call(posRepository, {
+                ...(query || {}),
+                location_id: locationScope.location_id
+            });
+            return ok(data);
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, failureMessage));
+        }
+    };
+};
+
+export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
+    posRepository,
+    repositoryMethod: posRepository.getReportsOverview,
+    failureMessage: 'Failed to load POS reports overview'
+});
+
+export const buildExportPosReportsUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
+    posRepository,
+    repositoryMethod: posRepository.exportReports,
+    failureMessage: 'Failed to export POS report'
+});
+
 const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}) => {
     if (complianceError) {
         return {

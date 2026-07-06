@@ -4,6 +4,9 @@ const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment'
 const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
 const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
+const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
+const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
@@ -263,6 +266,23 @@ const terminalDashboardTodayQuerySchema = Joi.object({
     business_date: Joi.date().iso().optional()
 });
 
+const posReportsQuerySchema = Joi.object({
+    date_from: Joi.date().iso().required(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).required(),
+    granularity: Joi.string().valid(...REPORT_GRANULARITIES).default('daily'),
+    cashier_id: Joi.number().integer().positive().optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
+    source: Joi.string().valid(...REPORT_SOURCE_FILTERS).optional(),
+    category: Joi.string().trim().max(120).allow('', null).optional()
+});
+
+const posReportsExportQuerySchema = posReportsQuerySchema.keys({
+    section: Joi.string().valid(...REPORT_SECTIONS).default('daily'),
+    format: Joi.string().valid('csv').default('csv')
+});
+
 const incomingOnlineOrdersQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional(),
     limit: Joi.number().integer().min(1).max(500).default(200)
@@ -405,6 +425,8 @@ export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query'
 export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');
 export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
+export const validatePosReportsQuery = validateSchema(posReportsQuerySchema, 'query', 'validatedQuery');
+export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
