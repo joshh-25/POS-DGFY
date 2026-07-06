@@ -46,9 +46,7 @@ export {
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,
-    openDeviceDrawer,
-    getReportsOverview,
-    exportReports
+    openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
 import {
@@ -95,9 +93,7 @@ import {
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,
-    openDeviceDrawer,
-    getReportsOverview,
-    exportReports
+    openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
 export default {
@@ -115,8 +111,6 @@ export default {
     scanBarcode,
     checkout,
     listTransactions,
-    getReportsOverview,
-    exportReports,
     getTransactionById,
     recordFiscalPrintEvent,
     voidTransaction,

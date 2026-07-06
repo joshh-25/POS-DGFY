@@ -610,7 +610,7 @@ const resolveEstimatedWaitMinutes = ({ settings = {}, location = null }) => {
     return null;
 };
 
-const assertCheckoutLocationOperationalReadiness = ({ location, settings, orderMethod }) => {
+const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) => {
     if (!location) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,

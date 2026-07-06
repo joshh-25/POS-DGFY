@@ -41,7 +41,7 @@ import {
     openPosDrawerUseCase,
     getPairedPosTerminalUseCase
 } from '../index.js';
-import { resolveDomainFailure, sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
+import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import {
     setTenantSessionCookies
@@ -1137,7 +1137,5 @@ export default {
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,
-    openDeviceDrawer,
-    getReportsOverview,
-    exportReports
+    openDeviceDrawer
 };

@@ -186,20 +186,6 @@ const posCatalogQuerySchema = Joi.object({
     folder_id: Joi.number().integer().positive().optional(),
     location_id: Joi.number().integer().positive().optional()
 });
-
-const posReportsQuerySchema = Joi.object({
-    granularity: Joi.string().valid('daily', 'weekly', 'monthly', 'yearly').optional(),
-    section: Joi.string().valid('daily', 'monthly', 'yearly', 'comparison', 'profit_loss').optional(),
-    date_from: Joi.date().iso().optional(),
-    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
-    cashier_id: Joi.number().integer().positive().optional(),
-    location_id: Joi.number().integer().positive().optional(),
-    payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
-    source: Joi.string().valid(...ORDER_SOURCES, 'delivery', 'pickup').optional(),
-    category: Joi.string().trim().max(120).allow('', null).optional(),
-    terminal_id: Joi.string().trim().max(80).allow('', null).optional()
-});
-
 const mobilePosCatalogBootstrapQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
     limit: Joi.number().integer().min(1).max(500).default(100),
@@ -512,7 +498,6 @@ export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query'
 export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');
 export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
-export const validatePosReportsQuery = validateSchema(posReportsQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');

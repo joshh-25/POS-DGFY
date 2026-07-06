@@ -351,32 +351,41 @@ const toSerializable = (value) => (
         : value
 );
 
-export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => async ({ query = {}, filters = query } = {}) => {
-    try {
-        const dateFrom = normalizeBusinessDateInput(filters.date_from) || nowInManilaBusinessDate();
-        const dateTo = normalizeBusinessDateInput(filters.date_to) || dateFrom;
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
-            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Report dates must use YYYY-MM-DD format', { statusCode: 400 });
+export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
+    const baseUseCase = buildReadScopedPosReportUseCase({
+        posRepository,
+        repositoryMethod: posRepository.getReportsOverview,
+        failureMessage: 'Failed to load POS reports overview'
+    });
+    return async ({ query = {}, user } = {}) => {
+        try {
+            const dateFrom = normalizeBusinessDateInput(query.date_from) || nowInManilaBusinessDate();
+            const dateTo = normalizeBusinessDateInput(query.date_to) || dateFrom;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Report dates must use YYYY-MM-DD format', { statusCode: 400 });
+            }
+            if (dateFrom > dateTo) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date_from must not be after date_to', { statusCode: 400 });
+            }
+            return baseUseCase({
+                query: {
+                    ...query,
+                    date_from: dateFrom,
+                    date_to: dateTo
+                },
+                user
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to retrieve POS reports'));
         }
-        if (dateFrom > dateTo) {
-            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date_from must not be after date_to', { statusCode: 400 });
-        }
-        const data = await posRepository.getReportsOverview({
-            ...filters,
-            date_from: dateFrom,
-            date_to: dateTo
-        });
-        return ok(data);
-    } catch (error) {
-        return fail(mapPosUseCaseError(error, 'Failed to retrieve POS reports'));
-    }
+    };
 };
 
 const escapeCsvValue = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
-export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ query = {} } = {}) => {
+export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ query = {}, user } = {}) => {
     try {
-        const overviewResult = await buildGetPosReportsOverviewUseCase({ posRepository })({ query });
+        const overviewResult = await buildGetPosReportsOverviewUseCase({ posRepository })({ query, user });
         if (!overviewResult.success) return overviewResult;
         const summary = overviewResult.data?.daily_report?.summary || {};
         const discountRows = overviewResult.data?.daily_report?.discount_breakdown || [];
@@ -3427,17 +3436,6 @@ const buildReadScopedPosReportUseCase = ({ posRepository, repositoryMethod, fail
     };
 };
 
-export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
-    posRepository,
-    repositoryMethod: posRepository.getReportsOverview,
-    failureMessage: 'Failed to load POS reports overview'
-});
-
-export const buildExportPosReportsUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
-    posRepository,
-    repositoryMethod: posRepository.exportReports,
-    failureMessage: 'Failed to export POS report'
-});
 
 const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}) => {
     if (complianceError) {

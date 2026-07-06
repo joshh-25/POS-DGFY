@@ -995,3 +995,42 @@ The storefront promo card only displayed the offer. Customers still had to manua
 
 - Error: the storefront promo card showed the offer but did not let customers directly claim it.
 - Solution: make promo cards apply the saved promo code into the existing promo-code flow and auto-validate it when the cart is ready.
+
+## 2026-07-06 — Resolve backend linter errors and duplicate code definitions
+
+### Error or problem
+
+The backend command `npm run lint` failed with multiple syntax/linting errors, including duplicate exports in `posController.js`, duplicate keys in `posHandlers.js` and `posRepository.js`, duplicate usecase declarations in `posUseCases.js`, duplicate route registrations in `pos.js`, and duplicate schema declarations/exports in `posValidator.js`. There was also an unused linter warning for `settings` in `storeUseCases.js`.
+
+### Confirmed cause
+
+- Duplicate exports, imports, and default exports for `getReportsOverview` and `exportReports` existed in `posController.js`, `posHandlers.js`, and `pos.js`.
+- A duplicate 200-line inline implementation of `getReportsOverview` had been added at the top of the `posRepository` object literal (line 1289) and was shadowing the correct modular implementation at line 2290.
+- Duplicate declarations for `buildGetPosReportsOverviewUseCase` and `buildExportPosReportsUseCase` existed at the bottom of `posUseCases.js`. Additionally, the first definition of `buildExportPosReportsUseCase` failed to pass the `user` session context to `buildGetPosReportsOverviewUseCase`.
+- `posReportsQuerySchema` and its validator export were declared twice in `posValidator.js`.
+- `storeUseCases.js` destructured the `settings` variable in `assertCheckoutLocationOperationalReadiness` but never used it.
+
+### Implemented solution
+
+- Removed all duplicate named exports, imports, default export keys, and route registrations for `getReportsOverview` and `exportReports` across `posController.js`, `posHandlers.js`, and `pos.js`.
+- Deleted the redundant inline `getReportsOverview` from `posRepository.js`.
+- Unified `buildGetPosReportsOverviewUseCase` to apply both date normalization/validation and authentication/location scope checking via the `buildReadScopedPosReportUseCase` wrapper.
+- Fixed the `user` context passing bug in `buildExportPosReportsUseCase` and deleted the duplicate usecase declarations at the bottom of `posUseCases.js`.
+- Deleted the dead `posReportsQuerySchema` and duplicate validator export from `posValidator.js`.
+- Removed the unused `settings` parameter from `assertCheckoutLocationOperationalReadiness` in `storeUseCases.js`.
+
+### Files changed
+
+- `backend/src/controllers/posController.js`
+- `backend/src/modules/pos/controllers/posHandlers.js`
+- `backend/src/modules/pos/repositories/posRepository.js`
+- `backend/src/modules/pos/usecases/posUseCases.js`
+- `backend/src/modules/store/usecases/storeUseCases.js`
+- `backend/src/routes/pos.js`
+- `backend/src/validators/posValidator.js`
+- `Implementation.md`
+
+### This is the error and this is the solution
+
+- Error: duplicate keys, duplicate exports, and unused parameters caused linter failures and runtime shadowing.
+- Solution: clean up duplicate exports, delete dead code and schemas, correctly route reports, fix missing context parameter, and resolve unused variables so the linter is fully clean and test suites pass.
