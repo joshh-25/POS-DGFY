@@ -47,6 +47,12 @@ jobs:
         run: |
           printf '%s\n' "$OVPN_CONFIG" > /tmp/client.ovpn
 
+      - name: Install OpenVPN
+        if: inputs.vpn_required
+        run: |
+          sudo apt update
+          sudo apt install -y openvpn openvpn-systemd-resolved
+
       - name: Connect to VPN
         if: inputs.vpn_required
         uses: kota65535/github-openvpn-connect-action@v2
