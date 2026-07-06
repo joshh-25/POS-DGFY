@@ -6,6 +6,7 @@ import {
     registerDgfyAccount,
     loginDgfyAccount,
     getDgfyMe,
+    listDgfyAccountCompanies,
     updateDgfyProfile,
     changeDgfyPassword,
     requestDgfyEmailVerification,
@@ -35,6 +36,7 @@ router.post('/auth/password-reset/request', authLimiter, requestDgfyPasswordRese
 router.post('/auth/password-reset/complete', authLimiter, completeDgfyPasswordReset);
 
 router.get('/auth/me', authenticateDgfyAccount, getDgfyMe);
+router.get('/account/companies', listDgfyAccountCompanies);
 router.patch('/auth/me', authenticateDgfyAccount, updateDgfyProfile);
 router.post('/auth/logout', authenticateDgfyAccount, logoutDgfyAccount);
 router.post('/auth/password/change', authenticateDgfyAccount, changeDgfyPassword);

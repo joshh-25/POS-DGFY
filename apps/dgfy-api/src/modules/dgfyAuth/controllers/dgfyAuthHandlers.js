@@ -12,6 +12,7 @@ import {
     verifyDgfyEmailUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../contracts/useCaseResponder.js';
+import { proxyBackendJson } from '../../../infra/backendProxy.js';
 import { blacklistToken } from '../../../infra/tokenSession.js';
 
 // Transport-only: mobile clients get the bearer token directly in the JSON
@@ -57,6 +58,11 @@ export const getDgfyMe = async (req, res) => {
     const result = await getDgfyMeUseCase({ account: req.dgfyAccount });
     return sendUseCaseResult(res, result);
 };
+
+export const listDgfyAccountCompanies = async (req, res) => proxyBackendJson(req, res, {
+    path: '/api/v1/dgfy/account/companies',
+    unavailableMessage: 'DGFY company list is temporarily unavailable.'
+});
 
 export const updateDgfyProfile = async (req, res) => {
     const result = await updateDgfyProfileUseCase({ account: req.dgfyAccount, body: req.body });

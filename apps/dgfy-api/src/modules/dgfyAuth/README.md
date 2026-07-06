@@ -10,4 +10,6 @@ Business rules here **must stay identical** to `backend/src/modules/dgfy/usecase
 
 Tenant/company membership, POS/tenant session, invitations, and admin account management are out of scope here — they depend on per-tenant database connections this service does not have.
 
+Exception: `GET /v1/dgfy/account/companies` is a deliberate compatibility proxy to backend's `GET /api/v1/dgfy/account/companies`. The standalone API forwards only mobile-safe auth/context headers and does not own membership models, invitation mirroring, or tenant DB access for this endpoint.
+
 Layout follows this repo's `controllers -> usecases -> repositories -> models` convention (composed in `index.js`).
