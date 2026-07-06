@@ -18,6 +18,8 @@ jobs:
     with:
       environment: STAGING
       image_tags: "staging"
+      publish: true
+      vpn_required: true
     secrets: inherit
     permissions:
       contents: read
