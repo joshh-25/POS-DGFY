@@ -37,7 +37,9 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260429000002-create-storefront-follows.cjs' },
         { name: '20260504000001-add-customer-access-fields-to-discovery-index.cjs' },
         { name: '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs' },
-        { name: '20260628000001-add-pos-always-available-to-catalog-overrides.cjs' }
+        { name: '20260629000001-add-pos-always-available-contract.cjs' },
+        { name: '20260705000001-add-admin-provisioned-membership-source.cjs' },
+        { name: '20260502000001-add-services-mode-booking-tables.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -72,7 +74,8 @@ const buildHealthySequelizeMock = () => ({
                 },
                 items: {
                     item_id: {},
-                    vat_type: {}
+                    vat_type: {},
+                    category: { type: "ENUM('raw_material','packaging','product','supplies','service')" }
                 },
                 item_folders: {
                     folder_id: {},
@@ -83,8 +86,8 @@ const buildHealthySequelizeMock = () => ({
                     pos_catalog_override_id: {},
                     item_id: {},
                     pos_visible: {},
-                    pos_always_available: {},
-                    pos_image_url: {}
+                    pos_image_url: {},
+                    pos_always_available: { allowNull: false }
                 },
                 pos_transactions: {
                     pos_transaction_id: {},
@@ -163,7 +166,9 @@ const buildHealthySequelizeMock = () => ({
                     vat_type_snapshot: {},
                     vat_rate_snapshot: {},
                     sale_price_overridden: {},
-                    price_override_reason: {}
+                    price_override_reason: {},
+                    stock_effect_type: { allowNull: false },
+                    stock_exempt_reason: { allowNull: true }
                 },
                 pos_terminal_shifts: {
                     pos_terminal_shift_id: {},
@@ -220,6 +225,18 @@ const buildHealthySequelizeMock = () => ({
                     tenant_id: {},
                     storefront_slug: {},
                     visitor_fingerprint: {}
+                },
+                dgfy_account_tenant_memberships: {
+                    id: {},
+                    dgfy_account_id: {},
+                    tenant_id: {},
+                    tenant_user_id: {},
+                    role: {},
+                    status: {},
+                    source: {
+                        allowNull: false,
+                        type: "ENUM('founder','invite','admin_handover','admin_provisioned')"
+                    }
                 },
                 storefront_discovery_index: {
                     storefront_discovery_index_id: {},
@@ -330,6 +347,41 @@ describe('runtimeSchemaAuditService', () => {
         ]));
     });
 
+    it('returns degraded when POS Always Available contract migration or columns are missing', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20260629000001-add-pos-always-available-contract.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'pos_catalog_overrides') {
+                    const { pos_always_available, ...withoutAlwaysAvailable } = table;
+                    return withoutAlwaysAvailable;
+                }
+                if (tableName === 'pos_transaction_lines') {
+                    const { stock_effect_type, stock_exempt_reason, ...withoutStockEffect } = table;
+                    return withoutStockEffect;
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({
+            sequelizeInstance: mock
+        });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.missingColumns).toEqual(expect.arrayContaining([
+            expect.objectContaining({ table: 'pos_catalog_overrides', column: 'pos_always_available' }),
+            expect.objectContaining({ table: 'pos_transaction_lines', column: 'stock_effect_type' }),
+            expect.objectContaining({ table: 'pos_transaction_lines', column: 'stock_exempt_reason' })
+        ]));
+    });
+
     it('returns degraded when cashier_id nullability contract drifts from online-store requirements', async () => {
         const mock = buildHealthySequelizeMock();
         mock.getQueryInterface = () => ({
@@ -388,6 +440,85 @@ describe('runtimeSchemaAuditService', () => {
                 column: 'buyer_tin',
                 expected: { allowNull: true },
                 actual: { allowNull: false }
+            })
+        ]));
+    });
+
+    it('returns degraded when DGFY membership source enum is stale', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20260705000001-add-admin-provisioned-membership-source.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'dgfy_account_tenant_memberships') {
+                    return {
+                        ...table,
+                        source: {
+                            allowNull: false,
+                            type: "ENUM('founder','invite','admin_handover')"
+                        }
+                    };
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({
+            sequelizeInstance: mock
+        });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                scope: 'schema',
+                type: 'invalid_column_contract',
+                table: 'dgfy_account_tenant_memberships',
+                column: 'source',
+                expected: { enumValues: ['founder', 'invite', 'admin_handover', 'admin_provisioned'] },
+                actual: { enumValues: ['founder', 'invite', 'admin_handover'] }
+            })
+        ]));
+    });
+
+    it('returns degraded when items.category enum is missing the service-mode value', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20260502000001-add-services-mode-booking-tables.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'items') {
+                    return {
+                        ...table,
+                        category: { type: "ENUM('raw_material','packaging','product','supplies')" }
+                    };
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({
+            sequelizeInstance: mock
+        });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                scope: 'schema',
+                type: 'invalid_column_contract',
+                table: 'items',
+                column: 'category',
+                expected: { enumValues: ['raw_material', 'packaging', 'product', 'supplies', 'service'] },
+                actual: { enumValues: ['raw_material', 'packaging', 'product', 'supplies'] }
             })
         ]));
     });

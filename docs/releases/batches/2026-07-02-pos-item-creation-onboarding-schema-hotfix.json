@@ -1,0 +1,248 @@
+{
+  "schema": "sku-reviewed-batch-manifest/v1",
+  "review_status": "reviewed",
+  "reviewed_by": "BabyBaBab-owner",
+  "reviewed_at": "2026-07-02T05:50:00.000Z",
+  "source_pr": "owner_direct_hotfix",
+  "release_slices": [
+    {
+      "id": "pos-item-creation-onboarding-schema-hotfix",
+      "slice_name": "POS item creation, onboarding starter item, and tenant schema hotfix",
+      "name": "POS item creation, onboarding starter item, and tenant schema hotfix",
+      "plain_english_purpose": "Make POS item setup complete reliably, require a starter sellable item during POS onboarding, and prevent operators from missing required POS tenant schema drift.",
+      "purpose": "Repair production POS item creation and onboarding readiness without payment, checkout, or broad tenant-schema alter changes.",
+      "implementation_summary": "Stages POS item creation post-create work so image, barcode, Storefront visibility, Always Available, POS visibility, and catalog reload failures remain recoverable without duplicate item creation; adds the POS onboarding starter-item step using the existing onboarding bulk item API and shared taxonomy; extends runtime and tenant schema checks for POS Always Available stock-effect columns; documents ADR and compliance impact; updates focused backend/frontend tests.",
+      "included_files": [
+        "backend/scripts/sync-tenant-schemas.js",
+        "backend/src/services/runtimeSchemaAuditService.js",
+        "backend/tests/runtimeSchemaAuditService.test.js",
+        "backend/tests/tenantSchemaSyncScripts.test.js",
+        "docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md",
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+        "docs/compliance/impact-declarations/2026-07-02-pos-item-creation-onboarding-schema-repair.md",
+        "docs/releases/batches/2026-07-02-pos-item-creation-onboarding-schema-hotfix.json",
+        "frontend/src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx",
+        "frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js",
+        "frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js",
+        "frontend/src/features/pos/components/PosTenantSetupModal.jsx",
+        "frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx",
+        "frontend/src/features/pos/pages/TerminalPage.jsx",
+        "frontend/src/features/pos/utils/__tests__/setupFlow.test.js",
+        "frontend/src/features/pos/utils/setupFlow.js"
+      ],
+      "included_features": [
+        "POS Add Item recoverable post-create setup",
+        "POS onboarding starter item step through existing onboarding API",
+        "Tenant schema required POS column detection and declared repair SQL",
+        "Runtime schema audit coverage for POS Always Available columns",
+        "DGFY Email terminal login copy cleanup"
+      ],
+      "excluded_files": [],
+      "excluded_features": [
+        "PayMongo and payment routing changes",
+        "Checkout payment behavior",
+        "Broad tenant sync({ alter: true }) as the default repair path",
+        "Unrelated auth/account-switch branch work",
+        "Local stashes including stash@{8}"
+      ],
+      "owner_attribution": "BabyBaBab with Codex implementation",
+      "source_branch": "codex/repair-production-pos-item-creation",
+      "source_pr": "owner_direct_hotfix",
+      "source_type": "owner_direct_staging",
+      "affected_surfaces": [
+        "backend",
+        "frontend",
+        "database",
+        "docs",
+        "compliance",
+        "POS",
+        "Storefront",
+        "tenant lifecycle"
+      ],
+      "affected_surface_map": {
+        "backend": true,
+        "frontend": true,
+        "database": true,
+        "scripts/deploy": false,
+        "docs": true,
+        "compliance": true,
+        "POS": true,
+        "Storefront": true,
+        "DGFY": false,
+        "tenant lifecycle": true,
+        "payments": false
+      },
+      "risk_level": "high",
+      "required_tests": [
+        "npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js tests/onboardingUsecases.applicationResult.test.js tests/onboardingRepository.schemaCompatibility.test.js tests/inventoryItemRepository.test.js tests/posUsecases.applicationResult.test.js",
+        "npm exec vitest run src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx --pool=threads",
+        "npm run check:architecture",
+        "npm run check:compliance",
+        "npm run lint:docs",
+        "npm --prefix frontend run build:pos",
+        "node backend/scripts/sync-tenant-schemas.js --mode repair-dry-run --report-file .tmp/pos-item-repair/tenant-schema-repair-dry-run-final.json",
+        "git diff --check"
+      ],
+      "completed_tests": [
+        {
+          "command": "npm --prefix backend test -- --runInBand tests/runtimeSchemaAuditService.test.js tests/tenantSchemaSyncScripts.test.js tests/onboardingUsecases.applicationResult.test.js tests/onboardingRepository.schemaCompatibility.test.js tests/inventoryItemRepository.test.js tests/posUsecases.applicationResult.test.js",
+          "status": "pass",
+          "evidence": "2026-07-02 local run: 97 tests passed"
+        },
+        {
+          "command": "npm exec vitest run src/features/pos/utils/__tests__/setupFlow.test.js src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx --pool=threads",
+          "status": "pass",
+          "evidence": "2026-07-02 final focused frontend run: 73 tests passed"
+        },
+        {
+          "command": "npm run check:architecture",
+          "status": "pass",
+          "evidence": "ArchitectureGuardrails OK; ControllerBoundary OK"
+        },
+        {
+          "command": "npm run check:compliance",
+          "status": "pass",
+          "evidence": "Compliance impact declaration accepted"
+        },
+        {
+          "command": "npm run lint:docs",
+          "status": "pass",
+          "evidence": "docs-lint OK"
+        },
+        {
+          "command": "npm --prefix frontend run build:pos",
+          "status": "pass",
+          "evidence": "Vite POS production build completed; existing large-chunk warnings only"
+        },
+        {
+          "command": "node backend/scripts/sync-tenant-schemas.js --mode repair-dry-run --report-file .tmp/pos-item-repair/tenant-schema-repair-dry-run-final.json",
+          "status": "pass",
+          "evidence": ".tmp/pos-item-repair/tenant-schema-repair-dry-run-final.json showed 5 local active tenants OK, 0 failed"
+        },
+        {
+          "command": "git diff --check",
+          "status": "pass",
+          "evidence": "No whitespace errors"
+        }
+      ],
+      "docs_required": true,
+      "required_docs": [
+        "docs/START_HERE.md",
+        "docs/architecture/ARCHITECTURE_BOUNDARIES.md",
+        "docs/architecture/ARCHITECTURE_GOVERNANCE.md",
+        "docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md",
+        "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+        "docs/compliance/impact-declarations/2026-07-02-pos-item-creation-onboarding-schema-repair.md",
+        "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+        "docs/testing/pos-readiness-status.md",
+        "docs/testing/pos-e2e-uat-checklist.md"
+      ],
+      "architecture_classification": "cross-boundary",
+      "documentation_closure": {
+        "decision": "updated",
+        "reviewed_by": "BabyBaBab-owner",
+        "reviewed_at": "2026-07-02T05:50:00.000Z",
+        "rationale": "The POS onboarding contract crosses frontend POS setup, onboarding API reuse, Storefront catalog visibility, tenant schema audit/repair, and compliance-sensitive POS item behavior, so the governing ADRs and compliance declaration were updated.",
+        "documents": [
+          {
+            "path": "docs/START_HERE.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed mandatory documentation discovery order before hotfix planning."
+          },
+          {
+            "path": "docs/architecture/ARCHITECTURE_BOUNDARIES.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed controllers/usecases/repositories/model boundaries for the scoped POS changes."
+          },
+          {
+            "path": "docs/architecture/ARCHITECTURE_GOVERNANCE.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed cross-boundary ADR update and release gate obligations."
+          },
+          {
+            "path": "docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md",
+            "action": "updated",
+            "evidence": "Added POS onboarding starter-item reuse contract."
+          },
+          {
+            "path": "docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md",
+            "action": "updated",
+            "evidence": "Added staged POS item create and tenant schema drift repair contract."
+          },
+          {
+            "path": "docs/compliance/impact-declarations/2026-07-02-pos-item-creation-onboarding-schema-repair.md",
+            "action": "updated",
+            "evidence": "Declared POS, Storefront visibility, tenant schema, and compliance impact with payments excluded."
+          },
+          {
+            "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed normal staging to master to production promotion expectations."
+          },
+          {
+            "path": "docs/testing/pos-readiness-status.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed POS readiness and UAT evidence expectations for residual authenticated QA gaps."
+          },
+          {
+            "path": "docs/testing/pos-e2e-uat-checklist.md",
+            "action": "reviewed_current",
+            "evidence": "Confirmed POS item/catalog and Always Available UAT expectations."
+          }
+        ]
+      },
+      "adr_compliance_declaration_required": true,
+      "adr_or_compliance": "Governed by ADR 0013, ADR 0031, architecture boundaries/governance, and the 2026-07-02 POS item creation onboarding schema repair compliance declaration.",
+      "rollback_notes": "If the hotfix regresses production, revert the exact promoted master commit, qualify the revert SHA through the same local gates, and deploy through the signed release controller. For tenant schema repair, the added columns are additive; rollback should leave harmless extra columns in place unless a separate database rollback is explicitly approved.",
+      "production_proof_required": [
+        "Exact production runtime SHA equals target SHA",
+        "Remote .deploy-state/last_deployed_commit equals target SHA",
+        "Newest deploy summary expected_commit, remote_head, and deployed_head equal target SHA",
+        "Production /api/v1/health returns target runtime SHA",
+        "Read-only tenant schema audit/report confirms required POS columns are present or repair_required is explicit",
+        "POS app asset parity includes the target POS bundle"
+      ],
+      "production_accuracy_checks_required": [
+        "POS Add Item can create a product and recover post-create setup without duplicate creation",
+        "Created item has barcode, POS visibility, Storefront visibility, and catalog readback",
+        "POS onboarding starter item step uses POST /api/v1/onboarding/items/bulk and blocks completion until a starter item is present",
+        "Tenant schema report fails or returns repair_required when required POS columns are missing",
+        "No PayMongo/payment behavior changed"
+      ],
+      "can_ship_independently": true,
+      "promotion_eligibility": "eligible",
+      "verdict": "ship",
+      "payment_sensitive": false,
+      "payment_sensitive_files": [],
+      "high_risk_path": false,
+      "high_risk_files": [
+      ],
+      "regression_risk_level": "high",
+      "regression_warning_required": true,
+      "regression_warning_summary": "POS item setup, onboarding gating, Storefront/POS visibility toggles, barcode creation, and tenant schema deployment checks could regress if the staged post-create flow or schema repair contract behaves differently in production.",
+      "potentially_affected_existing_behaviors": [
+        "POS Items > Add POS Item",
+        "POS onboarding step navigation",
+        "Storefront/POS catalog visibility after item creation",
+        "Barcode generation after item creation",
+        "Tenant schema deploy reporting and repair operations"
+      ],
+      "evidence_covering_regression_risk": [
+        "Focused backend schema/onboarding/inventory/POS tests passed",
+        "Focused frontend POS/onboarding tests passed",
+        "Architecture, compliance, docs lint, and POS production build passed",
+        "Local tenant schema repair dry-run after additive repair showed 5/5 active tenants OK",
+        "Rendered unauthenticated POS terminal shell desktop/mobile check passed earlier in this hotfix run"
+      ],
+      "evidence_gaps": [
+        "Authenticated isolated QA tenant session was unavailable, so Add POS Item and POS onboarding starter-item modal were not rendered end-to-end against a production-like QA environment before promotion.",
+        "Production behavior still requires read-only post-deploy proof and deployed-change accuracy review."
+      ],
+      "rollback_or_monitoring_notes": [
+        "Monitor POS item create/update errors, catalog override errors, barcode generation errors, and tenant schema sync reports immediately after deployment.",
+        "If post-create setup fails in production, preserve item IDs from recovery UI and retry before rollback.",
+        "Use signed-controller rollback; do not use local deploy scripts as production authority."
+      ]
+    }
+  ]
+}

@@ -6,46 +6,53 @@ import { describe, expect, it } from 'vitest';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const terminalPageSource = fs.readFileSync(path.resolve(__dirname, '../pages/TerminalPage.jsx'), 'utf8');
 const posServiceSource = fs.readFileSync(path.resolve(__dirname, '../services/posService.js'), 'utf8');
-const setupModalSource = fs.readFileSync(path.resolve(__dirname, '../components/PosTenantSetupModal.jsx'), 'utf8');
-const operationsWorkspaceSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8');
 
-describe('POS registered terminal contract', () => {
-  it('does not call device-pairing endpoints', () => {
-    expect(posServiceSource).not.toContain('/pos/terminal/pair');
-    expect(posServiceSource).not.toContain('/pos/terminal/paired');
+describe('POS terminal pairing contract', () => {
+  it('keeps pairing endpoints available for compatibility without normal shift-open dependency', () => {
+    expect(posServiceSource).toContain("api.get('/pos/terminal/paired'");
+    expect(posServiceSource).toContain("api.post('/pos/terminal/verify'");
     expect(terminalPageSource).not.toContain('fetchPairedPosTerminal');
-    expect(terminalPageSource).not.toContain('verifyPosTerminal');
+    expect(terminalPageSource).not.toContain('pairedTerminalContext');
   });
 
-  it('derives terminal context from the authenticated business registry', () => {
-    expect(terminalPageSource).toContain('buildRegisteredTerminalContext');
-    expect(terminalPageSource).toContain('terminalRegistryLookup.get');
-    expect(terminalPageSource).toContain('registered: true');
-    expect(terminalPageSource).toContain('registeredTerminal.location_id');
+  it('opens normal shifts from an active logical terminal without a reusable terminal password', () => {
+    expect(terminalPageSource).toContain('const selectedRegistryEntry = terminalRegistryLookup.get(selectedTerminalId);');
+    expect(terminalPageSource).toContain('Authorized DGFY users can open shifts from any logged-in device');
+    expect(terminalPageSource).not.toContain('This physical POS device must be paired by the company master admin');
+    expect(terminalPageSource).not.toContain('terminal_password: terminalPassword');
+    expect(terminalPageSource).toContain("'Unlock POS'");
   });
 
-  it('requires a registered terminal before cashier shift opening', () => {
-    expect(terminalPageSource).toContain('Select an active terminal registered to this business before cashier use.');
-    expect(terminalPageSource).toContain('Select a registered terminal before opening the shift.');
-    expect(terminalPageSource).toContain('No device cookie or terminal password is required.');
-  });
-
-  it('removes pairing controls from POS setup screens', () => {
-    expect(setupModalSource).not.toContain('Pair This Device');
-    expect(setupModalSource).not.toContain('verifyPosTerminal');
-    expect(operationsWorkspaceSource).not.toContain('verifyPosTerminal');
-    expect(operationsWorkspaceSource).not.toContain('save and pair');
-  });
-
-  it('keeps the terminal locked to its configured branch location', () => {
-    expect(operationsWorkspaceSource).toContain('Locked Branch / Location');
-    expect(operationsWorkspaceSource).toContain('Strict Shift Location Binding');
-    expect(terminalPageSource).toContain('registeredTerminal.location_id');
-  });
-
-  it('keeps cashier credentials and shift ownership checks', () => {
-    expect(terminalPageSource).toContain('Cashier password is required.');
+  it('resumes a locked open shift with cashier credentials instead of terminal password', () => {
+    expect(terminalPageSource).toContain("setTerminalUnlockMode('cashier_resume')");
+    expect(terminalPageSource).toContain('cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit');
+    expect(terminalPageSource).toContain('Terminal password is not required.');
     expect(terminalPageSource).toContain('Only the cashier who owns this open shift can continue it.');
     expect(terminalPageSource).toContain('authenticatedCashierId !== expectedCashierId');
+    expect(terminalPageSource).toContain("!cashierResumeUnlock && terminalUnlockMode !== 'relock'");
+  });
+
+  it('returns to cashier login after close shift instead of terminal unlock', () => {
+    expect(terminalPageSource).toContain("reason: 'shift_closed'");
+    expect(terminalPageSource).toContain("setStoredTerminalLockReason('full_auth')");
+    expect(terminalPageSource).toContain('setTerminalUnlockModalOpen(false)');
+    expect(terminalPageSource).toContain('setDrawerOpen(true)');
+    expect(terminalPageSource).toContain('Cashier login is required for the next shift.');
+  });
+
+  it('restores an open shift on refresh while close shift still returns to login', () => {
+    expect(terminalPageSource).toContain('allowWhileLocked = false');
+    expect(terminalPageSource).toContain('const storedLockActive = readStoredTerminalLock();');
+    expect(terminalPageSource).toContain("storedReason !== 'terminal_reunlock'");
+    expect(terminalPageSource).toContain('const storedRegistryEntry = terminalRegistryLookup.get(storedTerminalId);');
+    expect(terminalPageSource).toContain('if (!storedRegistryEntry || !Number.isInteger(storedLocationId) || storedLocationId <= 0) {');
+    expect(terminalPageSource).toContain('allowWhileLocked: true');
+    expect(terminalPageSource).toContain('if (operationalContext?.shift) {');
+    expect(terminalPageSource).toContain('setStoredTerminalLock(false);');
+    expect(terminalPageSource).toContain("setStoredTerminalLockReason('shift_closed')");
+    expect(terminalPageSource).toContain("reason: 'shift_close_queued'");
+    expect(terminalPageSource).toContain('Cashier login is required for the next shift');
+    expect(terminalPageSource).toContain('setTerminalUnlockModalOpen(false);');
+    expect(terminalPageSource).toContain('setDrawerOpen(true);');
   });
 });

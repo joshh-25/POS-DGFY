@@ -120,6 +120,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
   let runtimeReady = true;
   let runtimeSkipReason = '';
   let runtimeSkipLogged = false;
+  const checkoutSessionByCashier = new Map();
 
   const ensureRuntimeReady = () => {
     if (!runtimeReady) {
@@ -364,16 +365,63 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     status: 'open'
   });
 
+  const seedCheckoutLineLocationStock = async ({ payload, locationId }) => {
+    const itemIds = [...new Set((payload.lines || [])
+      .map((line) => Number.parseInt(line?.item_id, 10))
+      .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+
+    for (const itemId of itemIds) {
+      const item = await models.Item.findByPk(itemId);
+      if (!item) continue;
+      await seedItemLocationStock({
+        itemId,
+        locationId,
+        quantityOnHand: Number(item.current_stock || 0)
+      });
+    }
+  };
+
   const checkoutPayloadWithOpenShift = async (cashierId, payload, options = {}) => {
-    const terminalId = options.terminalId || payload.terminal_id || `COUNTER-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
-    const locationId = options.locationId ?? payload.location_id ?? null;
-    const shift = await createOpenTerminalShift({ cashierId, terminalId, locationId });
+    const existingSession = checkoutSessionByCashier.get(cashierId);
+    const terminalId = options.terminalId
+      || payload.terminal_id
+      || existingSession?.terminalId
+      || `COUNTER-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const requestedLocationId = options.locationId ?? payload.location_id ?? existingSession?.locationId ?? null;
+    const locationId = requestedLocationId || (await createTenantLocation()).location_id;
+    await models.UserLocationGrant.findOrCreate({
+      where: {
+        user_id: cashierId,
+        location_id: locationId
+      },
+      defaults: {
+        created_by: cashierId
+      }
+    });
+    await setSetting(
+      'pos_terminal_registry',
+      JSON.stringify([
+        {
+          terminal_id: terminalId,
+          label: terminalId,
+          is_active: true,
+          is_default: true,
+          location_id: locationId
+        }
+      ]),
+      'json'
+    );
+    await seedCheckoutLineLocationStock({ payload, locationId });
+    const shift = existingSession?.terminalId === terminalId && existingSession?.locationId === locationId
+      ? existingSession.shift
+      : await createOpenTerminalShift({ cashierId, terminalId, locationId });
+    checkoutSessionByCashier.set(cashierId, { terminalId, locationId, shift });
 
     return {
       ...payload,
       terminal_id: terminalId,
       shift_id: shift.pos_terminal_shift_id,
-      ...(locationId ? { location_id: locationId } : {})
+      location_id: locationId
     };
   };
 
@@ -465,6 +513,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const checkoutResult = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `recon-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -547,6 +596,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const checkoutInManufacturing = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `workflow-manufacturing-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -582,6 +632,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const checkoutInMsme = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `workflow-msme-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -605,6 +656,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const checkoutAfterRoundtrip = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `workflow-roundtrip-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -643,6 +695,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       },
       async () => checkoutPosUseCase({
         userId: cashier.user_id,
+        user: cashier,
         payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
           idempotency_key: `mode-choice-optional-${crypto.randomUUID()}`,
           payment_type: 'cash',
@@ -657,6 +710,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const allowed = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `mode-choice-pass-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -677,6 +731,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const result = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `legacy-false-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -701,6 +756,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const checkout = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `legacy-discount-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -729,6 +785,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     );
     const checkout = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `double-encoded-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -760,6 +817,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const checkout = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `same-day-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -804,6 +862,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     await setSetting('pos_strict_compliance_enabled', 'false', 'boolean');
     const checkout = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `fee-agg-${crypto.randomUUID()}`,
         payment_type: 'cash',
@@ -863,6 +922,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const inStoreCheckout = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
+      user: cashier,
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `financial-recognition-${crypto.randomUUID()}`,
         payment_type: 'cash',

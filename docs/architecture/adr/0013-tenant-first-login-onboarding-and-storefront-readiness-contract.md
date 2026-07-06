@@ -150,3 +150,11 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 1. Public company registration now requires an authenticated global DGFY account as defined by ADR 0022.
 2. Founder email, phone, username seed, and password hash are derived from that DGFY account instead of being collected directly on the company-registration form.
 3. First login can still use the normal SKUpervisor login handoff with company token, while the DGFY membership registry becomes the durable link between the founder's global account and tenant master-admin user.
+
+## Addendum (2026-07-02): POS Onboarding Starter Item Reuse
+
+1. DGFY POS onboarding includes a dedicated `starter_item` step after Storefront setup and before POS terminal setup.
+2. The POS onboarding starter-item step must call the existing `POST /api/v1/onboarding/items/bulk` contract. It must not introduce a POS-only onboarding item API, duplicate mode taxonomy rules, or create a separate POS item model.
+3. The starter row uses the same customer-facing onboarding presets already defined here: Food Manufacturing `finished_product`, MSME `product`, Services `service` or `physical_add_on`, and Food & Beverage `menu_item`.
+4. Existing onboarding row-level validation, generated-SKU duplicate/idempotency behavior, optional stock, optional cost, optional images, saved primary `location_id`, and completion readiness remain authoritative for POS onboarding.
+5. POS onboarding may use POS catalog readback as a local readiness hint, but backend onboarding completion remains governed by the tenant onboarding checklist and starter-item contract.

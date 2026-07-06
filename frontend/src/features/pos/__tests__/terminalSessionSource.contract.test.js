@@ -8,10 +8,6 @@ const terminalPagePath = resolve(__dirname, '../pages/TerminalPage.jsx');
 const terminalPageSource = readFileSync(terminalPagePath, 'utf8');
 const standalonePosMainPath = resolve(__dirname, '../../../../apps/pos/src/main.jsx');
 const standalonePosMainSource = readFileSync(standalonePosMainPath, 'utf8');
-const browserSessionPath = resolve(__dirname, '../../../services/browserSession.js');
-const browserSessionSource = readFileSync(browserSessionPath, 'utf8');
-const apiServicePath = resolve(__dirname, '../../../services/api.js');
-const apiServiceSource = readFileSync(apiServicePath, 'utf8');
 
 describe('TerminalPage session contract', () => {
   it('uses browserSession for protected POS auth state instead of persisted privileged tokens', () => {
@@ -40,15 +36,12 @@ describe('TerminalPage session contract', () => {
     expect(standalonePosMainSource).not.toContain('if (import.meta.env.DEV) {');
   });
 
-  it('requires explicit standalone POS login before cookie refresh can restore an active session', () => {
-    expect(browserSessionSource).toContain("IS_STANDALONE_POS_SURFACE");
-    expect(browserSessionSource).toContain('!IS_STANDALONE_POS_SURFACE || standalonePosSessionActivated');
-    expect(browserSessionSource).toContain('if (!canRefreshBrowserSession()) return');
-    expect(apiServiceSource).toContain('canRefreshBrowserSession()');
+  it('restores dedicated POS app refresh only when browser session and open shift are present', () => {
     expect(terminalPageSource).toContain('refreshBrowserSession()');
     expect(terminalPageSource).toContain('storedReason !== \'shift_closed\'');
     expect(terminalPageSource).toContain('storedReason !== \'terminal_reunlock\'');
-    expect(terminalPageSource).toContain('buildRegisteredTerminalContext(terminalRegistryLookup.get(storedTerminalId))');
+    expect(terminalPageSource).toContain('const storedRegistryEntry = terminalRegistryLookup.get(storedTerminalId);');
+    expect(terminalPageSource).toContain('operatingLocationIdOverride: storedLocationId');
     expect(terminalPageSource).toContain('allowWhileLocked: true');
     expect(terminalPageSource).toContain('if (operationalContext?.shift) {');
     expect(terminalPageSource).toContain('setLocked(true);');
@@ -71,43 +64,6 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain("resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';");
     expect(terminalPageSource).toContain("No registered business was found for this account. Opening your DGFY customer dashboard.");
     expect(terminalPageSource).toContain('window.location.href = resolveStorefrontAccountUrl();');
-  });
-
-  it('reuses the authenticated DGFY identity when confirming a company and keeps cashiers locked until shift start', () => {
-    const loginFlow = terminalPageSource.slice(
-      terminalPageSource.indexOf('const handleDgfyPosLogin = async'),
-      terminalPageSource.indexOf('const resetDgfyPosIdentity = useCallback')
-    );
-
-    expect(loginFlow).toContain(
-      "let token = continuingAfterCompanyPicker ? String(getStoredDgfyToken() || '').trim() : '';"
-    );
-    expect(loginFlow).toContain('if (!token) {\n        const loginResult = await loginDgfyAccount({ email, password });');
-    expect(loginFlow).toContain('if (!getAccessToken() || !selectedCompanyToken) {');
-    expect(loginFlow).toContain("setStoredTerminalLockReason('shift_start_required');");
-    expect(loginFlow).toContain('setLocked(true);\n      setDrawerOpen(false);');
-
-    const adminUnlockStart = loginFlow.indexOf('setStoredTerminalLock(false);');
-    const adminUiUnlock = loginFlow.indexOf('setLocked(false);', adminUnlockStart);
-    expect(adminUnlockStart).toBeGreaterThan(-1);
-    expect(adminUiUnlock).toBeGreaterThan(adminUnlockStart);
-  });
-
-  it('routes a tenant-local cashier through the POS cashier endpoint after DGFY login rejects the identity', () => {
-    expect(terminalPageSource).toContain('const startCashierLoginFlow = async');
-    expect(terminalPageSource).toContain('await authenticateCashierCredentials({');
-    expect(terminalPageSource).toContain("Number(error?.response?.status || 0) === 401");
-    expect(terminalPageSource).toContain('await startCashierLoginFlow({ email, password });');
-    expect(terminalPageSource).toContain("setStoredTerminalLockReason('shift_start_required');");
-    expect(terminalPageSource).toContain('setTerminalUnlockModalOpen(true);');
-  });
-
-  it('keeps multi-company cashier selection inside standalone POS', () => {
-    expect(terminalPageSource).toContain('{ tenants }');
-    expect(terminalPageSource).toContain('cashierError?.details?.tenants');
-    expect(terminalPageSource).toContain('cashierCompanySelection: true');
-    expect(terminalPageSource).toContain('companyTokenHint: selectedCompanyToken');
-    expect(terminalPageSource).not.toContain('Sign in from SKUpervisor once');
   });
 
   it('sends onboarding handoff to the dedicated POS app origin when started from IMS', () => {

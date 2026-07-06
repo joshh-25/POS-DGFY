@@ -16,6 +16,35 @@ const DB_USER = process.env.DB_USER || 'root';
 const DB_PASSWORD = process.env.DB_PASSWORD || '';
 const MAIN_DB = process.env.DB_NAME || 'sku_inventory_manager';
 
+export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
+    pos_catalog_overrides: Object.freeze({
+        pos_always_available: Object.freeze({
+            sql: "ALTER TABLE `pos_catalog_overrides` ADD COLUMN `pos_always_available` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'POS-only stock exemption; never changes Storefront visibility or Inventory stock truth'"
+        })
+    }),
+    pos_transaction_lines: Object.freeze({
+        stock_effect_type: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `stock_effect_type` ENUM('inventory_issue','stock_exempt') NOT NULL DEFAULT 'inventory_issue' COMMENT 'Immutable checkout-time stock-effect classification'"
+        }),
+        stock_exempt_reason: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `stock_exempt_reason` VARCHAR(80) NULL COMMENT 'Immutable reason when a POS sale line intentionally creates no inventory movement'"
+        })
+    })
+});
+
+// Columns that already exist on older tenant schemas but whose ENUM definition has since
+// widened (e.g. Services-mode support added `category = 'service'` to `items` long after the
+// column itself was created). Presence checks alone won't catch this drift, so these are
+// tracked separately and repaired via `ALTER ... MODIFY COLUMN` rather than `ADD COLUMN`.
+export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
+    items: Object.freeze({
+        category: Object.freeze({
+            enumValues: Object.freeze(['raw_material', 'packaging', 'product', 'supplies', 'service']),
+            sql: "ALTER TABLE `items` MODIFY COLUMN `category` ENUM('raw_material','packaging','product','supplies','service') NOT NULL"
+        })
+    })
+});
+
 export function normalizeErrorSignature(message) {
     const raw = String(message || '').trim();
     if (!raw) {
@@ -63,7 +92,10 @@ export function createSyncFailureRecord(tenant, error) {
         error_code: signature.error_code,
         error_message: String(error?.message || error || 'Unknown error'),
         normalized_message: signature.normalized_message,
-        fingerprint: signature.fingerprint
+        fingerprint: signature.fingerprint,
+        missing_columns: Array.isArray(error?.missing_columns) ? error.missing_columns : undefined,
+        missing_enum_values: Array.isArray(error?.missing_enum_values) ? error.missing_enum_values : undefined,
+        repair_sql: Array.isArray(error?.repair_sql) ? error.repair_sql : undefined
     };
 }
 
@@ -93,6 +125,87 @@ function parseArgs(argv = process.argv.slice(2)) {
     return options;
 }
 
+export async function inspectRequiredTenantSchemaColumns(connection, tenantDb) {
+    const tableNames = Object.keys(REQUIRED_TENANT_SCHEMA_COLUMNS);
+    const [rows] = await connection.query(
+        `SELECT TABLE_NAME, COLUMN_NAME
+           FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = ?
+            AND TABLE_NAME IN (${tableNames.map(() => '?').join(', ')})`,
+        [tenantDb, ...tableNames]
+    );
+    const present = new Set(rows.map((row) => `${row.TABLE_NAME}.${row.COLUMN_NAME}`));
+    const missingColumns = [];
+
+    Object.entries(REQUIRED_TENANT_SCHEMA_COLUMNS).forEach(([table, columns]) => {
+        Object.keys(columns).forEach((column) => {
+            if (!present.has(`${table}.${column}`)) {
+                missingColumns.push({ table, column });
+            }
+        });
+    });
+
+    return missingColumns;
+}
+
+export function buildTenantSchemaRepairSql(missingColumns = []) {
+    return (Array.isArray(missingColumns) ? missingColumns : [])
+        .map(({ table, column }) => ({
+            table,
+            column,
+            sql: REQUIRED_TENANT_SCHEMA_COLUMNS?.[table]?.[column]?.sql || ''
+        }))
+        .filter((entry) => entry.sql);
+}
+
+function parseEnumValuesFromColumnType(columnType) {
+    const type = String(columnType || '');
+    return new Set(
+        [...type.matchAll(/'((?:[^']|'')*)'/g)].map((match) => match[1].replace(/''/g, "'"))
+    );
+}
+
+export async function inspectRequiredTenantSchemaEnumContracts(connection, tenantDb) {
+    const tableNames = Object.keys(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS);
+    if (tableNames.length === 0) return [];
+
+    const [rows] = await connection.query(
+        `SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE
+           FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = ?
+            AND TABLE_NAME IN (${tableNames.map(() => '?').join(', ')})`,
+        [tenantDb, ...tableNames]
+    );
+    const columnTypeByKey = new Map(
+        rows.map((row) => [`${row.TABLE_NAME}.${row.COLUMN_NAME}`, row.COLUMN_TYPE])
+    );
+
+    const missingEnumEntries = [];
+    Object.entries(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS).forEach(([table, columns]) => {
+        Object.entries(columns).forEach(([column, contract]) => {
+            const columnType = columnTypeByKey.get(`${table}.${column}`);
+            if (columnType === undefined) return; // missing column entirely — column-presence check owns that
+            const actualValues = parseEnumValuesFromColumnType(columnType);
+            const missingValues = contract.enumValues.filter((value) => !actualValues.has(value));
+            if (missingValues.length > 0) {
+                missingEnumEntries.push({ table, column, missing_values: missingValues });
+            }
+        });
+    });
+
+    return missingEnumEntries;
+}
+
+export function buildTenantSchemaEnumRepairSql(missingEnumEntries = []) {
+    return (Array.isArray(missingEnumEntries) ? missingEnumEntries : [])
+        .map(({ table, column }) => ({
+            table,
+            column,
+            sql: REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS?.[table]?.[column]?.sql || ''
+        }))
+        .filter((entry) => entry.sql);
+}
+
 async function writeReport(reportFile, payload) {
     if (!reportFile) {
         return;
@@ -103,7 +216,7 @@ async function writeReport(reportFile, payload) {
 
 export async function runTenantSchemaSync({ reportFile = '', failOnError = false, mode = 'report' } = {}) {
     const normalizedMode = String(mode || 'report').trim().toLowerCase();
-    if (!['report', 'alter'].includes(normalizedMode)) {
+    if (!['report', 'repair-dry-run', 'repair-apply', 'alter'].includes(normalizedMode)) {
         throw new Error(`Invalid tenant schema sync mode: ${mode}`);
     }
 
@@ -150,6 +263,54 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                     await tenantSequelize.sync({ alter: true });
                 } else {
                     await tenantSequelize.authenticate();
+                    const missingColumns = await inspectRequiredTenantSchemaColumns(connection, tenant.db_name);
+                    const missingEnumEntries = await inspectRequiredTenantSchemaEnumContracts(connection, tenant.db_name);
+                    const repairSql = [
+                        ...buildTenantSchemaRepairSql(missingColumns),
+                        ...buildTenantSchemaEnumRepairSql(missingEnumEntries)
+                    ];
+
+                    if (normalizedMode === 'repair-apply') {
+                        for (const repair of repairSql) {
+                            await connection.query(`USE \`${tenant.db_name.replace(/`/g, '``')}\``);
+                            await connection.query(repair.sql);
+                        }
+                    }
+
+                    const remainingMissingColumns = normalizedMode === 'repair-apply'
+                        ? await inspectRequiredTenantSchemaColumns(connection, tenant.db_name)
+                        : missingColumns;
+                    const remainingMissingEnumEntries = normalizedMode === 'repair-apply'
+                        ? await inspectRequiredTenantSchemaEnumContracts(connection, tenant.db_name)
+                        : missingEnumEntries;
+
+                    if ((remainingMissingColumns.length > 0 || remainingMissingEnumEntries.length > 0) && normalizedMode === 'report') {
+                        const messageParts = [
+                            ...remainingMissingColumns.map((entry) => `${entry.table}.${entry.column}`),
+                            ...remainingMissingEnumEntries.map((entry) => `${entry.table}.${entry.column} (missing enum values: ${entry.missing_values.join(', ')})`)
+                        ];
+                        const error = new Error(`Missing required tenant schema columns: ${messageParts.join(', ')}`);
+                        error.missing_columns = remainingMissingColumns;
+                        error.missing_enum_values = remainingMissingEnumEntries;
+                        error.repair_sql = repairSql;
+                        throw error;
+                    }
+
+                    if ((remainingMissingColumns.length > 0 || remainingMissingEnumEntries.length > 0) && normalizedMode === 'repair-dry-run') {
+                        report.summary.failed += 1;
+                        report.results.push({
+                            tenant_id: tenant.id,
+                            tenant_name: tenant.name,
+                            tenant_db: tenant.db_name,
+                            status: 'repair_required',
+                            mode: normalizedMode,
+                            missing_columns: remainingMissingColumns,
+                            missing_enum_values: remainingMissingEnumEntries,
+                            repair_sql: repairSql
+                        });
+                        console.warn(`[TenantSchemaSync] repair_required tenant=${tenant.db_name} missing=${remainingMissingColumns.map((entry) => `${entry.table}.${entry.column}`).join(',')} missing_enum_values=${remainingMissingEnumEntries.map((entry) => `${entry.table}.${entry.column}`).join(',')}`);
+                        continue;
+                    }
                 }
                 report.summary.succeeded += 1;
                 report.results.push({

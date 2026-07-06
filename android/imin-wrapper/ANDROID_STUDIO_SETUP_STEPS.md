@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-06-04
+last_reviewed: 2026-07-04
 applies_to: android_imin_pos_wrapper
 topic: android_studio_setup_steps
 ---
@@ -28,9 +28,9 @@ Make sure these are ready first:
 
 1. Android Studio is installed.
 2. The hosted POS URL is already working in browser.
-3. Your iMin device can reach `https://pos.dgfy.ph`.
+3. Your iMin device can reach `https://pos.dgfy.ph` (prod) or `https://pos.beta.dgfy.ph` (beta), whichever flavor you are building.
 4. USB debugging is enabled on the iMin device.
-5. You know whether you are building the live APK or a local/LAN development APK.
+5. You know whether you are building the live APK or a local/LAN development APK, and which product flavor (`prod` or `beta`) you need.
 
 ## Step 1: Open The Project In Android Studio
 
@@ -49,23 +49,27 @@ Make sure these are ready first:
 
 Do not continue until the project loads without Gradle errors.
 
-## Step 3: Confirm The Hosted POS URL
+## Step 3: Confirm The Hosted POS URL And Flavor
 
-Open this file:
+The live origin and allowed hosts come from the active product flavor (`environment` dimension in `app/build.gradle.kts`), not from hardcoded values:
 
-- `app/src/main/java/com/dgfy/iminwrapper/AppConfig.kt`
+- `app/src/main/java/com/dgfy/iminwrapper/AppConfig.kt` reads `BuildConfig.LIVE_POS_ORIGIN` / `LIVE_POS_HOST` / `SKUPERVISOR_HOST`.
+- The `prod` flavor routes physical iMin devices to:
+  - `https://pos.dgfy.ph/?apk_build=<timestamp>#/terminal`
+  - `https://pos.dgfy.ph/api/v1`
+- The `beta` flavor routes physical iMin devices to:
+  - `https://pos.beta.dgfy.ph/?apk_build=<timestamp>#/terminal`
+  - `https://pos.beta.dgfy.ph/api/v1`
 
-The current release configuration routes physical iMin devices to:
-
-- `https://pos.dgfy.ph/?apk_build=<timestamp>#/terminal`
-- `https://pos.dgfy.ph/api/v1`
+In Android Studio, use `Build > Select Build Variant` (or the Build Variants tool window) to choose `betaDebug`/`betaRelease` or `prodDebug`/`prodRelease`. From the command line use `./gradlew assembleBetaDebug` or `./gradlew assembleProdDebug` (swap `Debug` for `Release` as needed).
 
 Rules:
 
-1. Use the live production origin for release APKs.
-2. Use a LAN host only for emulator/development APKs.
-3. Do not use `localhost` unless the Android device itself is running the POS server.
-4. Keep allowed hosts aligned with the URL host.
+1. Use the live production origin (`prod` flavor) for release APKs meant for real customers.
+2. Use the `beta` flavor to point the APK at `pos.beta.dgfy.ph` for beta testing.
+3. Use a LAN host only for emulator/development APKs — this still applies regardless of flavor.
+4. Do not use `localhost` unless the Android device itself is running the POS server.
+5. Keep allowed hosts aligned with the URL host — each flavor already keeps `LIVE_POS_HOST`/`SKUPERVISOR_HOST` in sync with its own `LIVE_POS_ORIGIN` in `app/build.gradle.kts`.
 
 ## Step 4: Review The Main Wrapper Files
 
@@ -99,15 +103,16 @@ If the device does not appear:
 
 In Android Studio:
 
-1. Click `Build`
-2. Click `Make Project`
+1. Confirm the Build Variant is set to `betaDebug` (for `pos.beta.dgfy.ph`) or `prodDebug` (for `pos.dgfy.ph`).
+2. Click `Build`
+3. Click `Make Project`
 
 If build succeeds, create or run the debug app:
 
 1. Choose your connected iMin device in the top device selector
 2. Click `Run`
 
-Android Studio will install the debug build automatically.
+Android Studio will install the debug build automatically. From the command line this is equivalent to `./gradlew assembleBetaDebug` or `./gradlew assembleProdDebug`, with the APK written to `app/build/outputs/apk/<flavor>/debug/`.
 
 ## Step 7: Launch The App On The Device
 
@@ -141,9 +146,9 @@ Test these in order:
 
 If the app opens but nothing loads:
 
-1. verify `https://pos.dgfy.ph` is reachable from the iMin device browser
-2. verify production POS and backend health are green
-3. verify the APK was rebuilt after changing `AppConfig.kt`
+1. verify the flavor's live origin (`https://pos.dgfy.ph` for `prod`, `https://pos.beta.dgfy.ph` for `beta`) is reachable from the iMin device browser
+2. verify the target environment's POS and backend health are green
+3. verify the APK was rebuilt after changing `app/build.gradle.kts` or switching flavors
 4. verify the WebView did not block navigation because the host is missing from `allowedHosts()`
 
 ## Step 9: Only After App Stability, Add Hardware Integration
@@ -179,15 +184,17 @@ Later steps:
 
 ## Files You Will Most Likely Edit First
 
+- `app/build.gradle.kts` (product flavor origins/hosts)
 - `app/src/main/java/com/dgfy/iminwrapper/AppConfig.kt`
 - `app/src/main/java/com/dgfy/iminwrapper/DrawerController.kt`
 
 ## Current Recommended URL Pattern
 
-For release APKs, use:
+For release APKs, use the flavor matching your target environment:
 
 ```text
-https://pos.dgfy.ph/#/terminal
+https://pos.dgfy.ph/#/terminal        (prod flavor)
+https://pos.beta.dgfy.ph/#/terminal   (beta flavor)
 ```
 
 For local development APKs, use a direct LAN URL such as:

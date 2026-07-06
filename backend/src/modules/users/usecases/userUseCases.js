@@ -85,7 +85,7 @@ export const buildChangePasswordUseCase = ({ userService }) => {
 };
 
 export const buildResetLocalCashierPasswordUseCase = ({ userService }) => {
-  return async ({ adminUserId, targetUserId, newPassword }) => {
+  return async ({ adminUserId, targetUserId, newPassword, notifyUser = false, terminalLabel = '', storeName = '' }) => {
     const normalizedAdminUserId = parsePositiveInt(adminUserId);
     const normalizedTargetUserId = parsePositiveInt(targetUserId);
     if (!normalizedAdminUserId || !normalizedTargetUserId) {
@@ -108,7 +108,12 @@ export const buildResetLocalCashierPasswordUseCase = ({ userService }) => {
       const data = await userService.resetLocalCashierPassword(
         normalizedAdminUserId,
         normalizedTargetUserId,
-        newPassword
+        newPassword,
+        {
+          notifyUser,
+          terminalLabel,
+          storeName
+        }
       );
       return ok(data);
     } catch (error) {
@@ -124,6 +129,32 @@ export const buildGetAllUsersUseCase = ({ userService }) => {
       return ok(data);
     } catch (error) {
       return fail(mapUserUseCaseError(error, 'Failed to retrieve users'));
+    }
+  };
+};
+
+export const buildProvisionCashierFromGmailUseCase = ({ userService }) => {
+  return async ({ adminUserId, email, password, locationIds = [], terminalLabel = '', storeName = '' }) => {
+    const normalizedAdminUserId = parsePositiveInt(adminUserId);
+    if (!normalizedAdminUserId || !email || !password) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'adminUserId, email, and password are required',
+        { statusCode: 400 }
+      ));
+    }
+
+    try {
+      const data = await userService.provisionCashierFromGmail(normalizedAdminUserId, {
+        email,
+        password,
+        location_ids: locationIds,
+        terminal_label: terminalLabel,
+        store_name: storeName
+      });
+      return ok(data);
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to provision cashier from Gmail'));
     }
   };
 };

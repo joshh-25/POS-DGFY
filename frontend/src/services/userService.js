@@ -42,8 +42,30 @@ export const changePassword = async (passwordData) => {
   return response.data.data;
 };
 
-export const resetLocalCashierPassword = async (userId, newPassword) => {
-  const response = await api.put(`/users/${userId}/password`, { newPassword });
+export const resetLocalCashierPassword = async (userId, newPassword, options = {}) => {
+  const response = await api.put(`/users/${userId}/password`, {
+    newPassword,
+    notifyUser: options.notifyUser === true,
+    terminalLabel: options.terminalLabel || '',
+    storeName: options.storeName || ''
+  });
+  return response.data.data;
+};
+
+export const provisionCashierFromGmail = async ({
+  email,
+  password,
+  locationIds = [],
+  terminalLabel = '',
+  storeName = ''
+} = {}) => {
+  const response = await api.post('/users/cashier-provision', {
+    email,
+    password,
+    location_ids: Array.isArray(locationIds) ? locationIds : [],
+    terminal_label: terminalLabel,
+    store_name: storeName
+  });
   return response.data.data;
 };
 

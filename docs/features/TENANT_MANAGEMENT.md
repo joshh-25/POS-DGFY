@@ -300,7 +300,7 @@ Invite creation supports:
 ### Acceptance UX
 `/accept-invite?token=<token>` is no longer the normal business-user onboarding path. New Settings, AI user-management tooling, invitation email templates, resend, and manual-link recovery must not generate direct invitation links. The compatibility route must be non-mutating by default and tell users to sign in with their registered DGFY account and open My Account -> Business.
 
-Invited users sign in with DGFY, see pending invitations in My Account -> Business, and can accept or reject. Accept requires `dgfy_business_step_up` email OTP unless a recent step-up is still valid. Reject marks the membership and tenant invitation `declined` and audits the action. Successful acceptance activates the tenant authorization profile from the authenticated DGFY membership and does not create a separate tenant login password.
+Invited users sign in with DGFY, see pending invitations in My Account -> Business, and can accept or reject without a separate email verification code. Accept is authorized by the authenticated DGFY account plus the pending explicit membership row. Reject marks the membership and tenant invitation `declined` and audits the action. Successful acceptance activates the tenant authorization profile from the authenticated DGFY membership and does not create a separate tenant login password.
 
 ### Delivery And Recovery Status
 The product handles SMTP/API unavailable or failed delivery as a first-class state, but recovery is through the DGFY in-account invitation notification, not a manual link.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Bell,
@@ -87,11 +87,9 @@ export function DgfyCustomerAccountPage({
   onSignOut,
   onHelp,
   onRegisterBusiness,
-  onRequestBusinessStepUp,
   onAcceptCompanyInvitation,
   onRejectCompanyInvitation,
   onLeaveCompany,
-  onSwitchCompany,
   onClearSavedDetails,
   onUseAddressForCheckout,
   onSaveAddress,
@@ -109,7 +107,7 @@ export function DgfyCustomerAccountPage({
   trackedCustomerActivity,
   customerTrackLoadingReference,
   customerTrackError,
-  onOpenBusinessInventory,
+  onOpenBusinessPos,
   accountAddressActionId = ''
 }) {
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
@@ -121,21 +119,18 @@ export function DgfyCustomerAccountPage({
   const accountContactParts = String(accountIdentityContact || '').split(' | ').map((value) => String(value || '').trim());
   const overviewPhone = String(accountPanel?.me?.phone || accountContactParts[0] || '').trim();
   const overviewEmail = String(accountPanel?.me?.email || accountContactParts[1] || '').trim();
-
+  
   const loyalty = accountPanel?.loyalty || { balance: 0, transactions: [] };
   const loyaltyTransactions = Array.isArray(loyalty?.transactions) ? loyalty.transactions.slice(0, 3) : [];
   const businessMemberships = Array.isArray(accountPanel?.memberships)
     ? accountPanel.memberships.filter((membership) => membership?.company)
     : [];
   const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
-  const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
-
+  
   const [activeNav, setActiveNav] = useState('overview');
   const [activeActivityTab, setActiveActivityTab] = useState('active_orders');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
-  const [businessStepUpAction, setBusinessStepUpAction] = useState(null);
-  const [businessEmailOtpCode, setBusinessEmailOtpCode] = useState('');
   const [businessActionLoading, setBusinessActionLoading] = useState(false);
   const [businessActionError, setBusinessActionError] = useState('');
 
@@ -182,7 +177,7 @@ export function DgfyCustomerAccountPage({
     const s = String(status).toLowerCase();
     let color = THEME.muted;
     let bg = THEME.border;
-
+    
     if (s.includes('active') || s.includes('progress') || s.includes('preparing') || s.includes('confirmed')) {
       color = THEME.info;
       bg = THEME.infoBg;
@@ -198,49 +193,33 @@ export function DgfyCustomerAccountPage({
     }
 
     return (
-      <span style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '2px 8px',
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 600,
-        color: color,
-        background: bg
+      <span style={{ 
+        display: 'inline-flex', 
+        alignItems: 'center', 
+        padding: '2px 8px', 
+        borderRadius: 999, 
+        fontSize: 12, 
+        fontWeight: 600, 
+        color: color, 
+        background: bg 
       }}>
         {prettyStatus(status)}
       </span>
     );
   };
 
-  const performBusinessAction = async (action, emailOtpCode = '') => {
-    if (action.type === 'accept') return onAcceptCompanyInvitation?.({ membershipId: action.company.membership_id, emailOtpCode });
+  const performBusinessAction = async (action) => {
+    if (action.type === 'accept') return onAcceptCompanyInvitation?.({ membershipId: action.company.membership_id });
     if (action.type === 'reject') return onRejectCompanyInvitation?.({ membershipId: action.company.membership_id });
     if (action.type === 'leave') return onLeaveCompany?.({ tenantId: action.company.tenant_id });
-    if (action.type === 'switch') return onSwitchCompany?.({ tenantId: action.company.tenant_id, emailOtpCode });
+    if (action.type === 'open-pos') return onOpenBusinessPos?.(action.company);
     return undefined;
   };
   const startBusinessAction = async (type, company) => {
     const action = { type, company };
     setBusinessActionError('');
-    if (type === 'reject' || type === 'leave' || businessStepUp?.verified === true) {
-      setBusinessActionLoading(true);
-      try { await performBusinessAction(action); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
-      return;
-    }
-    setBusinessStepUpAction(action);
-    setBusinessEmailOtpCode('');
     setBusinessActionLoading(true);
-    try { await onRequestBusinessStepUp?.(); } catch (error) { setBusinessStepUpAction(null); setBusinessActionError(error?.message || 'Unable to send the security code.'); } finally { setBusinessActionLoading(false); }
-  };
-  const submitBusinessStepUpAction = async () => {
-    if (!/^\d{6}$/.test(businessEmailOtpCode) || !businessStepUpAction) {
-      setBusinessActionError('Enter the 6-digit security code sent to your DGFY email.');
-      return;
-    }
-    setBusinessActionLoading(true);
-    setBusinessActionError('');
-    try { await performBusinessAction(businessStepUpAction, businessEmailOtpCode); setBusinessStepUpAction(null); setBusinessEmailOtpCode(''); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
+    try { await performBusinessAction(action); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
   };
 
   const renderBusiness = () => {
@@ -257,8 +236,49 @@ export function DgfyCustomerAccountPage({
         </div>
         {businessActionError ? <div role="alert" style={{ borderRadius: 10, background: '#FEF2F2', color: '#991B1B', padding: 12 }}>{businessActionError}</div> : null}
         {pending.length > 0 ? <section style={{ display: 'grid', gap: 10 }}><strong>Pending invitations</strong>{pending.map((company) => <div key={`invite-${company.membership_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, background: THEME.infoBg, padding: 14, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{company.company_name || company.name || 'Company invitation'}</strong><div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>Invitation from IMS</div></div><div style={{ display: 'flex', gap: 8 }}><button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('reject', company)}>Reject</button><button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('accept', company)}>Accept</button></div></div>)}</section> : null}
-        {businessStepUpAction ? <section style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, padding: 14, display: 'grid', gap: 10 }}><strong>Email security check</strong><span style={{ color: THEME.muted, fontSize: 13 }}>Enter the 6-digit code sent to your DGFY email.</span><input inputMode="numeric" value={businessEmailOtpCode} onChange={(event) => setBusinessEmailOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} aria-label="Business security code" /><div style={{ display: 'flex', gap: 8 }}><button type="button" onClick={() => setBusinessStepUpAction(null)}>Cancel</button><button type="button" disabled={businessActionLoading} onClick={submitBusinessStepUpAction}>Verify and continue</button></div></section> : null}
-        {accepted.length > 0 ? <div style={{ display: 'grid', gap: 14 }}>{accepted.map((company) => { const name=company.company_name || company.name || 'Business'; const owned=company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner'; return <article key={`company-${company.membership_id || company.tenant_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 18, overflow: 'hidden', background: '#fff' }}><div style={{ height: isMobileViewport ? 72 : 104, background: 'linear-gradient(135deg,#1A4E8D,#4F8CC9,#AEE8F4)' }} /><div style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>{name}</div><div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>{owned ? 'Company you own' : 'Company membership'}</div></div><div style={{ display: 'flex', gap: 8 }} >{!owned && company.can_leave !== false ? <button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('leave', company)}>Leave</button> : null}<button type="button" disabled={businessActionLoading} onClick={() => company.tenant_id ? startBusinessAction('switch', company) : onOpenBusinessInventory?.(company)}>Go to Inventory</button></div></div></article>; })}</div> : <div style={{ border: `1px solid ${THEME.border}`, borderRadius: 16, padding: 28, textAlign: 'center' }}><Store size={36} color={THEME.primary} /><h3>No registered business yet</h3><p style={{ color: THEME.muted }}>Register a business or accept an IMS invitation.</p></div>}
+        {accepted.length > 0 ? (
+          <div style={{ display: 'grid', gap: 14 }}>
+            {accepted.map((company) => {
+              const name = company.company_name || company.name || 'Business';
+              const owned = company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner';
+              return (
+                <article key={`company-${company.membership_id || company.tenant_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 18, overflow: 'hidden', background: '#fff' }}>
+                  <div style={{ height: isMobileViewport ? 72 : 104, background: 'linear-gradient(135deg,#1A4E8D,#4F8CC9,#AEE8F4)' }} />
+                  <div style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 18, fontWeight: 800 }}>{name}</div>
+                      <div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>{owned ? 'Company you own' : 'Company membership'}</div>
+                      {!owned && company.can_leave !== false ? (
+                        <button
+                          type="button"
+                          disabled={businessActionLoading}
+                          onClick={() => startBusinessAction('leave', company)}
+                          style={{ marginTop: 8, border: 0, background: 'none', padding: 0, color: THEME.muted, fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}
+                        >
+                          Leave this business
+                        </button>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={businessActionLoading}
+                      onClick={() => startBusinessAction('open-pos', company)}
+                      style={{ border: 0, borderRadius: 10, background: THEME.primary, color: '#fff', minHeight: 42, padding: '0 16px', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Go to POS
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ border: `1px solid ${THEME.border}`, borderRadius: 16, padding: 28, textAlign: 'center' }}>
+            <Store size={36} color={THEME.primary} />
+            <h3>No registered business yet</h3>
+            <p style={{ color: THEME.muted }}>Register a business or accept an IMS invitation.</p>
+          </div>
+        )}
       </div>
     );
   };
@@ -266,10 +286,10 @@ export function DgfyCustomerAccountPage({
 
   const renderOverview = () => (
     <div style={{ display: 'grid', gap: isMobileViewport ? 18 : 24 }}>
-
+      
       {/* 1. Profile Header Section */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1.5fr 1fr', gap: isMobileViewport ? 16 : 24 }}>
-
+        
         {/* Profile Card */}
         <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobileViewport ? 16 : 24, display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: isMobileViewport ? 14 : 20, flexDirection: isMobileViewport ? 'column' : 'row' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 14 : 20 }}>
@@ -358,7 +378,7 @@ export function DgfyCustomerAccountPage({
 
       {/* 3. Main Dashboard & Utility Panel Row */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '2fr 1fr', gap: 24 }}>
-
+        
         {/* Activity Tabs Section */}
         <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {/* Tabs */}
@@ -418,7 +438,7 @@ export function DgfyCustomerAccountPage({
                         <div style={{ fontSize: 12, color: THEME.muted, marginTop: 4 }}>Placed on {formatDate(order.occurred_at)}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <button
+                        <button 
                           onClick={() => onTrackReference(order)}
                           style={{ background: 'transparent', border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: THEME.primary, cursor: 'pointer' }}
                         >
@@ -541,16 +561,16 @@ export function DgfyCustomerAccountPage({
           ].map((action, i) => {
             const Icon = action.icon;
             return (
-              <button
-                key={i}
+              <button 
+                key={i} 
                 onClick={
                   action.label === 'Reorder Items' ? () => setActiveNav('orders') :
                   action.label === 'Add Address' ? () => setActiveNav('addresses') :
                   action.label === 'Update Profile' ? () => setActiveNav('account') :
                   onHelp
                 }
-                style={{ background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}`, padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer', transition: 'background 200ms' }}
-                onMouseOver={e => e.currentTarget.style.background = THEME.bg}
+                style={{ background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}`, padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer', transition: 'background 200ms' }} 
+                onMouseOver={e => e.currentTarget.style.background = THEME.bg} 
                 onMouseOut={e => e.currentTarget.style.background = THEME.surface}
               >
                 <Icon size={18} color={action.color} />
@@ -693,7 +713,7 @@ export function DgfyCustomerAccountPage({
   const renderAccount = () => (
     <div style={{ display: 'grid', gap: 24 }}>
       <h2 style={{ fontSize: 28, fontWeight: 800, color: THEME.text, marginBottom: 8 }}>Account Settings</h2>
-
+      
       {/* Container 1: Profile Overview */}
       <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>Profile Overview</h3>
@@ -736,7 +756,7 @@ export function DgfyCustomerAccountPage({
       <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>Contact Information</h3>
         <div style={{ display: 'grid', gap: 16 }}>
-
+          
           {/* Email Row */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -811,13 +831,13 @@ export function DgfyCustomerAccountPage({
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2499, minHeight: '100vh', background: THEME.bg, display: 'flex', fontFamily: "'Inter', sans-serif" }}>
-
+      
       {/* --- LEFT NAVIGATION SIDEBAR --- */}
-      <aside style={{
-        width: 260,
-        background: THEME.surface,
-        borderRight: `1px solid ${THEME.border}`,
-        display: isMobileViewport && !isMobileMenuOpen ? 'none' : 'flex',
+      <aside style={{ 
+        width: 260, 
+        background: THEME.surface, 
+        borderRight: `1px solid ${THEME.border}`, 
+        display: isMobileViewport && !isMobileMenuOpen ? 'none' : 'flex', 
         flexDirection: 'column',
         position: isMobileViewport ? 'fixed' : 'relative',
         inset: isMobileViewport ? 0 : 'auto',
@@ -831,7 +851,7 @@ export function DgfyCustomerAccountPage({
           <div style={{ fontSize: 10, fontWeight: 600, color: THEME.primary, letterSpacing: '0.02em', marginTop: 2 }}>
             Discover Goods For You
           </div>
-
+          
           {isMobileViewport && (
             <button onClick={() => setIsMobileMenuOpen(false)} style={{ position: 'absolute', top: 24, right: 24, background: 'none', border: 'none' }}>
               <X size={24} color={THEME.muted} />
@@ -892,10 +912,10 @@ export function DgfyCustomerAccountPage({
 
       {/* --- MAIN CONTENT AREA --- */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
-
+        
         {/* Header Shell */}
         <header style={{ height: 72, background: THEME.surface, borderBottom: `1px solid ${THEME.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px', position: 'sticky', top: 0, zIndex: 30, flexShrink: 0 }}>
-
+          
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             {isMobileViewport && (
               <button onClick={() => setIsMobileMenuOpen(true)} style={{ background: 'transparent', border: 'none', color: THEME.text }}>

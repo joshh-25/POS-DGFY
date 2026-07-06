@@ -78,6 +78,59 @@ describe('UserInvitationModal DGFY-only invitations', () => {
     expect(screen.getByRole('button', { name: /Grace Hopper/i }).disabled).toBe(true);
   });
 
+  it('keeps DGFY account search available when POS fixes the invitation role to cashier', async () => {
+    render(
+      <UserInvitationModal
+        open
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+        fixedRole="cashier"
+        title="Invite DGFY Cashier"
+        submitLabel="Send Cashier Invitation"
+      />
+    );
+
+    expect(screen.getByText('Invite DGFY Cashier')).toBeTruthy();
+    expect(screen.getByText(/cashier authorization profile/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Search registered DGFY account'), {
+      target: { value: 'ada' }
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/i }));
+    fireEvent.click(await screen.findByLabelText('Main Branch'));
+    fireEvent.click(screen.getByRole('button', { name: 'Send Cashier Invitation' }));
+
+    await waitFor(() => expect(mocks.userService.inviteDgfyAccountToCompany).toHaveBeenCalledWith({
+      dgfyAccountId: 'dgfy-new',
+      role: 'cashier',
+      rolePresetKey: null,
+      locationIds: [1]
+    }));
+  });
+
+  it('uses provided company locations instead of refetching ambient tenant locations', async () => {
+    render(
+      <UserInvitationModal
+        open
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+        fixedRole="cashier"
+        title="Invite DGFY Cashier"
+        submitLabel="Send Cashier Invitation"
+        locationOptions={[
+          { location_id: 41, name: 'Selected Company Branch', is_active: true },
+          { location_id: 42, name: 'Selected Company Counter', is_active: true }
+        ]}
+      />
+    );
+
+    expect(mocks.locationService.listTenantLocations).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Selected Company Branch')).toBeTruthy();
+    expect(screen.getByLabelText('Selected Company Counter')).toBeTruthy();
+    expect(screen.queryByLabelText('Main Branch')).toBeNull();
+  });
+
   it('requires a selected registered DGFY account before submit', async () => {
     render(
       <UserInvitationModal

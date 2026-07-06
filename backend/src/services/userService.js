@@ -165,6 +165,32 @@ const parsePositiveInt = (value) => {
   return normalized;
 };
 
+const CASHIER_GMAIL_PATTERN = /^[A-Z0-9._%+-]+@gmail\.com$/i;
+const normalizeCashierGmail = (value) => String(value || '').trim().toLowerCase();
+const isValidCashierGmail = (value) => CASHIER_GMAIL_PATTERN.test(normalizeCashierGmail(value));
+const buildProvisionedCashierPhone = (email = '') => {
+  const hex = crypto.createHash('sha256').update(normalizeCashierGmail(email)).digest('hex');
+  const digits = BigInt(`0x${hex.slice(0, 12)}`).toString().padStart(12, '0').slice(0, 9);
+  return `+639${digits}`;
+};
+const buildCashierUsernameSeed = (email = '') => {
+  const local = normalizeCashierGmail(email).split('@')[0] || 'cashier';
+  return String(local).replace(/[^a-z0-9._-]/gi, '').slice(0, 40) || 'cashier';
+};
+const buildCashierNameFromEmail = (email = '') => {
+  const seed = buildCashierUsernameSeed(email).replace(/[._-]+/g, ' ').trim();
+  const firstName = seed
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ')
+    .slice(0, 40) || 'Cashier';
+  return {
+    first_name: firstName,
+    last_name: 'Cashier'
+  };
+};
+
 const mirrorInvitationToDgfyAccount = async ({
   email,
   tenantId,
@@ -413,10 +439,13 @@ export const changePassword = async (userId, currentPassword, newPassword) => {
   await user.update({ password_hash });
 };
 
-export const resetLocalCashierPassword = async (adminUserId, targetUserId, newPassword) => {
+export const resetLocalCashierPassword = async (adminUserId, targetUserId, newPassword, options = {}) => {
   const User = dbStore.get('User');
   const adminUser = await findVisibleUserById(User, adminUserId);
   const targetUser = await findVisibleUserById(User, targetUserId);
+  const notifyUser = options?.notifyUser === true;
+  const terminalLabel = String(options?.terminalLabel || '').trim();
+  const storeName = String(options?.storeName || '').trim();
 
   if (!adminUser) throw notFoundError('Admin user not found');
   if (!targetUser) throw notFoundError('Cashier user not found');
@@ -436,11 +465,53 @@ export const resetLocalCashierPassword = async (adminUserId, targetUserId, newPa
   await targetUser.update({ password_hash });
 
   const workflowMode = await readCurrentWorkflowMode();
-  return buildUserPayload(targetUser, workflowMode, {
+  const payload = buildUserPayload(targetUser, workflowMode, {
     is_active: targetUser.is_active,
     permissions: resolveEffectivePermissions(targetUser),
     is_master_admin: targetUser.is_master_admin
   });
+  const tenantName = dbStore.getStore()?.tenantName || 'DGFY';
+
+  let credentialEmailSent = false;
+  let credentialEmailStatus = notifyUser ? null : 'skipped';
+  let credentialEmailError = null;
+
+  if (notifyUser) {
+    if (!String(targetUser.email || '').trim()) {
+      credentialEmailStatus = 'missing_email';
+      credentialEmailError = 'Cashier email is missing.';
+    } else if (!emailService.isEmailConfigured()) {
+      credentialEmailStatus = 'not_configured';
+      credentialEmailError = 'Email delivery is not configured.';
+    } else {
+      try {
+        await emailService.sendCashierCredentialEmail({
+          email: targetUser.email,
+          tenantName,
+          temporaryPassword: newPassword,
+          terminalLabel,
+          storeName
+        });
+        credentialEmailSent = true;
+        credentialEmailStatus = 'sent';
+      } catch (error) {
+        credentialEmailStatus = 'failed';
+        credentialEmailError = error?.message || 'Failed to send cashier credential email.';
+        logger.warn('[UserService] Failed to send cashier credential email', {
+          targetUserId,
+          email: targetUser.email,
+          error: credentialEmailError
+        });
+      }
+    }
+  }
+
+  return {
+    ...payload,
+    credential_email_sent: credentialEmailSent,
+    credential_email_status: credentialEmailStatus,
+    credential_email_error: credentialEmailError
+  };
 };
 
 /**
@@ -1294,6 +1365,221 @@ export const listLocalCashiers = async (adminUserId) => {
     is_master_admin: cashier.is_master_admin,
     location_ids: locationsByUserId.get(Number(cashier.user_id)) || []
   }));
+};
+
+export const provisionCashierFromGmail = async (adminUserId, cashierData = {}) => {
+  const {
+    email: rawEmail,
+    password,
+    location_ids: locationIds = [],
+    terminal_label: rawTerminalLabel = '',
+    store_name: rawStoreName = ''
+  } = cashierData;
+
+  const email = normalizeCashierGmail(rawEmail);
+  const terminalLabel = String(rawTerminalLabel || '').trim();
+  const storeName = String(rawStoreName || '').trim();
+
+  if (!isValidCashierGmail(email)) {
+    throw createError('Cashier email must be a valid Gmail address.', 422);
+  }
+  if (!password || String(password).length < 8) {
+    throw createError('Cashier password must be at least 8 characters.', 422);
+  }
+
+  const normalizedLocationIds = await validateActiveLocationIds(locationIds);
+  if (normalizedLocationIds.length === 0) {
+    throw createError('Assign at least one active location to this cashier.', 422);
+  }
+
+  const User = dbStore.get('User');
+  const adminUser = await findVisibleUserById(User, adminUserId);
+  if (!adminUser) throw notFoundError('Admin user not found');
+  if (!adminUser.is_master_admin && !hasPermission(adminUser, 'users:manage')) {
+    throw createError('Missing users:manage permission', 403);
+  }
+  validateAdminHierarchy(adminUser, null, 'provision cashier', 'cashier');
+
+  const store = dbStore.getStore() || {};
+  const tenant = {
+    id: store.tenantId,
+    name: store.tenantName || 'DGFY',
+    company_token: store.tenantToken,
+    status: 'active',
+    plan: store.tenantPlan || 'free'
+  };
+  if (!tenant.id) {
+    throw createError('Tenant context is required to provision cashier access.', 400);
+  }
+
+  const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
+  const passwordHash = await hashPassword(String(password));
+  let account = await dgfyAccountRepository.findByEmail(email).catch(() => null);
+
+  if (!account) {
+    const name = buildCashierNameFromEmail(email);
+    account = await dgfyAccountRepository.create({
+      first_name: name.first_name,
+      middle_name: null,
+      last_name: name.last_name,
+      username: buildCashierUsernameSeed(email),
+      email,
+      phone: buildProvisionedCashierPhone(email),
+      password_hash: passwordHash,
+      is_active: true,
+      email_verified_at: null,
+      phone_verified_at: null,
+      provisioning_status: 'admin_provisioned',
+      temporary_password_active: true,
+      email_verification_source: null,
+      merchant_terms_acknowledged_at: null
+    });
+  } else {
+    await account.update({
+      password_hash: passwordHash,
+      is_active: true,
+      temporary_password_active: true
+    });
+    account = await dgfyAccountRepository.findByEmail(email);
+  }
+
+  const membership = await dgfyAccountRepository.findMembershipForAccount({
+    dgfyAccountId: account.id,
+    tenantId: tenant.id,
+    status: 'accepted'
+  });
+
+  let tenantUser = null;
+  if (membership?.tenant_user_id) {
+    tenantUser = await User.findOne({ where: { user_id: membership.tenant_user_id } }).catch(() => null);
+  }
+  if (!tenantUser) {
+    tenantUser = await User.findOne({ where: { email } }).catch(() => null);
+  }
+
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const transaction = await sequelize.transaction();
+
+  try {
+    const buildAvailableCashierUsername = async (seed) => {
+      const normalizedBase = String(seed || 'cashier').trim().replace(/[^a-z0-9._-]/gi, '').slice(0, 40) || 'cashier';
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        const suffix = attempt === 0 ? '' : `-${attempt + 1}`;
+        const candidate = `${normalizedBase.slice(0, Math.max(1, 40 - suffix.length))}${suffix}`;
+        const existing = await User.findOne({
+          where: { username: candidate },
+          attributes: ['user_id'],
+          transaction
+        });
+        if (!existing || Number(existing.user_id) === Number(tenantUser?.user_id || 0)) {
+          return candidate;
+        }
+      }
+      return `${normalizedBase.slice(0, 30)}-${String(Date.now()).slice(-6)}`;
+    };
+
+    const username = await buildAvailableCashierUsername(buildCashierUsernameSeed(email));
+    const cashierPayload = {
+      username,
+      email,
+      phone_number: tenantUser?.phone_number || null,
+      password_hash: passwordHash,
+      role: 'cashier',
+      role_preset_key: null,
+      permissions: DEFAULT_ROLE_PERMISSIONS.cashier,
+      is_active: true,
+      is_master_admin: false,
+      invitation_token: null,
+      invitation_expires_at: null,
+      invited_by: null,
+      invitation_status: null,
+      invitation_delivery_status: null,
+      invitation_delivery_error: null,
+      invitation_last_sent_at: null,
+      invitation_accepted_at: null,
+      invitation_cancelled_at: null,
+      invitation_cancelled_by: null,
+      deleted_at: null,
+      deleted_by: null
+    };
+
+    if (tenantUser) {
+      const normalizedRole = String(tenantUser.role || '').trim().toLowerCase();
+      const canConvertToCashier = normalizedRole === 'cashier' || tenantUser.deleted_at || isInvitationLifecycleRow(tenantUser);
+      if (!canConvertToCashier) {
+        throw createError('This Gmail already belongs to a non-cashier company user.', 409);
+      }
+      await tenantUser.update(cashierPayload, { transaction });
+    } else {
+      tenantUser = await User.create(cashierPayload, { transaction });
+    }
+
+    await replaceUserLocationGrants(tenantUser.user_id, normalizedLocationIds, transaction, adminUserId);
+    await transaction.commit();
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    throw error;
+  }
+
+  const acceptedMembership = await dgfyAccountRepository.upsertAcceptedLegacyMembership({
+    dgfyAccountId: account.id,
+    tenantId: tenant.id,
+    tenantUserId: tenantUser.user_id,
+    role: 'cashier',
+    source: membership ? 'invite' : 'admin_provisioned'
+  });
+
+  let credentialEmailSent = false;
+  let credentialEmailStatus;
+  let credentialEmailError = null;
+
+  if (!String(account?.email || '').trim()) {
+    credentialEmailStatus = 'missing_email';
+    credentialEmailError = 'Cashier email is missing.';
+  } else if (!emailService.isEmailConfigured()) {
+    credentialEmailStatus = 'not_configured';
+    credentialEmailError = 'Email delivery is not configured.';
+  } else {
+    try {
+      await emailService.sendCashierCredentialEmail({
+        email: account.email,
+        tenantName: tenant.name,
+        temporaryPassword: String(password),
+        terminalLabel,
+        storeName
+      });
+      credentialEmailSent = true;
+      credentialEmailStatus = 'sent';
+    } catch (error) {
+      credentialEmailStatus = 'failed';
+      credentialEmailError = error?.message || 'Failed to send cashier credential email.';
+      logger.warn('[UserService] Failed to send provisioned cashier credential email', {
+        tenantId: tenant.id,
+        email: account.email,
+        error: credentialEmailError
+      });
+    }
+  }
+
+  const workflowMode = await readCurrentWorkflowMode();
+  const tenantPayload = tenantUser
+    ? buildUserPayload(tenantUser, workflowMode, {
+      is_active: tenantUser.is_active,
+      permissions: resolveEffectivePermissions(tenantUser),
+      is_master_admin: tenantUser.is_master_admin,
+      location_ids: normalizedLocationIds
+    })
+    : null;
+
+  return {
+    cashier_email: email,
+    dgfy_account_id: account?.id || null,
+    tenant_user: tenantPayload,
+    membership_status: acceptedMembership?.status || 'accepted',
+    credential_email_sent: credentialEmailSent,
+    credential_email_status: credentialEmailStatus,
+    credential_email_error: credentialEmailError
+  };
 };
 
 /**

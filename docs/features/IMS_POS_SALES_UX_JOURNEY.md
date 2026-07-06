@@ -31,7 +31,7 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
    - Folder assigned and folder `show_in_pos_filter` enabled for faster category navigation
 4. If needed, use bulk POS setup for multi-item updates.
 5. Preview the item in Terminal via `Preview in Terminal`.
-6. Validate terminal identity at unlock (`Terminal ID`) and open shift. Backend shift operations require a concrete terminal ID. Warn-mode first-use tenants without an active registry or stored terminal default to `COUNTER-01`; enforce-mode tenants require an active terminal registry entry before unlock/shift operations continue.
+6. Validate terminal identity at unlock (`Terminal ID`) and open shift. Backend shift operations require an active registered terminal assigned to the operator's allowed location. Physical-device pairing is not required for normal shift opening.
 7. Monitor operational status rail:
    - connectivity
    - queued offline operations
@@ -69,7 +69,7 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
 3. Disabling `Show in POS` remains allowed.
 
 ## Cashier Journey
-1. Unlock terminal with credentials and resolved terminal ID. `COUNTER-01` is the first-use default only in warn mode when no terminal registry or stored terminal exists; otherwise use the configured terminal identity shown in the drawer.
+1. Unlock terminal with credentials and a resolved active terminal ID. Use the configured terminal identity shown in the drawer; authorized DGFY operators may open shifts from any logged-in device.
 2. Select an `Operating Location` before opening a shift.
 3. Open shift (or continue with reused open shift).
 4. Use `Sell` mode for checkout and catalog/cart actions; checkout remains bound to shift location.

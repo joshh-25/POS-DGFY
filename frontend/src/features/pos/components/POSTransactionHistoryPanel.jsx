@@ -5,10 +5,6 @@ import { Input } from '@/components/ui/input';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
-const formatDiscountDisplay = (value) => {
-    const amount = Number(value || 0);
-    return amount > 0 ? `PHP ${money(amount)}` : '–';
-};
 const ORDER_SOURCE_LABELS = {
     in_store: 'In-Store',
     online_store: 'Online Store'
@@ -32,9 +28,9 @@ const formatDateTime = (value) => {
 const baseSelectClassName = 'w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-[13px] font-medium text-[#334155] shadow-sm shadow-slate-100 outline-none transition focus:border-[#2563EB] focus:ring-4 focus:ring-blue-100';
 const fieldLabelClassName = 'text-[13px] font-semibold text-[#334155]';
 
-function SelectField({ label, value, onChange, children }) {
+function SelectField({ label, value, onChange, children, className = '' }) {
     return (
-        <label className="block">
+        <label className={className ? `block ${className}` : 'block'}>
             <span className={fieldLabelClassName}>{label}</span>
             <div className="relative mt-2">
                 <select value={value} onChange={onChange} className={baseSelectClassName}>
@@ -122,8 +118,8 @@ export default function POSTransactionHistoryPanel({
     }, []);
 
     return (
-        <section className="flex h-full min-h-0 flex-col rounded-xl bg-white p-1 lg:p-0">
-                <div className="shrink-0 flex flex-col gap-3 border-b border-slate-200 px-3 pb-4 pt-2 xl:flex-row xl:items-start xl:justify-between lg:px-4">
+        <section className="space-y-4 rounded-xl bg-white p-1 lg:p-0">
+                <div className="flex flex-col gap-3 border-b border-slate-200 px-3 pb-4 pt-2 xl:flex-row xl:items-start xl:justify-between lg:px-4">
                     <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto">
                         <IconInput icon={Search}>
                             <Input
@@ -153,16 +149,16 @@ export default function POSTransactionHistoryPanel({
                     </div>
                 </div>
 
-                <div className="shrink-0 px-3 py-4 lg:px-4">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                        <SelectField label="Status" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
+                <div className="px-3 lg:px-4">
+                    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+                        <SelectField label="Status" className="max-sm:order-2" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
                             <option value="all">All Status</option>
                             <option value="completed">Completed</option>
                             <option value="pending_sync">Pending Sync</option>
                             <option value="voided">Voided</option>
                         </SelectField>
 
-                        <SelectField label="Payments" value={historyPaymentType} onChange={(event) => setHistoryPaymentType(event.target.value)}>
+                        <SelectField label="Payments" className="max-sm:order-1" value={historyPaymentType} onChange={(event) => setHistoryPaymentType(event.target.value)}>
                             <option value="all">All Payments</option>
                             <option value="cash">Cash</option>
                             <option value="gcash">GCash</option>
@@ -171,7 +167,7 @@ export default function POSTransactionHistoryPanel({
                             <option value="bank_transfer">Bank Transfer</option>
                         </SelectField>
 
-                        <SelectField label="Order Methods" value={historyOrderMethod} onChange={(event) => setHistoryOrderMethod(event.target.value)}>
+                        <SelectField label="Order Methods" className="max-sm:order-4 max-sm:col-span-2" value={historyOrderMethod} onChange={(event) => setHistoryOrderMethod(event.target.value)}>
                             <option value="all">All Order Methods</option>
                             <option value="dine_in">Dine In</option>
                             <option value="takeout">Takeout</option>
@@ -180,13 +176,13 @@ export default function POSTransactionHistoryPanel({
                             <option value="appointment">Appointment</option>
                         </SelectField>
 
-                        <SelectField label="Sources" value={historyOrderSource} onChange={(event) => setHistoryOrderSource(event.target.value)}>
+                        <SelectField label="Sources" className="max-sm:order-3 max-sm:col-span-2" value={historyOrderSource} onChange={(event) => setHistoryOrderSource(event.target.value)}>
                             <option value="all">All Sources</option>
                             <option value="in_store">In-Store</option>
                             <option value="online_store">Online Store</option>
                         </SelectField>
 
-                        <label className="block">
+                        <label className="block max-sm:col-span-2 max-sm:order-5">
                             <span className={fieldLabelClassName}>Cashier ID</span>
                             <IconInput icon={UserRound}>
                                 <Input
@@ -200,7 +196,7 @@ export default function POSTransactionHistoryPanel({
                             </IconInput>
                         </label>
 
-                        <div className="grid grid-cols-2 gap-3 sm:contents">
+                        <div className="grid grid-cols-2 gap-3 sm:contents max-sm:col-span-2 max-sm:order-6">
                         <label className="block">
                             <span className={fieldLabelClassName}>Date From</span>
                             <IconInput icon={CalendarDays} mobileIconAlign="right">
@@ -231,7 +227,7 @@ export default function POSTransactionHistoryPanel({
                         </label>
                         </div>
 
-                        <div className="flex items-end gap-3 sm:col-span-2 xl:col-span-1 xl:col-start-4">
+                        <div className="flex items-end gap-3 max-sm:col-span-2 max-sm:order-7 sm:col-span-2 xl:col-span-1 xl:col-start-4">
                             <Button
                                 type="button"
                                 variant="outline"
@@ -253,8 +249,8 @@ export default function POSTransactionHistoryPanel({
                     </div>
                 </div>
 
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-slate-200">
-                    <div className="dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-auto overscroll-contain" aria-busy={historyLoading}>
+                <div className="overflow-hidden border-t border-slate-200">
+                    <div className="dgfy-pos-scrollbar-hidden overflow-x-auto" aria-busy={historyLoading}>
                         <table className={`w-full text-[13px] ${isTabletViewport ? 'min-w-[820px]' : 'min-w-[1220px]'}`} aria-label="POS transaction history table">
                             <caption className="sr-only">POS transaction history with receipt and sales report actions</caption>
                             <thead>
@@ -310,7 +306,9 @@ export default function POSTransactionHistoryPanel({
                                                 {!isTabletViewport && <td className="px-4 py-4 text-[#334155]">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>}
                                                 {!isTabletViewport && (
                                                     <td className="px-4 py-4 text-[#334155]">
-                                                        {formatDiscountDisplay(row.discount_amount)}
+                                                        {row.discount_label_snapshot
+                                                            ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
+                                                            : '–'}
                                                     </td>
                                                 )}
                                                 {!isTabletViewport && <td className="w-[1px] px-2 py-4 text-right text-[#334155] whitespace-nowrap">PHP {money(row.service_fee_amount)}</td>}
@@ -364,7 +362,9 @@ export default function POSTransactionHistoryPanel({
                                                             <div>
                                                                 <span className="font-semibold text-[#0F172A]">Discount</span>
                                                                 <p className="mt-1">
-                                                                    {formatDiscountDisplay(row.discount_amount)}
+                                                                    {row.discount_label_snapshot
+                                                                        ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
+                                                                        : '–'}
                                                                 </p>
                                                             </div>
                                                             <div>
@@ -398,11 +398,11 @@ export default function POSTransactionHistoryPanel({
                         </table>
                     </div>
 
-                    <div className="shrink-0 flex flex-col gap-4 border-t border-slate-200 px-6 py-4 text-[13px] text-[#334155] lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-col gap-4 border-t border-slate-200 px-6 py-4 text-[13px] text-[#334155] lg:flex-row lg:items-center lg:justify-between">
                         <p>
                             Showing {pageStart} to {pageEnd || 0} of {totalEntries || historyRows.length} entries
                         </p>
-                        <div className="flex flex-wrap items-center justify-end gap-3">
+                        <div className="flex flex-wrap items-center justify-end gap-3 max-sm:flex-col max-sm:items-center">
                             <div className="flex items-center gap-2">
                                 <span>Rows per page</span>
                                 <div className="relative">
@@ -417,45 +417,47 @@ export default function POSTransactionHistoryPanel({
                                 </div>
                             </div>
 
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
-                                onClick={() => loadHistory(1)}
-                                disabled={historyLoading || historyPage <= 1}
-                            >
-                                «
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
-                                onClick={() => loadHistory(Math.max(1, historyPage - 1))}
-                                disabled={historyLoading || historyPage <= 1}
-                            >
-                                ‹
-                            </Button>
-                            <div className="grid h-10 min-w-[2.75rem] place-items-center rounded-xl bg-[#1A4E8D] px-4 text-[13px] font-bold text-white shadow-lg shadow-blue-900/20">
-                                {historyPage}
+                            <div className="flex items-center gap-3">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
+                                    onClick={() => loadHistory(1)}
+                                    disabled={historyLoading || historyPage <= 1}
+                                >
+                                    «
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
+                                    onClick={() => loadHistory(Math.max(1, historyPage - 1))}
+                                    disabled={historyLoading || historyPage <= 1}
+                                >
+                                    ‹
+                                </Button>
+                                <div className="grid h-10 min-w-[2.75rem] place-items-center rounded-xl bg-[#1A4E8D] px-4 text-[13px] font-bold text-white shadow-lg shadow-blue-900/20">
+                                    {historyPage}
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
+                                    onClick={() => loadHistory(Math.min(totalPages, historyPage + 1))}
+                                    disabled={historyLoading || historyPage >= totalPages}
+                                >
+                                    ›
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
+                                    onClick={() => loadHistory(totalPages)}
+                                    disabled={historyLoading || historyPage >= totalPages}
+                                >
+                                    »
+                                </Button>
                             </div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
-                                onClick={() => loadHistory(Math.min(totalPages, historyPage + 1))}
-                                disabled={historyLoading || historyPage >= totalPages}
-                            >
-                                ›
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
-                                onClick={() => loadHistory(totalPages)}
-                                disabled={historyLoading || historyPage >= totalPages}
-                            >
-                                »
-                            </Button>
                         </div>
                     </div>
                 </div>

@@ -153,6 +153,23 @@ const getDefaultOnboardingPreset = (workflowMode) => {
     || fallbackPreset;
 };
 
+const resolveOnboardingPresetKey = (workflowMode, presetKey) => {
+  const options = resolveOnboardingPresetOptions(workflowMode);
+  const normalizedPresetKey = String(presetKey || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+  if (options.some((preset) => preset.key === normalizedPresetKey)) {
+    return normalizedPresetKey;
+  }
+  return getDefaultOnboardingPreset(workflowMode).key;
+};
+
+const normalizeItemRowForWorkflowMode = (row, workflowMode) => ({
+  ...row,
+  mode_item_preset: resolveOnboardingPresetKey(workflowMode, row?.mode_item_preset)
+});
+
 const getOnboardingPresetLabel = (workflowMode, preset) => {
   const normalizedMode = normalizeWorkflowMode(workflowMode);
   if (normalizedMode === 'fnb' && preset?.key === 'menu_item') return 'Menu Item';
@@ -355,6 +372,13 @@ export default function OnboardingSetupModal({
         .finally(() => setLocationsLoading(false));
     }
   }, [currentUser, normalizedWorkflowMode, onboarding, open]);
+
+  useEffect(() => {
+    if (!open || isHospitalityMode) return;
+    setItemRows((rows) => rows.map((row) => (
+      isCreatedRow(row) ? row : normalizeItemRowForWorkflowMode(row, normalizedWorkflowMode)
+    )));
+  }, [isHospitalityMode, normalizedWorkflowMode, open]);
 
   useEffect(() => {
     const canCreateUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
@@ -633,7 +657,7 @@ export default function OnboardingSetupModal({
 
       const rowsForApi = rowsToSubmit.map((row) => ({
         client_row_id: row.client_row_id,
-        mode_item_preset: row.mode_item_preset,
+        mode_item_preset: resolveOnboardingPresetKey(normalizedWorkflowMode, row.mode_item_preset),
         name: row.name,
         default_sale_price: row.default_sale_price,
         cost_per_unit: row.cost_per_unit,

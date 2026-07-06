@@ -660,7 +660,7 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 import dgfyRoutes from './routes/dgfy.js';
 import geoSearchRoutes from './routes/geoSearch.js';
 app.use(csrfProtection);
-app.use('/api/v1/dgfy', dgfyRoutes);
+app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
 
 app.use(tenantHandler);

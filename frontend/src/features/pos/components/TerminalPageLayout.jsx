@@ -169,8 +169,8 @@ export default function TerminalPageLayout({
   const notificationCount = notifications.length;
   const primaryNotificationAction = notifications[0]?.onClick || null;
   const shellLayoutClassName = IS_DGFY_POS_SURFACE
-    ? `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`
-    : `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`;
+    ? 'lg:grid lg:grid-cols-[244px_minmax(0,1fr)]'
+    : 'xl:grid xl:grid-cols-[244px_minmax(0,1fr)]';
   const persistentSidebarClassName = IS_DGFY_POS_SURFACE
     ? 'hidden lg:flex lg:min-h-0 lg:overflow-hidden'
     : 'hidden xl:flex xl:min-h-0 xl:overflow-hidden';
@@ -311,7 +311,6 @@ export default function TerminalPageLayout({
   return (
     <div className={`dgfy-pos-shell h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden ${shellLayoutClassName}`}>
       {notificationPanel}
-      {!effectiveSidebarCollapsed && (
       <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
         <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
           <TerminalWorkspaceSidebar
@@ -337,7 +336,6 @@ export default function TerminalPageLayout({
           />
         </Suspense>
       </div>
-      )}
       <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <div className={`dgfy-pos-panel border-b border-pos px-4 py-2 backdrop-blur sm:px-5 lg:px-7 ${lockedSurfaceClassName}`}>
         <div className={headerShellClassName}>
@@ -347,16 +345,11 @@ export default function TerminalPageLayout({
               type="button"
               onClick={() => {
                 if (locked) return;
-                if (isDesktopWide) {
-                  setSidebarCollapsed((collapsed) => !collapsed);
-                  return;
-                }
                 setMobileNavOpen(true);
               }}
               disabled={locked}
-              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
-              aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
-              aria-pressed={isDesktopWide ? effectiveSidebarCollapsed : undefined}
+              className={`${IS_DGFY_POS_SURFACE ? 'grid lg:hidden' : 'grid xl:hidden'} h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
+              aria-label="Open sidebar menu"
             >
               <Menu className="h-6 w-6" />
             </button>
@@ -447,7 +440,7 @@ export default function TerminalPageLayout({
       {!isDesktopWide && mobileNavOpen && (
         <div className={overlayContainerClassName}>
           <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
-          <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto p-3 shadow-2xl shadow-slate-950/20" style={{ background: 'var(--pos-shell-sidebar)' }}>
+          <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto p-3 shadow-2xl shadow-slate-950/20" style={{ background: 'var(--pos-shell-sidebar, #FFFFFF)' }}>
             <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
               <img
                 src={DGFY_POS_LOGO}
@@ -503,11 +496,12 @@ export default function TerminalPageLayout({
           className={workspaceSectionClassName}
         >
           {(isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
+            <div key="checkout-workspace" className="max-sm:animate-pos-slide-in">
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
               <POSCheckoutTerminal
                 sessionLocked={locked}
                 isMsmeMode={isMsmeMode}
-                sidebarCollapsed={effectiveSidebarCollapsed}
+                sidebarCollapsed={false}
                 canViewHistory={canViewPos}
                 selectedLocationId={operatingLocationId}
                 activeShiftId={activeShiftId}
@@ -538,9 +532,11 @@ export default function TerminalPageLayout({
                 onExternalCatalogHydrated={onCatalogSearchHydrated}
               />
             </Suspense>
+            </div>
           )}
 
           {isOperationsWorkspaceMode && (
+            <div key="operations-workspace" className="max-sm:animate-pos-slide-in">
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
               <TerminalOperationsWorkspace
                 viewMode={posViewMode}
@@ -606,6 +602,7 @@ export default function TerminalPageLayout({
                 sectionIds={TERMINAL_SECTION_IDS}
               />
             </Suspense>
+            </div>
           )}
         </div>
       </div>

@@ -1,0 +1,25 @@
+name: PR Backend Build Check
+
+on:
+  workflow_call:
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Same build as deploy-backend.yml, minus the push -- just proves the
+      # image builds cleanly off this PR's code. Shares the gha cache scope
+      # with the real deploy build so both stay fast.
+      - name: Build backend image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/backend/Dockerfile
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max

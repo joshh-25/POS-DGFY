@@ -10,11 +10,33 @@ const successfulRefreshResponse = () => ({
   })
 });
 
+const createStorageMock = () => {
+  const values = new Map();
+  return {
+    getItem: (key) => (values.has(key) ? values.get(key) : null),
+    setItem: (key, value) => {
+      values.set(String(key), String(value));
+    },
+    removeItem: (key) => {
+      values.delete(String(key));
+    },
+    clear: () => {
+      values.clear();
+    }
+  };
+};
+
 describe('standalone POS browser session bootstrap', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv('VITE_APP_SURFACE', 'pos');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(successfulRefreshResponse()));
+    const sessionStorage = createStorageMock();
+    vi.stubGlobal('window', {
+      sessionStorage,
+      dispatchEvent: vi.fn()
+    });
+    globalThis.window.sessionStorage.clear();
   });
 
   afterEach(() => {
@@ -22,7 +44,7 @@ describe('standalone POS browser session bootstrap', () => {
     vi.unstubAllGlobals();
   });
 
-  it('does not consume an existing tenant cookie on a fresh POS page load', async () => {
+  it('does not consume an existing tenant cookie on a fresh POS page load without a persisted POS session', async () => {
     const session = await import('../browserSession.js');
 
     await expect(session.refreshBrowserSession()).resolves.toBe('');
@@ -44,12 +66,30 @@ describe('standalone POS browser session bootstrap', () => {
     expect(session.getAccessToken()).toBe('refreshed-access-token');
   });
 
+  it('restores the standalone POS session after a page reload', async () => {
+    const firstSession = await import('../browserSession.js');
+    firstSession.setBrowserSession({
+      token: 'explicit-pos-login-token',
+      companyToken: 'tenant-company-token'
+    });
+
+    vi.resetModules();
+    vi.stubEnv('VITE_APP_SURFACE', 'pos');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(successfulRefreshResponse()));
+
+    const reloadedSession = await import('../browserSession.js');
+    expect(reloadedSession.getAccessToken()).toBe('explicit-pos-login-token');
+    expect(reloadedSession.getCompanyToken()).toBe('tenant-company-token');
+    expect(reloadedSession.canRefreshBrowserSession()).toBe(true);
+  });
+
   it('requires explicit login again after the POS session is cleared', async () => {
     const session = await import('../browserSession.js');
     session.setBrowserSession({ token: 'explicit-pos-login-token' });
     session.clearBrowserSession();
 
     expect(session.canRefreshBrowserSession()).toBe(false);
+    expect(globalThis.window.sessionStorage.getItem('pos_browser_session_v1')).toBeNull();
     await expect(session.refreshBrowserSession()).resolves.toBe('');
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });

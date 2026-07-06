@@ -48,7 +48,8 @@ export default function UserInvitationModal({
     roleCatalog = null,
     fixedRole = '',
     title = 'Invite DGFY Account',
-    submitLabel = 'Send DGFY Invitation'
+    submitLabel = 'Send DGFY Invitation',
+    locationOptions = null
 }) {
     const [accountQuery, setAccountQuery] = useState('');
     const [accountResults, setAccountResults] = useState([]);
@@ -93,6 +94,14 @@ export default function UserInvitationModal({
         if (firstAssignableRole && !roleOptions.some((option) => option.key === role)) {
             setRole(firstAssignableRole.key);
         }
+        if (Array.isArray(locationOptions)) {
+            const normalized = locationOptions;
+            setLocations(normalized);
+            if (normalized.length === 1) {
+                setSelectedLocationIds([Number(normalized[0].location_id)]);
+            }
+            return;
+        }
         listTenantLocations({ include_inactive: false })
             .then((rows) => {
                 const normalized = Array.isArray(rows) ? rows : [];
@@ -102,7 +111,7 @@ export default function UserInvitationModal({
                 }
             })
             .catch(() => setLocations([]));
-    }, [fixedRole, open, roleOptions, role]);
+    }, [fixedRole, locationOptions, open, roleOptions, role]);
 
     useEffect(() => {
         if (!open) return undefined;
@@ -221,7 +230,13 @@ export default function UserInvitationModal({
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-                    {!fixedRole ? <div className="grid gap-2">
+                    {fixedRole ? (
+                        <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                            This invitation creates a cashier authorization profile after acceptance. The DGFY account password remains the only operator credential.
+                        </div>
+                    ) : null}
+
+                    <div className="grid gap-2">
                         <Label htmlFor="dgfy-account-search">Search registered DGFY account</Label>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -290,11 +305,7 @@ export default function UserInvitationModal({
                                 No registered active DGFY account found for this search.
                             </p>
                         ) : null}
-                    </div> : (
-                        <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                            This invitation creates a cashier authorization profile after acceptance. The DGFY account password remains the only operator credential.
-                        </div>
-                    )}
+                    </div>
 
                     <div className="grid gap-2">
                         <Label htmlFor="role">Role</Label>

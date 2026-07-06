@@ -22,7 +22,7 @@ const extractRouteDeclaration = ({ source, method, routePath }) => {
     return match ? match[0] : null;
 };
 
-const expectRouteContract = ({ source, method, routePath, requiredFragments = [] }) => {
+const expectRouteContract = ({ source, method, routePath, requiredFragments = [], forbiddenFragments = [] }) => {
     const routeDeclaration = extractRouteDeclaration({ source, method, routePath });
     expect(routeDeclaration).not.toBeNull();
     requiredFragments.forEach((fragment) => {
@@ -31,6 +31,13 @@ const expectRouteContract = ({ source, method, routePath, requiredFragments = []
             return;
         }
         expect(routeDeclaration).toContain(fragment);
+    });
+    forbiddenFragments.forEach((fragment) => {
+        if (fragment instanceof RegExp) {
+            expect(routeDeclaration).not.toMatch(fragment);
+            return;
+        }
+        expect(routeDeclaration).not.toContain(fragment);
     });
 };
 
@@ -150,6 +157,10 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
                 'validatePosTransactionIdParam',
                 'validateUpdateOnlineOrderStatus',
                 'posController.updateOnlineOrderStatus'
+            ],
+            forbiddenFragments: [
+                // ADR 0031 requires physical-device pairing to stay out of normal online order handling.
+                'posController.requirePairedTerminal'
             ]
         });
     });

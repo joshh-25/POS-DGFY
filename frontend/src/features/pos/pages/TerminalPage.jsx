@@ -26,6 +26,7 @@ import {
   loginDgfyAccount,
   logoutDgfyAccount,
   requestDgfyLegacyLinkEmailOtp,
+  startDgfyPosSession,
   startDgfyTenantSession,
   startDgfyLegacyRegistrationHandoff
 } from '@/services/dgfyAuthService.js';
@@ -82,6 +83,7 @@ import {
   isTenantSetupFlowRequested,
   resolveProfileSetupReadiness,
   resolvePosSetupReadiness,
+  resolveStarterItemSetupReadiness,
   resolveStorefrontSetupReadiness,
   resolveTenantSetupStep,
   resolveTenantSetupStepValue,
@@ -89,7 +91,6 @@ import {
 } from '../utils/setupFlow.js';
 
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
-import PosTenantSetupModal from '../components/PosTenantSetupModal.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -104,6 +105,7 @@ import {
 import { emitPosHardwareMessage, POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazy(() => import('../components/TerminalPageLayout.jsx'));
+const PosTenantSetupModal = lazy(() => import('../components/PosTenantSetupModal.jsx'));
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
@@ -116,19 +118,6 @@ const TERMINAL_OPERATION_MAX_RETRIES = 5;
 const TERMINAL_OPERATION_REPLAY_BATCH_SIZE = 25;
 const DESKTOP_TERMINAL_BREAKPOINT_PX = IS_DGFY_POS_SURFACE ? 1024 : 1280;
 const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt'];
-
-const buildRegisteredTerminalContext = (entry) => {
-  const terminalId = sanitizeTerminalId(entry?.terminal_id);
-  const locationId = Number(entry?.location_id || 0);
-  if (!terminalId || !Number.isInteger(locationId) || locationId <= 0 || entry?.is_active === false) return null;
-  return {
-    registered: true,
-    terminal_id: terminalId,
-    location_id: locationId,
-    terminal_label: String(entry?.label || terminalId),
-    terminal_identity_policy: { registry_entry: { ...entry, terminal_id: terminalId, location_id: locationId } }
-  };
-};
 const OPERATIONS_VIEW_MODES = [
   'incoming_queue',
   'settings_profile',
@@ -141,9 +130,10 @@ const OPERATIONS_VIEW_MODES = [
   'items',
   'terminal_setup'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'settings_profile', 'settings_pos', 'settings_storefront'];
+const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'settings_profile', 'settings_pos', 'settings_storefront'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'terminal_setup']);
-const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items']);
+const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items']);
+const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);
 const CASHIER_ALLOWED_VIEW_MODES = new Set([
   ...CHECKOUT_VIEW_MODES,
   'incoming_queue',
@@ -275,9 +265,8 @@ const lookupCompanyToken = async (email, preferredCompanyToken = '') => {
   }
   if (tenants.length > 1) {
     throw createTerminalLoginError(
-      'This email belongs to multiple companies. Select the company to continue.',
-      POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS,
-      { tenants }
+      'This email belongs to multiple companies. Sign in from SKUpervisor once, then reopen POS for the selected company.',
+      POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS
     );
   }
   return null;
@@ -329,20 +318,24 @@ const buildTenantSetupStateSnapshot = ({
   settingsPayload = {},
   companyPayload = {},
   usersPayload = [],
-  locationsPayload = []
+  locationsPayload = [],
+  itemsPayload = []
 } = {}) => {
   const profileRequirements = resolveProfileSetupReadiness(companyPayload, settingsPayload);
   const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
   const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
+  const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload);
 
   return {
     loading: false,
     profileReady: profileRequirements.ready,
     posSetupReady: posRequirements.ready,
     storefrontSetupReady: storefrontRequirements.ready,
+    starterItemReady: starterItemRequirements.ready,
     profileRequirements,
     posRequirements,
     storefrontRequirements,
+    starterItemRequirements,
     tenantUsers: Array.isArray(usersPayload) ? usersPayload : []
   };
 };
@@ -425,7 +418,6 @@ export default function TerminalPage() {
   });
   const [adminShiftPromptSkipped, setAdminShiftPromptSkipped] = useState(false);
   const [cashierUnlockSession, setCashierUnlockSession] = useState(null);
-  const [pairedTerminalContext, setPairedTerminalContext] = useState(null);
   const [dgfyAdminBypassActive, setDgfyAdminBypassActive] = useState(false);
   const [legacyLinkState, setLegacyLinkState] = useState({
     otpSent: false,
@@ -446,7 +438,7 @@ export default function TerminalPage() {
   });
   const [reportRefreshKey, setReportRefreshKey] = useState(0);
   const [openShiftForm, setOpenShiftForm] = useState({
-    openingFloatAmount: '0.00',
+    openingFloatAmount: '',
     openingNote: ''
   });
   const [cashEventForm, setCashEventForm] = useState({
@@ -476,25 +468,6 @@ export default function TerminalPage() {
     accessState: 'idle',
     errorMessage: ''
   });
-  const activeCompanyName = useMemo(() => {
-    const selectedTenantId = String(formData.dgfyTenantId || '').trim();
-    const selectedCompany = (dgfyPosState.companies || []).find((company) => (
-      String(company?.tenant_id || '').trim() === selectedTenantId
-    ));
-    return String(selectedCompany?.name || selectedCompany?.company_name || '').trim();
-  }, [dgfyPosState.companies, formData.dgfyTenantId]);
-
-  useEffect(() => {
-    if (shiftState.shift || terminalMeta.loading) return;
-    setOpenShiftForm((current) => {
-      if (String(current.openingFloatAmount ?? '').trim() !== '') return current;
-      const configuredFloat = Number(terminalMeta.pettyCashAmount || 0);
-      return {
-        ...current,
-        openingFloatAmount: (Number.isFinite(configuredFloat) ? configuredFloat : 0).toFixed(2)
-      };
-    });
-  }, [shiftState.shift, terminalMeta.loading, terminalMeta.pettyCashAmount]);
   const [incomingOrderActionState, setIncomingOrderActionState] = useState({});
   const [receiptRequestId, setReceiptRequestId] = useState(null);
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
@@ -530,6 +503,7 @@ export default function TerminalPage() {
     profileReady: false,
     posSetupReady: false,
     storefrontSetupReady: false,
+    starterItemReady: false,
     profileRequirements: {
       ready: false,
       companyNameReady: false,
@@ -548,6 +522,11 @@ export default function TerminalPage() {
       primaryLocationId: null,
       coverImageUrl: '',
       profileImageUrl: ''
+    },
+    starterItemRequirements: {
+      ready: false,
+      starterItemReady: false,
+      starterItemId: null
     },
     tenantUsers: []
   });
@@ -630,6 +609,7 @@ export default function TerminalPage() {
   const canTransactPos = hasPermission('pos:transact');
   const canSwitchPosLocation = hasPermission('pos:switch_location');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
+  const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');
   const canCloseDay = hasPermission('pos:close_day');
   const canCreateItems = hasPermission('items:create');
   const canAccessSettingsDirectly = userIsAdminLike || dgfyAdminBypassActive;
@@ -647,7 +627,7 @@ export default function TerminalPage() {
   const tenantSetupIncomplete = !setupFlowState.loading
     && !locked
     && terminalUser?.is_master_admin === true
-    && (!setupFlowState.profileReady || !setupFlowState.storefrontSetupReady || !setupFlowState.posSetupReady);
+    && (!setupFlowState.profileReady || !setupFlowState.storefrontSetupReady || !setupFlowState.starterItemReady || !setupFlowState.posSetupReady);
   const tenantSetupRequestedOrRequired = tenantSetupFlowRequested || tenantSetupIncomplete;
   const tenantSetupStep = useMemo(() => resolveTenantSetupStep({
     requested: tenantSetupRequestedOrRequired,
@@ -656,12 +636,14 @@ export default function TerminalPage() {
     requestedStep: requestedTenantSetupStep,
     profileReady: setupFlowState.profileReady,
     posSetupReady: setupFlowState.posSetupReady,
-    storefrontSetupReady: setupFlowState.storefrontSetupReady
+    storefrontSetupReady: setupFlowState.storefrontSetupReady,
+    starterItemReady: setupFlowState.starterItemReady
   }), [
     locked,
     requestedTenantSetupStep,
     setupFlowState.profileReady,
     setupFlowState.posSetupReady,
+    setupFlowState.starterItemReady,
     setupFlowState.storefrontSetupReady,
     tenantSetupRequestedOrRequired,
     terminalUser?.is_master_admin
@@ -705,6 +687,7 @@ export default function TerminalPage() {
         profileReady: false,
         posSetupReady: false,
         storefrontSetupReady: false,
+        starterItemReady: false,
         profileRequirements: {
           ready: false,
           companyNameReady: false,
@@ -724,6 +707,11 @@ export default function TerminalPage() {
           coverImageUrl: '',
           profileImageUrl: ''
         },
+        starterItemRequirements: {
+          ready: false,
+          starterItemReady: false,
+          starterItemId: null
+        },
         tenantUsers: []
       });
       return;
@@ -732,26 +720,31 @@ export default function TerminalPage() {
     setSetupFlowState((prev) => ({ ...prev, loading: true }));
     try {
       const requestConfig = suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {};
-      const [settingsPayload, companyPayload, usersPayload, locationsPayload] = await Promise.all([
+      const [settingsPayload, companyPayload, usersPayload, locationsPayload, itemsPayload] = await Promise.all([
         getAllSettings({
           force: true,
           requestConfig
         }),
         getCompanyInfo().catch(() => null),
         getAllUsers({ include_invitations: true }).catch(() => []),
-        listTenantLocations({ include_inactive: false }).catch(() => [])
+        listTenantLocations({ include_inactive: false }).catch(() => []),
+        fetchPosCatalog({ limit: 200 }).catch(() => [])
       ]);
       const profileRequirements = resolveProfileSetupReadiness(companyPayload, settingsPayload);
       const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
       const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
+      const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload);
       setSetupFlowState({
         loading: false,
         profileReady: profileRequirements.ready,
         posSetupReady: posRequirements.ready,
         storefrontSetupReady: storefrontRequirements.ready,
+        starterItemReady: starterItemRequirements.ready,
         profileRequirements,
         posRequirements,
-        storefrontRequirements
+        storefrontRequirements,
+        starterItemRequirements,
+        tenantUsers: Array.isArray(usersPayload) ? usersPayload : []
       });
     } catch {
       setSetupFlowState((prev) => ({ ...prev, loading: false }));
@@ -1352,7 +1345,6 @@ export default function TerminalPage() {
         }
         setStoredTerminalLockReason(storedReason === 'shift_closed' ? 'shift_closed' : 'full_auth');
         setCashierUnlockSession(null);
-        setPairedTerminalContext(null);
         setCashierResumeContext(null);
         setCashierResumeForm({ identifier: '', password: '' });
         setAdminReauthContext(null);
@@ -1378,9 +1370,9 @@ export default function TerminalPage() {
         && storedReason !== 'shift_closed'
         && storedReason !== 'terminal_reunlock'
       ) {
-        const registeredTerminal = buildRegisteredTerminalContext(terminalRegistryLookup.get(storedTerminalId));
-        const registeredLocationId = Number(registeredTerminal?.location_id || 0);
-        if (!registeredTerminal) {
+        const storedRegistryEntry = terminalRegistryLookup.get(storedTerminalId);
+        const storedLocationId = Number(storedRegistryEntry?.location_id || 0);
+        if (!storedRegistryEntry || !Number.isInteger(storedLocationId) || storedLocationId <= 0) {
           setStoredTerminalLock(true);
           setStoredTerminalLockReason('full_auth');
           setTerminalUnlockRequired(false);
@@ -1390,7 +1382,7 @@ export default function TerminalPage() {
         }
         const operationalContext = await refreshOperationalContext({
           terminalIdOverride: storedTerminalId,
-          operatingLocationIdOverride: Number.isInteger(registeredLocationId) && registeredLocationId > 0 ? registeredLocationId : null,
+          operatingLocationIdOverride: storedLocationId,
           suppressGlobalErrors: true,
           allowWhileLocked: true
         });
@@ -1416,7 +1408,7 @@ export default function TerminalPage() {
     } finally {
       setLoadingUser(false);
     }
-  }, [activeTerminalId, cashierResumeContext?.shiftId, refreshOperationalContext, resetSettingsAccessPinState, tenantSetupFlowRequested, terminalRegistryLookup]);
+  }, [activeTerminalId, cashierResumeContext?.shiftId, refreshOperationalContext, resetSettingsAccessPinState, tenantSetupFlowRequested]);
 
   useEffect(() => {
     hydrateUser();
@@ -1474,17 +1466,12 @@ export default function TerminalPage() {
       setTenantSetupDismissedThisSession(false);
       return;
     }
-    if (canAdminBypassShiftPrompt && ['shift_controls', 'close_shift', 'cash_drawer'].includes(posViewMode)) {
-      setTenantSetupModalOpen(false);
-      setTenantSetupDismissedThisSession(true);
-      return;
-    }
     if (!tenantSetupFlowRequested) {
       openTenantSetupStep(tenantSetupStep);
     }
     setTenantSetupDismissedThisSession(false);
     setTenantSetupModalOpen(true);
-  }, [canAdminBypassShiftPrompt, locked, openTenantSetupStep, posViewMode, setupFlowActive, setupFlowState.loading, tenantSetupFlowRequested, tenantSetupStep]);
+  }, [locked, openTenantSetupStep, setupFlowActive, setupFlowState.loading, tenantSetupFlowRequested, tenantSetupStep]);
 
   useEffect(() => {
     if (locked || terminalUser?.is_master_admin !== true) return;
@@ -1541,7 +1528,6 @@ export default function TerminalPage() {
     if (!getAccessToken() && !canResumeLockedShiftInThisTab) {
       setStoredTerminalLockReason('full_auth');
       setCashierUnlockSession(null);
-      setPairedTerminalContext(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
       setTerminalUnlockRequired(false);
@@ -1563,24 +1549,6 @@ export default function TerminalPage() {
     setTerminalUnlockModalOpen(true);
     setDrawerOpen(false);
   }, [activeTerminalId, cashierResumeContext?.shiftId, locked]);
-
-  useEffect(() => {
-    if (!terminalUnlockModalOpen || terminalUnlockMode !== 'shift_start' || pairedTerminalContext?.registered) {
-      return undefined;
-    }
-    if (!getAccessToken()) {
-      return undefined;
-    }
-
-    const selectedTerminalId = sanitizeTerminalId(terminalUnlockForm.terminalId || activeTerminalId || readStoredTerminalId());
-    const registeredTerminal = buildRegisteredTerminalContext(terminalRegistryLookup.get(selectedTerminalId));
-    if (!registeredTerminal) return undefined;
-    setPairedTerminalContext(registeredTerminal);
-    setTerminalUnlockForm((prev) => ({ ...prev, terminalId: registeredTerminal.terminal_id }));
-    setFormData((prev) => ({ ...prev, terminalId: registeredTerminal.terminal_id }));
-    setOperatingLocationId(registeredTerminal.location_id);
-    return undefined;
-  }, [activeTerminalId, pairedTerminalContext?.registered, terminalRegistryLookup, terminalUnlockForm.terminalId, terminalUnlockModalOpen, terminalUnlockMode]);
 
   useEffect(() => {
     if (locked || !canViewPos) {
@@ -1751,24 +1719,21 @@ export default function TerminalPage() {
 
   const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
-    if (registryEnforced && activeTerminalRegistry.length === 0) {
+    if (activeTerminalRegistry.length === 0) {
       toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
       return false;
     }
-    if (registryEnforced && !selectedTerminalId) {
-      toast.error('Terminal ID is required when registry enforcement is enabled.');
+    if (!selectedTerminalId) {
+      toast.error('Select an active terminal before opening a shift.');
       return false;
     }
-    if (registryEnforced && !registryEntry) {
+    if (!registryEntry) {
       toast.error('Select an active terminal from the configured registry.');
       return false;
     }
     if (terminalUnlockMode !== 'relock' && registryEntry && Number(registryEntry.location_id || 0) <= 0) {
       toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
       return false;
-    }
-    if (!registryEnforced && selectedTerminalId && !registryEntry && activeTerminalRegistry.length > 0) {
-      toast.warning(`Terminal ID ${selectedTerminalId} is not in the active registry. Continuing in warn mode.`);
     }
     return true;
   };
@@ -1830,12 +1795,12 @@ export default function TerminalPage() {
       refreshTenantLocations({ suppressGlobalErrors: true }),
       refreshOperationalContext({
         terminalIdOverride: selectedTerminalId,
+        operatingLocationIdOverride,
         suppressGlobalErrors: true
       })
     ]);
     setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
     setCashierUnlockSession(null);
-    setPairedTerminalContext(null);
     setCashierResumeContext(null);
     setCashierResumeForm({ identifier: '', password: '' });
     setAdminReauthContext(null);
@@ -1854,129 +1819,42 @@ export default function TerminalPage() {
     await notifyStockAlertsAfterUnlock();
   };
 
-  const startCashierLoginFlow = async ({ email, password, companyTokenHint = '' }) => {
-    const { cashierUser, companyToken } = await authenticateCashierCredentials({
-      identifier: email,
-      password,
-      companyTokenHint: companyTokenHint || getCompanyToken()
-    });
-    const [cashierSettings, cashierLocations] = await Promise.all([
-      getAllSettings({ force: true, requestConfig: SUPPRESS_GLOBAL_ERROR_TOAST }),
-      listTenantLocations({ include_inactive: false }).catch(() => [])
-    ]);
-    const registeredTerminals = normalizeTerminalRegistry(
-      cashierSettings?.pos_terminal_registry?.value || []
-    ).filter((entry) => (
-      entry?.is_active !== false
-      && sanitizeTerminalId(entry?.terminal_id)
-      && Number(entry?.location_id) > 0
-    ));
-    const storedTerminalId = sanitizeTerminalId(activeTerminalId || readStoredTerminalId());
-    const selectedTerminal = registeredTerminals.find((entry) => sanitizeTerminalId(entry.terminal_id) === storedTerminalId)
-      || registeredTerminals.find((entry) => entry?.is_default === true)
-      || registeredTerminals[0]
-      || null;
-    const registeredTerminal = buildRegisteredTerminalContext(selectedTerminal);
-    if (!registeredTerminal) {
-      throw createTerminalLoginError('No active terminal is registered for this business and branch. Ask the company admin to configure one in POS Settings.');
-    }
-
-    setTerminalUser(cashierUser);
-    setTerminalRegistry(registeredTerminals);
-    setLocationsState({ loading: false, locations: Array.isArray(cashierLocations) ? cashierLocations : [] });
-    setPairedTerminalContext(registeredTerminal);
-    setCashierUnlockSession({
-      email: String(cashierUser?.email || email).trim(),
-      companyToken
-    });
-    setActiveTerminalId(registeredTerminal.terminal_id);
-    setOperatingLocationId(registeredTerminal.location_id);
-    setFormData((prev) => ({ ...prev, password: '', terminalId: registeredTerminal.terminal_id }));
-    setTerminalUnlockForm((prev) => ({
-      ...prev,
-      terminalId: registeredTerminal.terminal_id,
-      cashierEmail: '',
-      cashierPassword: ''
-    }));
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, registeredTerminal.terminal_id);
-    }
-    setStoredTerminalLock(true);
-    setStoredTerminalLockReason('shift_start_required');
-    setLocked(true);
-    setDrawerOpen(false);
-    setTerminalUnlockRequired(true);
-    setTerminalUnlockMode('shift_start');
-    setTerminalUnlockModalOpen(true);
-    toast.success('Cashier verified. Enter opening cash to start the shift.');
-  };
-
   const handleDgfyPosLogin = async (event) => {
     event.preventDefault();
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
     const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;
-    const continuingCashierCompanyPicker = dgfyPosState.cashierCompanySelection === true;
 
     setSubmitting(true);
     try {
       setCashierUnlockSession(null);
-      setPairedTerminalContext(null);
       setDgfyAdminBypassActive(false);
-      if (!email || (!continuingAfterCompanyPicker && !password)) {
-        toast.error('Email and password are required.');
+      if (!email || !password) {
+        toast.error('DGFY email and password are required.');
         return;
       }
-      if (continuingCashierCompanyPicker) {
-        const selectedCompanyToken = String(formData.dgfyTenantId || '').trim();
-        if (!selectedCompanyToken) {
-          toast.error('Select the company for this cashier shift.');
-          return;
-        }
-        await startCashierLoginFlow({ email, password, companyTokenHint: selectedCompanyToken });
-        setDgfyPosState({
-          authenticated: false,
-          account: null,
-          companies: [],
-          loadingCompanies: false,
-          cashierCompanySelection: false
-        });
-        return;
-      }
-      let token = continuingAfterCompanyPicker ? String(getStoredDgfyToken() || '').trim() : '';
-      let resolvedAccount = continuingAfterCompanyPicker ? dgfyPosState.account : null;
-      if (!token) {
-        const loginResult = await loginDgfyAccount({ email, password });
-        token = String(loginResult?.token || '').trim();
-        resolvedAccount = loginResult?.account || null;
-      }
+      const loginResult = await loginDgfyAccount({ email, password });
+      const token = loginResult?.token || '';
+      const resolvedAccount = loginResult?.account || null;
       if (!token) {
         toast.error('Unable to start DGFY session. Sign in again.');
         return;
       }
-      if (!continuingAfterCompanyPicker) {
-        setDgfyPosState((prev) => ({
-          ...prev,
-          authenticated: true,
-          account: resolvedAccount,
-          companies: []
-        }));
-      }
+      setDgfyPosState((prev) => ({
+        ...prev,
+        authenticated: true,
+        account: resolvedAccount,
+        companies: []
+      }));
 
       setDgfyPosState((prev) => ({ ...prev, loadingCompanies: true }));
-      const acceptedCompanies = continuingAfterCompanyPicker && dgfyPosState.companies.length > 0
-        ? [...dgfyPosState.companies]
-        : [];
-      if (acceptedCompanies.length === 0) {
-        const companiesResult = await listDgfyAccountCompanies(token);
-        acceptedCompanies.push(
-          ...(Array.isArray(companiesResult?.owned_companies) ? companiesResult.owned_companies : []),
-          ...(Array.isArray(companiesResult?.invited_companies) ? companiesResult.invited_companies : [])
-        );
-      }
-      const switchableCompanies = acceptedCompanies.filter((company) => company?.can_switch);
+      const companiesResult = await listDgfyAccountCompanies(token);
+      const acceptedCompanies = [
+        ...(Array.isArray(companiesResult?.owned_companies) ? companiesResult.owned_companies : []),
+        ...(Array.isArray(companiesResult?.invited_companies) ? companiesResult.invited_companies : [])
+      ].filter((company) => company?.can_switch);
       const selectedTenantId = String(formData.dgfyTenantId || '').trim()
-        || (switchableCompanies.length === 1 ? String(switchableCompanies[0]?.tenant_id || '') : '');
+        || (acceptedCompanies.length === 1 ? String(acceptedCompanies[0]?.tenant_id || '') : '');
       if (selectedTenantId) {
         setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
       }
@@ -1984,11 +1862,11 @@ export default function TerminalPage() {
         ...prev,
         authenticated: true,
         account: resolvedAccount || prev.account || null,
-        companies: switchableCompanies,
+        companies: acceptedCompanies,
         loadingCompanies: false
       }));
       if (!selectedTenantId) {
-        if (switchableCompanies.length === 0) {
+        if (acceptedCompanies.length === 0) {
           toast.message('No registered business was found for this account. Opening your DGFY customer dashboard.');
           if (typeof window !== 'undefined') {
             window.location.href = resolveStorefrontAccountUrl();
@@ -2005,12 +1883,6 @@ export default function TerminalPage() {
       const selectedTenantSession = await startDgfyTenantSession({
         tenantId: selectedTenantId
       }, token);
-      const selectedCompanyToken = String(getCompanyToken() || '').trim();
-      if (!getAccessToken() || !selectedCompanyToken) {
-        throw createTerminalLoginError(
-          'The selected business session could not be activated. Please select the business again.'
-        );
-      }
       const fallbackSelectedTenantUser = selectedTenantSession
         ? {
             user_id: selectedTenantSession.user_id,
@@ -2019,11 +1891,12 @@ export default function TerminalPage() {
             phone_number: selectedTenantSession.phone_number || null,
             role: selectedTenantSession.role,
             permissions: Array.isArray(selectedTenantSession.permissions) ? selectedTenantSession.permissions : [],
+            is_active: true,
             is_master_admin: selectedTenantSession.is_master_admin === true
           }
         : null;
 
-      const [selectedTenantUser, selectedTenantSettings, selectedTenantCompany, selectedTenantUsers, selectedTenantLocations] = await Promise.all([
+      const [selectedTenantUser, selectedTenantSettings, selectedTenantCompany, selectedTenantUsers, selectedTenantLocations, selectedTenantItems] = await Promise.all([
         fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => null),
         getAllSettings({
           force: true,
@@ -2031,39 +1904,55 @@ export default function TerminalPage() {
         }).catch(() => ({})),
         getCompanyInfo().catch(() => null),
         getAllUsers({ include_invitations: true }).catch(() => []),
-        listTenantLocations({ include_inactive: false }).catch(() => [])
+        listTenantLocations({ include_inactive: false }).catch(() => []),
+        fetchPosCatalog({ limit: 200 }).catch(() => [])
       ]);
       const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;
+      const selectedTenantUsersForReadiness = Array.isArray(selectedTenantUsers) && selectedTenantUsers.length > 0
+        ? selectedTenantUsers
+        : (effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : []);
       const selectedUserIsAdmin = effectiveSelectedTenantUser?.is_master_admin === true
         || String(effectiveSelectedTenantUser?.role || '').trim().toLowerCase() === 'admin';
       const selectedTenantSetupState = buildTenantSetupStateSnapshot({
         settingsPayload: selectedTenantSettings || {},
         companyPayload: selectedTenantCompany || {},
-        usersPayload: selectedTenantUsers,
-        locationsPayload: selectedTenantLocations
+        usersPayload: selectedTenantUsersForReadiness,
+        locationsPayload: selectedTenantLocations,
+        itemsPayload: selectedTenantItems
       });
       const selectedTenantSetupStep = resolveTenantSetupStep({
         requested: true,
         locked: false,
-        isMasterAdmin: selectedUserIsAdmin,
+        isMasterAdmin: effectiveSelectedTenantUser?.is_master_admin === true,
         requestedStep: POS_TERMINAL_SETUP_STEPS.PROFILE,
         profileReady: selectedTenantSetupState.profileReady,
         posSetupReady: selectedTenantSetupState.posSetupReady,
-        storefrontSetupReady: selectedTenantSetupState.storefrontSetupReady
+        storefrontSetupReady: selectedTenantSetupState.storefrontSetupReady,
+        starterItemReady: selectedTenantSetupState.starterItemReady
       });
 
       setTerminalUser(effectiveSelectedTenantUser);
       setDgfyAdminBypassActive(selectedUserIsAdmin);
       setAdminShiftPromptSkipped(false);
       setSetupFlowState(selectedTenantSetupState);
+      const selectedTenantRegistry = normalizeTerminalRegistry(selectedTenantSettings?.pos_terminal_registry?.value || []);
+      const selectedTenantRegistryModeRaw = String(selectedTenantSettings?.pos_terminal_registry_mode?.value || '')
+        .trim()
+        .toLowerCase();
+      const selectedTenantRegistryMode = TERMINAL_REGISTRY_MODES.has(selectedTenantRegistryModeRaw)
+        ? selectedTenantRegistryModeRaw
+        : 'warn';
+      const selectedTenantActiveRegistry = selectedTenantRegistry.filter((entry) => entry?.is_active !== false);
+      setTerminalRegistry(selectedTenantRegistry);
+      setTerminalRegistryMode(selectedTenantRegistryMode);
+      setLocked(false);
+      setDrawerOpen(false);
       if (
-        selectedUserIsAdmin
-        && !selectedTenantSetupState.posSetupReady
+        effectiveSelectedTenantUser?.is_master_admin === true
+        && selectedTenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE
       ) {
         setStoredTerminalLock(false);
         setStoredTerminalLockReason('');
-        setLocked(false);
-        setDrawerOpen(false);
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
         }
@@ -2090,34 +1979,8 @@ export default function TerminalPage() {
         return;
       }
       if (selectedUserIsAdmin) {
-        const selectedActiveTerminals = normalizeTerminalRegistry(
-          selectedTenantSettings?.pos_terminal_registry?.value || []
-        ).filter((entry) => (
-          entry?.is_active !== false
-          && sanitizeTerminalId(entry?.terminal_id)
-          && Number(entry?.location_id) > 0
-        ));
-        setTerminalRegistry(selectedActiveTerminals);
-
-        const selectedTerminalId = sanitizeTerminalId(activeTerminalId || readStoredTerminalId());
-        const preferredTerminal = selectedActiveTerminals.find((entry) => (
-          sanitizeTerminalId(entry.terminal_id) === selectedTerminalId
-        )) || selectedActiveTerminals.find((entry) => entry?.is_default === true) || selectedActiveTerminals[0] || null;
-        const registeredTerminal = buildRegisteredTerminalContext(preferredTerminal);
-
-        if (registeredTerminal) {
-          setPairedTerminalContext(registeredTerminal);
-          setActiveTerminalId(registeredTerminal.terminal_id);
-          setFormData((prev) => ({ ...prev, terminalId: registeredTerminal.terminal_id }));
-          setTerminalUnlockForm((prev) => ({ ...prev, terminalId: registeredTerminal.terminal_id }));
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, registeredTerminal.terminal_id);
-          }
-        }
-
         setStoredTerminalLock(false);
         setStoredTerminalLockReason('');
-        setLocked(false);
         setTerminalUnlockRequired(false);
         setTerminalUnlockMode('shift_start');
         setTerminalUnlockModalOpen(false);
@@ -2126,59 +1989,52 @@ export default function TerminalPage() {
         return;
       }
       if (!selectedTenantSetupState.posSetupReady) {
-        setLocked(true);
-        setDrawerOpen(true);
         setTerminalUnlockModalOpen(false);
         toast.error('POS setup is incomplete. An active terminal and cashier account are required before terminal unlock.');
         return;
       }
-      const selectedTerminalId = sanitizeTerminalId(activeTerminalId || readStoredTerminalId());
-      const preferredTerminal = activeTerminalRegistry.find((entry) => sanitizeTerminalId(entry.terminal_id) === selectedTerminalId)
-        || activeTerminalRegistry.find((entry) => entry?.is_default === true)
-        || activeTerminalRegistry[0]
-        || null;
-      const registeredTerminal = buildRegisteredTerminalContext(preferredTerminal);
-      if (!registeredTerminal) {
+      const selectedTerminalId = resolvePreferredTerminalId(
+        selectedTenantActiveRegistry,
+        sanitizeTerminalId(formData.terminalId) || readStoredTerminalId(),
+        { registryMode: selectedTenantRegistryMode }
+      );
+      const selectedTenantRegistryEntry = selectedTenantActiveRegistry.find((entry) => String(entry?.terminal_id || '') === selectedTerminalId);
+      if (selectedTenantActiveRegistry.length === 0) {
         setTerminalUnlockModalOpen(false);
-        toast.error('No active terminal is registered for this business and branch. Ask the company admin to configure one in POS Settings.');
+        toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
         return;
       }
-      setPairedTerminalContext(registeredTerminal);
-      setStoredTerminalLock(true);
-      setStoredTerminalLockReason('shift_start_required');
-      setLocked(true);
-      setDrawerOpen(false);
+      if (!selectedTerminalId || !selectedTenantRegistryEntry) {
+        setTerminalUnlockModalOpen(false);
+        toast.error('Select an active terminal before opening a shift.');
+        return;
+      }
+      const selectedLocationId = Number(selectedTenantRegistryEntry?.location_id || 0);
+      if (!Number.isInteger(selectedLocationId) || selectedLocationId <= 0) {
+        setTerminalUnlockModalOpen(false);
+        toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
+        return;
+      }
+      if (Number.isInteger(selectedLocationId) && selectedLocationId > 0) {
+        setOperatingLocationId(selectedLocationId);
+      }
+      setCashierUnlockSession({
+        source: 'dgfy_pos',
+        email: String(effectiveSelectedTenantUser?.email || email).trim(),
+        userId: effectiveSelectedTenantUser?.user_id || selectedTenantSession?.user_id || null,
+        role: effectiveSelectedTenantUser?.role || selectedTenantSession?.role || 'cashier',
+        permissions: Array.isArray(effectiveSelectedTenantUser?.permissions) ? effectiveSelectedTenantUser.permissions : [],
+        tenantId: selectedTenantId,
+        companyToken: selectedTenantSession?.company?.token || getCompanyToken() || '',
+        terminalId: selectedTerminalId
+      });
       setTerminalUnlockForm((prev) => ({
         ...prev,
-        terminalId: registeredTerminal.terminal_id
+        terminalId: selectedTerminalId
       }));
       setTerminalUnlockModalOpen(true);
     } catch (error) {
       setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
-      if (!continuingAfterCompanyPicker && Number(error?.response?.status || 0) === 401) {
-        try {
-          await startCashierLoginFlow({ email, password });
-          return;
-        } catch (cashierError) {
-          if (cashierError?.code === POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS) {
-            const cashierCompanies = Array.isArray(cashierError?.details?.tenants)
-              ? cashierError.details.tenants
-              : [];
-            setDgfyPosState({
-              authenticated: false,
-              account: null,
-              companies: cashierCompanies,
-              loadingCompanies: false,
-              cashierCompanySelection: true
-            });
-            setFormData((prev) => ({ ...prev, dgfyTenantId: '' }));
-            toast.message('Select the company for this cashier shift.');
-            return;
-          }
-          toast.error(resolveTerminalLoginErrorMessage(cashierError));
-          return;
-        }
-      }
       toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {
       setSubmitting(false);
@@ -2206,19 +2062,18 @@ export default function TerminalPage() {
       dgfyTenantId: ''
     }));
     setCashierUnlockSession(null);
-    setPairedTerminalContext(null);
     setDgfyAdminBypassActive(false);
   }, [dgfyPosState.authenticated]);
 
   const handleDgfyPosIdentityChange = useCallback((nextEmail) => {
     const normalizedCurrent = String(formData.email || '').trim().toLowerCase();
     const normalizedNext = String(nextEmail || '').trim().toLowerCase();
-    if ((dgfyPosState.authenticated || dgfyPosState.cashierCompanySelection) && normalizedNext !== normalizedCurrent) {
+    if (dgfyPosState.authenticated && normalizedNext !== normalizedCurrent) {
       resetDgfyPosIdentity({ nextEmail, revokeServerSession: true });
       return;
     }
     setFormData((previous) => ({ ...previous, email: nextEmail }));
-  }, [dgfyPosState.authenticated, dgfyPosState.cashierCompanySelection, formData.email, resetDgfyPosIdentity]);
+  }, [dgfyPosState.authenticated, formData.email, resetDgfyPosIdentity]);
 
   const handleUseDifferentDgfyAccount = useCallback(() => {
     resetDgfyPosIdentity({ nextEmail: '', revokeServerSession: true });
@@ -2430,23 +2285,21 @@ export default function TerminalPage() {
   const handleTerminalUnlockSubmit = async (event) => {
     event.preventDefault();
     const cashierSessionActive = Boolean(cashierUnlockSession?.email);
-    const pairedTerminalUnlock = Boolean(pairedTerminalContext?.registered);
-    const pairedCashierOpening = Boolean(cashierSessionActive && pairedTerminalUnlock);
-    const selectedTenantId = cashierSessionActive ? '' : await resolveTenantIdForTerminalUnlock();
+    const dgfyCashierSessionActive = cashierUnlockSession?.source === 'dgfy_pos';
+    const selectedTenantId = cashierSessionActive
+      ? String(cashierUnlockSession?.tenantId || '').trim()
+      : await resolveTenantIdForTerminalUnlock();
     const selectedTerminalId = sanitizeTerminalId(terminalUnlockForm.terminalId || resolveSelectedLoginTerminalId());
     const requiresOpeningCash = terminalUnlockMode !== 'relock';
     const rawOpeningFloat = String(terminalUnlockForm.openingFloatAmount ?? '').trim();
     const openingFloatAmount = Number(rawOpeningFloat);
+    const selectedRegistryEntry = terminalRegistryLookup.get(selectedTerminalId);
 
-    if (!cashierSessionActive && !selectedTenantId) {
+    if (!selectedTenantId) {
       toast.error('Select the company before unlocking the terminal.');
       return;
     }
     if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
-    if (!pairedTerminalUnlock) {
-      toast.error('Select an active terminal registered to this business before cashier use.');
-      return;
-    }
     if (!cashierSessionActive && requiresOpeningCash && !String(terminalUnlockForm.cashierEmail || '').trim()) {
       toast.error('Cashier email is required.');
       return;
@@ -2466,18 +2319,12 @@ export default function TerminalPage() {
 
     setSubmitting(true);
     try {
-      const terminalVerification = pairedTerminalContext;
       const resolvedCompanyToken = String(
         cashierUnlockSession?.companyToken
-        || terminalVerification?.company?.token
         || getCompanyToken()
         || ''
       ).trim();
-      const registryLocationId = Number(
-        terminalVerification?.terminal_identity_policy?.registry_entry?.location_id
-        || terminalVerification?.pos?.terminal_identity_policy?.registry_entry?.location_id
-        || 0
-      );
+      const registryLocationId = Number(selectedRegistryEntry?.location_id || 0);
       const resolvedLocationId = Number.isInteger(registryLocationId) && registryLocationId > 0
         ? registryLocationId
         : Number(operatingLocationId || 0);
@@ -2492,7 +2339,40 @@ export default function TerminalPage() {
           toast.error('Unable to resolve the selected company session for cashier sign-in.');
           return;
         }
-        if (!cashierSessionActive) {
+        if (dgfyCashierSessionActive) {
+          const dgfyToken = getStoredDgfyToken();
+          if (!dgfyToken) {
+            toast.error('Your DGFY account session expired. Sign in again to unlock the terminal.');
+            return;
+          }
+          const posSession = await startDgfyPosSession({
+            tenantId: selectedTenantId,
+            terminalId: selectedTerminalId
+          }, dgfyToken);
+          const nextTerminalUser = {
+            user_id: posSession?.user_id || cashierUnlockSession?.userId || null,
+            username: posSession?.username || cashierUnlockSession?.email || '',
+            email: posSession?.email || cashierUnlockSession?.email || '',
+            role: posSession?.role || cashierUnlockSession?.role || 'cashier',
+            permissions: Array.isArray(posSession?.permissions)
+              ? posSession.permissions
+              : (Array.isArray(cashierUnlockSession?.permissions) ? cashierUnlockSession.permissions : []),
+            is_active: true,
+            is_master_admin: posSession?.is_master_admin === true
+          };
+          setTerminalUser(nextTerminalUser);
+          setCashierUnlockSession((prev) => ({
+            ...(prev || {}),
+            source: 'dgfy_pos',
+            email: nextTerminalUser.email,
+            userId: nextTerminalUser.user_id,
+            role: nextTerminalUser.role,
+            permissions: nextTerminalUser.permissions,
+            tenantId: selectedTenantId,
+            terminalId: selectedTerminalId,
+            companyToken: posSession?.company?.token || prev?.companyToken || getCompanyToken() || ''
+          }));
+        } else if (!cashierSessionActive) {
           await loginWithCredentials({
             email: String(terminalUnlockForm.cashierEmail || '').trim(),
             password: String(terminalUnlockForm.cashierPassword || ''),
@@ -2609,7 +2489,6 @@ export default function TerminalPage() {
       setTenantSetupModalOpen(false);
       setTenantSetupDismissedThisSession(true);
       setCashierUnlockSession(null);
-      setPairedTerminalContext(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
       setDgfyPosState({
@@ -2698,7 +2577,6 @@ export default function TerminalPage() {
     setTenantSetupModalOpen(false);
     setTenantSetupDismissedThisSession(true);
     setCashierUnlockSession(null);
-    setPairedTerminalContext(null);
     setCashierResumeContext(null);
     setCashierResumeForm({ identifier: '', password: '' });
     setAdminReauthContext(null);
@@ -2744,44 +2622,24 @@ export default function TerminalPage() {
       toast.error('Your account does not have permission to open a shift.');
       return;
     }
-    const selectedTerminalId = sanitizeTerminalId(activeTerminalId || resolveSelectedLoginTerminalId());
-    const selectedTerminal = terminalRegistryLookup.get(selectedTerminalId)
-      || (activeTerminalRegistry.length === 1 ? activeTerminalRegistry[0] : null);
-    const registeredTerminal = buildRegisteredTerminalContext(selectedTerminal);
-    if (!registeredTerminal) {
-      toast.error(activeTerminalRegistry.length === 0
-        ? `${selectedTerminalId || 'This terminal'} is not saved in the terminal registry. Add this terminal in POS Settings before opening a shift.`
-        : 'Select a registered terminal before opening the shift.');
-      return;
-    }
-    setPairedTerminalContext(registeredTerminal);
-
-    const pairedTerminalId = sanitizeTerminalId(
-      registeredTerminal.terminal_id
-    );
-    const pairedLocationId = Number(
-      registeredTerminal.location_id
-      || 0
-    );
-    const terminalId = pairedTerminalId || sanitizeTerminalId(activeTerminalId);
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    const registryEntry = terminalRegistryLookup.get(terminalId);
     if (!terminalId) {
       toast.error('Select a terminal ID before opening shift.');
       setDrawerOpen(true);
       return;
     }
-    if (registryEnforced && !terminalRegistryLookup.has(terminalId)) {
-      toast.error('Active terminal ID is no longer valid. Re-authenticate terminal identity.');
+    if (!registryEntry) {
+      toast.error('Select an active registered terminal before opening shift.');
       setDrawerOpen(true);
       return;
     }
-    if (!registryEnforced && activeTerminalRegistry.length > 0 && !terminalRegistryLookup.has(terminalId)) {
-      toast.warning(`Terminal ID ${terminalId} is not in active registry. Shift open continues in warn mode.`);
-    }
-    const scopedOperatingLocationId = Number.isInteger(pairedLocationId) && pairedLocationId > 0
-      ? pairedLocationId
+    const registryLocationId = Number(registryEntry.location_id || 0);
+    const scopedOperatingLocationId = Number.isInteger(registryLocationId) && registryLocationId > 0
+      ? registryLocationId
       : Number(operatingLocationId);
     if (!Number.isInteger(scopedOperatingLocationId) || scopedOperatingLocationId <= 0) {
-      toast.error('Select an operating location before opening shift.');
+      toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
       return;
     }
 
@@ -2823,11 +2681,11 @@ export default function TerminalPage() {
       await openTerminalShift(payload);
       toast.success('Shift opened successfully.');
       setAdminShiftPromptSkipped(false);
-      setOpenShiftForm({
-        openingFloatAmount: Number(terminalMeta.pettyCashAmount || 0).toFixed(2),
-        openingNote: ''
+      setOpenShiftForm({ openingFloatAmount: '', openingNote: '' });
+      await refreshOperationalContext({
+        terminalIdOverride: terminalId,
+        operatingLocationIdOverride: scopedOperatingLocationId
       });
-      await refreshOperationalContext();
       setPosViewMode('checkout');
       setMobileNavOpen(false);
     } catch (error) {
@@ -3007,7 +2865,6 @@ export default function TerminalPage() {
         cashSummary: null
       });
       setCashierUnlockSession(null);
-      setPairedTerminalContext(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
       clearClientSession({
@@ -3066,7 +2923,6 @@ export default function TerminalPage() {
         cashSummary: null
       });
       setCashierUnlockSession(null);
-      setPairedTerminalContext(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
       clearClientSession({
@@ -3107,7 +2963,6 @@ export default function TerminalPage() {
           cashSummary: null
         });
         setCashierUnlockSession(null);
-        setPairedTerminalContext(null);
         setCashierResumeContext(null);
         setCashierResumeForm({ identifier: '', password: '' });
         clearClientSession({
@@ -3271,13 +3126,9 @@ export default function TerminalPage() {
       return;
     }
     const isSettingsViewMode = SETTINGS_VIEW_MODES.has(nextMode);
+    const isShiftExemptViewMode = SHIFT_EXEMPT_VIEW_MODES.has(nextMode);
     const isPinProtectedViewMode = PIN_PROTECTED_VIEW_MODES.has(nextMode);
     if (setupFlowActive) {
-      if (canAdminBypassShiftPrompt && ['shift_controls', 'close_shift', 'cash_drawer'].includes(nextMode)) {
-        setTenantSetupModalOpen(false);
-        setTenantSetupDismissedThisSession(true);
-        clearTenantSetupQueryState();
-      } else {
       const allowedSetupModes = new Set(['settings_profile', 'settings_pos', 'settings_storefront']);
       if (!allowedSetupModes.has(nextMode)) {
         toast.error(
@@ -3294,9 +3145,8 @@ export default function TerminalPage() {
         setMobileNavOpen(false);
         return;
       }
-      }
     }
-    if (requiresOpenShift && !isSettingsViewMode && !isPinProtectedViewMode && !canAdminBypassShiftPrompt) {
+    if (requiresOpenShift && !isSettingsViewMode && !isShiftExemptViewMode && !canAdminBypassShiftPrompt) {
       toast.error('You cannot use the POS because the shift is closed.');
       setMobileNavOpen(false);
       return;
@@ -3343,6 +3193,7 @@ export default function TerminalPage() {
     setSettingsAccessPinSubmitting(true);
     try {
       await verifyPosSettingsAccessPin(normalizedPin);
+      await hydrateTerminalMeta({ suppressGlobalErrors: true });
       setSettingsAccessPinVerified(true);
       setSettingsAccessPinModalOpen(false);
       setSettingsAccessPinValue('');
@@ -3355,7 +3206,7 @@ export default function TerminalPage() {
     } finally {
       setSettingsAccessPinSubmitting(false);
     }
-  }, [commitViewModeSelection, pendingSettingsViewMode, settingsAccessPinValue]);
+  }, [commitViewModeSelection, hydrateTerminalMeta, pendingSettingsViewMode, settingsAccessPinValue]);
 
   const handleHardwareMessageOpenChange = useCallback((open) => {
     if (!open) {
@@ -3371,12 +3222,7 @@ export default function TerminalPage() {
     await hydrateTenantSetupState({ suppressGlobalErrors: true });
   }, [hydrateTenantSetupState]);
 
-  const handleTenantSetupDataChanged = useCallback(async (options = {}) => {
-    if (options?.scope === 'storefront-assets') {
-      await hydrateTenantSetupState({ suppressGlobalErrors: true });
-      return;
-    }
-
+  const handleTenantSetupDataChanged = useCallback(async () => {
     await Promise.all([
       hydrateTenantSetupState({ suppressGlobalErrors: true }),
       hydrateTerminalMeta({ suppressGlobalErrors: true }),
@@ -3508,8 +3354,6 @@ export default function TerminalPage() {
     toast.message('Admin navigation mode active. Open a shift to start selling or close an active cashier shift.');
   }, []);
 
-  const pairedTerminalUnlock = Boolean(pairedTerminalContext?.registered);
-  const pairedCashierOpening = Boolean(cashierUnlockSession?.email && pairedTerminalUnlock);
   const cashierResumeUnlock = terminalUnlockMode === 'cashier_resume';
   const adminReauthUnlock = terminalUnlockMode === 'admin_reunlock';
 
@@ -3528,7 +3372,7 @@ export default function TerminalPage() {
             <form onSubmit={adminReauthUnlock ? handleAdminReauthSubmit : (cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit)}>
               <DialogHeader className="border-b border-slate-100 px-5 py-4">
                 <DialogTitle className="text-lg font-extrabold text-[#0F172A]">
-                  {adminReauthUnlock ? 'Admin Unlock' : (cashierResumeUnlock ? 'Continue Shift' : (pairedTerminalUnlock ? 'Cashier Unlock' : 'Unlock Terminal'))}
+                  {adminReauthUnlock ? 'Admin Unlock' : (cashierResumeUnlock ? 'Continue Shift' : 'Unlock Terminal')}
                 </DialogTitle>
                 <DialogDescription className="text-sm text-slate-600">
                   {adminReauthUnlock
@@ -3536,12 +3380,10 @@ export default function TerminalPage() {
                     : cashierResumeUnlock
                     ? 'Enter the cashier credentials for the open shift. Terminal password is not required.'
                     : terminalUnlockMode === 'relock'
-                    ? 'Reauthenticate the current DGFY operator to resume the registered terminal.'
-                    : pairedTerminalUnlock
-                    ? 'This terminal is registered to the selected business. Enter the cashier details and opening cash to start the shift.'
+                    ? 'Reauthenticate the current DGFY operator to resume this terminal.'
                     : cashierUnlockSession?.email
-                    ? 'Use the terminal registered to this business and start the cashier shift.'
-                    : 'Choose the registered POS terminal, sign in the cashier, and start the shift.'}
+                    ? 'Choose the registered POS terminal and start the cashier shift from this logged-in device.'
+                    : 'Choose the registered POS terminal, sign in the cashier, and start the shift from this logged-in device.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 px-5 py-5">
@@ -3623,11 +3465,6 @@ export default function TerminalPage() {
                       </p>
                     </div>
                   </>
-                ) : pairedTerminalUnlock ? (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-900">
-                    <p className="font-extrabold">Registered terminal: {terminalUnlockForm.terminalId}</p>
-                    <p className="mt-1">This terminal belongs to the selected business and locked branch. No device cookie or terminal password is required.</p>
-                  </div>
                 ) : (
                   <>
                   <div className="grid gap-2">
@@ -3655,7 +3492,7 @@ export default function TerminalPage() {
                       </select>
                       {activeTerminalRegistry.length > 1 ? (
                         <p className="text-[11px] font-medium text-[#64748B]">
-                          {activeTerminalRegistry.length} registered terminals available. A location may have multiple counters under the locked branch.
+                          {activeTerminalRegistry.length} registered terminals available. A location may have multiple counters; choose the counter you are operating.
                         </p>
                       ) : null}
                     </>
@@ -3683,8 +3520,8 @@ export default function TerminalPage() {
                     Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
                   </p>
                 </div>
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Select a terminal registered to this business and locked branch.
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                  Authorized DGFY users can open shifts from any logged-in device when the selected terminal is active and assigned to their allowed location.
                 </div>
                   </>
                 )}
@@ -3777,8 +3614,8 @@ export default function TerminalPage() {
                   disabled={submitting}
                 >
                   {submitting
-                    ? (adminReauthUnlock ? 'Checking admin...' : (cashierResumeUnlock ? 'Checking cashier...' : (pairedTerminalUnlock ? 'Opening shift...' : 'Unlocking...')))
-                    : (adminReauthUnlock ? 'Unlock as Admin' : (cashierResumeUnlock ? 'Continue Shift' : (pairedTerminalUnlock ? 'Open Cashier Shift' : 'Unlock POS')))}
+                    ? (adminReauthUnlock ? 'Checking admin...' : (cashierResumeUnlock ? 'Checking cashier...' : 'Unlocking...'))
+                    : (adminReauthUnlock ? 'Unlock as Admin' : (cashierResumeUnlock ? 'Continue Shift' : 'Unlock POS'))}
                 </Button>
               </DialogFooter>
             </form>
@@ -3858,7 +3695,7 @@ export default function TerminalPage() {
                 : `Finish POS Setup next. Missing: ${
                   [
                     setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store',
-                    setupFlowState.posRequirements.cashierReady ? null : 'active cashier account'
+                    setupFlowState.posRequirements.cashierReady ? null : 'provisioned cashier access'
                   ].filter(Boolean).join(', ')
                 }.`)}
           </div>
@@ -3940,6 +3777,8 @@ export default function TerminalPage() {
           }}
           posRequirements={setupFlowState.posRequirements}
           storefrontRequirements={setupFlowState.storefrontRequirements}
+          starterItemRequirements={setupFlowState.starterItemRequirements}
+          workflowMode={workflowMode}
           terminalRegistry={terminalRegistry}
           terminalLocations={locationsState.locations}
           tenantUsers={setupFlowState.tenantUsers}
@@ -3961,6 +3800,15 @@ export default function TerminalPage() {
               if (!setupFlowState.storefrontSetupReady) {
                 toast.error('Finish Storefront Setup before continuing to POS Setup.');
                 openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+                return;
+              }
+              openTenantSetupStep(nextStep);
+              return;
+            }
+            if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM) {
+              if (!setupFlowState.starterItemReady) {
+                toast.error('Create at least one starter item before continuing to POS Setup.');
+                openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
                 return;
               }
               openTenantSetupStep(nextStep);
@@ -4152,7 +4000,7 @@ export default function TerminalPage() {
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}
           canAdjustCashDrawer={canAdjustCashDrawer}
-          canCloseDay={canCloseDay}
+          canCloseDay={canCloseShift}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           terminalUser={terminalUser}
           posViewMode={posViewMode}
@@ -4178,7 +4026,6 @@ export default function TerminalPage() {
           workspacePaneRef={workspacePaneRef}
           canTransactPos={canTransactPos}
           terminalMeta={terminalMeta}
-          companyName={activeCompanyName}
           todayDashboard={todayDashboard}
           reportRefreshKey={reportRefreshKey}
           openShiftForm={openShiftForm}

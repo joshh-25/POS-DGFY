@@ -1,0 +1,36 @@
+name: PR Conventional Commits
+
+on:
+  workflow_call:
+
+jobs:
+  conventional-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title format
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! echo "$TITLE" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\([^)]+\))?(!)?: .+'; then
+            echo "::error::PR title must follow conventional commits format"
+            echo "Expected format: feat(scope)!: description"
+            echo "Allowed types: feat, fix, docs, style, refactor, perf, test, chore, build, ci, revert"
+            exit 1
+          fi
+
+      - name: Validate PR body sections
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! echo "$BODY" | grep -q "## Summary"; then
+            echo "::error::PR body must contain '## Summary' section"
+            exit 1
+          fi
+          if ! echo "$BODY" | grep -q "## Motivation"; then
+            echo "::error::PR body must contain '## Motivation' section"
+            exit 1
+          fi
+          if ! echo "$BODY" | grep -q "## Testing"; then
+            echo "::error::PR body must contain '## Testing' section"
+            exit 1
+          fi

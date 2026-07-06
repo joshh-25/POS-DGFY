@@ -12,6 +12,7 @@ import logger from '../config/logger.js';
 import {
   getInvitationTemplate,
   getWelcomeTemplate,
+  getCashierCredentialTemplate,
   getCompanyApprovedTemplate,
   getCompanyRejectedTemplate,
   getSubscriptionExpiringTemplate,
@@ -274,6 +275,43 @@ export const sendWelcomeEmail = async ({ email, username, role, tenantName }) =>
     to: email,
     subject: `Welcome to ${tenantName} on SKUpervisor`,
     html
+  });
+};
+
+export const sendCashierCredentialEmail = async ({
+  email,
+  tenantName,
+  temporaryPassword,
+  terminalLabel,
+  storeName
+}) => {
+  const appUrl = getAppUrl();
+  const loginUrl = `${appUrl}/login`;
+  const resetPasswordUrl = `${appUrl}/dgfy/reset-password?email=${encodeURIComponent(String(email || '').trim())}`;
+  const html = getCashierCredentialTemplate({
+    tenantName,
+    cashierEmail: email,
+    temporaryPassword,
+    loginUrl,
+    resetPasswordUrl,
+    terminalLabel,
+    storeName
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `Your cashier login details for ${tenantName}`,
+    html,
+    text: [
+      `Your cashier access for ${tenantName} is ready.`,
+      `Cashier Gmail: ${email}`,
+      `Temporary Password: ${temporaryPassword}`,
+      `Terminal: ${terminalLabel || 'Assigned terminal'}`,
+      `Store: ${storeName || 'Assigned store'}`,
+      `Login: ${loginUrl}`,
+      `Reset Password: ${resetPasswordUrl}`,
+      'Use the reset-password link if you want to set your own password immediately, or sign in first and change it in account settings.'
+    ].join('\n')
   });
 };
 
@@ -545,6 +583,7 @@ export default {
   sendEmail,
   sendInvitationEmail,
   sendWelcomeEmail,
+  sendCashierCredentialEmail,
   sendCompanyApprovedEmail,
   sendCompanyRejectedEmail,
   sendEmailOtpCode,

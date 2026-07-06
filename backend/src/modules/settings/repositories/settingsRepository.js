@@ -266,6 +266,7 @@ const normalizeTerminalRegistry = (rawValue) => {
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
             location_id: parsePositiveInt(entry?.location_id),
+            cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
             is_active: isActive,
             is_default: isActive && parseBooleanLike(entry?.is_default),
             terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
@@ -299,6 +300,7 @@ const toPublicTerminalRegistry = (entries = []) => (
         terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
         label: String(entry?.label || '').trim(),
         location_id: parsePositiveInt(entry?.location_id),
+        cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
         is_active: entry?.is_active !== false,
         is_default: entry?.is_default === true,
         has_password: Boolean(String(entry?.terminal_password_hash || '').trim())
@@ -358,6 +360,7 @@ const POS_JSON_SETTING_KEYS = new Set([
     'storefront_categories',
     'storefront_gallery_images',
     'storefront_delivery_partners',
+    'storefront_promo',
     'storefront_review_summary',
     'storefront_hours'
 ]);

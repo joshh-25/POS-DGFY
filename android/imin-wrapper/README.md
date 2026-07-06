@@ -14,26 +14,30 @@ This is a minimal Android WebView wrapper for running the hosted DGFY POS URL on
 
 ## Current live routing
 
-Release physical-device builds route to:
+The wrapper has two product flavors (`app/build.gradle.kts`, `environment` dimension) so both a production build and a beta build can come out of the same project without hand-editing source:
 
-- `https://pos.dgfy.ph/?apk_build=<timestamp>#/terminal`
-- `https://pos.dgfy.ph/api/v1`
+| Flavor | Live origin | Allowed in-wrapper hosts | applicationId | App label |
+| --- | --- | --- | --- | --- |
+| `prod` | `https://pos.dgfy.ph` | `pos.dgfy.ph`, `skupervisor.dgfy.ph` | `com.dgfy.iminwrapper` | DGFY iMin POS |
+| `beta` | `https://pos.beta.dgfy.ph` | `pos.beta.dgfy.ph`, `skupervisor.beta.dgfy.ph` | `com.dgfy.iminwrapper.beta` | DGFY iMin POS (Beta) |
 
-Allowed in-wrapper production hosts are:
+Each flavor supplies its origin/host pair as `BuildConfig` fields (`LIVE_POS_ORIGIN`, `LIVE_POS_HOST`, `SKUPERVISOR_HOST`), which `AppConfig.kt` reads at runtime. The `beta` flavor's `applicationIdSuffix`/`versionNameSuffix` let a beta build install side-by-side with a prod build on the same device without overwriting it, and `app/src/beta/res/values/strings.xml` overrides `app_name` to "DGFY iMin POS (Beta)" so the two icons are distinguishable on the home screen.
 
-- `pos.dgfy.ph`
-- `skupervisor.dgfy.ph`
+Release physical-device builds route to (per flavor):
 
-The Android emulator path still uses the local development host through `10.0.2.2`.
-Debug APK builds for physical devices use the local LAN host `10.123.37.45` and enable cleartext traffic so they can connect to the local POS/backend stack.
+- `https://pos.<env>.dgfy.ph/?apk_build=<timestamp>#/terminal`
+- `https://pos.<env>.dgfy.ph/api/v1`
+
+The Android emulator path still uses the local development host through `10.0.2.2`, regardless of flavor.
 
 ## What you need to do next
 
 1. Open `android/imin-wrapper` in Android Studio.
 2. Let Android Studio sync Gradle if prompted.
-3. Set your final package name if you do not want `com.dgfy.iminwrapper`.
-4. Build and install the APK on the iMin device.
-5. Validate login, catalog, checkout, receipt/history, and stock deduction against the production tenant before treating the APK as live-ready.
+3. In the Build Variants panel (or `./gradlew assembleBetaDebug` / `assembleProdDebug`), pick the `beta` or `prod` flavor for the build you want.
+4. Set your final package name if you do not want `com.dgfy.iminwrapper`.
+5. Build and install the APK on the iMin device.
+6. Validate login, catalog, checkout, receipt/history, and stock deduction against the target tenant (beta or production) before treating the APK as ready for that environment.
 
 ## Frontend bridge call
 

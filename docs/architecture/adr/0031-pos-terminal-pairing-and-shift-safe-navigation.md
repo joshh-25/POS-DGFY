@@ -14,7 +14,9 @@ legacy tenant user and resolves a tenant-local authorization profile. PR #25
 proposed a richer setup and cashier user experience. The original unsafe shape
 was a second credential authority outside the existing tenant-user lifecycle.
 The valid requirement is richer operator setup and cashier-focused unlock while
-preserving DGFY tenant context and current terminal possession proof.
+preserving DGFY tenant context, tenant-local authorization, terminal registry,
+location grants, and shift controls. Physical browser/device possession is no
+longer a required security boundary for normal shift opening or checkout.
 
 ## Decision
 
@@ -26,23 +28,23 @@ preserving DGFY tenant context and current terminal possession proof.
 3. Do not create tenant-local cashier credentials from POS setup. POS setup uses
    the DGFY account search/invitation contract from ADR 0028, forces the cashier
    role, and persists active tenant-location grants with the pending invitation.
-4. Terminal pairing is administrator-authorized device enrollment, not a reusable
-   terminal password. A master admin signs in with DGFY on the physical device,
-   selects an active registered terminal, and receives a signed, HttpOnly,
-   SameSite=Lax pairing cookie bound to tenant, terminal, location, and a rotatable
-   pairing version. Cashiers never receive or enter a terminal secret.
-5. Use a dedicated `POS_TERMINAL_PAIRING_SECRET` in production. Do not reuse
-   access-token or refresh-token secrets.
-6. Revalidate terminal active state, location binding, pairing version, tenant
-   authorization profile, and DGFY membership on paired requests. Fail closed
-   when any binding changes. Terminal removal, deactivation, location reassignment,
-   or explicit re-pair rotates/revokes the device binding.
-7. Require valid pairing for checkout and every terminal mutation. Shift rules
-   remain separate: pairing does not authorize checkout, drawer opening,
-   receipt printing, or other transactional actions without an open shift.
-   The POS UI must freshly verify pairing before shift open and must direct the
-   master admin to re-pair instead of submitting or refreshing authentication
-   when a migrated, expired, or rotated pairing is invalid.
+4. Terminals are logical counters/stations registered by tenant settings and
+   bound to an active tenant location. A saved terminal becomes eligible for POS
+   use only when it is active and has a valid location assignment.
+5. Physical-device pairing is optional compatibility state for hardware-specific
+   or legacy device-enrollment flows. It must not block normal shift opening or
+   checkout when the operator is otherwise authorized. If pairing endpoints remain
+   enabled, use a dedicated `POS_TERMINAL_PAIRING_SECRET` in production and do
+   not reuse access-token or refresh-token secrets.
+6. Opening a shift from any browser/device requires DGFY authentication or an
+   explicitly allowed legacy grace identity, accepted company membership, an
+   active tenant-local authorization profile, `pos:transact`, selected active
+   terminal, terminal location assignment, and a location grant for that terminal
+   location. Email or phone matching must not be used to infer company access.
+7. Checkout and terminal mutations must be protected by explicit permissions,
+   selected terminal, terminal/location binding, location grants, compliance
+   gates, and open-shift rules. A stale, missing, expired, or rotated pairing
+   cookie must not block an otherwise authorized shift open or checkout.
 8. Administrators may dismiss the open-shift prompt and navigate read-only or
    configuration surfaces. Cashier-role users remain in cashier-focused
    navigation, and no-shift transactional controls stay disabled.
@@ -67,17 +69,27 @@ preserving DGFY tenant context and current terminal possession proof.
 
 ## Boundary Consequences
 
-The Settings module owns terminal registry configuration and pairing-version
-rotation. The POS module owns device enrollment, pairing verification, and
-mutation guards. DGFY owns account invitation and company membership. The Users
-service owns tenant-local authorization profiles and location grants created by
-accepted DGFY invitations. Tenant-local users remain authorization profiles
-inside the selected tenant, not a separate credential authority.
+The Settings module owns terminal registry configuration and any retained
+pairing-version compatibility metadata. The POS module owns logical terminal
+selection, shift opening, checkout, optional device-enrollment compatibility,
+and mutation guards. DGFY owns account invitation and company membership. The
+Users service owns tenant-local authorization profiles and location grants
+created by accepted DGFY invitations. Tenant-local users remain authorization
+profiles inside the selected tenant, not a separate credential authority.
 
 ## Validation
 
-1. Pairing service, cookie, use-case, rejection, and settings-secret tests.
+1. Logical terminal shift-open and checkout tests proving no pairing cookie is
+   required for authorized operators.
 2. POS terminal identity, unlock, admin-navigation, shell, and settings tests.
 3. POS and SKUpervisor production builds.
 4. Rendered desktop, tablet, and mobile terminal evidence before merge approval.
 5. Docs, architecture, compliance, merge-adoption, and reviewed-batch gates.
+
+## Addendum (2026-07-02): POS Item Creation And Starter-Item Setup
+
+1. POS terminal onboarding includes a starter-item step that reuses the tenant onboarding bulk item API and the ADR 0013 mode-aware starter-item taxonomy.
+2. POS > Items > Add POS Item is a staged mutation. The durable item create must complete before optional images, barcode generation, Storefront visibility, POS Always Available, POS visibility, and catalog readback run.
+3. Optional image upload failure must be reported as recoverable post-create work, not as item creation failure. The UI must preserve the created item ID and retry unfinished post-create stages without creating a duplicate item.
+4. Runtime schema health and tenant schema report mode must verify the POS Always Available contract columns: `pos_catalog_overrides.pos_always_available`, `pos_transaction_lines.stock_effect_type`, and `pos_transaction_lines.stock_exempt_reason`.
+5. Tenant repair for these columns is additive and declared-column-only. Full tenant `sync({ alter: true })` is not the default repair path for this contract.

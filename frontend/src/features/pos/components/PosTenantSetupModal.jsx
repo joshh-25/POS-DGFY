@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ImagePlus, Settings2, Store, Trash2, UserRound } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ImagePlus, Settings2, Store, Trash2, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,11 +14,15 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
+import { provisionCashierFromGmail } from '@/services/userService.js';
 import { createTenantLocation, updateTenantLocation } from '@/services/tenantLocationService.js';
+import { bulkCreateOnboardingItems } from '@/services/onboardingService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
+import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
+import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 
 const MapPinPicker = React.lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
 
@@ -34,7 +38,7 @@ const STEP_CONFIG = {
     title: 'POS Setup',
     icon: Settings2,
     summary: 'Finish the POS setup required before this terminal can operate normally.',
-    description: 'Invite DGFY cashiers, assign their store locations, and register every counter against a canonical business location.',
+    description: 'Assign cashier Gmail access, store locations, and register every counter against a canonical business location.',
     actionLabel: 'Open POS Setup'
   },
   [POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP]: {
@@ -43,6 +47,13 @@ const STEP_CONFIG = {
     summary: 'Complete the storefront branding required for this tenant.',
     description: 'Upload the company icon and cover image from the existing storefront fields in POS Settings.',
     actionLabel: 'Open Storefront'
+  },
+  [POS_TERMINAL_SETUP_STEPS.STARTER_ITEM]: {
+    title: 'Starter Item',
+    icon: Store,
+    summary: 'Create one sellable starter item through the governed onboarding item contract.',
+    description: 'This uses the existing onboarding bulk item API, shared mode taxonomy, row validation, and completion readiness.',
+    actionLabel: 'Open Items'
   }
 };
 
@@ -64,6 +75,8 @@ const createTerminalDraft = (entry = {}, isFirst = false, existingEntries = []) 
   terminal_id: sanitizeTerminalId(entry?.terminal_id) || createSuggestedTerminalId(existingEntries),
   label: String(entry?.label || '').trim(),
   location_id: toPositiveInt(entry?.location_id),
+  cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
+  cashier_password: '',
   is_active: entry?.is_active !== false,
   is_default: entry?.is_default === true || (isFirst && entry?.is_default !== false),
   pairing_version: String(entry?.pairing_version || '').trim(),
@@ -98,6 +111,28 @@ const resolvePrimaryLocation = (locations = []) => {
   return activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0] || null;
 };
 
+const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
+  food_manufacturing: ['finished_product'],
+  msme: ['product'],
+  services: ['service', 'physical_add_on'],
+  fnb: ['menu_item']
+});
+
+const fallbackStarterPreset = Object.freeze({
+  key: 'product',
+  label: 'Product Item'
+});
+
+const resolveStarterPresetOptions = (workflowMode = '') => {
+  const taxonomy = resolveModeItemTaxonomy(workflowMode);
+  const presets = Array.isArray(taxonomy?.presets) && taxonomy.presets.length > 0
+    ? taxonomy.presets
+    : [fallbackStarterPreset];
+  const preferredKeys = ONBOARDING_CUSTOMER_FACING_PRESETS[normalizeWorkflowMode(workflowMode)] || [];
+  const preferredPresets = presets.filter((preset) => preferredKeys.includes(preset.key));
+  return preferredPresets.length > 0 ? preferredPresets : presets;
+};
+
 export default function PosTenantSetupModal({
   open = false,
   currentStep = POS_TERMINAL_SETUP_STEPS.PROFILE,
@@ -105,6 +140,8 @@ export default function PosTenantSetupModal({
   profileData = {},
   posRequirements = {},
   storefrontRequirements = {},
+  starterItemRequirements = {},
+  workflowMode = '',
   terminalRegistry = [],
   terminalLocations = [],
   tenantUsers = [],
@@ -112,7 +149,6 @@ export default function PosTenantSetupModal({
   onStepSelect = () => {},
   onBack = () => {},
   onContinue = () => {},
-  onSkip = () => {},
   onSetupDataChanged = async () => {}
 }) {
   const stepConfig = STEP_CONFIG[currentStep] || STEP_CONFIG[POS_TERMINAL_SETUP_STEPS.PROFILE];
@@ -123,11 +159,25 @@ export default function PosTenantSetupModal({
   const continueLabel = isLastStep ? 'Finish Setup' : 'Next Step';
   const [terminalDrafts, setTerminalDrafts] = useState(() => normalizeTerminalDrafts(terminalRegistry));
   const [terminalSaving, setTerminalSaving] = useState(false);
+  const [terminalSaveFeedback, setTerminalSaveFeedback] = useState({ type: '', message: '' });
+  const [terminalFieldErrors, setTerminalFieldErrors] = useState({});
   const [assetUploadingType, setAssetUploadingType] = useState('');
   const [localStorefrontAssets, setLocalStorefrontAssets] = useState({ profile: '', cover: '' });
   const [locationSaving, setLocationSaving] = useState(false);
+  const [storefrontContinueAttempted, setStorefrontContinueAttempted] = useState(false);
+  const [starterItemSaving, setStarterItemSaving] = useState(false);
+  const starterPresetOptions = useMemo(() => resolveStarterPresetOptions(workflowMode), [workflowMode]);
+  const [starterItemForm, setStarterItemForm] = useState(() => ({
+    mode_item_preset: starterPresetOptions[0]?.key || 'product',
+    name: '',
+    default_sale_price: '',
+    cost_per_unit: '',
+    current_stock: '0'
+  }));
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
+
   const localPreviewUrlsRef = useRef(new Set());
+
   const [locationDraft, setLocationDraft] = useState(() => createLocationDraft(
     resolvePrimaryLocation(terminalLocations),
     companyName,
@@ -137,6 +187,8 @@ export default function PosTenantSetupModal({
   useEffect(() => {
     if (!open) return;
     setTerminalDrafts(normalizeTerminalDrafts(terminalRegistry));
+    setTerminalSaveFeedback({ type: '', message: '' });
+    setTerminalFieldErrors({});
   }, [open, terminalRegistry]);
 
   useEffect(() => {
@@ -145,6 +197,7 @@ export default function PosTenantSetupModal({
       profile: storefrontRequirements.profileImageUrl || '',
       cover: storefrontRequirements.coverImageUrl || ''
     });
+    setStorefrontContinueAttempted(false);
   }, [open, storefrontRequirements.coverImageUrl, storefrontRequirements.profileImageUrl]);
 
   useEffect(() => () => {
@@ -158,6 +211,16 @@ export default function PosTenantSetupModal({
     const primaryLocation = resolvePrimaryLocation(terminalLocations);
     setLocationDraft(createLocationDraft(primaryLocation, companyName, { defaultPrimary: primaryLocation == null }));
   }, [companyName, open, terminalLocations]);
+
+  useEffect(() => {
+    if (!open) return;
+    setStarterItemForm((current) => ({
+      ...current,
+      mode_item_preset: starterPresetOptions.some((preset) => preset.key === current.mode_item_preset)
+        ? current.mode_item_preset
+        : (starterPresetOptions[0]?.key || 'product')
+    }));
+  }, [open, starterPresetOptions]);
 
   const normalizedLocations = useMemo(
     () => (Array.isArray(terminalLocations) ? terminalLocations : []).map((location) => ({
@@ -194,10 +257,22 @@ export default function PosTenantSetupModal({
     [cashierUsers]
   );
 
+  const locationNameById = useMemo(
+    () => new Map(
+      normalizedLocations.map((location) => [location.location_id, location.name])
+    ),
+    [normalizedLocations]
+  );
+
   const effectiveStorefrontProfileImageUrl = localStorefrontAssets.profile || storefrontRequirements.profileImageUrl || '';
   const effectiveStorefrontCoverImageUrl = localStorefrontAssets.cover || storefrontRequirements.coverImageUrl || '';
   const effectiveProfileImageReady = Boolean(effectiveStorefrontProfileImageUrl) || storefrontRequirements.profileImageReady === true;
   const effectiveCoverImageReady = Boolean(effectiveStorefrontCoverImageUrl) || storefrontRequirements.coverImageReady === true;
+  const effectivePrimaryLocationReady = Boolean(toPositiveInt(locationDraft.location_id) || primaryLocationId);
+  const effectiveStorefrontSetupReady = effectiveProfileImageReady && effectiveCoverImageReady && effectivePrimaryLocationReady;
+  const highlightMissingStorefrontProfile = storefrontContinueAttempted && !effectiveProfileImageReady;
+  const highlightMissingStorefrontCover = storefrontContinueAttempted && !effectiveCoverImageReady;
+  const highlightMissingStorefrontLocation = storefrontContinueAttempted && !effectivePrimaryLocationReady;
 
   useEffect(() => {
     const fallbackLocationId = primaryLocationId || (normalizedLocations.length === 1 ? normalizedLocations[0].location_id : null);
@@ -208,6 +283,17 @@ export default function PosTenantSetupModal({
   }, [normalizedLocations, primaryLocationId]);
 
   const handleTerminalDraftChange = (index, key, value) => {
+    setTerminalSaveFeedback((current) => (current.type === 'error' ? { type: '', message: '' } : current));
+    setTerminalFieldErrors((current) => {
+      if (!current[index]?.[key]) return current;
+      return {
+        ...current,
+        [index]: {
+          ...current[index],
+          [key]: ''
+        }
+      };
+    });
     setTerminalDrafts((current) => {
       const next = current.map((entry) => ({ ...entry }));
       const entry = next[index] || createTerminalDraft({}, index === 0, next);
@@ -265,17 +351,21 @@ export default function PosTenantSetupModal({
   const handleSaveTerminals = async () => {
     setTerminalSaving(true);
     try {
+      setTerminalSaveFeedback({ type: '', message: '' });
+      setTerminalFieldErrors({});
       const preparedEntries = terminalDrafts
         .map((entry) => ({
           terminal_id: sanitizeTerminalId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
           location_id: toPositiveInt(entry?.location_id),
+          cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
+          cashier_password: String(entry?.cashier_password || ''),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
           pairing_version: String(entry?.pairing_version || ''),
           rotate_pairing: false
         }))
-        .filter((entry) => entry.terminal_id || entry.label || entry.location_id || entry.is_default || entry.is_active === false);
+        .filter((entry) => entry.terminal_id || entry.label || entry.location_id || entry.cashier_email || entry.is_default || entry.is_active === false);
 
       if (preparedEntries.length === 0) {
         throw new Error('Add at least one terminal.');
@@ -283,12 +373,22 @@ export default function PosTenantSetupModal({
 
       const seenTerminalIds = new Set();
       let defaultCount = 0;
+      const cashierAssignments = new Map();
+      const nextFieldErrors = {};
 
-      preparedEntries.forEach((entry) => {
+      preparedEntries.forEach((entry, index) => {
         if (!entry.terminal_id || !TERMINAL_ID_PATTERN.test(entry.terminal_id)) {
+          nextFieldErrors[index] = {
+            ...(nextFieldErrors[index] || {}),
+            terminal_id: 'Enter a valid terminal ID.'
+          };
           throw new Error(`Invalid terminal ID: ${entry.terminal_id || '(empty)'}`);
         }
         if (seenTerminalIds.has(entry.terminal_id)) {
+          nextFieldErrors[index] = {
+            ...(nextFieldErrors[index] || {}),
+            terminal_id: 'This terminal ID is duplicated.'
+          };
           throw new Error(`Duplicate terminal ID: ${entry.terminal_id}`);
         }
         seenTerminalIds.add(entry.terminal_id);
@@ -299,19 +399,82 @@ export default function PosTenantSetupModal({
 
         if (entry.is_active !== false) {
           if (!entry.location_id) {
+            nextFieldErrors[index] = {
+              ...(nextFieldErrors[index] || {}),
+              location_id: 'Select a store for this active terminal.'
+            };
+            setTerminalFieldErrors(nextFieldErrors);
+            setTerminalSaveFeedback({ type: 'error', message: 'Select a store for each active terminal before saving.' });
             throw new Error(`Assign a store location for ${entry.terminal_id}.`);
           }
         }
+
+        const hasCashierEmail = Boolean(entry.cashier_email);
+        const hasCashierPassword = Boolean(entry.cashier_password);
+        if (hasCashierEmail !== hasCashierPassword) {
+          nextFieldErrors[index] = {
+            ...(nextFieldErrors[index] || {}),
+            cashier_email: 'Enter both cashier Gmail and password.',
+            cashier_password: 'Enter both cashier Gmail and password.'
+          };
+          setTerminalFieldErrors(nextFieldErrors);
+          setTerminalSaveFeedback({ type: 'error', message: 'Cashier Gmail and password must be entered together.' });
+          throw new Error(`Enter both cashier Gmail and password for ${entry.terminal_id}.`);
+        }
+        if (!hasCashierEmail) return;
+
+        if (!/^[A-Z0-9._%+-]+@gmail\.com$/i.test(entry.cashier_email)) {
+          nextFieldErrors[index] = {
+            ...(nextFieldErrors[index] || {}),
+            cashier_email: 'Cashier email must be a valid Gmail address.'
+          };
+          setTerminalFieldErrors(nextFieldErrors);
+          setTerminalSaveFeedback({ type: 'error', message: 'Use a valid Gmail address before saving terminal setup.' });
+          throw new Error(`Cashier email must be a valid Gmail address: ${entry.cashier_email}.`);
+        }
+        if (entry.cashier_password.length < 8) {
+          nextFieldErrors[index] = {
+            ...(nextFieldErrors[index] || {}),
+            cashier_password: 'Cashier password must be at least 8 characters.'
+          };
+          setTerminalFieldErrors(nextFieldErrors);
+          setTerminalSaveFeedback({ type: 'error', message: 'Cashier passwords must be at least 8 characters.' });
+          throw new Error(`Cashier password for ${entry.cashier_email} must be at least 8 characters.`);
+        }
+        cashierAssignments.set(entry.cashier_email, {
+          password: entry.cashier_password,
+          locationIds: entry.location_id ? [entry.location_id] : [],
+          terminalLabel: entry.label || entry.terminal_id,
+          storeName: locationNameById.get(entry.location_id) || 'Assigned store'
+        });
       });
 
       if (defaultCount > 1) {
         throw new Error('Only one default terminal can be configured.');
       }
 
+      const cashierEmailResults = [];
+      for (const [cashierEmail, assignment] of cashierAssignments.entries()) {
+        const result = await provisionCashierFromGmail({
+          email: cashierEmail,
+          password: assignment.password,
+          locationIds: assignment.locationIds,
+          terminalLabel: assignment.terminalLabel,
+          storeName: assignment.storeName
+        });
+        cashierEmailResults.push({
+          email: cashierEmail,
+          sent: result?.credential_email_sent === true,
+          status: result?.credential_email_status || 'skipped',
+          error: result?.credential_email_error || ''
+        });
+      }
+
       const payload = preparedEntries.map((entry) => ({
         terminal_id: entry.terminal_id,
         label: entry.label,
         location_id: entry.location_id,
+        cashier_email: entry.cashier_email,
         is_active: entry.is_active !== false,
         is_default: entry.is_default === true,
         pairing_version: entry.pairing_version,
@@ -322,8 +485,25 @@ export default function PosTenantSetupModal({
         pos_terminal_registry: payload
       });
       await onSetupDataChanged();
-      toast.success('Terminal setup saved.');
+      setTerminalFieldErrors({});
+      const undeliveredCount = cashierEmailResults.filter((entry) => entry.sent !== true).length;
+      const emailDeliveryMessage = cashierAssignments.size > 0
+        ? (undeliveredCount === 0
+          ? ' Cashier login credentials were emailed successfully.'
+          : ` ${undeliveredCount} cashier credential email${undeliveredCount === 1 ? ' was' : 's were'} not delivered. Configure SMTP or Brevo to enable automatic cashier emails.`)
+        : '';
+      setTerminalSaveFeedback({
+        type: 'success',
+        message: `${cashierAssignments.size > 0 ? 'Terminal setup and cashier access saved.' : 'Terminal setup saved.'}${emailDeliveryMessage}`.trim()
+      });
+      toast.success(`${cashierAssignments.size > 0 ? 'Terminal setup and cashier access saved.' : 'Terminal setup saved.'}${emailDeliveryMessage}`.trim());
     } catch (error) {
+      if (!terminalSaveFeedback.message) {
+        setTerminalSaveFeedback({
+          type: 'error',
+          message: error?.response?.data?.message || error?.message || 'Failed to save terminal setup.'
+        });
+      }
       toast.error(error?.response?.data?.message || error?.message || 'Failed to save terminal setup.');
     } finally {
       setTerminalSaving(false);
@@ -352,7 +532,6 @@ export default function PosTenantSetupModal({
           [assetType]: uploadedUrl
         }));
       }
-      await onSetupDataChanged({ scope: 'storefront-assets' });
       toast.success(assetType === 'profile' ? 'Company icon uploaded.' : 'Company cover image uploaded.');
     } catch (error) {
       setLocalStorefrontAssets((current) => ({
@@ -433,10 +612,84 @@ export default function PosTenantSetupModal({
     }
   };
 
+  const handleCreateStarterItem = async () => {
+    const name = String(starterItemForm.name || '').trim();
+    const salePrice = Number(String(starterItemForm.default_sale_price || '').trim());
+    const cost = String(starterItemForm.cost_per_unit || '').trim();
+    const stock = String(starterItemForm.current_stock || '0').trim();
+    const parsedCost = cost === '' ? null : Number(cost);
+    const parsedStock = stock === '' ? 0 : Number(stock);
+    const presetKey = String(starterItemForm.mode_item_preset || starterPresetOptions[0]?.key || 'product').trim();
+
+    if (!name) {
+      toast.error('Starter item name is required.');
+      return;
+    }
+    if (!Number.isFinite(salePrice) || salePrice <= 0) {
+      toast.error('Starter item selling price must be greater than zero.');
+      return;
+    }
+    if (parsedCost !== null && (!Number.isFinite(parsedCost) || parsedCost < 0)) {
+      toast.error('Starter item cost cannot be negative.');
+      return;
+    }
+    if (!Number.isFinite(parsedStock) || parsedStock < 0) {
+      toast.error('Starter item stock cannot be negative.');
+      return;
+    }
+
+    setStarterItemSaving(true);
+    try {
+      const row = {
+        client_row_id: `pos-starter-${Date.now()}`,
+        mode_item_preset: presetKey,
+        name,
+        default_sale_price: salePrice,
+        current_stock: parsedStock
+      };
+      if (parsedCost !== null) row.cost_per_unit = parsedCost;
+      if (primaryLocationId) row.location_id = primaryLocationId;
+
+      const result = await bulkCreateOnboardingItems({ rows: [row] });
+      const failures = Array.isArray(result?.results)
+        ? result.results.filter((entry) => entry?.status === 'failed')
+        : [];
+      if (failures.length > 0) {
+        throw new Error(failures[0]?.message || 'Starter item was rejected by onboarding validation.');
+      }
+      await onSetupDataChanged();
+      setStarterItemForm((current) => ({
+        ...current,
+        name: '',
+        default_sale_price: '',
+        cost_per_unit: '',
+        current_stock: '0'
+      }));
+      toast.success('Starter item created.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to create starter item.');
+    } finally {
+      setStarterItemSaving(false);
+    }
+  };
+
+  const handleContinue = () => {
+    if (currentStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
+      setStorefrontContinueAttempted(true);
+    }
+    onContinue({
+      storefrontSetupReady: effectiveStorefrontSetupReady
+    });
+  };
+
   return (
     <>
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onSkip(); }}>
-      <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-[980px]">
+    <Dialog open={open} onOpenChange={() => {}}>
+      <DialogContent
+        className="border border-slate-200 bg-white shadow-2xl sm:max-w-[980px]"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader className="border-b border-slate-100 pb-4">
           <DialogTitle className="text-[20px] font-black text-[#0F172A]">Tenant Onboarding Setup</DialogTitle>
           <DialogDescription className="text-sm text-slate-600">
@@ -520,6 +773,88 @@ export default function PosTenantSetupModal({
                 </div>
               ) : null}
 
+              {currentStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                    POS onboarding uses the existing starter-item API and shared mode taxonomy. Create one customer-facing item here, then configure richer catalog details from Items later.
+                  </div>
+                  {starterItemRequirements.starterItemReady ? (
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                      Starter item ready{starterItemRequirements.starterItemId ? `: item #${starterItemRequirements.starterItemId}` : ''}.
+                    </div>
+                  ) : null}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Starter Type</Label>
+                      <select
+                        value={starterItemForm.mode_item_preset}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, mode_item_preset: event.target.value }))}
+                        className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-[#0F172A] outline-none focus:border-[#2563EB]"
+                      >
+                        {starterPresetOptions.map((preset) => (
+                          <option key={preset.key} value={preset.key}>{preset.label || preset.key}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Item Name</Label>
+                      <Input
+                        value={starterItemForm.name}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, name: event.target.value }))}
+                        placeholder="Starter menu item"
+                        className="h-11 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A]"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Selling Price</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={starterItemForm.default_sale_price}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, default_sale_price: event.target.value }))}
+                        placeholder="150.00"
+                        className="h-11 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A]"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Initial Stock</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={starterItemForm.current_stock}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, current_stock: event.target.value }))}
+                        placeholder="0"
+                        className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Optional Cost</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={starterItemForm.cost_per_unit}
+                        onChange={(event) => setStarterItemForm((current) => ({ ...current, cost_per_unit: event.target.value }))}
+                        placeholder="Optional"
+                        className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+                      onClick={handleCreateStarterItem}
+                      disabled={starterItemSaving}
+                    >
+                      {starterItemSaving ? 'Creating...' : 'Create Starter Item'}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
               {currentStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP ? (
                 <div className="space-y-4">
                   <div className="rounded-2xl border border-slate-200 p-4">
@@ -551,7 +886,7 @@ export default function PosTenantSetupModal({
                     ) : null}
 
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
-                      <p className="text-sm text-blue-900">New cashiers use their DGFY account. No separate cashier password is created.</p>
+                      <p className="text-sm text-blue-900">You can still invite an existing DGFY cashier, or enter any cashier Gmail directly under the terminal setup below.</p>
                       <Button
                         type="button"
                         className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
@@ -561,10 +896,16 @@ export default function PosTenantSetupModal({
                         Invite DGFY Cashier
                       </Button>
                     </div>
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      Use a valid Gmail address under each terminal below. If the cashier does not exist yet, the system will still accept it, create the cashier access during save, and email the login credentials plus reset-password instructions automatically.
+                    </div>
                   </div>
 
                   {(Array.isArray(terminalDrafts) ? terminalDrafts : []).map((terminal, index) => (
-                    <div key={terminal.draft_key || `terminal-${index}`} className="rounded-2xl border border-slate-200 p-4">
+                    <div
+                      key={terminal.draft_key || `terminal-${index}`}
+                      className={`rounded-2xl border p-4 ${Object.values(terminalFieldErrors[index] || {}).some(Boolean) ? 'border-rose-300 bg-rose-50/30' : 'border-slate-200'}`}
+                    >
                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.1fr_1fr_1fr_auto]">
                         <div className="grid gap-2">
                           <Label className="text-[12px] font-black text-[#0F172A]">Terminal ID</Label>
@@ -572,8 +913,11 @@ export default function PosTenantSetupModal({
                             value={terminal.terminal_id}
                             onChange={(event) => handleTerminalDraftChange(index, 'terminal_id', event.target.value)}
                             placeholder="COUNTER-01"
-                            className="h-11 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A]"
+                            className={`h-11 rounded-lg text-[13px] font-semibold text-[#0F172A] ${terminalFieldErrors[index]?.terminal_id ? 'border-rose-300 bg-rose-50' : 'border-slate-200'}`}
                           />
+                          {terminalFieldErrors[index]?.terminal_id ? (
+                            <p className="text-xs font-semibold text-rose-600">{terminalFieldErrors[index].terminal_id}</p>
+                          ) : null}
                         </div>
                         <div className="grid gap-2">
                           <Label className="text-[12px] font-black text-[#0F172A]">Label</Label>
@@ -589,13 +933,16 @@ export default function PosTenantSetupModal({
                           <select
                             value={terminal.location_id || ''}
                             onChange={(event) => handleTerminalDraftChange(index, 'location_id', event.target.value)}
-                            className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-[#0F172A] outline-none focus:border-[#2563EB]"
+                            className={`h-11 rounded-lg border bg-white px-3 text-[13px] font-medium text-[#0F172A] outline-none focus:border-[#2563EB] ${terminalFieldErrors[index]?.location_id ? 'border-rose-300 bg-rose-50' : 'border-slate-200'}`}
                           >
                             <option value="">Select store</option>
                             {normalizedLocations.map((location) => (
                               <option key={location.location_id} value={location.location_id}>{location.name}</option>
                             ))}
                           </select>
+                          {terminalFieldErrors[index]?.location_id ? (
+                            <p className="text-xs font-semibold text-rose-600">{terminalFieldErrors[index].location_id}</p>
+                          ) : null}
                         </div>
                         <div className="flex items-end">
                           <Button
@@ -609,9 +956,37 @@ export default function PosTenantSetupModal({
                           </Button>
                         </div>
                       </div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label className="text-[12px] font-black text-[#0F172A]">Cashier Gmail</Label>
+                          <Input
+                            type="email"
+                            value={terminal.cashier_email || ''}
+                            onChange={(event) => handleTerminalDraftChange(index, 'cashier_email', event.target.value.toLowerCase())}
+                            placeholder="cashier@gmail.com"
+                            className={`h-11 rounded-lg text-[13px] font-medium text-[#0F172A] ${terminalFieldErrors[index]?.cashier_email ? 'border-rose-300 bg-rose-50' : 'border-slate-200'}`}
+                          />
+                          {terminalFieldErrors[index]?.cashier_email ? (
+                            <p className="text-xs font-semibold text-rose-600">{terminalFieldErrors[index].cashier_email}</p>
+                          ) : null}
+                        </div>
+                        <div className="grid gap-2">
+                          <Label className="text-[12px] font-black text-[#0F172A]">Cashier Password</Label>
+                          <Input
+                            type="password"
+                            value={terminal.cashier_password || ''}
+                            onChange={(event) => handleTerminalDraftChange(index, 'cashier_password', event.target.value)}
+                            placeholder="Minimum 8 characters"
+                            className={`h-11 rounded-lg text-[13px] font-medium text-[#0F172A] ${terminalFieldErrors[index]?.cashier_password ? 'border-rose-300 bg-rose-50' : 'border-slate-200'}`}
+                          />
+                          {terminalFieldErrors[index]?.cashier_password ? (
+                            <p className="text-xs font-semibold text-rose-600">{terminalFieldErrors[index].cashier_password}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          Pair this physical device once as the company master admin. Cashiers then use DGFY sign-in without a terminal password.
+                          Create one logical terminal for each counter or station. Enter any cashier Gmail here to create or attach the cashier account, assign branch access, and email the login credentials plus reset-password instructions during onboarding.
                         </div>
                         <label className="flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-[13px] font-semibold text-[#0F172A]">
                           <input
@@ -647,6 +1022,24 @@ export default function PosTenantSetupModal({
                       {terminalSaving ? 'Saving...' : 'Save Terminal Setup'}
                     </Button>
                   </div>
+                  {terminalSaveFeedback.message ? (
+                    <div
+                      className={`rounded-2xl border px-4 py-3 text-sm ${
+                        terminalSaveFeedback.type === 'success'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                          : 'border-rose-200 bg-rose-50 text-rose-700'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {terminalSaveFeedback.type === 'success' ? (
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        )}
+                        <p>{terminalSaveFeedback.message}</p>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
                     <p className={posRequirements.terminalRegistryReady ? 'text-emerald-700' : 'text-rose-600'}>
                       {posRequirements.terminalRegistryReady ? 'Complete' : 'Required'}: active terminal with store assignment
@@ -661,8 +1054,8 @@ export default function PosTenantSetupModal({
               {currentStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP ? (
                 <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Icon</p>
+                    <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontProfile ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
+                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Icon <span className="text-red-600">*</span></p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                         {effectiveStorefrontProfileImageUrl ? (
                           <img
@@ -690,8 +1083,8 @@ export default function PosTenantSetupModal({
                         />
                       </div>
                     </div>
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Cover Image</p>
+                    <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontCover ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
+                      <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Cover Image <span className="text-red-600">*</span></p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                         {effectiveStorefrontCoverImageUrl ? (
                           <img
@@ -720,9 +1113,9 @@ export default function PosTenantSetupModal({
                       </div>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 p-4">
+                  <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontLocation ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <Label className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Business Locations</Label>
+                      <Label className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Business Location <span className="text-red-600">*</span></Label>
                       <Button type="button" variant="outline" onClick={handleStartNewLocation}>Add Another Location</Button>
                     </div>
                     {normalizedLocations.length > 0 ? (
@@ -789,16 +1182,8 @@ export default function PosTenantSetupModal({
                       </Button>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                    <p className={effectiveProfileImageReady ? 'text-emerald-700' : 'text-rose-600'}>
-                      {effectiveProfileImageReady ? 'Complete' : 'Required'}: company icon
-                    </p>
-                    <p className={`mt-2 ${effectiveCoverImageReady ? 'text-emerald-700' : 'text-rose-600'}`}>
-                      {effectiveCoverImageReady ? 'Complete' : 'Required'}: company cover image
-                    </p>
-                    <p className={`mt-2 ${locationDraft.location_id ? 'text-emerald-700' : 'text-rose-600'}`}>
-                      {locationDraft.location_id ? 'Complete' : 'Required'}: primary store location and map pin
-                    </p>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Complete the marked fields to continue: company icon, cover image, and primary business location.
                   </div>
                 </div>
               ) : null}
@@ -807,9 +1192,9 @@ export default function PosTenantSetupModal({
         </div>
 
         <DialogFooter className="border-t border-slate-100 pt-4 sm:justify-between">
-          <Button type="button" variant="outline" onClick={onSkip}>
-            Skip for Now
-          </Button>
+          <div className="text-sm font-semibold text-slate-500">
+            Finish all required steps, then click <span className="text-[#1A4E8D]">Finish Setup</span> to close onboarding.
+          </div>
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" onClick={onBack} disabled={!hasPreviousStep}>
               Back
@@ -817,7 +1202,11 @@ export default function PosTenantSetupModal({
             <Button type="button" variant="outline" onClick={() => onOpenSettingsStep(currentStep)}>
               {stepConfig.actionLabel}
             </Button>
-            <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={onContinue}>
+            <Button
+              type="button"
+              className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+              onClick={handleContinue}
+            >
               {continueLabel}
             </Button>
           </div>

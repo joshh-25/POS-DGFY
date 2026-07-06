@@ -36,7 +36,7 @@ const normalizeRuntimeSha = (value) => {
 const readDeployStateSha = (deployStatePath) => {
     try {
         return normalizeRuntimeSha(fs.readFileSync(deployStatePath, 'utf8'));
-    } catch (_error) {
+    } catch {
         return null;
     }
 };

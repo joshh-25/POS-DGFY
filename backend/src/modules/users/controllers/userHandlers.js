@@ -3,6 +3,7 @@ import {
   updateProfileUseCase,
   changePasswordUseCase,
   resetLocalCashierPasswordUseCase,
+  provisionCashierFromGmailUseCase,
   getAllUsersUseCase,
   getRoleCatalogUseCase,
   updateUserRoleUseCase,
@@ -180,11 +181,19 @@ export const changePassword = async (req, res, next) => {
 
 export const resetLocalCashierPassword = async (req, res, next) => {
   try {
-    const { newPassword } = req.validatedData;
+    const {
+      newPassword,
+      notifyUser = false,
+      terminalLabel = '',
+      storeName = ''
+    } = req.validatedData;
     const result = await resetLocalCashierPasswordUseCase({
       adminUserId: req.user.user_id,
       targetUserId: req.params.user_id,
-      newPassword
+      newPassword,
+      notifyUser,
+      terminalLabel,
+      storeName
     });
 
     invalidateUserAuthCache({
@@ -208,6 +217,48 @@ export const resetLocalCashierPassword = async (req, res, next) => {
         success: true,
         data: result.data,
         message: 'Cashier password reset successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const provisionCashierFromGmail = async (req, res, next) => {
+  try {
+    const {
+      email,
+      password,
+      location_ids: locationIds = [],
+      terminal_label: terminalLabel = '',
+      store_name: storeName = ''
+    } = req.validatedData;
+    const result = await provisionCashierFromGmailUseCase({
+      adminUserId: req.user.user_id,
+      email,
+      password,
+      locationIds,
+      terminalLabel,
+      storeName
+    });
+
+    await trackProductUsageFromResult({
+      req,
+      user: req.user,
+      eventType: 'cashier_gmail_provisioned',
+      surface: 'users',
+      action: 'provision_cashier_from_gmail',
+      result
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Cashier provisioned successfully',
         timestamp: timestamp()
       }),
       errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -540,6 +591,7 @@ export default {
   updateProfile,
   changePassword,
   resetLocalCashierPassword,
+  provisionCashierFromGmail,
   getAllUsers,
   getRoleCatalog,
   updateUserRole,

@@ -20,6 +20,28 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
+    flavorDimensions += "environment"
+    productFlavors {
+        create("prod") {
+            dimension = "environment"
+            buildConfigField("String", "LIVE_POS_ORIGIN", "\"https://pos.dgfy.ph\"")
+            buildConfigField("String", "LIVE_POS_HOST", "\"pos.dgfy.ph\"")
+            buildConfigField("String", "SKUPERVISOR_HOST", "\"skupervisor.dgfy.ph\"")
+        }
+        create("beta") {
+            dimension = "environment"
+            applicationIdSuffix = ".beta"
+            versionNameSuffix = "-beta"
+            buildConfigField("String", "LIVE_POS_ORIGIN", "\"https://pos.beta.dgfy.ph\"")
+            buildConfigField("String", "LIVE_POS_HOST", "\"pos.beta.dgfy.ph\"")
+            buildConfigField("String", "SKUPERVISOR_HOST", "\"skupervisor.beta.dgfy.ph\"")
+        }
+    }
+
     buildTypes {
         debug {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
