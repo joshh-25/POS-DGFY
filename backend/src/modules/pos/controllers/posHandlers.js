@@ -4,6 +4,8 @@ import {
     scanPosBarcodeUseCase,
     checkoutPosUseCase,
     listPosTransactionsUseCase,
+    getPosReportsOverviewUseCase,
+    exportPosReportsUseCase,
     getPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase,
     voidPosTransactionUseCase,
@@ -37,11 +39,9 @@ import {
     getPosDeviceStatusUseCase,
     printPosReceiptUseCase,
     openPosDrawerUseCase,
-    getPairedPosTerminalUseCase,
-    getPosReportsOverviewUseCase,
-    exportPosReportsUseCase
+    getPairedPosTerminalUseCase
 } from '../index.js';
-import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
+import { resolveDomainFailure, sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import {
     setTenantSessionCookies
@@ -1114,6 +1114,8 @@ export default {
     scanBarcode,
     checkout,
     listTransactions,
+    getReportsOverview,
+    exportReports,
     getTransactionById,
     closeDayZReading,
     getDailyZReading,

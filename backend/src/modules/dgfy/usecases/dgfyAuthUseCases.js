@@ -1411,7 +1411,10 @@ export const buildStartDgfyPosSessionUseCase = ({
         const terminalPolicy = typeof validateTerminalPolicy === 'function'
             ? await validateTerminalPolicy({
                 tenantId: resolvedTenantId,
-                terminalId
+                terminalId,
+                tenantUserId: membership?.tenant_user_id || session?.user_id || null,
+                userRole: session?.role || membership?.role || '',
+                isMasterAdmin: session?.is_master_admin === true
             })
             : { terminal_id: terminalId, reason_code: 'NOT_VALIDATED' };
         await repository?.createBusinessAuditLog?.(buildBusinessAuditPayload({

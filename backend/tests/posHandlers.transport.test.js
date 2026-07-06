@@ -5,9 +5,6 @@ const mockScanPosBarcodeUseCase = jest.fn();
 const mockCheckoutPosUseCase = jest.fn();
 const mockListPosTransactionsUseCase = jest.fn();
 const mockGetPosReportsOverviewUseCase = jest.fn();
-const mockGetPosReportsTopItemsUseCase = jest.fn();
-const mockGetPosReportsComparisonUseCase = jest.fn();
-const mockGetPosReportsProfitLossUseCase = jest.fn();
 const mockExportPosReportsUseCase = jest.fn();
 const mockGetPosTransactionByIdUseCase = jest.fn();
 const mockRecordFiscalPrintEventUseCase = jest.fn();
@@ -52,9 +49,6 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     checkoutPosUseCase: mockCheckoutPosUseCase,
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,
     getPosReportsOverviewUseCase: mockGetPosReportsOverviewUseCase,
-    getPosReportsTopItemsUseCase: mockGetPosReportsTopItemsUseCase,
-    getPosReportsComparisonUseCase: mockGetPosReportsComparisonUseCase,
-    getPosReportsProfitLossUseCase: mockGetPosReportsProfitLossUseCase,
     exportPosReportsUseCase: mockExportPosReportsUseCase,
     getPosTransactionByIdUseCase: mockGetPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase: mockRecordFiscalPrintEventUseCase,
@@ -255,6 +249,141 @@ describe('posHandlers transport contracts', () => {
             request_id: 'req-pos-list',
             timestamp: expect.any(String)
         });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('getReportsOverview returns success payload contract', async () => {
+        mockGetPosReportsOverviewUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                summary_cards: { total_sales: 1000, total_transactions: 5, gross_sales: 1000, pos_profit_loss: 400 },
+                daily_report: { summary: {}, top_items: [] }
+            }
+        });
+
+        const req = {
+            query: { granularity: 'daily', date_from: '2026-07-01', date_to: '2026-07-06' },
+            validatedQuery: { granularity: 'daily', date_from: '2026-07-01', date_to: '2026-07-06' },
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-reports-overview'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await getReportsOverview(req, res, next);
+
+        expect(mockGetPosReportsOverviewUseCase).toHaveBeenCalledWith({
+            query: req.validatedQuery,
+            user: req.user
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                summary_cards: expect.objectContaining({ total_sales: 1000 })
+            }),
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('getReportsOverview returns standardized error payload', async () => {
+        mockGetPosReportsOverviewUseCase.mockResolvedValue({
+            success: false,
+            error: {
+                code: 'VALIDATION_FAILED',
+                message: 'query must be an object',
+                details: null,
+                statusCode: 400
+            }
+        });
+
+        const req = {
+            query: {},
+            validatedQuery: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-reports-overview-error'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await getReportsOverview(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({
+            success: false,
+            data: null,
+            message: 'query must be an object',
+            error_code: 'VALIDATION_FAILED',
+            errors: null,
+            request_id: 'req-pos-reports-overview-error',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('exportReports streams a CSV response with headers', async () => {
+        mockExportPosReportsUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                filename: 'pos-daily-report-2026-07-01_to_2026-07-06.csv',
+                content_type: 'text/csv; charset=utf-8',
+                content: '"Metric","Value"\n"Gross Sales",1000'
+            }
+        });
+
+        const req = {
+            query: { granularity: 'daily', date_from: '2026-07-01', date_to: '2026-07-06', section: 'daily' },
+            validatedQuery: { granularity: 'daily', date_from: '2026-07-01', date_to: '2026-07-06', section: 'daily' },
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-reports-export'
+        };
+        const res = createRes();
+        res.setHeader = jest.fn();
+        res.send = jest.fn();
+        const next = jest.fn();
+
+        await exportReports(req, res, next);
+
+        expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
+        expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="pos-daily-report-2026-07-01_to_2026-07-06.csv"');
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.send).toHaveBeenCalledWith('"Metric","Value"\n"Gross Sales",1000');
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('exportReports returns standardized error payload on failure', async () => {
+        mockExportPosReportsUseCase.mockResolvedValue({
+            success: false,
+            error: {
+                code: 'VALIDATION_FAILED',
+                message: 'query must be an object',
+                details: null,
+                statusCode: 400
+            }
+        });
+
+        const req = {
+            query: {},
+            validatedQuery: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-reports-export-error'
+        };
+        const res = createRes();
+        res.setHeader = jest.fn();
+        res.send = jest.fn();
+        const next = jest.fn();
+
+        await exportReports(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: false,
+            message: 'query must be an object',
+            error_code: 'VALIDATION_FAILED',
+            request_id: 'req-pos-reports-export-error'
+        }));
+        expect(res.send).not.toHaveBeenCalled();
         expect(next).not.toHaveBeenCalled();
     });
 

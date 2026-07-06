@@ -21,6 +21,8 @@ on:
         value: ${{ jobs.backend.outputs.sha_tag }}
       frontend_sha_tag:
         value: ${{ jobs.frontend.outputs.sha_tag }}
+      dgfy_api_sha_tag:
+        value: ${{ jobs.dgfy-api.outputs.sha_tag }}
 
 permissions:
   contents: read
@@ -50,8 +52,18 @@ jobs:
       contents: read
       packages: write
 
+  dgfy-api:
+    uses: ./.github/workflows/deploy-api.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
   publish:
-    needs: [ backend, frontend ]
+    needs: [ backend, frontend, dgfy-api ]
     if: inputs.publish
     uses: ./.github/workflows/publish-platform.yml
     with:

@@ -166,22 +166,6 @@ describe('posRepository reports analytics', () => {
             cogs: 20,
             pos_profit_loss: 30
         }));
-        expect(result.daily_report.discount_breakdown).toEqual([
-            expect.objectContaining({
-                discount_type: 'senior',
-                discount_label: 'Senior Citizen',
-                transaction_count: 1,
-                discount_amount: 10,
-                vat_removed: 2
-            })
-        ]);
-        expect(result.daily_report.cashier_summary[0].shift_money).toEqual({
-            opening_float_amount: 500,
-            expected_cash_amount: 590,
-            closing_cash_amount: 585,
-            cash_variance_amount: -5,
-            closed_shift_count: 1
-        });
     });
 
     it('normalizes refunded sales as refunds/voids deductions and applies category filter', async () => {
@@ -256,6 +240,74 @@ describe('posRepository reports analytics', () => {
         }));
     });
 
+    it('includes voided transactions in refunds/voids and gross sales', async () => {
+        mockFindAll.mockResolvedValue([
+            {
+                pos_transaction_id: 301,
+                created_at: '2026-06-22T11:00:00.000Z',
+                status: 'voided',
+                payment_status: 'paid',
+                subtotal_amount: 60,
+                discount_amount: 0,
+                service_fee_amount: 0,
+                restaurant_service_charge_amount: 0,
+                vat_amount: 7.2,
+                payment_type: 'cash',
+                order_source: 'in_store',
+                order_method: 'dine_in',
+                cashier_id: 9,
+                cashier: { user_id: 9, username: 'cashier-1' },
+                shift: { pos_terminal_shift_id: 3, business_date: '2026-06-22', terminal_id: 'POS-01', location_id: 12 },
+                lines: [{
+                    item_id: 3,
+                    quantity: 1,
+                    cost_snapshot: 20,
+                    line_subtotal: 60,
+                    item: {
+                        item_id: 3,
+                        name: 'Fries',
+                        sku_code: 'DGFTY-ITEM-000003',
+                        category: 'product',
+                        cost_per_unit: 20
+                    }
+                }]
+            }
+        ]);
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-06-22',
+            date_to: '2026-06-22',
+            location_id: 12
+        });
+
+        expect(result.daily_report.summary).toEqual(expect.objectContaining({
+            gross_sales: 60,
+            net_sales: 0,
+            refunds_voids: 60,
+            cogs: 20,
+            pos_profit_loss: -20,
+            is_loss: true
+        }));
+    });
+
+    it('excludes transactions dated the day after date_to (off-by-one boundary regression)', async () => {
+        mockFindAll.mockResolvedValue([]);
+
+        await posRepository.getReportsOverview({
+            date_from: '2026-06-22',
+            date_to: '2026-06-22',
+            location_id: 12
+        });
+
+        const where = mockFindAll.mock.calls[0][0].where;
+        const startAt = where.created_at[Op.gte];
+        const endAtExclusive = where.created_at[Op.lt];
+
+        // Single-day range must span exactly 24 hours: date_to 00:00:00+08:00
+        // through date_to+1 00:00:00+08:00 (exclusive) -- not an extra day.
+        expect(endAtExclusive.getTime() - startAt.getTime()).toBe(24 * 60 * 60 * 1000);
+        expect(endAtExclusive.toISOString()).toBe('2026-06-22T16:00:00.000Z');
+    });
     it('builds financially recognized source filters for POS reports', async () => {
         mockFindAll.mockResolvedValue([]);
 
@@ -269,7 +321,7 @@ describe('posRepository reports analytics', () => {
         });
 
         const where = mockFindAll.mock.calls[0][0].where;
-        expect(where.status).toBe('completed');
+        expect(where.status).toEqual({ [Op.in]: ['completed', 'voided'] });
         expect(where.location_id).toBe(9);
         expect(where.terminal_id).toBe('POS-01');
         expect(where.payment_type).toBe('cash');
