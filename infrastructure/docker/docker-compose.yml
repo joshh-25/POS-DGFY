@@ -105,6 +105,7 @@ services:
       DB_PORT: 3306
       DB_DIALECT: mysql
       REDIS_URL: redis://redis:6379
+      DGFY_BACKEND_BASE_URL: http://backend:5000
       PORT: 5100
     volumes:
       - ./data/dgfy-api/logs:/app/logs
@@ -149,7 +150,7 @@ services:
       POS_DOMAIN: ${POS_DOMAIN}
       STOREFRONT_DOMAIN: ${STOREFRONT_DOMAIN}
       STOREFRONT_ALT_DOMAIN: ${STOREFRONT_ALT_DOMAIN:-}
-      DGFY_API_DOMAIN: ${DGFY_API_DOMAIN:-}
+      DGFY_API_DOMAIN: ${DGFY_API_DOMAIN:-_}
       CERT_DOMAIN: ${CERT_DOMAIN}
     ports:
       - "80:80"
