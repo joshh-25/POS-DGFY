@@ -9,7 +9,6 @@ uploads
 storage
 tests
 device-bridge
-scripts
 config
 coverage
 .git

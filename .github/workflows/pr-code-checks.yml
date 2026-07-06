@@ -42,6 +42,9 @@ jobs:
       - name: Enforce modular architecture guardrails + controller boundaries
         run: npm run check:architecture
 
+      - name: Enforce tenant schema registry coverage for new migrations
+        run: npm run check:tenant-schema-coverage
+
       - name: Enforce compliance impact declarations + API contracts
         run: npm run check:compliance
 

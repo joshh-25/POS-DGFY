@@ -30,6 +30,14 @@ if [ -n "$DGFY_API_ARCH_FILES" ]; then
   echo "[pre-commit] apps/dgfy-api architecture guardrails passed."
 fi
 
+MIGRATION_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^backend/migrations/" || true)"
+if [ -n "$MIGRATION_FILES" ]; then
+  echo "[pre-commit] Migration files changed. Running tenant schema registry coverage check..."
+  echo "$MIGRATION_FILES"
+  (cd backend && npm run check:tenant-schema-coverage -- --staged)
+  echo "[pre-commit] Tenant schema registry coverage check passed."
+fi
+
 echo "[pre-commit] Running compliance impact guardrail (single shared gate logic)..."
 npm run check:compliance -- --staged
 echo "[pre-commit] Compliance impact guardrail passed."

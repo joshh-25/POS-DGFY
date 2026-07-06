@@ -21,6 +21,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY backend/package*.json ./
 COPY backend/src ./src
 COPY backend/migrations ./migrations
+COPY backend/scripts ./scripts
 COPY backend/.sequelizerc ./.sequelizerc
 COPY backend/database-setup.sql ./database-setup.sql
 
