@@ -2402,7 +2402,7 @@ export default function POSCheckoutTerminal({
                             const isServiceItem = isServiceCatalogItem(item);
                             const isAlwaysAvailable = item?.pos_always_available === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
-                            const configuredPosImageSrc = resolveAssetUrl(item.pos_image_url);
+                            const configuredPosImageSrc = resolveAssetUrl(item.storefront_image_url);
                             const mappedPosImageSrc = resolveAppAssetUrl(resolveMappedPosItemImage(item));
                             const fallbackPosImageSrc = resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE);
                             const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
