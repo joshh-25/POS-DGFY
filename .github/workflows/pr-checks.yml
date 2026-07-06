@@ -30,9 +30,13 @@ jobs:
     needs: [conventional-commits, code-quality]
     uses: ./.github/workflows/pr-frontend-build-checks.yml
 
+  dgfy-api-build-check:
+    needs: [conventional-commits, code-quality]
+    uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
+
   summary:
     runs-on: ubuntu-latest
-    needs: [conventional-commits, code-quality, backend-build-check, frontend-build-check]
+    needs: [conventional-commits, code-quality, backend-build-check, frontend-build-check, dgfy-api-build-check]
     if: always()
     steps:
       - name: PR checks summary
@@ -44,6 +48,7 @@ jobs:
           echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Backend Build | ${{ needs.backend-build-check.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Build | ${{ needs.frontend-build-check.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DGFY API Build | ${{ needs.dgfy-api-build-check.result }} |" >> $GITHUB_STEP_SUMMARY
 
       - name: Fail if any check failed
         if: contains(needs.*.result, 'failure')
