@@ -492,6 +492,8 @@ export default function POSCheckoutTerminal({
     const [catalog, setCatalog] = useState([]);
     const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
     const [catalogError, setCatalogError] = useState('');
+    const [editingQuantityItemId, setEditingQuantityItemId] = useState(null);
+    const [quantityInputValue, setQuantityInputValue] = useState('');
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
     const [catalogFiltersOpen, setCatalogFiltersOpen] = useState(false);
@@ -590,8 +592,8 @@ export default function POSCheckoutTerminal({
                 : 'mt-4 grid grid-cols-3 auto-rows-[11rem] gap-1.5';
         }
         return sidebarCollapsed
-            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-auto md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
-            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-auto md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
+            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[6.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
+            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[6.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
     }, [isTabletViewport, sidebarCollapsed]);
     const catalogViewportClassName = 'min-h-0 flex-1 overflow-visible pr-0 pb-3';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
@@ -608,7 +610,7 @@ export default function POSCheckoutTerminal({
         ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
         : isTabletViewport
             ? 'group flex h-[11rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-auto max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-full';
+            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[6.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-full';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
         : isTabletViewport
@@ -1654,6 +1656,33 @@ export default function POSCheckoutTerminal({
         }
     };
 
+    // Mobile catalog stepper: +/- adjust the existing cart line (or create it on first +),
+    // reusing addToCart/updateCartQuantity so stock clamping and 0-removal stay centralized.
+    const adjustCartQuantity = (item, delta) => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return;
+        }
+        const existing = cart.find((line) => line.item_id === item.item_id);
+        if (!existing) {
+            if (delta > 0) addToCart(item, { quantity: delta });
+            return;
+        }
+        updateCartQuantity(getLineKey(existing), Number(existing.quantity || 0) + delta);
+    };
+
+    // Mobile catalog stepper: commits the typed value from tapping the item-count label.
+    const commitManualCartQuantity = (item) => {
+        const parsedQuantity = Math.max(0, Math.floor(Number(quantityInputValue)) || 0);
+        setEditingQuantityItemId(null);
+        const existing = cart.find((line) => line.item_id === item.item_id);
+        if (existing) {
+            updateCartQuantity(getLineKey(existing), parsedQuantity);
+        } else if (parsedQuantity > 0) {
+            addToCart(item, { quantity: parsedQuantity });
+        }
+    };
+
     const removeCartLine = (lineKey) => {
         if (posActionsBlocked) {
             notifyPosActionBlocked();
@@ -2378,6 +2407,9 @@ export default function POSCheckoutTerminal({
                             const fallbackPosImageSrc = resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE);
                             const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
+                            const cartLineForItem = cart.find((line) => line.item_id === item.item_id);
+                            const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
+                            const isEditingThisQuantity = editingQuantityItemId === item.item_id;
                             return (
                                 <div
                                     key={item.item_id}
@@ -2457,28 +2489,92 @@ export default function POSCheckoutTerminal({
                                 </div>
                                 {!(IS_DGFY_POS_SURFACE && isTabletViewport) && (
                                     <>
-                                        {/* Mobile layout (<640px): horizontal card right column */}
-                                        <div className="flex flex-1 min-w-0 flex-col justify-between p-2.5 sm:hidden">
-                                            <div className="flex items-start justify-between gap-1">
-                                                <p className="min-w-0 text-[13px] font-black leading-tight text-[#0F172A] line-clamp-1">{item.name}</p>
-                                                <div className={`ml-1 mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${isOutOfStock ? 'bg-rose-500' : 'bg-emerald-500'}`} aria-hidden="true" />
-                                            </div>
-                                            <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10.5px] text-[#64748B]">
-                                                <span className="font-semibold">Stock:</span>
-                                                <span className="font-semibold">Price:</span>
-                                                <span className="font-bold text-emerald-700 whitespace-nowrap">
-                                                    {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toFixed(2)}
-                                                </span>
-                                                <span className="font-black text-[#1A4E8D] whitespace-nowrap">
-                                                    {Number(item.default_sale_price || 0) > 0 ? `PHP ${money(item.default_sale_price)}` : 'Not set'}
-                                                </span>
-                                            </div>
-                                            <div className="mt-1 flex items-center justify-between gap-1 text-[10px] text-[#64748B]">
-                                                <span className="shrink-0 font-semibold">VAT: <span className="font-extrabold text-[#334155]">{VAT_TYPE_LABEL[item.vat_type || 'vatable'] || 'VATable'}</span></span>
-                                                <span className="min-w-0 truncate text-right font-extrabold tracking-wide">{item.sku_code}</span>
+                                        {/* Mobile layout (<640px): name on top (full text, no clamp), with
+                                            price/availability/quantity-control encased in one div below it. */}
+                                        {/* Mobile-only simplification: VAT row, stock dot indicator, and product
+                                            code (sku_code) removed. "Always available" renders only when true —
+                                            no placeholder when it doesn't apply. */}
+                                        <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
+                                            <p className="min-w-0 text-[13px] font-black leading-tight text-[#0F172A]">{item.name}</p>
+                                            <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
+                                                <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                                                    {isAlwaysAvailable && (
+                                                        <span className="line-clamp-2 rounded-md border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-[#1A4E8D]">
+                                                            Always available
+                                                        </span>
+                                                    )}
+                                                    <span className="font-black text-[#1A4E8D] whitespace-nowrap text-[10.5px]">
+                                                        {Number(item.default_sale_price || 0) > 0 ? `PHP ${money(item.default_sale_price)}` : 'Not set'}
+                                                    </span>
+                                                </div>
+                                                {/* Quantity control, laid out horizontally as [ - ] [ item count ] [ + ].
+                                                    stopPropagation keeps taps here from also firing the card's own
+                                                    onClick (which would otherwise double-add the item). Manual entry
+                                                    uses a sanitized text input (not type="number") so no native
+                                                    increment/decrement spinner buttons render inside the field. */}
+                                                <div
+                                                    className="flex shrink-0 items-center gap-1"
+                                                    onClick={(event) => event.stopPropagation()}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => adjustCartQuantity(item, -1)}
+                                                        disabled={cartQuantityForItem <= 0 || posActionsBlocked}
+                                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-base font-black leading-none text-slate-500 active:scale-95 active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                        aria-label={`Decrease quantity for ${item.name}`}
+                                                    >
+                                                        −
+                                                    </button>
+                                                    {isEditingThisQuantity ? (
+                                                        <input
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            pattern="[0-9]*"
+                                                            autoFocus
+                                                            value={quantityInputValue}
+                                                            onChange={(event) => setQuantityInputValue(event.target.value.replace(/[^0-9]/g, ''))}
+                                                            onBlur={() => commitManualCartQuantity(item)}
+                                                            onKeyDown={(event) => {
+                                                                if (event.key === 'Enter') {
+                                                                    event.preventDefault();
+                                                                    // Without this, the keydown bubbles to the card's
+                                                                    // own onKeyDown (Enter/Space -> addToCart), which
+                                                                    // would re-add the item right after committing.
+                                                                    event.stopPropagation();
+                                                                    commitManualCartQuantity(item);
+                                                                }
+                                                            }}
+                                                            className="h-8 w-9 shrink-0 rounded-md border border-slate-200 text-center text-[13px] font-black text-[#0F172A]"
+                                                            aria-label={`Set quantity for ${item.name}`}
+                                                        />
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (isOutOfStock || posActionsBlocked) return;
+                                                                setEditingQuantityItemId(item.item_id);
+                                                                setQuantityInputValue(String(cartQuantityForItem));
+                                                            }}
+                                                            disabled={isOutOfStock || posActionsBlocked}
+                                                            className="flex h-8 w-9 shrink-0 items-center justify-center rounded-md text-[13px] font-black text-[#0F172A] disabled:cursor-not-allowed disabled:opacity-40"
+                                                            aria-label={`Quantity for ${item.name}, tap to type a value`}
+                                                        >
+                                                            {cartQuantityForItem}
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => adjustCartQuantity(item, 1)}
+                                                        disabled={isOutOfStock || posActionsBlocked}
+                                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                        aria-label={`Increase quantity for ${item.name}`}
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
-                                        {/* Desktop layout (≥640px): direct flex children, no wrapper div */}
+                                        {/* Desktop layout (≥640px): direct flex children, no wrapper div — unchanged */}
                                         <div className="flex items-start justify-between gap-1.5 max-sm:hidden">
                                             <p className="min-w-0 pr-1 text-[13.5px] font-black leading-tight text-[#0F172A] line-clamp-2">{item.name}</p>
                                             {isServiceItem ? (
@@ -2657,7 +2753,12 @@ export default function POSCheckoutTerminal({
                                     <div className="mt-2 grid grid-cols-2 gap-2">
                                         <label className="text-[11px] text-slate-500">
                                             Qty
-                                            <div className="mt-1 flex items-center gap-1">
+                                            {/* Mobile: read-only, qty is managed from the catalog card's stepper. */}
+                                            <p className="mt-1 flex h-8 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A] sm:hidden">
+                                                {formatQuantity(line.quantity)}
+                                            </p>
+                                            {/* Tablet/desktop: +/- controls restored here. */}
+                                            <div className="mt-1 hidden items-center gap-1 sm:flex">
                                                 <Button
                                                     type="button"
                                                     variant="outline"
