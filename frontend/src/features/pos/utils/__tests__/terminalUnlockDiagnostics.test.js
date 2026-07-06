@@ -90,12 +90,20 @@ describe('terminal unlock diagnostics', () => {
       status: 401,
       url: '/pos/terminal/paired',
       data: { message: 'This POS device pairing is missing, expired, or no longer valid.' }
-    }))).toBe('This POS device pairing is missing, expired, or no longer valid.');
+    }))).toBe('The registered terminal session is missing or expired. Select the terminal again and continue.');
     expect(resolveTerminalLoginErrorMessage(apiError({
       status: 401,
       url: '/pos/terminal/pair',
       data: { message: 'No company token provided.' }
     }))).toBe('The selected business session is missing or expired. Select the company and continue again.');
+  });
+
+  it('keeps cashier credential failures explicit', () => {
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 401,
+      url: '/pos/auth/cashier-login',
+      data: { message: 'Invalid username/email or password' }
+    }))).toBe('Invalid cashier username/email or password.');
   });
 
   it('preserves multi-tenant and capability-block diagnostics', () => {

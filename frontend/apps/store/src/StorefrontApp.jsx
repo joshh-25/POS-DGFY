@@ -6432,14 +6432,16 @@ export default function StorefrontApp() {
       const title = String(entry.title || '').trim();
       const subtitle = String(entry.subtitle || '').trim();
       const badge = String(entry.badge || '').trim();
+      const promoCode = String(entry.promo_code || entry.promoCode || '').trim().toUpperCase();
       const validityText = String(entry.validity_text || entry.validityText || '').trim();
       const headline = String(entry.headline || entry.primary_text || '').trim();
       const supportingText = String(entry.supporting_text || entry.secondary_text || '').trim();
-      if (!title && !subtitle && !badge && !validityText && !headline && !supportingText) return null;
+      if (!title && !subtitle && !badge && !validityText && !headline && !supportingText && !promoCode) return null;
       return {
         title,
         subtitle,
         badge,
+        promoCode,
         validityText,
         headline,
         supportingText
@@ -9004,13 +9006,17 @@ export default function StorefrontApp() {
   ), [cart]);
   const totalsForDisplay = useMemo(() => {
     const subtotal = quoteResult?.subtotal_amount != null ? Number(quoteResult.subtotal_amount) : cartTotal;
+    const discountAmount = quoteResult?.discount_amount != null ? Number(quoteResult.discount_amount) : 0;
     const serviceFee = quoteResult?.service_fee_amount != null
       ? Number(quoteResult.service_fee_amount)
       : round4(Math.max(0, subtotal) * DGFY_CONVENIENCE_FEE_RATE);
     const deliveryFee = quoteResult?.delivery_fee != null ? Number(quoteResult.delivery_fee) : 0;
-    const totalAmount = quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal + deliveryFee + serviceFee;
+    const totalAmount = quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal - discountAmount + deliveryFee + serviceFee;
     return {
       subtotal_amount: subtotal,
+      discount_amount: discountAmount,
+      discount_label: quoteResult?.discount_label || 'Promo Discount',
+      discount_rate: quoteResult?.discount_rate != null ? Number(quoteResult.discount_rate) : 0,
       service_fee_amount: serviceFee,
       service_fee_label: quoteResult?.service_fee_label || DGFY_CONVENIENCE_FEE_LABEL,
       delivery_fee: deliveryFee,
@@ -9021,6 +9027,17 @@ export default function StorefrontApp() {
       total_amount: totalAmount
     };
   }, [quoteResult, cartTotal]);
+  const activePromoFeedback = checkoutResult?.promo_feedback || quoteResult?.promo_feedback || null;
+  const promoStatusMessage = checkoutError || quoteError || activePromoFeedback?.message || '';
+  const promoStatusTone = checkoutError || quoteError
+    ? 'error'
+    : (activePromoFeedback?.applied ? 'success' : 'idle');
+  const appliedPromoDiscountText = totalsForDisplay.discount_amount > 0
+    ? `${money(totalsForDisplay.discount_amount)} off`
+    : '';
+  const promoDiscountSummaryRow = totalsForDisplay.discount_amount > 0
+    ? { label: totalsForDisplay.discount_label || 'Promo Discount', value: `- ${money(totalsForDisplay.discount_amount)}` }
+    : null;
   const activeOrderMethodLabel = ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout';
   const simpleOrderMethodOptions = ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery');
   const isDesktopCheckout = isDesktopViewport;
@@ -9197,7 +9214,7 @@ export default function StorefrontApp() {
   useEffect(() => {
     if (!isStorePage) return;
     setQuoteNeedsRefresh(true);
-  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, isStorePage]);
+  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, promoCodeDraft, isStorePage]);
   useEffect(() => {
     if (!isSimpleMode) return;
     if (orderMethod === 'pickup' || orderMethod === 'delivery') return;
@@ -9827,7 +9844,7 @@ export default function StorefrontApp() {
     }
   };
 
-  const checkoutPayload = () => buildFnbCheckoutPayload({
+  const checkoutPayload = useCallback((promoCodeOverride = promoCodeDraft) => buildFnbCheckoutPayload({
     selectedLocationId,
     selectedStore,
     orderMethod,
@@ -9837,11 +9854,41 @@ export default function StorefrontApp() {
     isDeliveryOrder,
     deliveryAddress: resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin),
     customerPin,
+    promoCode: promoCodeOverride,
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
     cart
-  });
+  }), [
+    cart,
+    customerEmail,
+    customerName,
+    customerPhone,
+    customerPin,
+    fnbScheduleMode,
+    fnbScheduledFor,
+    fnbSpecialInstructions,
+    isDeliveryOrder,
+    orderMethod,
+    promoCodeDraft,
+    resolvedDeliveryAddress,
+    selectedLocationId,
+    selectedStore
+  ]);
+
+  const requestQuote = useCallback(async ({ promoCodeOverride = promoCodeDraft, successMessage = '' } = {}) => {
+    if (!selectedStore) return null;
+    const data = await requestJson('/api/v1/store/cart/quote', {
+      method: 'POST',
+      storeSlug: selectedStore.slug,
+      authToken: readStoreAuthToken(),
+      body: checkoutPayload(promoCodeOverride)
+    });
+    setQuoteResult(data);
+    setQuoteNeedsRefresh(false);
+    toast.success(data?.promo_feedback?.message || successMessage || 'Quote updated.');
+    return data;
+  }, [checkoutPayload, promoCodeDraft, selectedStore]);
 
   const handlePinMyLocation = () => {
     if (!navigator?.geolocation) {
@@ -10398,15 +10445,7 @@ export default function StorefrontApp() {
       return;
     }
     try {
-      const data = await requestJson('/api/v1/store/cart/quote', {
-        method: 'POST',
-        storeSlug: selectedStore.slug,
-        authToken: readStoreAuthToken(),
-        body: checkoutPayload()
-      });
-      setQuoteResult(data);
-      setQuoteNeedsRefresh(false);
-      toast.success('Quote updated.');
+      await requestQuote();
     } catch (error) {
       const violation = extractStockViolation(error);
       if (violation) {
@@ -10420,6 +10459,62 @@ export default function StorefrontApp() {
       toast.error(message);
     }
   };
+
+  const handlePromoCardApply = useCallback(async (promoCode) => {
+    const normalizedPromoCode = String(promoCode || '').trim().toUpperCase();
+    if (!normalizedPromoCode) return;
+    setPromoCodeDraft(normalizedPromoCode);
+    setQuoteError('');
+
+    if (!Array.isArray(cart) || cart.length === 0) {
+      toast.success(`Promo code ${normalizedPromoCode} added. Add items to validate the discount.`);
+      return;
+    }
+
+    if (!selectedStore) {
+      toast.success(`Promo code ${normalizedPromoCode} added.`);
+      return;
+    }
+
+    if (storefrontClosedByHours) {
+      const message = storefrontHoursLabel
+        ? `Promo code ${normalizedPromoCode} added. It will validate during business hours: ${storefrontHoursLabel}.`
+        : `Promo code ${normalizedPromoCode} added. It will validate when ordering opens again.`;
+      toast.info(message);
+      return;
+    }
+
+    if (!checkoutPermitted || accessCapabilities.quote === false) {
+      toast.info(`Promo code ${normalizedPromoCode} added. It will validate when online checkout is available.`);
+      return;
+    }
+
+    try {
+      await requestQuote({
+        promoCodeOverride: normalizedPromoCode,
+        successMessage: `Promo code ${normalizedPromoCode} applied.`
+      });
+    } catch (error) {
+      const violation = extractStockViolation(error);
+      if (violation) {
+        const message = buildStockExceededMessage(violation);
+        setQuoteError(message);
+        toast.error(message);
+        return;
+      }
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to apply promo code right now.');
+      setQuoteError(message);
+      toast.error(message);
+    }
+  }, [
+    accessCapabilities.quote,
+    cart,
+    checkoutPermitted,
+    requestQuote,
+    selectedStore,
+    storefrontClosedByHours,
+    storefrontHoursLabel
+  ]);
 
   const handleCheckout = async () => {
     if (!selectedStore) return;
@@ -10568,7 +10663,7 @@ export default function StorefrontApp() {
         cart_lines: hasServiceCart
           ? (serviceBookingLine ? [serviceBookingLine] : cart)
           : cartSnapshot,
-        totals: totalsForDisplay
+        totals: data?.totals || totalsForDisplay
       });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
@@ -10592,7 +10687,7 @@ export default function StorefrontApp() {
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.variantName || cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0
+          total_amount: (data?.totals?.total_amount ?? totalsForDisplay?.total_amount) ?? 0
         }, data.tracking_pin);
         if (!isSimpleMode) {
           setCheckoutTab('track');
@@ -10637,7 +10732,12 @@ export default function StorefrontApp() {
       clearCheckoutAuthResumeDraft();
       clearGuestCheckoutDraft();
       setGuestCheckoutDraftNotice('');
-      toast.success(hasServiceCart ? 'Booking created.' : 'Checkout completed.');
+      setPromoCodeDraft('');
+      toast.success(
+        hasServiceCart
+          ? 'Booking created.'
+          : (data?.promo_feedback?.message || 'Checkout completed.')
+      );
     } catch (error) {
       const violation = extractStockViolation(error);
       if (violation) {
@@ -11546,11 +11646,14 @@ export default function StorefrontApp() {
       code={promoCodeDraft}
       onChange={setPromoCodeDraft}
       onClear={() => setPromoCodeDraft('')}
+      statusMessage={promoStatusMessage}
+      statusTone={promoStatusTone}
+      appliedDiscountText={appliedPromoDiscountText}
       compact={options.compact === true}
       accentColor={options.accentColor || '#0f766e'}
       bodyFont={options.bodyFont || servicesBodyFont}
     />
-  ), [promoCodeDraft, servicesBodyFont]);
+  ), [appliedPromoDiscountText, promoCodeDraft, promoStatusMessage, promoStatusTone, servicesBodyFont]);
   const fnbFulfillmentStepComplete = hasDeliveryAddress({
     isDeliveryOrder,
     hasPinnedDeliveryLocation,
@@ -16572,6 +16675,7 @@ export default function StorefrontApp() {
 
                     <SharedStorefrontPromoSection
                       items={promoSectionModel}
+                      onPromoSelect={handlePromoCardApply}
                       isMobileViewport={isMobileViewport}
                       layoutVariant="feature"
                       palette="teal"
@@ -18114,6 +18218,7 @@ return (
                 </div>
                 <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
+                  {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{totalsForDisplay.service_fee_label}</span><strong>{money(totalsForDisplay.service_fee_amount)}</strong></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
                 </div>
@@ -18167,6 +18272,7 @@ return (
         <>
           <SharedStorefrontPromoSection
             items={promoSectionModel}
+            onPromoSelect={handlePromoCardApply}
             isMobileViewport={isMobileViewport}
             layoutVariant="feature"
             palette="orange"
@@ -18230,6 +18336,7 @@ return (
         <>
           <SharedStorefrontPromoSection
             items={promoSectionModel}
+            onPromoSelect={handlePromoCardApply}
             isMobileViewport={isMobileViewport}
             layoutVariant="compact"
             palette="fnb"
@@ -18354,11 +18461,38 @@ return (
           return (
             <div style={{
               padding: 24, borderRadius: STYLES.radius.card, background: `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`,
-              color: '#fff', boxShadow: STYLES.shadow.md
+              color: '#fff', boxShadow: STYLES.shadow.md,
+              cursor: promo.promo_code ? 'pointer' : 'default'
             }}>
-              <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
-              <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>
-              <p style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>{promo.subtitle}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (promo.promo_code) {
+                    handlePromoCardApply(promo.promo_code);
+                  }
+                }}
+                disabled={!promo.promo_code}
+                style={{
+                  display: 'grid',
+                  gap: 0,
+                  width: '100%',
+                  textAlign: 'left',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'inherit',
+                  padding: 0,
+                  cursor: promo.promo_code ? 'pointer' : 'default'
+                }}
+              >
+                <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
+                <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>
+                <p style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>{promo.subtitle}</p>
+                {promo.promo_code ? (
+                  <span style={{ marginTop: 10, fontSize: 12, fontWeight: 800, opacity: 0.92 }}>
+                    Click to apply {String(promo.promo_code).trim().toUpperCase()}
+                  </span>
+                ) : null}
+              </button>
             </div>
           );
         })()}
@@ -20238,6 +20372,7 @@ return (
                         }))}
                         totalsRows={[
                           { label: 'Subtotal', value: money(totalsForDisplay.subtotal_amount) },
+                          ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
                           { label: 'Delivery Fee', value: money(totalsForDisplay.delivery_fee) },
                           { label: 'Fees & Taxes', value: money(totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount) },
                           { label: 'Total', value: money(totalsForDisplay.total_amount), emphasis: true, borderTop: true }
@@ -20355,6 +20490,7 @@ return (
                         </div>
                         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
+                          {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Fees &amp; Taxes</span><strong>{money(totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount)}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: 8, borderTop: '1px solid #e2e8f0', fontSize: 16, color: '#1e293b' }}><span style={{ fontWeight: 800 }}>Total</span><strong style={{ fontWeight: 900 }}>{money(totalsForDisplay.total_amount)}</strong></div>
@@ -20455,6 +20591,7 @@ return (
                         </div>
                         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
+                          {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Fees &amp; Taxes</span><strong>{money(totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount)}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: 8, borderTop: '1px solid #e2e8f0', fontSize: 16, color: '#1e293b' }}><span style={{ fontWeight: 700 }}>Total</span><strong style={{ fontWeight: 800 }}>{money(totalsForDisplay.total_amount)}</strong></div>
@@ -20540,6 +20677,7 @@ return (
                             </div>
                             <div style={{ display: 'grid', gap: 10, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
+                              {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>Fees &amp; Taxes</span><strong>{money(fnbSummaryFeeAndTaxes)}</strong></div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
@@ -21276,6 +21414,12 @@ return (
                           <span style={{ fontSize: 13, opacity: .95 }}>Items Subtotal</span>
                           <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.subtotal_amount)}</strong>
                         </div>
+                        {promoDiscountSummaryRow ? (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: 13, opacity: .95 }}>{promoDiscountSummaryRow.label}</span>
+                            <strong style={{ fontSize: 14 }}>{promoDiscountSummaryRow.value}</strong>
+                          </div>
+                        ) : null}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: 13, opacity: .95 }}>{totalsForDisplay.service_fee_label} (1%)</span>
                           <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.service_fee_amount)}</strong>

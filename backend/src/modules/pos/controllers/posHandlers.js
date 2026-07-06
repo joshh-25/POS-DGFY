@@ -1,4 +1,5 @@
 import {
+    verifyPosTerminalUseCase,
     listPosCatalogUseCase,
     scanPosBarcodeUseCase,
     checkoutPosUseCase,
@@ -155,6 +156,64 @@ export const loginCashier = async (req, res, next) => {
     }
 };
 
+export const verifyTerminal = async (req, res, next) => {
+    try {
+        const result = await verifyPosTerminalUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.message || 'Terminal paired',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getPairedTerminal = async (req, res, next) => {
+    try {
+        const result = await getPairedPosTerminalUseCase({
+            terminalId: String(req.headers?.['x-pos-terminal-id'] || req.query?.terminal_id || '').trim(),
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Registered terminal resolved',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const clearPairedTerminal = async (req, res, next) => {
+    try {
+        return res.status(200).json({
+            success: true,
+            data: {
+                cleared: true,
+                compatibility_mode: true
+            },
+            message: 'Terminal pairing cache cleared',
+            timestamp: timestamp()
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const requireRegisteredTerminal = async (req, res, next) => {
     try {
         const requestedTerminalId = String(
@@ -191,6 +250,8 @@ export const requireRegisteredTerminal = async (req, res, next) => {
         return next(error);
     }
 };
+
+export const requirePairedTerminal = requireRegisteredTerminal;
 
 export const listCatalog = async (req, res, next) => {
     try {

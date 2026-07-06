@@ -11,6 +11,7 @@ import {
     validatePosCatalogOverridesQuery,
     validatePosCatalogOverrideParam,
     validateUpdatePosCatalogOverride,
+    validatePosReportsQuery,
     validatePosTransactionsQuery,
     validatePosTransactionIdParam,
     validateZReadingDateParam,
@@ -72,6 +73,8 @@ router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.
 router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
 router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosDeviceReceiptPrint, posController.printReceipt);
 router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosDeviceDrawerOpen, posController.openDeviceDrawer);
+router.get('/reports/overview', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.getReportsOverview);
+router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.exportReports);
 router.post('/transactions/:id/fiscal-print-events', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosTransactionIdParam, validateFiscalPrintEvent, posController.recordFiscalPrintEvent);
 router.post('/transactions/:id/void', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateVoidPosTransaction, posController.voidTransaction);
 router.get('/fiscal-terminal-registrations', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.listFiscalTerminalRegistrations);

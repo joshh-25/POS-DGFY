@@ -70,7 +70,7 @@ export const isLocalRuntime = () => {
 
 export const resolveCurrentAppOrigin = () => {
   if (typeof window === 'undefined') return '';
-  return window.location.origin || resolveLocalOriginForPort(window.location.port || '5180');
+  return window.location.origin || resolveLocalOriginForPort(window.location.port || '5174');
 };
 
 export const resolveFrontendPublicAssetUrl = (assetPath = '') => {
@@ -100,7 +100,7 @@ export const resolveStorefrontAccountUrl = () => {
     }
     if (isDev) {
       const currentPort = String(window.location.port || '').trim();
-      if (currentPort === '5180') {
+      if (currentPort === '5174') {
         return `${resolveLocalOriginForPort(configuredDevPort)}/map-dgfy/account`;
       }
     }
@@ -124,7 +124,7 @@ export const resolvePosTerminalUrl = (search = '') => {
 
   if (typeof window !== 'undefined') {
     const { protocol, hostname } = window.location;
-    if (isLocalRuntime()) return `${resolveLocalOriginForPort(String(import.meta.env?.VITE_POS_DEV_PORT || '5180').trim() || '5180')}${terminalPath}`;
+    if (isLocalRuntime()) return `${resolveLocalOriginForPort(String(import.meta.env?.VITE_POS_DEV_PORT || '5174').trim() || '5174')}${terminalPath}`;
     if (hostname.startsWith('skupervisor.')) return `${protocol}//${hostname.replace(/^skupervisor\./, 'pos.')}${terminalPath}`;
     if (hostname.startsWith('store.')) return `${protocol}//${hostname.replace(/^store\./, 'pos.')}${terminalPath}`;
     if (hostname.startsWith('pos.')) return `${protocol}//${hostname}${terminalPath}`;

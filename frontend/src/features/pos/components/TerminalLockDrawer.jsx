@@ -9,6 +9,7 @@ export default function TerminalLockDrawer({
   formData,
   setFormData,
   dgfyPosState = {},
+  emailCompanyLookup = {},
   terminalRegistry = [],
   submitting,
   onSubmit,
@@ -22,6 +23,9 @@ export default function TerminalLockDrawer({
   const companySelectionActive = dgfyAuthenticated || cashierCompanySelection;
   const hasCompanyOptions = dgfyCompanies.length > 0;
   const companySelected = Boolean(String(formData.dgfyTenantId || '').trim());
+  const lookupStatus = String(emailCompanyLookup?.status || 'idle').trim();
+  const lookupCompanies = Array.isArray(emailCompanyLookup?.companies) ? emailCompanyLookup.companies : [];
+  const lookupMessage = String(emailCompanyLookup?.message || '').trim();
 
   return (
     <div
@@ -73,6 +77,29 @@ export default function TerminalLockDrawer({
               autoComplete="username"
               className="h-12 rounded-2xl border-blue-200 bg-[#f2f7ff] text-sm text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:border-[#93C5FD] focus-visible:ring-[#93C5FD]"
             />
+            {lookupStatus !== 'idle' ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-[#475569]">
+                {lookupStatus === 'loading' ? (
+                  <p>Looking up company access for this email...</p>
+                ) : null}
+                {lookupStatus === 'single' ? (
+                  <p>
+                    Company: <span className="font-extrabold text-[#0F172A]">{lookupCompanies[0]?.company_name || lookupCompanies[0]?.name || 'Unknown company'}</span>
+                  </p>
+                ) : null}
+                {lookupStatus === 'multiple' ? (
+                  <p>
+                    This email is linked to: <span className="font-extrabold text-[#0F172A]">{lookupCompanies.map((company) => company?.company_name || company?.name).filter(Boolean).join(', ')}</span>
+                  </p>
+                ) : null}
+                {lookupStatus === 'none' ? (
+                  <p>No company was found for this email yet.</p>
+                ) : null}
+                {lookupStatus === 'error' ? (
+                  <p>{lookupMessage || 'Company lookup is temporarily unavailable.'}</p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {!companySelectionActive ? (
             <div className="space-y-1.5">

@@ -605,7 +605,6 @@ export default function POSCheckoutTerminal({
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
-    const [catalogAutoPageSize, setCatalogAutoPageSize] = useState(16);
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
     const catalogGridRef = useRef(null);
@@ -649,10 +648,8 @@ export default function POSCheckoutTerminal({
     const terminalIdentityLabel = normalizedTerminalId
         ? `Terminal ${normalizedTerminalId}`
         : 'No terminal selected';
-    const TABLET_CATALOG_PAGE_SIZE = 18;
-    const DESKTOP_CATALOG_PAGE_SIZE = sidebarCollapsed ? 20 : 16;
-    const fallbackCatalogPageSize = isTabletViewport ? TABLET_CATALOG_PAGE_SIZE : DESKTOP_CATALOG_PAGE_SIZE;
-    const catalogPageSize = Math.max(1, catalogAutoPageSize || fallbackCatalogPageSize);
+    const CATALOG_PAGE_SIZE = 12;
+    const catalogPageSize = CATALOG_PAGE_SIZE;
     const selectedFolder = useMemo(() => (
         posFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
     ), [posFolders, selectedFolderId]);
@@ -1268,66 +1265,6 @@ export default function POSCheckoutTerminal({
     }, []);
 
     useEffect(() => {
-        if (!IS_DGFY_POS_SURFACE || !isTabletViewport) {
-            setCatalogAutoPageSize(TABLET_CATALOG_PAGE_SIZE);
-            return undefined;
-        }
-        if (typeof window === 'undefined') return undefined;
-
-        const viewport = catalogViewportRef.current;
-        const grid = catalogGridRef.current;
-        if (!viewport || !grid) return undefined;
-
-        let frameId = 0;
-        const measurePageSize = () => {
-            frameId = 0;
-            const viewportNode = catalogViewportRef.current;
-            const gridNode = catalogGridRef.current;
-            if (!viewportNode || !gridNode) return;
-
-            const viewportRect = viewportNode.getBoundingClientRect();
-            const gridRect = gridNode.getBoundingClientRect();
-            const availableHeight = Math.max(0, viewportRect.bottom - gridRect.top);
-            const computedStyles = window.getComputedStyle(gridNode);
-            const rowGap = Number.parseFloat(computedStyles.rowGap || computedStyles.gap || '0') || 0;
-            const rowHeight = Number.parseFloat(computedStyles.gridAutoRows || '0') || 128;
-            const columnCount = Math.max(
-                1,
-                computedStyles.gridTemplateColumns
-                    .split(' ')
-                    .map((part) => part.trim())
-                    .filter(Boolean)
-                    .length
-            );
-            const visibleRows = Math.max(1, Math.floor((availableHeight + rowGap) / (rowHeight + rowGap)));
-            const nextPageSize = Math.max(
-                columnCount,
-                Math.min(catalog.length || fallbackCatalogPageSize, visibleRows * columnCount)
-            );
-            setCatalogAutoPageSize((previous) => (previous === nextPageSize ? previous : nextPageSize));
-        };
-        const scheduleMeasure = () => {
-            if (frameId) window.cancelAnimationFrame(frameId);
-            frameId = window.requestAnimationFrame(measurePageSize);
-        };
-
-        scheduleMeasure();
-
-        const resizeObserver = new ResizeObserver(() => {
-            scheduleMeasure();
-        });
-        resizeObserver.observe(viewport);
-        resizeObserver.observe(grid);
-        window.addEventListener('resize', scheduleMeasure);
-
-        return () => {
-            if (frameId) window.cancelAnimationFrame(frameId);
-            resizeObserver.disconnect();
-            window.removeEventListener('resize', scheduleMeasure);
-        };
-    }, [catalog.length, catalogFiltersOpen, fallbackCatalogPageSize, posFolders.length, posFoldersLoading]);
-
-    useEffect(() => {
         setCatalogPage(1);
     }, [search, selectedFolderId, selectedLocationId]);
 
@@ -1340,11 +1277,6 @@ export default function POSCheckoutTerminal({
     useEffect(() => {
         if (previousCatalogPageRef.current === catalogPage) return;
         previousCatalogPageRef.current = catalogPage;
-
-        const section = catalogSectionRef.current;
-        if (section) {
-            section.scrollIntoView({ block: 'start', behavior: 'auto' });
-        }
 
         const viewport = catalogViewportRef.current;
         if (!viewport) return;
@@ -2232,7 +2164,7 @@ export default function POSCheckoutTerminal({
             )}
 
             {currentViewMode === 'checkout' && (
-                <div key="view-checkout" className="max-sm:animate-pos-slide-in">
+                <div key="view-checkout" className="h-full min-h-0 max-sm:animate-pos-slide-in">
                 <>
                 <div className={checkoutGridClassName}>
             <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>

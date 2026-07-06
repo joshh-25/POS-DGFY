@@ -167,6 +167,16 @@ const nowInManilaBusinessDate = () => (
     }).format(new Date())
 );
 
+const normalizeBusinessDateInput = (value) => {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    const normalized = String(value || '').trim();
+    const dateMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})/);
+    return dateMatch ? dateMatch[1] : '';
+};
+
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toCurrencyCents = (value) => Math.max(0, Math.round((Number(value) || 0) * 100));
 const fromCurrencyCents = (value) => round4((Number(value) || 0) / 100);
@@ -343,8 +353,8 @@ const toSerializable = (value) => (
 
 export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => async ({ query = {}, filters = query } = {}) => {
     try {
-        const dateFrom = String(filters.date_from || nowInManilaBusinessDate()).slice(0, 10);
-        const dateTo = String(filters.date_to || dateFrom).slice(0, 10);
+        const dateFrom = normalizeBusinessDateInput(filters.date_from) || nowInManilaBusinessDate();
+        const dateTo = normalizeBusinessDateInput(filters.date_to) || dateFrom;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Report dates must use YYYY-MM-DD format', { statusCode: 400 });
         }

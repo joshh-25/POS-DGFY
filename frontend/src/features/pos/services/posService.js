@@ -181,8 +181,43 @@ export const fetchTerminalTodayDashboard = async (params = {}, requestConfig = {
     return response.data?.data;
 };
 
+const normalizeReportDateParam = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return undefined;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+    const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashMatch) {
+        const [, first, second, year] = slashMatch;
+        const month = String(Number(first)).padStart(2, '0');
+        const day = String(Number(second)).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const normalizePosReportParams = (params = {}) => {
+    const nextParams = { ...params };
+    const normalizedDateFrom = normalizeReportDateParam(nextParams.date_from);
+    const normalizedDateTo = normalizeReportDateParam(nextParams.date_to);
+
+    if (normalizedDateFrom !== undefined) nextParams.date_from = normalizedDateFrom;
+    if (normalizedDateTo !== undefined) nextParams.date_to = normalizedDateTo;
+
+    return nextParams;
+};
+
 export const fetchPosReportsOverview = async (params = {}, requestConfig = {}) => {
-    const response = await api.get('/pos/reports/overview', { params, ...requestConfig });
+    const response = await api.get('/pos/reports/overview', {
+        params: normalizePosReportParams(params),
+        ...requestConfig
+    });
     return response.data?.data;
 };
 
@@ -203,7 +238,7 @@ export const fetchPosReportsProfitLoss = async (params = {}, requestConfig = {})
 
 export const exportPosReportCsv = async (params = {}) => {
     const response = await api.get('/pos/reports/export', {
-        params,
+        params: normalizePosReportParams(params),
         responseType: 'blob'
     });
     return {

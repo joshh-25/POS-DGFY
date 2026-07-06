@@ -3,6 +3,10 @@
  */
 
 export {
+    verifyTerminal,
+    getPairedTerminal,
+    clearPairedTerminal,
+    requirePairedTerminal,
     requireRegisteredTerminal,
     createSetupCashier,
     listSetupCashiers,
@@ -46,6 +50,10 @@ export {
 } from '../modules/pos/controllers/posHandlers.js';
 
 import {
+    verifyTerminal,
+    getPairedTerminal,
+    clearPairedTerminal,
+    requirePairedTerminal,
     requireRegisteredTerminal,
     createSetupCashier,
     listSetupCashiers,
@@ -89,6 +97,10 @@ import {
 } from '../modules/pos/controllers/posHandlers.js';
 
 export default {
+    verifyTerminal,
+    getPairedTerminal,
+    clearPairedTerminal,
+    requirePairedTerminal,
     getReportsOverview,
     exportReports,
     requireRegisteredTerminal,

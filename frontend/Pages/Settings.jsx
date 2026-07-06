@@ -229,6 +229,12 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   storefrontPromoSubtitle: '',
   storefrontPromoBadge: '',
   storefrontPromoValidityText: '',
+  storefrontPromoCode: '',
+  storefrontPromoDiscountPercent: '',
+  storefrontPromoUsageLimit: '',
+  storefrontPromoUsedCount: '0',
+  storefrontPromoValidTimeStart: '',
+  storefrontPromoValidTimeEnd: '',
   storefrontPromoActive: false,
   storefrontUiV2Enabled: false,
   storefrontCategories: [''],
@@ -1094,6 +1100,12 @@ export default function Settings() {
           storefrontPromoSubtitle: String(storefrontPromo.subtitle || ''),
           storefrontPromoBadge: String(storefrontPromo.badge || ''),
           storefrontPromoValidityText: String(storefrontPromo.validity_text || ''),
+          storefrontPromoCode: String(storefrontPromo.promo_code || ''),
+          storefrontPromoDiscountPercent: storefrontPromo.discount_percent == null ? '' : String(storefrontPromo.discount_percent),
+          storefrontPromoUsageLimit: storefrontPromo.usage_limit == null ? '' : String(storefrontPromo.usage_limit),
+          storefrontPromoUsedCount: storefrontPromo.used_count == null ? '0' : String(storefrontPromo.used_count),
+          storefrontPromoValidTimeStart: String(storefrontPromo.valid_time_start || ''),
+          storefrontPromoValidTimeEnd: String(storefrontPromo.valid_time_end || ''),
           storefrontPromoActive: storefrontPromo.active === true,
           storefrontUiV2Enabled: systemSettings.storefront_ui_v2_enabled?.value === true,
           storefrontCategories: normalizeStringList(storefrontCategoriesRaw, 12, 60).length > 0
@@ -2018,6 +2030,12 @@ export default function Settings() {
           subtitle: String(settings.storefrontPromoSubtitle || '').trim(),
           badge: String(settings.storefrontPromoBadge || '').trim(),
           validity_text: String(settings.storefrontPromoValidityText || '').trim(),
+          promo_code: String(settings.storefrontPromoCode || '').trim().toUpperCase(),
+          discount_percent: settings.storefrontPromoDiscountPercent === '' ? null : Number(settings.storefrontPromoDiscountPercent),
+          usage_limit: settings.storefrontPromoUsageLimit === '' ? null : Number(settings.storefrontPromoUsageLimit),
+          used_count: settings.storefrontPromoUsedCount === '' ? 0 : Number(settings.storefrontPromoUsedCount),
+          valid_time_start: String(settings.storefrontPromoValidTimeStart || '').trim(),
+          valid_time_end: String(settings.storefrontPromoValidTimeEnd || '').trim(),
           active: settings.storefrontPromoActive === true
         },
         storefront_ui_v2_enabled: settings.storefrontUiV2Enabled === true,
@@ -3285,6 +3303,12 @@ export default function Settings() {
                   <Input value={settings.storefrontPromoBadge} onChange={(e) => handleChange('storefrontPromoBadge', e.target.value)} placeholder="Today's Promo" />
                   <Input value={settings.storefrontPromoSubtitle} onChange={(e) => handleChange('storefrontPromoSubtitle', e.target.value)} placeholder="All BBQ items, min order ₱100" className="md:col-span-2" />
                   <Input value={settings.storefrontPromoValidityText} onChange={(e) => handleChange('storefrontPromoValidityText', e.target.value)} placeholder="Valid today only" className="md:col-span-2" />
+                  <Input value={settings.storefrontPromoCode} onChange={(e) => handleChange('storefrontPromoCode', String(e.target.value || '').toUpperCase())} placeholder="Promo Code (e.g. SAVE20)" />
+                  <Input type="number" min="0" max="100" step="0.01" value={settings.storefrontPromoDiscountPercent} onChange={(e) => handleChange('storefrontPromoDiscountPercent', e.target.value)} placeholder="Discount % (e.g. 20)" />
+                  <Input type="number" min="1" step="1" value={settings.storefrontPromoUsageLimit} onChange={(e) => handleChange('storefrontPromoUsageLimit', e.target.value)} placeholder="Usage Limit (e.g. 30)" />
+                  <Input value={settings.storefrontPromoUsedCount} readOnly placeholder="Used Count" />
+                  <Input type="time" value={settings.storefrontPromoValidTimeStart} onChange={(e) => handleChange('storefrontPromoValidTimeStart', e.target.value)} />
+                  <Input type="time" value={settings.storefrontPromoValidTimeEnd} onChange={(e) => handleChange('storefrontPromoValidTimeEnd', e.target.value)} />
                 </div>
               </div>
             </CardContent>

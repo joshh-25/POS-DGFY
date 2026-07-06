@@ -114,6 +114,7 @@ export default function TerminalPageLayout({
     formData,
     setFormData,
     dgfyPosState = {},
+    emailCompanyLookup = {},
     submitting,
     handleLogin,
     handleIdentityChange = null,
@@ -496,7 +497,7 @@ export default function TerminalPageLayout({
           className={workspaceSectionClassName}
         >
           {(isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
-            <div key="checkout-workspace" className="max-sm:animate-pos-slide-in">
+            <div key="checkout-workspace" className="h-full min-h-0 max-sm:animate-pos-slide-in">
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
               <POSCheckoutTerminal
                 sessionLocked={locked}
@@ -614,6 +615,7 @@ export default function TerminalPageLayout({
           formData={formData}
           setFormData={setFormData}
           dgfyPosState={dgfyPosState}
+          emailCompanyLookup={emailCompanyLookup}
           terminalIdOptions={terminalIdOptions}
           terminalRegistry={terminalRegistry}
           terminalRegistryMode={terminalRegistryMode}

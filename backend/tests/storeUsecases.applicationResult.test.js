@@ -1147,6 +1147,392 @@ describe('store use-cases application result contract', () => {
         expect(transaction.commit).not.toHaveBeenCalled();
     });
 
+    it('storeCartQuote applies an active promo code and returns discounted totals', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: {
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
+                    { setting_key: 'store_delivery_fee', setting_value: '20' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' },
+                    {
+                        setting_key: 'storefront_promo',
+                        setting_value: JSON.stringify({
+                            active: true,
+                            promo_code: 'SAVE20',
+                            discount_percent: 20,
+                            usage_limit: 30,
+                            used_count: 0
+                        })
+                    }
+                ]),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 40,
+                        name: 'Chicken Meal',
+                        current_stock: 10,
+                        default_sale_price: 100,
+                        cost_per_unit: 40,
+                        unit_of_measure: 'plate',
+                        vat_type: 'vatable'
+                    }
+                ])
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                promo_code: 'save20',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [{ item_id: 40, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.discount_amount).toBe(20);
+        expect(result.data.total_amount).toBe(81);
+        expect(result.data.promo_feedback).toEqual({
+            applied: true,
+            promo_code: 'SAVE20',
+            message: 'Promo code applied successfully.'
+        });
+    });
+
+    it('storeCartQuote applies promo discounts only to configured target items', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: {
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
+                    {
+                        setting_key: 'storefront_promo',
+                        setting_value: JSON.stringify({
+                            active: true,
+                            promo_code: 'SAVE20',
+                            discount_percent: 20,
+                            target_item_ids: [40]
+                        })
+                    }
+                ]),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 40,
+                        name: 'Chicken Meal',
+                        current_stock: 10,
+                        default_sale_price: 100,
+                        cost_per_unit: 40,
+                        unit_of_measure: 'plate',
+                        vat_type: 'vatable'
+                    },
+                    {
+                        item_id: 41,
+                        name: 'Iced Tea',
+                        current_stock: 10,
+                        default_sale_price: 50,
+                        cost_per_unit: 15,
+                        unit_of_measure: 'glass',
+                        vat_type: 'vatable'
+                    }
+                ])
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                promo_code: 'SAVE20',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [
+                    { item_id: 40, quantity: 1 },
+                    { item_id: 41, quantity: 1 }
+                ]
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.subtotal_amount).toBe(150);
+        expect(result.data.discount_amount).toBe(20);
+        expect(result.data.total_amount).toBe(131.5);
+    });
+
+    it('storeCartQuote rejects a target-item promo when none of the selected items are in the order', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: {
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
+                    {
+                        setting_key: 'storefront_promo',
+                        setting_value: JSON.stringify({
+                            active: true,
+                            promo_code: 'SAVE20',
+                            discount_percent: 20,
+                            target_item_ids: [41]
+                        })
+                    }
+                ]),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 40,
+                        name: 'Chicken Meal',
+                        current_stock: 10,
+                        default_sale_price: 100,
+                        cost_per_unit: 40,
+                        unit_of_measure: 'plate',
+                        vat_type: 'vatable'
+                    }
+                ])
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                promo_code: 'SAVE20',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [{ item_id: 40, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.message).toBe('Promo code does not apply to the items in this order.');
+    });
+
+    it('storeCartQuote rejects a promo code that already reached its usage limit', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: {
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
+                    {
+                        setting_key: 'storefront_promo',
+                        setting_value: JSON.stringify({
+                            active: true,
+                            promo_code: 'SAVE20',
+                            discount_percent: 20,
+                            usage_limit: 30,
+                            used_count: 30
+                        })
+                    }
+                ]),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 40,
+                        name: 'Chicken Meal',
+                        current_stock: 10,
+                        default_sale_price: 100,
+                        cost_per_unit: 40,
+                        unit_of_measure: 'plate',
+                        vat_type: 'vatable'
+                    }
+                ])
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                promo_code: 'SAVE20',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [{ item_id: 40, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.message).toBe('Promo code has reached its usage limit.');
+    });
+
+    it('storeCheckout increments promo used count only after a successful checkout commit path', async () => {
+        const transaction = {
+            finished: false,
+            commit: jest.fn(async () => {
+                transaction.finished = 'commit';
+            }),
+            rollback: jest.fn(async () => {
+                transaction.finished = 'rollback';
+            }),
+            LOCK: { UPDATE: 'UPDATE' }
+        };
+        const updateSettingByKey = jest.fn().mockResolvedValue({});
+        const useCase = buildStoreCheckoutUseCase({
+            storeRepository: {
+                beginTransaction: jest.fn().mockResolvedValue(transaction),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
+                    { setting_key: 'store_delivery_fee', setting_value: '20' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' },
+                    {
+                        setting_key: 'storefront_promo',
+                        setting_value: JSON.stringify({
+                            active: true,
+                            badge: 'Morning Promo',
+                            promo_code: 'SAVE20',
+                            discount_percent: 20,
+                            usage_limit: 30,
+                            used_count: 0
+                        })
+                    }
+                ]),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 40,
+                        name: 'Chicken Meal',
+                        current_stock: 10,
+                        default_sale_price: 100,
+                        cost_per_unit: 40,
+                        unit_of_measure: 'plate',
+                        vat_type: 'vatable'
+                    }
+                ]),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                createOnlineTransactionWithLines: jest.fn().mockResolvedValue(901),
+                getOrderById: jest.fn().mockResolvedValue({
+                    pos_transaction_id: 901,
+                    tracking_pin: 'SK-PROMO1',
+                    invoice_number: 'INV-000901',
+                    order_source: 'online_store',
+                    order_method: 'pickup',
+                    payment_type: 'cash',
+                    payment_status: 'paid',
+                    fulfillment_status: 'placed',
+                    subtotal_amount: 100,
+                    discount_amount: 20,
+                    discount_label_snapshot: 'Morning Promo',
+                    discount_rate_snapshot: 20,
+                    service_fee_amount: 1,
+                    service_fee_label_snapshot: 'DGFY convenience fee',
+                    delivery_fee: 0,
+                    total_amount: 81,
+                    customer_name: 'Buyer',
+                    customer_phone: '0917',
+                    customer_email: null,
+                    location: { location_id: 2, name: 'Main', address_line: 'Address' },
+                    lines: []
+                }),
+                nextInvoiceNumber: jest.fn().mockResolvedValue('INV-000901'),
+                isTrackingPinTaken: jest.fn().mockResolvedValue(false),
+                updateSettingByKey
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                promo_code: 'SAVE20',
+                idempotency_key: 'promo-checkout-success',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [{ item_id: 40, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.totals).toEqual(expect.objectContaining({
+            subtotal_amount: 100,
+            discount_amount: 20,
+            total_amount: 81
+        }));
+        expect(result.data.promo_feedback).toEqual({
+            applied: true,
+            promo_code: 'SAVE20',
+            message: 'Promo code applied successfully.'
+        });
+        expect(updateSettingByKey).toHaveBeenCalledWith(
+            'storefront_promo',
+            expect.any(Object),
+            { transaction, lock: true }
+        );
+        expect(updateSettingByKey.mock.calls[0][1]).toEqual(expect.objectContaining({
+            promo_code: 'SAVE20',
+            used_count: 1
+        }));
+    });
+
     it('trackStoreOrder returns tracking payload for valid pin', async () => {
         const tenantId = '11111111-1111-4111-8111-111111111111';
         const useCase = buildTrackStoreOrderUseCase({

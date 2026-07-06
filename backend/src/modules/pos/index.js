@@ -2,6 +2,7 @@ import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
 import { inventoryStockCommandService } from '../inventory/index.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
+import posTerminalPairingService from './services/posTerminalPairingService.js';
 import * as userService from '../../services/userService.js';
 import * as authService from '../../services/authService.js';
 import {
@@ -106,6 +107,10 @@ export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseC
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService
+});
+export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({
+    posRepository,
+    terminalPairingService: posTerminalPairingService
 });
 export const getPairedPosTerminalUseCase = buildGetPairedPosTerminalUseCase({ posRepository });
 export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({

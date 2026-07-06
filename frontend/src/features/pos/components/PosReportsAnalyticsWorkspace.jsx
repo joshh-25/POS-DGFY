@@ -85,6 +85,24 @@ const toDateInput = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const normalizeReportDateInput = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, first, second, year] = slashMatch;
+    const month = String(Number(first)).padStart(2, '0');
+    const day = String(Number(second)).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return toDateInput(parsed);
+};
+
 const addDays = (date, days) => {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -214,6 +232,10 @@ function PosReportsAnalyticsWorkspace({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const currencySymbol = terminalMeta?.pettyCashSymbol || 'PHP';
+  const normalizedDateRange = useMemo(() => ({
+    dateFrom: normalizeReportDateInput(dateRange.dateFrom),
+    dateTo: normalizeReportDateInput(dateRange.dateTo)
+  }), [dateRange.dateFrom, dateRange.dateTo]);
 
   const handleSectionChange = (sectionId) => {
     const nextSection = String(sectionId || 'daily').trim() || 'daily';
@@ -236,8 +258,8 @@ function PosReportsAnalyticsWorkspace({
       try {
         const payload = await fetchPosReportsOverview({
           granularity,
-          date_from: dateRange.dateFrom,
-          date_to: dateRange.dateTo,
+          date_from: normalizedDateRange.dateFrom,
+          date_to: normalizedDateRange.dateTo,
           cashier_id: cashierId || undefined,
           payment_type: paymentType || undefined,
           source: source || undefined,
@@ -264,7 +286,7 @@ function PosReportsAnalyticsWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [category, cashierId, dateRange.dateFrom, dateRange.dateTo, granularity, paymentType, reportRefreshKey, source]);
+  }, [category, cashierId, granularity, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, paymentType, reportRefreshKey, source]);
 
   const summaryCards = reportData?.summary_cards || {};
   const filterOptions = reportData?.filter_options || {};
@@ -301,8 +323,8 @@ function PosReportsAnalyticsWorkspace({
     const { blob, filename } = await exportPosReportCsv({
       section: activeSection,
       granularity,
-      date_from: dateRange.dateFrom,
-      date_to: dateRange.dateTo,
+      date_from: normalizedDateRange.dateFrom,
+      date_to: normalizedDateRange.dateTo,
       cashier_id: cashierId || undefined,
       payment_type: paymentType || undefined,
       source: source || undefined,
@@ -481,7 +503,7 @@ function PosReportsAnalyticsWorkspace({
         </div>
       </section>
 
-      <div className="order-1 grid gap-3 md:order-2 md:grid-cols-2 xl:grid-cols-4">
+      <div className="order-1 grid gap-3 md:order-2 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Total Sales" value={money(summaryCards.total_sales, currencySymbol)} />
         <MetricCard label="Transactions" value={Number(summaryCards.total_transactions || 0)} />
         <MetricCard label="Gross Sales" value={money(summaryCards.gross_sales, currencySymbol)} />
@@ -494,16 +516,26 @@ function PosReportsAnalyticsWorkspace({
       </div>
       </div>
 
-      <div className="w-full sm:w-72">
-        <select
-          value={activeSection}
-          onChange={(event) => handleSectionChange(event.target.value)}
-          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 shadow-sm shadow-slate-100 focus:border-[#2563EB] focus:outline-none focus:ring-4 focus:ring-blue-100"
-        >
-          {REPORT_SECTIONS.map((section) => (
-            <option key={section.id} value={section.id}>{section.label}</option>
-          ))}
-        </select>
+      <div className="overflow-x-auto pb-1">
+        <div className="flex min-w-max flex-nowrap gap-3">
+          {REPORT_SECTIONS.map((section) => {
+            const isActive = activeSection === section.id;
+            return (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => handleSectionChange(section.id)}
+                className={`inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-black transition ${
+                  isActive
+                    ? 'border-[#2563EB] bg-[#2563EB] text-white shadow-lg shadow-blue-200/70'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-[#1D4ED8]'
+                }`}
+              >
+                {section.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {showInlineError ? (

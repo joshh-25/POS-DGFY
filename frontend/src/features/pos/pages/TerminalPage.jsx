@@ -375,6 +375,12 @@ export default function TerminalPage() {
     dgfyTenantId: '',
     terminalId: readInitialTerminalId()
   });
+  const [emailCompanyLookup, setEmailCompanyLookup] = useState({
+    status: 'idle',
+    email: '',
+    companies: [],
+    message: ''
+  });
   const [terminalUnlockRequired, setTerminalUnlockRequired] = useState(false);
   const [terminalUnlockModalOpen, setTerminalUnlockModalOpen] = useState(false);
   const [terminalUnlockMode, setTerminalUnlockMode] = useState(() => {
@@ -1610,6 +1616,75 @@ export default function TerminalPage() {
         : { ...prev, terminalId: activeTerminalId }
     ));
   }, [activeTerminalId]);
+
+  useEffect(() => {
+    const normalizedEmail = String(formData.email || '').trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      setEmailCompanyLookup({
+        status: 'idle',
+        email: normalizedEmail,
+        companies: [],
+        message: ''
+      });
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setEmailCompanyLookup({
+        status: 'loading',
+        email: normalizedEmail,
+        companies: [],
+        message: ''
+      });
+      try {
+        const response = await api.post('/auth/lookup', { email: normalizedEmail }, { skipGlobalErrorToast: true });
+        if (cancelled) return;
+        const companies = normalizeLookupTenantOptions(response?.data?.data).map((company) => ({
+          ...company,
+          company_name: company?.company_name || company?.name || ''
+        }));
+        if (companies.length === 0) {
+          setEmailCompanyLookup({
+            status: 'none',
+            email: normalizedEmail,
+            companies: [],
+            message: 'No company was found for this email yet.'
+          });
+          return;
+        }
+        setEmailCompanyLookup({
+          status: companies.length === 1 ? 'single' : 'multiple',
+          email: normalizedEmail,
+          companies,
+          message: ''
+        });
+      } catch (error) {
+        if (cancelled) return;
+        const status = Number(error?.response?.status || 0);
+        if (status === 404) {
+          setEmailCompanyLookup({
+            status: 'none',
+            email: normalizedEmail,
+            companies: [],
+            message: 'No company was found for this email yet.'
+          });
+          return;
+        }
+        setEmailCompanyLookup({
+          status: 'error',
+          email: normalizedEmail,
+          companies: [],
+          message: 'Company lookup is temporarily unavailable.'
+        });
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [formData.email]);
 
   useEffect(() => {
     if (!registryEnforced) return;
@@ -4086,6 +4161,7 @@ export default function TerminalPage() {
           formData={formData}
           setFormData={setFormData}
           dgfyPosState={dgfyPosState}
+          emailCompanyLookup={emailCompanyLookup}
           submitting={submitting}
           handleLogin={handleDgfyPosLogin}
           handleIdentityChange={handleDgfyPosIdentityChange}

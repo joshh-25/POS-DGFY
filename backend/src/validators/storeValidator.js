@@ -40,6 +40,7 @@ const storeQuoteSchema = Joi.object({
     lines: Joi.array().items(checkoutLineSchema).min(1).required(),
     location_id: Joi.number().integer().positive().allow(null).optional(),
     order_method: Joi.string().valid(...ORDER_METHODS).default('delivery'),
+    promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
     customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
     customer_email: Joi.string().email().trim().lowercase().max(255).allow('', null).optional(),
