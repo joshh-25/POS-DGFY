@@ -5,7 +5,7 @@ last_reviewed: 2026-05-29
 related_adr: docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md
 declaration_id: 2026-05-28-storefront-business-hours
 classification: regulatory
-surfaces: settings,onboarding,storefront,checkout,services,compliance
+surfaces: settings,onboarding,storefront,checkout,services,pos,terminal,compliance
 reason_codes_impacted: OUTSIDE_STOREFRONT_BUSINESS_HOURS
 policy_version: 2026.05.28
 verification_evidence: npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/storefrontBusinessHours.test.js tests/storeRepository.locationStockFallback.test.js,npm --prefix frontend test -- --run apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx,npm --prefix frontend run build:store

@@ -5,7 +5,7 @@ last_reviewed: 2026-06-27
 related_adr: docs/architecture/adr/0022-global-dgfy-account-business-registration.md,docs/architecture/adr/0028-dgfy-account-company-switching.md
 declaration_id: 2026-06-27-assisted-provisioning-ui-consolidation
 classification: regulatory
-surfaces: tenant-registration,admin,settings,docs,api,compliance
+surfaces: tenant-registration,admin,settings,docs,api,pos,terminal,compliance
 reason_codes_impacted: IMPACT_DECLARATION_REQUIRED,ALLOWED,VALIDATION_FAILED
 policy_version: 2026.06.27
 verification_evidence: npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check,npm --prefix backend test -- --runInBand tests/adminAssistedProvisioningUseCase.test.js tests/adminAssistedProvisioningRoutes.contract.test.js tests/dgfyAdminAccountUseCases.test.js tests/dgfyAdminAccountRoutes.contract.test.js tests/dgfyAuthUseCases.test.js tests/dgfyTenantSessionService.contract.test.js tests/dgfyTenantSession.transport.test.js,npm --prefix frontend test -- --run src/pages/__tests__/TenantManager.assistedProvisioning.integration.test.jsx src/pages/__tests__/DgfyAccountManager.integration.test.jsx,npm run build:skupervisor

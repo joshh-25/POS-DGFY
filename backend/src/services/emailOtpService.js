@@ -46,6 +46,11 @@ const normalizeTenantId = (tenantId) => {
   return value && value !== 'default' ? value : null;
 };
 
+const isDevOtpFallbackEnabled = () => (
+  process.env.NODE_ENV !== 'production'
+  && String(process.env.EMAIL_OTP_DEV_FALLBACK_ENABLED || 'true').trim().toLowerCase() !== 'false'
+);
+
 const isValidPurpose = (purpose) => Object.values(EMAIL_OTP_PURPOSES).includes(purpose);
 
 const getHashSecret = () => (
@@ -95,10 +100,6 @@ export const requestEmailOtp = async ({
     throw createError('A valid email address is required for email verification', 422, 'EMAIL_OTP_EMAIL_INVALID');
   }
 
-  if (!emailSender?.isEmailConfigured?.()) {
-    throw createError('Email verification cannot be sent because SMTP is not configured', 503, 'EMAIL_OTP_DELIVERY_UNAVAILABLE');
-  }
-
   const code = generateOtpCode();
   const expiresAt = new Date(Date.now() + Math.max(1, OTP_TTL_MINUTES) * 60 * 1000);
   const codeHash = hashOtpCode({
@@ -130,6 +131,28 @@ export const requestEmailOtp = async ({
     metadata
   });
 
+  const canDeliverEmail = emailSender?.isEmailConfigured?.() === true;
+  if (!canDeliverEmail) {
+    if (!isDevOtpFallbackEnabled()) {
+      throw createError('Email verification cannot be sent because SMTP is not configured', 503, 'EMAIL_OTP_DELIVERY_UNAVAILABLE');
+    }
+
+    await otp.update({
+      delivery_status: 'recorded',
+      delivery_error: 'Email OTP recorded locally because email delivery is unavailable.'
+    });
+    logger.warn('[EmailOtp] Falling back to local development OTP delivery', {
+      purpose: normalizedPurpose,
+      email: normalizedEmail,
+      tenant_id: normalizedTenantId
+    });
+    return buildPublicOtpPayload(otp, {
+      delivery_status: 'recorded',
+      dev_mode: true,
+      dev_code: code
+    });
+  }
+
   try {
     await emailSender.sendEmailOtpCode({
       email: normalizedEmail,
@@ -139,6 +162,24 @@ export const requestEmailOtp = async ({
     });
     return buildPublicOtpPayload(otp);
   } catch (error) {
+    if (isDevOtpFallbackEnabled()) {
+      await otp.update({
+        delivery_status: 'recorded',
+        delivery_error: String(error?.message || 'Email OTP delivery failed').slice(0, 500)
+      });
+      logger.warn('[EmailOtp] Falling back to local development OTP delivery after send failure', {
+        purpose: normalizedPurpose,
+        email: normalizedEmail,
+        tenant_id: normalizedTenantId,
+        error: error?.message
+      });
+      return buildPublicOtpPayload(otp, {
+        delivery_status: 'recorded',
+        dev_mode: true,
+        dev_code: code
+      });
+    }
+
     await otp.update({
       delivery_status: 'failed',
       delivery_error: String(error?.message || 'Email OTP delivery failed').slice(0, 500)

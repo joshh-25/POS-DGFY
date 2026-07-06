@@ -35,11 +35,6 @@ import {
 } from '../../hospitality/api/hospitalityApi.js';
 import WizardStepNavigator from '../../../components/common/WizardStepNavigator.jsx';
 import SelectedItemImageCarousel from '../../../../Components/items/SelectedItemImageCarousel.jsx';
-import {
-  getMerchantPinValidationError,
-  getUsableMerchantPin,
-  parseMapCoordinate
-} from '../../../components/maps/mapLibreShared.js';
 
 const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 const HOSPITALITY_WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'hospitality_rooms']);
@@ -268,13 +263,7 @@ export default function OnboardingSetupModal({
   workflowMode = DEFAULT_WORKFLOW_MODE,
   onRefreshUser
 }) {
-  const [activeWorkflowMode, setActiveWorkflowMode] = useState(() => normalizeWorkflowMode(workflowMode));
-
-  useEffect(() => {
-    setActiveWorkflowMode(normalizeWorkflowMode(workflowMode));
-  }, [workflowMode]);
-
-  const normalizedWorkflowMode = normalizeWorkflowMode(activeWorkflowMode);
+  const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
   const isHospitalityMode = isHospitalityWorkflowMode(normalizedWorkflowMode);
   const wizardSteps = isHospitalityMode ? HOSPITALITY_WIZARD_STEPS : WIZARD_STEPS;
   const presetOptions = useMemo(() => resolveOnboardingPresetOptions(normalizedWorkflowMode), [normalizedWorkflowMode]);
@@ -286,8 +275,6 @@ export default function OnboardingSetupModal({
   const [assetPreviewUrls, setAssetPreviewUrls] = useState({ profile: '', cover: '' });
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [locationForm, setLocationForm] = useState(() => normalizeLocationForm(currentUser));
-  const [locationAddressManuallyEdited, setLocationAddressManuallyEdited] = useState(false);
-  const [locationAddressSuggestion, setLocationAddressSuggestion] = useState('');
   const [publicStorefrontVisible, setPublicStorefrontVisible] = useState(false);
   const [storeHasNoLocation, setStoreHasNoLocation] = useState(false);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
@@ -351,8 +338,6 @@ export default function OnboardingSetupModal({
         ...normalizeLocationForm(currentUser),
         business_hours: normalizeStorefrontBusinessHours(savedBusinessHours)
       });
-      setLocationAddressManuallyEdited(false);
-      setLocationAddressSuggestion('');
       setPrimaryLocationId(null);
       setLocationsLoading(true);
       Promise.all([
@@ -360,9 +345,6 @@ export default function OnboardingSetupModal({
         getAllSettings({ force: true }).catch(() => null)
       ])
         .then(([locations, settings]) => {
-          if (settings?.ops_workflow_mode) {
-            setActiveWorkflowMode(normalizeWorkflowMode(settings.ops_workflow_mode.value));
-          }
           if (settings?.store_is_visible) {
             setPublicStorefrontVisible(settings.store_is_visible.value === true);
           }
@@ -383,8 +365,6 @@ export default function OnboardingSetupModal({
             delivery_radius_km: primary.delivery_radius_km ?? 5,
             business_hours: normalizeStorefrontBusinessHours(savedBusinessHours)
           });
-          setLocationAddressManuallyEdited(Boolean(String(primary.address_line || '').trim()));
-          setLocationAddressSuggestion('');
         })
         .catch(() => {
           toast.error('Failed to load saved locations.');
@@ -491,13 +471,11 @@ export default function OnboardingSetupModal({
   };
 
   const handleSaveLocation = async () => {
-    const parsedLatitude = parseMapCoordinate(locationForm.latitude);
-    const parsedLongitude = parseMapCoordinate(locationForm.longitude);
     const payload = {
       name: String(locationForm.name || '').trim(),
       address_line: String(locationForm.address_line || '').trim(),
-      latitude: parsedLatitude,
-      longitude: parsedLongitude,
+      latitude: Number(locationForm.latitude),
+      longitude: Number(locationForm.longitude),
       delivery_radius_km: Number(locationForm.delivery_radius_km || 5),
       is_active: true,
       is_open: true,
@@ -505,16 +483,8 @@ export default function OnboardingSetupModal({
     };
 
     const shouldPublishMapPin = publicStorefrontVisible === true && storeHasNoLocation !== true;
-    if (shouldPublishMapPin && (!payload.name || !payload.address_line)) {
-      toast.error('Location name and address are required.');
-      return;
-    }
-    const coordinateError = getMerchantPinValidationError({
-      latitude: payload.latitude,
-      longitude: payload.longitude
-    });
-    if (shouldPublishMapPin && coordinateError) {
-      toast.error(coordinateError);
+    if (shouldPublishMapPin && (!payload.name || !payload.address_line || !Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude))) {
+      toast.error('Location name, address, latitude, and longitude are required.');
       return;
     }
 
@@ -560,52 +530,17 @@ export default function OnboardingSetupModal({
   };
 
   const handleLocationPinChange = ({ latitude, longitude, address_line }) => {
+    const formatCoordinate = (value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric.toFixed(6) : String(value || '');
+    };
     const nextAddress = String(address_line || '').trim();
-    const parsedLatitude = parseMapCoordinate(latitude);
-    const parsedLongitude = parseMapCoordinate(longitude);
-
-    if (latitude === '' && longitude === '') {
-      setLocationForm((prev) => ({
-        ...prev,
-        latitude: '',
-        longitude: ''
-      }));
-      if (nextAddress) setLocationAddressSuggestion(nextAddress);
-      return;
-    }
-
-    if (getMerchantPinValidationError({ latitude: parsedLatitude, longitude: parsedLongitude })) {
-      return;
-    }
-
-    setLocationForm((prev) => {
-      const canAutofillAddress = nextAddress
-        && (!locationAddressManuallyEdited || !String(prev.address_line || '').trim());
-      if (nextAddress && !canAutofillAddress) {
-        setLocationAddressSuggestion(nextAddress);
-      } else if (nextAddress) {
-        setLocationAddressSuggestion('');
-      }
-      return {
-        ...prev,
-        latitude: parsedLatitude.toFixed(6),
-        longitude: parsedLongitude.toFixed(6),
-        ...(canAutofillAddress ? { address_line: nextAddress } : {})
-      };
-    });
-  };
-
-  const handleAddressInputChange = (value) => {
-    setLocationAddressManuallyEdited(true);
-    setLocationAddressSuggestion('');
-    setLocationForm((prev) => ({ ...prev, address_line: value }));
-  };
-
-  const applySuggestedAddress = () => {
-    if (!locationAddressSuggestion) return;
-    setLocationForm((prev) => ({ ...prev, address_line: locationAddressSuggestion }));
-    setLocationAddressManuallyEdited(true);
-    setLocationAddressSuggestion('');
+    setLocationForm((prev) => ({
+      ...prev,
+      latitude: formatCoordinate(latitude),
+      longitude: formatCoordinate(longitude),
+      ...(nextAddress ? { address_line: nextAddress } : {})
+    }));
   };
 
   const updateItemRow = (clientRowId, patch) => {
@@ -972,17 +907,9 @@ export default function OnboardingSetupModal({
                 </label>
                 <label className="text-xs text-slate-700 sm:col-span-2">
                   Address
-                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.address_line} onChange={(event) => handleAddressInputChange(event.target.value)} disabled={locationFieldsDisabled} />
+                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.address_line} onChange={(event) => setLocationForm((prev) => ({ ...prev, address_line: event.target.value }))} disabled={locationFieldsDisabled} />
                 </label>
-                {locationAddressSuggestion ? (
-                  <div className="sm:col-span-2 flex flex-wrap items-center gap-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-900">
-                    <span>Suggested address: {locationAddressSuggestion}</span>
-                    <button type="button" className="rounded border border-teal-300 bg-white px-2 py-1 font-semibold" onClick={applySuggestedAddress}>
-                      Apply
-                    </button>
-                  </div>
-                ) : null}
-                {publicStorefrontVisible === true && storeHasNoLocation !== true ? (
+                {storeHasNoLocation !== true && publicStorefrontVisible === true && (
                   <div className="sm:col-span-2">
                     <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs font-semibold text-slate-500">Loading map picker...</div>}>
                       <MapPinPicker
@@ -990,18 +917,15 @@ export default function OnboardingSetupModal({
                         longitude={locationForm.longitude}
                         deliveryRadiusKm={locationForm.delivery_radius_km}
                         onChange={handleLocationPinChange}
-                        defaultAdjustMode={!getUsableMerchantPin({
-                          latitude: locationForm.latitude,
-                          longitude: locationForm.longitude
-                        })}
                       />
                     </Suspense>
                   </div>
-                ) : publicStorefrontVisible !== true ? (
-                  <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-                    Turn on searchable storefront visibility to place a public storefront map pin.
+                )}
+                {storeHasNoLocation !== true && publicStorefrontVisible !== true && (
+                  <div className="sm:col-span-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    Turn on searchable storefront before placing the public map pin.
                   </div>
-                ) : null}
+                )}
                 <label className="text-xs text-slate-700">
                   Latitude
                   <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.latitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, latitude: event.target.value }))} disabled={locationFieldsDisabled} />

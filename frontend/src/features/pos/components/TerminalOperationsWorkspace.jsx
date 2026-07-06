@@ -196,6 +196,14 @@ const normalizeStringList = (raw, maxItems = 8, maxLen = 120) => {
     .slice(0, maxItems);
 };
 
+const normalizePositiveIntegerList = (raw, maxItems = 200) => {
+  const source = Array.isArray(raw) ? raw : [];
+  return [...new Set(source
+    .map((entry) => Number.parseInt(entry, 10))
+    .filter((entry) => Number.isInteger(entry) && entry > 0))]
+    .slice(0, maxItems);
+};
+
 const parseJsonObjectSetting = (raw) => {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
   if (typeof raw !== 'string' || !raw.trim()) return {};
@@ -2661,6 +2669,9 @@ function SettingsWorkspace({
   const [cashierUsers, setCashierUsers] = useState([]);
   const [cashiersLoading, setCashiersLoading] = useState(false);
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
+  const [storefrontPromoItemOptions, setStorefrontPromoItemOptions] = useState([]);
+  const [storefrontPromoItemsLoading, setStorefrontPromoItemsLoading] = useState(false);
+  const [storefrontPromoCandidateItemId, setStorefrontPromoCandidateItemId] = useState('');
   const [profileForm, setProfileForm] = useState({
     username: '',
     email: '',
@@ -2729,6 +2740,13 @@ function SettingsWorkspace({
     storefrontPromoSubtitle: '',
     storefrontPromoBadge: '',
     storefrontPromoValidityText: '',
+    storefrontPromoCode: '',
+    storefrontPromoDiscountPercent: '',
+    storefrontPromoUsageLimit: '',
+    storefrontPromoUsedCount: '0',
+    storefrontPromoValidTimeStart: '',
+    storefrontPromoValidTimeEnd: '',
+    storefrontPromoTargetItemIds: [],
     storefrontPromoActive: false,
     storefrontFollowEnabled: false,
     storefrontShareEnabled: false
@@ -2761,6 +2779,22 @@ function SettingsWorkspace({
   const customerAccessLimitation = CUSTOMER_ACCESS_MODE_RANK[requestedCustomerAccessMode] > CUSTOMER_ACCESS_MODE_RANK[maxCustomerAccessMode]
     ? (storefrontForm.customerAccessLimitationReason || `Requested mode is currently capped at ${maxCustomerAccessMode}.`)
     : (storefrontForm.customerAccessLimitationReason || 'Requested mode is currently available.');
+  const storefrontPromoItemOptionsById = useMemo(() => new Map(
+    storefrontPromoItemOptions.map((item) => [Number(item.item_id), item])
+  ), [storefrontPromoItemOptions]);
+  const selectedStorefrontPromoItems = useMemo(() => (
+    normalizePositiveIntegerList(storefrontForm.storefrontPromoTargetItemIds).map((itemId) => {
+      const match = storefrontPromoItemOptionsById.get(itemId);
+      return {
+        item_id: itemId,
+        name: String(match?.name || match?.label || `Item #${itemId}`)
+      };
+    })
+  ), [storefrontForm.storefrontPromoTargetItemIds, storefrontPromoItemOptionsById]);
+  const availableStorefrontPromoItems = useMemo(() => {
+    const selectedIds = new Set(normalizePositiveIntegerList(storefrontForm.storefrontPromoTargetItemIds));
+    return storefrontPromoItemOptions.filter((item) => !selectedIds.has(Number(item.item_id)));
+  }, [storefrontForm.storefrontPromoTargetItemIds, storefrontPromoItemOptions]);
   const activeCashierUsers = useMemo(() => (
     cashierUsers.filter((user) => String(user?.role || '').toLowerCase() === 'cashier' && user?.is_active !== false && !user?.deleted_at)
   ), [cashierUsers]);
@@ -2862,6 +2896,30 @@ function SettingsWorkspace({
     }
   }, [canManageCashiers]);
 
+  const loadStorefrontPromoItems = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setStorefrontPromoItemsLoading(true);
+    }
+    try {
+      const payload = await getItems({ fields: 'dropdown', limit: 10000 });
+      const rows = Array.isArray(payload?.items) ? payload.items : [];
+      setStorefrontPromoItemOptions(rows
+        .map((item) => ({
+          item_id: Number(item?.item_id),
+          name: String(item?.name || '').trim()
+        }))
+        .filter((item) => Number.isInteger(item.item_id) && item.item_id > 0 && item.name)
+        .sort((left, right) => left.name.localeCompare(right.name)));
+    } catch (error) {
+      if (!silent) {
+        toast.error(error?.response?.data?.message || 'Failed to load storefront promo items.');
+      }
+      setStorefrontPromoItemOptions([]);
+    } finally {
+      setStorefrontPromoItemsLoading(false);
+    }
+  }, []);
+
   const hydrateSettingsWorkspace = useCallback(async () => {
     setLoading(true);
     setLoadError('');
@@ -2962,6 +3020,13 @@ function SettingsWorkspace({
         storefrontPromoSubtitle: String(storefrontPromo.subtitle || ''),
         storefrontPromoBadge: String(storefrontPromo.badge || ''),
         storefrontPromoValidityText: String(storefrontPromo.validity_text || ''),
+        storefrontPromoCode: String(storefrontPromo.promo_code || ''),
+        storefrontPromoDiscountPercent: storefrontPromo.discount_percent == null ? '' : String(storefrontPromo.discount_percent),
+        storefrontPromoUsageLimit: storefrontPromo.usage_limit == null ? '' : String(storefrontPromo.usage_limit),
+        storefrontPromoUsedCount: storefrontPromo.used_count == null ? '0' : String(storefrontPromo.used_count),
+        storefrontPromoValidTimeStart: String(storefrontPromo.valid_time_start || ''),
+        storefrontPromoValidTimeEnd: String(storefrontPromo.valid_time_end || ''),
+        storefrontPromoTargetItemIds: normalizePositiveIntegerList(storefrontPromo.target_item_ids),
         storefrontPromoActive: storefrontPromo.active === true,
         storefrontFollowEnabled: settingsPayload?.storefront_follow_enabled?.value === true,
         storefrontShareEnabled: settingsPayload?.storefront_share_enabled?.value === true
@@ -2988,6 +3053,10 @@ function SettingsWorkspace({
   useEffect(() => {
     loadCashierAccounts({ silent: true });
   }, [loadCashierAccounts]);
+
+  useEffect(() => {
+    loadStorefrontPromoItems({ silent: true });
+  }, [loadStorefrontPromoItems]);
 
   const handleTabChange = useCallback((nextTab) => {
     if (!nextTab || nextTab === activeTab) return;
@@ -3403,6 +3472,13 @@ function SettingsWorkspace({
           subtitle: String(storefrontForm.storefrontPromoSubtitle || '').trim(),
           badge: String(storefrontForm.storefrontPromoBadge || '').trim(),
           validity_text: String(storefrontForm.storefrontPromoValidityText || '').trim(),
+          promo_code: String(storefrontForm.storefrontPromoCode || '').trim().toUpperCase(),
+          discount_percent: storefrontForm.storefrontPromoDiscountPercent === '' ? null : Number(storefrontForm.storefrontPromoDiscountPercent),
+          usage_limit: storefrontForm.storefrontPromoUsageLimit === '' ? null : Number(storefrontForm.storefrontPromoUsageLimit),
+          used_count: storefrontForm.storefrontPromoUsedCount === '' ? 0 : Number(storefrontForm.storefrontPromoUsedCount),
+          valid_time_start: String(storefrontForm.storefrontPromoValidTimeStart || '').trim(),
+          valid_time_end: String(storefrontForm.storefrontPromoValidTimeEnd || '').trim(),
+          target_item_ids: normalizePositiveIntegerList(storefrontForm.storefrontPromoTargetItemIds),
           active: storefrontForm.storefrontPromoActive === true
         },
         storefront_follow_enabled: storefrontForm.storefrontFollowEnabled === true,
@@ -3427,6 +3503,29 @@ function SettingsWorkspace({
       setSavingTab('');
     }
   }, [hasActivePrimaryStorefrontLocation, hydrateSettingsWorkspace, onStorefrontSetupSaved, openValidationModal, storefrontForm, storefrontLocationRequired]);
+
+  const addStorefrontPromoTargetItem = useCallback(() => {
+    const selectedItemId = toPositiveInt(storefrontPromoCandidateItemId);
+    if (!selectedItemId) return;
+    setStorefrontForm((current) => ({
+      ...current,
+      storefrontPromoTargetItemIds: normalizePositiveIntegerList([
+        ...(Array.isArray(current.storefrontPromoTargetItemIds) ? current.storefrontPromoTargetItemIds : []),
+        selectedItemId
+      ])
+    }));
+    setStorefrontPromoCandidateItemId('');
+  }, [storefrontPromoCandidateItemId]);
+
+  const removeStorefrontPromoTargetItem = useCallback((itemId) => {
+    const normalizedItemId = toPositiveInt(itemId);
+    if (!normalizedItemId) return;
+    setStorefrontForm((current) => ({
+      ...current,
+      storefrontPromoTargetItemIds: normalizePositiveIntegerList(current.storefrontPromoTargetItemIds)
+        .filter((entry) => entry !== normalizedItemId)
+    }));
+  }, []);
 
   const handleStorefrontListChange = useCallback((field, index, value) => {
     setStorefrontForm((current) => {
@@ -4561,16 +4660,93 @@ function SettingsWorkspace({
               <Input value={storefrontForm.storefrontReviewSummaryStar1} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryStar1: event.target.value }))} placeholder="1★ count" />
             </div>
           </div>
-          <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+          <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex items-center justify-between">
-              <Label>Promo Card</Label>
+              <Label>Promo</Label>
               <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoActive === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoActive: event.target.checked }))} />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <Input value={storefrontForm.storefrontPromoTitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoTitle: event.target.value }))} placeholder="10% OFF" />
-              <Input value={storefrontForm.storefrontPromoBadge} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoBadge: event.target.value }))} placeholder="Today's Promo" />
-              <Input value={storefrontForm.storefrontPromoSubtitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoSubtitle: event.target.value }))} placeholder="All BBQ items, min order ₱100" className="md:col-span-2" />
-              <Input value={storefrontForm.storefrontPromoValidityText} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidityText: event.target.value }))} placeholder="Valid today only" className="md:col-span-2" />
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">Title</Label>
+                <Input value={storefrontForm.storefrontPromoTitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoTitle: event.target.value }))} placeholder="10% OFF" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">Badge</Label>
+                <Input value={storefrontForm.storefrontPromoBadge} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoBadge: event.target.value }))} placeholder="Today's Promo" />
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <Label className="text-[12px] font-semibold text-slate-600">Subtitle</Label>
+                <Input value={storefrontForm.storefrontPromoSubtitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoSubtitle: event.target.value }))} placeholder="All BBQ items, min order ₱100" />
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <Label className="text-[12px] font-semibold text-slate-600">Validity Text</Label>
+                <Input value={storefrontForm.storefrontPromoValidityText} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidityText: event.target.value }))} placeholder="Valid today only" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">Promo Code</Label>
+                <Input value={storefrontForm.storefrontPromoCode} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoCode: String(event.target.value || '').toUpperCase() }))} placeholder="SAVE20" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">Discount Percent</Label>
+                <Input type="number" min="0" max="100" step="0.01" value={storefrontForm.storefrontPromoDiscountPercent} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoDiscountPercent: event.target.value }))} placeholder="20" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">Usage Limit</Label>
+                <Input type="number" min="1" step="1" value={storefrontForm.storefrontPromoUsageLimit} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoUsageLimit: event.target.value }))} placeholder="30" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">Used Count</Label>
+                <Input value={storefrontForm.storefrontPromoUsedCount} readOnly placeholder="0" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">Start Time</Label>
+                <Input type="time" value={storefrontForm.storefrontPromoValidTimeStart} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeStart: event.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">End Time</Label>
+                <Input type="time" value={storefrontForm.storefrontPromoValidTimeEnd} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeEnd: event.target.value }))} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <div className="space-y-1">
+                  <Label className="text-[12px] font-semibold text-slate-600">Promo Items</Label>
+                  <p className="text-[12px] text-slate-500">Leave this empty to apply the promo to all ordered items.</p>
+                </div>
+                <div className="flex flex-col gap-2 md:flex-row">
+                  <select
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                    value={storefrontPromoCandidateItemId}
+                    onChange={(event) => setStorefrontPromoCandidateItemId(event.target.value)}
+                    disabled={storefrontPromoItemsLoading || availableStorefrontPromoItems.length === 0}
+                  >
+                    <option value="">{storefrontPromoItemsLoading ? 'Loading items...' : 'Select an item'}</option>
+                    {availableStorefrontPromoItems.map((item) => (
+                      <option key={`promo-item-option-${item.item_id}`} value={item.item_id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button type="button" variant="outline" onClick={addStorefrontPromoTargetItem} disabled={!toPositiveInt(storefrontPromoCandidateItemId)}>
+                    <Plus className="mr-1 h-4 w-4" />Add Item
+                  </Button>
+                </div>
+                {selectedStorefrontPromoItems.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedStorefrontPromoItems.map((item) => (
+                      <button
+                        key={`promo-target-${item.item_id}`}
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-medium text-slate-700"
+                        onClick={() => removeStorefrontPromoTargetItem(item.item_id)}
+                      >
+                        <span>{item.name}</span>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-slate-500">All ordered items will receive the promo discount.</p>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-06-25
 related_adr: docs/architecture/adr/0013-tenant-onboarding-and-storefront-readiness.md,docs/architecture/adr/0014-mode-aware-csv-import-export.md,docs/architecture/adr/0017-storefront-gallery-and-access-mode.md,docs/architecture/adr/0019-food-and-beverage-mode.md
 declaration_id: 2026-06-25-storefront-onboarding-fnb-import-hardening
-classification: major
-surfaces: settings,onboarding,storefront,inventory_csv,email,dgfy_account
+classification: regulatory
+surfaces: settings,onboarding,storefront,inventory_csv,email,dgfy_account,pos,terminal,compliance
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED
 policy_version: 2026.06.25
 verification_evidence: npm --prefix backend test -- --runTestsByPath tests/settingsStorefrontAsset.usecase.test.js tests/settingsValidator.singleSettingArray.test.js tests/settingsHandlers.transport.test.js tests/settingsUsecases.applicationResult.test.js tests/csvImportService.workflowMode.test.js tests/csvExportService.workflowMode.test.js tests/emailTemplates.companyApproved.test.js,npm --prefix frontend test -- --run src/features/onboarding/components/__tests__/OnboardingSetupModal.behavior.test.jsx src/features/settings/__tests__/StorefrontBusinessHoursScheduler.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx src/features/settings/__tests__/WorkflowModeContext.publicRoutes.test.jsx apps/store/src/__tests__/normalizeStorefrontPageModel.test.js src/services/__tests__/dgfyAuthService.cookieSession.test.js,npm --prefix backend test -- --runTestsByPath tests/storefrontDiscoveryRepository.test.js,npm run build:skupervisor,npm run build:store,npm run qa:fnb-readiness,npm run check:architecture

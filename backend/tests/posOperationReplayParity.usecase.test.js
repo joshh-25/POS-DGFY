@@ -211,6 +211,77 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         jest.clearAllMocks();
     });
 
+    it('prevents two cashiers from opening shifts on the same terminal', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+        const sequelize = {
+            transaction: jest.fn(async () => createTransaction())
+        };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const first = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-01',
+                    opening_float_amount: 500,
+                    idempotency_key: 'SHIFT-CASHIER-1'
+                },
+                user: { user_id: 21 }
+            });
+            const second = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-01',
+                    opening_float_amount: 300,
+                    idempotency_key: 'SHIFT-CASHIER-2'
+                },
+                user: { user_id: 22 }
+            });
+
+            expect(first.success).toBe(true);
+            expect(second.success).toBe(false);
+            expect(second.error.code).toBe(DomainErrorCode.CONFLICT);
+            expect(second.error.message).toBe(
+                'This terminal already has an active shift. Close the current shift before another cashier starts.'
+            );
+            expect(second.error.details).toEqual(expect.objectContaining({
+                terminal_id: 'COUNTER-01',
+                active_cashier_id: 21,
+                requested_cashier_id: 22
+            }));
+            expect(posRepository.counters.shiftCreates).toBe(1);
+        });
+    });
+
+    it('allows different cashiers to open shifts on different terminals in one branch', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+        const sequelize = {
+            transaction: jest.fn(async () => createTransaction())
+        };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const first = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-01',
+                    opening_float_amount: 500,
+                    idempotency_key: 'SHIFT-TERMINAL-1'
+                },
+                user: { user_id: 21 }
+            });
+            const second = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-02',
+                    opening_float_amount: 300,
+                    idempotency_key: 'SHIFT-TERMINAL-2'
+                },
+                user: { user_id: 22 }
+            });
+
+            expect(first.success).toBe(true);
+            expect(second.success).toBe(true);
+            expect(posRepository.counters.shiftCreates).toBe(2);
+        });
+    });
+
     it('keeps deterministic idempotent replay behavior across shift open/cash event/shift close/order-status update', async () => {
         const posRepository = buildReplayRepository();
         posRepository.seedOrder({

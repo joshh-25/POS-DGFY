@@ -1,5 +1,6 @@
 import axios from 'axios';
 import {
+  canRefreshBrowserSession,
   getAccessToken,
   getCompanyToken,
   getAuthHeaders,
@@ -123,6 +124,7 @@ export const isPublicOrAuthRequest = (url = '') => {
 };
 
 const shouldPreflightBrowserSession = (config = {}) => (
+  canRefreshBrowserSession() &&
   !config.skipAuthRefresh &&
   !isSessionRefreshRequest(config.url) &&
   !isPublicOrAuthRequest(config.url)
@@ -166,6 +168,7 @@ const dispatchSessionExpiredEvent = () => {
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -343,6 +346,7 @@ api.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
+      canRefreshBrowserSession() &&
       !originalRequest.skipAuthRefresh &&
       !isPublicOrAuthRequest(originalRequest.url) &&
       !NON_REFRESHABLE_401_REASONS.has(getResponseReasonCode(error))

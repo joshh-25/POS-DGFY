@@ -5,7 +5,7 @@ last_reviewed: 2026-07-02
 related_adr: docs/architecture/adr/0026-browser-session-cookie-authority.md,docs/architecture/adr/0028-dgfy-account-company-switching.md,docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md
 declaration_id: 2026-07-02-auth-account-switch-pos-cashier-repair
 classification: regulatory
-surfaces: ims,pos,terminal,authentication
+surfaces: ims,pos,terminal,authentication,settings,compliance
 reason_codes_impacted: ALLOWED,RATE_LIMITED
 policy_version: 2026.07.02
 verification_evidence: npm --prefix backend test -- --runInBand tests/rateLimiter.behavior.test.js tests/auth.ratelimit.e2e.test.js,npm --prefix frontend test -- --run Pages/__tests__/Login.identityReset.test.jsx src/features/pos/__tests__/terminalLockDrawer.contract.test.jsx src/services/__tests__/api.publicAuthPolicy.test.js,npm --prefix frontend run build:all,npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check
@@ -30,6 +30,7 @@ This release prevents IMS and POS from submitting a changed identity with a stal
 2. POS DGFY sign-in, company selection, and locked-terminal account replacement.
 3. Shared credentialed authentication throttling.
 4. The separately labelled POS legacy grace entry.
+5. `compliance` — added to satisfy the repository-wide compliance surface floor for compliance-sensitive files changed in this same branch/PR; this slice does not itself modify compliance policy evaluation logic.
 
 ## Compliance Preconditions
 

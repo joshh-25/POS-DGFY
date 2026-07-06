@@ -194,7 +194,37 @@ const storefrontPromoSchema = Joi.object({
   subtitle: Joi.string().trim().max(160).allow('', null).optional(),
   badge: Joi.string().trim().max(60).allow('', null).optional(),
   validity_text: Joi.string().trim().max(120).allow('', null).optional(),
+  promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+  discount_percent: Joi.number().min(0).max(100).precision(4).allow(null).optional(),
+  usage_limit: Joi.number().integer().min(1).allow(null).optional(),
+  used_count: Joi.number().integer().min(0).allow(null).optional(),
+  target_item_ids: Joi.array().items(Joi.number().integer().positive()).max(200).optional(),
+  valid_time_start: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).allow('', null).optional().messages({
+    'string.pattern.base': 'Promo start time must use HH:mm format'
+  }),
+  valid_time_end: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).allow('', null).optional().messages({
+    'string.pattern.base': 'Promo end time must use HH:mm format'
+  }),
   active: Joi.boolean().default(false)
+}).custom((value, helpers) => {
+  if (!value || typeof value !== 'object') return value;
+  const hasStart = String(value.valid_time_start || '').trim().length > 0;
+  const hasEnd = String(value.valid_time_end || '').trim().length > 0;
+  if (hasStart !== hasEnd) {
+    return helpers.error('any.invalid', {
+      message: 'Promo valid time range requires both start and end times'
+    });
+  }
+  const usageLimit = value.usage_limit == null || value.usage_limit === '' ? null : Number(value.usage_limit);
+  const usedCount = value.used_count == null || value.used_count === '' ? null : Number(value.used_count);
+  if (usageLimit != null && usedCount != null && Number.isFinite(usageLimit) && Number.isFinite(usedCount) && usedCount > usageLimit) {
+    return helpers.error('any.invalid', {
+      message: 'Promo used count cannot exceed usage limit'
+    });
+  }
+  return value;
+}).messages({
+  'any.invalid': '{{#message}}'
 }).optional();
 const businessHoursIntervalSchema = Joi.object({
   open: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({

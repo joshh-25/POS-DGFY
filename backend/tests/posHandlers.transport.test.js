@@ -127,9 +127,12 @@ const createRes = () => {
     const res = {
         locals: {},
         status: jest.fn(),
-        json: jest.fn()
+        json: jest.fn(),
+        send: jest.fn(),
+        setHeader: jest.fn()
     };
     res.status.mockReturnValue(res);
+    res.send.mockReturnValue(res);
     return res;
 };
 
@@ -413,6 +416,84 @@ describe('posHandlers transport contracts', () => {
             message: 'Z-reading generated successfully',
             timestamp: expect.any(String)
         });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('getReportsOverview returns stable analytics payload', async () => {
+        mockGetPosReportsOverviewUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                summary_cards: {
+                    total_sales: 999,
+                    total_transactions: 8,
+                    gross_sales: 1100,
+                    net_sales: 999,
+                    pos_profit_loss: 321
+                }
+            }
+        });
+
+        const req = {
+            validatedQuery: { date_from: '2026-06-01', date_to: '2026-06-22', location_id: 4, source: 'in_store' },
+            query: {},
+            user: { user_id: 11, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-reports-overview'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await getReportsOverview(req, res, next);
+
+        expect(mockGetPosReportsOverviewUseCase).toHaveBeenCalledWith({
+            query: { date_from: '2026-06-01', date_to: '2026-06-22', location_id: 4, source: 'in_store' },
+            user: expect.objectContaining({ user_id: 11 })
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: {
+                summary_cards: {
+                    total_sales: 999,
+                    total_transactions: 8,
+                    gross_sales: 1100,
+                    net_sales: 999,
+                    pos_profit_loss: 321
+                }
+            },
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('exportReports writes CSV response headers and body', async () => {
+        mockExportPosReportsUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                filename: 'pos-daily-report.csv',
+                content_type: 'text/csv; charset=utf-8',
+                content: '"Metric","Value"\n"Gross Sales","1000"'
+            }
+        });
+
+        const req = {
+            validatedQuery: { section: 'daily', date_from: '2026-06-22', date_to: '2026-06-22', location_id: 4 },
+            query: {},
+            user: { user_id: 11, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-reports-export'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await exportReports(req, res, next);
+
+        expect(mockExportPosReportsUseCase).toHaveBeenCalledWith({
+            query: { section: 'daily', date_from: '2026-06-22', date_to: '2026-06-22', location_id: 4 },
+            user: expect.objectContaining({ user_id: 11 })
+        });
+        expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
+        expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="pos-daily-report.csv"');
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.send).toHaveBeenCalledWith('"Metric","Value"\n"Gross Sales","1000"');
         expect(next).not.toHaveBeenCalled();
     });
 

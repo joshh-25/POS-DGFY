@@ -5,7 +5,7 @@ last_reviewed: 2026-06-16
 related_adr: docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md,docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md
 declaration_id: 2026-06-16-no-location-storefront-business-hours
 classification: regulatory
-surfaces: settings,onboarding,storefront,api,testing,docs,compliance
+surfaces: settings,onboarding,storefront,api,testing,docs,pos,terminal,compliance
 reason_codes_impacted: ALLOWED,CUSTOMER_ACCESS_MODE_BLOCKED,VALIDATION_FAILED
 policy_version: 2026.06.16
 verification_evidence: npm run check:architecture,npm run lint:docs,npm run audit:storefront-public-visibility -- --json,npm --prefix backend test -- --runInBand tests/onboardingUsecases.applicationResult.test.js tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryMapPins.usecase.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js tests/storeUsecases.applicationResult.test.js tests/storefrontPublicVisibilityAuditService.test.js,npm exec vitest run src/features/settings/__tests__/storefrontBusinessHours.test.js src/features/settings/__tests__/StorefrontBusinessHoursScheduler.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads,npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/discoveryMapLayers.test.js --pool=threads,npm exec vitest run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx --pool=threads,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:store,git diff --check

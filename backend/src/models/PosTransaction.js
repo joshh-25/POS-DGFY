@@ -147,6 +147,8 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: 'cash'
     },
+    cash_received: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
+    change_amount: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
     payment_status: {
         type: DataTypes.ENUM('unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'),
         allowNull: false,

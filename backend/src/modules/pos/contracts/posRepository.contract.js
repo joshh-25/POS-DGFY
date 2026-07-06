@@ -6,6 +6,7 @@ const REQUIRED_METHODS = [
     'getPersistentCounterValue',
     'createTransactionWithLines',
     'getTransactionById',
+    'getReportsOverview',
     'listTransactions',
     'getZReadingSummary',
     'createZReadingSnapshot',

@@ -2,7 +2,7 @@ import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
 import { inventoryStockCommandService } from '../inventory/index.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
-import * as posTerminalPairingService from './services/posTerminalPairingService.js';
+import posTerminalPairingService from './services/posTerminalPairingService.js';
 import * as userService from '../../services/userService.js';
 import * as authService from '../../services/authService.js';
 import {
@@ -50,6 +50,15 @@ import {
     buildPrintPosReceiptUseCase,
     buildOpenPosDrawerUseCase
 } from './usecases/posDeviceUseCases.js';
+import {
+    buildGetMobilePosCatalogBootstrapUseCase,
+    buildGetMobilePosSettingsBootstrapUseCase,
+    buildGetMobilePosDevicePolicyUseCase,
+    buildSyncMobilePosCheckoutsUseCase,
+    buildSyncMobilePosShiftsUseCase,
+    buildSyncMobilePosHardwareEventsUseCase,
+    buildAcknowledgeMobilePosCheckpointUseCase
+} from './usecases/mobilePosUseCases.js';
 
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
@@ -99,9 +108,11 @@ export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCas
     posRepository,
     inventoryCommandService: inventoryStockCommandService
 });
-export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({ posRepository, terminalPairingService: posTerminalPairingService });
-export const getPairedPosTerminalUseCase = buildGetPairedPosTerminalUseCase({ posRepository, terminalPairingService: posTerminalPairingService });
-export const posTerminalPairingMaxAgeMs = posTerminalPairingService.maxAgeMs;
+export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({
+    posRepository,
+    terminalPairingService: posTerminalPairingService
+});
+export const getPairedPosTerminalUseCase = buildGetPairedPosTerminalUseCase({ posRepository });
 export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
     posRepository,
     deviceBridgeService: posDeviceBridgeService
@@ -114,3 +125,15 @@ export const openPosDrawerUseCase = buildOpenPosDrawerUseCase({
     posRepository,
     deviceBridgeService: posDeviceBridgeService
 });
+export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({ listPosCatalogUseCase });
+export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
+export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({ posRepository });
+export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase });
+export const syncMobilePosShiftsUseCase = buildSyncMobilePosShiftsUseCase({
+    openTerminalShiftUseCase,
+    switchTerminalShiftLocationUseCase,
+    recordCashDrawerEventUseCase,
+    closeTerminalShiftUseCase
+});
+export const syncMobilePosHardwareEventsUseCase = buildSyncMobilePosHardwareEventsUseCase();
+export const acknowledgeMobilePosCheckpointUseCase = buildAcknowledgeMobilePosCheckpointUseCase();

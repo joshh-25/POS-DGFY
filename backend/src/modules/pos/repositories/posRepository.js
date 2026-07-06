@@ -134,7 +134,7 @@ const BASE_POS_ITEM_ATTRIBUTES = [
     'cost_per_unit',
     'default_sale_price'
 ];
-const POS_ITEM_ATTRIBUTES_WITH_VAT = [...BASE_POS_ITEM_ATTRIBUTES, 'vat_type'];
+const POS_ITEM_ATTRIBUTES_WITH_VAT = [...BASE_POS_ITEM_ATTRIBUTES, 'vat_type', 'senior_pwd_discount_eligible'];
 const POS_CATALOG_OVERRIDE_ATTRIBUTES = [
     'item_id',
     'pos_visible',
@@ -477,6 +477,12 @@ const buildTransactionInclude = () => ([
         ]
     },
     {
+        model: dbStore.get('PosTransactionDiscount'),
+        as: 'discount',
+        required: false,
+        include: [{ model: dbStore.get('PosTransactionDiscountLine'), as: 'lines', required: false }]
+    },
+    {
         model: dbStore.get('TenantLocation'),
         as: 'location',
         attributes: [
@@ -541,6 +547,10 @@ const buildTransactionInclude = () => ([
             'location_id',
             'cashier_id',
             'status',
+            'opening_float_amount',
+            'closing_cash_amount',
+            'expected_cash_amount',
+            'cash_variance_amount',
             'opened_at',
             'closed_at'
         ]
@@ -1696,6 +1706,50 @@ export const posRepository = {
         await PosTransactionLine.bulkCreate(lineRows, { transaction });
 
         return created.pos_transaction_id;
+    },
+
+    async createGovernedTransactionDiscount({ transactionId, application, calculation }, options = {}) {
+        const PosTransactionDiscount = dbStore.get('PosTransactionDiscount');
+        const PosTransactionDiscountLine = dbStore.get('PosTransactionDiscountLine');
+        const PosTransactionLine = dbStore.get('PosTransactionLine');
+        const transaction = options.transaction;
+        const created = await PosTransactionDiscount.create({
+            transaction_id: transactionId,
+            discount_type: application.type,
+            discount_method: calculation.method,
+            discount_rate: calculation.rate,
+            discount_amount: calculation.discount_amount,
+            vat_removed: calculation.vat_removed,
+            vat_exempt_amount: calculation.vat_exempt_amount,
+            customer_name: application.customer_name || null,
+            senior_pwd_id_number: application.id_number || null,
+            employee_name: application.employee_name || null,
+            employee_id: application.employee_id || null,
+            reason: application.reason || null
+        }, { transaction });
+        const transactionLines = await PosTransactionLine.findAll({
+            where: { pos_transaction_id: transactionId },
+            order: [['line_id', 'ASC']],
+            transaction
+        });
+        const calculatedByItem = new Map(calculation.lines.map((line) => [Number(line.item_id), line]));
+        const rows = transactionLines.map((line) => {
+            const allocation = calculatedByItem.get(Number(line.item_id)) || {};
+            return {
+                transaction_discount_id: created.id,
+                transaction_line_id: line.line_id,
+                item_id: line.item_id,
+                eligible_quantity: allocation.eligible_quantity || 0,
+                gross_eligible_amount: allocation.gross_eligible_amount || 0,
+                vat_removed: allocation.vat_removed || 0,
+                vat_exempt_amount: allocation.vat_exempt_amount || 0,
+                discount_amount: allocation.discount_amount || 0,
+                final_line_amount: allocation.final_line_amount || line.line_subtotal,
+                eligibility_override_reason: allocation.eligibility_override_reason || null
+            };
+        });
+        if (rows.length > 0) await PosTransactionDiscountLine.bulkCreate(rows, { transaction });
+        return created;
     },
 
     async listProductCompositionsForItems(itemIds = [], options = {}) {

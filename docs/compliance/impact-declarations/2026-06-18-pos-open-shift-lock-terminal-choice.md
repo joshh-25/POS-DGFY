@@ -3,8 +3,8 @@ status: reference
 owner: pos
 last_reviewed: 2026-06-18
 declaration_id: 2026-06-18-pos-open-shift-lock-terminal-choice
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.06.18
 verification_evidence: npm run lint:docs,npm run check:architecture,npm run check:compliance,npm --prefix frontend test -- --run src/features/pos/__tests__/terminalViewModeContracts.test.js,npm --prefix frontend run build:pos,npm --prefix frontend run build:skupervisor,npm run smoke:pos-terminal-ui,git diff --check

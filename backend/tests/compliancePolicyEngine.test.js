@@ -133,6 +133,26 @@ describe('compliancePolicyEngine', () => {
         expect(decision.reason_code).toBe(COMPLIANCE_REASON_CODE.BSP_OPS_REGISTRATION_REQUIRED);
     });
 
+    it('allows POS checkout as non-compliant operation when legacy mode selection is still required', () => {
+        const decision = evaluateComplianceDecision({
+            tenant: {
+                id: 'tenant-mode-choice-pos',
+                compliance_mode_state: null,
+                compliance_mode_choice_required: true,
+                compliance_profile: {}
+            },
+            operation: COMPLIANCE_OPERATION.POS_CHECKOUT,
+            context: {
+                payment_type: 'cash',
+                requested_document_context: 'non_fiscal'
+            }
+        });
+
+        expect(decision.decision).toBe(COMPLIANCE_DECISION.ALLOW);
+        expect(decision.reason_code).toBe(COMPLIANCE_REASON_CODE.ALLOWED);
+        expect(decision.mode_state).toBe(COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE);
+    });
+
     it('denies non-fiscal document contexts in compliant-active POS operations', () => {
         const decision = evaluateComplianceDecision({
             tenant: {

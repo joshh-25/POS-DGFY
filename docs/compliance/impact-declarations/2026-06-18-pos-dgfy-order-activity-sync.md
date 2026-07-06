@@ -5,7 +5,7 @@ last_reviewed: 2026-06-18
 related_adr: docs/architecture/adr/0023-front-facing-dgfy-customer-account.md,docs/architecture/adr/0026-browser-session-cookie-authority.md
 declaration_id: 2026-06-18-pos-dgfy-order-activity-sync
 classification: regulatory
-surfaces: pos,terminal,storefront,compliance
+surfaces: pos,terminal,settings,storefront,compliance
 reason_codes_impacted: ALLOWED,POS_SHIFT_REQUIRED
 policy_version: 2026.06.18
 verification_evidence: git diff --check,npm run check:architecture,npm run lint:docs,npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/DgfyCustomerAccountPage.dashboard.test.jsx apps/store/src/__tests__/StorefrontHeaderNav.test.jsx,npm --prefix backend test -- --runTestsByPath tests/posUsecases.applicationResult.test.js tests/customerActivityRecorder.test.js tests/dgfyAuthUseCases.test.js,npm --prefix frontend run build:store,npm run build:skupervisor

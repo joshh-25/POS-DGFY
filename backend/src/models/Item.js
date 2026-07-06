@@ -104,6 +104,11 @@ const Item = sequelize.define('Item', {
     defaultValue: 'vatable',
     comment: 'Default VAT classification used by POS and snapshotted at transaction-line level'
   },
+  senior_pwd_discount_eligible: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
   fifo_enabled: {
     type: DataTypes.BOOLEAN,
     defaultValue: true

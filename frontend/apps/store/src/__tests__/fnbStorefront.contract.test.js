@@ -13,6 +13,7 @@ const businessRegistrationUrlSource = () => fs.readFileSync(path.join(appRoot, '
 const guestTrackingDrawerSource = () => fs.readFileSync(path.join(appRoot, 'tracking/components/GuestTrackingDrawer.jsx'), 'utf8');
 const promoCodePanelSource = () => fs.readFileSync(path.join(appRoot, 'checkout/components/PromoCodePanel.jsx'), 'utf8');
 const orderSummaryCardSource = () => fs.readFileSync(path.join(appRoot, 'checkout/components/OrderSummaryCard.jsx'), 'utf8');
+const promoSectionSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/sections/StorefrontPromoSection.jsx'), 'utf8');
 
 describe('Food & Beverage storefront contract', () => {
   it('renders restaurant menu metadata and carries modifiers into checkout lines', () => {
@@ -190,7 +191,7 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('payment_type: fnbPaymentType');
   });
 
-  it('keeps promo-code checkout UI display-only until backend validation exists', () => {
+  it('wires promo-code checkout through the backend payload and summary contract', () => {
     const source = appSource();
     const promoSource = promoCodePanelSource();
     const summarySource = orderSummaryCardSource();
@@ -199,11 +200,27 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('renderPromoCodePanel');
     expect(source).toContain('code={promoCodeDraft}');
     expect(promoSource).toContain('data-storefront-promo-code-panel="true"');
-    expect(promoSource).toContain('Code is displayed only; totals are unchanged.');
+    expect(promoSource).toContain('Refresh quote or place the order to validate this code.');
+    expect(promoSource).toContain('Discount applied:');
     expect(summarySource).toContain('promoSlot');
-    expect(source).not.toContain('promo_code:');
+    expect(source).toContain('promoCode: promoCodeOverride');
+    expect(source).toContain('promo_feedback?.message');
+    expect(source).toContain('discount_amount');
     expect(source).not.toContain('coupon_code:');
     expect(source).not.toContain('discount_code:');
+  });
+
+  it('lets storefront promo cards auto-apply the saved promo code', () => {
+    const source = appSource();
+    const promoSource = promoSectionSource();
+
+    expect(source).toContain('const handlePromoCardApply = useCallback(async (promoCode) => {');
+    expect(source).toContain('setPromoCodeDraft(normalizedPromoCode);');
+    expect(source).toContain('await requestQuote({');
+    expect(source).toContain('onPromoSelect={handlePromoCardApply}');
+    expect(promoSource).toContain('Apply promo code');
+    expect(promoSource).toContain('Click to apply');
+    expect(promoSource).toContain('onPromoSelect(promoCode)');
   });
 
   it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {

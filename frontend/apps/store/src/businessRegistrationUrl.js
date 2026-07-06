@@ -114,7 +114,7 @@ export const buildPosTerminalUrl = (search = '') => {
   }
   if (typeof window === 'undefined') return terminalPath;
   const { protocol, hostname } = window.location;
-  if (isLocalRuntime()) return `${resolveLocalOriginForPort(String(import.meta.env?.VITE_POS_DEV_PORT || '5180').trim() || '5180')}${terminalPath}`;
+  if (isLocalRuntime()) return `${resolveLocalOriginForPort(String(import.meta.env?.VITE_POS_DEV_PORT || '5174').trim() || '5174')}${terminalPath}`;
   if (hostname.startsWith('store.')) return `${protocol}//${hostname.replace(/^store\./, 'pos.')}${terminalPath}`;
   if (hostname.startsWith('pos.')) return `${protocol}//${hostname}${terminalPath}`;
   return `${protocol}//pos.${hostname}${terminalPath}`;

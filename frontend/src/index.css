@@ -184,8 +184,83 @@ body {
 }
 
 .dgfy-pos-shell {
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
-    'Helvetica Neue', Arial, sans-serif;
+  --pos-shell-bg: linear-gradient(180deg, #f8fbff 0%, #f7fafc 42%, #eef4ff 100%);
+  --pos-shell-panel: rgba(255, 255, 255, 0.9);
+  --pos-shell-panel-strong: #ffffff;
+  --pos-shell-border: rgba(148, 163, 184, 0.22);
+  --pos-shell-text: #1f2937;
+  --pos-shell-muted: #6b7280;
+  --pos-shell-accent: #1A4E8D;
+  --pos-shell-accent-strong: #143F73;
+  --pos-shell-accent-soft: #e8f0fb;
+  --pos-shell-sidebar: #ffffff;
+  --pos-shell-sidebar-border: rgba(226, 232, 240, 1);
+  --pos-shell-sidebar-text: #0f172a;
+  --pos-shell-sidebar-muted: #64748b;
+  --pos-shell-sidebar-card: #f8fafc;
+  --pos-shell-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+  background: var(--pos-shell-bg);
+  color: var(--pos-shell-text);
+  font-family: 'Segoe UI Variable Display', 'Bahnschrift', 'Poppins', 'Segoe UI', sans-serif;
+}
+
+.dgfy-pos-panel {
+  background: var(--pos-shell-panel);
+  border-color: var(--pos-shell-border);
+  box-shadow: var(--pos-shell-shadow);
+}
+
+.dgfy-pos-panel-strong {
+  background: var(--pos-shell-panel-strong);
+  border-color: var(--pos-shell-border);
+  box-shadow: var(--pos-shell-shadow);
+}
+
+.dgfy-pos-terminal-badge {
+  border: 1px solid rgba(26, 78, 141, 0.14);
+  background: linear-gradient(135deg, #f8fbff 0%, #e8f0fb 100%);
+  color: var(--pos-shell-accent-strong);
+}
+
+.dgfy-pos-dot {
+  display: inline-flex;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
+}
+
+.dgfy-pos-dot--online {
+  background: #16a34a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
+}
+
+.dgfy-pos-dot--offline {
+  background: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.12);
+}
+
+.dgfy-pos-shell .text-pos-muted {
+  color: var(--pos-shell-muted);
+}
+
+.dgfy-pos-shell .text-pos-accent {
+  color: var(--pos-shell-accent);
+}
+
+.dgfy-pos-shell .bg-pos-accent {
+  background: var(--pos-shell-accent);
+}
+
+.dgfy-pos-shell .border-pos {
+  border-color: var(--pos-shell-border);
+}
+
+@media (max-width: 767.98px) {
+  .pos-report-date-input::-webkit-calendar-picker-indicator {
+    opacity: 0;
+  }
 }
 
 body.pos-modal-scroll-lock,

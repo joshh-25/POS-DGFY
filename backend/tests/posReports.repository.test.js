@@ -59,7 +59,19 @@ describe('posRepository reports analytics', () => {
                 order_method: 'dine_in',
                 cashier_id: 9,
                 cashier: { user_id: 9, username: 'cashier-1' },
-                shift: { pos_terminal_shift_id: 3, business_date: '2026-06-22', terminal_id: 'POS-01', location_id: 12 },
+                discount: { discount_type: 'senior', discount_amount: 10, vat_removed: 2 },
+                discount_label_snapshot: 'Senior Citizen',
+                shift: {
+                    pos_terminal_shift_id: 3,
+                    business_date: '2026-06-22',
+                    terminal_id: 'POS-01',
+                    location_id: 12,
+                    status: 'closed',
+                    opening_float_amount: 500,
+                    expected_cash_amount: 590,
+                    closing_cash_amount: 585,
+                    cash_variance_amount: -5
+                },
                 lines: [{
                     item_id: 1,
                     quantity: 2,
@@ -296,7 +308,6 @@ describe('posRepository reports analytics', () => {
         expect(endAtExclusive.getTime() - startAt.getTime()).toBe(24 * 60 * 60 * 1000);
         expect(endAtExclusive.toISOString()).toBe('2026-06-22T16:00:00.000Z');
     });
-
     it('builds financially recognized source filters for POS reports', async () => {
         mockFindAll.mockResolvedValue([]);
 

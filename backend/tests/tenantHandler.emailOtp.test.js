@@ -153,6 +153,35 @@ describe('tenantHandler email OTP invitation routing', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
+  it('ignores a stale tenant-context cookie for global DGFY account OTP requests', async () => {
+    const req = {
+      path: '/api/v1/auth/email-otp/request',
+      headers: {
+        cookie: 'sku_tenant_context=token-original'
+      },
+      body: {
+        purpose: 'dgfy_account_verification',
+        email: 'new-founder@example.test'
+      }
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await tenantHandler(req, res, next);
+
+    expect(findTenantByToken).not.toHaveBeenCalled();
+    expect(req.headers['x-company-token']).toBeUndefined();
+    expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'default',
+      tenantContextFailure: 'missing_token'
+    }), next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
   it('still rejects tenant-scoped OTP requests without company token or invitation token', async () => {
     const req = {
       path: '/api/v1/auth/email-otp/request',

@@ -10,16 +10,13 @@ const { apiGet, apiPost, setBrowserSessionMock, clearClientSessionMock } = vi.ho
 const dgfyCookieConfig = {
   skipAuthRefresh: true,
   skipTenantAuthHeaders: true,
-  skipGlobalErrorToast: true,
   withCredentials: true
 };
 const dgfyBusinessBridgeConfig = {
-  withCredentials: true,
-  skipGlobalErrorToast: true
+  withCredentials: true
 };
 const dgfyTenantBridgeOnlyConfig = {
   withCredentials: true,
-  skipGlobalErrorToast: true,
   headers: {
     'x-dgfy-auth-mode': 'tenant_membership'
   }
@@ -104,6 +101,59 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(apiPost).toHaveBeenCalledWith('/dgfy/auth/login', {
       email: 'owner@example.test',
       password: 'password123'
+    }, dgfyCookieConfig);
+  });
+
+  it('submits DGFY account registration without tenant auth headers', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          token: 'dgfy-token',
+          account: { id: 'acct-register', email: 'new@example.test' }
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    await service.registerDgfyAccount({
+      first_name: 'Ada',
+      last_name: 'Lovelace',
+      email: 'new@example.test',
+      phone: '+639123456789',
+      password: 'password123'
+    });
+
+    expect(apiPost).toHaveBeenCalledWith('/dgfy/auth/register', {
+      first_name: 'Ada',
+      last_name: 'Lovelace',
+      email: 'new@example.test',
+      phone: '+639123456789',
+      password: 'password123'
+    }, dgfyCookieConfig);
+  });
+
+  it('submits DGFY password reset routes without tenant auth headers', async () => {
+    apiPost
+      .mockResolvedValueOnce({ data: { data: {} } })
+      .mockResolvedValueOnce({ data: { data: {} } });
+
+    const service = await import('../dgfyAuthService.js');
+    await service.requestDgfyPasswordReset('owner@example.test');
+    await service.completeDgfyPasswordReset({
+      email: 'owner@example.test',
+      code: '123456',
+      password: 'new-password-123',
+      confirm_password: 'new-password-123'
+    });
+
+    expect(apiPost).toHaveBeenNthCalledWith(1, '/dgfy/auth/password-reset/request', {
+      email: 'owner@example.test'
+    }, dgfyCookieConfig);
+    expect(apiPost).toHaveBeenNthCalledWith(2, '/dgfy/auth/password-reset/complete', {
+      email: 'owner@example.test',
+      code: '123456',
+      password: 'new-password-123',
+      confirm_password: 'new-password-123'
     }, dgfyCookieConfig);
   });
 

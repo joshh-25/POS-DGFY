@@ -59,4 +59,103 @@ describe('settings validator customer access modes', () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(req.validatedData.value).toBe(6);
   });
+
+  it('accepts bulk storefront gallery updates with backend-relative upload urls', () => {
+    const req = {
+      body: {
+        storefront_gallery_images: [
+          { url: '/uploads/storefront-assets/t1/gallery-1.png', caption: 'Hero image' }
+        ]
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSettings(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.storefront_gallery_images[0].url).toBe('/uploads/storefront-assets/t1/gallery-1.png');
+  });
+
+  it('accepts bulk storefront review summary updates with null star placeholders', () => {
+    const req = {
+      body: {
+        storefront_review_summary: {
+          score: null,
+          total_count: null,
+          star_distribution: {
+            1: null,
+            2: null,
+            3: null,
+            4: null,
+            5: null
+          }
+        }
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSettings(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.storefront_review_summary.star_distribution[1]).toBeNull();
+  });
+
+  it('drops blank bulk storefront gallery placeholder rows before validation', () => {
+    const req = {
+      body: {
+        storefront_gallery_images: [
+          { url: '', path: '', caption: '', alt: '' },
+          { url: '/uploads/storefront-assets/t1/gallery-1.png', caption: 'Hero image' }
+        ]
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSettings(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.storefront_gallery_images).toEqual([
+      { url: '/uploads/storefront-assets/t1/gallery-1.png', path: '', caption: 'Hero image' }
+    ]);
+  });
+
+  it('normalizes string null review summary placeholders before bulk validation', () => {
+    const req = {
+      body: {
+        storefront_review_summary: {
+          score: 'null',
+          total_count: '',
+          star_distribution: {
+            1: 'null',
+            2: '',
+            3: null
+          }
+        }
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSettings(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.storefront_review_summary).toEqual({
+      score: null,
+      total_count: null,
+      star_distribution: {
+        1: null,
+        2: null,
+        3: null,
+        4: null,
+        5: null
+      }
+    });
+  });
 });

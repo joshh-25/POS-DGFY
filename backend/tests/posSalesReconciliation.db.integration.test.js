@@ -679,11 +679,11 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(Number(finalItem.current_stock)).toBe(27);
   });
 
-  itRuntimeReady('blocks checkout when legacy tenant mode selection is still required', async () => {
+  itRuntimeReady('allows non-fiscal checkout when legacy tenant mode selection is still required', async () => {
     const cashier = await createCashier();
     const product = await createFinishedGood({ vat_type: 'vatable' });
 
-    const blocked = await dbStore.run(
+    const allowedWithoutModeChoice = await dbStore.run(
       {
         ...models,
         sequelize: tenantSequelize,
@@ -697,7 +697,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
         userId: cashier.user_id,
         user: cashier,
         payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
-          idempotency_key: `mode-choice-block-${crypto.randomUUID()}`,
+          idempotency_key: `mode-choice-optional-${crypto.randomUUID()}`,
           payment_type: 'cash',
           order_method: 'dine_in',
           lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
@@ -705,10 +705,8 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       })
     );
 
-    expect(blocked.success).toBe(false);
-    expect(blocked.error.code).toBe('VALIDATION_FAILED');
-    expect(blocked.error.statusCode).toBe(422);
-    expect(blocked.error.details?.compliance?.reason_code).toBe('LEGACY_MODE_SELECTION_REQUIRED');
+    expect(allowedWithoutModeChoice.success).toBe(true);
+    expect(allowedWithoutModeChoice.value.receipt_contract.document_type).toBe('non_fiscal_slip');
 
     const allowed = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,

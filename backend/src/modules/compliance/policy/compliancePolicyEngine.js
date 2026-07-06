@@ -737,7 +737,7 @@ export const evaluateComplianceDecision = ({
     const modeState = rawModeState || COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE;
     const choiceRequired = tenant?.compliance_mode_choice_required === true;
 
-    if (choiceRequired && (POS_OPERATIONS.has(operation) || operation === COMPLIANCE_OPERATION.PAYMENT_CAPABILITY_ENABLE)) {
+    if (choiceRequired && operation === COMPLIANCE_OPERATION.PAYMENT_CAPABILITY_ENABLE) {
         return buildDecision({
             tenant,
             operation,

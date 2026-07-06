@@ -95,6 +95,45 @@ describe('POS checkout discount policy validator', () => {
         expect(req.validatedData.discount_rate).toBeUndefined();
     });
 
+    it('allows a governed discount as a computed amount without generic profile or rate fields', () => {
+        const req = {
+            body: {
+                idempotency_key: 'idem-governed-123',
+                order_method: 'dine_in',
+                payment_type: 'cash',
+                discount_mode: 'amount',
+                discount_amount: 74.44,
+                discount_beneficiary: {
+                    category: 'senior',
+                    name: 'Sample Customer',
+                    id_number: 'SC-1234'
+                },
+                governed_discount: {
+                    type: 'senior',
+                    label: 'Senior Citizen',
+                    method: 'percentage',
+                    rate: 20,
+                    customer_name: 'Sample Customer',
+                    id_number: 'SC-1234',
+                    vat_removed: 48.21,
+                    vat_exempt_amount: 221.79,
+                    discount_amount: 44.36
+                },
+                lines: [{ item_id: 1, quantity: 1, sale_price: 270 }]
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosCheckout(req, res, next);
+
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.discount_profile_name).toBeUndefined();
+        expect(req.validatedData.discount_rate).toBeUndefined();
+        expect(req.validatedData.governed_discount.rate).toBe(20);
+    });
+
     it('allows manual percentage discount mode with a rate and computed amount', () => {
         const req = {
             body: {

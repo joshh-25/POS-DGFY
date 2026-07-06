@@ -41,6 +41,28 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
 9. Export Sales CSV with precheck confirmation and retain export metadata.
 10. Use Sync Queue console for deterministic replay/resolve actions when offline intents enter manual-resolution state.
 
+## POS Item Management Contract
+1. SKUpervisor IMS remains the canonical item source. POS item management does not maintain a disconnected item list.
+2. POS `Items` shows only IMS items with POS visibility enabled.
+3. Creating an item from POS must:
+   - create the item in IMS first,
+   - keep IMS as the source of truth,
+   - enable POS visibility on the same record,
+   - enable storefront visibility on the same record when the POS item-create flow requires it,
+   - generate the barcode from the saved IMS `item_id` instead of inventing a second unrelated code.
+4. Item identity is intentionally split:
+   - `item_id`: IMS system identifier,
+   - `sku_code`: business reference identifier,
+   - barcode: scan identifier.
+5. POS edit flows may update only the fields intentionally allowed from POS. Current POS edit scope includes:
+   - item name,
+   - category,
+   - stock quantity,
+   - selling price,
+   - cost price,
+   - description / notes.
+6. POS edit flows must continue to update the same IMS-backed item record, not a POS-only shadow copy.
+
 ## Readiness Gate Behavior
 1. Enabling `Show in POS` is readiness-gated.
 2. Blocked enable attempts return deterministic remediation metadata (`reason_code`, `missing_requirements`) until required fields are completed.

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Base.Theme.StandalonePOS" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/standalone_pos_brand</item>
+        <item name="colorSecondary">@color/standalone_pos_brand</item>
+    </style>
+</resources>

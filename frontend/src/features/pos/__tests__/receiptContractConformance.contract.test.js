@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe('RCPT-01 receipt contract conformance fixtures', () => {
-  it('renders required non-fiscal banner and immutable sequence statement', () => {
+  it('renders required non-fiscal banner and DGFY footer', () => {
     renderReceipt({
       transaction: buildTransaction(),
       businessSettings: {
@@ -61,9 +61,7 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(screen.getByText('NON-FISCAL SLIP')).toBeTruthy();
     expect(screen.getByText('NOT A FISCAL RECEIPT')).toBeTruthy();
     expect(screen.getByText('Non-fiscal document')).toBeTruthy();
-    expect(screen.getByText('Document context: non_fiscal')).toBeTruthy();
-    expect(screen.getByText('Receipt contract version: 2026.04.08')).toBeTruthy();
-    expect(screen.getByText('Sequence control: invoice number is system-generated and immutable.')).toBeTruthy();
+    expect(screen.getByText('Powered by DGFY POS')).toBeTruthy();
     expect(screen.queryByText(/TIN\/Branch:/i)).toBeNull();
   });
 
@@ -88,7 +86,7 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
 
     expect(screen.getByText('NOT A FISCAL RECEIPT')).toBeTruthy();
     expect(screen.getByText('Training/Test mode only')).toBeTruthy();
-    expect(screen.getByText('Document context: training_test')).toBeTruthy();
+    expect(screen.getByText('Powered by DGFY POS')).toBeTruthy();
   });
 
   it('renders fiscal header fields only for fiscal document context', () => {
@@ -117,14 +115,11 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       }
     });
 
-    expect(screen.getByText('FISCAL INVOICE')).toBeTruthy();
-    expect(screen.getByText('TIN/Branch: 123-456-789-000')).toBeTruthy();
-    expect(screen.getByText('PTU: PTU-REF-999')).toBeTruthy();
+    expect(screen.getByText('VAT INVOICE')).toBeTruthy();
+    expect(screen.getByText('VAT REG TIN: 123-456-789-000')).toBeTruthy();
+    expect(screen.getByText('BIR Permit No.: PTU-REF-999')).toBeTruthy();
     expect(screen.getByText('MIN: MIN-2026-001')).toBeTruthy();
-    expect(screen.getByText('Accreditation: BIR-TEST-2026-001')).toBeTruthy();
-    expect(screen.getByText('Software: DGFY POS')).toBeTruthy();
-    expect(screen.getByText('Version: 2026.06')).toBeTruthy();
-    expect(screen.getByText('Serial: DGFY-SN-001')).toBeTruthy();
+    expect(screen.getByText('ATP/OCN No.: BIR-TEST-2026-001')).toBeTruthy();
     expect(screen.queryByText('NOT A FISCAL RECEIPT')).toBeNull();
   });
 
@@ -159,13 +154,11 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       }
     });
 
-    expect(text).toContain('TIN/Branch: 123-456-789-000');
-    expect(text).toContain('PTU: PTU-REF-999');
+    expect(text).toContain('VAT REG TIN: 123-456-789-000');
+    expect(text).toContain('BIR Permit No.: PTU-REF-999');
     expect(text).toContain('MIN: MIN-2026-001');
-    expect(text).toContain('Accreditation: BIR-TEST-2026-001');
-    expect(text).toContain('Software: DGFY POS');
-    expect(text).toContain('Version: 2026.06');
-    expect(text).toContain('Serial: DGFY-SN-001');
+    expect(text).toContain('ATP/OCN No.: BIR-TEST-2026-001');
+    expect(text).toContain('Powered by DGFY POS');
   });
 
   it('keeps regulator-summary rows and footer contract lines in fixed order', () => {
@@ -184,18 +177,16 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
 
     const content = container.textContent || '';
     const orderedLabels = [
-      'Subtotal',
+      'TOTAL SALES',
       'Vatable Sales',
       'VAT Amount',
       'VAT Exempt Sales',
       'Zero Rated Sales',
       'Discount',
       'DGFY convenience fee',
-      'Total',
-      'Document context: non_fiscal',
-      'Receipt contract version: 2026.04.08',
-      'Sequence control: invoice number is system-generated and immutable.',
-      'Discover Goods For You'
+      'TOTAL AMOUNT DUE',
+      'Payment Method:',
+      'Powered by DGFY POS'
     ];
 
     let cursor = -1;

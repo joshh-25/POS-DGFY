@@ -1383,6 +1383,59 @@ describe('dgfyAuthUseCases', () => {
         expect(result.data.payload.data.pos.terminal_identity_policy.reason_code).toBe('ALLOWED');
     });
 
+    it('fails POS session start when terminal policy validation fails', async () => {
+        const account = createAccount({ id: 'dgfy-pos-3' });
+        const membership = {
+            id: 53,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-pos',
+            status: 'accepted',
+            tenant: {
+                id: 'tenant-pos',
+                name: 'POS Foods',
+                status: 'active'
+            }
+        };
+        const terminalError = Object.assign(new Error('Terminal is not assigned to a store.'), {
+            statusCode: 401,
+            code: 'AUTHENTICATION_FAILED',
+            details: {
+                terminal_identity_policy: {
+                    terminal_id: 'COUNTER-01',
+                    reason_code: 'TERMINAL_LOCATION_REQUIRED'
+                }
+            }
+        });
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository,
+            createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                permissions: ['pos:view'],
+                company: { id: 'tenant-pos', token: 'secret-pos-token' }
+            }),
+            validateTerminalPolicy: jest.fn().mockRejectedValue(terminalError)
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'COUNTER-01' },
+            metadata: { request_id: 'req-pos-password-fail' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(401);
+        expect(result.error.message).toBe('Terminal is not assigned to a store.');
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'pos_unlock_failed',
+            result: 'failure',
+            request_id: 'req-pos-password-fail'
+        }));
+    });
+
     it('audits DGFY POS session failure when POS permission is missing', async () => {
         const account = createAccount({ id: 'dgfy-pos-2' });
         const membership = {

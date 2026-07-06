@@ -27,9 +27,10 @@ describe('POS strict location-binding settings visibility contract', () => {
     expect(settingsPageContent).toContain('pos_terminal_location_binding_enforced: settings.posTerminalLocationBindingEnforced === true');
   });
 
-  it('renders location-binding readiness summary in terminal setup context', () => {
-    expect(terminalWorkspaceContent).toContain('Location Binding Readiness');
-    expect(terminalWorkspaceContent).toContain('readiness?.migration_tag');
-    expect(terminalWorkspaceContent).toContain('ready_for_strict_mode');
+  it('renders strict binding control without readiness diagnostics in terminal setup context', () => {
+    expect(terminalWorkspaceContent).toContain('Strict Shift Location Binding');
+    expect(terminalWorkspaceContent).toContain('When enabled, shift open, checkout, and switch require location-bound terminal policy readiness.');
+    expect(terminalWorkspaceContent).not.toContain('Location Binding Readiness');
+    expect(terminalWorkspaceContent).not.toContain('readiness?.migration_tag');
   });
 });

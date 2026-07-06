@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React, { useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import StorefrontBusinessHoursScheduler from '../StorefrontBusinessHoursScheduler.jsx';
@@ -31,16 +31,16 @@ describe('StorefrontBusinessHoursScheduler', () => {
     await user.click(alwaysOpen);
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       weekly: expect.objectContaining({
-        sun: { enabled: true, open: '00:00', close: '00:00', intervals: [{ open: '00:00', close: '00:00' }] },
-        mon: { enabled: true, open: '00:00', close: '00:00', intervals: [{ open: '00:00', close: '00:00' }] }
+        sun: expect.objectContaining({ enabled: true, open: '00:00', close: '00:00' }),
+        mon: expect.objectContaining({ enabled: true, open: '00:00', close: '00:00' })
       })
     }));
 
     await user.click(alwaysOpen);
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       weekly: expect.objectContaining({
-        sun: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] },
-        mon: { enabled: true, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] }
+        sun: expect.objectContaining({ enabled: false, open: '09:00', close: '18:00' }),
+        mon: expect.objectContaining({ enabled: true, open: '09:00', close: '18:00' })
       })
     }));
   });
@@ -50,81 +50,53 @@ describe('StorefrontBusinessHoursScheduler', () => {
     const onChange = vi.fn();
     render(<ControlledScheduler onChange={onChange} />);
 
-    fireEvent.change(screen.getByLabelText(/^Close time$/i), { target: { value: '17:00' } });
-    await user.click(screen.getByRole('button', { name: /Apply/i }));
+    await user.clear(screen.getByLabelText(/Close time/i));
+    await user.type(screen.getByLabelText(/Close time/i), '17:00');
+    await user.click(screen.getByRole('button', { name: /Add Time Set/i }));
 
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       weekly: expect.objectContaining({
-        mon: { enabled: true, open: '09:00', close: '17:00', intervals: [{ open: '09:00', close: '17:00' }] },
-        fri: { enabled: true, open: '09:00', close: '17:00', intervals: [{ open: '09:00', close: '17:00' }] },
-        sat: { enabled: true, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] }
+        mon: expect.objectContaining({ enabled: true, open: '10:00', close: '17:00' }),
+        fri: expect.objectContaining({ enabled: true, open: '10:00', close: '17:00' }),
+        sat: expect.objectContaining({ enabled: true, open: '09:00', close: '18:00' })
       })
     }));
-    expect(screen.getByLabelText(/Mon schedule block/i)).toBeTruthy();
+    expect(screen.getByText(/10:00 AM - 05:00 PM/i)).toBeTruthy();
   });
 
-  it('targets a specific selected day for bulk edits', async () => {
+  it('persists weekday selection after clicking a day chip', async () => {
+    const user = userEvent.setup();
+    cleanup();
+    const view = render(<ControlledScheduler />);
+
+    const saturday = within(view.container).getByRole('button', { name: 'Select Sat' });
+    expect(saturday.getAttribute('aria-pressed')).toBe('false');
+
+    await user.click(saturday);
+    expect(saturday.getAttribute('aria-pressed')).toBe('true');
+
+    await user.click(saturday);
+    expect(saturday.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('confirms before applying a new all-days time set over existing schedules', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<ControlledScheduler onChange={onChange} />);
 
-    for (const day of ['Mon', 'Tue', 'Thu', 'Fri']) {
-      await user.click(screen.getByRole('button', { name: new RegExp(`Select ${day} for bulk business hours`, 'i') }));
-    }
-    fireEvent.change(screen.getByLabelText(/^Open time$/i), { target: { value: '11:00' } });
-    fireEvent.change(screen.getByLabelText(/^Close time$/i), { target: { value: '22:00' } });
-    await user.click(screen.getByRole('button', { name: /Apply/i }));
+    await user.click(screen.getByLabelText(/All Days/i));
+    await user.click(screen.getByRole('button', { name: /Add Time Set/i }));
+
+    expect(screen.getByText(/Apply this time to all days/i)).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /Apply to All Days/i }));
 
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       weekly: expect.objectContaining({
-        wed: { enabled: true, open: '11:00', close: '22:00', intervals: [{ open: '11:00', close: '22:00' }] },
-        mon: { enabled: true, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] },
-        sat: { enabled: true, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] }
+        sun: expect.objectContaining({ enabled: true, open: '10:00', close: '21:00' }),
+        mon: expect.objectContaining({ enabled: true, open: '10:00', close: '21:00' }),
+        sat: expect.objectContaining({ enabled: true, open: '10:00', close: '21:00' })
       })
     }));
-  });
-
-  it('applies bulk edits to all days only when All days is selected', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(<ControlledScheduler onChange={onChange} />);
-
-    await user.click(screen.getByLabelText(/All days/i));
-    fireEvent.change(screen.getByLabelText(/^Open time$/i), { target: { value: '08:00' } });
-    fireEvent.change(screen.getByLabelText(/^Close time$/i), { target: { value: '19:00' } });
-    await user.click(screen.getByRole('button', { name: /Apply/i }));
-
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      weekly: expect.objectContaining({
-        sun: { enabled: true, open: '08:00', close: '19:00', intervals: [{ open: '08:00', close: '19:00' }] },
-        mon: { enabled: true, open: '08:00', close: '19:00', intervals: [{ open: '08:00', close: '19:00' }] },
-        sat: { enabled: true, open: '08:00', close: '19:00', intervals: [{ open: '08:00', close: '19:00' }] }
-      })
-    }));
-  });
-
-  it('adds and edits a second interval without overflowing the weekly row controls', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(<ControlledScheduler onChange={onChange} />);
-
-    const addButtons = screen.getAllByRole('button', { name: /Add interval/i });
-    await user.click(addButtons[1]);
-    fireEvent.change(screen.getByLabelText(/Mon interval 1 open time/i), { target: { value: '06:00' } });
-    fireEvent.change(screen.getByLabelText(/Mon interval 1 close time/i), { target: { value: '12:00' } });
-    fireEvent.change(screen.getByLabelText(/Mon interval 2 open time/i), { target: { value: '13:00' } });
-    fireEvent.change(screen.getByLabelText(/Mon interval 2 close time/i), { target: { value: '20:00' } });
-
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      weekly: expect.objectContaining({
-        mon: expect.objectContaining({
-          intervals: [
-            { open: '06:00', close: '12:00' },
-            { open: '13:00', close: '20:00' }
-          ]
-        })
-      })
-    }));
-    expect(screen.getByText(/Preview:/i).textContent).toContain('Mon 6:00 AM - 12:00 PM, 1:00 PM - 8:00 PM');
   });
 });

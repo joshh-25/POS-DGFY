@@ -41,6 +41,21 @@ Barcode rows are scoped to the tenant database. The same manufacturer barcode ca
 - `is_primary`: preferred item barcode for labels and exports.
 - `is_active`: active scan identity flag. Deactivated rows remain historically explainable.
 
+## Item Identity Layers
+- `item_id`: the tenant-local IMS/SKUpervisor system record identifier. This is the canonical database identity for the item.
+- `sku_code`: the human/business item reference. It is readable by operators and admins, but it is not the same as `item_id`.
+- `barcode.code`: the scan identity. In the current POS item-management flow, newly created POS items generate their barcode from the saved IMS `item_id`.
+
+### Practical Meaning
+- `item_id` is for system linkage, backend updates, and identity-safe joins.
+- `sku_code` is for human reference, admin search, imports/exports, and cross-surface reconciliation when the raw system ID should not be shown.
+- `barcode.code` is for scan-based routing in POS and other barcode-aware workflows.
+
+### POS-Specific Clarification
+- POS does not need to expose `item_id` to cashiers.
+- POS may show `sku_code` as a business reference, but cashier checkout does not require SKU when barcode and item name are sufficient.
+- Barcode generation must not replace or overwrite the SKU concept. SKU and barcode stay intentionally separate.
+
 ## Modes That Benefit
 - Inventory item setup/details: assign imported barcodes, generate internal barcodes, set primary codes, deactivate aliases, and preview labels.
 - Receiving: scan item/package/batch codes to prefill item and quantity before normal receiving rules run.

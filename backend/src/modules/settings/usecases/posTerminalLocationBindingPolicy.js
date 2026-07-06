@@ -17,7 +17,8 @@ export const normalizeTerminalRegistryEntries = (rawValue) => {
         label: String(entry?.label || '').trim(),
         location_id: parsePositiveInt(entry?.location_id),
         is_active: entry?.is_active !== false,
-        is_default: entry?.is_default === true
+        is_default: entry?.is_default === true,
+        terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
     }));
 };
 
@@ -115,4 +116,3 @@ export const assertStrictBindingReadiness = async ({ settingsRepository }) => {
         );
     }
 };
-

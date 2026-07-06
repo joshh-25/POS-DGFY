@@ -4,11 +4,11 @@ const mockGetAllSettingsUseCase = jest.fn();
 const mockGetSettingByKeyUseCase = jest.fn();
 const mockUpdateSettingsUseCase = jest.fn();
 const mockUpdateSettingByKeyUseCase = jest.fn();
+const mockVerifyPosSettingsAccessPinUseCase = jest.fn();
 const mockResetSettingsToDefaultUseCase = jest.fn();
 const mockGetCompanyInfoUseCase = jest.fn();
 const mockUploadStorefrontAssetUseCase = jest.fn();
 const mockDeleteStorefrontAssetUseCase = jest.fn();
-const mockVerifyPosSettingsAccessPinUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 const mockSyncStorefrontDiscoveryWithReliability = jest.fn();
 const mockInvalidateTenantLookupCache = jest.fn();
@@ -18,11 +18,11 @@ jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
   getSettingByKeyUseCase: mockGetSettingByKeyUseCase,
   updateSettingsUseCase: mockUpdateSettingsUseCase,
   updateSettingByKeyUseCase: mockUpdateSettingByKeyUseCase,
+  verifyPosSettingsAccessPinUseCase: mockVerifyPosSettingsAccessPinUseCase,
   resetSettingsToDefaultUseCase: mockResetSettingsToDefaultUseCase,
   getCompanyInfoUseCase: mockGetCompanyInfoUseCase,
   uploadStorefrontAssetUseCase: mockUploadStorefrontAssetUseCase,
-  deleteStorefrontAssetUseCase: mockDeleteStorefrontAssetUseCase,
-  verifyPosSettingsAccessPinUseCase: mockVerifyPosSettingsAccessPinUseCase
+  deleteStorefrontAssetUseCase: mockDeleteStorefrontAssetUseCase
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({

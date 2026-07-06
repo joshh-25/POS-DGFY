@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="http://schemas.android.com/tools">
+    <color name="black">#FF000000</color>
+    <color name="standalone_pos_background">#F8FAFC</color>
+    <color name="standalone_pos_border">#E2E8F0</color>
+    <color name="standalone_pos_brand">#1D4ED8</color>
+    <color name="standalone_pos_text_primary">#0F172A</color>
+    <color name="standalone_pos_text_secondary">#475569</color>
+    <color name="white">#FFFFFFFF</color>
+    <integer name="react_native_dev_server_port">8081</integer>
+    <string name="app_name">Standalone POS</string>
+    <style name="Base.Theme.StandalonePOS" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/standalone_pos_brand</item>
+        <item name="colorSecondary">@color/standalone_pos_brand</item>
+        <item name="android:statusBarColor">@color/standalone_pos_background</item>
+        <item name="android:navigationBarColor">@color/standalone_pos_background</item>
+        <item name="android:windowLightStatusBar" ns1:targetApi="m">true</item>
+    </style>
+    <style name="Theme.StandalonePOS" parent="Base.Theme.StandalonePOS"/>
+</resources>

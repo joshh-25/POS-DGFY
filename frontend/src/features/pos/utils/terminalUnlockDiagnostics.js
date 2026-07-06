@@ -89,9 +89,10 @@ export const resolveTerminalLoginErrorMessage = (error) => {
   const responseMessage = getResponseMessage(error);
   const capability = getCapability(error);
   const requestPath = getRequestPath(error);
+  const lowerMessage = responseMessage.toLowerCase();
 
   if (code === POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS) {
-    return responseMessage || 'This email belongs to multiple companies. Sign in from SKUpervisor once, then reopen POS for the selected company.';
+    return responseMessage || 'This email belongs to multiple companies. Select the company to continue.';
   }
 
   if (code === POS_TERMINAL_LOGIN_ERROR_CODES.TENANT_NOT_FOUND || code === POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED) {
@@ -102,6 +103,10 @@ export const resolveTerminalLoginErrorMessage = (error) => {
     return getCapabilityBlockMessage(capability) || responseMessage || 'POS access is disabled for this company.';
   }
 
+  if (code === 'POS_TERMINAL_PAIRING_INVALID' || lowerMessage.includes('pos device pairing is missing') || lowerMessage.includes('pairing is missing, expired, or no longer valid')) {
+    return 'The registered terminal session is missing or expired. Select the terminal again and continue.';
+  }
+
   if (requestPath.endsWith('/pos/device/status') && status === 503) {
     return 'The receipt printer/cash drawer bridge is unavailable. Login can continue, but hardware controls stay disabled until the bridge is running.';
   }
@@ -110,9 +115,27 @@ export const resolveTerminalLoginErrorMessage = (error) => {
     return 'Unable to reach the POS backend. Check the server connection and try again.';
   }
 
+  if (status === 401 && requestPath.includes('/pos/terminal/')) {
+    if (lowerMessage.includes('company token') || lowerMessage.includes('tenant')) {
+      return 'The selected business session is missing or expired. Select the company and continue again.';
+    }
+    if (lowerMessage.includes('terminal_id is required')) {
+      return 'Select a registered terminal before continuing.';
+    }
+    if (lowerMessage.includes('not an active registry terminal')) {
+      return responseMessage || 'The selected terminal is not an active registered terminal for this company.';
+    }
+    return responseMessage || 'The selected terminal is not ready for this POS session.';
+  }
+
   if (status === 401) {
+    if (requestPath.endsWith('/pos/auth/cashier-login')) {
+      if (lowerMessage.includes('invalid username/email or password') || lowerMessage.includes('invalid email or password')) {
+        return 'Invalid cashier username/email or password.';
+      }
+      return responseMessage || 'Invalid cashier username/email or password.';
+    }
     if (requestPath.includes('/pos-session')) {
-      const lowerMessage = responseMessage.toLowerCase();
       if (lowerMessage.includes('terminal password')) {
         return responseMessage || 'Terminal password is incorrect.';
       }
@@ -120,10 +143,12 @@ export const resolveTerminalLoginErrorMessage = (error) => {
         return 'Your DGFY session expired before terminal unlock. Sign in again and retry.';
       }
     }
+    if (lowerMessage.includes('invalid username/email or password') || lowerMessage.includes('invalid email or password')) {
+      return responseMessage;
+    }
     return 'Invalid email or password.';
   }
   if (status === 403) {
-    const lowerMessage = responseMessage.toLowerCase();
     if (code === 'CSRF_TOKEN_REQUIRED') {
       return responseMessage || 'The browser security token is missing. Refresh POS and sign in again.';
     }

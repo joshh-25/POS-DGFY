@@ -3,8 +3,8 @@ status: reference
 owner: pos
 last_reviewed: 2026-06-18
 declaration_id: 2026-06-18-pos-hardware-message-modal-silencing
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.06.18
 verification_evidence: npm run lint:docs,npm run check:compliance,npm --prefix frontend test -- --run src/features/pos/utils/__tests__/posHardwareMessageBus.test.js src/features/pos/__tests__/receiptContractConformance.contract.test.js,npm --prefix frontend run build:pos,git diff --check

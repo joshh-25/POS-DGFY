@@ -4,12 +4,21 @@ export function PromoCodePanel({
   code = '',
   onChange,
   onClear,
+  statusMessage = '',
+  statusTone = 'idle',
+  appliedDiscountText = '',
   compact = false,
   accentColor = '#0f766e',
   bodyFont = "'Avenir Next', 'Segoe UI', sans-serif"
 }) {
   const normalizedCode = normalizePromoCode(code);
   const hasCode = normalizedCode.length > 0;
+  const hasAppliedDiscount = String(appliedDiscountText || '').trim().length > 0;
+  const resolvedTone = statusTone === 'error'
+    ? { border: '#fecaca', background: '#fef2f2', text: '#b91c1c' }
+    : statusTone === 'success'
+      ? { border: '#bbf7d0', background: '#f0fdf4', text: '#166534' }
+      : { border: '#e2e8f0', background: '#ffffff', text: '#64748b' };
 
   return (
     <section
@@ -30,7 +39,9 @@ export function PromoCodePanel({
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>Promo Code</div>
           <div style={{ marginTop: 3, fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
-            {hasCode ? 'Code is displayed only; totals are unchanged.' : 'Add a promo code if the store provides one.'}
+            {hasAppliedDiscount
+              ? `Discount applied: ${appliedDiscountText}`
+              : (hasCode ? 'Refresh quote or place the order to validate this code.' : 'Add a promo code if the store provides one.')}
           </div>
         </div>
         <span style={{ borderRadius: 999, background: '#ffffff', border: `1px solid ${hasCode ? '#fed7aa' : '#e2e8f0'}`, color: hasCode ? '#c2410c' : '#64748b', padding: '5px 9px', fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap' }}>
@@ -61,6 +72,22 @@ export function PromoCodePanel({
           {hasCode ? normalizedCode : 'No code yet'}
         </strong>
       </div>
+      {statusMessage ? (
+        <div
+          style={{
+            border: `1px solid ${resolvedTone.border}`,
+            borderRadius: 12,
+            background: resolvedTone.background,
+            padding: '9px 10px',
+            fontSize: 12,
+            fontWeight: 700,
+            color: resolvedTone.text,
+            lineHeight: 1.45
+          }}
+        >
+          {statusMessage}
+        </div>
+      ) : null}
     </section>
   );
 }

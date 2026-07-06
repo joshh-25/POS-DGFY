@@ -7,6 +7,7 @@ const mockResendUserInvitationUseCase = jest.fn();
 const mockCreateInvitationManualLinkUseCase = jest.fn();
 const mockCancelUserInvitationUseCase = jest.fn();
 const mockChangePasswordUseCase = jest.fn();
+const mockResetLocalCashierPasswordUseCase = jest.fn();
 const mockGetUserLocationGrantsUseCase = jest.fn();
 const mockUpdateUserLocationGrantsUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
@@ -16,6 +17,7 @@ jest.unstable_mockModule('../src/modules/users/index.js', () => ({
   getCurrentUserUseCase: mockGetCurrentUserUseCase,
   updateProfileUseCase: mockUpdateProfileUseCase,
   changePasswordUseCase: mockChangePasswordUseCase,
+  resetLocalCashierPasswordUseCase: mockResetLocalCashierPasswordUseCase,
   getAllUsersUseCase: jest.fn(),
   getRoleCatalogUseCase: jest.fn(),
   updateUserRoleUseCase: jest.fn(),
