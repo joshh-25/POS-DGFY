@@ -2630,7 +2630,6 @@ export const buildCheckoutPosUseCase = ({
 
             for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
                 const line = preparedLines[lineIndex];
-                const item = itemMap.get(Number(line.item_id));
                 if (line.stock_effect_type === 'stock_exempt') {
                     continue;
                 }
@@ -3198,7 +3197,7 @@ export const buildVerifyFiscalEventLedgerUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildCreatePosSetupCashierUseCase = ({ userService }) => {
+export const buildCreatePosSetupCashierUseCase = () => {
     return async () => fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
         'Local cashier creation is retired. Invite an existing DGFY account as cashier and assign its store locations.',

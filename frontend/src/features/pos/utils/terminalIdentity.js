@@ -50,6 +50,7 @@ export const normalizeTerminalRegistry = (rawRegistry) => {
       terminal_id: terminalId,
       label: String(entry?.label || '').trim(),
       location_id: Number.isInteger(Number(entry?.location_id)) ? Number(entry?.location_id) : null,
+      cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
       is_active: isActive,
       is_default: isActive && entry?.is_default === true,
       pairing_version: String(entry?.pairing_version || '').trim(),

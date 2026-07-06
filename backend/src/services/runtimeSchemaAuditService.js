@@ -37,7 +37,9 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260429000002-create-storefront-follows.cjs',
     '20260504000001-add-customer-access-fields-to-discovery-index.cjs',
     '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs',
-    '20260629000001-add-pos-always-available-contract.cjs'
+    '20260629000001-add-pos-always-available-contract.cjs',
+    '20260705000001-add-admin-provisioned-membership-source.cjs',
+    '20260502000001-add-services-mode-booking-tables.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -127,6 +129,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     store_customers: ['customer_id', 'email', 'password_hash', 'name', 'is_active'],
     customer_addresses: ['address_id', 'customer_id', 'address_line', 'is_default'],
     storefront_follows: ['storefront_follow_id', 'tenant_id', 'storefront_slug', 'visitor_fingerprint'],
+    dgfy_account_tenant_memberships: ['id', 'dgfy_account_id', 'tenant_id', 'tenant_user_id', 'role', 'status', 'source'],
     storefront_discovery_index: [
         'storefront_discovery_index_id',
         'tenant_id',
@@ -154,6 +157,11 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
 });
 
 const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
+    items: {
+        category: {
+            enumValues: ['raw_material', 'packaging', 'product', 'supplies', 'service']
+        }
+    },
     pos_catalog_overrides: {
         pos_always_available: { allowNull: false }
     },
@@ -173,6 +181,12 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
         fiscal_reprint_count: { allowNull: false },
         fiscal_void_event_hash: { allowNull: true },
         void_reason: { allowNull: true }
+    },
+    dgfy_account_tenant_memberships: {
+        source: {
+            allowNull: false,
+            enumValues: ['founder', 'invite', 'admin_handover', 'admin_provisioned']
+        }
     }
 });
 
@@ -190,6 +204,15 @@ const describeTableSafe = async (queryInterface, tableName) => {
     } catch {
         return null;
     }
+};
+
+const normalizeEnumValues = (columnDef) => {
+    const rawValues = Array.isArray(columnDef?.values) ? columnDef.values : [];
+    const type = String(columnDef?.type || '');
+    const parsedValues = [...type.matchAll(/'((?:[^']|'')*)'/g)]
+        .map((match) => match[1].replace(/''/g, "'"));
+
+    return new Set([...rawValues, ...parsedValues].map((value) => String(value)));
 };
 
 export const auditRuntimeSchemaReadiness = async ({
@@ -294,6 +317,22 @@ export const auditRuntimeSchemaReadiness = async ({
                         expected: { allowNull: Boolean(contract.allowNull) },
                         actual: { allowNull: actualAllowNull },
                         message: `Column contract mismatch for ${tableName}.${columnName}: expected allowNull=${Boolean(contract.allowNull)}, got allowNull=${actualAllowNull}`
+                    });
+                }
+            }
+
+            if (Array.isArray(contract.enumValues) && contract.enumValues.length > 0) {
+                const actualValues = normalizeEnumValues(tableDef[columnName]);
+                const missingEnumValues = contract.enumValues.filter((value) => !actualValues.has(value));
+                if (missingEnumValues.length > 0) {
+                    issues.push({
+                        scope: 'schema',
+                        type: 'invalid_column_contract',
+                        table: tableName,
+                        column: columnName,
+                        expected: { enumValues: contract.enumValues },
+                        actual: { enumValues: [...actualValues] },
+                        message: `Column contract mismatch for ${tableName}.${columnName}: missing enum values ${missingEnumValues.join(', ')}`
                     });
                 }
             }

@@ -78,7 +78,8 @@ const isMissingStorefrontCatalogGalleryColumnError = (error) => {
 };
 
 const withoutStorefrontImageGallery = (payload = {}) => {
-    const { storefront_image_gallery: _storefrontImageGallery, ...rest } = payload;
+    const rest = { ...payload };
+    delete rest.storefront_image_gallery;
     return rest;
 };
 
@@ -1128,6 +1129,11 @@ export const itemRepository = {
             delete dataToCreate.location_id;
 
             const item = await Item.create(dataToCreate, { transaction });
+
+            if (isServiceItem) {
+                const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+                await ServiceItemDetail.create({ item_id: item.item_id }, { transaction });
+            }
 
             if (initialStock > 0) {
                 await inventoryRepositoryDependencies.createStockMovement({

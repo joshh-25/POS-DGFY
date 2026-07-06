@@ -67,7 +67,6 @@ export default function TerminalWorkspaceSidebar({
   const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedRole === 'cashier';
   const showIncomingQueue = !isMsmeMode;
-  const showAdvancedOps = !isMsmeMode && !isCashierRole;
   const hasActiveShift = Boolean(shiftState?.shift);
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
@@ -143,7 +142,7 @@ export default function TerminalWorkspaceSidebar({
               caption={
                 locked
                   ? 'Unlock terminal to continue'
-                  : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (!navigationShiftReady ? 'Protected by POS access PIN' : 'Daily totals, popular items, and transactions')))
+                  : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions'))
               }
               testId="pos-nav-reports"
             />
@@ -188,16 +187,21 @@ export default function TerminalWorkspaceSidebar({
         <div className="my-5 border-t border-slate-200" />
         <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Settings</p>
         <div className="space-y-2">
-          {showAdvancedOps && (
-            <NavButton
-              label="Settings"
-              icon={Settings2}
-              active={['location_scope', 'terminal_setup', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
-              onClick={() => onSelectViewMode(settingsTargetViewMode)}
-              disabled={locked ? true : false}
-              caption={locked ? 'Unlock terminal to continue' : 'Profile, POS setup, and storefront tools'}
-            />
-          )}
+          <NavButton
+            label="Settings"
+            icon={Settings2}
+            active={['location_scope', 'terminal_setup', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
+            onClick={() => onSelectViewMode(settingsTargetViewMode)}
+            disabled={locked}
+            caption={
+              locked
+                ? 'Unlock terminal to continue'
+                : (isCashierRole
+                  ? 'Profile, POS setup, and storefront tools'
+                  : 'Profile, POS setup, and storefront tools')
+            }
+            testId="pos-nav-settings"
+          />
         </div>
 
         {locked ? (
