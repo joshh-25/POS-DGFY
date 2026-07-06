@@ -35,7 +35,18 @@ const parseJsonSetting = (setting) => {
   }
 };
 
-export const validateDgfyPosTerminalPolicy = async ({ tenantId, terminalId } = {}) => {
+const isAdminLikeRole = (role, isMasterAdmin = false) => {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  return isMasterAdmin === true || normalizedRole === 'admin';
+};
+
+export const validateDgfyPosTerminalPolicy = async ({
+  tenantId,
+  terminalId,
+  tenantUserId = null,
+  userRole = '',
+  isMasterAdmin = false
+} = {}) => {
   const resolvedTenantId = String(tenantId || '').trim();
   const normalizedTerminalId = sanitizeTerminalId(terminalId);
   if (!resolvedTenantId) {
@@ -85,6 +96,8 @@ export const validateDgfyPosTerminalPolicy = async ({ tenantId, terminalId } = {
       : 'warn';
     const bindingEnforced = parseBooleanSetting(lookup.get('pos_terminal_location_binding_enforced')?.setting_value);
     const registryEntry = registry.find((entry) => entry.terminal_id === normalizedTerminalId) || null;
+    const resolvedTenantUserId = parsePositiveInt(tenantUserId);
+    const requiresLocationGrant = resolvedTenantUserId && !isAdminLikeRole(userRole, isMasterAdmin);
 
     const context = {
       terminal_id: normalizedTerminalId,
@@ -117,6 +130,13 @@ export const validateDgfyPosTerminalPolicy = async ({ tenantId, terminalId } = {
       );
     }
     if (mode === 'warn' && registry.length > 0 && !registryEntry) {
+      if (requiresLocationGrant) {
+        throw new DomainError(
+          DomainErrorCode.AUTHORIZATION_FAILED,
+          'Cashier POS unlock requires an active registered terminal assigned to an authorized store location.',
+          { statusCode: 403, details: { terminal_identity_policy: { ...context, reason_code: 'CASHIER_TERMINAL_REGISTRY_REQUIRED' } } }
+        );
+      }
       return {
         ...context,
         reason_code: 'WARN_UNREGISTERED_ID',
@@ -125,6 +145,36 @@ export const validateDgfyPosTerminalPolicy = async ({ tenantId, terminalId } = {
           message: `terminal_id "${normalizedTerminalId}" is not an active registry terminal; POS unlock continues in warn mode.`
         }
       };
+    }
+    if (requiresLocationGrant) {
+      if (!registryEntry?.location_id) {
+        throw new DomainError(
+          DomainErrorCode.AUTHORIZATION_FAILED,
+          'Cashier POS unlock requires a registered terminal with an assigned store location.',
+          { statusCode: 403, details: { terminal_identity_policy: { ...context, reason_code: 'CASHIER_TERMINAL_LOCATION_REQUIRED' } } }
+        );
+      }
+      const UserLocationGrant = dbStore.get('UserLocationGrant');
+      if (!UserLocationGrant) {
+        throw new DomainError(
+          DomainErrorCode.AUTHORIZATION_FAILED,
+          'Cashier location grants are unavailable for POS unlock.',
+          { statusCode: 403, details: { terminal_identity_policy: { ...context, reason_code: 'CASHIER_LOCATION_GRANTS_UNAVAILABLE' } } }
+        );
+      }
+      const grantCount = await UserLocationGrant.count({
+        where: {
+          user_id: resolvedTenantUserId,
+          location_id: registryEntry.location_id
+        }
+      });
+      if (grantCount <= 0) {
+        throw new DomainError(
+          DomainErrorCode.AUTHORIZATION_FAILED,
+          'This cashier is not authorized for the selected terminal location.',
+          { statusCode: 403, details: { terminal_identity_policy: { ...context, reason_code: 'CASHIER_LOCATION_NOT_GRANTED' } } }
+        );
+      }
     }
 
     return {
