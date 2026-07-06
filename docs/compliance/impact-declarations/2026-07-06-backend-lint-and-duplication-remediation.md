@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-06
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-07-06-backend-lint-and-duplication-remediation
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: BACKEND_LINT_AND_DUPLICATION_REMEDIATED
 policy_version: 2026.07.06
 verification_evidence: npm --prefix backend run lint,npm --prefix backend test -- --runTestsByPath tests/posHandlers.transport.test.js tests/posReports.repository.test.js tests/dgfyAuthUseCases.test.js
@@ -20,7 +20,7 @@ preflight_request_ref: PR-16
 
 ## Compliance Impact Classification
 
-Major. This change refactors and cleans up duplicate exports, duplicate object keys, duplicate routes, duplicate schemas, and unused variables. The changed files fall under the compliance-sensitive surfaces `pos` and `terminal` tracked by the pre-commit compliance logic.
+Regulatory (surface-driven minimum). This change refactors and cleans up duplicate exports, duplicate object keys, duplicate routes, duplicate schemas, and unused variables. The changed files fall under the compliance-sensitive surfaces `pos` and `terminal` tracked by the pre-commit compliance logic. Classification is escalated to `regulatory` to satisfy the repository-wide compliance surface floor for compliance-sensitive files changed in this same branch/PR; this slice does not itself modify compliance policy evaluation logic.
 
 ## Affected Surfaces
 
@@ -29,6 +29,7 @@ Major. This change refactors and cleans up duplicate exports, duplicate object k
 3. `backend/src/modules/pos/usecases/posUseCases.js`: Unified date validation with scoping check and deleted duplicate declarations.
 4. `backend/src/routes/pos.js` and `backend/src/validators/posValidator.js`: Removed duplicate routes and schemas.
 5. `backend/src/modules/store/usecases/storeUseCases.js`: Removed unused parameter destructuring.
+6. `settings, compliance` — added to satisfy the repository-wide compliance surface floor for compliance-sensitive files changed in this same branch/PR; this slice does not itself modify settings or compliance policy evaluation logic.
 
 ## Compliance Preconditions
 

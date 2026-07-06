@@ -5,7 +5,7 @@ last_reviewed: 2026-07-04
 related_adr: docs/architecture/adr/0026-browser-session-cookie-authority.md,docs/architecture/adr/0028-dgfy-account-company-switching.md,docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md
 declaration_id: 2026-07-04-pos-development-bundle
 classification: regulatory
-surfaces: pos,terminal,settings,authentication,receipt,checkout,shift,storefront
+surfaces: pos,terminal,settings,authentication,receipt,checkout,shift,storefront,compliance
 reason_codes_impacted: ALLOWED,AUTHENTICATION_FAILED,AUTHORIZATION_FAILED,VALIDATION_FAILED
 policy_version: 2026.07.04
 verification_evidence: npm --prefix backend test -- --runInBand tests/posCashierLoginRoute.transport.test.js tests/posDiscountCalculator.test.js tests/posGovernedDiscountLineId.contract.test.js tests/rbacRouteCoverage.contract.test.js,npm --prefix frontend test -- src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/posSettingsCashier.contract.test.js,npm exec eslint -- src/features/pos/components/PosTenantSetupModal.jsx src/features/pos/pages/TerminalPage.jsx
@@ -33,6 +33,7 @@ This bundle changes POS terminal authentication, terminal setup, cashier access,
 5. POS receipt preview and print contract rendering.
 6. POS history and reporting views.
 7. POS onboarding storefront asset upload behavior.
+8. `compliance` — added to satisfy the repository-wide compliance surface floor for compliance-sensitive files changed in this same branch/PR; this slice does not itself modify compliance policy evaluation logic.
 
 ## Compliance Preconditions
 

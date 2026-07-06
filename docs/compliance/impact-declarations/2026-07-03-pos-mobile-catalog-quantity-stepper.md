@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-03
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-07-03-pos-mobile-catalog-quantity-stepper
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.03
 verification_evidence: npm --prefix frontend run build:pos,npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check
@@ -20,12 +20,13 @@ preflight_request_ref: POS-MOBILE-CATALOG-QUANTITY-STEPPER-2026-07-03
 
 ## Compliance Impact Classification
 
-Major. This change adds a new mobile-only (`<640px`) quantity control directly on each catalog card: a `-` button, a tap-to-type quantity field, and a `+` button. It also changes the cart-line "Qty" cell in the mobile cart summary from an editable `+/-` control to a read-only quantity display, since quantity is now managed from the catalog card instead. Both new entry points call the existing, centralized `addToCart` and `updateCartQuantity` functions rather than reimplementing stock clamping, zero-quantity removal, or cart totals — no new quantity-mutation logic is introduced. Classified `major` per the `pos`/`terminal` surface floor, and because this touches cart-quantity interaction (not pure layout), it is treated as `major` rather than a lower classification even though the underlying mutation path is unchanged.
+Regulatory (surface-driven minimum). This change adds a new mobile-only (`<640px`) quantity control directly on each catalog card: a `-` button, a tap-to-type quantity field, and a `+` button. It also changes the cart-line "Qty" cell in the mobile cart summary from an editable `+/-` control to a read-only quantity display, since quantity is now managed from the catalog card instead. Both new entry points call the existing, centralized `addToCart` and `updateCartQuantity` functions rather than reimplementing stock clamping, zero-quantity removal, or cart totals — no new quantity-mutation logic is introduced. Classification is escalated to `regulatory` to satisfy the repository-wide compliance surface floor for compliance-sensitive files changed in this same branch/PR; this slice does not itself modify compliance policy evaluation logic, and the underlying mutation path is unchanged.
 
 ## Affected Surfaces
 
 1. `frontend/src/features/pos/components/POSCheckoutTerminal.jsx` — mobile catalog card gains `adjustCartQuantity(item, delta)` (calls `addToCart`/`updateCartQuantity`) and `commitManualCartQuantity(item)` (parses and commits a typed value via `updateCartQuantity`, or `addToCart` if the line doesn't exist yet). New local state: `editingQuantityItemId`, `quantityInputValue`. The mobile catalog card layout is also simplified: the VAT row, stock-status dot, and SKU code are removed from the mobile card face; "Always available" now renders only when true (no "Not set"/stock-number placeholder in that slot).
 2. Mobile cart-line "Qty" cell — now read-only (`formatQuantity(line.quantity)`) on `<640px`; the `+/-` control is preserved unchanged at `sm:` and above (`hidden ... sm:flex`).
+3. `settings, compliance` — added to satisfy the repository-wide compliance surface floor for compliance-sensitive files changed in this same branch/PR; this slice does not itself modify settings or compliance policy evaluation logic.
 
 ## Compliance Preconditions
 
