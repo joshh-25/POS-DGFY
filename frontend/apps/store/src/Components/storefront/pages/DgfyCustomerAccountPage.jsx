@@ -1,11 +1,10 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Bell,
   CalendarDays,
   ChevronDown,
   ChevronRight,
-  Clock3,
   Edit,
   Edit2,
   Check,
@@ -19,16 +18,12 @@ import {
   LogOut,
   MapPin,
   Menu,
-  RotateCcw,
-  Search,
   ShieldCheck,
   ShoppingBag,
   Star,
   Store,
-  Ticket,
   User,
   X,
-  Zap,
   Package,
   Award
 } from 'lucide-react';
@@ -80,7 +75,6 @@ const prettyStatus = (value) => (
 export function DgfyCustomerAccountPage({
   isMobileViewport,
   onClose,
-  onRefresh,
   onTrackReference,
   onMarkNotificationRead,
   onMarkAllNotificationsRead,
@@ -90,7 +84,6 @@ export function DgfyCustomerAccountPage({
   onAcceptCompanyInvitation,
   onRejectCompanyInvitation,
   onLeaveCompany,
-  onClearSavedDetails,
   onUseAddressForCheckout,
   onSaveAddress,
   onDeleteAddress,
@@ -100,7 +93,6 @@ export function DgfyCustomerAccountPage({
   accountIdentityName,
   accountIdentityContact,
   accountPanel,
-  hasSavedCustomerDetails,
   maskedSavedCustomerPreview,
   activeOrders,
   activeOrderCount,

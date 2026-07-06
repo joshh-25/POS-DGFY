@@ -149,7 +149,7 @@ export function AccountSection({ initials, name, contact, account }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 24, fontWeight: 700, color: THEME.text }}>{name}</div>
-                {Boolean(account?.is_email_verified) ? <div style={{ background: '#E6F4EA', color: '#137333', fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 6 }}><ShieldCheck size={14} /> Verified Customer</div> : null}
+                {account?.is_email_verified ? <div style={{ background: '#E6F4EA', color: '#137333', fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 6 }}><ShieldCheck size={14} /> Verified Customer</div> : null}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 4, flexWrap: 'wrap' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: THEME.muted, fontSize: 14 }}><Phone size={16} /> {phone || '+63 *** *** ****'}</span>
