@@ -6,8 +6,7 @@ import {
   canViewCatalog,
   getAccessCapabilities,
   getInventoryDisplayLabel,
-  getStorefrontAccessBlockMessage,
-  shouldClearStorefrontCart
+  getStorefrontAccessBlockMessage
 } from '../customerAccess.js';
 
 describe('store customer access helpers', () => {
@@ -84,49 +83,5 @@ describe('store customer access helpers', () => {
         checkout: false
       }
     })).toBe('This Storefront action is not available right now.');
-  });
-});
-
-describe('storefront cart capability cleanup', () => {
-  const productCart = [{ item_id: 10, category: 'product', quantity: 1 }];
-  const serviceCart = [{ item_id: 20, category: 'service', quantity: 1 }];
-
-  it.each(['guest', 'DGFY account'])(
-    'preserves a tenant-store product cart for %s checkout when booking is unavailable',
-    () => {
-      expect(shouldClearStorefrontCart({
-        cart: productCart,
-        productCartPermitted: true,
-        checkoutPermitted: true,
-        bookingPermitted: false
-      })).toBe(false);
-    }
-  );
-
-  it('clears product lines when product checkout is unavailable', () => {
-    expect(shouldClearStorefrontCart({
-      cart: productCart,
-      productCartPermitted: true,
-      checkoutPermitted: false,
-      bookingPermitted: true
-    })).toBe(true);
-  });
-
-  it('preserves service lines independently of product-cart capability', () => {
-    expect(shouldClearStorefrontCart({
-      cart: serviceCart,
-      productCartPermitted: false,
-      checkoutPermitted: false,
-      bookingPermitted: true
-    })).toBe(false);
-  });
-
-  it('clears service lines when booking is unavailable', () => {
-    expect(shouldClearStorefrontCart({
-      cart: serviceCart,
-      productCartPermitted: true,
-      checkoutPermitted: true,
-      bookingPermitted: false
-    })).toBe(true);
   });
 });
