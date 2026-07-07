@@ -15,7 +15,7 @@ export function createAddressPinEditorRenderer(ctx) {
     setExpandedAccountAddressMapMode
   } = ctx;
 
-  return ({ draft = {}, onChange, mode = 'address', renderFormRow = null }) => {
+  return function AddressPinEditorRenderer({ draft = {}, onChange, mode = 'address', renderFormRow = null }) {
     const pin = normalizeCoordinatePair(draft);
     const isBusy = accountAddressPinAction.loading && accountAddressPinAction.mode === mode;
     const errorMessage = accountAddressPinAction.mode === mode ? accountAddressPinAction.error : '';

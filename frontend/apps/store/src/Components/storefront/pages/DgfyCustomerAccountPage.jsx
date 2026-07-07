@@ -708,34 +708,34 @@ export function DgfyCustomerAccountPage({
           { label: 'Bookings', value: allBookings.length, icon: CalendarDays, color: THEME.purple, bg: THEME.purpleBg, link: 'View all', action: () => setActiveNav('bookings') },
           { label: 'Addresses', value: allAddresses.length, icon: MapPin, color: THEME.orange, bg: THEME.orangeBg, link: 'Manage', action: () => setActiveNav('addresses') },
           { label: 'Loyalty Points', value: loyalty.balance, icon: Award, color: THEME.success, bg: THEME.successBg, link: 'View details', action: () => setActiveNav('loyalty') }
-	        ].map((stat, i) => {
-	          const Icon = stat.icon;
-	          const isLastMobileOddCard = isMobileViewport && i === 4;
-	          return (
-	            <div
-	              key={i}
-	              style={{
-	                background: THEME.surface,
-	                borderRadius: isMobileViewport ? 18 : 12,
-	                border: `1px solid ${THEME.border}`,
-	                padding: isMobileViewport ? '14px 16px' : '16px',
-	                display: 'flex',
-	                flexDirection: 'column',
-	                gap: isMobileViewport ? 10 : 12,
-	                minWidth: 0,
-	                minHeight: isMobileViewport ? 82 : 'auto',
-	                gridColumn: isLastMobileOddCard ? '1 / -1' : 'auto'
-	              }}
-	            >
-	              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: isMobileViewport ? 12 : 10, minWidth: 0 }}>
-	                <div style={{ width: isMobileViewport ? 42 : 40, height: isMobileViewport ? 42 : 40, borderRadius: 12, background: stat.bg, color: stat.color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-	                  <Icon size={isMobileViewport ? 20 : 20} />
-	                </div>
-	                <div style={{ minWidth: 0, display: 'grid', gap: isMobileViewport ? 4 : 6 }}>
-	                  <div style={{ fontSize: isMobileViewport ? 18 : 22, fontWeight: 700, color: THEME.text, lineHeight: 1 }}>{stat.value}</div>
-	                  <div style={{ fontSize: isMobileViewport ? 12 : 12, color: THEME.muted, lineHeight: 1.25, wordBreak: 'break-word' }}>{stat.label}</div>
-	                </div>
-	              </div>
+          ].map((stat, i) => {
+            const Icon = stat.icon;
+            const isLastMobileOddCard = isMobileViewport && i === 4;
+            return (
+              <div
+                key={i}
+                style={{
+                  background: THEME.surface,
+                  borderRadius: isMobileViewport ? 18 : 12,
+                  border: `1px solid ${THEME.border}`,
+                  padding: isMobileViewport ? '14px 16px' : '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: isMobileViewport ? 10 : 12,
+                  minWidth: 0,
+                  minHeight: isMobileViewport ? 82 : 'auto',
+                  gridColumn: isLastMobileOddCard ? '1 / -1' : 'auto'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: isMobileViewport ? 12 : 10, minWidth: 0 }}>
+                  <div style={{ width: isMobileViewport ? 42 : 40, height: isMobileViewport ? 42 : 40, borderRadius: 12, background: stat.bg, color: stat.color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <Icon size={isMobileViewport ? 20 : 20} />
+                  </div>
+                  <div style={{ minWidth: 0, display: 'grid', gap: isMobileViewport ? 4 : 6 }}>
+                    <div style={{ fontSize: isMobileViewport ? 18 : 22, fontWeight: 700, color: THEME.text, lineHeight: 1 }}>{stat.value}</div>
+                    <div style={{ fontSize: isMobileViewport ? 12 : 12, color: THEME.muted, lineHeight: 1.25, wordBreak: 'break-word' }}>{stat.label}</div>
+                  </div>
+                </div>
               {!isMobileViewport ? (
                 <div style={{ fontSize: isMobileViewport ? 11 : 12, fontWeight: 600, color: THEME.primary, cursor: 'pointer', marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }} onClick={stat.action}>
                   {stat.link} <ChevronRight size={14} />
@@ -790,26 +790,26 @@ export function DgfyCustomerAccountPage({
 
           {/* Tab Content */}
           <div style={{ padding: isMobileViewport ? 16 : 24, flex: 1 }}>
-	            {activeActivityTab === 'active_orders' && (
-	              <div style={{ display: 'grid', gap: isMobileViewport ? 14 : 16, width: '100%' }}>
-	                {enrichedActiveOrders.length === 0 ? (
-	                  <EmptyState title="No active orders" desc="You don't have any orders in progress right now." />
-	                ) : (
-	                  <>
-	                    {isMobileViewport ? (
-	                      <div>
-	                        <div style={{ fontSize: 22, fontWeight: 700, color: THEME.text, lineHeight: 1.15 }}>Active Orders</div>
-	                        <div style={{ fontSize: 14, color: THEME.muted, marginTop: 4 }}>
-	                          You have {enrichedActiveOrders.length} active order{enrichedActiveOrders.length === 1 ? '' : 's'}
-	                        </div>
-	                      </div>
-	                    ) : null}
-	                  {enrichedActiveOrders.slice(0, 3).map((order) => (
-	                    <div key={order.reference} style={{ display: 'block', gap: isMobileViewport ? 12 : 0, alignItems: isMobileViewport ? 'stretch' : 'stretch', justifyContent: 'space-between', paddingBottom: isMobileViewport ? 0 : 16, borderBottom: isMobileViewport ? 'none' : `1px solid ${THEME.border}`, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-	                      {isMobileViewport ? (
-	                        <div style={{ display: 'grid', gap: 12, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-	                          <div style={{ border: `1px solid ${THEME.border}`, borderRadius: 18, padding: 14, display: 'grid', gap: 14, background: THEME.surface, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-	                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'flex-start', gap: 12, width: '100%', minWidth: 0 }}>
+              {activeActivityTab === 'active_orders' && (
+                <div style={{ display: 'grid', gap: isMobileViewport ? 14 : 16, width: '100%' }}>
+                  {enrichedActiveOrders.length === 0 ? (
+                    <EmptyState title="No active orders" desc="You don't have any orders in progress right now." />
+                  ) : (
+                    <>
+                      {isMobileViewport ? (
+                        <div>
+                          <div style={{ fontSize: 22, fontWeight: 700, color: THEME.text, lineHeight: 1.15 }}>Active Orders</div>
+                          <div style={{ fontSize: 14, color: THEME.muted, marginTop: 4 }}>
+                            You have {enrichedActiveOrders.length} active order{enrichedActiveOrders.length === 1 ? '' : 's'}
+                          </div>
+                        </div>
+                      ) : null}
+                    {enrichedActiveOrders.slice(0, 3).map((order) => (
+                      <div key={order.reference} style={{ display: 'block', gap: isMobileViewport ? 12 : 0, alignItems: isMobileViewport ? 'stretch' : 'stretch', justifyContent: 'space-between', paddingBottom: isMobileViewport ? 0 : 16, borderBottom: isMobileViewport ? 'none' : `1px solid ${THEME.border}`, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+                        {isMobileViewport ? (
+                          <div style={{ display: 'grid', gap: 12, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+                            <div style={{ border: `1px solid ${THEME.border}`, borderRadius: 18, padding: 14, display: 'grid', gap: 14, background: THEME.surface, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'flex-start', gap: 12, width: '100%', minWidth: 0 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
                                 <button
                                   type="button"
@@ -907,14 +907,14 @@ export function DgfyCustomerAccountPage({
                         </div>
                       </div>
                       </div>
-	                      )}
-	                    </div>
-	                  ))}
-	                  </>
-	                )}
-	                <div style={{ textAlign: 'center', marginTop: isMobileViewport ? 4 : 8, paddingTop: isMobileViewport ? 2 : 0 }}>
-	                  <button onClick={() => setActiveNav('orders')} style={{ background: 'transparent', border: 'none', color: THEME.primary, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-	                    View all active orders
+                        )}
+                      </div>
+                    ))}
+                    </>
+                  )}
+                  <div style={{ textAlign: 'center', marginTop: isMobileViewport ? 4 : 8, paddingTop: isMobileViewport ? 2 : 0 }}>
+                    <button onClick={() => setActiveNav('orders')} style={{ background: 'transparent', border: 'none', color: THEME.primary, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                      View all active orders
                   </button>
                 </div>
               </div>
@@ -1613,7 +1613,7 @@ export function DgfyCustomerAccountPage({
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', gap: isMobileViewport ? 10 : 24, flexDirection: isMobileViewport ? 'column' : 'row', width: isMobileViewport ? '100%' : 'auto' }}>
-              {Boolean(accountPanel?.me?.is_email_verified) ? (
+              {accountPanel?.me?.is_email_verified ? (
                 <span style={{ background: '#E6F4EA', color: '#137333', fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                   Verified <CheckCircle2 size={14} />
                 </span>

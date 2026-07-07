@@ -627,7 +627,7 @@ export function ServiceBookingStepThree({
               </div>
             </div>
             <div style={{ fontSize: 13, lineHeight: 1.7, color: '#475569' }}>
-              DGFY will connect this booking flow to PayMongo soon. For now, you can still confirm your booking and wait for the merchant's payment instructions after confirmation.
+              DGFY will connect this booking flow to PayMongo soon. For now, you can still confirm your booking and wait for the merchant&apos;s payment instructions after confirmation.
             </div>
           </div>
 

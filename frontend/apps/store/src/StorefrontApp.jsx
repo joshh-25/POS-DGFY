@@ -2111,9 +2111,9 @@ function StoresMap({
     };
   }, []);
 
-	  useEffect(() => {
-	    const map = mapRef.current;
-	    if (!map) return;
+    useEffect(() => {
+      const map = mapRef.current;
+      if (!map) return;
       const generation = popupGenerationRef.current + 1;
       popupGenerationRef.current = generation;
       if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
@@ -2121,30 +2121,30 @@ function StoresMap({
         autoOpenFrameRef.current = null;
       }
 
-	    popupsRef.current.forEach((popup) => {
-	      try { popup?.remove?.(); } catch {}
-	    });
-	    popupsRef.current = [];
-	    markersRef.current.forEach((m) => m.remove());
-	    markersRef.current = [];
+      popupsRef.current.forEach((popup) => {
+        try { popup?.remove?.(); } catch { /* ignore cleanup errors */ }
+      });
+      popupsRef.current = [];
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
 
-	    const rows = Array.isArray(stores) ? stores : [];
-	    const uniqueRows = [];
-	    const seenMarkerKeys = new Set();
-	    rows.forEach((store) => {
-	      if (!store) return;
-	      const markerKey = getDiscoveryMarkerKey(store);
-	      if (!markerKey) {
-	        uniqueRows.push(store);
-	        return;
-	      }
-	      if (seenMarkerKeys.has(markerKey)) return;
-	      seenMarkerKeys.add(markerKey);
-	      uniqueRows.push(store);
-	    });
-	    const bounds = [];
-	    const autoOpenCallbacks = [];
-	    const coordinateGroups = uniqueRows.reduce((acc, store) => {
+      const rows = Array.isArray(stores) ? stores : [];
+      const uniqueRows = [];
+      const seenMarkerKeys = new Set();
+      rows.forEach((store) => {
+        if (!store) return;
+        const markerKey = getDiscoveryMarkerKey(store);
+        if (!markerKey) {
+          uniqueRows.push(store);
+          return;
+        }
+        if (seenMarkerKeys.has(markerKey)) return;
+        seenMarkerKeys.add(markerKey);
+        uniqueRows.push(store);
+      });
+      const bounds = [];
+      const autoOpenCallbacks = [];
+      const coordinateGroups = uniqueRows.reduce((acc, store) => {
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return acc;
@@ -2157,7 +2157,7 @@ function StoresMap({
     }, {});
     const renderedCoordinateGroups = new Set();
 
-	    uniqueRows.forEach((store) => {
+      uniqueRows.forEach((store) => {
       if (!store) return;
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
@@ -2221,13 +2221,13 @@ function StoresMap({
       const tenantName = String(singleStore?.tenant_name || 'Storefront');
       const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
       const el = makePinElement(singleStore.workflow_mode || singleStore.business_mode, highlighted, markerAriaLabel);
-	      const popup = new maplibregl.Popup({
-	        anchor: 'bottom',
-	        offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
-	        closeOnClick: false,
-	        focusAfterOpen: false
-	      });
-	      popupsRef.current.push(popup);
+        const popup = new maplibregl.Popup({
+          anchor: 'bottom',
+          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
+          closeOnClick: false,
+          focusAfterOpen: false
+        });
+        popupsRef.current.push(popup);
       let closeTimer = null;
       let markerHovered = false;
       let previewHovered = false;
@@ -2329,14 +2329,14 @@ function StoresMap({
           schedulePopupClose();
         });
       }
-	      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-	        .setLngLat([lng, lat])
-	        .addTo(map);
-	      if (autoOpenPopups) {
-	        autoOpenCallbacks.push({ key: markerKey, open: openPopup });
-	      }
-	      markersRef.current.push(marker);
-	      bounds.push([lng, lat]);
+        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([lng, lat])
+          .addTo(map);
+        if (autoOpenPopups) {
+          autoOpenCallbacks.push({ key: markerKey, open: openPopup });
+        }
+        markersRef.current.push(marker);
+        bounds.push([lng, lat]);
     });
 
     if (userMarkerRef.current) {
@@ -2356,35 +2356,35 @@ function StoresMap({
       }
     }
 
-	    if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
-	    if (bounds.length > 1) {
-	      const lngs = bounds.map((b) => b[0]);
-	      const lats = bounds.map((b) => b[1]);
-	      map.fitBounds(
-	        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-	        { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
-	      );
-	    }
-		    if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
-		      autoOpenFrameRef.current = window.requestAnimationFrame(() => {
+      if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
+      if (bounds.length > 1) {
+        const lngs = bounds.map((b) => b[0]);
+        const lats = bounds.map((b) => b[1]);
+        map.fitBounds(
+          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+          { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
+        );
+      }
+        if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
+          autoOpenFrameRef.current = window.requestAnimationFrame(() => {
             autoOpenFrameRef.current = null;
             if (popupGenerationRef.current !== generation) return;
             const openedMarkerKeys = new Set();
-		        autoOpenCallbacks.forEach((entry) => {
+            autoOpenCallbacks.forEach((entry) => {
               const markerKey = String(entry?.key || '');
               if (!markerKey || openedMarkerKeys.has(markerKey)) return;
               openedMarkerKeys.add(markerKey);
               entry?.open?.();
             });
-		      });
-		    }
+          });
+        }
       return () => {
         if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
           window.cancelAnimationFrame(autoOpenFrameRef.current);
           autoOpenFrameRef.current = null;
         }
       };
-	  }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
+    }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
 
   if (mapUnavailable) {
     return (
@@ -2397,9 +2397,9 @@ function StoresMap({
           Map rendering is unavailable on this device, but storefront discovery and account access still work from the list.
         </p>
         <div style={{ display: 'grid', gap: 8 }}>
-          {(stores || []).slice(0, 6).map((store) => (
+          {(stores || []).slice(0, 6).map((store, index) => (
             <button
-              key={getStoreResultKey(store)}
+              key={store?.slug || store?.id || index}
               type="button"
               onClick={() => onSelectStoreRef.current?.(store)}
               style={{ textAlign: 'left', border: '1px solid #dbeafe', background: '#fff', borderRadius: 12, padding: '10px 12px', color: '#0f172a', fontWeight: 800, cursor: 'pointer' }}
@@ -2506,7 +2506,7 @@ function DeliveryPinMap({
       });
     } catch (error) {
       console.warn('[DeliveryPinMap] MapLibre init unavailable', error);
-      setMapUnavailable(true);
+      queueMicrotask(() => setMapUnavailable(true));
       return undefined;
     }
     const canvasContainer = map.getCanvasContainer?.();
@@ -5066,26 +5066,29 @@ const StorefrontExpandableBusinessHours = ({ schedule, theme }) => {
     let nextClose = null;
     let nextOpen = null;
     
-    const intervalsStr = (entry.intervals || []).map(interval => {
+    const intervalLabels = [];
+    for (const interval of (entry.intervals || [])) {
       const openMins = Number(interval.open.split(':')[0]) * 60 + Number(interval.open.split(':')[1]);
       const closeMins = Number(interval.close.split(':')[0]) * 60 + Number(interval.close.split(':')[1]);
-      
+
       if (interval.open === interval.close) {
         isCurrentlyOpen = true;
-        return '24 hours';
+        intervalLabels.push('24 hours');
+        continue;
       }
-      
+
       const adjustedCloseMins = closeMins < openMins ? closeMins + 1440 : closeMins;
-      
+
       if (currentMinutes >= openMins && currentMinutes < adjustedCloseMins) {
         isCurrentlyOpen = true;
         nextClose = interval.close;
       } else if (currentMinutes < openMins && !nextOpen) {
         nextOpen = interval.open;
       }
-      
-      return `${formatMinutes(interval.open)} - ${formatMinutes(interval.close)}`;
-    }).join(', ');
+
+      intervalLabels.push(`${formatMinutes(interval.open)} - ${formatMinutes(interval.close)}`);
+    }
+    const intervalsStr = intervalLabels.join(', ');
     
     if (intervalsStr === '24 hours') {
       return { prefix: 'Open 24 hours today', prefixColor: '#16a34a', suffix: '', dayKey: currentDayKey };
@@ -7944,51 +7947,51 @@ export default function StorefrontApp() {
         return;
       }
 
-	      const scopedLocations = selectDiscoveryPinLocations({
-	        activeLocations: activeWithCoords,
-	        hasSearchQuery,
-	        pinScope: discoveryPinScope,
-	        matchingLocationIds,
-	        nearestMatchingLocationId: nearestMatchingLocation?.location_id ?? null
-	      });
-	      const scopedLocationMap = new globalThis.Map();
-	      scopedLocations.forEach((location) => {
-	        if (!location) return;
-	        const numericLocationId = Number(location.location_id);
-	        const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
-	          ? `loc:${numericLocationId}`
-	          : `coord:${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}:${toSlug(location?.name || '')}`;
-	        const current = scopedLocationMap.get(locationIdentity);
-	        if (!current || location?.is_primary_storefront === true) {
-	          scopedLocationMap.set(locationIdentity, location);
-	        }
-	      });
-	      if (discoveryPinScope === 'all_matching_branches') {
-	        const primaryScoped = activeWithCoords.find((location) => location?.is_primary_storefront === true);
-	        if (primaryScoped) {
-	          const numericLocationId = Number(primaryScoped.location_id);
-	          const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
-	            ? `loc:${numericLocationId}`
-	            : `coord:${Number(primaryScoped.latitude).toFixed(6)}:${Number(primaryScoped.longitude).toFixed(6)}:${toSlug(primaryScoped?.name || '')}`;
-	          if (!scopedLocationMap.has(locationIdentity)) {
-	            scopedLocationMap.set(locationIdentity, primaryScoped);
-	          }
-	        }
-	      }
-	      const scopedLocationsUnique = Array.from(scopedLocationMap.values());
+        const scopedLocations = selectDiscoveryPinLocations({
+          activeLocations: activeWithCoords,
+          hasSearchQuery,
+          pinScope: discoveryPinScope,
+          matchingLocationIds,
+          nearestMatchingLocationId: nearestMatchingLocation?.location_id ?? null
+        });
+        const scopedLocationMap = new globalThis.Map();
+        scopedLocations.forEach((location) => {
+          if (!location) return;
+          const numericLocationId = Number(location.location_id);
+          const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
+            ? `loc:${numericLocationId}`
+            : `coord:${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}:${toSlug(location?.name || '')}`;
+          const current = scopedLocationMap.get(locationIdentity);
+          if (!current || location?.is_primary_storefront === true) {
+            scopedLocationMap.set(locationIdentity, location);
+          }
+        });
+        if (discoveryPinScope === 'all_matching_branches') {
+          const primaryScoped = activeWithCoords.find((location) => location?.is_primary_storefront === true);
+          if (primaryScoped) {
+            const numericLocationId = Number(primaryScoped.location_id);
+            const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
+              ? `loc:${numericLocationId}`
+              : `coord:${Number(primaryScoped.latitude).toFixed(6)}:${Number(primaryScoped.longitude).toFixed(6)}:${toSlug(primaryScoped?.name || '')}`;
+            if (!scopedLocationMap.has(locationIdentity)) {
+              scopedLocationMap.set(locationIdentity, primaryScoped);
+            }
+          }
+        }
+        const scopedLocationsUnique = Array.from(scopedLocationMap.values());
 
-	      scopedLocationsUnique.forEach((location) => {
-	        const numericLocationId = Number(location.location_id);
-	        const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
-	          ? String(numericLocationId)
-	          : `${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
-	        pins.push({
-	          ...store,
-	          marker_key: `${slug}:${stableLocationId}`,
-	          location_id: location.location_id,
-	          location_name: location.name || store?.tenant_name,
-	          address_line: location.address_line || store?.address_line || '',
-	          latitude: location.latitude,
+        scopedLocationsUnique.forEach((location) => {
+          const numericLocationId = Number(location.location_id);
+          const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
+            ? String(numericLocationId)
+            : `${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
+          pins.push({
+            ...store,
+            marker_key: `${slug}:${stableLocationId}`,
+            location_id: location.location_id,
+            location_name: location.name || store?.tenant_name,
+            address_line: location.address_line || store?.address_line || '',
+            latitude: location.latitude,
           longitude: location.longitude,
           is_primary_storefront: location.is_primary_storefront === true,
           branch_label: location.is_primary_storefront ? 'Primary branch' : 'Branch',
@@ -7998,36 +8001,36 @@ export default function StorefrontApp() {
         });
       });
     });
-	    const uniquePins = [];
-	    const seenPinKeys = new globalThis.Map();
-	    const scorePin = (pin) => {
-	      let score = 0;
-	      if (pin?.is_primary_storefront === true) score += 5;
-	      if (Number.isFinite(Number(pin?.location_id)) && Number(pin.location_id) > 0) score += 4;
-	      if (pin?.address_line) score += 2;
-	      if (pin?.location_name) score += 1;
-	      return score;
-	    };
-	    pins.forEach((pin, index) => {
-	      if (!pin) return;
-	      const numericLocationId = Number(pin.location_id);
-	      const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
-	        ? `${pin.slug || toSlug(pin?.tenant_name)}:loc:${numericLocationId}`
-	        : `${pin.slug || toSlug(pin?.tenant_name)}:coord:${Number(pin.latitude).toFixed(6)}:${Number(pin.longitude).toFixed(6)}`;
-	      const existingIndex = seenPinKeys.get(dedupeKey);
-	      if (existingIndex == null) {
-	        seenPinKeys.set(dedupeKey, uniquePins.length);
-	        uniquePins.push(pin);
-	        return;
-	      }
-	      if (scorePin(pin) > scorePin(uniquePins[existingIndex])) {
-	        uniquePins[existingIndex] = pin;
-	      }
-	    });
-	    return uniquePins.sort((a, b) => {
-	      const left = Number.isFinite(Number(a.distance_km)) ? Number(a.distance_km) : Number.POSITIVE_INFINITY;
-	      const right = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km) : Number.POSITIVE_INFINITY;
-	      if (left !== right) return left - right;
+      const uniquePins = [];
+      const seenPinKeys = new globalThis.Map();
+      const scorePin = (pin) => {
+        let score = 0;
+        if (pin?.is_primary_storefront === true) score += 5;
+        if (Number.isFinite(Number(pin?.location_id)) && Number(pin.location_id) > 0) score += 4;
+        if (pin?.address_line) score += 2;
+        if (pin?.location_name) score += 1;
+        return score;
+      };
+      pins.forEach((pin, index) => {
+        if (!pin) return;
+        const numericLocationId = Number(pin.location_id);
+        const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
+          ? `${pin.slug || toSlug(pin?.tenant_name)}:loc:${numericLocationId}`
+          : `${pin.slug || toSlug(pin?.tenant_name)}:coord:${Number(pin.latitude).toFixed(6)}:${Number(pin.longitude).toFixed(6)}`;
+        const existingIndex = seenPinKeys.get(dedupeKey);
+        if (existingIndex == null) {
+          seenPinKeys.set(dedupeKey, uniquePins.length);
+          uniquePins.push(pin);
+          return;
+        }
+        if (scorePin(pin) > scorePin(uniquePins[existingIndex])) {
+          uniquePins[existingIndex] = pin;
+        }
+      });
+      return uniquePins.sort((a, b) => {
+        const left = Number.isFinite(Number(a.distance_km)) ? Number(a.distance_km) : Number.POSITIVE_INFINITY;
+        const right = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km) : Number.POSITIVE_INFINITY;
+        if (left !== right) return left - right;
       return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
     });
   }, [filteredDiscoveryStores, discoveryLocationMap, discoveryCoords, discoveryPinScope, search]);
@@ -11558,6 +11561,7 @@ export default function StorefrontApp() {
     try {
       await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
     } catch {
+      /* ignore logout errors; local session is cleared below regardless */
     }
     clearDgfyAuthToken();
     clearStoreAuthToken();
@@ -12111,7 +12115,7 @@ export default function StorefrontApp() {
                   </span>
                   {' '}For You
                 </h1>
-	                <p style={{ margin: isMobileViewport ? '16px auto 0' : '14px auto 0', maxWidth: isMobileViewport ? 332 : 800, color: '#94a3b8', fontSize: isMobileViewport ? 14 : 16.5, lineHeight: isMobileViewport ? 1.45 : 1.6, boxSizing: 'border-box' }}>
+                  <p style={{ margin: isMobileViewport ? '16px auto 0' : '14px auto 0', maxWidth: isMobileViewport ? 332 : 800, color: '#94a3b8', fontSize: isMobileViewport ? 14 : 16.5, lineHeight: isMobileViewport ? 1.45 : 1.6, boxSizing: 'border-box' }}>
                   Find nearby products, services, and businesses-faster, smarter, and all in one place.
                 </p>
               </div>
@@ -12135,7 +12139,7 @@ export default function StorefrontApp() {
                     {' '}For You
                   </>
                 )}
-	                subtitle="Find nearby products, services, and businesses-faster, smarter, and all in one place."
+                  subtitle="Find nearby products, services, and businesses-faster, smarter, and all in one place."
               />
 
               <div ref={discoveryInteractiveAreaRef} style={{ display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
@@ -12145,11 +12149,11 @@ export default function StorefrontApp() {
                   <DiscoverySearchRegion viewportMode={discoveryViewportMode}>
                   <div style={{ width: '100%', minWidth: 0, padding: discoveryLayout.searchPadding, boxSizing: 'border-box' }}>
 
-	                    {/* Input row */}
-	                    <div style={{ maxWidth: discoveryLayout.searchMaxWidth, margin: '0 auto', width: '100%', minWidth: 0 }}>
-	                    <div
-	                      style={{
-	                        display: 'flex',
+                      {/* Input row */}
+                      <div style={{ maxWidth: discoveryLayout.searchMaxWidth, margin: '0 auto', width: '100%', minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: 'flex',
                         alignItems: 'center',
                         gap: 0,
                         background: '#fff',
@@ -12247,11 +12251,11 @@ export default function StorefrontApp() {
                         }}
                       >
                         <Search size={16} />
-	                        Search
-	                      </button>
-	                    </div>
-	                    </div>
-	                    {
+                          Search
+                        </button>
+                      </div>
+                      </div>
+                      {
                       (() => {
                         const primaryCats = [
                           { label: 'Food', icon: <UtensilsCrossed size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
@@ -12260,42 +12264,42 @@ export default function StorefrontApp() {
                           { label: 'Salon', icon: <Scissors size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#9333ea', bg: '#faf5ff', border: '#e9d5ff' },
                           { label: 'Pharmacy', icon: <HeartHandshake size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#e11d48', bg: '#fff1f2', border: '#fecdd3' }
                         ];
-	                        const extendedCats = [
+                          const extendedCats = [
                           { label: 'Bakery', icon: <Coffee size={14} />, color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
                           { label: 'Clothing', icon: <Shirt size={14} />, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
                           { label: 'Drinks', icon: <CupSoda size={14} />, color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
                           { label: 'Food Stall', icon: <Sandwich size={14} />, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
                           { label: 'Frozen', icon: <Snowflake size={14} />, color: '#1a4e8d', bg: '#eff6ff', border: '#bfdbfe' },
                           { label: 'Beauty', icon: <SprayCan size={14} />, color: '#db2777', bg: '#fdf2f8', border: '#fbcfe8' },
-	                          { label: 'Hardware', icon: <Wrench size={14} />, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' }
-	                        ];
-		                        const mobileCategoryStep = 3;
-		                        const mobilePrimaryCount = 5;
-		                        const allMobileCategories = [...primaryCats, ...extendedCats];
-		                        const mobileOverflowCount = Math.max(0, allMobileCategories.length - mobilePrimaryCount);
-		                        const mobileOverflowGroups = Math.ceil(mobileOverflowCount / mobileCategoryStep);
-		                        const cardStyle = (cat) => ({
-		                          borderRadius: 999,
-		                          background: cat.bg,
-		                          color: cat.color,
-		                          padding: isDiscoveryMobileViewport ? '6px 12px' : '6px 14px',
-		                          minHeight: isDiscoveryMobileViewport ? 34 : 34,
-	                            height: 'auto',
-		                          fontSize: isDiscoveryMobileViewport ? 13 : 13,
-		                          lineHeight: 1.15,
-		                          fontWeight: isDiscoveryMobileViewport ? 600 : 600,
-		                          cursor: 'pointer',
-	                          display: 'flex',
-	                          flexDirection: 'row',
-	                          alignItems: 'center',
-	                          justifyContent: 'center',
-		                          gap: isDiscoveryMobileViewport ? 6 : 6,
-		                          flexShrink: 0,
-		                          width: 'auto',
-		                          border: `1.5px solid ${cat.border}`,
-		                          boxShadow: '0 2px 8px rgba(15,23,42,.04)',
-		                          transition: 'all 200ms ease'
-	                        });
+                            { label: 'Hardware', icon: <Wrench size={14} />, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' }
+                          ];
+                            const mobileCategoryStep = 3;
+                            const mobilePrimaryCount = 5;
+                            const allMobileCategories = [...primaryCats, ...extendedCats];
+                            const mobileOverflowCount = Math.max(0, allMobileCategories.length - mobilePrimaryCount);
+                            const mobileOverflowGroups = Math.ceil(mobileOverflowCount / mobileCategoryStep);
+                            const cardStyle = (cat) => ({
+                              borderRadius: 999,
+                              background: cat.bg,
+                              color: cat.color,
+                              padding: isDiscoveryMobileViewport ? '6px 12px' : '6px 14px',
+                              minHeight: isDiscoveryMobileViewport ? 34 : 34,
+                              height: 'auto',
+                              fontSize: isDiscoveryMobileViewport ? 13 : 13,
+                              lineHeight: 1.15,
+                              fontWeight: isDiscoveryMobileViewport ? 600 : 600,
+                              cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                              gap: isDiscoveryMobileViewport ? 6 : 6,
+                              flexShrink: 0,
+                              width: 'auto',
+                              border: `1.5px solid ${cat.border}`,
+                              boxShadow: '0 2px 8px rgba(15,23,42,.04)',
+                              transition: 'all 200ms ease'
+                          });
                         const visibleCategories = isDiscoveryMobileViewport
                           ? allMobileCategories
                           : (isCategoryRowExpanded ? [...primaryCats, ...extendedCats] : primaryCats);
@@ -12358,53 +12362,53 @@ export default function StorefrontApp() {
                                         <span style={{ display: 'block', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
                                       </button>
                                     ))}
-		                                  {isDiscoveryMobileViewport && mobileOverflowGroups > 0 && (
-		                                    <button
-		                                      type="button"
-		                                      onClick={() => {
-		                                        const nextGroup = (mobileCategoryGroupIndex + 1) % (mobileOverflowGroups + 1);
-		                                        setMobileCategoryGroupIndex(nextGroup);
-		                                        const targetIndex = nextGroup === 0
-		                                          ? 0
-		                                          : Math.min(
-		                                            allMobileCategories.length - 1,
-		                                            mobilePrimaryCount + ((nextGroup - 1) * mobileCategoryStep)
-		                                          );
-		                                        const railElement = mobileCategoryRailRef.current;
-		                                        if (!railElement) return;
-		                                        const targetButton = railElement.querySelector(`[data-mobile-category-index="${targetIndex}"]`);
-		                                        if (targetButton && typeof targetButton.scrollIntoView === 'function') {
-		                                          targetButton.scrollIntoView({
-		                                            behavior: 'smooth',
-		                                            block: 'nearest',
-		                                            inline: 'start'
-		                                          });
-		                                        }
-		                                      }}
-	                                      style={{
-	                                        position: 'sticky',
-	                                        right: 0,
-	                                        top: 0,
-	                                        height: 34,
-	                                        minWidth: 46,
-	                                        borderRadius: 999,
-	                                        display: 'inline-flex',
-	                                        alignItems: 'center',
-	                                        justifyContent: 'center',
-	                                        background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.78) 40%, rgba(255,255,255,.98) 100%)',
-	                                        backdropFilter: 'blur(6px)',
-	                                        WebkitBackdropFilter: 'blur(6px)',
-	                                        pointerEvents: 'auto',
-	                                        color: '#94a3b8',
-	                                        border: '1px solid rgba(226,232,240,.85)',
-	                                        boxShadow: '0 6px 16px rgba(15,23,42,.08)',
-	                                        cursor: 'pointer'
-	                                      }}
-	                                      aria-label="Show more categories"
-	                                    >
-	                                      <ChevronRight size={16} />
-	                                    </button>
-	                                  )}
+                                      {isDiscoveryMobileViewport && mobileOverflowGroups > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const nextGroup = (mobileCategoryGroupIndex + 1) % (mobileOverflowGroups + 1);
+                                            setMobileCategoryGroupIndex(nextGroup);
+                                            const targetIndex = nextGroup === 0
+                                              ? 0
+                                              : Math.min(
+                                                allMobileCategories.length - 1,
+                                                mobilePrimaryCount + ((nextGroup - 1) * mobileCategoryStep)
+                                              );
+                                            const railElement = mobileCategoryRailRef.current;
+                                            if (!railElement) return;
+                                            const targetButton = railElement.querySelector(`[data-mobile-category-index="${targetIndex}"]`);
+                                            if (targetButton && typeof targetButton.scrollIntoView === 'function') {
+                                              targetButton.scrollIntoView({
+                                                behavior: 'smooth',
+                                                block: 'nearest',
+                                                inline: 'start'
+                                              });
+                                            }
+                                          }}
+                                        style={{
+                                          position: 'sticky',
+                                          right: 0,
+                                          top: 0,
+                                          height: 34,
+                                          minWidth: 46,
+                                          borderRadius: 999,
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.78) 40%, rgba(255,255,255,.98) 100%)',
+                                          backdropFilter: 'blur(6px)',
+                                          WebkitBackdropFilter: 'blur(6px)',
+                                          pointerEvents: 'auto',
+                                          color: '#94a3b8',
+                                          border: '1px solid rgba(226,232,240,.85)',
+                                          boxShadow: '0 6px 16px rgba(15,23,42,.08)',
+                                          cursor: 'pointer'
+                                        }}
+                                        aria-label="Show more categories"
+                                      >
+                                        <ChevronRight size={16} />
+                                      </button>
+                                    )}
                                     {!isDiscoveryMobileViewport && (
                                       <button
                                         type="button"
@@ -12446,7 +12450,7 @@ export default function StorefrontApp() {
                                       <ChevronRight size={16} />
                                     </button>
                                   )}
-	                                </div>
+                                  </div>
                               </div>
 
                             </div>
@@ -12487,57 +12491,57 @@ export default function StorefrontApp() {
                     {/* Subtle top gradient to blend search bar edge */}
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 48, background: 'linear-gradient(180deg, rgba(255,255,255,.20) 0%, transparent 100%)', pointerEvents: 'none' }} />
                     {/* Bottom stat bar */}
-	                    <div
-	                      style={{
-	                        position: 'absolute',
-	                        bottom: isDiscoveryMobileViewport ? 12 : 0,
-	                        left: isDiscoveryMobileViewport ? 12 : 0,
-	                        right: isDiscoveryMobileViewport ? 12 : 0,
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: isDiscoveryMobileViewport ? 12 : 0,
+                          left: isDiscoveryMobileViewport ? 12 : 0,
+                          right: isDiscoveryMobileViewport ? 12 : 0,
                         background: isDiscoveryMobileViewport ? 'rgba(15, 23, 42, 0.75)' : 'linear-gradient(0deg, rgba(15,23,42,.72) 0%, transparent 100%)',
                         backdropFilter: isDiscoveryMobileViewport ? 'blur(12px)' : 'none',
                         borderRadius: isDiscoveryMobileViewport ? 20 : 0,
-	                        padding: isDiscoveryMobileViewport ? '16px 18px' : discoveryViewportMode === 'tablet' ? '26px 22px 14px' : '32px 24px 16px',
-	                        display: isDiscoveryMobileViewport ? 'none' : 'flex',
-	                        alignItems: isDiscoveryMobileViewport ? 'center' : 'flex-end',
-	                        justifyContent: 'space-between',
-	                        border: isDiscoveryMobileViewport ? '1px solid rgba(255,255,255,0.1)' : 'none',
-	                        boxShadow: isDiscoveryMobileViewport ? '0 8px 32px rgba(0,0,0,0.25)' : 'none'
-	                      }}
+                          padding: isDiscoveryMobileViewport ? '16px 18px' : discoveryViewportMode === 'tablet' ? '26px 22px 14px' : '32px 24px 16px',
+                          display: isDiscoveryMobileViewport ? 'none' : 'flex',
+                          alignItems: isDiscoveryMobileViewport ? 'center' : 'flex-end',
+                          justifyContent: 'space-between',
+                          border: isDiscoveryMobileViewport ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                          boxShadow: isDiscoveryMobileViewport ? '0 8px 32px rgba(0,0,0,0.25)' : 'none'
+                        }}
                     >
-	                      <div style={{ display: 'flex', alignItems: 'center', gap: isDiscoveryMobileViewport ? 10 : discoveryViewportMode === 'tablet' ? 18 : 20, width: '100%', justifyContent: isDiscoveryMobileViewport ? 'space-between' : 'flex-start' }}>
-	                        {isDiscoveryMobileViewport ? (
-	                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: 'space-between' }}>
-	                            <div style={{ minWidth: 0, borderRadius: 12, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)', padding: '7px 10px', display: 'grid', gap: 3 }}>
-	                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#f8fafc' }}>
-	                                <MapPin size={13} />
-	                                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', opacity: 0.9 }}>Location</span>
-	                              </div>
-	                              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(248,250,252,.86)', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>
-	                                Store Label
-	                              </div>
-	                            </div>
-	                            <button
-	                              type="button"
-	                              onClick={handleNearMe}
-	                              style={{
-	                                minWidth: 72,
-	                                borderRadius: 12,
-	                                background: 'rgba(255,255,255,.95)',
-	                                color: '#0f172a',
-	                                border: '1px solid rgba(148,163,184,.28)',
-	                                display: 'grid',
-	                                placeItems: 'center',
-	                                gap: 2,
-	                                padding: '6px 8px',
-	                                cursor: 'pointer',
-	                                boxShadow: '0 4px 10px rgba(15,23,42,.16)'
-	                              }}
-	                            >
-	                              <Navigation size={15} fill="#0f172a" />
-	                              <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', lineHeight: 1.1 }}>Current Location</span>
-	                            </button>
-	                          </div>
-	                        ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isDiscoveryMobileViewport ? 10 : discoveryViewportMode === 'tablet' ? 18 : 20, width: '100%', justifyContent: isDiscoveryMobileViewport ? 'space-between' : 'flex-start' }}>
+                          {isDiscoveryMobileViewport ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: 'space-between' }}>
+                              <div style={{ minWidth: 0, borderRadius: 12, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)', padding: '7px 10px', display: 'grid', gap: 3 }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#f8fafc' }}>
+                                  <MapPin size={13} />
+                                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', opacity: 0.9 }}>Location</span>
+                                </div>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(248,250,252,.86)', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>
+                                  Store Label
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleNearMe}
+                                style={{
+                                  minWidth: 72,
+                                  borderRadius: 12,
+                                  background: 'rgba(255,255,255,.95)',
+                                  color: '#0f172a',
+                                  border: '1px solid rgba(148,163,184,.28)',
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  gap: 2,
+                                  padding: '6px 8px',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 4px 10px rgba(15,23,42,.16)'
+                                }}
+                              >
+                                <Navigation size={15} fill="#0f172a" />
+                                <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', lineHeight: 1.1 }}>Current Location</span>
+                              </button>
+                            </div>
+                          ) : (
                           [
                             { label: 'Stores', value: String(stableHeroDiscoveryMapPins.length || 0) },
                             { label: 'Open Now', value: String(storesWithNearestBranch.filter((s) => s.storefront_open).length) }
@@ -12550,14 +12554,14 @@ export default function StorefrontApp() {
                         )}
                       </div>
                       
-	                      {!isDiscoveryMobileViewport && (
-	                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.20)', borderRadius: 999, padding: '6px 12px', color: 'rgba(255,255,255,.88)', fontSize: 12, fontWeight: 600, backdropFilter: 'blur(8px)' }}>
-	                          <MapPin size={12} />
-	                          Live Map
-	                        </div>
-	                      )}
-	                    </div>
-	                    </div>
+                        {!isDiscoveryMobileViewport && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.20)', borderRadius: 999, padding: '6px 12px', color: 'rgba(255,255,255,.88)', fontSize: 12, fontWeight: 600, backdropFilter: 'blur(8px)' }}>
+                            <MapPin size={12} />
+                            Live Map
+                          </div>
+                        )}
+                      </div>
+                      </div>
                       {isDiscoveryMobileViewport && (
                         <div
                           style={{
@@ -12636,9 +12640,9 @@ export default function StorefrontApp() {
                           </button>
                         </div>
                       )}
-	                      </DiscoveryMapCard>
-	                  </>
-	                )}
+                        </DiscoveryMapCard>
+                    </>
+                  )}
                 {hasDiscoverySearch && renderDiscoveryResultsStage()}
               </div>
               </div>
@@ -12849,7 +12853,7 @@ export default function StorefrontApp() {
                             <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
                               <CheckCircle2 size={36} strokeWidth={3} />
                             </div>
-                            <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a' }}>You're All Set!</div>
+                            <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a' }}>You&apos;re All Set!</div>
                             <div style={{ fontSize: 11, color: '#64748b', margin: '8px 0 24px', lineHeight: 1.5 }}>Your order has been placed successfully.</div>
                             <div style={{ background: '#1a4e8d', color: '#fff', fontSize: 11, fontWeight: 700, padding: '12px 0', width: '100%', borderRadius: 10, marginBottom: 12 }}>View Order</div>
                             <div style={{ color: '#1a4e8d', fontSize: 11, fontWeight: 700 }}>Track Your Order</div>
@@ -12970,14 +12974,14 @@ export default function StorefrontApp() {
                             store?.has_in_stock_match === true ? 'Available Now' : null,
                             store.matching_item_count > 2 ? 'Featured' : 'Local'
                           ].filter(Boolean);
-	                          const isOpen = store.storefront_open ?? true;
-	                          const featuredHoursLabel = formatStorefrontHoursLabel(
+                            const isOpen = store.storefront_open ?? true;
+                            const featuredHoursLabel = formatStorefrontHoursLabel(
                               store?.storefront_hours,
                               store?.nearest_location_hours || store?.storefront_hours_status?.display || ''
                             );
-	                          const featuredClosedNote = !isOpen
+                            const featuredClosedNote = !isOpen
                             ? `Store closed for now${featuredHoursLabel ? ` \u2022 ${featuredHoursLabel}` : ''}`
-	                            : '';
+                              : '';
                           const coverImageUrl = withAssetOrigin(store?.storefront_cover_image_url) || withAssetOrigin(store?.storefront_profile_image_url) || '';
                           const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url) || coverImageUrl || '';
                           const coverImageKey = `featured-cover:${storeSlug}:${coverImageUrl}`;
@@ -13011,7 +13015,7 @@ export default function StorefrontApp() {
                           }
 
                           return (
-	                            <div key={store.id || store.slug || i} style={{ minWidth: 280, width: 280, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 12px 32px rgba(15,23,42,0.05)', display: 'flex', flexDirection: 'column', textAlign: 'left', overflow: 'hidden', scrollSnapAlign: 'start', flexShrink: 0, position: 'relative', opacity: isOpen ? 1 : 0.72 }}>
+                              <div key={store.id || store.slug || i} style={{ minWidth: 280, width: 280, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 12px 32px rgba(15,23,42,0.05)', display: 'flex', flexDirection: 'column', textAlign: 'left', overflow: 'hidden', scrollSnapAlign: 'start', flexShrink: 0, position: 'relative', opacity: isOpen ? 1 : 0.72 }}>
                               
                               {/* Cover Area */}
                               <div style={{ height: 160, background: bg, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -13027,8 +13031,8 @@ export default function StorefrontApp() {
                                 {/* Subtle pattern overlay */}
                                 <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at center, rgba(255,255,255,0.2) 1px, transparent 1px)', backgroundSize: '16px 16px', opacity: 0.5 }} />
                                 
-	                                {isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#16a34a', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }}>Open Now</div>}
-	                                {!isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(239,68,68,0.3)' }}>Closed</div>}
+                                  {isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#16a34a', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }}>Open Now</div>}
+                                  {!isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(239,68,68,0.3)' }}>Closed</div>}
                                 
                                 {/* Big thematic icon */}
                                 {!coverImageUrl || isBrandingImageBlocked(coverImageKey) ? <div style={{ opacity: 0.8, position: 'relative', zIndex: 1 }}>{icon}</div> : null}
@@ -13052,34 +13056,34 @@ export default function StorefrontApp() {
 
                               {/* Info */}
                               <div style={{ padding: '16px 20px 24px', display: 'flex', flexDirection: 'column', flex: 1 }}>
-	                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-	                                  <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n}</h3>
-	                                  <span
-	                                    title={isOpen ? 'Open' : 'Closed'}
-	                                    aria-label={isOpen ? 'Open' : 'Closed'}
-	                                    style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, transform: 'translateY(1px)' }}
-	                                  >
-	                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: isOpen ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isOpen ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
-	                                  </span>
-	                                </div>
-	                                <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 12px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                    <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n}</h3>
+                                    <span
+                                      title={isOpen ? 'Open' : 'Closed'}
+                                      aria-label={isOpen ? 'Open' : 'Closed'}
+                                      style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, transform: 'translateY(1px)' }}
+                                    >
+                                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: isOpen ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isOpen ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 12px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</div>
                                 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 20 }}>
                                   <span style={{ color: '#f59e0b', fontSize: 14 }}>{'\u2605'}</span> {ratingValue} ({ratingCount}) <span style={{ color: '#cbd5e1', margin: '0 2px' }}>{'\u2022'}</span> {d}
                                 </div>
 
-	                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24, height: 26, overflow: 'hidden' }}>
-	                                  {t.slice(0, 3).map((tag) => (
-	                                    <div key={tag} style={{ fontSize: 10, fontWeight: 700, color: '#1a4e8d', background: '#eff6ff', padding: '5px 12px', borderRadius: 8, whiteSpace: 'nowrap' }}>
-	                                      {tag}
-	                                    </div>
-	                                  ))}
-	                                </div>
-	                                {!isOpen && (
-	                                  <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: -8, marginBottom: 12 }}>
-	                                    {featuredClosedNote}
-	                                  </div>
-	                                )}
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24, height: 26, overflow: 'hidden' }}>
+                                    {t.slice(0, 3).map((tag) => (
+                                      <div key={tag} style={{ fontSize: 10, fontWeight: 700, color: '#1a4e8d', background: '#eff6ff', padding: '5px 12px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                                        {tag}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {!isOpen && (
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: -8, marginBottom: 12 }}>
+                                      {featuredClosedNote}
+                                    </div>
+                                  )}
 
                                 <button onClick={() => goStore(store.slug, preferredLocationId)} style={{ marginTop: 'auto', width: '100%', padding: '12px 0', borderRadius: 12, border: '1.5px solid #1a4e8d', background: 'transparent', color: '#1a4e8d', fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s ease', letterSpacing: '0.01em' }} onMouseOver={(e) => {e.target.style.background = '#1a4e8d'; e.target.style.color = '#fff';}} onMouseOut={(e) => {e.target.style.background = 'transparent'; e.target.style.color = '#1a4e8d';}}>
                                   View Store
@@ -13836,11 +13840,11 @@ export default function StorefrontApp() {
             )}
             {isServicesMode && !isBookingSubpage && !isServiceDetailsSubpage && selectedStore && serviceHeroModel && (
               <ServicesHero
-	                serviceHeroModel={serviceHeroModel}
-	                selectedStore={selectedStore}
-	                isMobileViewport={isMobileViewport}
-	                viewportWidth={viewportWidth}
-	                hasMultipleStoreBranches={hasMultipleStoreBranches}
+                  serviceHeroModel={serviceHeroModel}
+                  selectedStore={selectedStore}
+                  isMobileViewport={isMobileViewport}
+                  viewportWidth={viewportWidth}
+                  hasMultipleStoreBranches={hasMultipleStoreBranches}
                 hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
                 selectedLocationId={selectedLocationId}
                 handleBranchMenuSelection={handleBranchMenuSelection}
@@ -13857,23 +13861,23 @@ export default function StorefrontApp() {
                 selectedLocation={selectedLocation}
                 isAboutExpanded={isAboutExpanded}
                 setIsAboutExpanded={setIsAboutExpanded}
-	                isServiceGalleryExpanded={isServiceGalleryExpanded}
-	                setIsServiceGalleryExpanded={setIsServiceGalleryExpanded}
-	                openStorefrontActionLink={openStorefrontActionLink}
-	                openTrackPanel={openTrackPanel}
-	                openAccountPanel={openCustomerDashboard}
-	                onRegisterBusiness={openBusinessRegistrationFlow}
-	                isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
-	                activeCustomerOrderCount={activeCustomerOrderCount}
-	                accountIdentityName={accountIdentityName}
-	                accountIdentityRawEmail={accountIdentityRawEmail}
-	                accountIdentityContact={accountIdentityContact}
-	                accountIdentityInitials={accountIdentityInitials}
-	                followEnabled={followUiEnabledForStore}
-	                shareEnabled={shareEnabledForStore}
-	                followState={followState}
-	                handleFollowAction={handleFollowAction}
-	              />
+                  isServiceGalleryExpanded={isServiceGalleryExpanded}
+                  setIsServiceGalleryExpanded={setIsServiceGalleryExpanded}
+                  openStorefrontActionLink={openStorefrontActionLink}
+                  openTrackPanel={openTrackPanel}
+                  openAccountPanel={openCustomerDashboard}
+                  onRegisterBusiness={openBusinessRegistrationFlow}
+                  isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
+                  activeCustomerOrderCount={activeCustomerOrderCount}
+                  accountIdentityName={accountIdentityName}
+                  accountIdentityRawEmail={accountIdentityRawEmail}
+                  accountIdentityContact={accountIdentityContact}
+                  accountIdentityInitials={accountIdentityInitials}
+                  followEnabled={followUiEnabledForStore}
+                  shareEnabled={shareEnabledForStore}
+                  followState={followState}
+                  handleFollowAction={handleFollowAction}
+                />
             )}
             {false && isServicesMode && selectedStore && serviceHeroModel && (
               <section style={{ marginBottom: 40 }}>
@@ -14090,7 +14094,7 @@ export default function StorefrontApp() {
                     <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
                       Back to Discovery
                     </GhostButton>
-                    <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} // {selectedStore?.tenant_name}</div>
+                    <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug}{' // '}{selectedStore?.tenant_name}</div>
                     <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
                       Tenant page: {routeSlug}
                     </div>
@@ -14118,22 +14122,22 @@ export default function StorefrontApp() {
                   isBrandingImageBlocked={isBrandingImageBlocked}
                   markBrandingImageError={markBrandingImageError}
                   selectedLocation={selectedLocation}
-	                  openStorefrontActionLink={openStorefrontActionLink}
-	                  openTrackPanel={openTrackPanel}
-	                  openAccountPanel={openCustomerDashboard}
-	                  onRegisterBusiness={openBusinessRegistrationFlow}
-	                  isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
-	                  activeCustomerOrderCount={activeCustomerOrderCount}
-	                  accountIdentityName={accountIdentityName}
-	                  accountIdentityRawEmail={accountIdentityRawEmail}
-	                  accountIdentityContact={accountIdentityContact}
-	                  accountIdentityInitials={accountIdentityInitials}
-	                  followEnabled={followUiEnabledForStore}
-	                  shareEnabled={shareEnabledForStore}
-	                  followState={followState}
-	                  handleFollowAction={handleFollowAction}
-	                  handleShareAction={handleShareAction}
-	                />
+                    openStorefrontActionLink={openStorefrontActionLink}
+                    openTrackPanel={openTrackPanel}
+                    openAccountPanel={openCustomerDashboard}
+                    onRegisterBusiness={openBusinessRegistrationFlow}
+                    isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
+                    activeCustomerOrderCount={activeCustomerOrderCount}
+                    accountIdentityName={accountIdentityName}
+                    accountIdentityRawEmail={accountIdentityRawEmail}
+                    accountIdentityContact={accountIdentityContact}
+                    accountIdentityInitials={accountIdentityInitials}
+                    followEnabled={followUiEnabledForStore}
+                    shareEnabled={shareEnabledForStore}
+                    followState={followState}
+                    handleFollowAction={handleFollowAction}
+                    handleShareAction={handleShareAction}
+                  />
                 ) : isSimpleMode && !isResolvedOrderSubpage && simpleStorefrontModel ? (
                   <SimpleHero
                     simpleHeroModel={simpleStorefrontModel}
@@ -18435,7 +18439,7 @@ return (
                                   onClick={(event) => {
                                     try {
                                       event.target.showPicker();
-                                    } catch (err) {}
+                                    } catch { /* showPicker unsupported in this browser */ }
                                   }}
                                   style={{ 
                                     width: '100%', 
@@ -18982,11 +18986,11 @@ return (
                       {!isFnbOrderResponsiveFlow && (
                         <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
                           <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-	                        <button type="button" onClick={() => setFnbOrderStep(2)} disabled={!fnbCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: fnbCustomerStepComplete ? `linear-gradient(180deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, boxShadow: fnbCustomerStepComplete ? `0 8px 20px ${fnbOrderBrandShadow}` : 'none', cursor: fnbCustomerStepComplete ? 'pointer' : 'not-allowed', fontFamily: servicesBodyFont, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
+                          <button type="button" onClick={() => setFnbOrderStep(2)} disabled={!fnbCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: fnbCustomerStepComplete ? `linear-gradient(180deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, boxShadow: fnbCustomerStepComplete ? `0 8px 20px ${fnbOrderBrandShadow}` : 'none', cursor: fnbCustomerStepComplete ? 'pointer' : 'not-allowed', fontFamily: servicesBodyFont, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
                         </div>
                       )}
                       {!fnbCustomerStepComplete && (
-	                        <div style={{ fontSize: 12, color: fnbOrderMutedBlueText }}>
+                          <div style={{ fontSize: 12, color: fnbOrderMutedBlueText }}>
                           Complete required fields to continue.
                         </div>
                       )}
@@ -19101,7 +19105,7 @@ return (
                       {!isFnbOrderResponsiveFlow && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <button type="button" onClick={() => setFnbOrderStep(2)} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-	                        <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: checkoutAllowed ? fnbOrderBrand : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: checkoutAllowed ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{checkoutLoading ? 'Processing...' : 'Place Order'}</button>
+                          <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: checkoutAllowed ? fnbOrderBrand : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: checkoutAllowed ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{checkoutLoading ? 'Processing...' : 'Place Order'}</button>
                         </div>
                       )}
                       {storefrontClosedByHours && renderStorefrontClosedNotice({ accent: fnbOrderBrand, background: '#fff7ed', border: '#fdba74' })}
@@ -19413,16 +19417,16 @@ return (
 
                 {fnbOrderStep === 4 && checkoutResult && (
                   <section style={{ border: '1px solid #dbe5ee', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 12 }}>
-	                    <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmation</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmation</div>
                     <div style={{ fontSize: 24, fontWeight: 900, color: '#1e293b' }}>Order submitted successfully</div>
-	                    <div style={{ display: 'grid', gap: 8, border: `1px solid ${fnbOrderBrandSoft}`, background: fnbOrderBrandTint, borderRadius: 14, padding: '12px 14px' }}>
-	                      <div style={{ fontSize: 13, fontWeight: 800, color: fnbOrderBrandDark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Fulfillment Handoff</div>
-	                      <div style={{ fontSize: 14, color: fnbOrderMutedBlueText, lineHeight: 1.6 }}>
+                      <div style={{ display: 'grid', gap: 8, border: `1px solid ${fnbOrderBrandSoft}`, background: fnbOrderBrandTint, borderRadius: 14, padding: '12px 14px' }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: fnbOrderBrandDark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Fulfillment Handoff</div>
+                        <div style={{ fontSize: 14, color: fnbOrderMutedBlueText, lineHeight: 1.6 }}>
                         {isDeliveryOrder
                           ? 'Delivery orders move from confirmation to preparing, then out for delivery.'
                           : 'Pickup orders move from confirmation to preparing, then ready for pickup.'}
                       </div>
-	                      <div style={{ fontSize: 13, color: fnbOrderBrandDark, fontWeight: 700 }}>
+                        <div style={{ fontSize: 13, color: fnbOrderBrandDark, fontWeight: 700 }}>
                         Next update: Confirmed by store
                       </div>
                     </div>
@@ -19441,7 +19445,7 @@ return (
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {checkoutResult?.payment?.checkout_url && (
-	                        <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: fnbOrderBrand, color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                          <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: fnbOrderBrand, color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
                           Continue to Payment
                         </a>
                       )}
@@ -19453,7 +19457,7 @@ return (
                           setSelectedTrackingPin(String(trackingPin || '').trim().toUpperCase());
                           goStoreTrackPage({ pin: trackingPin });
                         }}
-	                        style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: fnbOrderBrandTint, color: fnbOrderBrandDark, padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}
+                          style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: fnbOrderBrandTint, color: fnbOrderBrandDark, padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}
                       >
                         Open Tracking
                       </button>
@@ -20655,7 +20659,7 @@ return (
                               </div>
                               <div>
                                 <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: servicesBodyFont }}>Top-rated support</div>
-                                <div style={{ fontSize: 12, color: dgfySoftText, marginTop: 2 }}>We're here to help anytime</div>
+                                <div style={{ fontSize: 12, color: dgfySoftText, marginTop: 2 }}>We&apos;re here to help anytime</div>
                               </div>
                            </div>
                         </div>
@@ -20777,7 +20781,7 @@ return (
                           </div>
                           <div>
                             <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', fontFamily: servicesBodyFont }}>Thank you for your order!</div>
-                            <div style={{ fontSize: 13, color: '#334155', marginTop: 4 }}>We'll update you as your order progresses.</div>
+                            <div style={{ fontSize: 13, color: '#334155', marginTop: 4 }}>We&apos;ll update you as your order progresses.</div>
                           </div>
                         </div>
 
