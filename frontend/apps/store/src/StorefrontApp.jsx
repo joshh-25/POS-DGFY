@@ -2,11 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode';
 import maplibregl from 'maplibre-gl';
 import { toast } from 'sonner';
-import SavedAddressCard from './checkout/components/SavedAddressCard';
 import dgfyHeaderLogo from '../../../public/dgfy-logo.png';
 import dgfySymbolLogo from '../../../public/dgfy-symbologo.png';
 import dgfyBusinessOwnerPhoto from '../../../public/man.png';
-import { formatStorefrontBusinessHoursDisplay, STOREFRONT_BUSINESS_DAY_OPTIONS } from '../../../src/features/settings/storefrontBusinessHours.js';
+import { DEFAULT_CENTER, TILING_SERVER, tileTransformRequest } from '../../../src/components/maps/mapLibreShared.js';
+import { formatStorefrontBusinessHoursDisplay } from '../../../src/features/settings/storefrontBusinessHours.js';
 import {
   ArrowLeft,
   CalendarDays,
@@ -96,13 +96,35 @@ import {
   canViewCatalog,
   getAccessCapabilities,
   getInventoryDisplayLabel,
-  getStorefrontAccessBlockMessage
+  getStorefrontAccessBlockMessage,
+  shouldClearStorefrontCart
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
-import { getBusinessModePinMeta, renderBusinessModePinSvg } from './businessModePins.js';
-import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from './discoveryMapDom.js';
+import { getDiscoveryMarkerKey } from './discoveryMapDom.js';
+import {
+  DISCOVERY_PIN_LAYER_ID,
+  DISCOVERY_PIN_SOURCE_ID,
+  DISCOVERY_USER_SOURCE_ID,
+  buildDiscoveryPinLayerModel,
+  buildUserLocationSourceData,
+  ensureDiscoveryMapLayers,
+  ensureMapImage,
+  isKnownProvisionedPlaceholderCoordinate,
+  setGeoJsonSourceData
+} from './discoveryMapLayers.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
+import {
+  TERMINAL_CUSTOMER_TRACKING_STATUSES,
+  buildTrackingPinKey,
+  createCompletionTrackingScheduler,
+  dedupeActiveCustomerOrders,
+  formatTrackingCooldown,
+  getTrackingRetryAfterSeconds,
+  mergeVisibleTrackingResult,
+  resolveSelectedTrackingPollMs,
+  resolveTrackingRetryDelayMs
+} from './tracking/customerTrackingRefresh.js';
 import {
   DiscoveryCategoryRail,
   DiscoveryHeader,
@@ -114,12 +136,8 @@ import {
 } from './Components/store/DiscoveryResponsiveLayout.jsx';
 import { SolutionsPage } from './Components/storefront/pages/SolutionsPage.jsx';
 import { FnbProductDetailsPage } from './Components/storefront/pages/FnbProductDetailsPage.jsx';
-import { DgfyCustomerAuthModal } from './Components/storefront/pages/DgfyCustomerAuthModal.jsx';
 import { DgfyCustomerAccountPage } from './Components/storefront/pages/DgfyCustomerAccountPage.jsx';
-import { createCustomerIdentityRenderers } from './features/checkout/renderers/customerIdentityRenderers.jsx';
-import { createAddressPinEditorRenderer } from './features/locations/renderers/addressPinEditorRenderer.jsx';
-import { StoreCatalogEmptyState } from './features/shared-storefront/components/StoreCatalogEmptyState.jsx';
-import { createDiscoveryResultsRenderer } from './features/discovery/renderers/discoveryResultsRenderer.jsx';
+import { buildStorefrontQrUrl } from './storefrontQrUrl.js';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './Components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './Components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from './Components/storefront/hero/StorefrontShareQr.jsx';
@@ -136,61 +154,47 @@ import {
 import TrackingRouteMap, { extractTrackingMapCoordinates } from './tracking/TrackingRouteMap.jsx';
 import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
 import {
-  createBlankGuestCustomerIdentity,
-  shouldHydrateSavedGuestCustomerDetails
-} from './checkout/guestCustomerDetailsState.js';
-import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
 } from '../../../src/features/settings/workflowMode.js';
 import {
   buildBusinessLoginUrl,
   buildBusinessRegistrationUrl,
-  buildDgfyAuthUrl
+  buildDgfyAuthUrl,
+  buildPosTerminalUrl
 } from './businessRegistrationUrl.js';
-import { resolveStorefrontAccountUrl } from '../../../src/features/dgfyRouteHelpers.js';
-import {
-  markDgfySessionActive,
-  startDgfyPosSession,
-  startDgfyTenantSession
-} from '../../../src/services/dgfyAuthService.js';
-import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
+  clearDgfyExplicitSignOut,
   hasDgfyExplicitSignOut,
   markDgfyExplicitSignOut,
   readDgfyAuthToken,
   readDgfySignedOutEmail,
   readStoreAuthToken,
   rememberDgfySignedOutEmail,
-  writeDgfyAuthToken,
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
+import { startDgfyTenantSession } from '../../../src/services/dgfyAuthService.js';
 import { buildFnbCheckoutPayload } from './checkout/buildFnbCheckoutPayload.js';
 import { hasCustomerName, hasPrimaryContact, hasDeliveryAddress, isCustomerStepComplete } from './checkout/checkoutValidation.js';
+import {
+  clearGuestCheckoutDraft,
+  isValidStorePaymentType,
+  readGuestCheckoutDraft,
+  writeGuestCheckoutDraft
+} from './checkout/guestCheckoutDraft.js';
+import { CustomerIdentityCard } from './checkout/components/CustomerIdentityCard.jsx';
 import { CheckoutHeroHeader } from './checkout/components/CheckoutHeroHeader.jsx';
+import { GuestIdentityForm } from './checkout/components/GuestIdentityForm.jsx';
 import { OrderSummaryCard } from './checkout/components/OrderSummaryCard.jsx';
-import { PromoCodePanel } from './checkout/components/PromoCodePanel.jsx';
 import { PaymentMethodSelectorBlock } from './checkout/components/PaymentMethodSelectorBlock.jsx';
 import { CheckoutStepProgressHeader } from './checkout/components/CheckoutStepProgressHeader.jsx';
+import { SavedCustomerDetailsPanel } from './checkout/components/SavedCustomerDetailsPanel.jsx';
 import { SelectableOptionCard } from './checkout/components/SelectableOptionCard.jsx';
+import { PromoCodePanel } from './checkout/components/PromoCodePanel.jsx';
 import { GuestTrackingDrawer } from './tracking/components/GuestTrackingDrawer.jsx';
-import { PickupTrackingMobileView } from './features/tracking/components/PickupTrackingMobileView.jsx';
-import { DeliveryTrackingView } from './features/tracking/components/DeliveryTrackingView.jsx';
-import { ServiceBookingConfirmation } from './services/components/ServiceBookingConfirmation.jsx';
-import { ServiceBookingEmptyState } from './services/components/ServiceBookingEmptyState.jsx';
-import { ServiceBookingLocationSection } from './services/components/ServiceBookingLocationSection.jsx';
-import { ServiceBookingSelectedServiceCard } from './services/components/ServiceBookingSelectedServiceCard.jsx';
-import { ServiceBookingSummaryCard } from './services/components/ServiceBookingSummaryCard.jsx';
-import { ServiceBookingStepOne, ServiceBookingStepTwo, ServiceBookingStepThree } from './services/components/ServiceBookingSteps.jsx';
-import { ServiceCartDrawer } from './services/components/ServiceCartDrawer.jsx';
-import {
-  collectServicesRuntimeCompatibilityIssues,
-  formatServicesBookingFailureMessage,
-  resolveServicesBookingSubmitContract
-} from './services/servicesBookingContract.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 /* Legacy storefront contract anchors (frontend-only compatibility)
@@ -232,7 +236,6 @@ checkoutResult.payments.filter
 cart_line_id
 */
 
-const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
 const FNB_RECOMMENDED_LOCATION = Object.freeze({
   id: 'recommended-main-branch',
   label: 'Mandurriao, Iloilo City',
@@ -241,21 +244,6 @@ const FNB_RECOMMENDED_LOCATION = Object.freeze({
   longitude: DEFAULT_CENTER.longitude,
   recommended: true
 });
-const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
-
-const TILING_SERVER = import.meta.env.DEV
-  ? '/openfreemap/styles/positron'
-  : `${TILE_BASE}/styles/positron`;
-
-const tileTransformRequest = import.meta.env.DEV
-  ? (url) => {
-    if (url.startsWith(TILE_BASE)) {
-      return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
-    }
-    return { url };
-  }
-  : undefined;
-
 const ORDER_METHOD_OPTIONS = [
   { value: 'delivery', label: 'Delivery' },
   { value: 'pickup', label: 'Pickup' },
@@ -298,10 +286,6 @@ function buildPinnedDeliveryAddress(pin) {
   const longitude = Number(pin?.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
   return `Pinned map location (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`;
-}
-
-function isGeneratedPinnedDeliveryAddress(value = '') {
-  return /^Pinned map location\s*\(/i.test(String(value || '').trim());
 }
 
 function normalizeCoordinatePair({ latitude, longitude } = {}) {
@@ -984,6 +968,59 @@ const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+const getIndexedDiscoveryCoordinate = (store = {}) => {
+  const latitude = toNumberOrNull(store?.latitude);
+  const longitude = toNumberOrNull(store?.longitude);
+  if (latitude == null || longitude == null) return null;
+  if (isKnownProvisionedPlaceholderCoordinate(latitude, longitude)) return null;
+  return { latitude, longitude };
+};
+const coordinatesMatch = (left = {}, right = {}, tolerance = 0.00001) => {
+  const leftLatitude = toNumberOrNull(left?.latitude);
+  const leftLongitude = toNumberOrNull(left?.longitude);
+  const rightLatitude = toNumberOrNull(right?.latitude);
+  const rightLongitude = toNumberOrNull(right?.longitude);
+  if (leftLatitude == null || leftLongitude == null || rightLatitude == null || rightLongitude == null) return false;
+  return Math.abs(leftLatitude - rightLatitude) <= tolerance
+    && Math.abs(leftLongitude - rightLongitude) <= tolerance;
+};
+const getLocationMatchingIndexedRow = (store = {}, locations = []) => {
+  const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+  const indexedLocationId = Number(store?.location_id);
+  if (!Number.isInteger(indexedLocationId) || indexedLocationId <= 0) return null;
+  const match = (Array.isArray(locations) ? locations : [])
+    .find((location) => Number(location?.location_id) === indexedLocationId) || null;
+  if (!match) return null;
+  if (indexedCoordinate && !coordinatesMatch(indexedCoordinate, match)) return null;
+  return match;
+};
+const buildIndexedDiscoveryPin = ({ store = {}, slug = '', markerSuffix = 'indexed', location = null, distanceKm = null } = {}) => {
+  const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+  if (!indexedCoordinate) return null;
+  const numericLocationId = Number(store?.location_id ?? location?.location_id);
+  const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
+    ? numericLocationId
+    : `${indexedCoordinate.latitude.toFixed(6)}:${indexedCoordinate.longitude.toFixed(6)}`;
+  return {
+    ...store,
+    marker_key: `${slug || toSlug(store?.slug || store?.tenant_name) || 'store'}:${markerSuffix}:${stableLocationId}`,
+    latitude: indexedCoordinate.latitude,
+    longitude: indexedCoordinate.longitude,
+    location_id: Number.isInteger(numericLocationId) && numericLocationId > 0 ? numericLocationId : null,
+    location_name: location?.name || store?.location_name || store?.nearest_location_name || 'Main',
+    address_line: location?.address_line || store?.address_line || '',
+    is_primary_storefront: location?.is_primary_storefront === true || store?.is_primary_storefront === true,
+    branch_label: location?.is_primary_storefront === false ? 'Branch' : 'Storefront pin',
+    distance_km: Number.isFinite(Number(distanceKm))
+      ? Number(distanceKm)
+      : (Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null)
+  };
+};
+const isPublicMapDisabled = (entry = {}) => (
+  entry?.store_has_no_location === true
+  || entry?.map_publication_disabled === true
+  || entry?.public_map_enabled === false
+);
 const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const toRad = (value) => value * (Math.PI / 180);
   const earthRadiusKm = 6371;
@@ -1015,7 +1052,8 @@ const readRouteSlug = () => {
   const path = window.location.pathname || '';
   const patterns = [
     /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
-    /^\/store\/([^/]+)(?:\/[^/]+)?$/i
+    /^\/store\/([^/]+)(?:\/[^/]+)?$/i,
+    /^\/(?!api\/|map-dgfy(?:\/|$)|store-template(?:\/|$)|storefront-template(?:\/|$)|tenant-store(?:\/|$)|store(?:\/|$))([^/?#]+)$/i
   ];
   for (const pattern of patterns) {
     const match = path.match(pattern);
@@ -1031,6 +1069,25 @@ const readRouteSlug = () => {
   }
   return null;
 };
+const readRouteLocationId = () => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search || '');
+  const parsed = Number(params.get('location_id'));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+const hasMeaningfulDgfyAccount = (account = null) => Boolean(
+  account
+  && typeof account === 'object'
+  && (
+    account.id
+    || account.account_id
+    || account.email
+    || account.phone
+    || account.first_name
+    || account.last_name
+    || account.name
+  )
+);
 const readStoreSubpage = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
@@ -1109,8 +1166,6 @@ const configuredApiOrigin = resolveConfiguredOrigin(import.meta.env.VITE_API_BAS
 const apiOrigin = configuredApiOrigin || inferRuntimeApiOrigin();
 const configuredAssetOrigin = resolveConfiguredOrigin(import.meta.env.VITE_ASSET_BASE_URL);
 const assetOrigin = configuredAssetOrigin || apiOrigin;
-const configuredPublicStorefrontOrigin = resolveConfiguredOrigin(import.meta.env.VITE_PUBLIC_STOREFRONT_ORIGIN);
-const publicStorefrontOrigin = configuredPublicStorefrontOrigin || 'https://dgfy.ph';
 const buildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim();
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
@@ -1137,12 +1192,6 @@ const withAssetOrigin = (url) => {
     return '';
   }
 };
-const buildPublicStorefrontUrl = (slug) => {
-  const normalizedSlug = toSlug(slug);
-  if (!normalizedSlug) return '';
-  return `${publicStorefrontOrigin}${storePath(normalizedSlug)}`;
-};
-
 const parseOptionalArray = (value) => {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string' || !value.trim()) return [];
@@ -1371,7 +1420,14 @@ const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_
 const STOREFRONT_CHECKOUT_AUTH_RESUME_KEY = 'dgfy_store_checkout_auth_resume_v1';
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
-const TERMINAL_TRACKING_STATUSES = new Set(['completed', 'delivered', 'picked_up', 'cancelled', 'rejected']);
+const STOREFRONT_CHECKOUT_PAYMENT_OPTIONS = [
+  { value: 'cash', label: 'Cash on delivery/pickup' },
+  { value: 'gcash', label: 'GCash' },
+  { value: 'maya', label: 'Maya' },
+  { value: 'card', label: 'Card' },
+  { value: 'bank_transfer', label: 'Bank transfer' }
+];
+const TERMINAL_TRACKING_STATUSES = TERMINAL_CUSTOMER_TRACKING_STATUSES;
 const DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES = new Set(['order', 'pos_order', 'fnb_order']);
 const DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
 const EMPTY_ACCOUNT_PANEL = Object.freeze({
@@ -1385,9 +1441,7 @@ const EMPTY_ACCOUNT_PANEL = Object.freeze({
   notifications: [],
   unreadNotificationCount: 0,
   addresses: [],
-  loyalty: null,
-  businessCompanies: [],
-  businessStepUp: { verified: false }
+  loyalty: null
 });
 
 const normalizeSavedCustomerDetails = (value) => {
@@ -1468,7 +1522,6 @@ const normalizeCheckoutAuthResumeDraft = (value) => {
     serviceAppointmentAt: String(value.serviceAppointmentAt || '').trim(),
     servicePaymentTiming: String(value.servicePaymentTiming || '').trim(),
     customerAddress: String(value.customerAddress || '').trim(),
-    serviceLocationLandmarkNote: String(value.serviceLocationLandmarkNote || '').trim(),
     resolvedDeliveryAddress: String(value.resolvedDeliveryAddress || '').trim(),
     deliveryLocationAction: String(value.deliveryLocationAction || '').trim(),
     customerPin: value.customerPin && Number.isFinite(Number(value.customerPin.latitude)) && Number.isFinite(Number(value.customerPin.longitude))
@@ -1539,25 +1592,6 @@ const normalizeTrackedOrderEntry = (entry, fallback = {}) => {
   const trackingPin = String(entry.tracking_pin || entry.trackingPin || '').trim().toUpperCase();
   const status = String(entry.status || '').trim().toLowerCase();
   if (!trackingPin) return null;
-  const items = Array.isArray(entry.items)
-    ? entry.items
-      .map((item, index) => {
-        const name = String(item?.name || item?.item_name || item?.label || '').trim();
-        if (!name) return null;
-        const quantity = Number(item?.qty ?? item?.quantity ?? 1);
-        const amountValue = item?.amount ?? item?.line_subtotal ?? item?.sale_price ?? item?.price ?? null;
-        return {
-          id: item?.id ?? item?.line_id ?? item?.item_id ?? `tracked-item-${index}`,
-          item_id: Number.isFinite(Number(item?.item_id)) ? Number(item.item_id) : null,
-          name,
-          qty: Number.isFinite(quantity) ? quantity : 1,
-          amount: Number.isFinite(Number(amountValue)) ? Number(amountValue) : null,
-          image_url: String(item?.image_url || item?.thumbnail || '').trim(),
-          unit_of_measure: String(item?.unit_of_measure || '').trim()
-        };
-      })
-      .filter(Boolean)
-    : [];
   return {
     tracking_pin: trackingPin,
     status,
@@ -1576,21 +1610,9 @@ const normalizeTrackedOrderEntry = (entry, fallback = {}) => {
     eta_minutes: Number.isFinite(Number(entry.eta_minutes ?? entry.etaMinutes))
       ? Number(entry.eta_minutes ?? entry.etaMinutes)
       : null,
-    subtotal: Number.isFinite(Number(entry.subtotal ?? entry.subtotal_amount ?? entry.subtotalAmount))
-      ? Number(entry.subtotal ?? entry.subtotal_amount ?? entry.subtotalAmount)
-      : null,
-    delivery_fee: Number.isFinite(Number(entry.delivery_fee ?? entry.deliveryFee))
-      ? Number(entry.delivery_fee ?? entry.deliveryFee)
-      : null,
-    service_fee: Number.isFinite(Number(entry.service_fee ?? entry.serviceFee ?? entry.service_fee_amount ?? entry.serviceFeeAmount))
-      ? Number(entry.service_fee ?? entry.serviceFee ?? entry.service_fee_amount ?? entry.serviceFeeAmount)
-      : null,
     total_amount: Number.isFinite(Number(entry.total_amount ?? entry.totalAmount))
       ? Number(entry.total_amount ?? entry.totalAmount)
-      : null,
-    delivery_address: String(entry.delivery_address || entry.deliveryAddress || '').trim(),
-    branch_address: String(entry.branch_address || entry.branchAddress || '').trim(),
-    items
+      : null
   };
 };
 
@@ -1708,7 +1730,7 @@ const mergeAccountPanelActivity = (panel = EMPTY_ACCOUNT_PANEL, activity = null)
   return nextPanel;
 };
 
-const resolveStorefrontRouteSlug = (activity = {}, selectedStore = null, knownStores = []) => {
+const resolveStorefrontRouteSlug = (activity = {}, selectedStore = null) => {
   if (!activity || typeof activity !== 'object') return '';
   const display = activity.display && typeof activity.display === 'object' ? activity.display : {};
   const explicitSlug = toSlug(
@@ -1731,32 +1753,17 @@ const resolveStorefrontRouteSlug = (activity = {}, selectedStore = null, knownSt
     return selectedSlug;
   }
 
-  if (activityName && Array.isArray(knownStores) && knownStores.length > 0) {
-    const matchedStore = knownStores.find((store) => (
-      String(store?.tenant_name || store?.name || '').trim().toLowerCase() === activityName
-    ));
-    const matchedSlug = toSlug(matchedStore?.slug || '');
-    if (matchedSlug) return matchedSlug;
-  }
-
   return '';
 };
 
-const mapAccountActivityToTrackedOrderEntry = (activity = {}, selectedStore = null, knownStores = []) => {
+const mapAccountActivityToTrackedOrderEntry = (activity = {}, selectedStore = null) => {
   if (!activity || typeof activity !== 'object') return null;
   const trackingPin = String(activity.reference || activity.tracking_pin || '').trim().toUpperCase();
   if (!trackingPin) return null;
   const display = activity.display && typeof activity.display === 'object' ? activity.display : {};
-  const lineSource = Array.isArray(display.lines) && display.lines.length
-    ? display.lines
-    : Array.isArray(activity.summary_lines) && activity.summary_lines.length
-      ? activity.summary_lines
-      : Array.isArray(activity.items) && activity.items.length
-        ? activity.items
-        : Array.isArray(display.items) && display.items.length
-          ? display.items
-          : (Array.isArray(activity.order?.items) ? activity.order.items : []);
-  const lines = Array.isArray(lineSource) ? lineSource : [];
+  const lines = Array.isArray(activity.summary_lines) && activity.summary_lines.length
+    ? activity.summary_lines
+    : (Array.isArray(display.lines) ? display.lines : []);
   const firstLine = lines[0] || {};
   return normalizeTrackedOrderEntry({
     tracking_pin: trackingPin,
@@ -1765,38 +1772,13 @@ const mapAccountActivityToTrackedOrderEntry = (activity = {}, selectedStore = nu
     order_method: display.order_method || activity.order_method || 'delivery',
     updated_at: activity.updated_at || activity.occurred_at || '',
     created_at: activity.created_at || activity.occurred_at || '',
-    item_name: firstLine.label || firstLine.name || firstLine.item_name || '',
+    item_name: firstLine.label || firstLine.name || '',
     item_count: lines.length || 1,
-    items: lines.map((line, index) => {
-      const quantity = Number(line?.quantity ?? line?.qty ?? 1);
-      const lineSubtotal = Number(line?.line_subtotal ?? line?.amount ?? line?.subtotal_amount ?? line?.line_total_amount);
-      const unitPrice = Number(line?.price ?? line?.sale_price ?? line?.unit_price);
-      return {
-        id: line?.item_id ?? `account-line-${trackingPin}-${index}`,
-        item_id: line?.item_id ?? null,
-        name: line?.label || line?.name || line?.item_name || '',
-        qty: Number.isFinite(quantity) ? quantity : 1,
-        amount: Number.isFinite(lineSubtotal)
-          ? lineSubtotal
-          : (Number.isFinite(unitPrice) && Number.isFinite(quantity) ? unitPrice * quantity : null),
-        unit_of_measure: line?.unit_of_measure || ''
-      };
-    }),
-    subtotal: activity.subtotal_amount ?? display.subtotal_amount ?? null,
-    delivery_fee: activity.delivery_fee ?? display.delivery_fee ?? null,
-    service_fee: activity.service_fee_amount ?? activity.service_fee ?? display.service_fee_amount ?? display.service_fee ?? null,
     total_amount: activity.total_amount,
-    delivery_address: activity.delivery_address ?? display.delivery_address ?? activity.customer_address ?? display.customer_address ?? '',
-    store_slug: resolveStorefrontRouteSlug(activity, selectedStore, knownStores),
+    store_slug: resolveStorefrontRouteSlug(activity, selectedStore),
     store_name: activity.store_name || activity.store?.name || '',
-    branch_name: display.branch_name || activity.branch_name || '',
-    branch_address: display.branch_address || activity.branch_address || ''
+    branch_name: display.branch_name || activity.branch_name || ''
   });
-};
-
-export const __storefrontTrackingTestUtils = {
-  normalizeTrackedOrderEntry,
-  mapAccountActivityToTrackedOrderEntry
 };
 
 const maskValue = (value = '', keepPrefix = 2, keepSuffix = 1) => {
@@ -1934,72 +1916,210 @@ const downloadDataUrl = (dataUrl, filename) => {
 
 const loadImage = (src) => new Promise((resolve, reject) => {
   const image = new Image();
+  image.crossOrigin = 'anonymous';
   image.onload = () => resolve(image);
   image.onerror = reject;
   image.src = src;
 });
 
-const buildTicketImage = async ({ result = {}, storeName = '', cartLines = [], totals = {} } = {}) => {
+const fillRoundedRect = (ctx, x, y, width, height, radius, fillStyle) => {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, radius);
+  ctx.arcTo(x + width, y + height, x, y + height, radius);
+  ctx.arcTo(x, y + height, x, y, radius);
+  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.closePath();
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  ctx.restore();
+};
+
+const strokeRoundedRect = (ctx, x, y, width, height, radius, strokeStyle, lineWidth = 1) => {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, radius);
+  ctx.arcTo(x + width, y + height, x, y + height, radius);
+  ctx.arcTo(x, y + height, x, y, radius);
+  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.closePath();
+  ctx.lineWidth = lineWidth;
+  ctx.strokeStyle = strokeStyle;
+  ctx.stroke();
+  ctx.restore();
+};
+
+const drawImageCover = (ctx, image, x, y, width, height, radius = 0) => {
+  const imageRatio = image.width / image.height;
+  const frameRatio = width / height;
+  let drawWidth = width;
+  let drawHeight = height;
+  let drawX = x;
+  let drawY = y;
+
+  if (imageRatio > frameRatio) {
+    drawWidth = height * imageRatio;
+    drawX = x - ((drawWidth - width) / 2);
+  } else {
+    drawHeight = width / imageRatio;
+    drawY = y - ((drawHeight - height) / 2);
+  }
+
+  ctx.save();
+  if (radius > 0) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + width, y, x + width, y + height, radius);
+    ctx.arcTo(x + width, y + height, x, y + height, radius);
+    ctx.arcTo(x, y + height, x, y, radius);
+    ctx.arcTo(x, y, x + width, y, radius);
+    ctx.closePath();
+    ctx.clip();
+  }
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  ctx.restore();
+};
+
+const buildTicketImage = async ({ result = {}, storeName = '', storeLogoUrl = '', cartLines = [], totals = {} } = {}) => {
   const booking = result.booking || null;
   const reference = booking?.public_reference || result.tracking_pin || result.order?.tracking_pin || 'PENDING';
   const typeLabel = booking ? 'SERVICE TICKET' : 'ORDER RECEIPT';
   const paymentStatus = booking?.payment_status || result.order?.payment_status || result.payment_status || 'unpaid';
+  const exportScale = 2;
+  const width = 920;
+  const height = 1280;
   const canvas = document.createElement('canvas');
-  canvas.width = 900;
-  canvas.height = 1250;
+  canvas.width = width * exportScale;
+  canvas.height = height * exportScale;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(exportScale, exportScale);
+
+  fillRoundedRect(ctx, 0, 0, width, height, 0, '#f8fafc');
+  fillRoundedRect(ctx, 28, 28, width - 56, height - 56, 28, '#ffffff');
+  strokeRoundedRect(ctx, 28, 28, width - 56, height - 56, 28, '#dbe5ee', 1.5);
+
+  fillRoundedRect(ctx, 52, 52, width - 104, 164, 24, '#f8fbff');
+  strokeRoundedRect(ctx, 52, 52, width - 104, 164, 24, '#dbe5ee', 1);
+
+  const fallbackLogoSrc = dgfySymbolLogo || dgfyHeaderLogo;
+  try {
+    const logoImage = await loadImage(storeLogoUrl || fallbackLogoSrc);
+    fillRoundedRect(ctx, 76, 78, 72, 72, 20, '#ffffff');
+    strokeRoundedRect(ctx, 76, 78, 72, 72, 20, '#dbe5ee', 1);
+    drawImageCover(ctx, logoImage, 84, 86, 56, 56, 14);
+  } catch {
+    fillRoundedRect(ctx, 76, 78, 72, 72, 20, '#eff6ff');
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '700 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(storeName || DGFY_BRAND_NAME).slice(0, 1).toUpperCase(), 112, 122);
+    ctx.textAlign = 'left';
+  }
+
   ctx.fillStyle = '#0f172a';
-  ctx.font = '700 42px Arial';
-  ctx.fillText(typeLabel, 64, 88);
-  ctx.font = '700 26px Arial';
-  ctx.fillText(storeName || DGFY_BRAND_NAME, 64, 132);
-  ctx.font = '400 22px Arial';
+  ctx.font = '700 18px Arial';
+  ctx.fillText(typeLabel, 168, 96);
+  ctx.font = '700 28px Arial';
+  ctx.fillText(storeName || DGFY_BRAND_NAME, 168, 132);
+  ctx.font = '400 15px Arial';
   ctx.fillStyle = '#475569';
-  ctx.fillText(`Reference: ${reference}`, 64, 182);
-  ctx.fillText(`Payment: ${paymentStatus}`, 64, 218);
-  if (booking?.start_at) ctx.fillText(`Appointment: ${formatTicketDate(booking.start_at)}`, 64, 254);
-  if (booking?.service?.name || booking?.service_name) ctx.fillText(`Service: ${booking.service?.name || booking.service_name}`, 64, 290);
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.beginPath();
-  ctx.moveTo(64, 330);
-  ctx.lineTo(836, 330);
-  ctx.stroke();
+  ctx.fillText(`Reference: ${reference}`, 168, 162);
+  ctx.fillText(`Payment: ${paymentStatus}`, 168, 184);
+
+  const qrCardX = width - 288;
+  const qrCardY = 72;
+  const qrCardWidth = 184;
+  const qrCardHeight = 184;
+  fillRoundedRect(ctx, qrCardX, qrCardY, qrCardWidth, qrCardHeight, 24, '#ffffff');
+  strokeRoundedRect(ctx, qrCardX, qrCardY, qrCardWidth, qrCardHeight, 24, '#cfe7dd', 2);
+
+  const qrPayload = JSON.stringify({ type: booking ? 'service_booking' : 'store_order', reference, store: storeName || '' });
+  const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+    margin: 1,
+    width: 320,
+    errorCorrectionLevel: 'H',
+    color: { dark: '#0f172a', light: '#ffffff' }
+  });
+  const qrImage = await loadImage(qrDataUrl);
+  ctx.drawImage(qrImage, qrCardX + 24, qrCardY + 20, 136, 136);
+  fillRoundedRect(ctx, qrCardX + 67, qrCardY + 63, 50, 50, 16, 'rgba(255,255,255,0.94)');
+  strokeRoundedRect(ctx, qrCardX + 67, qrCardY + 63, 50, 50, 16, '#dbe5ee', 1);
+  try {
+    const qrLogo = await loadImage(storeLogoUrl || fallbackLogoSrc);
+    drawImageCover(ctx, qrLogo, qrCardX + 77, qrCardY + 73, 30, 30, 10);
+  } catch {
+    try {
+      const dgfyLogo = await loadImage(fallbackLogoSrc);
+      drawImageCover(ctx, dgfyLogo, qrCardX + 77, qrCardY + 73, 30, 30, 10);
+    } catch {
+      ctx.fillStyle = '#1d4ed8';
+      ctx.beginPath();
+      ctx.arc(qrCardX + 92, qrCardY + 88, 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   ctx.fillStyle = '#0f172a';
-  ctx.font = '700 24px Arial';
-  ctx.fillText('Line Items', 64, 382);
-  ctx.font = '400 22px Arial';
-  let y = 426;
+  ctx.font = '700 13px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Scan for booking details', qrCardX + (qrCardWidth / 2), qrCardY + 168);
+  ctx.textAlign = 'left';
+
+  let metadataY = 266;
+  ctx.font = '400 18px Arial';
+  ctx.fillStyle = '#475569';
+  if (booking?.start_at) {
+    ctx.fillText(`Appointment: ${formatTicketDate(booking.start_at)}`, 64, metadataY);
+    metadataY += 30;
+  }
+  if (booking?.service?.name || booking?.service_name) {
+    ctx.fillText(`Service: ${booking.service?.name || booking.service_name}`, 64, metadataY);
+    metadataY += 30;
+  }
+
+  ctx.strokeStyle = '#dbe5ee';
+  ctx.beginPath();
+  ctx.moveTo(64, metadataY + 18);
+  ctx.lineTo(width - 64, metadataY + 18);
+  ctx.stroke();
+
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '700 21px Arial';
+  ctx.fillText('Line Items', 64, metadataY + 58);
+  ctx.font = '400 18px Arial';
+  let y = metadataY + 96;
   cartLines.slice(0, 10).forEach((line) => {
     ctx.fillStyle = '#0f172a';
     ctx.fillText(`${Number(line.quantity || 1)} x ${line.name}`, 64, y);
     ctx.fillStyle = '#475569';
-    ctx.fillText(money(Number(line.quantity || 1) * Number(line.price || 0)), 650, y);
-    y += 38;
+    ctx.fillText(money(Number(line.quantity || 1) * Number(line.price || 0)), width - 260, y);
+    y += 30;
   });
-  ctx.strokeStyle = '#cbd5e1';
+  ctx.strokeStyle = '#dbe5ee';
   ctx.beginPath();
   ctx.moveTo(64, y + 8);
-  ctx.lineTo(836, y + 8);
+  ctx.lineTo(width - 64, y + 8);
   ctx.stroke();
-  y += 58;
+  y += 44;
   ctx.fillStyle = '#0f172a';
-  ctx.font = '700 28px Arial';
+  ctx.font = '700 24px Arial';
   ctx.fillText('Total', 64, y);
-  ctx.fillText(money(totals.total_amount || booking?.total_amount || result.order?.total_amount || 0), 650, y);
-  y += 56;
-  ctx.font = '400 20px Arial';
+  ctx.fillText(money(totals.total_amount || booking?.total_amount || result.order?.total_amount || 0), width - 260, y);
+  y += 42;
+  ctx.font = '400 16px Arial';
   ctx.fillStyle = '#64748b';
   ctx.fillText(booking ? 'Booking ticket - not a fiscal receipt unless marked paid.' : 'Digital order receipt/ticket. Keep this image for your records.', 64, y);
-  const qrPayload = JSON.stringify({ type: booking ? 'service_booking' : 'store_order', reference, store: storeName || '' });
-  const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 1, width: 220 });
-  const qrImage = await loadImage(qrDataUrl);
-  ctx.drawImage(qrImage, 340, 900, 220, 220);
-  ctx.font = '700 22px Arial';
+
+  fillRoundedRect(ctx, 64, height - 168, width - 128, 90, 20, '#f8fbff');
+  strokeRoundedRect(ctx, 64, height - 168, width - 128, 90, 20, '#dbe5ee', 1);
+  ctx.font = '700 18px Arial';
   ctx.fillStyle = '#0f172a';
   ctx.textAlign = 'center';
-  ctx.fillText(reference, 450, 1156);
+  ctx.fillText(reference, width / 2, height - 122);
+  ctx.font = '400 14px Arial';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('Saved storefront ticket QR', width / 2, height - 96);
   ctx.textAlign = 'left';
   return canvas.toDataURL('image/png');
 };
@@ -2011,11 +2131,10 @@ const formatTicketDate = (value) => {
 };
 
 const STOREFRONT_VISITOR_ID_STORAGE_KEY = 'dgfy_storefront_visitor_id';
-const STOREFRONT_VISITOR_ID_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
 const getOrCreateStorefrontVisitorId = () => {
   if (typeof window === 'undefined') return '';
   const existing = String(window.localStorage.getItem(STOREFRONT_VISITOR_ID_STORAGE_KEY) || '').trim();
-  if (STOREFRONT_VISITOR_ID_PATTERN.test(existing)) return existing;
+  if (existing && existing.length >= 16) return existing;
   const generated = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID().replace(/-/g, '')
     : `${Date.now()}${Math.random().toString(36).slice(2, 18)}`;
@@ -2023,28 +2142,10 @@ const getOrCreateStorefrontVisitorId = () => {
   return generated;
 };
 
-const makePinElement = (mode, selected = false, ariaLabel = 'Store marker', glow = false) => {
-  const el = document.createElement('div');
-  el.style.cssText = `width:${selected ? 38 : 34}px;height:${selected ? 48 : 44}px;display:flex;align-items:center;justify-content:center;cursor:pointer;`;
-  el.setAttribute('role', 'button');
-  el.setAttribute('tabindex', '0');
-  el.setAttribute('aria-label', ariaLabel);
-  el.classList.add('discovery-result-pin');
-  const visual = document.createElement('div');
-  visual.className = (selected || glow) ? 'discovery-result-pin-visual is-glowing' : 'discovery-result-pin-visual';
-  const pinHex = String(getBusinessModePinMeta(mode)?.color || '#1a4e8d').trim();
-  const hex = pinHex.startsWith('#') ? pinHex.slice(1) : pinHex;
-  const normalizedHex = hex.length === 3 ? hex.split('').map((char) => `${char}${char}`).join('') : hex;
-  if (/^[0-9a-fA-F]{6}$/.test(normalizedHex)) {
-    const r = Number.parseInt(normalizedHex.slice(0, 2), 16);
-    const g = Number.parseInt(normalizedHex.slice(2, 4), 16);
-    const b = Number.parseInt(normalizedHex.slice(4, 6), 16);
-    visual.style.setProperty('--pin-glow-rgb', `${r}, ${g}, ${b}`);
-  }
-  visual.innerHTML = renderBusinessModePinSvg(mode, selected);
-  el.appendChild(visual);
-  return el;
-};
+const EMPTY_HIGHLIGHTED_MARKER_KEYS = [];
+const STORE_MARKER_POPUP_OFFSET = { bottom: [0, -58], top: [0, 58], left: [58, 0], right: [-58, 0] };
+const STORE_MARKER_FIT_PADDING = { top: 76, right: 76, bottom: 104, left: 76 };
+const STORE_MARKER_AUTO_OPEN_FIT_PADDING = { top: 96, right: 96, bottom: 120, left: 96 };
 
 const makeUserLocationElement = () => {
   const el = document.createElement('div');
@@ -2062,26 +2163,40 @@ const makeUserLocationElement = () => {
 function StoresMap({
   stores,
   selectedKey,
+  highlightedKeys = EMPTY_HIGHLIGHTED_MARKER_KEYS,
   onSelectStore,
   userLocation = null,
   height = 360,
   autoOpenPopups = false,
   openPopupOnHover = false,
-  pinGlow = false
+  onSelectCluster = null,
+  viewportPolicy = 'auto',
+  viewportSignal = ''
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
   const popupsRef = useRef([]);
   const userMarkerRef = useRef(null);
+  const layerEventCleanupRef = useRef(null);
   const onSelectStoreRef = useRef(onSelectStore);
+  const onSelectClusterRef = useRef(onSelectCluster);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
+  const markerSignatureRef = useRef('');
+  const viewportHasFitRef = useRef(false);
+  const lastViewportLocationSignatureRef = useRef('');
+  const lastViewportSignalRef = useRef('');
   const [mapUnavailable, setMapUnavailable] = useState(false);
+  const [mapStyleReady, setMapStyleReady] = useState(false);
 
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
   }, [onSelectStore]);
+
+  useEffect(() => {
+    onSelectClusterRef.current = onSelectCluster;
+  }, [onSelectCluster]);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
@@ -2105,302 +2220,419 @@ function StoresMap({
 
     map.on('error', (e) => console.error('[MapLibre error]', e));
     map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
+    const markReady = () => setMapStyleReady(true);
+    if (typeof map.isStyleLoaded === 'function') {
+      if (map.isStyleLoaded()) {
+        markReady();
+      } else if (typeof map.once === 'function') {
+        map.once('load', markReady);
+      } else {
+        map.on('load', markReady);
+      }
+    } else {
+      markReady();
+    }
 
     return () => {
+      if (typeof map.off === 'function') {
+        try { map.off('load', markReady); } catch {
+          // MapLibre cleanup is best-effort across mocked and real maps.
+        }
+      }
       map.remove();
       mapRef.current = null;
+      setMapStyleReady(false);
     };
   }, []);
-
-    useEffect(() => {
-      const map = mapRef.current;
-      if (!map) return;
-      const generation = popupGenerationRef.current + 1;
-      popupGenerationRef.current = generation;
-      if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
-        window.cancelAnimationFrame(autoOpenFrameRef.current);
-        autoOpenFrameRef.current = null;
+  useEffect(() => () => {
+    if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+      window.cancelAnimationFrame(autoOpenFrameRef.current);
+      autoOpenFrameRef.current = null;
+    }
+    popupsRef.current.forEach((popup) => {
+      try { popup?.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the popup.
       }
+    });
+    popupsRef.current = [];
+    markersRef.current.forEach((marker) => {
+      try { marker?.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the marker.
+      }
+    });
+    markersRef.current = [];
+    if (typeof layerEventCleanupRef.current === 'function') {
+      layerEventCleanupRef.current();
+      layerEventCleanupRef.current = null;
+    }
+    if (userMarkerRef.current) {
+      try { userMarkerRef.current.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the user marker.
+      }
+      userMarkerRef.current = null;
+    }
+  }, []);
 
-      popupsRef.current.forEach((popup) => {
-        try { popup?.remove?.(); } catch { /* ignore cleanup errors */ }
-      });
-      popupsRef.current = [];
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapStyleReady) return undefined;
+    const generation = popupGenerationRef.current + 1;
+    popupGenerationRef.current = generation;
+    let cancelled = false;
+    if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+      window.cancelAnimationFrame(autoOpenFrameRef.current);
+      autoOpenFrameRef.current = null;
+    }
 
-      const rows = Array.isArray(stores) ? stores : [];
-      const uniqueRows = [];
-      const seenMarkerKeys = new Set();
-      rows.forEach((store) => {
-        if (!store) return;
+    const rows = Array.isArray(stores) ? stores : [];
+    const nextMarkerSignature = rows
+      .map((store) => {
         const markerKey = getDiscoveryMarkerKey(store);
-        if (!markerKey) {
-          uniqueRows.push(store);
-          return;
-        }
-        if (seenMarkerKeys.has(markerKey)) return;
-        seenMarkerKeys.add(markerKey);
-        uniqueRows.push(store);
-      });
-      const bounds = [];
-      const autoOpenCallbacks = [];
-      const coordinateGroups = uniqueRows.reduce((acc, store) => {
-      const lat = toNumberOrNull(store?.latitude);
-      const lng = toNumberOrNull(store?.longitude);
-      if (lat == null || lng == null) return acc;
-      const key = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      if (!Array.isArray(acc[key])) {
-        acc[key] = [];
-      }
-      acc[key].push(store);
-      return acc;
-    }, {});
-    const renderedCoordinateGroups = new Set();
+        const lat = Number(store?.latitude);
+        const lng = Number(store?.longitude);
+        return [
+          markerKey || toSlug(store?.slug || store?.tenant_name),
+          Number.isFinite(lat) ? lat.toFixed(6) : '',
+          Number.isFinite(lng) ? lng.toFixed(6) : '',
+          store?.location_id ?? ''
+        ].join(':');
+      })
+      .join('|');
+    const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
+    markerSignatureRef.current = nextMarkerSignature;
+    const normalizedViewportSignal = String(viewportSignal || '').trim();
+    const viewportSignalChanged = lastViewportSignalRef.current !== normalizedViewportSignal;
+    lastViewportSignalRef.current = normalizedViewportSignal;
+    const userLocationSignature = userLocation?.latitude != null && userLocation?.longitude != null
+      ? `${Number(userLocation.latitude).toFixed(6)}:${Number(userLocation.longitude).toFixed(6)}`
+      : '';
+    const userLocationChanged = lastViewportLocationSignatureRef.current !== userLocationSignature;
+    lastViewportLocationSignatureRef.current = userLocationSignature;
 
-      uniqueRows.forEach((store) => {
-      if (!store) return;
-      const lat = toNumberOrNull(store?.latitude);
-      const lng = toNumberOrNull(store?.longitude);
-      if (lat == null || lng == null) return;
-      const coordinateKey = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      if (renderedCoordinateGroups.has(coordinateKey)) return;
-      renderedCoordinateGroups.add(coordinateKey);
-      const group = Array.isArray(coordinateGroups[coordinateKey]) ? coordinateGroups[coordinateKey] : [];
-      if (group.length === 0) return;
-      const clusterSelected = selectedKey
-        ? group.some((entry) => String(getDiscoveryMarkerKey(entry) || '') === String(selectedKey))
-        : group.some((entry) => entry?.is_primary_storefront === true);
-
-      if (group.length > 1) {
-        const clusterElement = makeClusterElement(group.length, clusterSelected, `${group.length} storefronts at this location`);
-        const clusterPopup = new maplibregl.Popup({
-          anchor: 'bottom',
-          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
-          closeOnClick: false,
-          focusAfterOpen: false
-        });
-        popupsRef.current.push(clusterPopup);
-        const clusterNode = createSharedCoordinatePreviewNode(group, {
-          onSelect: (selectedStorefront) => {
-            clusterPopup.remove();
-            onSelectStoreRef.current?.(selectedStorefront);
-          },
-          onClose: () => {
-            clusterPopup.remove();
-          }
-        });
-        clusterPopup.setDOMContent(clusterNode);
-        const openClusterPopup = (event) => {
-          event?.preventDefault?.();
-          event?.stopPropagation?.();
-          clusterPopup.setLngLat([lng, lat]).addTo(map);
-        };
-        clusterElement.addEventListener('click', openClusterPopup);
-        clusterElement.addEventListener('pointerup', openClusterPopup);
-        clusterElement.addEventListener('touchend', openClusterPopup, { passive: false });
-        clusterElement.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            openClusterPopup(event);
-          }
-        });
-        const clusterMarker = new maplibregl.Marker({ element: clusterElement, anchor: 'center' })
-          .setLngLat([lng, lat])
-          .addTo(map);
-        markersRef.current.push(clusterMarker);
-        bounds.push([lng, lat]);
+    const retainedPopupKeys = new Set();
+    const retainedPopups = [];
+    popupsRef.current.forEach((popup) => {
+      const isOpen = typeof popup?.isOpen === 'function'
+        ? popup.isOpen()
+        : Boolean(popup?.node?.isConnected);
+      if (!markerSetChanged && isOpen) {
+        const popupMarkerKey = String(popup?.__dgfyMarkerKey || '').trim();
+        if (popupMarkerKey) retainedPopupKeys.add(popupMarkerKey);
+        retainedPopups.push(popup);
         return;
       }
+      try { popup?.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the popup.
+      }
+    });
+    popupsRef.current = retainedPopups;
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+    if (userMarkerRef.current) {
+      try { userMarkerRef.current.remove?.(); } catch {
+        // Cleanup is best-effort when migrating user location to map layers.
+      }
+      userMarkerRef.current = null;
+    }
+    if (typeof layerEventCleanupRef.current === 'function') {
+      layerEventCleanupRef.current();
+      layerEventCleanupRef.current = null;
+    }
 
-      const [singleStore] = group;
-      const markerKey = getDiscoveryMarkerKey(singleStore) || `${lat}:${lng}`;
-      const highlighted = selectedKey
-        ? markerKey === String(selectedKey)
-        : singleStore.is_primary_storefront === true;
-      const branchName = String(singleStore?.location_name || singleStore?.nearest_location_name || 'Branch');
-      const tenantName = String(singleStore?.tenant_name || 'Storefront');
-      const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
-      const el = makePinElement(singleStore.workflow_mode || singleStore.business_mode, highlighted, markerAriaLabel);
-        const popup = new maplibregl.Popup({
-          anchor: 'bottom',
-          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
-          closeOnClick: false,
-          focusAfterOpen: false
-        });
-        popupsRef.current.push(popup);
+    const layerModel = buildDiscoveryPinLayerModel({ stores: rows, selectedKey, highlightedKeys });
+    const userSourceData = buildUserLocationSourceData(userLocation);
+    const userFeature = userSourceData.features[0];
+    const bounds = [...layerModel.bounds];
+    if (userFeature) bounds.push(userFeature.geometry.coordinates);
+
+    const layerReady = ensureDiscoveryMapLayers(map);
+    if (layerReady) {
+      setGeoJsonSourceData(map, DISCOVERY_USER_SOURCE_ID, userSourceData);
+    }
+
+    const popupEntries = new globalThis.Map();
+    let activeHoverEntry = null;
+    const createPopupForEntry = (entry) => {
+      const existing = popupEntries.get(entry.coordinateKey);
+      if (existing) return existing;
+      const { group, isCluster, lat, lng, markerKey } = entry;
+      if (isCluster) {
+        const clusterEntry = {
+          markerKey,
+          coordinateKey: entry.coordinateKey,
+          highlighted: entry.highlighted,
+          isCluster: true,
+          group,
+          open: (mode = 'click') => {
+            if (mode !== 'click') return;
+            onSelectClusterRef.current?.(group, entry);
+          },
+          setMarkerHovered: () => {}
+        };
+        popupEntries.set(entry.coordinateKey, clusterEntry);
+        return clusterEntry;
+      }
+      const popup = new maplibregl.Popup({
+        anchor: 'bottom',
+        offset: STORE_MARKER_POPUP_OFFSET,
+        closeOnClick: false,
+        focusAfterOpen: false
+      });
+      popup.__dgfyMarkerKey = markerKey;
+      popupsRef.current.push(popup);
+
       let closeTimer = null;
       let markerHovered = false;
-      let previewHovered = false;
       let popupOpening = false;
+      let popupOpenMode = 'idle';
+      let previewNodeRef = null;
       const clearCloseTimer = () => {
         if (closeTimer) {
           window.clearTimeout(closeTimer);
           closeTimer = null;
         }
       };
-      const openPopup = () => {
+      const closeHoverPopup = () => {
+        if (popupGenerationRef.current !== generation || popupOpenMode !== 'hover') return;
+        markerHovered = false;
+        popupOpenMode = 'idle';
         clearCloseTimer();
-        const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
-        if (popupGenerationRef.current !== generation || popupOpening || popupAlreadyOpen) return;
-        popupOpening = true;
-        try {
-          if (popupGenerationRef.current !== generation) return;
-          popup.setLngLat([lng, lat]).addTo(map);
-        } finally {
-          popupOpening = false;
+        if (previewNodeRef?.style) {
+          previewNodeRef.style.pointerEvents = '';
         }
+        popup.remove();
       };
       const schedulePopupClose = () => {
         clearCloseTimer();
         closeTimer = window.setTimeout(() => {
-          if (popupGenerationRef.current === generation && !markerHovered && !previewHovered) {
-            popup.remove();
-          }
-        }, 120);
+          if (!markerHovered) closeHoverPopup();
+        }, 40);
       };
+      const bindPreviewHover = (node) => {
+        node.addEventListener('mouseenter', () => {
+          if (popupOpenMode === 'click') {
+            clearCloseTimer();
+          }
+        });
+        node.addEventListener('mouseleave', () => {
+          if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
+        });
+        node.addEventListener('focusin', () => {
+          if (popupOpenMode === 'click') {
+            clearCloseTimer();
+          }
+        });
+        node.addEventListener('focusout', (event) => {
+          const nextFocused = event.relatedTarget;
+          if (nextFocused && node.contains(nextFocused)) return;
+          if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
+        });
+      };
+      const [singleStore] = group;
       const previewNode = createStoreMarkerPreviewNode(singleStore, {
         resolveAssetUrl: withAssetOrigin,
         onAction: () => onSelectStoreRef.current?.(singleStore),
         onClose: () => {
           markerHovered = false;
-          previewHovered = false;
           clearCloseTimer();
+          popupOpenMode = 'idle';
+          if (previewNodeRef?.style) {
+            previewNodeRef.style.pointerEvents = '';
+          }
           popup.remove();
         }
       });
-      previewNode.addEventListener('mouseenter', () => {
-        previewHovered = true;
-        clearCloseTimer();
-      });
-      previewNode.addEventListener('mouseleave', () => {
-        previewHovered = false;
-        schedulePopupClose();
-      });
-      previewNode.addEventListener('focusin', () => {
-        previewHovered = true;
-        clearCloseTimer();
-      });
-      previewNode.addEventListener('focusout', (event) => {
-        const nextFocused = event.relatedTarget;
-        if (nextFocused && previewNode.contains(nextFocused)) return;
-        previewHovered = false;
-        schedulePopupClose();
-      });
+      previewNodeRef = previewNode;
+      bindPreviewHover(previewNode);
       previewNode.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
           event.preventDefault();
+          popupOpenMode = 'idle';
+          if (previewNodeRef?.style) {
+            previewNodeRef.style.pointerEvents = '';
+          }
           popup.remove();
-          el.focus();
         }
       });
       popup.setDOMContent(previewNode);
-      const hoverPreviewEnabled = openPopupOnHover
-        && typeof window !== 'undefined'
-        && window.matchMedia?.('(hover: hover)').matches;
-      const openPopupFromPointer = (event) => {
-        event?.preventDefault?.();
-        event?.stopPropagation?.();
-        openPopup();
+      const open = (mode = 'click') => {
+        popupOpenMode = mode === 'click' || popupOpenMode === 'click' ? 'click' : 'hover';
+        clearCloseTimer();
+        if (previewNodeRef?.style) {
+          previewNodeRef.style.pointerEvents = popupOpenMode === 'hover' ? 'none' : '';
+        }
+        const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
+        if (popupOpening || popupAlreadyOpen) return;
+        popupOpening = true;
+        try {
+          popup.setLngLat([lng, lat]).addTo(map);
+        } finally {
+          popupOpening = false;
+        }
       };
-      el.addEventListener('click', openPopupFromPointer);
-      el.addEventListener('pointerup', openPopupFromPointer);
-      el.addEventListener('touchend', openPopupFromPointer, { passive: false });
-      el.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          openPopup();
+      popupEntries.set(entry.coordinateKey, {
+        markerKey,
+        coordinateKey: entry.coordinateKey,
+        highlighted: entry.highlighted,
+        isCluster: false,
+        open,
+        closeHoverPopup,
+        setMarkerHovered: (value) => {
+          markerHovered = Boolean(value);
+          if (markerHovered) {
+            clearCloseTimer();
+          } else if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
         }
       });
-      if (hoverPreviewEnabled) {
-        el.addEventListener('mouseenter', () => {
-          markerHovered = true;
-          openPopup();
-        });
-        el.addEventListener('mouseleave', () => {
-          markerHovered = false;
-          schedulePopupClose();
-        });
-        el.addEventListener('focus', () => {
-          markerHovered = true;
-          openPopup();
-        });
-        el.addEventListener('blur', () => {
-          markerHovered = false;
-          schedulePopupClose();
-        });
-      }
-        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([lng, lat])
-          .addTo(map);
-        if (autoOpenPopups) {
-          autoOpenCallbacks.push({ key: markerKey, open: openPopup });
-        }
-        markersRef.current.push(marker);
-        bounds.push([lng, lat]);
-    });
+      return popupEntries.get(entry.coordinateKey);
+    };
 
-    if (userMarkerRef.current) {
-      userMarkerRef.current.remove();
-      userMarkerRef.current = null;
-    }
-    if (userLocation?.latitude != null && userLocation?.longitude != null) {
-      const uLat = Number(userLocation.latitude);
-      const uLng = Number(userLocation.longitude);
-      if (Number.isFinite(uLat) && Number.isFinite(uLng)) {
-        const el = makeUserLocationElement();
-        userMarkerRef.current = new maplibregl.Marker({ element: el })
-          .setLngLat([uLng, uLat])
-          .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
-          .addTo(map);
-        bounds.push([uLng, uLat]);
-      }
-    }
+    layerModel.groups.forEach((entry) => createPopupForEntry(entry));
 
-      if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
-      if (bounds.length > 1) {
-        const lngs = bounds.map((b) => b[0]);
-        const lats = bounds.map((b) => b[1]);
-        map.fitBounds(
-          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-          { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
-        );
+    const getEventEntry = (event) => {
+      const feature = Array.isArray(event?.features) ? event.features[0] : null;
+      const coordinateKey = String(feature?.properties?.coordinateKey || '').trim();
+      return coordinateKey ? popupEntries.get(coordinateKey) : null;
+    };
+    const clickHandler = (event) => {
+      event?.preventDefault?.();
+      const entry = getEventEntry(event);
+      entry?.open?.('click');
+    };
+    const hoverPreviewEnabled = openPopupOnHover
+      && typeof window !== 'undefined'
+      && window.matchMedia?.('(hover: hover)').matches;
+    const mouseEnterHandler = (event) => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = 'pointer';
       }
-        if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
-          autoOpenFrameRef.current = window.requestAnimationFrame(() => {
-            autoOpenFrameRef.current = null;
-            if (popupGenerationRef.current !== generation) return;
-            const openedMarkerKeys = new Set();
-            autoOpenCallbacks.forEach((entry) => {
-              const markerKey = String(entry?.key || '');
-              if (!markerKey || openedMarkerKeys.has(markerKey)) return;
-              openedMarkerKeys.add(markerKey);
-              entry?.open?.();
-            });
-          });
+      if (!hoverPreviewEnabled) return;
+      const entry = getEventEntry(event);
+      if (activeHoverEntry && activeHoverEntry !== entry) {
+        activeHoverEntry.closeHoverPopup?.();
+      }
+      activeHoverEntry = entry || null;
+      entry?.setMarkerHovered?.(true);
+      entry?.open?.('hover');
+    };
+    const mouseLeaveHandler = (event) => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
+      if (!hoverPreviewEnabled) return;
+      const entry = getEventEntry(event);
+      if (activeHoverEntry === entry) {
+        activeHoverEntry = null;
+      }
+      entry?.setMarkerHovered?.(false);
+    };
+    const mapMouseMoveHandler = (event) => {
+      if (!hoverPreviewEnabled || !activeHoverEntry || typeof map.queryRenderedFeatures !== 'function') return;
+      const renderedFeatures = map.queryRenderedFeatures(event?.point, { layers: [DISCOVERY_PIN_LAYER_ID] }) || [];
+      const stillOnActiveMarker = renderedFeatures.some((feature) => (
+        String(feature?.properties?.coordinateKey || '').trim() === activeHoverEntry.coordinateKey
+      ));
+      if (stillOnActiveMarker) return;
+      activeHoverEntry.setMarkerHovered?.(false);
+      activeHoverEntry = null;
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
+    };
+    if (layerReady && typeof map.on === 'function') {
+      map.on('click', DISCOVERY_PIN_LAYER_ID, clickHandler);
+      map.on('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler);
+      map.on('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler);
+      map.on('mousemove', mapMouseMoveHandler);
+      layerEventCleanupRef.current = () => {
+        if (typeof map.off !== 'function') return;
+        try { map.off('click', DISCOVERY_PIN_LAYER_ID, clickHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
         }
-      return () => {
-        if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
-          window.cancelAnimationFrame(autoOpenFrameRef.current);
-          autoOpenFrameRef.current = null;
+        try { map.off('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mousemove', mapMouseMoveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
         }
       };
-    }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
+    }
+
+    Promise.all(layerModel.requiredImages.map(({ id, svg }) => ensureMapImage(map, id, svg)))
+      .then(() => {
+        if (cancelled || popupGenerationRef.current !== generation) return;
+        if (layerReady) {
+          setGeoJsonSourceData(map, DISCOVERY_PIN_SOURCE_ID, layerModel.sourceData);
+        }
+      });
+
+    const shouldFitViewport = viewportPolicy !== 'search-stable'
+      || !viewportHasFitRef.current
+      || viewportSignalChanged
+      || userLocationChanged;
+    if (shouldFitViewport && bounds.length === 1) {
+      map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
+      viewportHasFitRef.current = true;
+    }
+    if (shouldFitViewport && bounds.length > 1) {
+      const lngs = bounds.map((b) => b[0]);
+      const lats = bounds.map((b) => b[1]);
+      map.fitBounds(
+        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+        { padding: autoOpenPopups ? STORE_MARKER_AUTO_OPEN_FIT_PADDING : STORE_MARKER_FIT_PADDING, maxZoom: autoOpenPopups ? 13.5 : 14 }
+      );
+      viewportHasFitRef.current = true;
+    }
+    const autoOpenEntries = Array.from(popupEntries.values()).filter((entry) => entry.highlighted);
+    if (autoOpenPopups && autoOpenEntries.length > 0 && typeof window !== 'undefined') {
+      autoOpenFrameRef.current = window.requestAnimationFrame(() => {
+        autoOpenFrameRef.current = null;
+        if (popupGenerationRef.current !== generation) return;
+        const openedMarkerKeys = new Set();
+        autoOpenEntries.forEach((entry) => {
+          const markerKey = String(entry?.markerKey || '');
+          if (!markerKey || retainedPopupKeys.has(markerKey) || openedMarkerKeys.has(markerKey)) return;
+          openedMarkerKeys.add(markerKey);
+          entry?.open?.();
+        });
+      });
+    }
+    return () => {
+      cancelled = true;
+      if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+        window.cancelAnimationFrame(autoOpenFrameRef.current);
+        autoOpenFrameRef.current = null;
+      }
+      if (typeof layerEventCleanupRef.current === 'function') {
+        layerEventCleanupRef.current();
+        layerEventCleanupRef.current = null;
+      }
+    };
+  }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, mapStyleReady]);
 
   if (mapUnavailable) {
     return (
       <div style={{ minHeight: height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden', background: '#f8fafc', padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#1f5f9f', fontWeight: 900 }}>
-          <MapPin size={15} />
+          <MapPin size={18} />
           Store map unavailable
         </div>
         <p style={{ margin: '8px 0 16px', color: '#64748b', fontSize: 13 }}>
           Map rendering is unavailable on this device, but storefront discovery and account access still work from the list.
         </p>
         <div style={{ display: 'grid', gap: 8 }}>
-          {(stores || []).slice(0, 6).map((store, index) => (
+          {(stores || []).slice(0, 6).map((store) => (
             <button
-              key={store?.slug || store?.id || index}
+              key={getDiscoveryMarkerKey(store)}
               type="button"
               onClick={() => onSelectStoreRef.current?.(store)}
               style={{ textAlign: 'left', border: '1px solid #dbeafe', background: '#fff', borderRadius: 12, padding: '10px 12px', color: '#0f172a', fontWeight: 800, cursor: 'pointer' }}
@@ -2507,7 +2739,8 @@ function DeliveryPinMap({
       });
     } catch (error) {
       console.warn('[DeliveryPinMap] MapLibre init unavailable', error);
-      queueMicrotask(() => setMapUnavailable(true));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- MapLibre initialization is an external imperative system.
+      setMapUnavailable(true);
       return undefined;
     }
     const canvasContainer = map.getCanvasContainer?.();
@@ -2553,7 +2786,7 @@ function DeliveryPinMap({
         markerRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom', draggable: !disabled })
           .setLngLat([lng, lat])
           .addTo(map);
-        if (!disabled) {
+        if (!disabled && typeof markerRef.current?.on === 'function') {
           markerRef.current.on('dragstart', () => {
             if (markerRef.current?._element) markerRef.current._element.style.cursor = 'grabbing';
           });
@@ -2688,12 +2921,49 @@ function DeliveryPinMap({
             zIndex: 10
           }}
         >
-            {overlayControls}
+          {overlayControls}
         </div>
       )}
       {disabled && (
         <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(255,255,255,.6)', zIndex: 20 }} />
       )}
+    </div>
+  );
+}
+
+function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRefreshTenantPage }) {
+  const normalizedMode = String(mode || 'setup_pending').trim().toLowerCase();
+  const title = normalizedMode === 'search_on_empty'
+    ? 'No items are available to search yet'
+    : 'Storefront items are not set up yet';
+  const description = normalizedMode === 'search_on_empty'
+    ? `No catalog is published for this tenant yet, so search for "${searchQuery}" cannot return results.`
+    : 'This tenant has not configured any storefront-visible items yet. Ask the tenant admin to enable items for storefront selling.';
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        border: '1px solid #cbd5e1',
+        borderRadius: 14,
+        background: 'linear-gradient(180deg,#f8fafc 0%,#ffffff 100%)',
+        padding: 16
+      }}
+    >
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{title}</div>
+      <p style={{ margin: '8px 0 0 0', color: '#475569', fontSize: 14 }}>{description}</p>
+      <div style={{ marginTop: 10, fontSize: 13, color: '#0f766e', fontWeight: 700 }}>
+        Customer checkout will be available once at least one storefront item is enabled.
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <button
+          type="button"
+          onClick={onRefreshTenantPage}
+          style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700 }}
+        >
+          Check Again
+        </button>
+      </div>
     </div>
   );
 }
@@ -2944,7 +3214,7 @@ const DefaultStorefrontHero = ({
               {modeAdapter.primaryActionLabel}
             </PrimaryButton>
           </div>
-          
+
           <div style={{ display: 'grid', gap: 8 }}>
             <h1 style={{ margin: 0, color: '#0f172a', fontSize: 24, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: heroTheme.displayFont }}>{selectedStore?.tenant_name || 'Loading Storefront...'}</h1>
             <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
@@ -3049,7 +3319,8 @@ const FnbHero = ({
   const showMobilePrimaryInfoCard = hasAboutSection || hasMobileStoreDetailsSummary;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
+  const hasMapData = !isPublicMapDisabled(selectedStore)
+    && Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
   const whyChooseUs = Array.isArray(heroSectionModel.whyChooseUs) && heroSectionModel.whyChooseUs.length > 0
     ? heroSectionModel.whyChooseUs
@@ -3092,14 +3363,13 @@ const FnbHero = ({
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: heroSectionModel.contactRows,
     hours: heroSectionModel.hours,
-    rawHoursData: heroSectionModel.rawHoursData,
     addressText,
     directionsUrl: buildGoogleMapsDirectionsUrl({
       latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
       longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
       addressLine: addressText
     })
-  }), [heroSectionModel.contactRows, heroSectionModel.hours, heroSectionModel.rawHoursData, addressText, selectedLocation?.latitude, selectedLocation?.longitude, selectedStore?.latitude, selectedStore?.longitude]);
+  }), [heroSectionModel.contactRows, heroSectionModel.hours, addressText, selectedLocation?.latitude, selectedLocation?.longitude, selectedStore?.latitude, selectedStore?.longitude]);
   const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
   const hasContactRows = visibleContactRows.length > 0;
   const mobileInfoCardWidth = 'calc(100% - 32px)';
@@ -3121,7 +3391,10 @@ const FnbHero = ({
   ), [heroSectionModel.deliveryPartners]);
   const storefrontShareUrl = useMemo(() => {
     if (!selectedStore?.slug) return '';
-    return buildPublicStorefrontUrl(selectedStore.slug);
+    return buildStorefrontQrUrl({
+      slug: selectedStore.slug,
+      currentPath: typeof window !== 'undefined' ? window.location.pathname : '/'
+    });
   }, [selectedStore?.slug]);
   return (
     <section style={{ marginBottom: 40 }}>
@@ -3216,6 +3489,8 @@ const FnbHero = ({
       >
         <SharedStorefrontShareQr
           storeUrl={storefrontShareUrl}
+          storeName={heroSectionModel.storeName || selectedStore?.tenant_name || 'Storefront'}
+          storeLogoUrl={heroSectionModel.profileImageUrl || ''}
           isMobileViewport={isMobileViewport}
           accentColor={heroTheme.accent || '#f97316'}
           shareEnabled={shareEnabled}
@@ -3250,6 +3525,9 @@ const FnbHero = ({
                     Starts at {money(fnbViewModel.startingPrice)}
                   </span>
                 )}
+                {heroSectionModel.hours && (
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.hours}</span>
+                )}
               </div>
               <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
                 <SharedStorefrontHeroNameCluster
@@ -3278,7 +3556,7 @@ const FnbHero = ({
                 </div>
               )}
             </div>
-  
+
             <div style={{
               display: 'flex',
               alignItems: isMobileViewport ? 'stretch' : 'flex-end',
@@ -3308,8 +3586,8 @@ const FnbHero = ({
               </div>
             </div>
           </div>
-  
-          
+
+
         )}
         <div style={{
           position: 'absolute',
@@ -3357,7 +3635,7 @@ const FnbHero = ({
               </PrimaryButton>
             )}
           </div>
-          
+
           <div style={{ display: 'grid', gap: 8 }}>
             <SharedStorefrontHeroNameCluster
               name={heroSectionModel.name}
@@ -3368,7 +3646,7 @@ const FnbHero = ({
               followState={followState}
               handleFollowAction={handleFollowAction}
             />
-            
+
             {heroSectionModel.tagline ? (
               <p style={{ margin: 0, color: '#f97316', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
             ) : (
@@ -3387,7 +3665,7 @@ const FnbHero = ({
             )}
             </div>
           </div>
-          
+
           <div className="no-scrollbar" style={{ width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px 16px 20px', display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', scrollPaddingInline: 16, WebkitOverflowScrolling: 'touch', margin: 0, alignItems: 'stretch', boxSizing: 'border-box' }}>
             {showMobilePrimaryInfoCard && (
               <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)', boxSizing: 'border-box' }}>
@@ -3505,7 +3783,7 @@ const FnbHero = ({
                        <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{content}</button>
                      ) : <div key={row.label}>{content}</div>;
                   })}
-                  
+
                   {selectedBranchLabel ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: heroTheme.bodyFont, fontWeight: 600 }}>
                      <div style={{ color: '#475569', display: 'flex' }}><MapPin size={16} /></div>
@@ -3524,7 +3802,20 @@ const FnbHero = ({
                           {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: heroTheme.bodyFont }}>{addressText}</div> : null}
                           {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: heroTheme.bodyFont }}>{storefrontCityLabel}</div> : null}
                        </div>
-                       <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
+                       <button
+                         type="button"
+                         onClick={(event) => {
+                           event.preventDefault();
+                           event.stopPropagation();
+                           const addressRow = visibleContactRows.find((row) => row.label === 'Address' && row.actionHref);
+                           if (addressRow?.actionHref) {
+                             openStorefrontActionLink(addressRow.actionHref);
+                             return;
+                           }
+                           setIsExpandedMapOpen(true);
+                         }}
+                         style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}
+                       >
                          Get directions
                        </button>
                     </div>
@@ -3540,7 +3831,7 @@ const FnbHero = ({
                     </div>
                   </>
                 )}
-                
+
                 {(hasMapData || visibleContactRows.length > 1) && expandedMobileCard !== 'contact' && (
                    <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
                       See details & map <ChevronDown size={14} />
@@ -3643,11 +3934,7 @@ const FnbHero = ({
                       <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'start', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
                         <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, minWidth: STOREFRONT_INFO_ICON_COLUMN, color: row.label === 'Messenger' ? '#7c3aed' : row.label === 'Facebook' ? '#2563eb' : row.label === 'Address' ? '#64748b' : '#64748b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</div>
                         <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
-                          {row.label === 'Hours' && row.rawHoursData ? (
-                            <StorefrontExpandableBusinessHours schedule={row.rawHoursData} theme={heroTheme} />
-                          ) : (
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
-                          )}
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
                           {row.actionHref ? (
                             <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
                               {row.actionLabel || 'Get directions'}
@@ -3770,7 +4057,6 @@ const FnbProductCard = ({
   available,
   modeAdapter,
   addToCart,
-  getCartFlySourceRect,
   isMobileViewport,
   fnbViewMode,
   onViewDetails
@@ -3785,21 +4071,20 @@ const FnbProductCard = ({
   const cardTextPrimary = heroTheme.textPrimary || '#2f1f16';
   const buttonTextOnAccent = heroTheme.buttonTextOnAccent || '#fffdf9';
   const CategoryIcon = FNB_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
-  
+
   const [isHovered, setIsHovered] = useState(false);
   const [isDetailsHovered, setIsDetailsHovered] = useState(false);
   const [isCartHovered, setIsCartHovered] = useState(false);
   const detailsCopy = item.descriptionPreview || 'Menu item available in this storefront.';
   const cardUiFont = heroTheme.bodyFont || "'Trebuchet MS', 'Segoe UI', sans-serif";
   const cardTitleFont = heroTheme.displayFont || cardUiFont;
-  
+
   const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
   const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
 
   if (isMobileViewport && fnbViewMode === 'list') {
     return (
       <article
-        data-cart-fly-origin="true"
         style={{
           background: '#fff',
           borderRadius: 20,
@@ -3830,7 +4115,7 @@ const FnbProductCard = ({
               <CategoryIcon size={32} />
             </div>
           )}
-          
+
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.0) 40%, rgba(32,20,15,0.2) 100%)', pointerEvents: 'none' }} />
           <div style={{
             position: 'absolute',
@@ -3849,7 +4134,7 @@ const FnbProductCard = ({
             {money(item.default_sale_price ?? 0)}
           </div>
         </div>
-        
+
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', padding: '2px 0', minWidth: 0 }}>
           <div style={{ display: 'grid', gap: 4 }}>
             <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a', lineHeight: 1.15, fontFamily: cardTitleFont, display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -3859,7 +4144,7 @@ const FnbProductCard = ({
               {detailsCopy}
             </p>
           </div>
-          
+
           <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
               <button
@@ -3883,11 +4168,7 @@ const FnbProductCard = ({
               </button>
               <button
                 type="button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  addToCart(item, { sourceRect: getCartFlySourceRect(event) });
-                }}
+                onClick={() => addToCart(item)}
                 disabled={!available}
                 style={{
                   width: 38,
@@ -3926,7 +4207,6 @@ const FnbProductCard = ({
 
   return (
     <article
-      data-cart-fly-origin="true"
       style={{
         background: cardSurface,
         borderRadius: isMobileViewport ? 20 : 28,
@@ -4007,26 +4287,19 @@ const FnbProductCard = ({
       <div style={{ padding: isMobileViewport ? '12px 12px 12px' : '18px 18px 16px', flex: 1, display: 'grid', gap: isMobileViewport ? 8 : 14 }}>
         <div style={{ display: 'grid', gap: isMobileViewport ? 4 : 8 }}>
           <h4 style={{ margin: 0, fontSize: cardTitleFontSize, fontWeight: 800, lineHeight: 1.15, color: cardTextPrimary, fontFamily: cardTitleFont, letterSpacing: '-0.025em', display: '-webkit-box', WebkitLineClamp: isMobileViewport ? 1 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</h4>
-          <div style={{ position: 'relative', maxHeight: 40, overflow: 'hidden' }}>
-            <p style={{
-              margin: 0,
-              fontSize: isMobileViewport ? 14 : 14,
-              lineHeight: 1.4,
-              color: '#475569',
-              fontFamily: cardUiFont
-            }}>
-              {detailsCopy}
-            </p>
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 24,
-              background: `linear-gradient(to top, ${cardSurface} 0%, transparent 100%)`,
-              pointerEvents: 'none'
-            }} />
-          </div>
+          <p style={{
+            margin: 0,
+            fontSize: isMobileViewport ? 14 : 14,
+            lineHeight: 1.4,
+            color: '#475569',
+            fontFamily: cardUiFont,
+            display: '-webkit-box',
+            WebkitLineClamp: descriptionLineClamp,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
+          }}>
+            {detailsCopy}
+          </p>
         </div>
         <div style={{
           marginTop: 'auto',
@@ -4063,11 +4336,7 @@ const FnbProductCard = ({
           </button>
           <button
             type="button"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              addToCart(item, { sourceRect: getCartFlySourceRect(event) });
-            }}
+            onClick={() => addToCart(item)}
             disabled={!available}
             onMouseEnter={() => available && setIsCartHovered(true)}
             onMouseLeave={() => setIsCartHovered(false)}
@@ -4179,20 +4448,9 @@ const SimpleProductCard = ({
       <div style={{ padding: 14, display: 'grid', gap: 10, flex: 1 }}>
         <div>
           <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700, lineHeight: 1.2, color: '#0f172a', fontFamily: displayFont }}>{item.name}</h4>
-          <div style={{ position: 'relative', maxHeight: 38, overflow: 'hidden', marginTop: 6 }}>
-            <p style={{ margin: 0, fontSize: 13, color: '#475569', lineHeight: 1.45, fontFamily: bodyFont }}>
-              {item.description || 'Simple mode product ready for quick ordering.'}
-            </p>
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 20,
-              background: `linear-gradient(to top, #ffffff 0%, transparent 100%)`,
-              pointerEvents: 'none'
-            }} />
-          </div>
+          <p style={{ margin: '6px 0 0 0', fontSize: 13, color: '#475569', lineHeight: 1.45, fontFamily: bodyFont, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {item.description || 'Simple mode product ready for quick ordering.'}
+          </p>
         </div>
         <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
@@ -4285,16 +4543,14 @@ const ServicesHero = ({
   const hasAboutOrGallerySection = hasAboutSection || hasGallerySection;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = Array.isArray(serviceHeroModel.mapStores) && serviceHeroModel.mapStores.length > 0;
   const visibleWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) ? serviceHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: serviceHeroModel.contactRows,
     hours: serviceHeroModel.hours,
-    rawHoursData: serviceHeroModel.rawHoursData,
     addressText,
     directionsUrl: serviceHeroModel.directionsUrl
-  }), [serviceHeroModel.contactRows, serviceHeroModel.hours, serviceHeroModel.rawHoursData, serviceHeroModel.directionsUrl, addressText]);
+  }), [serviceHeroModel.contactRows, serviceHeroModel.hours, serviceHeroModel.directionsUrl, addressText]);
   const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
   const hasContactRows = visibleContactRows.length > 0;
   const desktopColumns = hasAboutOrGallerySection
@@ -4310,12 +4566,12 @@ const ServicesHero = ({
   const servicesResponsiveLayout = useMemo(() => getServicesResponsiveLayout(viewportWidth), [viewportWidth]);
   const servicesFollowersLabel = formatFollowersLabel(followState?.followersCount);
   const servicesMobileInfoCardWidth = 'calc(100% - 32px)';
-  const deliveryPlatformLinks = useMemo(() => (
-    getDeliveryPlatformLinks(serviceHeroModel.deliveryPartners)
-  ), [serviceHeroModel.deliveryPartners]);
   const storefrontShareUrl = useMemo(() => {
     if (!selectedStore?.slug) return '';
-    return buildPublicStorefrontUrl(selectedStore.slug);
+    return buildStorefrontQrUrl({
+      slug: selectedStore.slug,
+      currentPath: typeof window !== 'undefined' ? window.location.pathname : '/'
+    });
   }, [selectedStore?.slug]);
 
   return (
@@ -4411,6 +4667,8 @@ const ServicesHero = ({
       >
         <SharedStorefrontShareQr
           storeUrl={storefrontShareUrl}
+          storeName={serviceHeroModel.storeName || selectedStore?.tenant_name || 'Storefront'}
+          storeLogoUrl={serviceHeroModel.profileImageUrl || ''}
           isMobileViewport={servicesResponsiveLayout.isMobileViewport}
           accentColor={servicesPrimary}
           shareEnabled={shareEnabled}
@@ -4546,7 +4804,7 @@ const ServicesHero = ({
                 </PrimaryButton>
               )}
             </div>
-            
+
             <div style={{ display: 'grid', gap: 8 }}>
               <SharedStorefrontHeroNameCluster
                 name={serviceHeroModel.name}
@@ -4557,7 +4815,7 @@ const ServicesHero = ({
                 followState={followState}
                 handleFollowAction={handleFollowAction}
               />
-              
+
               {serviceHeroModel.tagline ? (
                 <p style={{ margin: 0, color: servicesPrimary, fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: servicesBodyFont }}>{serviceHeroModel.tagline}</p>
               ) : (
@@ -4580,7 +4838,7 @@ const ServicesHero = ({
         </div>
       <div style={{ display: servicesResponsiveLayout.isMobileViewport ? 'grid' : 'none', gap: 0, paddingBottom: 24, marginTop: 24 }}>
           <div className="no-scrollbar" style={{ width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px 16px 20px', display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', scrollPaddingInline: 16, WebkitOverflowScrolling: 'touch', margin: 0, alignItems: 'stretch', boxSizing: 'border-box' }}>
-            
+
             {(hasAboutSection || hasGallerySection) && (
               <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesPrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesPrimaryShadow}`, boxSizing: 'border-box' }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12, fontFamily: servicesBodyFont }}>
@@ -4645,7 +4903,7 @@ const ServicesHero = ({
                        <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{content}</button>
                      ) : <div key={row.label}>{content}</div>;
                   })}
-                  
+
                   {selectedBranchLabel ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: servicesBodyFont, fontWeight: 600 }}>
                      <div style={{ color: '#475569', display: 'flex' }}><MapPin size={16} /></div>
@@ -4663,7 +4921,20 @@ const ServicesHero = ({
                           {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: servicesBodyFont }}>{addressText}</div> : null}
                           {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: servicesBodyFont }}>{storefrontCityLabel}</div> : null}
                        </div>
-                       <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: servicesBodyFont }}>
+                       <button
+                         type="button"
+                         onClick={(event) => {
+                           event.preventDefault();
+                           event.stopPropagation();
+                           const addressRow = visibleContactRows.find((row) => row.label === 'Address' && row.actionHref);
+                           if (addressRow?.actionHref) {
+                             openStorefrontActionLink(addressRow.actionHref);
+                             return;
+                           }
+                           setIsExpandedMapOpen(true);
+                         }}
+                         style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: servicesBodyFont }}
+                       >
                          Get directions
                        </button>
                     </div>
@@ -4677,41 +4948,9 @@ const ServicesHero = ({
                         <Maximize size={16} />
                       </button>
                     </div>
-                    {deliveryPlatformLinks.length > 0 ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: '#334155', whiteSpace: 'nowrap', fontFamily: servicesBodyFont }}>
-                          <Bike size={14} /> We deliver via
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
-                          {deliveryPlatformLinks.map((platform) => {
-                            const badge = (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 20, flexShrink: 0 }}>
-                                {platform.logoUrl ? (
-                                  <img src={platform.logoUrl} alt={platform.label} style={{ maxHeight: 14, width: 'auto', display: 'block', objectFit: 'contain' }} />
-                                ) : (
-                                  <span style={{ fontSize: 12, fontWeight: 800, color: '#475569', whiteSpace: 'nowrap' }}>{platform.label}</span>
-                                )}
-                              </span>
-                            );
-                            return platform.href ? (
-                              <button
-                                key={`services-mobile-delivery-platform-${platform.partner}`}
-                                type="button"
-                                onClick={() => openStorefrontActionLink(platform.href)}
-                                style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
-                              >
-                                {badge}
-                              </button>
-                            ) : (
-                              <span key={`services-mobile-delivery-platform-${platform.partner}`}>{badge}</span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
                   </>
                 )}
-                
+
                 {(hasMapData || visibleContactRows.length > 1) && expandedMobileCard !== 'contact' && (
                    <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: servicesPrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
                       See details & map <ChevronDown size={14} />
@@ -4724,7 +4963,7 @@ const ServicesHero = ({
                 )}
               </div>
             )}
-            
+
             {hasWhyChooseUs && (
               <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesPrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesPrimaryShadow}`, boxSizing: 'border-box' }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: servicesBodyFont }}>Why Choose Us</div>
@@ -4787,7 +5026,7 @@ const ServicesHero = ({
                   )}
                 </div>
               )}
-              
+
               {hasGallerySection && (
                 <div style={{ display: 'grid', gap: 10 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Gallery</div>
@@ -4820,11 +5059,7 @@ const ServicesHero = ({
                       <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'start', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#111827', fontFamily: servicesBodyFont }}>
                         <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, minWidth: STOREFRONT_INFO_ICON_COLUMN, color: servicesPrimaryDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</div>
                         <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
-                          {row.label === 'Hours' && row.rawHoursData ? (
-                            <StorefrontExpandableBusinessHours schedule={row.rawHoursData} theme={modeAdapter?.heroTheme} />
-                          ) : (
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
-                          )}
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
                           {row.actionHref ? (
                             <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: servicesBodyFont }}>
                               {row.actionLabel || 'Get directions'}
@@ -4873,43 +5108,11 @@ const ServicesHero = ({
                       <Maximize size={18} />
                     </button>
                   </div>
-                  {deliveryPlatformLinks.length > 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: '#334155', whiteSpace: 'nowrap', fontFamily: servicesBodyFont }}>
-                        <Bike size={14} /> We deliver via
-                      </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
-                        {deliveryPlatformLinks.map((platform) => {
-                          const badge = (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 20, flexShrink: 0 }}>
-                              {platform.logoUrl ? (
-                                <img src={platform.logoUrl} alt={platform.label} style={{ maxHeight: 14, width: 'auto', display: 'block', objectFit: 'contain' }} />
-                              ) : (
-                                <span style={{ fontSize: 12, fontWeight: 800, color: '#475569', whiteSpace: 'nowrap' }}>{platform.label}</span>
-                              )}
-                            </span>
-                          );
-                          return platform.href ? (
-                            <button
-                              key={`services-desktop-delivery-platform-${platform.partner}`}
-                              type="button"
-                              onClick={() => openStorefrontActionLink(platform.href)}
-                              style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
-                            >
-                              {badge}
-                            </button>
-                          ) : (
-                            <span key={`services-desktop-delivery-platform-${platform.partner}`}>{badge}</span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               )}
             </div>
           </div>
-          
+
           {hasWhyChooseUs && (
             <div style={{ display: 'grid', gap: 14, paddingLeft: 26, borderLeft: '1px solid #eef2f6', alignContent: 'start' }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Why Choose Us?</div>
@@ -4966,21 +5169,6 @@ const formatStorefrontHoursLabel = (rawValue, fallbackDisplay = '') => {
   ).trim();
 };
 
-const STOREFRONT_CLOSED_TITLE = 'This storefront is currently closed.';
-const STOREFRONT_CLOSED_BODY_FALLBACK = 'Orders are unavailable right now. Please come back during business hours.';
-
-const getStorefrontClosedBody = (hoursLabel = '') => (
-  hoursLabel
-    ? `Orders are unavailable right now. Come back during business hours: ${hoursLabel}.`
-    : STOREFRONT_CLOSED_BODY_FALLBACK
-);
-
-const getStorefrontClosedToastMessage = (hoursLabel = '') => (
-  hoursLabel
-    ? `This storefront is currently closed. Come back during business hours: ${hoursLabel}.`
-    : 'This storefront is currently closed. Please come back during business hours.'
-);
-
 const formatRatingSummary = (reviewSummary = null) => {
   const score = Number(reviewSummary?.score);
   if (!Number.isFinite(score) || score <= 0) return 'New storefront';
@@ -5002,179 +5190,9 @@ const getPreferredSocialContact = ({ messengerLink = '', facebookLink = '' } = {
   return null;
 };
 
-const formatMinutes = (time) => {
-  const [hourRaw, minuteRaw] = String(time || '00:00').split(':');
-  const hour24 = Number.parseInt(hourRaw, 10);
-  const minute = Number.parseInt(minuteRaw, 10);
-  if (!Number.isFinite(hour24) || !Number.isFinite(minute)) return '';
-  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
-  const hour12 = hour24 % 12 || 12;
-  return `${hour12}:${String(minute).padStart(2, '0')} ${meridiem}`;
-};
-
-const StorefrontExpandableBusinessHours = ({ schedule, theme }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const { weekly = {}, timezone = 'Asia/Manila' } = schedule || {};
-
-  const groupedSchedule = useMemo(() => {
-    const groups = [];
-    STOREFRONT_BUSINESS_DAY_OPTIONS.forEach((day) => {
-      const entry = weekly[day.key];
-      if (!entry?.enabled) return;
-      const signature = (entry.intervals || [])
-        .map((interval) => `${interval.open}-${interval.close}`)
-        .join('|');
-      const existing = groups.find(g => g.signature === signature);
-      if (existing) {
-        existing.days.push(day.label);
-        existing.dayKeys.push(day.key);
-      } else {
-        const intervalsStr = (entry.intervals || []).map(interval => 
-          interval.open === interval.close
-            ? '24 hours'
-            : `${formatMinutes(interval.open)} - ${formatMinutes(interval.close)}`
-        ).join(', ');
-        groups.push({
-          signature,
-          days: [day.label],
-          dayKeys: [day.key],
-          intervals: intervalsStr
-        });
-      }
-    });
-    return groups;
-  }, [weekly]);
-
-  const currentStatus = useMemo(() => {
-    let now;
-    try {
-      now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
-    } catch {
-      now = new Date();
-    }
-    const currentDayIndex = now.getDay();
-    const currentDayOption = STOREFRONT_BUSINESS_DAY_OPTIONS[currentDayIndex];
-    const currentDayKey = currentDayOption.key;
-    
-    const entry = weekly[currentDayKey];
-    if (!entry?.enabled) {
-      return { prefix: 'Closed today', prefixColor: '#ef4444', suffix: '', dayKey: currentDayKey };
-    }
-
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    
-    let isCurrentlyOpen = false;
-    let nextClose = null;
-    let nextOpen = null;
-    
-    const intervalLabels = [];
-    for (const interval of (entry.intervals || [])) {
-      const openMins = Number(interval.open.split(':')[0]) * 60 + Number(interval.open.split(':')[1]);
-      const closeMins = Number(interval.close.split(':')[0]) * 60 + Number(interval.close.split(':')[1]);
-
-      if (interval.open === interval.close) {
-        isCurrentlyOpen = true;
-        intervalLabels.push('24 hours');
-        continue;
-      }
-
-      const adjustedCloseMins = closeMins < openMins ? closeMins + 1440 : closeMins;
-
-      if (currentMinutes >= openMins && currentMinutes < adjustedCloseMins) {
-        isCurrentlyOpen = true;
-        nextClose = interval.close;
-      } else if (currentMinutes < openMins && !nextOpen) {
-        nextOpen = interval.open;
-      }
-
-      intervalLabels.push(`${formatMinutes(interval.open)} - ${formatMinutes(interval.close)}`);
-    }
-    const intervalsStr = intervalLabels.join(', ');
-    
-    if (intervalsStr === '24 hours') {
-      return { prefix: 'Open 24 hours today', prefixColor: '#16a34a', suffix: '', dayKey: currentDayKey };
-    }
-    
-    if (isCurrentlyOpen) {
-      return { prefix: 'Open now', prefixColor: '#16a34a', suffix: ` · Closes at ${formatMinutes(nextClose)}`, dayKey: currentDayKey };
-    } else if (nextOpen) {
-      return { prefix: 'Closed now', prefixColor: '#ef4444', suffix: ` · Opens at ${formatMinutes(nextOpen)} today`, dayKey: currentDayKey };
-    }
-    
-    return { prefix: 'Open today', prefixColor: '#334155', suffix: `: ${intervalsStr}`, dayKey: currentDayKey };
-  }, [weekly, timezone]);
-
-  if (groupedSchedule.length === 0) {
-    return <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Closed</div>;
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-      <button 
-        type="button" 
-        onClick={() => setIsExpanded(!isExpanded)}
-        style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 6,
-          background: 'none', 
-          border: 'none', 
-          padding: 0, 
-          margin: 0, 
-          fontFamily: 'inherit',
-          fontSize: 13, 
-          fontWeight: 600, 
-          color: '#334155',
-          cursor: 'pointer',
-          textAlign: 'left'
-        }}
-      >
-        <span>
-          <span style={{ color: currentStatus.prefixColor || '#334155' }}>{currentStatus.prefix}</span>
-          <span style={{ color: '#334155', whiteSpace: 'pre-wrap' }}>{currentStatus.suffix}</span>
-        </span>
-        {isExpanded ? <ChevronUp size={14} color="#64748b" /> : <ChevronDown size={14} color="#64748b" />}
-      </button>
-      
-      {isExpanded && (
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: 4, 
-          marginTop: 4,
-          padding: '8px 12px',
-          background: 'rgba(0,0,0,0.03)',
-          borderRadius: 8
-        }}>
-          {groupedSchedule.map((group, index) => {
-            const isToday = group.dayKeys.includes(currentStatus.dayKey);
-            return (
-              <div 
-                key={index} 
-                style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: 'auto 1fr', 
-                  gap: 8,
-                  fontSize: 12,
-                  color: isToday ? (theme?.accentDark || '#0f172a') : '#475569',
-                  fontWeight: isToday ? 700 : 500
-                }}
-              >
-                <div>{group.days.join(', ')}</div>
-                <div style={{ textAlign: 'right' }}>{group.intervals}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const buildVisibleStorefrontContactRows = ({
   contactRows = [],
   hours = '',
-  rawHoursData = null,
   addressText = '',
   directionsUrl = ''
 } = {}) => {
@@ -5198,7 +5216,7 @@ const buildVisibleStorefrontContactRows = ({
   return [
     phoneRow,
     socialRow,
-    normalizedHours ? { label: 'Hours', value: normalizedHours, rawHoursData } : null,
+    normalizedHours ? { label: 'Hours', value: normalizedHours } : null,
     normalizedAddressText
       ? {
           label: 'Address',
@@ -5412,16 +5430,14 @@ const SimpleHero = ({
   const hasAboutSection = aboutText.length > 0;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = Array.isArray(simpleHeroModel.mapStores) && simpleHeroModel.mapStores.length > 0;
   const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: simpleHeroModel.contactRows,
     hours: simpleHeroModel.hours,
-    rawHoursData: simpleHeroModel.rawHoursData,
     addressText,
     directionsUrl: simpleHeroModel.directionsUrl
-  }), [simpleHeroModel.contactRows, simpleHeroModel.hours, simpleHeroModel.rawHoursData, simpleHeroModel.directionsUrl, addressText]);
+  }), [simpleHeroModel.contactRows, simpleHeroModel.hours, simpleHeroModel.directionsUrl, addressText]);
   const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
   const hasContactRows = visibleContactRows.length > 0;
   const simpleMobileInfoCardWidth = 'calc(100% - 32px)';
@@ -5430,7 +5446,10 @@ const SimpleHero = ({
     : (hasWhyChooseUs ? '1.6fr 0.92fr' : '1fr');
   const storefrontShareUrl = useMemo(() => {
     if (!selectedStore?.slug) return '';
-    return buildPublicStorefrontUrl(selectedStore.slug);
+    return buildStorefrontQrUrl({
+      slug: selectedStore.slug,
+      currentPath: typeof window !== 'undefined' ? window.location.pathname : '/'
+    });
   }, [selectedStore?.slug]);
 
   return (
@@ -5526,6 +5545,8 @@ const SimpleHero = ({
       >
         <SharedStorefrontShareQr
           storeUrl={storefrontShareUrl}
+          storeName={simpleHeroModel.storeName || selectedStore?.tenant_name || 'Storefront'}
+          storeLogoUrl={simpleHeroModel.profileImageUrl || ''}
           isMobileViewport={isMobileViewport}
           accentColor={heroTheme.accent || '#0f766e'}
           shareEnabled={shareEnabled}
@@ -5646,7 +5667,7 @@ const SimpleHero = ({
                 </PrimaryButton>
               )}
             </div>
-            
+
             <div style={{ display: 'grid', gap: 8 }}>
               <SharedStorefrontHeroNameCluster
                 name={simpleHeroModel.name}
@@ -5657,7 +5678,7 @@ const SimpleHero = ({
                 followState={followState}
                 handleFollowAction={handleFollowAction}
               />
-              
+
               {simpleHeroModel.tagline ? (
                 <p style={{ margin: 0, color: heroTheme.accent || '#0f766e', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
               ) : (
@@ -5718,11 +5739,7 @@ const SimpleHero = ({
                       <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'start', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
                         <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, minWidth: STOREFRONT_INFO_ICON_COLUMN, color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</div>
                         <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
-                          {row.label === 'Hours' && row.rawHoursData ? (
-                            <StorefrontExpandableBusinessHours schedule={row.rawHoursData} theme={heroTheme} />
-                          ) : (
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
-                          )}
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
                           {row.actionHref ? (
                             <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
                               {row.actionLabel || 'Open'}
@@ -5793,11 +5810,11 @@ const SimpleHero = ({
           )}
         </div>
       </div>
-      
+
       {isMobileViewport && (
         <div style={{ display: 'grid', gap: 0, paddingBottom: 24, marginTop: 24 }}>
           <div className="no-scrollbar" style={{ width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px 16px 20px', display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', scrollPaddingInline: 16, WebkitOverflowScrolling: 'touch', margin: 0, alignItems: 'stretch', boxSizing: 'border-box' }}>
-            
+
             {hasAboutSection && (
               <div style={{ width: simpleMobileInfoCardWidth, minWidth: simpleMobileInfoCardWidth, maxWidth: simpleMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${heroTheme.accentSoft || '#ecfeff'}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${heroTheme.accentShadow || 'rgba(15,118,110,0.24)'}`, boxSizing: 'border-box' }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12, fontFamily: heroTheme.bodyFont }}>
@@ -5838,7 +5855,7 @@ const SimpleHero = ({
                        <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{content}</button>
                      ) : <div key={row.label}>{content}</div>;
                   })}
-                  
+
                   {selectedBranchLabel ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: heroTheme.bodyFont, fontWeight: 600 }}>
                      <div style={{ color: '#475569', display: 'flex' }}><MapPin size={16} /></div>
@@ -5856,7 +5873,20 @@ const SimpleHero = ({
                           {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: heroTheme.bodyFont }}>{addressText}</div> : null}
                           {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: heroTheme.bodyFont }}>{storefrontCityLabel}</div> : null}
                        </div>
-                       <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
+                       <button
+                         type="button"
+                         onClick={(event) => {
+                           event.preventDefault();
+                           event.stopPropagation();
+                           const addressRow = visibleContactRows.find((row) => row.label === 'Address' && row.actionHref);
+                           if (addressRow?.actionHref) {
+                             openStorefrontActionLink(addressRow.actionHref);
+                             return;
+                           }
+                           setIsExpandedMapOpen(true);
+                         }}
+                         style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}
+                       >
                          Get directions
                        </button>
                     </div>
@@ -5872,7 +5902,7 @@ const SimpleHero = ({
                     </div>
                   </>
                 )}
-                
+
                 {(hasMapData || visibleContactRows.length > 1) && expandedMobileCard !== 'contact' && (
                    <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: heroTheme.accent || STYLES.colors.brand, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: heroTheme.bodyFont }}>
                       See details & map <ChevronDown size={14} />
@@ -5885,7 +5915,7 @@ const SimpleHero = ({
                 )}
               </div>
             )}
-            
+
             {hasWhyChooseUs && (
               <div style={{ width: simpleMobileInfoCardWidth, minWidth: simpleMobileInfoCardWidth, maxWidth: simpleMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${heroTheme.accentSoft || '#ecfeff'}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${heroTheme.accentShadow || 'rgba(15,118,110,0.24)'}`, boxSizing: 'border-box' }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: heroTheme.bodyFont }}>Why Shop Here?</div>
@@ -5965,6 +5995,7 @@ export default function StorefrontApp() {
   const [selectedMapPin, setSelectedMapPin] = useState(null);
   const [isStoreListVisible, setIsStoreListVisible] = useState(false);
   const [isMobileResultsCollapsed, setIsMobileResultsCollapsed] = useState(false);
+  const [clusterResultContext, setClusterResultContext] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [viewMode, setViewMode] = useState('list');
   const [discoveryResultsPage, setDiscoveryResultsPage] = useState(1);
@@ -5976,6 +6007,7 @@ export default function StorefrontApp() {
   const [discoveryAvailabilityFilter, setDiscoveryAvailabilityFilter] = useState('all');
   const [activeDiscoveryFilterDropdown, setActiveDiscoveryFilterDropdown] = useState(null);
   const [featuredCategoryFilter, setFeaturedCategoryFilter] = useState('all');
+  const [featuredCarouselPage, setFeaturedCarouselPage] = useState(0);
   const [featuredBaseStores, setFeaturedBaseStores] = useState([]);
   const [renderDiscoveryResetButton, setRenderDiscoveryResetButton] = useState(false);
   const [showDiscoveryResetButton, setShowDiscoveryResetButton] = useState(false);
@@ -5996,8 +6028,6 @@ export default function StorefrontApp() {
   const isResolvedOrderSubpage = isOrderSubpage || isTrackSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState(null);
-  const [selectedServiceCartLineId, setSelectedServiceCartLineId] = useState('');
-  const [serviceCartFlyAnimations, setServiceCartFlyAnimations] = useState([]);
   const [selectedFnbDetail, setSelectedFnbDetail] = useState(null);
   const [selectedFnbDetailQuantity, setSelectedFnbDetailQuantity] = useState(1);
   const [selectedFnbLineModifiers, setSelectedFnbLineModifiers] = useState([]);
@@ -6017,7 +6047,6 @@ export default function StorefrontApp() {
   const [itemReviewInviteContext, setItemReviewInviteContext] = useState(null);
   const [itemReviewSectionHighlighted, setItemReviewSectionHighlighted] = useState(false);
   const reviewInviteValidationRef = useRef('');
-  const serviceCartFabRef = useRef(null);
   const discoverySortLabelByValue = {
     nearest: 'Nearest',
     catalog: 'Most Popular',
@@ -6103,22 +6132,10 @@ export default function StorefrontApp() {
   const [fnbOrderStep, setFnbOrderStep] = useState(2);
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
   const [fnbPaymentType, setFnbPaymentType] = useState('cash');
-  const [isOnlinePaymentModalOpen, setIsOnlinePaymentModalOpen] = useState(false);
-
-  const handlePaymentTypeChange = useCallback((val) => {
-    if (val === 'online') {
-      setIsOnlinePaymentModalOpen(true);
-      setFnbPaymentType('cash');
-    } else {
-      setFnbPaymentType(val);
-    }
-  }, []);
-  const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
   const [fnbScheduledFor, setFnbScheduledFor] = useState('');
   const [fnbScheduleMode, setFnbScheduleMode] = useState('asap');
   const [fnbSpecialInstructions, setFnbSpecialInstructions] = useState('');
   const [showFnbMobileOrderSummary, setShowFnbMobileOrderSummary] = useState(false);
-  const [showMobileAddressModal, setShowMobileAddressModal] = useState(false);
   const [isFnbCategoryDropdownOpen, setIsFnbCategoryDropdownOpen] = useState(false);
   const [isAboutExpanded, setIsAboutExpanded] = useState(false);
   const [isServiceGalleryExpanded, setIsServiceGalleryExpanded] = useState(false);
@@ -6129,7 +6146,7 @@ export default function StorefrontApp() {
   const [highlightedDiscoveryMarkerKey, setHighlightedDiscoveryMarkerKey] = useState('');
   const [storeLocations, setStoreLocations] = useState([]);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
-  const [selectedLocationId, setSelectedLocationId] = useState(null);
+  const [selectedLocationId, setSelectedLocationId] = useState(() => readRouteLocationId());
   const [hasSelectedBranchFromMenu, setHasSelectedBranchFromMenu] = useState(false);
   const fnbCategoryDropdownRef = useRef(null);
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(null);
@@ -6151,10 +6168,7 @@ export default function StorefrontApp() {
   const [guestCheckoutUnlocked, setGuestCheckoutUnlocked] = useState(false);
   const [rememberCustomerDetails, setRememberCustomerDetails] = useState(() => Boolean(readStoreAuthToken()));
   const [savedCustomerDetails, setSavedCustomerDetails] = useState(() => readSavedCustomerDetails());
-  const [guestDetailsEditMode, setGuestDetailsEditMode] = useState(false);
-  const [isUsingDifferentGuestDetails, setIsUsingDifferentGuestDetails] = useState(false);
   const [customerAddress, setCustomerAddress] = useState('');
-  const [serviceLocationLandmarkNote, setServiceLocationLandmarkNote] = useState('');
   const [serviceUnitType, setServiceUnitType] = useState('');
   const [customerPin, setCustomerPin] = useState(null);
   const [resolvedDeliveryAddress, setResolvedDeliveryAddress] = useState('');
@@ -6185,15 +6199,18 @@ export default function StorefrontApp() {
 
   const [checkoutError, setCheckoutError] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [promoCodeDraft, setPromoCodeDraft] = useState('');
   const [showOrderSuccessAnimation, setShowOrderSuccessAnimation] = useState(false);
   const orderSuccessAnimationTimerRef = useRef(null);
 
   const [trackingPinInput, setTrackingPinInput] = useState('');
   const [trackingResult, setTrackingResult] = useState(null);
   const [trackingError, setTrackingError] = useState('');
+  const [trackingCooldownUntilMs, setTrackingCooldownUntilMs] = useState(0);
+  const [trackingCooldownNowMs, setTrackingCooldownNowMs] = useState(() => Date.now());
   const [isTrackingRefreshing, setIsTrackingRefreshing] = useState(false);
   const [guestTrackedOrders, setGuestTrackedOrders] = useState([]);
-  const [expandedGuestDrawerPins, setExpandedGuestDrawerPins] = useState([]);
+  const [expandedGuestDrawerPin, setExpandedGuestDrawerPin] = useState(null);
   const [selectedTrackingPin, setSelectedTrackingPin] = useState('');
   const [showCompletedTrackingCard, setShowCompletedTrackingCard] = useState(false);
   const completedTrackingDelayTimerRef = useRef(null);
@@ -6203,7 +6220,6 @@ export default function StorefrontApp() {
   const [accountOrderActionReference, setAccountOrderActionReference] = useState('');
   const [accountAddressActionId, setAccountAddressActionId] = useState('');
   const [accountAddressPinAction, setAccountAddressPinAction] = useState({ mode: '', loading: false, error: '' });
-  const [expandedAccountAddressMapMode, setExpandedAccountAddressMapMode] = useState('');
   const accountAddressPinRequestRef = useRef(0);
   const accountPanelRefreshInFlightRef = useRef(false);
   const [trackedCustomerActivity, setTrackedCustomerActivity] = useState(null);
@@ -6215,12 +6231,13 @@ export default function StorefrontApp() {
   const [checkoutTab, setCheckoutTab] = useState('checkout');
   const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
   const [hasAppliedCheckoutAuthResume, setHasAppliedCheckoutAuthResume] = useState(false);
+  const [hasAppliedGuestCheckoutDraft, setHasAppliedGuestCheckoutDraft] = useState(false);
+  const [guestCheckoutDraftNotice, setGuestCheckoutDraftNotice] = useState('');
   const [followState, setFollowState] = useState({
     loading: false,
     isFollowing: false,
     followersCount: 0,
-    error: '',
-    supported: true
+    error: ''
   });
   const storefrontVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
   const [viewportWidth, setViewportWidth] = useState(() => (
@@ -6287,26 +6304,9 @@ export default function StorefrontApp() {
               }
             });
             consumedHandoff = handoffPayload?.status !== 'invalid';
-            if (consumedHandoff) {
-              const handoffTokenValue = String(handoffPayload?.token || '').trim();
-              const handoffAccount = handoffPayload?.account && typeof handoffPayload.account === 'object'
-                ? handoffPayload.account
-                : null;
-              if (handoffTokenValue) {
-                writeDgfyAuthToken(handoffTokenValue);
-                setDgfyAuthTokenState(handoffTokenValue);
-              } else {
-                clearDgfyAuthToken();
-                setDgfyAuthTokenState('');
-              }
-              if (handoffAccount) {
-                setDgfySessionAccount(handoffAccount);
-              }
-              markDgfySessionActive();
-            } else {
-              clearDgfyAuthToken();
-              setDgfyAuthTokenState('');
-            }
+            if (consumedHandoff) clearDgfyExplicitSignOut();
+            clearDgfyAuthToken();
+            setDgfyAuthTokenState('');
           } catch {
             clearDgfyAuthToken();
             setDgfyAuthTokenState('');
@@ -6315,24 +6315,22 @@ export default function StorefrontApp() {
         }
       }
 
-      if (!consumedHandoff && hasDgfyExplicitSignOut()) {
+      const legacyToken = readDgfyAuthToken();
+      if (!consumedHandoff && !legacyToken && hasDgfyExplicitSignOut()) {
         clearDgfyAuthToken();
-        clearStoreAuthToken();
         setDgfyAuthTokenState('');
         setDgfySessionAccount(null);
         return;
       }
-
-      const legacyToken = readDgfyAuthToken();
       try {
         const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
         if (cancelled) return;
         const account = payload?.account || payload || null;
-        setDgfySessionAccount(account && typeof account === 'object' ? account : null);
-        if (account && typeof account === 'object') {
+        const hasAccount = hasMeaningfulDgfyAccount(account);
+        setDgfySessionAccount(hasAccount ? account : null);
+        if (hasAccount) {
           clearDgfyAuthToken();
           setDgfyAuthTokenState('');
-          markDgfySessionActive();
         }
       } catch {
         if (cancelled) return;
@@ -6344,8 +6342,7 @@ export default function StorefrontApp() {
             });
             if (cancelled) return;
             const account = payload?.account || payload || null;
-            setDgfySessionAccount(account && typeof account === 'object' ? account : null);
-            if (account && typeof account === 'object') markDgfySessionActive();
+            setDgfySessionAccount(hasMeaningfulDgfyAccount(account) ? account : null);
             return;
           } catch {
             if (cancelled) return;
@@ -6399,8 +6396,22 @@ export default function StorefrontApp() {
     overview: overviewSectionModel,
     supporting: supportingSectionModel
   } = pageModel;
-  const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
-  const isStandaloneTrackingPage = Boolean(trackingResult) && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
+  const isFnbOrderSubpage = isFnbMode && isResolvedOrderSubpage;
+  const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;
+  const guestTrackingBackgroundPinsKey = useMemo(() => {
+    const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
+    return buildTrackingPinKey(guestTrackedOrders, {
+      enabled: !isStoreTrackingRoute,
+      excludePin: selectedPin
+    });
+  }, [guestTrackedOrders, isStoreTrackingRoute, selectedTrackingPin, trackingPinInput]);
+  const isStandaloneTrackingPage = Boolean(trackingResult) && isResolvedOrderSubpage && checkoutTab === 'track';
+  const trackingCooldownRemainingSeconds = Math.max(
+    0,
+    Math.ceil((Number(trackingCooldownUntilMs || 0) - Number(trackingCooldownNowMs || Date.now())) / 1000)
+  );
+  const isTrackingCooldownActive = trackingCooldownRemainingSeconds > 0;
+  const trackingCooldownLabel = formatTrackingCooldown(trackingCooldownRemainingSeconds);
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
@@ -6560,84 +6571,22 @@ export default function StorefrontApp() {
     const initials = parts.map((part) => part.charAt(0).toUpperCase()).join('');
     return initials || 'GU';
   }, [accountDisplayName]);
-  const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  const accountDrawerTitle = isGuestAccountDrawerState ? 'DGFY Account' : 'My Account';
-  const accountDrawerSubtitle = isGuestAccountDrawerState
-    ? 'Orders, tracking, profile, addresses, loyalty, and company invitations.'
-    : 'Manage your bookings, orders, tickets and more.';
-  const accountPrimaryDescription = 'View and manage your saved bookings, orders, tickets, receipts, and the latest linked transaction.';
   const activeCustomerOrders = useMemo(() => {
-    const activeStatuses = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']);
-    return (Array.isArray(accountPanel.orders) ? accountPanel.orders : []).filter((order) => (
-      activeStatuses.has(String(order?.status || '').trim().toLowerCase())
-    ));
+    return dedupeActiveCustomerOrders(accountPanel.orders);
   }, [accountPanel.orders]);
   const activeCustomerOrderCount = activeCustomerOrders.length;
-  const knownStoreRouteCandidates = useMemo(() => {
-    const recentStores = readRecentStores();
-    return [selectedStore, ...stores, ...recentStores].filter(Boolean);
-  }, [selectedStore, stores]);
+  const hasVisibleCustomerTrackingSurface = isAccountDrawerOpen
+    || isStandaloneAccountPage
+    || isGuestTrackingDrawerOpen
+    || isStandaloneTrackingPage
+    || activeCustomerOrderCount > 0;
   const accountTrackedOrders = useMemo(() => (
     mergeTrackedOrderEntries(
       activeCustomerOrders
-        .map((order) => mapAccountActivityToTrackedOrderEntry(order, selectedStore, knownStoreRouteCandidates))
+        .map((order) => mapAccountActivityToTrackedOrderEntry(order, selectedStore))
         .filter(Boolean)
     )
-  ), [activeCustomerOrders, knownStoreRouteCandidates, selectedStore]);
-  const resolveStorefrontMetaForAccountEntry = useCallback((entry = {}) => {
-    if (!entry || typeof entry !== 'object') return { slug: '', name: '', logoUrl: '' };
-    const resolvedSlug = resolveStorefrontRouteSlug(entry, selectedStore, knownStoreRouteCandidates);
-    const entryName = String(entry.store_name || entry.store?.name || '').trim();
-    const matchedStore = [selectedStore, ...knownStoreRouteCandidates]
-      .filter(Boolean)
-      .find((store) => {
-        const candidateSlug = toSlug(store?.slug || '');
-        const candidateName = String(store?.tenant_name || store?.name || '').trim().toLowerCase();
-        return (resolvedSlug && candidateSlug === resolvedSlug)
-          || (entryName && candidateName && candidateName === entryName.toLowerCase());
-      });
-    return {
-      slug: resolvedSlug,
-      name: String(matchedStore?.tenant_name || matchedStore?.name || entryName || '').trim(),
-      logoUrl: withAssetOrigin(
-        matchedStore?.storefront_profile_image_url
-        || matchedStore?.profile_image_url
-        || entry?.store_logo
-        || entry?.storefront_profile_image_url
-        || entry?.profile_image_url
-        || ''
-      )
-    };
-  }, [knownStoreRouteCandidates, selectedStore]);
-  const openStorefrontFromAccountEntry = useCallback((entry = {}) => {
-    const resolved = resolveStorefrontMetaForAccountEntry(entry);
-    if (!resolved.slug) return;
-    window.location.href = storePath(resolved.slug);
-  }, [resolveStorefrontMetaForAccountEntry]);
-  const submitAccountReviewFromDashboard = useCallback(async ({
-    activityId,
-    targetType,
-    targetId,
-    rating,
-    comment
-  } = {}) => {
-    if (!dgfyAuthToken) {
-      throw new Error('Sign in again before sending a review.');
-    }
-    await requestJson('/api/v1/dgfy/customer/reviews', {
-      method: 'POST',
-      authToken: dgfyAuthToken,
-      body: {
-        activity_id: activityId,
-        target_type: targetType,
-        target_id: targetId,
-        rating,
-        comment: String(comment || '').trim() || null
-      }
-    });
-    toast.success('Review submitted for approval.');
-    await handleLoadAccountPanel();
-  }, [dgfyAuthToken]);
+  ), [activeCustomerOrders, selectedStore]);
   const mergeLiveAccountActivity = useCallback((activity) => {
     if (!activity || typeof activity !== 'object') return;
     const normalizedReference = String(activity.reference || '').trim().toUpperCase();
@@ -6648,16 +6597,7 @@ export default function StorefrontApp() {
         ? { ...previous, ...activity }
         : previous;
     });
-    setTrackingResult((previous) => {
-      const previousPin = String(previous?.tracking_pin || previous?.order?.tracking_pin || '').trim().toUpperCase();
-      if (!normalizedReference || previousPin !== normalizedReference) return previous;
-      return {
-        ...previous,
-        status: activity.status || previous?.status,
-        status_label: activity.status_label || activity.status || previous?.status_label,
-        updated_at: activity.updated_at || activity.occurred_at || previous?.updated_at
-      };
-    });
+    setTrackingResult((previous) => mergeVisibleTrackingResult(previous, activity));
   }, []);
   const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
   const canOpenTrackingDrawer = (isDgfyCustomerSignedIn || isGuestStorefrontUser) && !isStandaloneTrackingPage;
@@ -6672,42 +6612,6 @@ export default function StorefrontApp() {
     setCustomerEmail(savedCustomerDetails.email || '');
     toast.success('Saved details applied.');
   }, [savedCustomerDetails]);
-
-  const handleGuestCustomerNameChange = useCallback((nextName) => {
-    const normalizedName = String(nextName || '').replace(/\s+/g, ' ').trimStart();
-    const splitName = splitCustomerName(normalizedName);
-    setCustomerName(normalizedName);
-    setCustomerFirstName(splitName.firstName || '');
-    setCustomerLastName(splitName.lastName || '');
-  }, []);
-
-  const handleOpenGuestDetailsEditor = useCallback(() => {
-    const blankGuestIdentity = createBlankGuestCustomerIdentity();
-    setCustomerFirstName(blankGuestIdentity.firstName);
-    setCustomerLastName(blankGuestIdentity.lastName);
-    setCustomerName(blankGuestIdentity.name);
-    setCustomerPhone(blankGuestIdentity.phone);
-    setCustomerEmail(blankGuestIdentity.email);
-    setIsUsingDifferentGuestDetails(true);
-    setGuestDetailsEditMode(true);
-  }, []);
-
-  const handleCancelGuestDetailsEditor = useCallback(() => {
-    if (hasSavedCustomerDetails) {
-      applySavedCustomerDetails();
-      setIsUsingDifferentGuestDetails(false);
-      setGuestDetailsEditMode(false);
-      return;
-    }
-    handleGuestCustomerNameChange(buildCustomerFullName(customerFirstName, customerLastName));
-  }, [applySavedCustomerDetails, customerFirstName, customerLastName, handleGuestCustomerNameChange, hasSavedCustomerDetails]);
-
-  const handleApplyGuestDetails = useCallback(() => {
-    handleGuestCustomerNameChange(buildCustomerFullName(customerFirstName, customerLastName) || customerName);
-    if (hasSavedCustomerDetails) {
-      setGuestDetailsEditMode(false);
-    }
-  }, [customerFirstName, customerLastName, customerName, handleGuestCustomerNameChange, hasSavedCustomerDetails]);
 
   const clearSavedCustomerDetailsForDevice = useCallback(() => {
     clearSavedCustomerDetails();
@@ -6749,24 +6653,15 @@ export default function StorefrontApp() {
   useEffect(() => {
     if (isDgfyCustomerSignedIn) {
       setGuestCheckoutUnlocked(false);
-      setIsUsingDifferentGuestDetails(false);
+      clearGuestCheckoutDraft();
     }
   }, [isDgfyCustomerSignedIn]);
   useEffect(() => {
-    if (isDgfyCustomerSignedIn || !guestCheckoutUnlocked) {
-      setGuestDetailsEditMode(false);
-      setIsUsingDifferentGuestDetails(false);
-      return;
-    }
-    setGuestDetailsEditMode(!hasSavedCustomerDetails);
-  }, [guestCheckoutUnlocked, hasSavedCustomerDetails, isDgfyCustomerSignedIn]);
+    setHasAppliedGuestCheckoutDraft(false);
+    setGuestCheckoutDraftNotice('');
+  }, [selectedStore?.slug, routeSlug]);
   useEffect(() => {
-    if (!shouldHydrateSavedGuestCustomerDetails({
-      isDgfyCustomerSignedIn,
-      guestCheckoutUnlocked,
-      hasSavedCustomerDetails: Boolean(savedCustomerDetails),
-      isUsingDifferentGuestDetails
-    })) return;
+    if (isDgfyCustomerSignedIn || !guestCheckoutUnlocked || !savedCustomerDetails) return;
     const splitName = splitCustomerName(savedCustomerDetails.name || '');
     const nextFirstName = String(savedCustomerDetails.firstName || splitName.firstName || '').trim();
     const nextLastName = String(savedCustomerDetails.lastName || splitName.lastName || '').trim();
@@ -6795,15 +6690,115 @@ export default function StorefrontApp() {
     customerName,
     customerPhone,
     guestCheckoutUnlocked,
-    isUsingDifferentGuestDetails,
     isDgfyCustomerSignedIn,
     savedCustomerDetails
   ]);
   useEffect(() => {
-    if (!selectedStore?.slug) {
+    if (!selectedStore?.slug && !routeSlug) {
       setGuestCheckoutUnlocked(false);
+      clearGuestCheckoutDraft();
     }
-  }, [selectedStore?.slug]);
+  }, [routeSlug, selectedStore?.slug]);
+  const renderSavedDetailsCard = () => (
+    <SavedCustomerDetailsPanel
+      hasSavedCustomerDetails={hasSavedCustomerDetails}
+      maskedSavedCustomerPreview={maskedSavedCustomerPreview}
+      rememberCustomerDetails={rememberCustomerDetails}
+      onApply={applySavedCustomerDetails}
+      onRememberChange={setRememberCustomerDetails}
+    />
+  );
+  const renderGuestIdentityFields = ({
+    title = 'Guest Details',
+    subtitle = 'Use guest checkout now, or create a DGFY account later with these same details.',
+    requireEmail = false,
+    includeAddress = false,
+    addressLabel = 'Delivery Address',
+    addressPlaceholder = 'House no., street, barangay, landmark',
+    addressRequired = false
+  } = {}) => (
+    <GuestIdentityForm
+      title={title}
+      subtitle={subtitle}
+      requireEmail={requireEmail}
+      includeAddress={includeAddress}
+      addressLabel={addressLabel}
+      addressPlaceholder={addressPlaceholder}
+      addressRequired={addressRequired}
+      firstName={customerFirstName}
+      lastName={customerLastName}
+      phone={customerPhone}
+      email={customerEmail}
+      address={customerAddress}
+      onFirstNameChange={setCustomerFirstName}
+      onLastNameChange={setCustomerLastName}
+      onPhoneChange={setCustomerPhone}
+      onEmailChange={setCustomerEmail}
+      onAddressChange={setCustomerAddress}
+      isMobileViewport={isMobileViewport}
+    />
+  );
+  const renderGuestCheckoutEntry = ({
+    title = 'Continue to your order',
+    description = 'Create an account or continue as guest to continue your order.',
+    resumeTarget = {}
+  } = {}) => (
+    <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
+      <div style={{ textAlign: 'center', display: 'grid', gap: 6 }}>
+        <div style={{ fontSize: isMobileViewport ? 28 : 34, fontWeight: 900, color: '#0f172a', lineHeight: 1.05 }}>{title}</div>
+        <div style={{ fontSize: 14, color: '#64748b' }}>{description}</div>
+      </div>
+      <button
+        type="button"
+        onClick={() => openCheckoutAuthFlow('create-account', resumeTarget)}
+        style={{ minHeight: 48, borderRadius: 12, border: 'none', background: '#1a4e8d', color: '#fff', fontWeight: 700, cursor: 'pointer', boxShadow: '0 10px 24px rgba(26,78,141,.18)', fontFamily: servicesBodyFont }}
+      >
+        Create DGFY Account
+      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>or</span>
+        <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          setGuestCheckoutUnlocked(true);
+          setGuestCheckoutDraftNotice('');
+        }}
+        style={{ minHeight: 46, borderRadius: 12, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont }}
+      >
+        Continue as Guest
+      </button>
+      <div style={{ textAlign: 'center', fontSize: 13, color: '#64748b' }}>
+        Already have an account?{' '}
+        <button
+          type="button"
+          onClick={() => openCheckoutAuthFlow('sign-in', resumeTarget)}
+          style={{ border: 'none', background: 'transparent', color: '#1a4e8d', fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: servicesBodyFont }}
+        >
+          Log in
+        </button>
+      </div>
+    </section>
+  );
+  const renderAccountOwnedIdentitySummary = ({
+    title = 'Account Details',
+    subtitle = 'Your DGFY account details will be used for this order.',
+    showVerifiedBadge = true
+  } = {}) => (
+    <CustomerIdentityCard
+      title={title}
+      subtitle={subtitle}
+      showVerifiedBadge={showVerifiedBadge}
+      name={String(accountIdentityRawName || customerName || '').trim()}
+      phone={String(accountIdentityRawPhone || customerPhone || '').trim()}
+      email={String(accountIdentityRawEmail || customerEmail || '').trim()}
+      isMobileViewport={isMobileViewport}
+      bodyFont={servicesBodyFont}
+      displayFont={servicesDisplayFont}
+    />
+  );
   const renderCheckoutAccountGate = ({
     title = 'Continue to your order',
     description = 'Create an account or log in to continue your order.',
@@ -6877,7 +6872,7 @@ export default function StorefrontApp() {
       if (requestSearch) q.set('search', requestSearch);
       q.set('result_mode', discoveryResultMode);
       q.set('stock_filter', discoveryStockFilter);
-      q.set('pin_scope', discoveryPinScope);
+      q.set('pin_scope', options?.pinScope || discoveryPinScope);
       q.set('include_match_meta', discoveryIncludeMatchMeta ? 'true' : 'false');
       if (resolvedCoords?.latitude && resolvedCoords?.longitude) {
         q.set('latitude', String(resolvedCoords.latitude));
@@ -6982,6 +6977,14 @@ export default function StorefrontApp() {
       try {
         const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug, cache: 'no-store' });
         if (requestSequence !== storeLoadRequestSequenceRef.current) return;
+        const publicMapDisabled = isPublicMapDisabled(profile) || isPublicMapDisabled(locationsData);
+        if (publicMapDisabled) {
+          setSelectedStore((prev) => (prev ? { ...prev, store_has_no_location: true, map_publication_disabled: true } : prev));
+          setStoreLocations([]);
+          setPrimaryLocationId(null);
+          resolvedCatalogLocationId = null;
+          setSelectedLocationId(null);
+        } else {
         const apiLocations = Array.isArray(locationsData?.locations) ? locationsData.locations : [];
         const useProfileSnapshot = !locationsMatchProfileSnapshot(apiLocations, profile);
         const locations = useProfileSnapshot ? profileLocations : apiLocations;
@@ -6996,7 +6999,7 @@ export default function StorefrontApp() {
             && toSlug(preferredStoreLocationSelection.slug) === toSlug(profile.slug)
           )
             ? preferredStoreLocationSelection.locationId
-            : null;
+            : (toSlug(profile.slug) === toSlug(normalized) ? readRouteLocationId() : null);
           const preferredLocation = preferredLocationId == null
             ? null
             : (locations.find((location) => Number(location.location_id) === Number(preferredLocationId)) || null);
@@ -7016,6 +7019,7 @@ export default function StorefrontApp() {
         } else {
           resolvedCatalogLocationId = null;
           setSelectedLocationId(null);
+        }
         }
       } catch {
         const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
@@ -7073,6 +7077,49 @@ export default function StorefrontApp() {
     }
     loadStores();
   }, [loadStores, debouncedDiscoverySearch]);
+
+  useEffect(() => {
+    if (isStorePage || !navigator?.geolocation) return;
+    let cancelled = false;
+    const requestGrantedLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (cancelled) return;
+          loadStores({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        () => {},
+        {
+          enableHighAccuracy: true,
+          timeout: 8000
+        }
+      );
+    };
+    const checkPermission = async () => {
+      try {
+        if (navigator.permissions?.query) {
+          const permission = await navigator.permissions.query({ name: 'geolocation' });
+          if (!cancelled && permission?.state === 'granted') requestGrantedLocation();
+          return;
+        }
+      } catch {
+        // Fall through to prior explicit-success compatibility below.
+      }
+      try {
+        if (!cancelled && window.localStorage.getItem('dgfy_storefront_discovery_location_permission_v1') === 'granted') {
+          requestGrantedLocation();
+        }
+      } catch {
+        // Local storage can be unavailable in private/hardened modes.
+      }
+    };
+    checkPermission();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStorePage, loadStores]);
 
   useEffect(() => {
     discoveryCoordsRef.current = discoveryCoords;
@@ -7233,14 +7280,15 @@ export default function StorefrontApp() {
   }, [isAccountDrawerOpen, isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen, isStandaloneAccountPage]);
 
   useEffect(() => {
-    if (!isFnbOrderSubpage) return;
+    const routeWantsTrack = isStoreTrackingRoute;
+    const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;
+    if (!shouldInitializeTrackingRoute) return;
     const resolvedSlug = toSlug(selectedStore?.slug || routeSlug);
     const persistedTrackedOrders = readTrackedOrdersForStore(resolvedSlug).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const persistedTrackingPin = readLastTrackingPinForStore(resolvedSlug);
     const routeTrackingPin = readTrackingPinFromQuery();
-    const routeWantsTrack = routeSubpage === STORE_TRACK_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
     const preferredPin = String(routeTrackingPin || persistedTrackedOrders[0]?.tracking_pin || persistedTrackingPin || '').trim().toUpperCase();
-    const preferredTab = pendingOrderInitialTab || (routeWantsTrack && preferredPin ? 'track' : 'checkout');
+    const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');
     if (!trackingPinInput && preferredPin) {
       setTrackingPinInput(preferredPin);
     }
@@ -7248,7 +7296,7 @@ export default function StorefrontApp() {
     setCheckoutTab(preferredTab);
     setPendingOrderInitialTab('');
     setIsCheckoutOpen(false);
-  }, [currentPathSubpage, isFnbOrderSubpage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
+  }, [isFnbOrderSubpage, isStoreTrackingRoute, pendingOrderInitialTab, routeSlug, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
 
   useEffect(() => {
     const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
@@ -7279,7 +7327,7 @@ export default function StorefrontApp() {
   }, [canOpenTrackingDrawer, isDgfyCustomerSignedIn, isGuestTrackingDrawerOpen, selectedStore?.slug]);
 
   useEffect(() => {
-    if (!isDgfyCustomerSignedIn || accountPanel.loading) return;
+    if (!dgfyAuthToken || accountPanel.loading) return;
     const hasLoadedAccountData = Boolean(
       accountPanel.me
       || (Array.isArray(accountPanel.orders) && accountPanel.orders.length > 0)
@@ -7290,7 +7338,7 @@ export default function StorefrontApp() {
     );
     if (hasLoadedAccountData) return;
     handleLoadAccountPanel();
-  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, isDgfyCustomerSignedIn]);
+  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, dgfyAuthToken]);
 
   useEffect(() => {
     if (!isAccountDrawerOpen) {
@@ -7301,11 +7349,7 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
-    const shouldPollAccountOrders = isAccountDrawerOpen
-      || isStandaloneAccountPage
-      || isGuestTrackingDrawerOpen
-      || activeCustomerOrderCount > 0;
-    if (!shouldPollAccountOrders) return undefined;
+    if (!hasVisibleCustomerTrackingSurface) return undefined;
     let cancelled = false;
     const refreshAccountOrders = async () => {
       if (cancelled || accountPanelRefreshInFlightRef.current) return;
@@ -7336,19 +7380,13 @@ export default function StorefrontApp() {
     };
   }, [
     activeCustomerOrderCount,
-    isAccountDrawerOpen,
-    isDgfyCustomerSignedIn,
-    isGuestTrackingDrawerOpen,
-    isStandaloneAccountPage
+    hasVisibleCustomerTrackingSurface,
+    isDgfyCustomerSignedIn
   ]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof EventSource === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
-    const shouldStreamAccountEvents = isAccountDrawerOpen
-      || isStandaloneAccountPage
-      || isGuestTrackingDrawerOpen
-      || activeCustomerOrderCount > 0;
-    if (!shouldStreamAccountEvents) return undefined;
+    if (!hasVisibleCustomerTrackingSurface) return undefined;
 
     let closed = false;
     const source = new EventSource(withApiOrigin('/api/v1/dgfy/customer/events'), { withCredentials: true });
@@ -7421,11 +7459,8 @@ export default function StorefrontApp() {
       source.close();
     };
   }, [
-    activeCustomerOrderCount,
-    isAccountDrawerOpen,
+    hasVisibleCustomerTrackingSurface,
     isDgfyCustomerSignedIn,
-    isGuestTrackingDrawerOpen,
-    isStandaloneAccountPage,
     mergeLiveAccountActivity
   ]);
 
@@ -7677,7 +7712,6 @@ export default function StorefrontApp() {
     setRouteSubpage(null);
     setRouteServiceItemId(null);
     setRouteItemId(null);
-    setSelectedServiceDetail(null);
     setSelectedStore(null);
     setStoreLocations([]);
     setPrimaryLocationId(null);
@@ -7756,7 +7790,8 @@ export default function StorefrontApp() {
         const slug = toSlug(store?.slug);
         const locationBundle = discoveryLocationMap[slug] || {};
         const allLocations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
-        const activeLocations = allLocations.filter((location) => location?.is_active !== false);
+        const mapDisabled = isPublicMapDisabled(store) || isPublicMapDisabled(locationBundle);
+        const activeLocations = mapDisabled ? [] : allLocations.filter((location) => location?.is_active !== false);
         const pins = activeLocations
           .map((location) => ({
             ...location,
@@ -7776,11 +7811,13 @@ export default function StorefrontApp() {
         const primaryLocation = pins.find((location) => Number(location.location_id) === Number(locationBundle.primary_location_id))
           || pins.find((location) => location?.is_primary_storefront === true)
           || null;
-        const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
-        const fallbackLat = toNumberOrNull(store?.latitude);
-        const fallbackLng = toNumberOrNull(store?.longitude);
-        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? null;
-        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? null;
+        const indexedCoordinate = mapDisabled ? null : getIndexedDiscoveryCoordinate(store);
+        const indexedLocation = getLocationMatchingIndexedRow(store, pins);
+        const fallbackLocation = indexedLocation || nearestMatchingLocation || primaryLocation || pins[0] || null;
+        const fallbackLat = mapDisabled ? null : toNumberOrNull(store?.latitude);
+        const fallbackLng = mapDisabled ? null : toNumberOrNull(store?.longitude);
+        const anchorLatitude = indexedCoordinate?.latitude ?? fallbackLocation?.latitude ?? fallbackLat ?? null;
+        const anchorLongitude = indexedCoordinate?.longitude ?? fallbackLocation?.longitude ?? fallbackLng ?? null;
         const nearestPinWithDistance = hasDiscoveryLocation
           ? pins
             .map((location) => ({
@@ -7914,7 +7951,8 @@ export default function StorefrontApp() {
       const slug = toSlug(store?.slug);
       const locationBundle = discoveryLocationMap[slug] || {};
       const locations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
-      const activeWithCoords = locations
+      const mapDisabled = isPublicMapDisabled(store) || isPublicMapDisabled(locationBundle);
+      const activeWithCoords = mapDisabled ? [] : locations
         .filter((location) => location?.is_active !== false)
         .map((location) => ({
           ...location,
@@ -7931,7 +7969,26 @@ export default function StorefrontApp() {
       const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
         ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
         : null;
+      const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+      const indexedLocation = getLocationMatchingIndexedRow(store, activeWithCoords);
+      const indexedDistanceKm = hasDiscoveryLocation && indexedCoordinate
+        ? haversineDistanceKm(discoveryLat, discoveryLng, indexedCoordinate.latitude, indexedCoordinate.longitude)
+        : null;
+      const shouldUseIndexedPrimaryPin = Boolean(indexedCoordinate)
+        && (discoveryPinScope === 'tenant_primary' || (!hasSearchQuery && !indexedLocation));
+      if (shouldUseIndexedPrimaryPin) {
+        const indexedPin = buildIndexedDiscoveryPin({
+          store,
+          slug,
+          markerSuffix: 'indexed',
+          location: indexedLocation,
+          distanceKm: indexedDistanceKm
+        });
+        if (indexedPin) pins.push(indexedPin);
+        if (discoveryPinScope === 'tenant_primary') return;
+      }
       if (activeWithCoords.length === 0) {
+        if (mapDisabled) return;
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
         if (lat == null || lng == null) return;
@@ -8050,6 +8107,7 @@ export default function StorefrontApp() {
   const fallbackDiscoveryMapPins = useMemo(() => (
     (Array.isArray(filteredDiscoveryStores) ? filteredDiscoveryStores : [])
       .map((store) => {
+        if (isPublicMapDisabled(store)) return null;
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
         if (lat == null || lng == null) return null;
@@ -8078,7 +8136,8 @@ export default function StorefrontApp() {
     (Array.isArray(storesWithNearestBranch) ? storesWithNearestBranch : []).forEach((store) => {
       const slug = toSlug(store?.slug || store?.tenant_name);
       const locationBundle = discoveryLocationMap[slug] || {};
-      const activeLocations = (Array.isArray(locationBundle.locations) ? locationBundle.locations : [])
+      const mapDisabled = isPublicMapDisabled(store) || isPublicMapDisabled(locationBundle);
+      const activeLocations = mapDisabled ? [] : (Array.isArray(locationBundle.locations) ? locationBundle.locations : [])
         .filter((location) => location?.is_active !== false)
         .map((location) => ({
           ...location,
@@ -8087,7 +8146,24 @@ export default function StorefrontApp() {
         }))
         .filter((location) => location.latitude != null && location.longitude != null);
 
+      const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+      if (indexedCoordinate) {
+        const indexedLocation = getLocationMatchingIndexedRow(store, activeLocations);
+        const indexedPin = buildIndexedDiscoveryPin({
+          store,
+          slug,
+          markerSuffix: 'hero-indexed',
+          location: indexedLocation,
+          distanceKm: hasDiscoveryLocation
+            ? haversineDistanceKm(discoveryLat, discoveryLng, indexedCoordinate.latitude, indexedCoordinate.longitude)
+            : null
+        });
+        if (indexedPin) pins.push(indexedPin);
+        return;
+      }
+
       if (activeLocations.length === 0) {
+        if (mapDisabled) return;
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
         if (lat == null || lng == null) return;
@@ -8179,6 +8255,33 @@ export default function StorefrontApp() {
   const searchedDiscoveryMapPins = hasDiscoverySearch && filteredDiscoveryStores.length > 0
     ? discoveryMapPins
     : persistentDiscoveryMapPins;
+  const isDiscoveryLocationShared = discoveryCoords?.latitude != null && discoveryCoords?.longitude != null;
+  const highlightedDiscoveryMarkerKeys = useMemo(() => {
+    if (hasDiscoverySearch) {
+      return (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
+        .map((pin) => getDiscoveryMarkerKey(pin))
+        .filter(Boolean);
+    }
+    return highlightedDiscoveryMarkerKey ? [highlightedDiscoveryMarkerKey] : [];
+  }, [hasDiscoverySearch, searchedDiscoveryMapPins, highlightedDiscoveryMarkerKey]);
+  const discoveryViewportSignal = useMemo(() => ([
+    hasDiscoverySearch ? `search:${debouncedDiscoverySearch.trim().toLowerCase()}` : 'browse',
+    `category:${discoveryCategoryFilter}`,
+    `distance:${discoveryDistanceFilter}`,
+    `open:${discoveryOpenFilter}`,
+    `rating:${discoveryRatingFilter}`,
+    `availability:${discoveryAvailabilityFilter}`,
+    `coords:${discoveryCoords ? `${Number(discoveryCoords.latitude).toFixed(4)},${Number(discoveryCoords.longitude).toFixed(4)}` : 'default'}`
+  ].join('|')), [
+    hasDiscoverySearch,
+    debouncedDiscoverySearch,
+    discoveryCategoryFilter,
+    discoveryDistanceFilter,
+    discoveryOpenFilter,
+    discoveryRatingFilter,
+    discoveryAvailabilityFilter,
+    discoveryCoords
+  ]);
   const discoveryResultsMapKey = useMemo(() => {
     const searchKey = String(search || '').trim().toLowerCase();
     const pinKey = (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
@@ -8189,6 +8292,52 @@ export default function StorefrontApp() {
       .join('|');
     return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
   }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
+  const renderDiscoveryCurrentLocationButton = ({
+    compact = false,
+    floating = false,
+    label = isDiscoveryLocationShared ? 'My location' : 'Use location'
+  } = {}) => (
+    <button
+      type="button"
+      onClick={handleNearMe}
+      title="Use current location on map"
+      aria-label="Use current location on map"
+      data-discovery-current-location="true"
+      style={{
+        border: '1px solid rgba(148,163,184,0.32)',
+        background: isDiscoveryLocationShared ? '#eff6ff' : 'rgba(255,255,255,.96)',
+        color: '#0f172a',
+        boxShadow: floating ? '0 8px 20px rgba(15,23,42,.18)' : '0 4px 10px rgba(15,23,42,.16)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: compact ? 4 : 7,
+        minHeight: compact ? 36 : 40,
+        borderRadius: compact ? 999 : 12,
+        padding: compact ? '0 11px' : '0 13px',
+        fontSize: compact ? 11 : 12,
+        fontWeight: 800,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        lineHeight: 1
+      }}
+    >
+      <Navigation size={compact ? 14 : 16} fill={isDiscoveryLocationShared ? '#1a4e8d' : 'none'} />
+      <span>{label}</span>
+      {isDiscoveryLocationShared && (
+        <span
+          aria-hidden="true"
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 999,
+            background: '#1a4e8d',
+            boxShadow: '0 0 0 3px rgba(26,78,141,.14)'
+          }}
+        />
+      )}
+    </button>
+  );
   const discoverySummary = useMemo(() => {
     const totalStores = filteredDiscoveryStores.length;
     const openStores = filteredDiscoveryStores.filter((store) => store.storefront_open).length;
@@ -8305,7 +8454,8 @@ export default function StorefrontApp() {
   const bookingPermitted = canUseBooking(selectedStore);
   const serviceHeroModel = useMemo(() => {
     if (!selectedStore || !isServicesMode) return null;
-    const mapStores = storeLocations.length > 0
+    const publicMapDisabled = isPublicMapDisabled(selectedStore);
+    const mapStores = publicMapDisabled ? [] : storeLocations.length > 0
       ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
       : [selectedStore];
     const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
@@ -8334,12 +8484,16 @@ export default function StorefrontApp() {
       || selectedStore?.tenant_created_at
       || selectedStore?.created_at
     );
-    const directionsUrl = buildGoogleMapsDirectionsUrl({
+    const directionsUrl = publicMapDisabled ? '' : buildGoogleMapsDirectionsUrl({
       latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
       longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
       addressLine
     });
-    const mergedGalleryImages = [...new Set(galleryPreview)];
+    const servicePreviewImages = serviceGroups
+      .flatMap((group) => (Array.isArray(group?.items) ? group.items : []))
+      .map((item) => withAssetOrigin(item?.image_url))
+      .filter(Boolean);
+    const mergedGalleryImages = [...new Set([...galleryPreview, ...servicePreviewImages])];
     const mergedGalleryPreview = mergedGalleryImages.slice(0, 4);
     const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
       ? overviewSectionModel.whyChooseUs.slice(0, 4)
@@ -8725,7 +8879,8 @@ export default function StorefrontApp() {
       || selectedStore?.tenant_created_at
       || selectedStore?.created_at
     );
-    const mapStores = storeLocations.length > 0
+    const publicMapDisabled = isPublicMapDisabled(selectedStore);
+    const mapStores = publicMapDisabled ? [] : storeLocations.length > 0
       ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
       : [selectedStore];
     const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
@@ -8734,7 +8889,7 @@ export default function StorefrontApp() {
           categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : [],
           catalog
         });
-    const directionsUrl = buildGoogleMapsDirectionsUrl({
+    const directionsUrl = publicMapDisabled ? '' : buildGoogleMapsDirectionsUrl({
       latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
       longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
       addressLine
@@ -8816,18 +8971,13 @@ export default function StorefrontApp() {
   const hasServiceCart = serviceCartLines.length > 0;
   const hasMixedServiceCart = hasServiceCart && serviceCartLines.length !== cart.length;
   const firstServiceLine = serviceCartLines[0] || null;
-  const activeServiceCartLine = useMemo(() => {
-    if (!hasServiceCart) return null;
-    const selectedLine = serviceCartLines.find((line) => String(line.cart_line_id || '') === String(selectedServiceCartLineId || ''));
-    return selectedLine || firstServiceLine;
-  }, [firstServiceLine, hasServiceCart, selectedServiceCartLineId, serviceCartLines]);
   const isServicesCartDrawerMode = isServicesMode && !isBookingSubpage;
   const isSimpleCartSurfaceMode = isSimpleMode && !isResolvedOrderSubpage;
-  const servicePaymentPolicy = activeServiceCartLine?.service_detail?.payment_policy || 'customer_choice';
+  const servicePaymentPolicy = firstServiceLine?.service_detail?.payment_policy || 'customer_choice';
   const selectedServicePaymentPolicy = selectedServiceDetail?.service_detail?.payment_policy || 'customer_choice';
   const serviceIntakeFields = useMemo(() => {
-    return normalizeServiceFormFields(activeServiceCartLine?.service_detail?.intake_form_schema);
-  }, [activeServiceCartLine]);
+    return normalizeServiceFormFields(firstServiceLine?.service_detail?.intake_form_schema);
+  }, [firstServiceLine]);
   const selectedServiceIntakeFields = useMemo(() => (
     normalizeServiceFormFields(selectedServiceDetail?.service_detail?.intake_form_schema)
   ), [selectedServiceDetail]);
@@ -8894,26 +9044,12 @@ export default function StorefrontApp() {
   const requireQuoteForCheckout = !hasServiceCart && !isFnbMode && !isSimpleMode;
   const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
   const followEnabledForStore = parseBooleanFlag(selectedStore?.storefront_follow_enabled, false);
-  const followUiEnabledForStore = followEnabledForStore && followState.supported !== false;
   const shareEnabledForStore = parseBooleanFlag(selectedStore?.storefront_share_enabled, true);
   const storefrontHoursStatus = selectedStore?.storefront_hours_status || null;
   const storefrontClosedByHours = storefrontHoursStatus?.is_open_now === false;
   const storefrontHoursLabel = formatStorefrontHoursLabel(
     selectedStore?.storefront_hours,
     storefrontHoursStatus?.display || ''
-  );
-  const storefrontClosedMessageBody = getStorefrontClosedBody(storefrontHoursLabel);
-  const storefrontClosedToastMessage = getStorefrontClosedToastMessage(storefrontHoursLabel);
-  const renderStorefrontClosedNotice = ({
-    accent = '#92400e',
-    background = '#fffbeb',
-    border = '#fde68a',
-    title = STOREFRONT_CLOSED_TITLE
-  } = {}) => (
-    <div style={{ border: `1px solid ${border}`, background, color: accent, borderRadius: 14, padding: '12px 14px', display: 'grid', gap: 4 }}>
-      <div style={{ fontSize: 13, fontWeight: 800 }}>{title}</div>
-      <div style={{ fontSize: 13, lineHeight: 1.5 }}>{storefrontClosedMessageBody}</div>
-    </div>
   );
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
@@ -8926,40 +9062,6 @@ export default function StorefrontApp() {
     quoteNeedsRefresh,
     requireQuote: requireQuoteForCheckout
   });
-  const serviceCartValidationIssues = useMemo(() => (
-    [
-      ...serviceCartLines.flatMap((line) => {
-        const lineName = line?.variantName || line?.name || 'Service';
-        const lineIssues = [];
-        if (!String(line?.service_schedule_at || '').trim()) {
-          lineIssues.push({
-            cart_line_id: line?.cart_line_id || '',
-            item_id: line?.item_id,
-            serviceName: lineName,
-            field: 'Preferred schedule',
-            message: `${lineName}: choose a preferred appointment date and time.`
-          });
-        }
-        const lineIntakeFields = normalizeServiceFormFields(line?.service_detail?.intake_form_schema);
-        lineIntakeFields.forEach((field) => {
-          if (!field.required) return;
-          const value = line?.intake_responses?.[field.id];
-          const missingValue = field.type === 'checkbox' ? value !== true : !String(value || '').trim();
-          if (missingValue) {
-            lineIssues.push({
-              cart_line_id: line?.cart_line_id || '',
-              item_id: line?.item_id,
-              serviceName: lineName,
-              field: field.label,
-              message: `${lineName}: complete "${field.label}".`
-            });
-          }
-        });
-        return lineIssues;
-      }),
-      ...collectServicesRuntimeCompatibilityIssues(serviceCartLines)
-    ]
-  ), [serviceCartLines]);
   const checkoutAllowed = canCheckout({
     selectedStore,
     cartCount,
@@ -8970,7 +9072,7 @@ export default function StorefrontApp() {
     quoteResult,
     quoteNeedsRefresh,
     requireQuote: requireQuoteForCheckout
-  }) && !hasMixedServiceCart && (!hasServiceCart || serviceCartValidationIssues.length === 0);
+  }) && !hasMixedServiceCart && (!hasServiceCart || (Boolean(serviceAppointmentAt) && missingRequiredIntake.length === 0));
   const fnbCartStatusLabel = useMemo(() => {
     if (cartCount === 0) return 'Browse menu';
     if (storefrontClosedByHours) return 'Closed';
@@ -8990,14 +9092,16 @@ export default function StorefrontApp() {
   const fnbDrawerSupportLabel = useMemo(() => {
     if (cartCount === 0) return 'Add menu items to start an order.';
     if (storefrontClosedByHours) {
-      return storefrontClosedMessageBody;
+      return storefrontHoursLabel
+        ? `Orders are paused outside business hours: ${storefrontHoursLabel}.`
+        : 'Orders are paused outside business hours.';
     }
     if (hasStockViolation) return 'Adjust quantities that exceed available stock before checkout.';
     if (!quoteResult) return 'Review the cart, then request a fresh quote before checkout.';
     if (quoteNeedsRefresh) return 'Cart changed. Refresh the quote to sync totals and enable checkout.';
     return 'Everything is synced. You can continue through checkout.';
-  }, [cartCount, storefrontClosedByHours, storefrontClosedMessageBody, hasStockViolation, quoteResult, quoteNeedsRefresh]);
-  const activeBookingService = activeServiceCartLine || selectedServiceDetail || null;
+  }, [cartCount, storefrontClosedByHours, storefrontHoursLabel, hasStockViolation, quoteResult, quoteNeedsRefresh]);
+  const activeBookingService = firstServiceLine || selectedServiceDetail || null;
   const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
   const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
   const bookingPagePaymentOptions = hasServiceCart ? servicePaymentOptions : selectedServicePaymentOptions;
@@ -9018,22 +9122,14 @@ export default function StorefrontApp() {
     bookingStepOneAdditionalFields.filter((field) => !isBookingFieldComplete(field, serviceIntakeResponses[field.id]))
   ), [bookingStepOneAdditionalFields, serviceIntakeResponses]);
   const isAddressRequired = bookingFieldPlan.addressField?.required === true || bookingFieldPlan.requiresAddress;
-  const serviceLocationSummaryDraft = useMemo(() => (
-    trimAddressCountrySuffix(
-      resolvedDeliveryAddress
-      || customerAddress
-      || buildPinnedDeliveryAddress(customerPin)
-      || ''
-    )
-  ), [customerAddress, customerPin, resolvedDeliveryAddress]);
   const missingCustomerInformation = useMemo(() => {
     const missing = [];
     if (!String(customerName || '').trim()) missing.push('Customer Name');
     if (!String(customerPhone || '').trim()) missing.push('Contact Number');
     if (bookingFieldPlan.emailField?.required && !String(customerEmail || '').trim()) missing.push('Email');
-    if (isAddressRequired && !String(serviceLocationSummaryDraft || '').trim()) missing.push('Service Location');
+    if (isAddressRequired && !String(customerAddress || '').trim()) missing.push('Full Address');
     return missing;
-  }, [bookingFieldPlan.emailField?.required, customerEmail, customerName, customerPhone, isAddressRequired, serviceLocationSummaryDraft]);
+  }, [bookingFieldPlan.emailField?.required, customerAddress, customerEmail, customerName, customerPhone, isAddressRequired]);
   const missingScheduleAndServiceInfo = useMemo(() => {
     const missing = [];
     if (!selectedServiceDatePart) missing.push('Preferred Date');
@@ -9050,92 +9146,14 @@ export default function StorefrontApp() {
     && missingScheduleAndServiceInfo.length === 0
     && missingStepOneAdditionalFields.length === 0;
   const paymentStepComplete = Boolean(servicePaymentTiming);
-  const reviewStepReady = stepOneComplete;
-  const bookingSummaryQuantity = hasServiceCart
-    ? serviceCartLines.reduce((sum, line) => sum + Math.max(1, Number(line.quantity || 1)), 0)
-    : Math.max(1, Number(serviceDraftQuantity || 1));
-  const bookingSummaryAmount = hasServiceCart
-    ? serviceCartTotal
-    : ((Number(activeBookingService?.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1)));
-  const serviceBookingSummaryTitle = hasServiceCart
-    ? (serviceCartLines.length > 1
-      ? `${serviceCartLines.length} services selected`
-      : (firstServiceLine?.variantName || firstServiceLine?.name || 'Service booking'))
-    : (activeBookingService?.variantName || activeBookingService?.name || 'Service booking');
-  const serviceBookingSummarySchedule = hasServiceCart
-    ? (() => {
-      const uniqueSchedules = Array.from(new Set(
-        serviceCartLines
-          .map((line) => formatServiceAppointmentSummary(line.service_schedule_at))
-          .filter((value) => value && value !== 'Select a schedule')
-      ));
-      if (uniqueSchedules.length === 1) return uniqueSchedules[0];
-      if (uniqueSchedules.length > 1) return 'Varies by service';
-      return formatServiceAppointmentSummary(serviceAppointmentAt);
-    })()
-    : formatServiceAppointmentSummary(serviceAppointmentAt);
-  const reviewServiceLines = useMemo(() => serviceCartLines.map((line, index) => ({
-    key: String(line.cart_line_id || line.item_id || index),
-    title: line.variantName || line.name || `Service ${index + 1}`,
-    editFieldKey: 'preferred_date',
-    rows: [
-      { label: 'Service', value: line.variantName || line.name || 'Service', fieldKey: 'preferred_date' },
-      { label: 'Preferred Schedule', value: formatServiceAppointmentSummary(line.service_schedule_at), fieldKey: 'preferred_date' },
-      ...(line.service_detail?.service_area_type || line.serviceAreaLabel
-        ? [{ label: 'Service Variant', value: line.service_detail?.service_area_type || line.serviceAreaLabel, fieldKey: 'unit_type' }]
-        : []),
-      { label: 'Number of Units', value: String(Math.max(1, Number(line.quantity || 1))), fieldKey: 'unit_count' },
-      { label: 'Additional Instructions', value: String(line.service_notes || '').trim() || 'No additional instructions.', fieldKey: 'service_notes' },
-    ],
-  })), [serviceCartLines]);
-  const serviceBookingSummaryRows = useMemo(() => {
-    const baseRows = [
-      { label: 'Services', value: serviceBookingSummaryTitle },
-      { label: 'Schedule', value: serviceBookingSummarySchedule },
-      { label: 'Units', value: String(bookingSummaryQuantity) },
-      { label: 'Payment', value: bookingPagePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Pending' },
-    ];
-    if (serviceLocationSummaryDraft) {
-      baseRows.push({ label: 'Location', value: serviceLocationSummaryDraft });
-    }
-    return baseRows;
-  }, [bookingPagePaymentOptions, bookingSummaryQuantity, serviceBookingSummarySchedule, serviceBookingSummaryTitle, serviceLocationSummaryDraft, servicePaymentTiming]);
-  const serviceBookingSummaryLineItems = useMemo(() => {
-    const summarySource = hasServiceCart
-      ? serviceCartLines
-      : (activeBookingService
-        ? [{
-          item_id: activeBookingService.item_id,
-          cart_line_id: activeBookingService.item_id,
-          name: activeBookingService.name,
-          variantName: activeBookingService.variantName || '',
-          quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
-          price: Number(activeBookingService.default_sale_price ?? 0) || 0,
-          service_schedule_at: serviceAppointmentAt,
-          service_notes: String(serviceIntakeResponses.special_instructions || serviceIntakeResponses.instructions || '').trim(),
-          durationLabel: activeBookingService.durationLabel || '',
-          service_detail: activeBookingService.service_detail || null,
-        }]
-        : []);
-    return summarySource.map((line, index) => {
-      const lineDuration = String(
-        line.durationLabel
-        || activeBookingService?.durationLabel
-        || ''
-      ).trim();
-      const variant = String(line.service_detail?.service_area_type || line.serviceAreaLabel || line.variantName || '').trim();
-      return {
-        key: String(line.cart_line_id || line.item_id || index),
-        title: String(line.variantName || line.name || `Service ${index + 1}`).trim(),
-        variant,
-        schedule: formatServiceAppointmentSummary(line.service_schedule_at || serviceAppointmentAt),
-        quantity: String(Math.max(1, Number(line.quantity || 1))),
-        duration: lineDuration,
-        notes: String(line.service_notes || '').trim(),
-        amount: money((Number(line.price || 0) || 0) * Math.max(1, Number(line.quantity || 1))),
-      };
-    });
-  }, [activeBookingService, hasServiceCart, money, serviceAppointmentAt, serviceCartLines, serviceDraftQuantity, serviceIntakeResponses.instructions, serviceIntakeResponses.special_instructions]);
+  const reviewStepReady = stepOneComplete && paymentStepComplete;
+  const serviceBookingSummaryTitle = activeBookingService?.variantName || activeBookingService?.name || 'Service booking';
+  const serviceBookingSummarySchedule = formatServiceAppointmentSummary(serviceAppointmentAt);
+  const bookingSummaryUnitPrice = hasServiceCart
+    ? (Number(firstServiceLine?.price ?? 0) || 0)
+    : (Number(activeBookingService?.default_sale_price ?? 0) || 0);
+  const bookingSummaryQuantity = Math.max(1, Number(serviceDraftQuantity || 1));
+  const bookingSummaryAmount = bookingSummaryUnitPrice * bookingSummaryQuantity;
   const openPreferredBookingDatePicker = useCallback(() => {
     const input = bookingPreferredDateInputRef.current;
     if (!input) return;
@@ -9164,13 +9182,17 @@ export default function StorefrontApp() {
   }, []);
 
   useEffect(() => {
-    if (productCartPermitted && checkoutPermitted && bookingPermitted) return;
-    if (cart.length === 0 && !quoteResult && !isCheckoutOpen) return;
+    if (!shouldClearStorefrontCart({
+      cart,
+      productCartPermitted,
+      checkoutPermitted,
+      bookingPermitted
+    })) return;
     setCart([]);
     setQuoteResult(null);
     setQuoteNeedsRefresh(true);
     setIsCheckoutOpen(false);
-  }, [productCartPermitted, checkoutPermitted, bookingPermitted, cart.length, quoteResult, isCheckoutOpen]);
+  }, [productCartPermitted, checkoutPermitted, bookingPermitted, cart]);
   useEffect(() => {
     if (!isBookingSubpage) return;
     setIsCheckoutOpen(false);
@@ -9192,7 +9214,7 @@ export default function StorefrontApp() {
   useEffect(() => {
     if (!isStorePage) return;
     setQuoteNeedsRefresh(true);
-  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, checkoutPromoCode, isStorePage]);
+  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, promoCodeDraft, isStorePage]);
   useEffect(() => {
     if (!isSimpleMode) return;
     if (orderMethod === 'pickup' || orderMethod === 'delivery') return;
@@ -9231,24 +9253,24 @@ export default function StorefrontApp() {
   }, [selectedServiceDetail, selectedServicePaymentOptions, servicePaymentTiming]);
   useEffect(() => {
     if (!selectedServiceDetail) return;
-    const matchesCurrentService = Number(selectedServiceDetail.item_id) === Number(activeServiceCartLine?.item_id);
-    setServiceDraftQuantity(matchesCurrentService ? Math.max(1, Number(activeServiceCartLine?.quantity || 1)) : 1);
-    setServiceDraftNotes(matchesCurrentService ? String(activeServiceCartLine?.service_notes || '') : '');
+    const matchesCurrentService = Number(selectedServiceDetail.item_id) === Number(firstServiceLine?.item_id);
+    setServiceDraftQuantity(matchesCurrentService ? Math.max(1, Number(firstServiceLine?.quantity || 1)) : 1);
+    setServiceDraftNotes(matchesCurrentService ? String(firstServiceLine?.service_notes || '') : '');
     if (!matchesCurrentService) {
       setServiceAppointmentAt('');
       setServiceIntakeResponses({});
       setServiceUnitType('');
     }
-  }, [selectedServiceDetail, activeServiceCartLine]);
+  }, [selectedServiceDetail, firstServiceLine]);
   useEffect(() => {
     setServiceIntakeResponses({});
     setServiceUnitType('');
     setServicePaymentPreviewMethod('qr');
     setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
     setServicePaymentPreviewReceiptName('');
-  }, [activeServiceCartLine?.cart_line_id]);
+  }, [firstServiceLine?.item_id]);
   useEffect(() => {
-    if (!hasServiceCart || !activeServiceCartLine) {
+    if (!hasServiceCart || !firstServiceLine) {
       setServiceDraftQuantity(1);
       setServiceDraftNotes('');
       if (!selectedServiceDetail) {
@@ -9257,30 +9279,15 @@ export default function StorefrontApp() {
       }
       return;
     }
-    setServiceDraftQuantity(Math.max(1, Number(activeServiceCartLine.quantity || 1)));
-    setServiceDraftNotes(String(activeServiceCartLine.service_notes || ''));
-    setServiceAppointmentAt(String(activeServiceCartLine.service_schedule_at || ''));
-    setServiceIntakeResponses(activeServiceCartLine?.intake_responses && typeof activeServiceCartLine.intake_responses === 'object'
-      ? activeServiceCartLine.intake_responses
-      : {});
-    setServicePaymentTiming(String(activeServiceCartLine.payment_timing || servicePaymentOptions[0]?.value || 'postpaid'));
-  }, [hasServiceCart, activeServiceCartLine, selectedServiceDetail, servicePaymentOptions]);
+    setServiceDraftQuantity(Math.max(1, Number(firstServiceLine.quantity || 1)));
+    setServiceDraftNotes(String(firstServiceLine.service_notes || ''));
+  }, [hasServiceCart, firstServiceLine, selectedServiceDetail]);
   useEffect(() => {
     if (!isBookingSubpage) return;
     if (activeBookingService) {
       setServiceBookingStep(1);
     }
   }, [isBookingSubpage, hasServiceCart, activeBookingService?.item_id]);
-  useEffect(() => {
-    if (serviceCartLines.length === 0) {
-      if (selectedServiceCartLineId) setSelectedServiceCartLineId('');
-      return;
-    }
-    const hasSelectedLine = serviceCartLines.some((line) => String(line.cart_line_id || '') === String(selectedServiceCartLineId || ''));
-    if (!hasSelectedLine) {
-      setSelectedServiceCartLineId(String(serviceCartLines[0]?.cart_line_id || ''));
-    }
-  }, [selectedServiceCartLineId, serviceCartLines]);
   useEffect(() => {
     if (bookingFieldPlan.customerNameField?.id) {
       setServiceIntakeResponses((previous) => (
@@ -9445,40 +9452,6 @@ export default function StorefrontApp() {
     }
   };
 
-  const getCartFlySourceRect = (event) => {
-    const trigger = event?.currentTarget?.closest?.('[data-cart-fly-origin="true"]') || event?.currentTarget || null;
-    const rect = trigger?.getBoundingClientRect?.();
-    if (!rect) return null;
-    return {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height
-    };
-  };
-
-  const animateCartCardToFab = (sourceRect) => {
-    if (!(isServicesMode || isFnbMode) || !sourceRect || !serviceCartFabRef.current || typeof window === 'undefined') return;
-    const targetRect = serviceCartFabRef.current.getBoundingClientRect();
-    const animationId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const size = Math.max(40, Math.min(84, Math.round(Math.min(sourceRect.width, sourceRect.height))));
-    const startX = sourceRect.left + (sourceRect.width / 2) - (size / 2);
-    const startY = sourceRect.top + (sourceRect.height / 2) - (size / 2);
-    const endX = targetRect.left + (targetRect.width / 2) - (size / 2);
-    const endY = targetRect.top + (targetRect.height / 2) - (size / 2);
-    setServiceCartFlyAnimations((prev) => [...prev, {
-      id: animationId,
-      startX,
-      startY,
-      deltaX: endX - startX,
-      deltaY: endY - startY,
-      size
-    }]);
-    window.setTimeout(() => {
-      setServiceCartFlyAnimations((prev) => prev.filter((entry) => entry.id !== animationId));
-    }, 650);
-  };
-
   const addToCart = (item, options = {}) => {
     if (isServiceCatalogItem(item) ? !bookingPermitted : !productCartPermitted) {
       toast.error('This storefront is not accepting online checkout right now.');
@@ -9507,39 +9480,7 @@ export default function StorefrontApp() {
         return next;
       });
     }
-    const price = Number(item.default_sale_price ?? 0);
-    const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
-    const baseLine = {
-      item_id: item.item_id,
-      cart_line_id: options?.cart_line_id || `${item.item_id}:${modifierKey || 'default'}`,
-      name: item.name,
-      variantName: item.variantName || '',
-      category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
-      service_detail: item.service_detail || null,
-      quantity: requestedQuantity,
-      price,
-      image_url: withAssetOrigin(item.image_url) || null,
-      unit_of_measure: item.unit_of_measure || '',
-      max_stock: maxStock,
-      serviceAreaLabel: item.serviceAreaLabel || '',
-      durationLabel: item.durationLabel || '',
-      line_modifiers: lineModifiers
-    };
     setCart((prev) => {
-      if (isServiceCatalogItem(item)) {
-        const serviceCartLineId = options?.cart_line_id || createStorefrontIdempotencyKey(`service-line-${item.item_id}`);
-        return [...prev, {
-          ...baseLine,
-          cart_line_id: serviceCartLineId,
-          quantity: requestedQuantity,
-          service_notes: String(options?.service_notes || '').trim(),
-          service_schedule_at: String(options?.service_schedule_at || ''),
-          payment_timing: String(options?.payment_timing || servicePaymentTiming || 'postpaid'),
-          intake_responses: options?.intake_responses && typeof options.intake_responses === 'object'
-            ? options.intake_responses
-            : null
-        }];
-      }
       const found = prev.find((l) => (
         Number(l.item_id) === Number(item.item_id)
         && JSON.stringify((Array.isArray(l.line_modifiers) ? l.line_modifiers : []).map((entry) => ({
@@ -9547,6 +9488,24 @@ export default function StorefrontApp() {
           modifier_option_id: entry?.modifier_option_id
         }))) === modifierKey
       ));
+      const price = Number(item.default_sale_price ?? 0);
+      const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
+      const baseLine = {
+        item_id: item.item_id,
+        cart_line_id: options?.cart_line_id || `${item.item_id}:${modifierKey || 'default'}`,
+        name: item.name,
+        variantName: item.variantName || '',
+        category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
+        service_detail: item.service_detail || null,
+        quantity: requestedQuantity,
+        price,
+        image_url: withAssetOrigin(item.image_url) || null,
+        unit_of_measure: item.unit_of_measure || '',
+        max_stock: maxStock,
+        serviceAreaLabel: item.serviceAreaLabel || '',
+        durationLabel: item.durationLabel || '',
+        line_modifiers: lineModifiers
+      };
       if (found) {
         const requestedQty = Number(found.quantity) + requestedQuantity;
         const safeQty = Math.max(0, Math.min(requestedQty, maxStock));
@@ -9566,23 +9525,21 @@ export default function StorefrontApp() {
           )
           : line);
       }
+      if (isServiceCatalogItem(item)) {
+        const nextNonServiceLines = prev.filter((line) => line.category !== 'service');
+        const existingDifferentService = prev.find((line) => line.category === 'service');
+        if (existingDifferentService) {
+          stockWarning = 'Only one service booking at a time. The current service in cart was replaced.';
+        }
+        return [...nextNonServiceLines, baseLine];
+      }
       return [...prev, {
         ...baseLine,
         quantity: maxStock > 0 ? requestedQuantity : 0
       }];
     });
-    if (isServiceCatalogItem(item)) {
-      setCheckoutTab('review');
-      setIsCheckoutOpen(false);
-      animateCartCardToFab(options?.sourceRect || null);
-    } else {
-      setCheckoutTab(isFnbMode ? 'cart' : 'review');
-      const shouldOpenCartDrawer = options?.openCart === true || !isFnbMode;
-      setIsCheckoutOpen(shouldOpenCartDrawer);
-      if (isFnbMode && !shouldOpenCartDrawer) {
-        animateCartCardToFab(options?.sourceRect || null);
-      }
-    }
+    setCheckoutTab(isFnbMode ? 'cart' : 'review');
+    setIsCheckoutOpen(true);
     playCartAddedSound();
     toast.success(`${item?.variantName || item?.name || 'Item'} added successfully!`);
     if (stockWarning) {
@@ -9598,7 +9555,7 @@ export default function StorefrontApp() {
       toast.error('Book services separately from regular product orders.');
       return;
     }
-    if (!hasServiceCart || serviceCartLines.length === 0) {
+    if (!hasServiceCart || !firstServiceLine) {
       toast.error('Add a service to your cart first.');
       return;
     }
@@ -9639,14 +9596,7 @@ export default function StorefrontApp() {
     setIsGuestTrackingDrawerOpen(false);
     goStoreTrackPage({ pin: normalizedPin, storeSlug: targetSlug });
   };
-  const buildCustomerDashboardReturnUrl = useCallback(() => (
-    resolveStorefrontAccountUrl()
-  ), []);
-  const openCustomerDashboard = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    window.location.href = buildCustomerDashboardReturnUrl();
-  }, [buildCustomerDashboardReturnUrl]);
-  const buildContextualCustomerReturnUrl = useCallback(() => {
+  const buildStorefrontAccountReturnUrl = useCallback(() => {
     if (typeof window === 'undefined') return '';
     const target = new URL(window.location.href);
     target.searchParams.set('dgfy_account', '1');
@@ -9655,7 +9605,7 @@ export default function StorefrontApp() {
   const persistCheckoutAuthResume = useCallback((resumeTarget = {}) => {
     writeCheckoutAuthResumeDraft({
       routeSlug: selectedStore?.slug || routeSlug,
-      returnTo: buildContextualCustomerReturnUrl(),
+      returnTo: buildStorefrontAccountReturnUrl(),
       checkoutTab: resumeTarget.checkoutTab || checkoutTab || 'checkout',
       fnbOrderStep: resumeTarget.fnbOrderStep ?? fnbOrderStep,
       simpleOrderStep: resumeTarget.simpleOrderStep ?? simpleOrderStep,
@@ -9669,17 +9619,16 @@ export default function StorefrontApp() {
       serviceAppointmentAt,
       servicePaymentTiming,
       customerAddress,
-      serviceLocationLandmarkNote,
       resolvedDeliveryAddress,
       deliveryLocationAction,
       customerPin,
       serviceIntakeResponses,
       cart,
-      selectedServiceItemId: selectedServiceDetail?.item_id || activeServiceCartLine?.item_id || firstServiceLine?.item_id || null,
+      selectedServiceItemId: selectedServiceDetail?.item_id || firstServiceLine?.item_id || null,
       savedAt: Date.now()
     });
   }, [
-    buildContextualCustomerReturnUrl,
+    buildStorefrontAccountReturnUrl,
     cart,
     checkoutTab,
     customerAddress,
@@ -9689,7 +9638,6 @@ export default function StorefrontApp() {
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
-    activeServiceCartLine?.item_id,
     firstServiceLine?.item_id,
     orderMethod,
     resolvedDeliveryAddress,
@@ -9701,11 +9649,10 @@ export default function StorefrontApp() {
     serviceAppointmentAt,
     serviceBookingStep,
     serviceIntakeResponses,
-    serviceLocationLandmarkNote,
     servicePaymentTiming,
     simpleOrderStep
   ]);
-  const openCanonicalDgfyAuth = useCallback((intent = 'customer', mode = 'sign-in', { returnTarget = 'account', reason = '', email = '' } = {}) => {
+  const openCanonicalDgfyAuth = useCallback((intent = 'customer', mode = 'sign-in', options = {}) => {
     if (typeof window === 'undefined') return;
     const normalizedIntent = String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer';
     const normalizedMode = String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in';
@@ -9717,82 +9664,16 @@ export default function StorefrontApp() {
       intent: normalizedIntent,
       mode: normalizedMode,
       returnTo: normalizedIntent === 'customer'
-        ? (returnTarget === 'current' ? buildContextualCustomerReturnUrl() : buildCustomerDashboardReturnUrl())
-        : '/register-company#business-registration'
-        ,
-      reason: reason || (explicitSignedOutLogin ? 'signed-out' : ''),
-      email: email || (explicitSignedOutLogin ? signedOutEmail : '')
+        ? buildStorefrontAccountReturnUrl()
+        : '/register-company#business-registration',
+      reason: options.reason || (explicitSignedOutLogin ? 'signed-out' : ''),
+      email: options.email || (explicitSignedOutLogin ? signedOutEmail : '')
     });
-  }, [buildContextualCustomerReturnUrl, buildCustomerDashboardReturnUrl]);
+  }, [buildStorefrontAccountReturnUrl]);
   const openCheckoutAuthFlow = useCallback((mode = 'create-account', resumeTarget = {}) => {
     persistCheckoutAuthResume(resumeTarget);
-    openCanonicalDgfyAuth('customer', mode, { returnTarget: 'current' });
+    openCanonicalDgfyAuth('customer', mode);
   }, [openCanonicalDgfyAuth, persistCheckoutAuthResume]);
-  const {
-    renderGuestIdentityFields,
-    renderGuestCheckoutEntry,
-    renderAccountOwnedIdentitySummary
-  } = useMemo(() => createCustomerIdentityRenderers({
-    hasSavedCustomerDetails,
-    savedCustomerDetails,
-    rememberCustomerDetails,
-    maskedSavedCustomerPreview,
-    guestDetailsEditMode,
-    isMobileViewport,
-    servicesBodyFont,
-    servicesDisplayFont,
-    customerName,
-    customerFirstName,
-    customerLastName,
-    customerPhone,
-    customerEmail,
-    customerAddress,
-    accountIdentityRawName,
-    accountIdentityRawPhone,
-    accountIdentityRawEmail,
-    handleGuestCustomerNameChange,
-    setCustomerFirstName,
-    setCustomerLastName,
-    setCustomerPhone,
-    setCustomerEmail,
-    setCustomerAddress,
-    setRememberCustomerDetails,
-    handleOpenGuestDetailsEditor,
-    handleCancelGuestDetailsEditor,
-    handleApplyGuestDetails,
-    openCheckoutAuthFlow,
-    setGuestCheckoutUnlocked
-  }), [
-    hasSavedCustomerDetails,
-    savedCustomerDetails,
-    rememberCustomerDetails,
-    maskedSavedCustomerPreview,
-    guestDetailsEditMode,
-    isMobileViewport,
-    servicesBodyFont,
-    servicesDisplayFont,
-    customerName,
-    customerFirstName,
-    customerLastName,
-    customerPhone,
-    customerEmail,
-    customerAddress,
-    accountIdentityRawName,
-    accountIdentityRawPhone,
-    accountIdentityRawEmail,
-    handleGuestCustomerNameChange,
-    setCustomerFirstName,
-    setCustomerLastName,
-    setCustomerPhone,
-    setCustomerEmail,
-    setCustomerAddress,
-    setRememberCustomerDetails,
-    handleOpenGuestDetailsEditor,
-    handleCancelGuestDetailsEditor,
-    handleApplyGuestDetails,
-    openCheckoutAuthFlow,
-    setGuestCheckoutUnlocked
-  ]);
   const openBusinessRegistrationFlow = useCallback(async () => {
     if (typeof window === 'undefined') return;
     if (!isDgfyCustomerSignedIn) {
@@ -9810,18 +9691,10 @@ export default function StorefrontApp() {
       toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
     }
   }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
-  const requestDgfyBusinessSecurityCode = useCallback(async () => {
-    await requestJson('/api/v1/dgfy/account/business-step-up/request', {
-      method: 'POST',
-      authToken: readDgfyAuthToken(),
-      cache: 'no-store'
-    });
-  }, []);
-  const handleAcceptDgfyCompanyInvitation = useCallback(async ({ membershipId, emailOtpCode }) => {
+  const handleAcceptDgfyCompanyInvitation = useCallback(async ({ membershipId }) => {
     await requestJson(`/api/v1/dgfy/invitations/${encodeURIComponent(membershipId)}/accept`, {
       method: 'POST',
       authToken: readDgfyAuthToken(),
-      body: { email_otp_code: emailOtpCode },
       cache: 'no-store'
     });
     toast.success('Company invitation accepted.');
@@ -9845,20 +9718,15 @@ export default function StorefrontApp() {
     toast.success('You left the company.');
     await handleLoadAccountPanel();
   }, []);
-  const switchDgfyCompanyFromStorefront = useCallback(async ({ tenantId, emailOtpCode }) => {
-    const normalizedTenantId = String(tenantId || '').trim();
-    if (!normalizedTenantId) throw new Error('Select a company to open in SKUpervisor.');
-    await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(normalizedTenantId)}/switch`, {
-      method: 'POST',
-      authToken: readDgfyAuthToken(),
-      body: { email_otp_code: emailOtpCode },
-      cache: 'no-store'
-    });
-    window.location.href = buildSkupervisorPath('/items');
-  }, []);
   const openAccountPanel = () => {
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
+
+    if (!isStorefrontAccountAuthenticated) {
+      openCanonicalDgfyAuth('customer', 'sign-in');
+      return;
+    }
+
     setIsAccountDrawerOpen(true);
     handleLoadAccountPanel();
   };
@@ -9876,11 +9744,6 @@ export default function StorefrontApp() {
   };
   const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
     if (!serviceItem) return;
-    if (storefrontClosedByHours) {
-      setCheckoutError(storefrontClosedMessageBody);
-      toast.error(storefrontClosedToastMessage);
-      return;
-    }
     if (!bookingPermitted || accessCapabilities.booking === false) {
       const message = 'This storefront is not accepting service bookings right now.';
       setCheckoutError(message);
@@ -9905,10 +9768,9 @@ export default function StorefrontApp() {
       toast.error(message);
       return;
     }
-    const targetCartLineId = String(selectedServiceCartLineId || '');
-    const nextServiceLine = {
+    const replacingDifferentService = hasServiceCart && Number(firstServiceLine?.item_id) !== Number(serviceItem.item_id);
+    setCart([{
       item_id: serviceItem.item_id,
-      cart_line_id: targetCartLineId || createStorefrontIdempotencyKey(`service-line-${serviceItem.item_id}`),
       name: serviceItem.name,
       variantName: serviceItem.variantName || '',
       category: 'service',
@@ -9922,20 +9784,7 @@ export default function StorefrontApp() {
       service_schedule_at: serviceAppointmentAt,
       payment_timing: servicePaymentTiming,
       intake_responses: selectedServiceIntakeFields.length > 0 ? serviceIntakeResponses : null
-    };
-    setCart((previous) => {
-      const hasExistingTarget = targetCartLineId
-        && previous.some((line) => String(line.cart_line_id || '') === targetCartLineId);
-      if (hasExistingTarget) {
-        return previous.map((line) => (
-          String(line.cart_line_id || '') === targetCartLineId
-            ? nextServiceLine
-            : line
-        ));
-      }
-      return [...previous, nextServiceLine];
-    });
-    setSelectedServiceCartLineId(String(nextServiceLine.cart_line_id || ''));
+    }]);
     setCheckoutError('');
     setQuoteError('');
     setQuoteResult(null);
@@ -9946,24 +9795,11 @@ export default function StorefrontApp() {
     } else {
       openServiceBookingPanel(nextTab);
     }
-    toast.success(targetCartLineId ? 'Booking line updated.' : 'Service added to your booking summary.');
+    toast.success(replacingDifferentService ? 'Booking summary updated.' : 'Service added to your booking summary.');
   };
-  const openServiceCartEditor = (line) => {
-    if (!line) return;
-    setSelectedServiceCartLineId(String(line.cart_line_id || ''));
-    setSelectedServiceDetail({
-      ...line,
-      item_id: line.item_id,
-      service_detail: line.service_detail || null
-    });
-    setServiceAppointmentAt(String(line.service_schedule_at || ''));
-    setServiceDraftQuantity(Math.max(1, Number(line.quantity || 1)));
-    setServiceDraftNotes(String(line.service_notes || ''));
-    setServiceIntakeResponses(line?.intake_responses && typeof line.intake_responses === 'object' ? line.intake_responses : {});
-    setServicePaymentTiming(String(line.payment_timing || servicePaymentOptions[0]?.value || 'postpaid'));
-    if (isServicesMode) {
-      goStoreBookingPage({ preserveSelectedService: true });
-    }
+  const openServiceCartEditor = () => {
+    if (!firstServiceLine) return;
+    setSelectedServiceDetail(firstServiceLine);
   };
 
   const removeCartItem = (itemId, cartLineId = '') => {
@@ -10008,7 +9844,7 @@ export default function StorefrontApp() {
     }
   };
 
-  const checkoutPayload = () => buildFnbCheckoutPayload({
+  const checkoutPayload = useCallback((promoCodeOverride = promoCodeDraft) => buildFnbCheckoutPayload({
     selectedLocationId,
     selectedStore,
     orderMethod,
@@ -10018,45 +9854,13 @@ export default function StorefrontApp() {
     isDeliveryOrder,
     deliveryAddress: resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin),
     customerPin,
-    promoCode: checkoutPromoCode,
+    promoCode: promoCodeOverride,
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
     cart
-  });
-
-  const requestQuote = useCallback(async ({ promoCodeOverride = checkoutPromoCode, successMessage = '' } = {}) => {
-    if (!selectedStore) return null;
-    const payload = buildFnbCheckoutPayload({
-      selectedLocationId,
-      selectedStore,
-      orderMethod,
-      customerName,
-      customerPhone,
-      customerEmail,
-      isDeliveryOrder,
-      deliveryAddress: resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin),
-      customerPin,
-      promoCode: promoCodeOverride,
-      fnbScheduleMode,
-      fnbScheduledFor,
-      fnbSpecialInstructions,
-      cart
-    });
-    const data = await requestJson('/api/v1/store/cart/quote', {
-      method: 'POST',
-      storeSlug: selectedStore.slug,
-      authToken: readStoreAuthToken(),
-      body: payload
-    });
-    setQuoteResult(data);
-    setQuoteNeedsRefresh(false);
-    toast.success(data?.promo_feedback?.message || successMessage || 'Quote updated.');
-    return data;
-  }, [
+  }), [
     cart,
-    checkoutPromoCode,
-    customerAddress,
     customerEmail,
     customerName,
     customerPhone,
@@ -10066,66 +9870,25 @@ export default function StorefrontApp() {
     fnbSpecialInstructions,
     isDeliveryOrder,
     orderMethod,
+    promoCodeDraft,
     resolvedDeliveryAddress,
     selectedLocationId,
     selectedStore
   ]);
 
-  const handlePromoCardApply = useCallback(async (promoCode) => {
-    const normalizedPromoCode = String(promoCode || '').trim().toUpperCase();
-    if (!normalizedPromoCode) return;
-    setCheckoutPromoCode(normalizedPromoCode);
-    setQuoteError('');
-
-    if (!Array.isArray(cart) || cart.length === 0) {
-      toast.success(`Promo code ${normalizedPromoCode} added. Add items to validate the discount.`);
-      return;
-    }
-
-    if (!selectedStore) {
-      toast.success(`Promo code ${normalizedPromoCode} added.`);
-      return;
-    }
-
-    if (storefrontClosedByHours) {
-      const message = storefrontHoursLabel
-        ? `Promo code ${normalizedPromoCode} added. It will validate during business hours: ${storefrontHoursLabel}.`
-        : `Promo code ${normalizedPromoCode} added. It will validate when ordering opens again.`;
-      toast.info(message);
-      return;
-    }
-
-    if (!checkoutPermitted || accessCapabilities.quote === false) {
-      toast.info(`Promo code ${normalizedPromoCode} added. It will validate when online checkout is available.`);
-      return;
-    }
-
-    try {
-      await requestQuote({
-        promoCodeOverride: normalizedPromoCode,
-        successMessage: `Promo code ${normalizedPromoCode} applied.`
-      });
-    } catch (error) {
-      const violation = extractStockViolation(error);
-      if (violation) {
-        const message = buildStockExceededMessage(violation);
-        setQuoteError(message);
-        toast.error(message);
-        return;
-      }
-      const message = normalizeStorefrontErrorMessage(error, 'Unable to apply promo code right now.');
-      setQuoteError(message);
-      toast.error(message);
-    }
-  }, [
-    accessCapabilities.quote,
-    cart,
-    checkoutPermitted,
-    requestQuote,
-    selectedStore,
-    storefrontClosedByHours,
-    storefrontHoursLabel
-  ]);
+  const requestQuote = useCallback(async ({ promoCodeOverride = promoCodeDraft, successMessage = '' } = {}) => {
+    if (!selectedStore) return null;
+    const data = await requestJson('/api/v1/store/cart/quote', {
+      method: 'POST',
+      storeSlug: selectedStore.slug,
+      authToken: readStoreAuthToken(),
+      body: checkoutPayload(promoCodeOverride)
+    });
+    setQuoteResult(data);
+    setQuoteNeedsRefresh(false);
+    toast.success(data?.promo_feedback?.message || successMessage || 'Quote updated.');
+    return data;
+  }, [checkoutPayload, promoCodeDraft, selectedStore]);
 
   const handlePinMyLocation = () => {
     if (!navigator?.geolocation) {
@@ -10203,15 +9966,6 @@ export default function StorefrontApp() {
     if (activePinnedDeliveryAddress) return trimAddressCountrySuffix(activePinnedDeliveryAddress);
     return '';
   }, [activePinnedDeliveryAddress, deliveryLocationAction, deliverySavedLocations, selectedSavedLocationId]);
-  const activeServiceLocationSummary = useMemo(() => (
-    trimAddressCountrySuffix(
-      deliveryLocationDisplayAddress
-      || resolvedDeliveryAddress
-      || customerAddress
-      || buildPinnedDeliveryAddress(customerPin)
-      || ''
-    )
-  ), [customerAddress, customerPin, deliveryLocationDisplayAddress, resolvedDeliveryAddress]);
   const hasPinnedDeliveryLocation = Number.isFinite(Number(customerPin?.latitude)) && Number.isFinite(Number(customerPin?.longitude));
   const canAddPinnedLocation = isDeliveryOrder
     && hasPinnedDeliveryLocation
@@ -10268,7 +10022,7 @@ export default function StorefrontApp() {
       onChange((previous) => ({
         ...previous,
         ...coordinates,
-        address_line: resolvedAddress || buildPinnedDeliveryAddress(coordinates)
+        address_line: String(previous?.address_line || '').trim() || resolvedAddress
       }));
       setAccountAddressPinAction({ mode: '', loading: false, error: '' });
     } catch {
@@ -10290,69 +10044,21 @@ export default function StorefrontApp() {
     );
   }, [applyAccountAddressPin]);
 
-  const renderAddressPinEditor = useMemo(() => createAddressPinEditorRenderer({
-    DeliveryPinMap,
-    accountAddressPinAction,
-    applyAccountAddressPin,
-    expandedAccountAddressMapMode,
-    handleAccountAddressCurrentLocation,
-    isMobileViewport,
-    normalizeCoordinatePair,
-    servicesBodyFont,
-    servicesDisplayFont,
-    setExpandedAccountAddressMapMode
-  }), [
-    accountAddressPinAction,
-    applyAccountAddressPin,
-    expandedAccountAddressMapMode,
-    handleAccountAddressCurrentLocation,
-    isMobileViewport,
-    normalizeCoordinatePair,
-    servicesBodyFont,
-    servicesDisplayFont,
-    setExpandedAccountAddressMapMode
-  ]);
-
-  const renderPromoCodePanel = useCallback(({
-    compact = false,
-    accentColor = '#0f766e',
-    bodyFont = servicesBodyFont,
-    isMobile = false
-  } = {}) => (
-    <PromoCodePanel
-      code={checkoutPromoCode}
-      onChange={setCheckoutPromoCode}
-      onClear={() => setCheckoutPromoCode('')}
-      onApplyPromo={handlePromoCardApply}
-      statusMessage={promoStatusMessage}
-      statusTone={promoStatusTone}
-      appliedDiscountText={appliedPromoDiscountText}
-      compact={compact}
-      accentColor={accentColor}
-      bodyFont={bodyFont}
-      isMobile={isMobile}
-      availablePromos={Array.isArray(promoSectionModel) ? promoSectionModel : []}
-    />
-  ), [
-    appliedPromoDiscountText,
-    checkoutPromoCode,
-    handlePromoCardApply,
-    promoSectionModel,
-    promoStatusMessage,
-    promoStatusTone,
-    servicesBodyFont
-  ]);
-
-  const renderCheckoutPromoStack = useCallback((summaryNode, options = {}) => (
-    <div style={{ display: 'grid', gap: 10 }}>
-      {renderPromoCodePanel({
-        compact: options.compact !== false,
-        accentColor: options.accentColor || '#0f766e',
-        bodyFont: options.bodyFont || servicesBodyFont
-      })}
-      {summaryNode}
-    </div>
-  ), [renderPromoCodePanel, servicesBodyFont]);
+  const renderAddressPinEditor = useCallback(({ draft = {}, onChange, mode = 'address' }) => {
+    const pin = normalizeCoordinatePair(draft);
+    const isBusy = accountAddressPinAction.loading && accountAddressPinAction.mode === mode;
+    const errorMessage = accountAddressPinAction.mode === mode ? accountAddressPinAction.error : '';
+    return (
+      <div style={{ display: 'grid', gap: 10, border: '1px solid #dbe5ee', borderRadius: 14, background: '#f8fafc', padding: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div><strong>Location Pin</strong><div style={{ fontSize: 12, color: '#64748b' }}>Optional exact point for this address.</div></div>
+          <button type="button" onClick={() => handleAccountAddressCurrentLocation({ onChange, mode })} disabled={isBusy}>Use Current Location</button>
+        </div>
+        <DeliveryPinMap pin={pin} onPinChange={(nextPin) => applyAccountAddressPin({ pin: nextPin, onChange, mode })} disabled={isBusy} height={180} highlighted={Boolean(pin)} />
+        {errorMessage ? <div style={{ fontSize: 12, color: '#b91c1c' }}>{errorMessage}</div> : null}
+      </div>
+    );
+  }, [accountAddressPinAction, applyAccountAddressPin, handleAccountAddressCurrentLocation]);
 
   const refreshDgfyCheckoutAddresses = useCallback(async () => {
     if (!isDgfyCustomerSignedIn) return [];
@@ -10364,10 +10070,8 @@ export default function StorefrontApp() {
 
   const handleAddPinnedLocation = useCallback(async () => {
     if (!canAddPinnedLocation || !hasPinnedDeliveryLocation) return;
-    const savedLocationLabel = String(serviceLocationLandmarkNote || '').trim() || extractSavedLocationLabel(activePinnedDeliveryAddress);
     const baseLocation = {
-      label: savedLocationLabel,
-      landmarkNote: String(serviceLocationLandmarkNote || '').trim(),
+      label: extractSavedLocationLabel(activePinnedDeliveryAddress),
       fullAddress: activePinnedDeliveryAddress,
       latitude: Number(Number(customerPin.latitude).toFixed(6)),
       longitude: Number(Number(customerPin.longitude).toFixed(6)),
@@ -10408,7 +10112,7 @@ export default function StorefrontApp() {
     setSelectedSavedLocationId(newLocation.id);
     setDeliveryLocationAction('saved');
     toast.success('Saved location added.');
-  }, [activePinnedDeliveryAddress, accountSavedDeliveryLocations.length, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation, isDgfyCustomerSignedIn, refreshDgfyCheckoutAddresses, serviceLocationLandmarkNote, toast]);
+  }, [activePinnedDeliveryAddress, accountSavedDeliveryLocations.length, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation, isDgfyCustomerSignedIn, refreshDgfyCheckoutAddresses, toast]);
 
   const handleSetDefaultDeliveryAddress = useCallback(async (location) => {
     if (!location?.addressId) return;
@@ -10542,37 +10246,29 @@ export default function StorefrontApp() {
   useEffect(() => {
     const slug = String(selectedStore?.slug || '').trim().toLowerCase();
     if (!isStorePage || !isStorefrontV2 || !followEnabledForStore || !slug || !storefrontVisitorId) {
-      setFollowState({ loading: false, isFollowing: false, followersCount: 0, error: '', supported: true });
+      setFollowState({ loading: false, isFollowing: false, followersCount: 0 });
       return;
     }
     let cancelled = false;
     const loadFollowStatus = async () => {
       setFollowState((prev) => ({ ...prev, loading: true }));
       try {
+        const token = readStoreAuthToken();
         const status = await requestJson(`/api/v1/store/follow/status?storefront_slug=${encodeURIComponent(slug)}&visitor_id=${encodeURIComponent(storefrontVisitorId)}`, {
           method: 'GET',
           storeSlug: slug,
-          credentials: 'omit'
+          authToken: token
         });
         if (cancelled) return;
         setFollowState({
           loading: false,
           isFollowing: status?.is_following === true,
           followersCount: Number(status?.followers_count || 0),
-          error: '',
-          supported: true
+          error: ''
         });
-      } catch (error) {
+      } catch {
         if (cancelled) return;
-        const normalizedError = normalizeStorefrontErrorMessage(error, 'Follow status unavailable.');
-        const backendContractDrift = /unknown column|provisioning_status/i.test(normalizedError);
-        setFollowState({
-          loading: false,
-          isFollowing: false,
-          followersCount: 0,
-          error: backendContractDrift ? '' : 'Follow status unavailable.',
-          supported: !backendContractDrift
-        });
+        setFollowState({ loading: false, isFollowing: false, followersCount: 0, error: 'Follow status unavailable.' });
       }
     };
     loadFollowStatus();
@@ -10583,14 +10279,15 @@ export default function StorefrontApp() {
 
   const handleFollowAction = async () => {
     const slug = String(selectedStore?.slug || '').trim().toLowerCase();
-    if (!slug || !storefrontVisitorId || followState.loading || followState.supported === false) return;
+    if (!slug || !storefrontVisitorId || followState.loading) return;
     const nextIsFollowing = !followState.isFollowing;
     setFollowState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
+      const token = readStoreAuthToken();
       const response = await requestJson('/api/v1/store/follow', {
         method: nextIsFollowing ? 'POST' : 'DELETE',
         storeSlug: slug,
-        credentials: 'omit',
+        authToken: token,
         body: {
           storefront_slug: slug,
           visitor_id: storefrontVisitorId
@@ -10734,8 +10431,11 @@ export default function StorefrontApp() {
     if (!selectedStore) return;
     setQuoteError('');
     if (storefrontClosedByHours) {
-      setQuoteError(storefrontClosedMessageBody);
-      toast.error(storefrontClosedToastMessage);
+      const message = storefrontHoursLabel
+        ? `Ordering is paused outside business hours: ${storefrontHoursLabel}.`
+        : 'Ordering is paused outside business hours.';
+      setQuoteError(message);
+      toast.error(message);
       return;
     }
     if (!checkoutPermitted || accessCapabilities.quote === false) {
@@ -10760,12 +10460,68 @@ export default function StorefrontApp() {
     }
   };
 
+  const handlePromoCardApply = useCallback(async (promoCode) => {
+    const normalizedPromoCode = String(promoCode || '').trim().toUpperCase();
+    if (!normalizedPromoCode) return;
+    setPromoCodeDraft(normalizedPromoCode);
+    setQuoteError('');
+
+    if (!Array.isArray(cart) || cart.length === 0) {
+      toast.success(`Promo code ${normalizedPromoCode} added. Add items to validate the discount.`);
+      return;
+    }
+
+    if (!selectedStore) {
+      toast.success(`Promo code ${normalizedPromoCode} added.`);
+      return;
+    }
+
+    if (storefrontClosedByHours) {
+      const message = storefrontHoursLabel
+        ? `Promo code ${normalizedPromoCode} added. It will validate during business hours: ${storefrontHoursLabel}.`
+        : `Promo code ${normalizedPromoCode} added. It will validate when ordering opens again.`;
+      toast.info(message);
+      return;
+    }
+
+    if (!checkoutPermitted || accessCapabilities.quote === false) {
+      toast.info(`Promo code ${normalizedPromoCode} added. It will validate when online checkout is available.`);
+      return;
+    }
+
+    try {
+      await requestQuote({
+        promoCodeOverride: normalizedPromoCode,
+        successMessage: `Promo code ${normalizedPromoCode} applied.`
+      });
+    } catch (error) {
+      const violation = extractStockViolation(error);
+      if (violation) {
+        const message = buildStockExceededMessage(violation);
+        setQuoteError(message);
+        toast.error(message);
+        return;
+      }
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to apply promo code right now.');
+      setQuoteError(message);
+      toast.error(message);
+    }
+  }, [
+    accessCapabilities.quote,
+    cart,
+    checkoutPermitted,
+    requestQuote,
+    selectedStore,
+    storefrontClosedByHours,
+    storefrontHoursLabel
+  ]);
+
   const handleCheckout = async () => {
     if (!selectedStore) return;
     setCheckoutError('');
     setCheckoutResult(null);
     const serviceBookingLine = hasServiceCart
-      ? activeServiceCartLine
+      ? firstServiceLine
       : (isServicesMode && activeBookingService
         ? {
           item_id: activeBookingService.item_id,
@@ -10797,8 +10553,11 @@ export default function StorefrontApp() {
       return;
     }
     if (checkoutBlockReason === 'business_hours') {
-      setCheckoutError(storefrontClosedMessageBody);
-      toast.error(storefrontClosedToastMessage);
+      const message = storefrontHoursLabel
+        ? `Ordering is paused outside business hours: ${storefrontHoursLabel}.`
+        : 'Ordering is paused outside business hours.';
+      setCheckoutError(message);
+      toast.error(message);
       return;
     }
     if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'missing_quote') {
@@ -10819,16 +10578,41 @@ export default function StorefrontApp() {
       toast.error(message);
       return;
     }
-    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt) {
+    if ((hasServiceCart || (isServicesMode && activeBookingService)) && !serviceAppointmentAt) {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
       toast.error(message);
       return;
     }
-    if ((hasServiceCart && serviceCartValidationIssues.length > 0) || (!hasServiceCart && isServicesMode && bookingPageMissingRequiredIntake.length > 0)) {
-      const message = hasServiceCart
-        ? serviceCartValidationIssues[0]?.message || 'Complete the required booking details before continuing.'
-        : `Complete required intake question: ${bookingPageMissingRequiredIntake[0].label}`;
+    if ((hasServiceCart && missingRequiredIntake.length > 0) || (!hasServiceCart && isServicesMode && bookingPageMissingRequiredIntake.length > 0)) {
+      const firstMissingField = hasServiceCart ? missingRequiredIntake[0] : bookingPageMissingRequiredIntake[0];
+      const message = `Complete required intake question: ${firstMissingField.label}`;
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (isFnbMode && !fnbCustomerStepComplete) {
+      const message = 'Enter the customer name and a phone or email before checkout.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (isFnbMode && !fnbFulfillmentStepComplete) {
+      const message = 'Delivery address is required for delivery orders.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (isSimpleMode && !simpleCustomerStepComplete) {
+      const message = isDeliveryOrder
+        ? 'Enter the customer details and delivery address before checkout.'
+        : 'Enter the customer name and a phone or email before checkout.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (!hasServiceCart && !hasValidCheckoutPaymentType) {
+      const message = 'Choose a valid payment method before placing the order.';
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -10839,33 +10623,30 @@ export default function StorefrontApp() {
       const authToken = isDgfyCustomerSignedIn
         ? (readDgfyAuthToken() || readStoreAuthToken())
         : readStoreAuthToken();
-      const servicesSubmitContract = resolveServicesBookingSubmitContract({
-        hasServiceCart,
-        serviceCartLines,
-        serviceBookingLine,
-        customerName,
-        customerEmail,
-        customerPhone,
-        selectedLocationId,
-        storeLocationId: selectedStore?.location_id,
-        paymentTiming: servicePaymentTiming,
-        serviceIntakeResponses,
-        bookingPageIntakeFields,
-        customerAddress,
-        bookingFieldPlan,
-        createIdempotencyKey: createStorefrontIdempotencyKey
-      });
-      if ((hasServiceCart || (isServicesMode && serviceBookingLine)) && !servicesSubmitContract.compatible) {
-        setCheckoutError(servicesSubmitContract.message);
-        toast.error(servicesSubmitContract.message);
-        return;
-      }
       const data = (hasServiceCart || (isServicesMode && serviceBookingLine))
-        ? await requestJson(servicesSubmitContract.route, {
+        ? await requestJson('/api/v1/store/services/bookings', {
           method: 'POST',
           storeSlug: selectedStore.slug,
           authToken,
-          body: servicesSubmitContract.body
+          body: {
+            service_item_id: Number(serviceBookingLine.item_id),
+            start_at: new Date(serviceAppointmentAt).toISOString(),
+            quantity: Math.max(1, Number(serviceBookingLine.quantity || 1)),
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone,
+            location_id: selectedLocationId ?? selectedStore?.location_id,
+            payment_timing: servicePaymentTiming,
+            intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null,
+            idempotency_key: createStorefrontIdempotencyKey('store-service'),
+            notes: [
+              Number(serviceBookingLine.quantity || 1) > 1 ? `Service quantity/package count: ${serviceBookingLine.quantity}` : '',
+              !bookingFieldPlan.addressField && String(customerAddress || '').trim()
+                ? `Service address: ${String(customerAddress || '').trim()}`
+                : '',
+              String(serviceBookingLine.service_notes || '').trim()
+            ].filter(Boolean).join('\n')
+          }
         })
         : await requestJson('/api/v1/store/checkout', {
           method: 'POST',
@@ -10880,9 +10661,9 @@ export default function StorefrontApp() {
       setCheckoutResult({
         ...data,
         cart_lines: hasServiceCart
-          ? serviceCartLines
+          ? (serviceBookingLine ? [serviceBookingLine] : cart)
           : cartSnapshot,
-        totals: totalsForDisplay
+        totals: data?.totals || totalsForDisplay
       });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
@@ -10906,7 +10687,7 @@ export default function StorefrontApp() {
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.variantName || cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0
+          total_amount: (data?.totals?.total_amount ?? totalsForDisplay?.total_amount) ?? 0
         }, data.tracking_pin);
         if (!isSimpleMode) {
           setCheckoutTab('track');
@@ -10916,15 +10697,13 @@ export default function StorefrontApp() {
         setTrackingPinInput(data.booking.public_reference);
         writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, data.booking.public_reference);
       }
-      if (hasServiceCart) {
-        setCart((prev) => prev.filter((line) => line.category !== 'service'));
-        setSelectedServiceCartLineId('');
+      if (hasServiceCart && serviceBookingLine) {
+        setCart((prev) => prev.filter((line) => Number(line.item_id) !== Number(serviceBookingLine.item_id)));
       } else {
         setCart([]);
       }
       setQuoteResult(null);
       setQuoteNeedsRefresh(true);
-      setCheckoutPromoCode('');
       setServiceAppointmentAt('');
       setServiceDraftQuantity(1);
       setServiceDraftNotes('');
@@ -10951,9 +10730,12 @@ export default function StorefrontApp() {
         }
       }
       clearCheckoutAuthResumeDraft();
+      clearGuestCheckoutDraft();
+      setGuestCheckoutDraftNotice('');
+      setPromoCodeDraft('');
       toast.success(
         hasServiceCart
-          ? 'Bookings created.'
+          ? 'Booking created.'
           : (data?.promo_feedback?.message || 'Checkout completed.')
       );
     } catch (error) {
@@ -10964,9 +10746,7 @@ export default function StorefrontApp() {
         toast.error(message);
         return;
       }
-      const message = hasServiceCart
-        ? formatServicesBookingFailureMessage(error, serviceCartLines)
-        : normalizeStorefrontErrorMessage(error, 'Unable to complete checkout.');
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to complete checkout.');
       setCheckoutError(message);
       toast.error(message);
     } finally {
@@ -10981,6 +10761,7 @@ export default function StorefrontApp() {
       const dataUrl = await buildTicketImage({
         result: checkoutResult,
         storeName: selectedStore?.tenant_name || routeSlug || DGFY_BRAND_NAME,
+        storeLogoUrl: selectedStore?.profile_image_url || selectedStore?.profile_image || selectedStore?.logo_url || '',
         cartLines: Array.isArray(checkoutResult.cart_lines) ? checkoutResult.cart_lines : cart,
         totals: checkoutResult.totals || totalsForDisplay
       });
@@ -11049,25 +10830,6 @@ export default function StorefrontApp() {
       || ''
     ).trim();
     const totalAmountValue = normalizedEntity?.totalAmount ?? payload?.order?.total_amount ?? payload?.total_amount ?? payload?.order_total;
-    const normalizedItems = Array.isArray(normalizedEntity?.items) && normalizedEntity.items.length > 0
-      ? normalizedEntity.items
-      : (
-        Array.isArray(payload?.order?.items)
-          ? payload.order.items.map((line) => ({
-            id: line?.line_id ?? line?.item_id ?? null,
-            item_id: line?.item_id ?? null,
-            name: String(line?.item_name || line?.name || '').trim(),
-            qty: Number.isFinite(Number(line?.quantity)) ? Number(line.quantity) : 1,
-            amount: Number.isFinite(Number(line?.line_subtotal))
-              ? Number(line.line_subtotal)
-              : (Number.isFinite(Number(line?.sale_price)) && Number.isFinite(Number(line?.quantity))
-                ? Number(line.sale_price) * Number(line.quantity)
-                : null),
-            image_url: String(line?.image_url || '').trim(),
-            unit_of_measure: String(line?.unit_of_measure || '').trim()
-          })).filter((line) => Boolean(line.name))
-          : []
-      );
     const nextEntry = {
       tracking_pin: trackingPin,
       status: String(normalizedEntity?.statusCode || payload?.status || '').trim().toLowerCase(),
@@ -11077,10 +10839,7 @@ export default function StorefrontApp() {
       created_at: String(normalizedEntity?.createdAt || payload?.order?.created_at || payload?.created_at || new Date().toISOString()).trim(),
       item_name: itemName,
       item_count: Array.isArray(payload?.order?.lines) ? payload.order.lines.length : (Array.isArray(normalizedEntity?.items) ? normalizedEntity.items.length : 1),
-      items: normalizedItems,
-      subtotal: normalizedEntity?.subtotalAmount ?? payload?.order?.subtotal_amount ?? null,
       total_amount: Number.isFinite(Number(totalAmountValue)) ? Number(totalAmountValue) : null,
-      delivery_fee: normalizedEntity?.deliveryFee ?? payload?.order?.delivery_fee ?? null,
       branch_name: String(normalizedEntity?.branchName || payload?.location?.name || '').trim(),
       eta_minutes: Number.isFinite(Number(normalizedEntity?.etaMinutes ?? payload?.estimated_wait_minutes)) ? Number(normalizedEntity?.etaMinutes ?? payload?.estimated_wait_minutes) : null
     };
@@ -11095,7 +10854,31 @@ export default function StorefrontApp() {
     writeLastTrackingPinForStore(resolvedSlug, trackingPin);
   }, [routeSlug, selectedStore?.slug, selectedStore?.tenant_name, selectedStore?.name, selectedStore?.storefront_profile_image_url, selectedStore?.profile_image_url]);
 
+  const applyTrackingCooldown = useCallback((error) => {
+    const retryAfterSeconds = getTrackingRetryAfterSeconds(error);
+    if (retryAfterSeconds <= 0) return false;
+    const now = Date.now();
+    setTrackingCooldownNowMs(now);
+    setTrackingCooldownUntilMs(now + (retryAfterSeconds * 1000));
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!trackingCooldownUntilMs) return undefined;
+    const updateCooldownClock = () => {
+      const now = Date.now();
+      setTrackingCooldownNowMs(now);
+      if (now >= trackingCooldownUntilMs) {
+        setTrackingCooldownUntilMs(0);
+      }
+    };
+    updateCooldownClock();
+    const intervalId = window.setInterval(updateCooldownClock, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [trackingCooldownUntilMs]);
+
   const handleTrack = async () => {
+    if (isTrackingCooldownActive) return;
     setTrackingError('');
     setIsTrackingRefreshing(true);
     try {
@@ -11104,8 +10887,10 @@ export default function StorefrontApp() {
       const trackingPayload = await fetchTrackingPayload(pin);
       setTrackingResult(toTrackingViewState(trackingPayload));
       setSelectedTrackingPin(pin);
+      setTrackingCooldownUntilMs(0);
       syncTrackedOrderSnapshot(trackingPayload.raw, pin, trackingPayload.normalized);
     } catch (error) {
+      applyTrackingCooldown(error);
       setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
     } finally {
       setIsTrackingRefreshing(false);
@@ -11135,39 +10920,44 @@ export default function StorefrontApp() {
   }, [routeSlug, selectedStore?.slug]);
 
   useEffect(() => {
-    if (!(checkoutTab === 'track' && isFnbOrderSubpage) || !selectedStore?.slug) return;
+    const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);
+    if (!shouldPollTrackingRoute || !selectedStore?.slug) return;
     const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
-    const backgroundPins = Array.from(
-      new Set(
-        guestTrackedOrders
-          .map((entry) => String(entry.tracking_pin || '').trim().toUpperCase())
-          .filter((pin) => Boolean(pin) && pin !== selectedPin)
-      )
-    );
+    const backgroundPins = guestTrackingBackgroundPinsKey
+      ? guestTrackingBackgroundPinsKey.split('|').filter(Boolean)
+      : [];
     if (!selectedPin && backgroundPins.length === 0) return;
 
     let cancelled = false;
-    const selectedPollMs = typeof document !== 'undefined' && document.hidden ? 8000 : 2000;
-    const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 30000 : 12000;
+    const backgroundPollMs = typeof document !== 'undefined' && document.hidden ? 300000 : 180000;
+    let lastSelectedStatus = '';
 
     const refreshSelectedPin = async () => {
-      if (!selectedPin) return;
+      if (!selectedPin || cancelled) return null;
       try {
         setIsTrackingRefreshing(true);
         const trackingPayload = await fetchTrackingPayload(selectedPin);
-        if (cancelled) return;
+        if (cancelled) return null;
+        const trackingViewState = toTrackingViewState(trackingPayload);
+        lastSelectedStatus = trackingViewState?.status || lastSelectedStatus;
         syncTrackedOrderSnapshot(trackingPayload.raw, selectedPin, trackingPayload.normalized);
-        setTrackingResult(toTrackingViewState(trackingPayload));
+        setTrackingResult(trackingViewState);
         setTrackingError('');
+        setTrackingCooldownUntilMs(0);
+        return trackingViewState;
       } catch (error) {
-        if (cancelled) return;
-        setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+        if (!cancelled) {
+          applyTrackingCooldown(error);
+          setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+        }
+        throw error;
       } finally {
         if (!cancelled) setIsTrackingRefreshing(false);
       }
     };
 
     const refreshBackgroundPins = async () => {
+      let largestRetryAfterSeconds = null;
       for (const pin of backgroundPins) {
         try {
           const trackingPayload = await fetchTrackingPayload(pin);
@@ -11175,22 +10965,51 @@ export default function StorefrontApp() {
           syncTrackedOrderSnapshot(trackingPayload.raw, pin, trackingPayload.normalized);
         } catch (error) {
           if (cancelled) return;
+          const retryAfterSeconds = getTrackingRetryAfterSeconds(error);
+          if (Number.isFinite(retryAfterSeconds)) {
+            largestRetryAfterSeconds = Math.max(largestRetryAfterSeconds || 0, retryAfterSeconds);
+          }
         }
+      }
+      if (largestRetryAfterSeconds) {
+        const error = new Error('Background tracking refresh rate limited.');
+        error.retryAfterSeconds = largestRetryAfterSeconds;
+        throw error;
       }
     };
 
-    refreshSelectedPin();
-    refreshBackgroundPins();
+    const selectedScheduler = selectedPin
+      ? createCompletionTrackingScheduler({
+        poll: refreshSelectedPin,
+        resolveDelayMs: ({ result, error }) => {
+          const normalDelayMs = resolveSelectedTrackingPollMs({
+            visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible',
+            status: result?.status || lastSelectedStatus
+          });
+          return resolveTrackingRetryDelayMs({ error, normalDelayMs });
+        },
+        setTimeoutFn: window.setTimeout.bind(window),
+        clearTimeoutFn: window.clearTimeout.bind(window)
+      })
+      : null;
+    const backgroundScheduler = backgroundPins.length > 0
+      ? createCompletionTrackingScheduler({
+        poll: refreshBackgroundPins,
+        resolveDelayMs: ({ error }) => resolveTrackingRetryDelayMs({ error, normalDelayMs: backgroundPollMs }),
+        setTimeoutFn: window.setTimeout.bind(window),
+        clearTimeoutFn: window.clearTimeout.bind(window)
+      })
+      : null;
 
-    const selectedTimerId = selectedPin ? window.setInterval(refreshSelectedPin, selectedPollMs) : null;
-    const backgroundTimerId = backgroundPins.length > 0 ? window.setInterval(refreshBackgroundPins, backgroundPollMs) : null;
+    selectedScheduler?.start();
+    backgroundScheduler?.start();
 
     return () => {
       cancelled = true;
-      if (selectedTimerId) window.clearInterval(selectedTimerId);
-      if (backgroundTimerId) window.clearInterval(backgroundTimerId);
+      selectedScheduler?.stop();
+      backgroundScheduler?.stop();
     };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
+  }, [applyTrackingCooldown, checkoutTab, fetchTrackingPayload, guestTrackingBackgroundPinsKey, isFnbOrderSubpage, isStoreTrackingRoute, selectedStore?.slug, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
 
   const handleLoadAccountPanel = async () => {
     const dgfyToken = readDgfyAuthToken();
@@ -11201,28 +11020,35 @@ export default function StorefrontApp() {
     }
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
     const loadDgfyAccountPanel = async (authToken = '') => {
-      const [meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData] = await Promise.all([
+      const [meData, dashboardData, activitiesData, loyaltyData, notificationsData] = await Promise.all([
         requestJson('/api/v1/dgfy/auth/me', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/dashboard', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
         requestJson('/api/v1/dgfy/customer/loyalty', { authToken, cache: 'no-store' }).catch(() => null),
-        requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] })),
-        requestJson('/api/v1/dgfy/customer/notifications?limit=50', { authToken, cache: 'no-store' }).catch(() => ({ notifications: [], unread_count: 0 })),
-        requestJson('/api/v1/dgfy/customer/addresses', { authToken, cache: 'no-store' }).catch(() => ({ addresses: [] }))
+        requestJson('/api/v1/dgfy/customer/notifications?limit=50', { authToken, cache: 'no-store' }).catch(() => ({ notifications: [], unread_count: 0 }))
       ]);
+      const hasResolvedDgfyAccount = Boolean(
+        meData?.account?.id
+        || meData?.id
+        || dashboardData?.account?.id
+        || dgfySessionAccount?.id
+        || String(authToken || '').trim()
+      );
+      const companiesData = hasResolvedDgfyAccount
+        ? await requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] }))
+        : { companies: [] };
       return {
         meData,
         dashboardData,
         activitiesData,
         loyaltyData,
         companiesData,
-        notificationsData,
-        addressesData
+        notificationsData
       };
     };
     try {
       if (dgfyToken || dgfySessionAccount?.id) {
-        const preferredToken = dgfyToken || '';
+        const preferredToken = dgfySessionAccount?.id ? '' : dgfyToken;
         let panelData;
         try {
           panelData = await loadDgfyAccountPanel(preferredToken);
@@ -11235,13 +11061,13 @@ export default function StorefrontApp() {
             throw error;
           }
         }
-        const { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData } = panelData;
+        const { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData } = panelData;
         const activityCollections = deriveAccountActivityCollections({ dashboardData, activitiesData });
-        const resolvedAddresses = Array.isArray(addressesData?.addresses) && addressesData.addresses.length > 0
-          ? addressesData.addresses
-          : (Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : []);
         setDgfySessionAccount(meData?.account || dashboardData?.account || meData || dgfySessionAccount || null);
-        
+        if (meData?.account || dashboardData?.account || meData) {
+          clearDgfyAuthToken();
+          setDgfyAuthTokenState('');
+        }
         setAccountPanel({
           loading: false,
           error: '',
@@ -11252,18 +11078,9 @@ export default function StorefrontApp() {
           bookings: activityCollections.bookings,
           notifications: Array.isArray(notificationsData?.notifications) ? notificationsData.notifications : [],
           unreadNotificationCount: Number(notificationsData?.unread_count || 0),
-          addresses: resolvedAddresses,
+          addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
           loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null,
-          businessCompanies: (Array.isArray(companiesData?.companies) ? companiesData.companies : []).map(company => {
-            const matchedStore = knownStoreRouteCandidates.find(
-              (store) => store.slug === company.company_token || store.tenant_id === company.tenant_id
-            );
-            return {
-              ...company,
-              storefront_profile_image_url: matchedStore?.storefront_profile_image_url || company.storefront_profile_image_url || null,
-              storefront_cover_image_url: matchedStore?.storefront_cover_image_url || company.storefront_cover_image_url || null
-            };
-          }),
+          businessCompanies: Array.isArray(companiesData?.companies) ? companiesData.companies : [],
           businessStepUp: companiesData?.business_step_up || { verified: false }
         });
         return;
@@ -11306,7 +11123,7 @@ export default function StorefrontApp() {
     const referencePayload = referenceOrOrder && typeof referenceOrOrder === 'object' ? referenceOrOrder : null;
     const normalizedReference = String(referencePayload?.reference || referenceOrOrder || '').trim().toUpperCase();
     if (!normalizedReference) return;
-    const resolvedStoreSlug = resolveStorefrontRouteSlug(referencePayload || {}, selectedStore, knownStoreRouteCandidates) || toSlug(selectedStore?.slug || routeSlug);
+    const resolvedStoreSlug = resolveStorefrontRouteSlug(referencePayload || {}, selectedStore) || toSlug(selectedStore?.slug || routeSlug);
     if (resolvedStoreSlug) {
       setTrackedCustomerActivity(referencePayload || null);
       setIsAccountDrawerOpen(false);
@@ -11332,7 +11149,7 @@ export default function StorefrontApp() {
       });
       const activity = payload?.activity || null;
       setTrackedCustomerActivity(activity);
-      const activityStoreSlug = resolveStorefrontRouteSlug(activity || {}, selectedStore, knownStoreRouteCandidates) || toSlug(selectedStore?.slug || routeSlug);
+      const activityStoreSlug = resolveStorefrontRouteSlug(activity || {}, selectedStore) || toSlug(selectedStore?.slug || routeSlug);
       const activityReference = String(activity?.reference || normalizedReference).trim().toUpperCase();
       if (activityStoreSlug && activityReference) {
         setIsAccountDrawerOpen(false);
@@ -11347,7 +11164,7 @@ export default function StorefrontApp() {
     } finally {
       setCustomerTrackLoadingReference('');
     }
-  }, [dgfySessionAccount?.id, goStoreTrackPage, knownStoreRouteCandidates, routeSlug, selectedStore]);
+  }, [dgfySessionAccount?.id, goStoreTrackPage, routeSlug, selectedStore]);
 
   const handleMarkNotificationRead = useCallback(async (notification) => {
     const notificationId = notification?.notification_id;
@@ -11396,20 +11213,17 @@ export default function StorefrontApp() {
       void handleLoadAccountPanel();
     }
   }, []);
-  const handleSaveAccountAddress = async (draft = {}, existingAddress = null) => {
+
+  const handleSaveAccountAddress = useCallback(async (draft = {}, existingAddress = null) => {
     const token = readDgfyAuthToken();
-    const hasDgfySession = !!dgfySessionAccount?.id;
+    const hasDgfySession = Boolean(token || dgfySessionAccount?.id);
     const addressLine = String(draft.address_line || '').trim();
-    if (!token && !hasDgfySession) {
-      toast.error('Sign in to manage saved addresses.');
-      return false;
-    }
-    if (!addressLine) {
-      toast.error('Enter an address before saving.');
+    if (!hasDgfySession || !addressLine) {
+      toast.error(hasDgfySession ? 'Enter an address before saving.' : 'Sign in to manage saved addresses.');
       return false;
     }
     const addressId = existingAddress?.address_id;
-    setAccountAddressActionId(addressId ? `save:${String(addressId)}` : 'new');
+    setAccountAddressActionId(addressId ? String(addressId) : 'new');
     try {
       const coordinates = normalizeCoordinatePair(draft);
       await requestJson(addressId ? `/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}` : '/api/v1/dgfy/customer/addresses', {
@@ -11423,49 +11237,26 @@ export default function StorefrontApp() {
       toast.error(normalizeStorefrontErrorMessage(error, 'Unable to save this address.'));
       return false;
     } finally { setAccountAddressActionId(''); }
-  };
-  const applyOptimisticDefaultAccountAddress = useCallback((addressId) => {
-    const normalizedTargetId = String(addressId || '').trim();
-    if (!normalizedTargetId) return null;
-    let previousAddresses = null;
-    setAccountPanel((previous) => {
-      previousAddresses = Array.isArray(previous?.addresses) ? previous.addresses : [];
-      const nextAddresses = previousAddresses.map((entry) => ({
-        ...entry,
-        is_default: String(entry?.address_id || '') === normalizedTargetId
-      }));
-      return { ...previous, addresses: nextAddresses };
-    });
-    return previousAddresses;
-  }, []);
-  const handleSetDefaultAccountAddress = async (address = {}) => {
+  }, [dgfySessionAccount?.id]);
+  const handleSetDefaultAccountAddress = useCallback(async (address = {}) => {
     const addressId = address?.address_id;
     if (!addressId) return;
-    const normalizedAddressId = String(addressId);
-    const previousAddresses = applyOptimisticDefaultAccountAddress(normalizedAddressId);
-    setAccountAddressActionId(`default:${normalizedAddressId}`);
+    setAccountAddressActionId(String(addressId));
     try {
       await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}/default`, { method: 'PATCH', authToken: readDgfyAuthToken(), cache: 'no-store' });
-      const addressLine = String(address.address_line || 'Address').trim();
-      toast.success(`${addressLine} set as default address.`);
       await handleLoadAccountPanel();
-    } catch (error) {
-      if (previousAddresses) {
-        setAccountPanel((previous) => ({ ...previous, addresses: previousAddresses }));
-      }
-      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to update default address.'));
     } finally { setAccountAddressActionId(''); }
-  };
-  const handleDeleteAccountAddress = async (address = {}) => {
+  }, []);
+  const handleDeleteAccountAddress = useCallback(async (address = {}) => {
     const addressId = address?.address_id;
     if (!addressId) return;
-    setAccountAddressActionId(`delete:${String(addressId)}`);
+    setAccountAddressActionId(String(addressId));
     try {
       await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}`, { method: 'DELETE', authToken: readDgfyAuthToken(), cache: 'no-store' });
       toast.success('Address deleted.');
       await handleLoadAccountPanel();
     } finally { setAccountAddressActionId(''); }
-  };
+  }, []);
 
   const closeAccountDrawer = useCallback(() => {
     setIsAccountDrawerOpen(false);
@@ -11496,17 +11287,11 @@ export default function StorefrontApp() {
     }
   }, [isDgfyCustomerSignedIn]);
   useEffect(() => {
-    const routeWantsTrack = routeSubpage === STORE_TRACK_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
-    if (!routeWantsTrack || !isFnbMode || !canOpenTrackingDrawer || trackingResult) return;
-    if (isDgfyCustomerSignedIn) {
-      void handleLoadAccountPanel();
-    }
+    const routeWantsTrack = isStoreTrackingRoute;
+    if (!routeWantsTrack) return;
     setIsCheckoutOpen(false);
-    setIsGuestTrackingDrawerOpen(true);
-    if (!selectedTrackingPin) {
-      setCheckoutTab('checkout');
-    }
-  }, [canOpenTrackingDrawer, currentPathSubpage, isDgfyCustomerSignedIn, isFnbMode, routeSubpage, selectedTrackingPin, trackingResult]);
+    setIsGuestTrackingDrawerOpen(false);
+  }, [isStoreTrackingRoute]);
   useEffect(() => {
     if (typeof window === 'undefined' || hasAppliedCheckoutAuthResume || !isDgfyCustomerSignedIn) return;
     const draft = readCheckoutAuthResumeDraft();
@@ -11523,7 +11308,6 @@ export default function StorefrontApp() {
     if (draft.serviceAppointmentAt) setServiceAppointmentAt(draft.serviceAppointmentAt);
     if (draft.servicePaymentTiming) setServicePaymentTiming(draft.servicePaymentTiming);
     if (draft.customerAddress) setCustomerAddress(draft.customerAddress);
-    if (draft.serviceLocationLandmarkNote) setServiceLocationLandmarkNote(draft.serviceLocationLandmarkNote);
     if (draft.resolvedDeliveryAddress) setResolvedDeliveryAddress(draft.resolvedDeliveryAddress);
     if (draft.deliveryLocationAction) setDeliveryLocationAction(draft.deliveryLocationAction);
     if (draft.customerPin) setCustomerPin(draft.customerPin);
@@ -11554,6 +11338,106 @@ export default function StorefrontApp() {
     routeSlug,
     selectedStore?.slug
   ]);
+  useEffect(() => {
+    if (typeof window === 'undefined' || hasAppliedGuestCheckoutDraft || isDgfyCustomerSignedIn) return;
+    const normalizedCurrentSlug = toSlug(selectedStore?.slug || routeSlug || '');
+    if (!normalizedCurrentSlug) return;
+    const draft = readGuestCheckoutDraft(normalizedCurrentSlug);
+    setHasAppliedGuestCheckoutDraft(true);
+    if (!draft) return;
+
+    setCart(draft.cart);
+    if (draft.selectedLocationId != null) setSelectedLocationId(draft.selectedLocationId);
+    if (draft.selectedSavedLocationId) setSelectedSavedLocationId(draft.selectedSavedLocationId);
+    if (draft.orderMethod) setOrderMethod(draft.orderMethod);
+    if (draft.customerFirstName) setCustomerFirstName(draft.customerFirstName);
+    if (draft.customerLastName) setCustomerLastName(draft.customerLastName);
+    if (draft.customerName) setCustomerName(draft.customerName);
+    if (draft.customerPhone) setCustomerPhone(draft.customerPhone);
+    if (draft.customerEmail) setCustomerEmail(draft.customerEmail);
+    if (draft.customerAddress) setCustomerAddress(draft.customerAddress);
+    if (draft.resolvedDeliveryAddress) setResolvedDeliveryAddress(draft.resolvedDeliveryAddress);
+    if (draft.deliveryLocationAction) setDeliveryLocationAction(draft.deliveryLocationAction);
+    if (draft.customerPin) setCustomerPin(draft.customerPin);
+    if (draft.fnbScheduleMode) setFnbScheduleMode(draft.fnbScheduleMode);
+    if (draft.fnbScheduledFor) setFnbScheduledFor(draft.fnbScheduledFor);
+    if (draft.fnbSpecialInstructions) setFnbSpecialInstructions(draft.fnbSpecialInstructions);
+    if (isValidStorePaymentType(draft.paymentType)) setFnbPaymentType(draft.paymentType);
+    if (Number.isInteger(draft.fnbOrderStep) && draft.fnbOrderStep > 0) setFnbOrderStep(draft.fnbOrderStep);
+    if (Number.isInteger(draft.simpleOrderStep) && draft.simpleOrderStep > 0) setSimpleOrderStep(draft.simpleOrderStep);
+    if (draft.checkoutTab) setCheckoutTab(draft.checkoutTab);
+    setGuestCheckoutUnlocked(true);
+    setQuoteResult(null);
+    setQuoteNeedsRefresh(true);
+    setIsCheckoutOpen(true);
+    setGuestCheckoutDraftNotice('Guest checkout draft restored. Refresh quote to sync totals before checkout.');
+  }, [
+    hasAppliedGuestCheckoutDraft,
+    isDgfyCustomerSignedIn,
+    routeSlug,
+    selectedStore?.slug
+  ]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const normalizedCurrentSlug = toSlug(selectedStore?.slug || routeSlug || '');
+    if (!normalizedCurrentSlug || isDgfyCustomerSignedIn || !guestCheckoutUnlocked) {
+      if (isDgfyCustomerSignedIn) clearGuestCheckoutDraft();
+      return;
+    }
+    if (cart.length === 0) {
+      clearGuestCheckoutDraft();
+      return;
+    }
+    writeGuestCheckoutDraft({
+      routeSlug: normalizedCurrentSlug,
+      checkoutTab,
+      cart,
+      selectedLocationId,
+      orderMethod,
+      simpleOrderStep,
+      fnbOrderStep,
+      customerFirstName,
+      customerLastName,
+      customerName,
+      customerPhone,
+      customerEmail,
+      customerAddress,
+      resolvedDeliveryAddress,
+      deliveryLocationAction,
+      customerPin,
+      selectedSavedLocationId,
+      fnbScheduleMode,
+      fnbScheduledFor,
+      fnbSpecialInstructions,
+      paymentType: fnbPaymentType,
+      savedAt: Date.now()
+    });
+  }, [
+    cart,
+    checkoutTab,
+    customerAddress,
+    customerEmail,
+    customerFirstName,
+    customerLastName,
+    customerName,
+    customerPhone,
+    customerPin,
+    deliveryLocationAction,
+    fnbOrderStep,
+    fnbPaymentType,
+    fnbScheduleMode,
+    fnbScheduledFor,
+    fnbSpecialInstructions,
+    guestCheckoutUnlocked,
+    isDgfyCustomerSignedIn,
+    orderMethod,
+    resolvedDeliveryAddress,
+    routeSlug,
+    selectedLocationId,
+    selectedSavedLocationId,
+    selectedStore?.slug,
+    simpleOrderStep
+  ]);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
     const signedOutEmail = String(accountPanel.me?.email || dgfySessionAccount?.email || '').trim();
@@ -11562,11 +11446,10 @@ export default function StorefrontApp() {
     try {
       await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
     } catch {
-      /* ignore logout errors; local session is cleared below regardless */
+      // Logout is best-effort; local credential cleanup must continue.
     }
     clearDgfyAuthToken();
     clearStoreAuthToken();
-    markDgfyExplicitSignOut();
     setDgfyAuthTokenState('');
     setDgfySessionAccount(null);
     setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: '' });
@@ -11591,59 +11474,35 @@ export default function StorefrontApp() {
     toast.success('Signed out.');
   }, [currentPathSubpage, routeSlug, routeSubpage]);
 
-  const handleOpenBusinessInventory = useCallback(async (membership) => {
-    const company = membership?.company || {};
+  const handleOpenBusinessPos = useCallback(async (company = {}) => {
+    const tenantId = company.tenant_id ?? company.id ?? null;
     const companyToken = String(company.company_token || '').trim();
-    const tenantId = company.id ?? membership?.tenant_id ?? null;
-    const dgfyToken = readDgfyAuthToken();
-    const hasDgfySession = Boolean(dgfyToken || dgfySessionAccount?.id);
-    if (!tenantId && !companyToken) {
-      toast.error('Business session details are unavailable.');
-      return;
-    }
-    if (!hasDgfySession) {
-      toast.error('Sign in again to open this business inventory.');
-      return;
-    }
     try {
-      await startDgfyTenantSession({
-        tenantId,
-        companyToken
-      }, dgfyToken);
-      window.location.href = buildSkupervisorPath('/items');
-    } catch (error) {
-      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to open the business inventory right now.'));
-    }
-  }, [dgfySessionAccount?.id]);
-  const handleOpenBusinessPos = useCallback(async (membership) => {
-    const tenantId = String(membership?.tenant_id || membership?.company?.id || '').trim();
-    const dgfyToken = readDgfyAuthToken();
-    const hasDgfySession = Boolean(dgfyToken || dgfySessionAccount?.id);
-    if (!tenantId) {
-      toast.error('Business session details are unavailable.');
-      return;
-    }
-    if (!hasDgfySession) {
-      toast.error('Sign in again to open this business POS.');
-      return;
-    }
-    try {
-      const rememberedTerminalId = typeof window !== 'undefined'
-        ? String(window.localStorage.getItem('pos_terminal_identity_v1') || '').trim()
-        : '';
-      if (rememberedTerminalId) {
-        await startDgfyPosSession({
-          tenantId,
-          terminalId: rememberedTerminalId
-        }, dgfyToken);
+      if (company.tenant_id) {
+        await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(String(tenantId))}/switch`, {
+          method: 'POST',
+          authToken: readDgfyAuthToken(),
+          cache: 'no-store'
+        });
       } else {
-        await startDgfyTenantSession({ tenantId }, dgfyToken);
+        if (!companyToken || !tenantId) {
+          toast.error('Business session details are unavailable.');
+          return;
+        }
+        if (!dgfyAuthToken) {
+          toast.error('Sign in again to open this business in POS.');
+          return;
+        }
+        await startDgfyTenantSession({
+          tenantId,
+          companyToken
+        }, dgfyAuthToken);
       }
-      window.location.href = buildSkupervisorPath('/pos');
+      window.open(buildPosTerminalUrl('?setup_flow=tenant_onboarding&setup_step=storefront_setup'), '_blank', 'noopener,noreferrer');
     } catch (error) {
-      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to open the business POS right now.'));
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to open POS right now.'));
     }
-  }, [dgfySessionAccount?.id]);
+  }, [dgfyAuthToken]);
 
   const handleNearMe = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
@@ -11679,26 +11538,15 @@ export default function StorefrontApp() {
     setIsStoreListVisible(false);
     setIsMobileResultsCollapsed(false);
     setSelectedMapPin(null);
-    setDebouncedDiscoverySearch(currentSearch);
-    if (!navigator?.geolocation) {
-      loadStores(undefined, { useImmediateSearch: true });
+    if (
+      currentSearch === String(debouncedDiscoverySearch || '').trim()
+      && !discoveryCoordsRef.current
+      && discoveryPinScope === 'tenant_primary'
+    ) {
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        loadStores({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        }, { useImmediateSearch: true });
-      },
-      () => {
-        loadStores(undefined, { useImmediateSearch: true });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000
-      }
-    );
+    setDebouncedDiscoverySearch(currentSearch);
+    loadStores(null, { useImmediateSearch: true, pinScope: 'tenant_primary' });
   };
   const handlePopularDiscoveryCategory = (query) => {
     const normalized = String(query || '').trim();
@@ -11749,6 +11597,39 @@ export default function StorefrontApp() {
       })
       .slice(0, 10);
   }, [featuredBaseStores, featuredCategoryFilter]);
+  const featuredCarouselStep = 304;
+  const featuredCarouselPageCount = useMemo(
+    () => Math.max(1, Math.min(5, Math.ceil(featuredVisibleStores.length / 2))),
+    [featuredVisibleStores.length]
+  );
+  const getFeaturedCarouselPageForScroll = useCallback((scrollLeft = 0) => {
+    const rawPage = Math.round(Number(scrollLeft || 0) / featuredCarouselStep);
+    return Math.max(0, Math.min(featuredCarouselPageCount - 1, rawPage));
+  }, [featuredCarouselPageCount]);
+  const scrollFeaturedCarouselToPage = useCallback((page) => {
+    const nextPage = Math.max(0, Math.min(featuredCarouselPageCount - 1, Number(page || 0)));
+    setFeaturedCarouselPage(nextPage);
+    featuredCarouselRef.current?.scrollTo?.({ left: nextPage * featuredCarouselStep, behavior: 'smooth' });
+  }, [featuredCarouselPageCount]);
+  const scrollFeaturedCarouselByPage = useCallback((direction) => {
+    const currentPage = getFeaturedCarouselPageForScroll(featuredCarouselRef.current?.scrollLeft || 0);
+    scrollFeaturedCarouselToPage(currentPage + direction);
+  }, [getFeaturedCarouselPageForScroll, scrollFeaturedCarouselToPage]);
+  useEffect(() => {
+    setFeaturedCarouselPage(0);
+    featuredCarouselRef.current?.scrollTo?.({ left: 0, behavior: 'auto' });
+  }, [featuredCategoryFilter, featuredVisibleStores.length]);
+  useEffect(() => {
+    const carousel = featuredCarouselRef.current;
+    if (!carousel) return undefined;
+    const syncFeaturedCarouselPage = () => {
+      const nextPage = getFeaturedCarouselPageForScroll(carousel.scrollLeft);
+      setFeaturedCarouselPage((currentPage) => (currentPage === nextPage ? currentPage : nextPage));
+    };
+    syncFeaturedCarouselPage();
+    carousel.addEventListener('scroll', syncFeaturedCarouselPage, { passive: true });
+    return () => carousel.removeEventListener('scroll', syncFeaturedCarouselPage);
+  }, [getFeaturedCarouselPageForScroll, featuredVisibleStores.length]);
   const discoveryBusinessModeOptions = useMemo(() => ([
     ['all', 'Category: All'],
     ...WORKFLOW_MODE_SELECT_VALUES.map((modeKey) => [
@@ -11759,12 +11640,30 @@ export default function StorefrontApp() {
   const fnbHasCustomerIdentity = hasCustomerName(customerName);
   const fnbHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
   const fnbCustomerStepComplete = fnbHasCustomerIdentity && fnbHasPrimaryIdentityContact;
+  const hasValidCheckoutPaymentType = isValidStorePaymentType(fnbPaymentType);
+  const renderPromoCodePanel = useCallback((options = {}) => (
+    <PromoCodePanel
+      code={promoCodeDraft}
+      onChange={setPromoCodeDraft}
+      onClear={() => setPromoCodeDraft('')}
+      statusMessage={promoStatusMessage}
+      statusTone={promoStatusTone}
+      appliedDiscountText={appliedPromoDiscountText}
+      compact={options.compact === true}
+      accentColor={options.accentColor || '#0f766e'}
+      bodyFont={options.bodyFont || servicesBodyFont}
+    />
+  ), [appliedPromoDiscountText, promoCodeDraft, promoStatusMessage, promoStatusTone, servicesBodyFont]);
   const fnbFulfillmentStepComplete = hasDeliveryAddress({
     isDeliveryOrder,
     hasPinnedDeliveryLocation,
     activePinnedDeliveryAddress,
     usePinnedAddress: true
   });
+  const fnbCheckoutAllowed = checkoutAllowed
+    && fnbCustomerStepComplete
+    && fnbFulfillmentStepComplete
+    && hasValidCheckoutPaymentType;
   const fnbOrderBrand = '#1A4E8D';
   const fnbOrderBrandDark = '#1A4586';
   const fnbOrderBrandSoft = '#AEE8F4';
@@ -11812,6 +11711,11 @@ export default function StorefrontApp() {
       setShowFnbMobileOrderSummary(false);
     }
   }, [checkoutResult, fnbOrderStep, isFnbOrderResponsiveFlow]);
+  useEffect(() => {
+    if (!isValidStorePaymentType(fnbPaymentType)) {
+      setFnbPaymentType('cash');
+    }
+  }, [fnbPaymentType]);
   const fnbMobileSummaryItemCountLabel = `${cartCount} Item${cartCount === 1 ? '' : 's'}`;
   const fnbSummaryFeeAndTaxes = totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount;
   const fnbScheduleSummaryLabel = fnbScheduleMode === 'schedule' && fnbScheduledFor
@@ -11828,7 +11732,7 @@ export default function StorefrontApp() {
   const simpleHasCustomerIdentity = hasCustomerName(customerName);
   const simpleHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
   const simpleStepOneReady = cart.length > 0;
-  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
+  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete && hasValidCheckoutPaymentType;
   const discoveryResultsPerPage = useMemo(() => {
     if (viewMode === 'list') return 3;
     if (isDiscoveryMobileViewport) return 4;
@@ -11843,6 +11747,33 @@ export default function StorefrontApp() {
     const startIndex = (discoveryResultsPage - 1) * discoveryResultsPerPage;
     return filteredDiscoveryStores.slice(startIndex, startIndex + discoveryResultsPerPage);
   }, [filteredDiscoveryStores, discoveryResultsPage, discoveryResultsPerPage]);
+  const clusterResultStores = useMemo(() => {
+    const clusterStores = Array.isArray(clusterResultContext?.stores) ? clusterResultContext.stores : [];
+    if (clusterStores.length === 0) return [];
+    const byMarkerKey = new globalThis.Map();
+    const bySlug = new globalThis.Map();
+    [
+      ...(Array.isArray(filteredDiscoveryStores) ? filteredDiscoveryStores : []),
+      ...(Array.isArray(discoveryResultStores) ? discoveryResultStores : []),
+      ...(Array.isArray(storesWithNearestBranch) ? storesWithNearestBranch : [])
+    ].forEach((store) => {
+      if (!store) return;
+      const markerKey = getDiscoveryMarkerKey(store);
+      const slug = toSlug(store.slug || store.tenant_slug || store.tenant_name);
+      if (markerKey && !byMarkerKey.has(markerKey)) byMarkerKey.set(markerKey, store);
+      if (slug && !bySlug.has(slug)) bySlug.set(slug, store);
+    });
+    return clusterStores
+      .map((pin) => {
+        const markerKey = getDiscoveryMarkerKey(pin);
+        const slug = toSlug(pin?.slug || pin?.tenant_slug || pin?.tenant_name);
+        return (markerKey && byMarkerKey.get(markerKey))
+          || (slug && bySlug.get(slug))
+          || pin;
+      })
+      .filter(Boolean);
+  }, [clusterResultContext, filteredDiscoveryStores, discoveryResultStores, storesWithNearestBranch]);
+  const isClusterResultsActive = clusterResultStores.length > 0;
   const hasActiveDiscoveryFilters = (
     discoverySortBy !== 'nearest'
     || discoveryCategoryFilter !== 'all'
@@ -11872,6 +11803,7 @@ export default function StorefrontApp() {
   }, [hasActiveDiscoveryFilters]);
   useEffect(() => {
     setDiscoveryResultsPage(1);
+    setClusterResultContext(null);
   }, [
     viewMode,
     search,
@@ -11911,71 +11843,947 @@ export default function StorefrontApp() {
     items.push(discoveryTotalPages);
     return items;
   }, [discoveryResultsPage, discoveryTotalPages]);
-  const renderDiscoveryResultsStage = createDiscoveryResultsRenderer({
-    activeDiscoveryFilterCount,
-    activeDiscoveryFilterDropdown,
-    discoveryBusinessModeOptions,
-    discoveryCategoryFilter,
-    discoveryCoords,
-    discoveryFilterToolbarRef,
-    discoveryLayout,
-    discoveryPaginationItems,
-    discoveryPinsBySlug,
-    discoveryResultStores,
-    discoveryResultsMapKey,
-    discoveryResultsPage,
-    discoverySortBy,
-    discoverySortLabelByValue,
-    discoveryTotalPages,
-    discoveryViewportMode,
-    filteredDiscoveryStores,
-    formatStorefrontHoursLabel,
-    getDiscoveryEmptyStateMessage,
-    getDiscoveryMarkerKey,
-    getPreferredDiscoveryLocationId,
-    goStore,
-    goStoreOrderForDiscovery,
-    hasActiveDiscoveryFilters,
-    hasDiscoverySearch,
-    highlightedDiscoveryMarkerKey,
-    highlightedStoreSlug,
-    isBrandingImageBlocked,
-    isCategoryFilterActive,
-    isDiscoveryMobileViewport,
-    isDiscoveryTabletViewport,
-    isOpenNowFilterActive,
-    isSortFilterActive,
-    isStoreListVisible,
-    loadingStores,
-    markBrandingImageError,
-    normalizeStorefrontCategories,
-    normalizeStorefrontReviewSummary,
-    paginatedDiscoveryStores,
-    renderDiscoveryResetButton,
-    resetDiscoveryResultsView,
-    search,
-    searchedDiscoveryMapPins,
-    setActiveDiscoveryFilterDropdown,
-    setDiscoveryCategoryFilter,
-    setDiscoveryOpenFilter,
-    setDiscoveryResultsPage,
-    setDiscoverySortBy,
-    setHasDiscoveryExplorationStarted,
-    setHighlightedDiscoveryMarkerKey,
-    setHighlightedStoreSlug,
-    setIsMobileResultsCollapsed,
-    setIsStoreListVisible,
-    setSelectedMapPin,
-    setViewMode,
-    showDiscoveryResetButton,
-    handleNearMe,
-    StoresMap,
-    storesError,
-    storesWithNearestBranch,
-    toSlug,
-    viewMode,
-    withAssetOrigin
-  });
+  const handleDiscoveryClusterSelect = useCallback((clusterStores, clusterEntry) => {
+    const storesAtCluster = Array.isArray(clusterStores) ? clusterStores.filter(Boolean) : [];
+    if (storesAtCluster.length === 0) return;
+    setHasDiscoveryExplorationStarted(true);
+    setClusterResultContext({
+      coordinateKey: String(clusterEntry?.coordinateKey || ''),
+      stores: storesAtCluster
+    });
+    setDiscoveryResultsPage(1);
+    setIsStoreListVisible(true);
+    setIsMobileResultsCollapsed(false);
+    setHighlightedStoreSlug('');
+    setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(storesAtCluster[0]) || '');
+    setSelectedMapPin(null);
+  }, []);
+  const renderDiscoveryResultsStage = () => {
+    const cityLabel = discoveryCoords ? 'your selected area' : 'Iloilo City';
+    const isResultsPanelVisible = isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible;
+    const panelStores = isClusterResultsActive ? clusterResultStores : paginatedDiscoveryStores;
+    const panelTotalCount = isClusterResultsActive ? clusterResultStores.length : filteredDiscoveryStores.length;
+    const resultCountLabel = `${panelTotalCount} ${panelTotalCount === 1 ? 'Store' : 'Stores'} Found`;
+    const resultsTitle = isClusterResultsActive ? 'Stores At This Pin' : 'Best Shops Today';
+    const resultsSubtitle = isClusterResultsActive
+      ? 'Showing the storefronts grouped inside the selected clustered pin.'
+      : hasDiscoverySearch && String(search || '').trim()
+      ? `Showing businesses related to "${String(search || '').trim()}" near ${cityLabel}`
+      : `Showing businesses within your selected area near ${cityLabel}`;
+    const shouldPulseResultsToggle = hasDiscoverySearch && filteredDiscoveryStores.length > 0 && !isResultsPanelVisible;
+      const viewButtonStyle = (mode) => ({
+        minHeight: isDiscoveryMobileViewport ? 36 : 34,
+        minWidth: isDiscoveryMobileViewport ? 40 : 96,
+        borderRadius: isDiscoveryMobileViewport ? 10 : 10,
+        border: `1px solid ${viewMode === mode ? '#bfdbfe' : '#e2e8f0'}`,
+        background: viewMode === mode ? '#eff6ff' : '#ffffff',
+        color: viewMode === mode ? '#1a4e8d' : '#334155',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+        gap: isDiscoveryMobileViewport ? 0 : 6,
+        padding: isDiscoveryMobileViewport ? '0' : '0 11px',
+        fontSize: isDiscoveryMobileViewport ? 12 : 12,
+        fontWeight: 700,
+        cursor: 'pointer',
+        boxShadow: viewMode === mode ? '0 8px 18px rgba(37,99,235,.12)' : 'none'
+      });
+      const renderDiscoveryStoreCard = (store) => {
+      const storeSlug = toSlug(store?.slug);
+      const imgUrl = withAssetOrigin(store?.storefront_cover_image_url);
+      const imgKey = `discovery-cover:${storeSlug}:${imgUrl}`;
+      const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
+      const preferredLocationId = getPreferredDiscoveryLocationId({ store, storePins });
+      const categories = normalizeStorefrontCategories(store?.storefront_categories);
+      const primaryCategory = categories[0] || String(store?.workflow_mode || 'Store').replace(/_/g, ' ');
+      const secondaryCategory = categories[1] || null;
+      const publicMapDisabled = isPublicMapDisabled(store);
+      const categoryLabel = [primaryCategory, secondaryCategory].filter(Boolean).join(' â€¢ ');
+        const reviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
+        const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '0.0';
+        const ratingCount = Number(reviewSummary?.total_count || store?.matching_item_count || 0);
+      const distanceLabel = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km away` : 'Distance unavailable';
+      const waitBase = Number(store?.estimated_wait_minutes || 10);
+      const etaLabel = `${waitBase}-${waitBase + 5} min`;
+        const branchCount = publicMapDisabled ? 0 : Number(store?.active_location_count || 0);
+        const branchLabel = branchCount > 0 ? `${branchCount} ${branchCount === 1 ? 'Branch' : 'Branches'}` : null;
+      const locationAvailabilityLabel = publicMapDisabled ? 'Searchable storefront, no map pin' : branchLabel;
+        const isStoreOpenNow = store?.storefront_open === true;
+          const businessHoursLabel = formatStorefrontHoursLabel(
+            store?.storefront_hours,
+            store?.nearest_location_hours || store?.storefront_hours_status?.display || ''
+          );
+          const closingTimeLabel = businessHoursLabel
+            ? (/\bclose/i.test(businessHoursLabel) ? businessHoursLabel : `Closes at ${businessHoursLabel}`)
+            : '';
+        const closedStoreNote = !isStoreOpenNow
+          ? `Store closed for now${businessHoursLabel ? ` â€¢ ${businessHoursLabel}` : ''}`
+          : '';
+            const isActive = highlightedStoreSlug === store.slug;
+              const isGridView = viewMode === 'grid';
+          const isMobileListView = isDiscoveryMobileViewport && !isGridView;
+          const isDesktopListView = !isGridView && !isDiscoveryMobileViewport && !isDiscoveryTabletViewport;
+        const isMobileGridView = isGridView && isDiscoveryMobileViewport;
+        const showFeaturedBadge = Number(store?.matching_item_count || 0) > 2;
+        const statusChipLabel = isStoreOpenNow ? 'Open' : 'Closed';
+        const compactListHeaderGap = !isGridView && !showFeaturedBadge ? 4 : 8;
+        const showInlineNonFeaturedListRating = !isGridView && !showFeaturedBadge;
+            const cardImageHeight = isGridView
+                ? (isDiscoveryMobileViewport ? 132 : isDiscoveryTabletViewport ? 166 : 116)
+                : (isMobileListView ? 72 : isDiscoveryMobileViewport ? 112 : isDiscoveryTabletViewport ? 96 : 104);
+                const actionButtonStyle = (kind) => ({
+                    minHeight: isMobileListView ? 36 : isGridView ? (isDiscoveryMobileViewport ? 36 : isDiscoveryTabletViewport ? 38 : 36) : isDiscoveryTabletViewport ? 30 : (isDesktopListView ? 32 : 36),
+                    height: isMobileListView ? 36 : isGridView ? (isDiscoveryMobileViewport ? 36 : isDiscoveryTabletViewport ? 38 : 36) : isDiscoveryTabletViewport ? 30 : (isDesktopListView ? 32 : 36),
+                    borderRadius: isGridView ? 12 : 9,
+                  border: kind === 'primary' ? 'none' : '1px solid #bfdbfe',
+                  background: kind === 'primary' ? '#1A4E8D' : '#ffffff',
+                  color: kind === 'primary' ? '#ffffff' : '#2563EB',
+                    fontSize: isGridView ? (isDiscoveryMobileViewport ? 12 : 13) : 11,
+                  fontWeight: 700,
+                  lineHeight: 1.2,
+                  padding: isGridView
+                    ? (isDiscoveryMobileViewport ? '0 8px' : '0 10px')
+                    : '0 12px',
+                  cursor: 'pointer',
+                    boxShadow: kind === 'primary' ? '0 10px 24px rgba(26,78,141,.22)' : 'none',
+                    width: '100%',
+                    minWidth: isMobileListView ? 102 : 0,
+                    whiteSpace: isGridView && isDiscoveryMobileViewport ? 'normal' : 'nowrap',
+                    pointerEvents: 'auto'
+                });
+          if (isGridView) {
+            return (
+              <article
+                key={`${store.slug}:${preferredLocationId ?? 'store'}`}
+                className="discovery-grid-card"
+                onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
+                style={{
+                  borderRadius: 16,
+                  border: '1px solid #E5EAF3',
+                  background: '#ffffff',
+                  boxShadow: isActive ? '0 18px 34px rgba(15,23,42,.10)' : '0 10px 28px rgba(15,23,42,.06)',
+                  opacity: isStoreOpenNow ? 1 : 0.76,
+                  overflow: 'hidden',
+                  display: 'grid',
+                  gridTemplateRows: `${cardImageHeight}px auto`,
+                  transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease',
+                  width: '100%',
+                  minWidth: 0,
+                      minHeight: isMobileGridView ? 0 : 268
+                  }}
+                >
+                <div style={{ position: 'relative', height: cardImageHeight, background: '#f8fafc', overflow: 'hidden' }}>
+                  {imgUrl && !isBrandingImageBlocked(imgKey)
+                    ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
+                    : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 800 }}>DGFY</div>}
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 12,
+                      left: 12,
+                      borderRadius: 999,
+                      padding: isMobileGridView ? '5px 10px' : '6px 12px',
+                      background: isStoreOpenNow ? 'rgba(220,252,231,.98)' : 'rgba(254,226,226,.98)',
+                      color: isStoreOpenNow ? '#22C55E' : '#DC2626',
+                      fontSize: isMobileGridView ? 11 : 12,
+                      fontWeight: 800,
+                      lineHeight: 1
+                    }}
+                  >
+                    {statusChipLabel}
+                  </span>
+                </div>
+                  <div style={{ minWidth: 0, display: 'grid', gap: isMobileGridView ? 8 : 10, padding: isMobileGridView ? '14px' : '16px 18px', alignContent: 'start' }}>
+                    <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: isMobileGridView ? 'wrap' : 'nowrap', minWidth: 0 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0, flex: '1 1 auto' }}>
+                          <h3 style={{ margin: 0, fontSize: isMobileGridView ? 17 : 18, lineHeight: 1.18, fontWeight: 800, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                            {store.tenant_name}
+                          </h3>
+                        <span title={isStoreOpenNow ? 'Open' : 'Closed'} aria-label={isStoreOpenNow ? 'Open' : 'Closed'} style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22C55E' : '#EF4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                        </span>
+                      </div>
+                      {showFeaturedBadge ? (
+                          <span style={{ borderRadius: 999, padding: isMobileGridView ? '3px 8px' : '4px 10px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#F97316', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, maxWidth: '100%' }}>
+                          <Star size={11} fill="currentColor" />
+                          Featured
+                        </span>
+                      ) : (
+                          <span style={{ borderRadius: 999, padding: isMobileGridView ? '3px 8px' : '4px 10px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                          <Star size={11} fill="currentColor" />
+                          {ratingValue}
+                        </span>
+                      )}
+                    </div>
+                      <div style={{ fontSize: isMobileGridView ? 12 : 13, fontWeight: 600, color: '#64748B', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
+                        {categoryLabel || 'Local storefront'}
+                      </div>
+                    </div>
+                      <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8, fontSize: isMobileGridView ? 11 : 12, color: '#64748B', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: 'wrap', lineHeight: 1.45 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            <MapPin size={13} color="#94a3b8" />
+                            {distanceLabel}
+                          </span>
+                          <span style={{ color: '#cbd5e1' }}>â€¢</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <Clock3 size={13} color="#94a3b8" />
+                          {etaLabel}
+                        </span>
+                        </div>
+                        <div style={{ lineHeight: 1.4 }}>
+                          {closingTimeLabel || 'Closing time unavailable'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gap: isMobileGridView ? 8 : 10, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', marginTop: isMobileGridView ? 0 : 2 }}>
+                    <button type="button" className="discovery-grid-action discovery-grid-action-secondary" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                    <button type="button" className="discovery-grid-action discovery-grid-action-primary" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
+                  </div>
+                </div>
+              </article>
+            );
+          }
+          return (
+          isMobileListView ? (
+              <article
+              key={`${store.slug}:${preferredLocationId ?? 'store'}`}
+              onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
+                style={{
+                  borderRadius: 18,
+                  border: `1px solid ${isActive ? '#bfdbfe' : '#e5edf5'}`,
+                  background: '#ffffff',
+                  boxShadow: isActive ? '0 14px 30px rgba(37,99,235,.08)' : '0 8px 22px rgba(15,23,42,.05)',
+                  opacity: isStoreOpenNow ? 1 : 0.7,
+                  padding: 12,
+                  display: 'grid',
+                gap: 10,
+                transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease'
+              }}
+            >
+                <div style={{ display: 'grid', gridTemplateColumns: '84px minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
+                <div
+                  style={{
+                    borderRadius: 14,
+                    overflow: 'hidden',
+                    background: '#f8fafc',
+                      height: 90
+                  }}
+                >
+                  {imgUrl && !isBrandingImageBlocked(imgKey)
+                    ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
+                    : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 11, fontWeight: 800 }}>DGFY</div>}
+                </div>
+                <div style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: compactListHeaderGap, flexWrap: 'nowrap', minWidth: 0 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, flex: '1 1 auto' }}>
+                          <h3 style={{ margin: 0, fontSize: 15, lineHeight: 1.12, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{store.tenant_name}</h3>
+                          <span
+                            title={isStoreOpenNow ? 'Open' : 'Closed'}
+                            aria-label={isStoreOpenNow ? 'Open' : 'Closed'}
+                            style={{ display: 'inline-flex', alignItems: 'center', transform: 'translateY(1px)', flexShrink: 0 }}
+                          >
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                          </span>
+                        </div>
+                        {Number(store?.matching_item_count || 0) > 2 && (
+                          <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#f97316', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Star size={10} fill="currentColor" />
+                          Featured
+                        </span>
+                      )}
+                        {showInlineNonFeaturedListRating && <span style={{ fontSize: 11, fontWeight: 800, color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                          <Star size={11} fill="currentColor" />
+                          {ratingValue}
+                        </span>}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {categoryLabel || 'Local storefront'}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <MapPin size={12} color="#94a3b8" />
+                      {distanceLabel}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Clock3 size={12} color="#94a3b8" />
+                      {etaLabel}
+                    </span>
+                  </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
+                      {locationAvailabilityLabel && <span style={{ fontWeight: 600 }}>{locationAvailabilityLabel}</span>}
+                    {Number(store?.catalog_count || 0) > 0 && (
+                      <>
+                        <span style={{ color: '#cbd5e1' }}>â€¢</span>
+                        <span style={{ fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>
+                      </>
+                    )}
+                    </div>
+                    {!isStoreOpenNow && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: 1 }}>
+                        {closedStoreNote}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
+                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
+                <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+              </div>
+            </article>
+          ) : (
+              <article
+              key={`${store.slug}:${preferredLocationId ?? 'store'}`}
+              onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
+                style={{
+              borderRadius: 20,
+              border: `1px solid ${isActive ? '#bfdbfe' : '#e5edf5'}`,
+              background: '#ffffff',
+                boxShadow: isActive ? '0 16px 34px rgba(37,99,235,.08)' : '0 10px 28px rgba(15,23,42,.05)',
+                opacity: isStoreOpenNow ? 1 : 0.72,
+                    padding: isGridView ? 12 : isDiscoveryMobileViewport ? 12 : 14,
+                  display: 'grid',
+                  gap: isGridView ? 12 : isDiscoveryMobileViewport ? 10 : 14,
+                  gridTemplateColumns: isGridView
+                    ? '1fr'
+                    : isMobileListView
+                      ? '72px minmax(0,1fr) auto'
+                    : '104px minmax(0,1fr) 126px',
+            alignItems: isGridView ? 'stretch' : isDesktopListView ? 'stretch' : 'center',
+            transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease'
+          }}
+        >
+              <div
+              style={{
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  background: '#f8fafc',
+                height: cardImageHeight,
+                minWidth: 0,
+                position: 'relative'
+              }}
+            >
+              {imgUrl && !isBrandingImageBlocked(imgKey)
+                ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
+                : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 800 }}>DGFY</div>}
+              {isGridView && (
+                <>
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.18) 0%, rgba(15,23,42,0) 42%, rgba(15,23,42,.08) 100%)', pointerEvents: 'none' }} />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      left: 10,
+                      borderRadius: 999,
+                      padding: isMobileGridView ? '4px 8px' : '4px 10px',
+                      background: isStoreOpenNow ? 'rgba(220,252,231,.96)' : 'rgba(254,226,226,.96)',
+                      color: isStoreOpenNow ? '#15803d' : '#b91c1c',
+                      fontSize: isMobileGridView ? 10 : 11,
+                      fontWeight: 800,
+                      lineHeight: 1
+                    }}
+                  >
+                    {statusChipLabel}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Save ${store.tenant_name}`}
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      right: 10,
+                      width: isMobileGridView ? 28 : 30,
+                      height: isMobileGridView ? 28 : 30,
+                      borderRadius: '50%',
+                      border: '1px solid rgba(255,255,255,.55)',
+                      background: 'rgba(15,23,42,.44)',
+                      color: '#ffffff',
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: 'default',
+                      pointerEvents: 'none',
+                      backdropFilter: 'blur(10px)'
+                    }}
+                  >
+                    <Heart size={isMobileGridView ? 14 : 15} />
+                  </button>
+                </>
+              )}
+            </div>
+
+                    <div style={{ minWidth: 0, display: 'grid', gap: isGridView ? 8 : isMobileListView ? 4 : 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: compactListHeaderGap, flexWrap: isDesktopListView ? 'nowrap' : 'wrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', flex: isDesktopListView ? '1 1 auto' : '0 1 auto' }}>
+                          <h3 style={{ margin: 0, fontSize: isGridView ? (isMobileGridView ? 15 : 16) : isMobileListView ? 15 : 19, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{store.tenant_name}</h3>
+                          <span
+                            title={isStoreOpenNow ? 'Open' : 'Closed'}
+                            aria-label={isStoreOpenNow ? 'Open' : 'Closed'}
+                          style={{ display: 'inline-flex', alignItems: 'center', transform: 'translateY(1px)', flexShrink: 0 }}
+                          >
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                        </span>
+                            {showInlineNonFeaturedListRating && !isDesktopListView && (
+                              <span style={{ borderRadius: 999, padding: '4px 9px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                <Star size={11} fill="currentColor" />
+                                {ratingValue}
+                                <span style={{ color: '#a16207', fontWeight: 700 }}>({ratingCount})</span>
+                              </span>
+                          )}
+                          </div>
+                      {showFeaturedBadge && (
+                        <span style={{ borderRadius: 999, padding: isGridView ? '3px 8px' : '4px 9px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#f97316', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Star size={11} fill="currentColor" />
+                        Featured
+                      </span>
+                    )}
+                    {!isGridView && isDesktopListView && (
+                      <span style={{ borderRadius: 999, padding: '4px 9px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        <Star size={11} fill="currentColor" />
+                        {ratingValue}
+                        <span style={{ color: '#a16207', fontWeight: 700 }}>({ratingCount})</span>
+                      </span>
+                    )}
+                  </div>
+                    <div style={{ fontSize: isGridView ? 12 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{categoryLabel || 'Local storefront'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isGridView ? 8 : isMobileListView ? 8 : 10, flexWrap: 'wrap', fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, color: '#64748b' }}>
+                  {isGridView && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#d97706', fontWeight: 800 }}>
+                      <Star size={11} fill="currentColor" />
+                      {ratingValue}
+                      <span style={{ color: '#94a3b8', fontWeight: 700 }}>({ratingCount})</span>
+                    </span>
+                  )}
+                  {isGridView && <span style={{ color: '#cbd5e1' }}>â€¢</span>}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <MapPin size={13} color="#94a3b8" />
+                  {distanceLabel}
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <Clock3 size={13} color="#94a3b8" />
+                {etaLabel}
+              </span>
+            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {locationAvailabilityLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{locationAvailabilityLabel}</span>}
+              {Number(store?.catalog_count || 0) > 0 && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>}
+                      </div>
+                      {!isStoreOpenNow && (
+                        <div style={{ fontSize: isGridView ? 10 : 11, fontWeight: 700, color: '#b45309' }}>
+                          {closedStoreNote}
+                        </div>
+                      )}
+                  </div>
+
+            <div style={{ display: 'grid', gap: 8, alignSelf: isMobileListView ? 'start' : 'stretch', alignContent: isDesktopListView ? 'end' : 'start', justifyContent: isDesktopListView ? 'end' : 'stretch', gridTemplateColumns: isGridView ? '1fr 1fr' : '1fr', gridColumn: 'auto', marginTop: isGridView ? 2 : 0, minWidth: isMobileListView ? 104 : (isDesktopListView ? 126 : 0) }}>
+              {isGridView ? (
+                <>
+                  <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
+                  <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                </>
+              )}
+            </div>
+          </article>
+          )
+        );
+      };
+          const desktopResultsPanelWidth = isDiscoveryMobileViewport
+            ? '100%'
+            : isDiscoveryTabletViewport
+              ? '100%'
+              : `${discoveryLayout.resultsPanelWidth}px`;
+        const discoveryStageMapHeight = isDiscoveryMobileViewport
+          ? '312px'
+          : discoveryLayout.discoveryMapHeight;
+      return (
+      <DiscoveryMapCard viewportMode={discoveryViewportMode}>
+        <div
+          className={`discovery-results-card ${isDiscoveryMobileViewport ? 'discovery-results-card--mobile-fullbleed-map' : ''}`}
+          style={{ borderRadius: 24, overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 12px 42px rgba(15,23,42,.08)', background: '#ffffff' }}
+        >
+          <div
+            className={`discovery-results-stage ${isDiscoveryMobileViewport ? 'discovery-results-stage--mobile discovery-results-stage--mobile-fullbleed-map' : (isDiscoveryTabletViewport ? 'discovery-results-stage--tablet' : 'discovery-results-stage--desktop')}`}
+            style={{ display: 'flex', flexDirection: isDiscoveryMobileViewport || isDiscoveryTabletViewport ? 'column' : 'row', alignItems: 'stretch', position: 'relative', overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden', transition: 'all 350ms cubic-bezier(0.4,0,0.2,1)' }}
+          >
+            <div
+              className={`discovery-results-stage__map ${isDiscoveryMobileViewport ? `discovery-results-stage__map--mobile-fullbleed ${isResultsPanelVisible ? 'is-results-visible' : 'is-results-hidden'}` : ''}`}
+              style={{ position: 'relative', zIndex: 20, flex: '1 1 auto', minWidth: 0, height: discoveryStageMapHeight }}
+            >
+              {!loadingStores && !storesError && (searchedDiscoveryMapPins.length > 0 || (hasDiscoverySearch && filteredDiscoveryStores.length === 0)) ? (
+                <StoresMap
+                  key={discoveryResultsMapKey}
+                  stores={searchedDiscoveryMapPins}
+                  selectedKey={highlightedDiscoveryMarkerKey || null}
+                  highlightedKeys={highlightedDiscoveryMarkerKeys}
+                  userLocation={discoveryCoords}
+                  height="100%"
+                    onSelectStore={(pin) => {
+                      setHasDiscoveryExplorationStarted(true);
+                      setIsMobileResultsCollapsed(false);
+                      setHighlightedStoreSlug(pin.slug);
+                    setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin) || '');
+                    const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug)
+                      || discoveryResultStores.find((s) => s.slug === pin.slug)
+                      || storesWithNearestBranch.find((s) => s.slug === pin.slug)
+                      || null;
+                    setSelectedMapPin(matched || pin || null);
+                    goStore(pin.slug, pin.location_id ?? null);
+                  }}
+                  autoOpenPopups={false}
+                  openPopupOnHover={true}
+                  onSelectCluster={handleDiscoveryClusterSelect}
+                  viewportPolicy="search-stable"
+                  viewportSignal={discoveryViewportSignal}
+                />
+              ) : (
+                <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
+                  {loadingStores ? 'Loading map...' : storesError || 'No storefront pins available right now.'}
+                </div>
+              )}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: isDiscoveryMobileViewport ? 12 : 16,
+                  left: isDiscoveryMobileViewport ? 12 : 16,
+                  zIndex: 42,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}
+              >
+                {renderDiscoveryCurrentLocationButton({
+                  compact: isDiscoveryMobileViewport,
+                  floating: true,
+                  label: isDiscoveryLocationShared ? 'My location' : 'Use location'
+                })}
+              </div>
+              {isDiscoveryMobileViewport && (
+                <button
+                  type="button"
+                  onClick={() => setIsMobileResultsCollapsed((v) => !v)}
+                  className={`discovery-results-stage__mobile-toggle ${shouldPulseResultsToggle ? 'discovery-results-toggle--pulse' : ''}`}
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    bottom: isResultsPanelVisible ? 12 : 46,
+                    transform: 'translateX(-50%)',
+                    zIndex: 40,
+                    border: 'none',
+                    borderRadius: 14,
+                    background: '#1a4e8d',
+                    color: '#fff',
+                    height: 38,
+                    padding: '0 14px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '0 10px 24px rgba(37,99,235,.28)',
+                    opacity: isResultsPanelVisible ? 0.9 : 1
+                  }}
+                >
+                  {isResultsPanelVisible ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  {isResultsPanelVisible
+                    ? 'Hide Results'
+                    : `View Results${filteredDiscoveryStores.length >= 0 ? ` (${filteredDiscoveryStores.length})` : ''}`}
+                </button>
+              )}
+              {!isDiscoveryMobileViewport && <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 11 }}>
+                <button
+                  type="button"
+                  onClick={() => setIsStoreListVisible((value) => !value)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 7,
+                    borderRadius: 12,
+                    border: 'none',
+                    background: isStoreListVisible ? '#0f172a' : '#1a4e8d',
+                    color: '#fff',
+                    padding: '10px 16px',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    boxShadow: '0 8px 24px rgba(15,23,42,.24)',
+                    transition: 'background 200ms'
+                  }}
+                >
+                  {isStoreListVisible ? <X size={14} /> : <List size={14} />}
+                  {isStoreListVisible ? 'Hide Results' : `View Results${filteredDiscoveryStores.length ? ` (${filteredDiscoveryStores.length})` : ''}`}
+                </button>
+              </div>}
+            </div>
+
+            <aside
+              className={`discovery-results-stage__panel ${isDiscoveryMobileViewport ? 'discovery-results-stage__panel--mobile' : (isDiscoveryTabletViewport ? 'discovery-results-stage__panel--tablet' : 'discovery-results-stage__panel--desktop')}`}
+              style={{
+                background: '#fff',
+                borderLeft: isResultsPanelVisible ? '1px solid #e2e8f0' : 'none',
+                display: 'grid',
+                gridTemplateRows: 'auto 1fr auto',
+                overflow: 'hidden',
+                position: 'static',
+                zIndex: 10,
+                  width: isResultsPanelVisible ? desktopResultsPanelWidth : '0px',
+                minWidth: 0,
+                  maxHeight: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'calc(100vh - 220px)' : '0px') : discoveryLayout.resultsPanelMaxHeight,
+                  opacity: isResultsPanelVisible ? 1 : 0,
+                  transition: 'width 350ms cubic-bezier(0.4,0,0.2,1), opacity 300ms ease, border-color 350ms, max-height 280ms ease, transform 280ms ease',
+                  marginTop: isDiscoveryMobileViewport ? -20 : 0,
+                borderTopLeftRadius: isDiscoveryMobileViewport ? 26 : 0,
+                borderTopRightRadius: isDiscoveryMobileViewport ? 26 : 0,
+                  boxShadow: isDiscoveryMobileViewport ? '0 -8px 24px rgba(15,23,42,.12)' : 'none',
+                  transform: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'translateY(0)' : 'translateY(14px)') : 'none',
+                  pointerEvents: isResultsPanelVisible ? 'auto' : 'none'
+                }}
+              >
+                <div style={{ padding: isDiscoveryMobileViewport ? '34px 18px 14px' : '24px 22px 16px', borderBottom: '1px solid #edf2f7', display: 'grid', gap: 14 }}>
+                  <div style={{ display: 'flex', alignItems: isDiscoveryMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Discover Nearby</div>
+                      <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>{resultsTitle}</h2>
+                      <p
+                        style={{
+                          margin: '8px 0 0',
+                          fontSize: isDiscoveryMobileViewport ? 12 : 14,
+                          lineHeight: isDiscoveryMobileViewport ? 1.4 : 1.6,
+                          color: '#64748b',
+                          maxWidth: isDiscoveryMobileViewport ? 360 : 430
+                        }}
+                      >
+                        {resultsSubtitle}
+                      </p>
+                    </div>
+                  </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'nowrap', justifyContent: 'flex-end', marginLeft: 'auto', order: 2 }}>
+                        <button
+                          type="button"
+                          onClick={() => setViewMode('list')}
+                          style={viewButtonStyle('list')}
+                          aria-label="List view"
+                          title="List view"
+                        >
+                          <List size={15} />
+                          {!isDiscoveryMobileViewport && 'List View'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewMode('grid')}
+                          style={viewButtonStyle('grid')}
+                          aria-label="Grid view"
+                          title="Grid view"
+                        >
+                          <LayoutGrid size={15} />
+                          {!isDiscoveryMobileViewport && 'Grid View'}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: isDiscoveryMobileViewport ? 16 : 18, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', order: 1 }}>
+                        {resultCountLabel}
+                      </div>
+                    </div>
+
+                  <div
+                    ref={discoveryFilterToolbarRef}
+                    style={{
+                      display: 'grid',
+                          gridTemplateColumns: isDiscoveryMobileViewport
+                            ? (renderDiscoveryResetButton
+                                      ? 'max-content 44px 44px max-content'
+                                      : 'max-content 44px 44px')
+                          : isDiscoveryTabletViewport
+                            ? (renderDiscoveryResetButton
+                              ? 'minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 0.7fr) minmax(0, 0.9fr)'
+                                : 'minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 0.84fr)')
+                            : (renderDiscoveryResetButton
+                              ? 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr) minmax(0, 0.86fr)'
+                              : 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr)'),
+                        gap: 8,
+                        alignItems: 'stretch',
+                      justifyContent: isDiscoveryMobileViewport ? 'start' : 'stretch',
+                      position: 'relative',
+                      zIndex: 30
+                      }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setDiscoveryOpenFilter((value) => (value === 'open' ? 'all' : 'open'))}
+                        style={{
+                          minHeight: 34,
+                          borderRadius: 10,
+                          border: `1px solid ${isOpenNowFilterActive ? '#86efac' : '#dcfce7'}`,
+                          background: isOpenNowFilterActive ? '#16a34a' : '#f0fdf4',
+                          color: isOpenNowFilterActive ? '#ffffff' : '#16a34a',
+                          padding: '0 14px',
+                          fontSize: 12,
+                          fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                          width: isDiscoveryMobileViewport ? 'auto' : '100%',
+                          minWidth: isDiscoveryMobileViewport ? 88 : 0,
+                          maxWidth: isDiscoveryMobileViewport ? 'none' : 148,
+                          boxShadow: isOpenNowFilterActive ? '0 10px 22px rgba(22,163,74,.24)' : 'none',
+                          transition: 'all 180ms ease'
+                        }}
+                      >
+                        Open Now
+                      </button>
+                      <div style={{ position: 'relative', minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'sort' ? null : 'sort'))}
+                            style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isSortFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isSortFilterActive ? '#1a4e8d' : '#334155', background: isSortFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isSortFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
+                          >
+                              {isDiscoveryMobileViewport ? (
+                                <ArrowUpDown size={14} color={isSortFilterActive ? '#1a4e8d' : '#64748b'} />
+                            ) : (
+                              <>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>Sort: {discoverySortLabelByValue[discoverySortBy] || 'Nearest'}</span>
+                              <ChevronDown size={14} color="#64748b" />
+                              </>
+                            )}
+                          </button>
+                      {activeDiscoveryFilterDropdown === 'sort' && (
+                          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 180 : 0, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', overflow: 'hidden', zIndex: 1200 }}>
+                          {[
+                            ['nearest', 'Nearest'],
+                            ['catalog', 'Most Popular'],
+                            ['rating', 'Highest Rated']
+                            ].map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => {
+                                setDiscoverySortBy(value);
+                                setActiveDiscoveryFilterDropdown(null);
+                              }}
+                              style={{
+                                width: '100%',
+                                border: 'none',
+                                borderTop: value === 'nearest' ? 'none' : '1px solid #eef2f7',
+                                background: discoverySortBy === value ? '#eff6ff' : '#fff',
+                                color: discoverySortBy === value ? '#1a4e8d' : '#334155',
+                                textAlign: 'left',
+                                padding: '8px 10px',
+                                fontSize: 12,
+                                fontWeight: discoverySortBy === value ? 800 : 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ position: 'relative', minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'category' ? null : 'category'))}
+                            style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isCategoryFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isCategoryFilterActive ? '#1a4e8d' : '#334155', background: isCategoryFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isCategoryFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
+                          >
+                                {isDiscoveryMobileViewport ? (
+                                  <ArrowUpNarrowWide size={14} color={isCategoryFilterActive ? '#1a4e8d' : '#64748b'} />
+                                ) : (
+                            <>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{discoveryBusinessModeOptions.find(([value]) => value === discoveryCategoryFilter)?.[1] || 'Category: All'}</span>
+                              <ChevronDown size={14} color="#64748b" />
+                              </>
+                            )}
+                          </button>
+                            {activeDiscoveryFilterDropdown === 'category' && (
+                              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 184 : 250, maxWidth: isDiscoveryMobileViewport ? 196 : 320, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', zIndex: 1200, overflow: 'hidden' }}>
+                                  <div style={{ maxHeight: 214, overflowY: 'auto', overflowX: 'hidden' }}>
+                            {discoveryBusinessModeOptions.map(([value, label], index) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => {
+                                  setDiscoveryCategoryFilter(value);
+                                  setActiveDiscoveryFilterDropdown(null);
+                                }}
+                                style={{
+                                  width: '100%',
+                                  border: 'none',
+                                  borderTop: index === 0 ? 'none' : '1px solid #eef2f7',
+                                  background: discoveryCategoryFilter === value ? '#eff6ff' : '#fff',
+                                  color: discoveryCategoryFilter === value ? '#1a4e8d' : '#334155',
+                                  textAlign: 'left',
+                                  padding: '8px 10px',
+                                  fontSize: 12,
+                                  fontWeight: discoveryCategoryFilter === value ? 800 : 700,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                              </div>
+                              <div style={{ borderTop: '1px solid #eef2f7', background: '#f8fafc', color: '#94a3b8', fontSize: 10, fontWeight: 700, letterSpacing: '0.02em', padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span>â†• Scroll</span>
+                                <span>â†” Drag</span>
+                              </div>
+                          </div>
+                        )}
+                    </div>
+                      {renderDiscoveryResetButton && (
+                      <button
+                        type="button"
+                          onClick={resetDiscoveryResultsView}
+                          aria-label="Reset discovery filters"
+                          title="Reset filters"
+                          style={{
+                            minHeight: 34,
+                            borderRadius: 10,
+                            border: '1px solid rgba(220, 38, 38, 0.18)',
+                            background: 'rgba(220, 38, 38, 0.06)',
+                            color: '#dc2626',
+                            padding: isDiscoveryMobileViewport ? '0 9px' : '0 12px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            justifyContent: 'center',
+                            width: isDiscoveryMobileViewport ? 'auto' : '100%',
+                            opacity: showDiscoveryResetButton ? 1 : 0,
+                            transform: showDiscoveryResetButton ? 'translateY(0)' : 'translateY(-4px)',
+                            transition: 'opacity 180ms ease, transform 180ms ease',
+                            pointerEvents: showDiscoveryResetButton ? 'auto' : 'none'
+                          }}
+                        >
+                            <X size={12} />
+                          <span style={{ whiteSpace: 'nowrap' }}>{isDiscoveryMobileViewport ? 'Filters' : 'Reset Filters'}</span>
+                          {activeDiscoveryFilterCount > 0 ? (
+                            <span
+                              style={{
+                                minWidth: 16,
+                                height: 16,
+                                borderRadius: 999,
+                                padding: '0 5px',
+                                background: '#1a4e8d',
+                                color: '#fff',
+                                fontSize: 10,
+                                fontWeight: 800,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              {activeDiscoveryFilterCount}
+                            </span>
+                          ) : null}
+                        </button>
+                      )}
+                      {activeDiscoveryFilterCount > 0 && !isDiscoveryMobileViewport && !renderDiscoveryResetButton ? (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: -9,
+                            right: renderDiscoveryResetButton ? 6 : -4,
+                            minWidth: 18,
+                            height: 18,
+                            borderRadius: 999,
+                            padding: '0 6px',
+                            background: '#1a4e8d',
+                            color: '#fff',
+                            fontSize: 10,
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 6px 14px rgba(26,78,141,.28)',
+                            pointerEvents: 'none'
+                          }}
+                        >
+                          {activeDiscoveryFilterCount}
+                        </div>
+                      ) : null}
+                    </div>
+              </div>
+
+                <div style={{ minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: isDiscoveryMobileViewport ? '14px 14px 18px' : viewMode === 'grid' ? '18px 22px 24px' : '16px 18px 22px' }}>
+                {loadingStores && <div style={{ padding: 24, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>Loading stores...</div>}
+                {!loadingStores && filteredDiscoveryStores.length === 0 && (
+                  <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#f8fbff', padding: 18, display: 'grid', gap: 8 }}>
+                    <div style={{ fontSize: 24, color: '#0f172a', fontWeight: 800 }}>{getDiscoveryEmptyStateMessage(search)}</div>
+                    <div style={{ color: '#64748b', fontSize: 14, lineHeight: 1.5 }}>Try changing your search keyword or category.</div>
+                    {hasActiveDiscoveryFilters && (
+                      <button type="button" onClick={resetDiscoveryResultsView} style={{ marginTop: 4, border: 'none', borderRadius: 12, background: '#1a4e8d', color: '#fff', padding: '10px 14px', fontSize: 13, fontWeight: 700, width: 'fit-content' }}>
+                        Clear Filters
+                      </button>
+                    )}
+                  </div>
+                )}
+                    <div style={{ display: 'grid', gap: viewMode === 'grid' ? (isDiscoveryMobileViewport ? 14 : isDiscoveryTabletViewport ? 18 : 20) : (isDiscoveryMobileViewport ? 14 : 18), gridTemplateColumns: viewMode === 'grid' ? (isDiscoveryMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))') : '1fr' }}>
+                    {panelStores.map(renderDiscoveryStoreCard)}
+                  </div>
+              </div>
+
+              {!isClusterResultsActive && filteredDiscoveryStores.length > 0 && discoveryTotalPages > 1 && (
+                <div style={{ padding: '0 18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setDiscoveryResultsPage((page) => Math.max(1, page - 1))}
+                    disabled={discoveryResultsPage === 1}
+                    style={{ width: 32, height: 32, borderRadius: 9, border: '1px solid #e2e8f0', background: '#fff', color: discoveryResultsPage === 1 ? '#cbd5e1' : '#64748b', cursor: discoveryResultsPage === 1 ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  {discoveryPaginationItems.map((item) => (
+                    item === 'ellipsis-left' || item === 'ellipsis-right'
+                      ? <span key={item} style={{ minWidth: 24, textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>â€¦</span>
+                      : (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setDiscoveryResultsPage(Number(item))}
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 9,
+                            border: `1px solid ${Number(item) === discoveryResultsPage ? '#1a4e8d' : '#e2e8f0'}`,
+                            background: Number(item) === discoveryResultsPage ? '#1a4e8d' : '#fff',
+                            color: Number(item) === discoveryResultsPage ? '#fff' : '#64748b',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: 0
+                          }}
+                        >
+                          {item}
+                        </button>
+                      )
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setDiscoveryResultsPage((page) => Math.min(discoveryTotalPages, page + 1))}
+                    disabled={discoveryResultsPage === discoveryTotalPages}
+                    style={{ width: 32, height: 32, borderRadius: 9, border: '1px solid #e2e8f0', background: '#fff', color: discoveryResultsPage === discoveryTotalPages ? '#cbd5e1' : '#64748b', cursor: discoveryResultsPage === discoveryTotalPages ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+            </aside>
+          </div>
+        </div>
+      </DiscoveryMapCard>
+    );
+  };
+
   if (isStandaloneAccountPage && isDgfyCustomerSignedIn) {
     return (
       <DgfyCustomerAccountPage
@@ -11989,11 +12797,10 @@ export default function StorefrontApp() {
         onSignOut={handleStorefrontSignOut}
         onHelp={() => toast.info('Help center is not connected yet.')}
         onRegisterBusiness={openBusinessRegistrationFlow}
-        onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
         onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
         onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
         onLeaveCompany={handleLeaveDgfyCompany}
-        onSwitchCompany={switchDgfyCompanyFromStorefront}
+        onOpenBusinessPos={handleOpenBusinessPos}
         onClearSavedDetails={clearSavedCustomerDetailsForDevice}
         onUseAddressForCheckout={useAccountAddressForCheckout}
         onSaveAddress={handleSaveAccountAddress}
@@ -12011,12 +12818,6 @@ export default function StorefrontApp() {
         trackedCustomerActivity={trackedCustomerActivity}
         customerTrackLoadingReference={customerTrackLoadingReference}
         customerTrackError={customerTrackError}
-        onOpenStorefront={openStorefrontFromAccountEntry}
-        onSubmitCustomerReview={submitAccountReviewFromDashboard}
-        resolveStorefrontMeta={resolveStorefrontMetaForAccountEntry}
-        onOpenBusinessInventory={handleOpenBusinessInventory}
-        resolveBusinessAssetUrl={withAssetOrigin}
-        onOpenBusinessPos={handleOpenBusinessPos}
         accountOrderActionReference={accountOrderActionReference}
         accountAddressActionId={accountAddressActionId}
       />
@@ -12055,11 +12856,7 @@ export default function StorefrontApp() {
               onItemClick={handleDiscoveryNavItemClick}
               onAuthClick={() => {
                 setIsDiscoveryNavMenuOpen(false);
-                if (isDgfyCustomerSignedIn) {
-                  openCustomerDashboard();
-                  return;
-                }
-                openCanonicalDgfyAuth('customer');
+                openAccountPanel();
               }}
               onBusinessClick={openBusinessRegistrationFlow}
             />
@@ -12256,6 +13053,30 @@ export default function StorefrontApp() {
                         </button>
                       </div>
                       </div>
+                      {hasDiscoverySearch && (
+                        <div style={{ maxWidth: discoveryLayout.searchMaxWidth, margin: '8px auto 0', width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDiscoveryPinScope('tenant_primary');
+                              setHasDiscoveryExplorationStarted(true);
+                              loadStores(undefined, { useImmediateSearch: true, pinScope: 'tenant_primary' });
+                            }}
+                            style={{
+                              borderRadius: 10,
+                              border: '1px solid #bfdbfe',
+                              background: '#eff6ff',
+                              color: '#1a4e8d',
+                              padding: '7px 11px',
+                              fontSize: 12,
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            View All Stores
+                          </button>
+                        </div>
+                      )}
                       {
                       (() => {
                         const primaryCats = [
@@ -12464,7 +13285,7 @@ export default function StorefrontApp() {
 
 
                   {/* Ã¢â€â‚¬Ã¢â€â‚¬ STATIC HERO MAP Ã¢â€â‚¬Ã¢â€â‚¬ */}
-                  {!hasDiscoverySearch && (
+                  {!hasDiscoverySearch && !isClusterResultsActive && (
                     <>
                       <DiscoveryMapCard viewportMode={discoveryViewportMode}>
                       <div
@@ -12482,6 +13303,7 @@ export default function StorefrontApp() {
                         userLocation={discoveryCoords}
                         height={discoveryLayout.heroMapHeight}
                         openPopupOnHover={true}
+                        onSelectCluster={handleDiscoveryClusterSelect}
                         onSelectStore={(pin) => {
                           setHasDiscoveryExplorationStarted(true);
                           setHighlightedStoreSlug(pin.slug);
@@ -12521,26 +13343,6 @@ export default function StorefrontApp() {
                                   Store Label
                                 </div>
                               </div>
-                              <button
-                                type="button"
-                                onClick={handleNearMe}
-                                style={{
-                                  minWidth: 72,
-                                  borderRadius: 12,
-                                  background: 'rgba(255,255,255,.95)',
-                                  color: '#0f172a',
-                                  border: '1px solid rgba(148,163,184,.28)',
-                                  display: 'grid',
-                                  placeItems: 'center',
-                                  gap: 2,
-                                  padding: '6px 8px',
-                                  cursor: 'pointer',
-                                  boxShadow: '0 4px 10px rgba(15,23,42,.16)'
-                                }}
-                              >
-                                <Navigation size={15} fill="#0f172a" />
-                                <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', lineHeight: 1.1 }}>Current Location</span>
-                              </button>
                             </div>
                           ) : (
                           [
@@ -12554,7 +13356,7 @@ export default function StorefrontApp() {
                           ))
                         )}
                       </div>
-                      
+
                         {!isDiscoveryMobileViewport && (
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.20)', borderRadius: 999, padding: '6px 12px', color: 'rgba(255,255,255,.88)', fontSize: 12, fontWeight: 600, backdropFilter: 'blur(8px)' }}>
                             <MapPin size={12} />
@@ -12597,29 +13399,11 @@ export default function StorefrontApp() {
                             <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Store</span>
                             <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
                           </button>
-                          <button
-                            type="button"
-                            onClick={handleNearMe}
-                            style={{
-                              width: 84,
-                              minHeight: 80,
-                              borderRadius: 16,
-                              border: '1px solid rgba(148,163,184,0.28)',
-                              background: 'rgba(255,255,255,.96)',
-                              boxShadow: '0 6px 18px rgba(15,23,42,.16)',
-                              display: 'grid',
-                              placeItems: 'center',
-                              gap: 4,
-                              padding: '8px 6px',
-                              color: '#0f172a',
-                              cursor: 'pointer'
-                            }}
-                            aria-label="Current location"
-                          >
-                            <Navigation size={16} fill="#0f172a" />
-                            <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Current</span>
-                            <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
-                          </button>
+                          {renderDiscoveryCurrentLocationButton({
+                            compact: false,
+                            floating: true,
+                            label: isDiscoveryLocationShared ? 'My location' : 'Current location'
+                          })}
                           <button
                             type="button"
                             aria-label="Map information"
@@ -12644,7 +13428,7 @@ export default function StorefrontApp() {
                         </DiscoveryMapCard>
                     </>
                   )}
-                {hasDiscoverySearch && renderDiscoveryResultsStage()}
+                {(hasDiscoverySearch || isClusterResultsActive) && renderDiscoveryResultsStage()}
               </div>
               </div>
             </section>
@@ -12714,7 +13498,7 @@ export default function StorefrontApp() {
                               <button
                                 type="button"
                                 onClick={openBusinessRegistrationFlow}
-                                style={{ marginTop: 22, width: '100%', minHeight: isMobileViewport ? 48 : 52, borderRadius: 16, border: '1px solid #1a4586', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4586 100%)', color: '#fff', fontSize: isMobileViewport ? 13 : 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(26, 78, 141, .28)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: isMobileViewport ? 8 : 10, cursor: 'pointer', whiteSpace: 'nowrap', letterSpacing: isMobileViewport ? '-0.01em' : 'normal', padding: isMobileViewport ? '0 16px' : '0 18px' }}
+                                style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4586', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4586 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(26, 78, 141, .28)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
                               >
                                 Register Your Business
                                 <ChevronRight size={18} />
@@ -12738,7 +13522,7 @@ export default function StorefrontApp() {
                       </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(4, 1fr)', gap: isMobileViewport ? 60 : 32, position: 'relative', alignItems: 'start' }}>
-                        
+
                         {/* Connector Line (Desktop Only) */}
                         {!isMobileViewport && (
                           <div style={{ position: 'absolute', top: 92, left: '12%', right: '12%', height: 2, background: 'repeating-linear-gradient(to right, #cbd5e1 0, #cbd5e1 6px, transparent 6px, transparent 12px)', zIndex: 0 }} />
@@ -12747,7 +13531,7 @@ export default function StorefrontApp() {
                         {/* Step 1: Search */}
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
                           <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>01</div>
-                          
+
                           {/* Mock UI Card */}
                           <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 18, marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 14px' }}>
@@ -12778,7 +13562,7 @@ export default function StorefrontApp() {
                         {/* Step 2: Compare */}
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
                           <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>02</div>
-                          
+
                           {/* Mock UI Card */}
                           <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 14, marginTop: 18, marginBottom: 0, display: 'flex', gap: 10, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -12791,8 +13575,8 @@ export default function StorefrontApp() {
                                   <div style={{ width: 28, height: 28, borderRadius: 8, background: i === 0 ? '#fde68a' : i === 1 ? '#bbf7d0' : '#e9d5ff' }} />
                                   <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                                     <div style={{ fontSize: 10, fontWeight: 800, color: '#0f172a' }}>{s.n}</div>
-                                    <div style={{ fontSize: 8, color: '#64748b', margin: '2px 0 4px' }}>0.4 km {'\u2022'} 10-15 min</div>
-                                    <div style={{ fontSize: 8, color: '#d97706', fontWeight: 700 }}>{'\u2605'} {s.r}</div>
+                                    <div style={{ fontSize: 8, color: '#64748b', margin: '2px 0 4px' }}>0.4 km â€¢ 10-15 min</div>
+                                    <div style={{ fontSize: 8, color: '#d97706', fontWeight: 700 }}>â˜… {s.r}</div>
                                   </div>
                                 </div>
                               ))}
@@ -12814,7 +13598,7 @@ export default function StorefrontApp() {
                         {/* Step 3: Choose */}
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
                           <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>03</div>
-                          
+
                           {/* Mock UI Card */}
                           <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', overflow: 'hidden', marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', textAlign: 'left', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
                             <div style={{ height: 110, background: 'linear-gradient(135deg, #fcd34d, #f59e0b)' }} />
@@ -12822,8 +13606,8 @@ export default function StorefrontApp() {
                               <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a' }}>Kape Central</div>
                               <div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>Coffee Shop</div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 600 }}>0.4 km {'\u2022'} 10-15 min</div>
-                                <div style={{ fontSize: 9, color: '#16a34a', fontWeight: 800, background: '#f0fdf4', padding: '3px 6px', borderRadius: 6 }}>{'\u2605'} 4.8 (128)</div>
+                                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 600 }}>0.4 km â€¢ 10-15 min</div>
+                                <div style={{ fontSize: 9, color: '#16a34a', fontWeight: 800, background: '#f0fdf4', padding: '3px 6px', borderRadius: 6 }}>â˜… 4.8 (128)</div>
                               </div>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 20 }}>
                                 {['Directions', 'Call', 'Message', 'Save'].map((a, idx) => (
@@ -12848,7 +13632,7 @@ export default function StorefrontApp() {
                         {/* Step 4: Order */}
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
                           <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>04</div>
-                          
+
                           {/* Mock UI Card */}
                           <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 24, marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
                             <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
@@ -12981,7 +13765,7 @@ export default function StorefrontApp() {
                               store?.nearest_location_hours || store?.storefront_hours_status?.display || ''
                             );
                             const featuredClosedNote = !isOpen
-                            ? `Store closed for now${featuredHoursLabel ? ` \u2022 ${featuredHoursLabel}` : ''}`
+                              ? `Store closed for now${featuredHoursLabel ? ` â€¢ ${featuredHoursLabel}` : ''}`
                               : '';
                           const coverImageUrl = withAssetOrigin(store?.storefront_cover_image_url) || withAssetOrigin(store?.storefront_profile_image_url) || '';
                           const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url) || coverImageUrl || '';
@@ -12992,7 +13776,7 @@ export default function StorefrontApp() {
                           let icon = <Store size={40} color="#fff" />;
                           let color = '#1a4e8d';
                           let bg = 'linear-gradient(135deg, #1a4e8d 0%, #1a4e8d 100%)';
-                          
+
                           if (catStr.includes('coffee') || catStr.includes('cafe') || catStr.includes('f&b') || catStr.includes('food')) {
                             icon = <Coffee size={40} color="#fff" />;
                             color = '#78350f';
@@ -13017,7 +13801,7 @@ export default function StorefrontApp() {
 
                           return (
                               <div key={store.id || store.slug || i} style={{ minWidth: 280, width: 280, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 12px 32px rgba(15,23,42,0.05)', display: 'flex', flexDirection: 'column', textAlign: 'left', overflow: 'hidden', scrollSnapAlign: 'start', flexShrink: 0, position: 'relative', opacity: isOpen ? 1 : 0.72 }}>
-                              
+
                               {/* Cover Area */}
                               <div style={{ height: 160, background: bg, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {coverImageUrl && !isBrandingImageBlocked(coverImageKey) ? (
@@ -13031,10 +13815,10 @@ export default function StorefrontApp() {
                                 <div style={{ position: 'absolute', inset: 0, background: coverImageUrl && !isBrandingImageBlocked(coverImageKey) ? 'linear-gradient(180deg, rgba(15,23,42,.12) 0%, rgba(15,23,42,.48) 100%)' : 'transparent' }} />
                                 {/* Subtle pattern overlay */}
                                 <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at center, rgba(255,255,255,0.2) 1px, transparent 1px)', backgroundSize: '16px 16px', opacity: 0.5 }} />
-                                
+
                                   {isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#16a34a', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }}>Open Now</div>}
                                   {!isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(239,68,68,0.3)' }}>Closed</div>}
-                                
+
                                 {/* Big thematic icon */}
                                 {!coverImageUrl || isBrandingImageBlocked(coverImageKey) ? <div style={{ opacity: 0.8, position: 'relative', zIndex: 1 }}>{icon}</div> : null}
                               </div>
@@ -13068,9 +13852,9 @@ export default function StorefrontApp() {
                                     </span>
                                   </div>
                                   <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 12px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</div>
-                                
+
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 20 }}>
-                                  <span style={{ color: '#f59e0b', fontSize: 14 }}>{'\u2605'}</span> {ratingValue} ({ratingCount}) <span style={{ color: '#cbd5e1', margin: '0 2px' }}>{'\u2022'}</span> {d}
+                                  <span style={{ color: '#f59e0b', fontSize: 14 }}>â˜…</span> {ratingValue} ({ratingCount}) <span style={{ color: '#cbd5e1', margin: '0 2px' }}>â€¢</span> {d}
                                 </div>
 
                                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24, height: 26, overflow: 'hidden' }}>
@@ -13102,15 +13886,14 @@ export default function StorefrontApp() {
 
                       {/* Carousel Controls */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 16 }}>
-                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: -304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#94a3b8', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>e.currentTarget.style.color='#1a4e8d'} onMouseOut={(e)=>e.currentTarget.style.color='#94a3b8'}><ChevronLeft size={20} /></div>
+                        <button type="button" onClick={() => scrollFeaturedCarouselByPage(-1)} disabled={featuredCarouselPage === 0} aria-label="Show previous featured merchants" style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: featuredCarouselPage === 0 ? '#cbd5e1' : '#94a3b8', cursor: featuredCarouselPage === 0 ? 'not-allowed' : 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronLeft size={20} /></button>
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1a4e8d' }} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 304, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 608, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 912, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 1216, behavior: 'smooth' })} />
+                          {Array.from({ length: featuredCarouselPageCount }, (_, pageIndex) => {
+                            const isActivePage = featuredCarouselPage === pageIndex;
+                            return <button key={pageIndex} type="button" onClick={() => scrollFeaturedCarouselToPage(pageIndex)} aria-label={`Show featured merchants page ${pageIndex + 1}`} aria-current={isActivePage ? 'page' : undefined} style={{ width: 8, height: 8, borderRadius: '50%', border: 0, padding: 0, background: isActivePage ? '#1a4e8d' : '#e2e8f0', cursor: 'pointer' }} />;
+                          })}
                         </div>
-                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: 304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#1a4e8d', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>{e.currentTarget.style.background='#f8fafc'}} onMouseOut={(e)=>{e.currentTarget.style.background='#fff'}}><ChevronRight size={20} /></div>
+                        <button type="button" onClick={() => scrollFeaturedCarouselByPage(1)} disabled={featuredCarouselPage >= featuredCarouselPageCount - 1} aria-label="Show next featured merchants" style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: featuredCarouselPage >= featuredCarouselPageCount - 1 ? '#cbd5e1' : '#1a4e8d', cursor: featuredCarouselPage >= featuredCarouselPageCount - 1 ? 'not-allowed' : 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronRight size={20} /></button>
                       </div>
                     </section>
 
@@ -13402,6 +14185,7 @@ export default function StorefrontApp() {
                         <StoresMap
                           stores={activeDiscoveryMapPins}
                           selectedKey={highlightedDiscoveryMarkerKey || null}
+                          highlightedKeys={highlightedDiscoveryMarkerKeys}
                           userLocation={discoveryCoords}
                           height="100%"
                           onSelectStore={(pin) => {
@@ -13410,7 +14194,9 @@ export default function StorefrontApp() {
                             const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug);
                             setSelectedMapPin(matched || null);
                           }}
-                          autoOpenPopups={true}
+                          autoOpenPopups={false}
+                          openPopupOnHover={true}
+                          onSelectCluster={handleDiscoveryClusterSelect}
                         />
                       ) : (
                         <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
@@ -13535,9 +14321,9 @@ export default function StorefrontApp() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, fontSize: 12 }}>
                                     <span style={{ color: '#f59e0b', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><Star size={12} fill="currentColor" />{rating}</span>
                                     <span style={{ color: '#64748b' }}>({ratingCount})</span>
-                                    <span style={{ color: '#94a3b8' }}>{'\u00B7'}</span>
+                                    <span style={{ color: '#94a3b8' }}>Â·</span>
                                     <span style={{ color: '#64748b' }}>{Number.isFinite(Number(store.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km` : '-'}</span>
-                                    <span style={{ color: '#94a3b8' }}>{'\u00B7'}</span>
+                                    <span style={{ color: '#94a3b8' }}>Â·</span>
                                     <span style={{ color: '#64748b' }}>{store.estimated_wait_minutes || 10}-{Number(store.estimated_wait_minutes || 10) + 5} min</span>
                                     <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 700, background: store.storefront_open ? '#ecfdf5' : '#fff7ed', color: store.storefront_open ? '#16a34a' : '#c2410c' }}>{store.storefront_open ? 'Open Now' : 'Closed'}</span>
                                   </div>
@@ -13785,7 +14571,6 @@ export default function StorefrontApp() {
                           </div>
 
                           <div style={{ padding: isMobileViewport ? '14px 18px 18px' : '18px 28px 24px', borderTop: '1px solid #e2e8f0', background: '#fff', display: 'grid', gap: 12 }}>
-                            {storefrontClosedByHours && renderStorefrontClosedNotice()}
                             {checkoutError && (
                               <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
                                 {checkoutError}
@@ -13866,7 +14651,7 @@ export default function StorefrontApp() {
                   setIsServiceGalleryExpanded={setIsServiceGalleryExpanded}
                   openStorefrontActionLink={openStorefrontActionLink}
                   openTrackPanel={openTrackPanel}
-                  openAccountPanel={openCustomerDashboard}
+                  openAccountPanel={openAccountPanel}
                   onRegisterBusiness={openBusinessRegistrationFlow}
                   isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
                   activeCustomerOrderCount={activeCustomerOrderCount}
@@ -13874,7 +14659,7 @@ export default function StorefrontApp() {
                   accountIdentityRawEmail={accountIdentityRawEmail}
                   accountIdentityContact={accountIdentityContact}
                   accountIdentityInitials={accountIdentityInitials}
-                  followEnabled={followUiEnabledForStore}
+                  followEnabled={followEnabledForStore}
                   shareEnabled={shareEnabledForStore}
                   followState={followState}
                   handleFollowAction={handleFollowAction}
@@ -14095,7 +14880,7 @@ export default function StorefrontApp() {
                     <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
                       Back to Discovery
                     </GhostButton>
-                    <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug}{' // '}{selectedStore?.tenant_name}</div>
+                    <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} {'//'} {selectedStore?.tenant_name}</div>
                     <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
                       Tenant page: {routeSlug}
                     </div>
@@ -14125,7 +14910,7 @@ export default function StorefrontApp() {
                   selectedLocation={selectedLocation}
                     openStorefrontActionLink={openStorefrontActionLink}
                     openTrackPanel={openTrackPanel}
-                    openAccountPanel={openCustomerDashboard}
+                    openAccountPanel={openAccountPanel}
                     onRegisterBusiness={openBusinessRegistrationFlow}
                     isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
                     activeCustomerOrderCount={activeCustomerOrderCount}
@@ -14133,7 +14918,7 @@ export default function StorefrontApp() {
                     accountIdentityRawEmail={accountIdentityRawEmail}
                     accountIdentityContact={accountIdentityContact}
                     accountIdentityInitials={accountIdentityInitials}
-                    followEnabled={followUiEnabledForStore}
+                    followEnabled={followEnabledForStore}
                     shareEnabled={shareEnabledForStore}
                     followState={followState}
                     handleFollowAction={handleFollowAction}
@@ -14160,7 +14945,7 @@ export default function StorefrontApp() {
                     selectedLocation={selectedLocation}
                     openStorefrontActionLink={openStorefrontActionLink}
                     openTrackPanel={openTrackPanel}
-                    openAccountPanel={openCustomerDashboard}
+                    openAccountPanel={openAccountPanel}
                     onRegisterBusiness={openBusinessRegistrationFlow}
                     isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
                     activeCustomerOrderCount={activeCustomerOrderCount}
@@ -14168,7 +14953,7 @@ export default function StorefrontApp() {
                     accountIdentityRawEmail={accountIdentityRawEmail}
                     accountIdentityContact={accountIdentityContact}
                     accountIdentityInitials={accountIdentityInitials}
-                    followEnabled={followUiEnabledForStore}
+                    followEnabled={followEnabledForStore}
                     shareEnabled={shareEnabledForStore}
                     followState={followState}
                     handleFollowAction={handleFollowAction}
@@ -14272,9 +15057,9 @@ export default function StorefrontApp() {
                     modifierGroups={detailPageFnbModifierGroups}
                     modifierCounts={detailPageFnbModifierCounts}
                     onToggleModifier={toggleFnbDetailModifier}
-                    onAddToCart={() => addToCart(detailPageFnbItem, { quantity: selectedFnbDetailQuantity, line_modifiers: selectedFnbLineModifiers, openCart: true })}
+                    onAddToCart={() => addToCart(detailPageFnbItem, { quantity: selectedFnbDetailQuantity, line_modifiers: selectedFnbLineModifiers })}
                     onBuyNow={() => {
-                      addToCart(detailPageFnbItem, { quantity: selectedFnbDetailQuantity, line_modifiers: selectedFnbLineModifiers, openCart: true });
+                      addToCart(detailPageFnbItem, { quantity: selectedFnbDetailQuantity, line_modifiers: selectedFnbLineModifiers });
                       goStoreOrderPage({ initialTab: 'cart' });
                     }}
                     available={detailPageFnbItem ? isItemAvailable(detailPageFnbItem) : false}
@@ -14284,7 +15069,7 @@ export default function StorefrontApp() {
                     allergens={detailPageFnbAllergens}
                     relatedItems={detailPageFnbRelatedItems}
                     onSelectRelatedItem={openFnbDetail}
-                    onQuickAdd={(item) => addToCart(item, { openCart: true })}
+                    onQuickAdd={(item) => addToCart(item)}
                     isMobileViewport={isMobileViewport}
                     ratingScore={isFnbMode ? (reviewSummary?.average_rating ?? reviewSummary?.score ?? null) : null}
                     reviewCount={isFnbMode ? (reviewSummary?.total_count ?? reviewSummary?.totalCount ?? null) : null}
@@ -14492,7 +15277,7 @@ export default function StorefrontApp() {
                                       </div>
                                     </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                                      <PrimaryButton style={{ minHeight: 46 }} onClick={(event) => addToCart(detailPageServiceItem, { sourceRect: getCartFlySourceRect(event) })}>
+                                      <PrimaryButton style={{ minHeight: 46 }} onClick={() => addToCart(detailPageServiceItem)}>
                                         Add to Cart
                                       </PrimaryButton>
                                       <GhostButton style={{ minHeight: 46 }} onClick={goStoreCatalogPage}>
@@ -14555,10 +15340,10 @@ export default function StorefrontApp() {
                   const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
                   const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
                   const confirmationAmount = bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1)));
-                  const serviceBookingProgressSteps = [
-                    { realStep: 1, displayStep: 1, label: 'Details', allow: true },
-                    { realStep: 2, displayStep: 2, label: 'Review', allow: stepOneComplete },
-                    { realStep: 3, displayStep: 3, label: 'Payment', allow: stepOneComplete }
+                  const bookingSteps = [
+                    { step: 1, label: 'Customer and service info', complete: stepOneComplete },
+                    { step: 2, label: 'Payment information', complete: paymentStepComplete && serviceBookingStep > 2 },
+                    { step: 3, label: 'Review and submit', complete: false }
                   ];
                   const reviewSections = [
                     {
@@ -14568,7 +15353,7 @@ export default function StorefrontApp() {
                         { label: 'Customer Name', value: customerName || 'Not provided', fieldKey: 'customer_name' },
                         { label: 'Contact Number', value: customerPhone || 'Not provided', fieldKey: 'customer_phone' },
                         { label: 'Email', value: customerEmail || 'Not provided', fieldKey: 'customer_email' },
-                        ...(bookingFieldPlan.requiresAddress ? [{ label: 'Service Location', value: activeServiceLocationSummary || 'Not selected', fieldKey: 'customer_address' }] : [])
+                        ...(bookingFieldPlan.requiresAddress ? [{ label: 'Full Address', value: customerAddress || 'Not provided', fieldKey: 'customer_address' }] : [])
                       ]
                     },
                     {
@@ -14581,18 +15366,24 @@ export default function StorefrontApp() {
                         { label: bookingFieldPlan.unitCountField?.label || 'Number of Units', value: String(bookingSummaryQuantity), fieldKey: 'unit_count' }
                       ]
                     },
-                    {
+                    ...(bookingStepOneAdditionalFields.length > 0 ? [{
                       title: 'Additional Service Details',
                       step: 1,
+                      rows: bookingStepOneAdditionalFields.map((field) => ({
+                        label: field.label,
+                        value: formatBookingReviewValue(field, serviceIntakeResponses[field.id]),
+                        fieldKey: `intake_${field.id}`
+                      }))
+                    }] : []),
+                    {
+                      title: 'Payment Information',
+                      step: 2,
                       rows: [
-                        { label: 'Special Instructions', value: serviceIntakeResponses.special_instructions || serviceIntakeResponses.instructions || 'Not provided', fieldKey: 'special_instructions' },
-                        ...bookingStepOneAdditionalFields
-                          .filter(field => field.id !== 'special_instructions' && field.id !== 'instructions')
-                          .map((field) => ({
-                            label: field.label,
-                            value: formatBookingReviewValue(field, serviceIntakeResponses[field.id]),
-                            fieldKey: `intake_${field.id}`
-                          }))
+                        {
+                          label: 'Payment Timing',
+                          value: bookingPagePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Pending',
+                          fieldKey: 'payment_timing'
+                        }
                       ]
                     }
                   ];
@@ -14674,206 +15465,689 @@ export default function StorefrontApp() {
 
                       <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#eef4fb', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
                         <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-                          <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
+                          <div style={{ display: 'grid', gap: 18, marginBottom: 24 }}>
                             <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.08, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
-                              Book Your Service
+                              Complete Your Service Booking
                             </h1>
                             <p style={{ margin: 0, maxWidth: 760, fontSize: isMobileViewport ? 15 : 17, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                              Confirm your details once, choose the schedule that works for you, review the booking, and send it to the store team.
+                              Share your details once, choose the schedule that works for you, review the booking, and submit it to the store team.
                             </p>
                           </div>
 
                           {bookingConfirmation ? (
-                            <ServiceBookingConfirmation
-                              isMobileViewport={isMobileViewport}
-                              confirmationReference={confirmationReference}
-                              confirmationServiceName={confirmationServiceName}
-                              confirmationAmount={confirmationAmount}
-                              checkoutResult={checkoutResult}
-                              money={money}
-                              onResetAndBackToServices={() => {
-                                setCheckoutResult(null);
-                                goStoreCatalogPage();
+                            <section
+                              style={{
+                                border: '1px solid #dbe5ee',
+                                borderRadius: 28,
+                                background: '#fff',
+                                padding: isMobileViewport ? 20 : 28,
+                                boxShadow: '0 22px 56px rgba(15, 23, 42, 0.08)',
+                                display: 'grid',
+                                gap: 20,
+                                maxWidth: 860
                               }}
-                            />
+                            >
+                              <div style={{ display: 'grid', gap: 10 }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content', padding: '8px 12px', borderRadius: 999, background: '#ecfdf5', color: '#15803d', fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                  <CheckCircle2 size={16} />
+                                  Booking confirmed
+                                </div>
+                                <div style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08 }}>
+                                  Your service booking is confirmed
+                                </div>
+                                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: STYLES.colors.muted, maxWidth: 680 }}>
+                                  The request has been sent to the store team. They will message you using the contact details you provided to confirm the schedule and assist with the next steps.
+                                </p>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
+                                <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
+                                  <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Reference</div>
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{confirmationReference || 'Pending'}</div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
+                                  <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service</div>
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{confirmationServiceName}</div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
+                                  <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated total</div>
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{money(confirmationAmount)}</div>
+                                </div>
+                              </div>
+                              <div style={{ display: 'grid', gap: 8, fontSize: 14, color: '#334155', lineHeight: 1.65 }}>
+                                <div>Keep your booking reference in case you need to follow up with the team.</div>
+                                <div>You can return to the services page anytime to browse other services.</div>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12, flexWrap: 'wrap' }}>
+                                {checkoutResult?.payment?.checkout_url && (
+                                  <a
+                                    href={checkoutResult.payment.checkout_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      minHeight: 46,
+                                      borderRadius: 14,
+                                      background: '#0f766e',
+                                      color: '#fff',
+                                      padding: '0 18px',
+                                      fontWeight: 800,
+                                      textDecoration: 'none'
+                                    }}
+                                  >
+                                    Continue to Payment
+                                  </a>
+                                )}
+                                <PrimaryButton
+                                  onClick={() => {
+                                    setCheckoutResult(null);
+                                    goStoreCatalogPage();
+                                  }}
+                                  style={{ minHeight: 46 }}
+                                >
+                                  Back to Services
+                                </PrimaryButton>
+                              </div>
+                            </section>
                           ) : !activeBookingService ? (
-                            <ServiceBookingEmptyState
-                              isMobileViewport={isMobileViewport}
-                              onBrowseServices={goStoreCatalogPage}
-                            />
+                            <section
+                              style={{
+                                border: '1px solid #dbe5ee',
+                                borderRadius: 24,
+                                background: '#fff',
+                                padding: isMobileViewport ? 20 : 28,
+                                boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)',
+                                display: 'grid',
+                                gap: 16,
+                                maxWidth: 760
+                              }}
+                            >
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>
+                                  No service selected yet
+                                </div>
+                                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                                  Choose a service first so we can load its booking details and requirements here.
+                                </p>
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                                <PrimaryButton onClick={goStoreCatalogPage} style={{ minHeight: 46 }}>
+                                  Browse Services
+                                </PrimaryButton>
+                              </div>
+                            </section>
                           ) : (
-                          <>
-                          <div style={{ display: 'grid', gap: 24, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.2fr) minmax(320px, 360px)', alignItems: 'start' }}>
+                          <div style={{ display: 'grid', gap: 24, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.18fr) minmax(340px, 390px)', alignItems: 'start' }}>
                             <div style={{ display: 'grid', gap: 18 }}>
-                              <CheckoutStepProgressHeader
-                                steps={serviceBookingProgressSteps}
-                                activeStep={serviceBookingStep}
-                                onStepClick={(item) => {
-                                  if (item.allow === false) return;
-                                  setServiceBookingStep(item.realStep);
-                                }}
-                                variant="connected"
-                                isMobileViewport={isMobileViewport}
-                                accentColor={servicesPrimary}
-                                accentSoft={servicesPrimarySoft}
-                                accentBorder={servicesPrimaryBorder}
-                                completeColor={servicesPrimary}
-                                activeText={servicesPrimary}
-                              />
+                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+                                {bookingSteps.map((item) => (
+                                  <button
+                                    key={`booking-step-${item.step}`}
+                                    type="button"
+                                    onClick={() => setServiceBookingStep(item.step)}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 12,
+                                      padding: '14px 16px',
+                                      borderRadius: 18,
+                                      border: `1px solid ${serviceBookingStep === item.step ? servicesPrimaryBorder : '#e2e8f0'}`,
+                                      background: serviceBookingStep === item.step ? servicesPrimarySoft : '#ffffff',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                      <div style={{ width: 30, height: 30, borderRadius: 999, background: item.complete ? '#16a34a' : serviceBookingStep === item.step ? servicesPrimary : '#e2e8f0', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900, fontSize: 13 }}>
+                                        {item.complete ? 'OK' : item.step}
+                                      </div>
+                                      <div style={{ textAlign: 'left' }}>
+                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{item.label}</div>
+                                      </div>
+                                    </div>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: item.complete ? '#15803d' : '#64748b' }}>
+                                      {item.complete ? 'Complete' : item.step === serviceBookingStep ? 'In progress' : 'Pending'}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
 
-                              <section style={{ display: 'grid', gap: 18, minWidth: 0 }}>
-                                <ServiceBookingSelectedServiceCard
-                                  STYLES={STYLES}
-                                  servicesPrimary={servicesPrimary}
-                                  servicesPrimarySoft={servicesPrimarySoft}
-                                  servicesPrimaryBorder={servicesPrimaryBorder}
-                                  isMobileViewport={isMobileViewport}
-                                  activeBookingService={activeBookingService}
-                                  serviceBookingSummaryTitle={serviceBookingSummaryTitle}
-                                  bookingSummaryQuantity={bookingSummaryQuantity}
-                                  hasServiceCart={hasServiceCart}
-                                  serviceCartLines={serviceCartLines}
-                                  selectedServiceCartLineId={selectedServiceCartLineId}
-                                  openServiceCartEditor={openServiceCartEditor}
-                                />
+                              <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 18 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                                  <div>
+                                    <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Selected service</div>
+                                    <div style={{ marginTop: 4, fontSize: 26, fontWeight: 900, color: STYLES.colors.dark }}>{activeBookingService?.variantName || activeBookingService?.name}</div>
+                                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                                        {activeBookingService?.serviceAreaLabel || activeBookingService?.service_detail?.service_area_type || 'Service'}
+                                      </span>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                                        {activeBookingService?.durationLabel || `${Number(activeBookingService?.service_detail?.duration_minutes || 0) || 0} min`}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
 
                                 {serviceBookingStep === 1 && (
-                                  <ServiceBookingStepOne
-                                    STYLES={STYLES}
-                                    BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
-                                    StorefrontDropdown={StorefrontDropdown}
-                                    PrimaryButton={PrimaryButton}
-                                    renderAccountOwnedIdentitySummary={renderAccountOwnedIdentitySummary}
-                                    renderGuestIdentityFields={renderGuestIdentityFields}
-                                    renderGuestCheckoutEntry={renderGuestCheckoutEntry}
-                                    registerBookingFieldRef={registerBookingFieldRef}
-                                    shouldBookingFieldSpanFullWidth={shouldBookingFieldSpanFullWidth}
-                                    formatLongDateLabel={formatLongDateLabel}
-                                    combineDateAndTimeParts={combineDateAndTimeParts}
-                                    getPreferredBookingTimeForDate={getPreferredBookingTimeForDate}
-                                    openPreferredBookingDatePicker={openPreferredBookingDatePicker}
-                                    activeBookingService={activeBookingService}
-                                    isMobileViewport={isMobileViewport}
-                                    isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
-                                    canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
-                                    bookingFieldPlan={bookingFieldPlan}
-                                    selectedServiceDatePart={selectedServiceDatePart}
-                                    bookingDateOptions={bookingDateOptions}
-                                    bookingPreferredDateInputRef={bookingPreferredDateInputRef}
-                                    selectedServiceTimePart={selectedServiceTimePart}
-                                    bookingTimeSlotOptions={bookingTimeSlotOptions}
-                                    setServiceAppointmentAt={setServiceAppointmentAt}
-                                    serviceUnitType={serviceUnitType}
-                                    setServiceUnitType={setServiceUnitType}
-                                    serviceDraftQuantity={serviceDraftQuantity}
-                                    setServiceDraftQuantity={setServiceDraftQuantity}
-                                    bookingStepOneAdditionalFields={bookingStepOneAdditionalFields}
-                                    serviceIntakeResponses={serviceIntakeResponses}
-                                    setServiceIntakeResponses={setServiceIntakeResponses}
-                                    missingCustomerInformation={missingCustomerInformation}
-                                    missingScheduleAndServiceInfo={missingScheduleAndServiceInfo}
-                                    missingStepOneAdditionalFields={missingStepOneAdditionalFields}
-                                    stepOneComplete={stepOneComplete}
-                                    servicesPrimary={servicesPrimary}
-                                    servicesDisplayFont={servicesDisplayFont}
-                                    toast={toast}
-                                    setServiceBookingStep={setServiceBookingStep}
-                                    renderLocationSection={() => (
-                                      <ServiceBookingLocationSection
-                                        STYLES={STYLES}
-                                        servicesPrimary={servicesPrimary}
-                                        servicesPrimarySoft={servicesPrimarySoft}
-                                        servicesPrimaryBorder={servicesPrimaryBorder}
-                                        servicesDisplayFont={servicesDisplayFont}
-                                        servicesBodyFont={servicesBodyFont}
-                                        isMobileViewport={isMobileViewport}
-                                        DeliveryPinMap={DeliveryPinMap}
-                                        deliverySavedLocations={deliverySavedLocations}
-                                        selectedSavedLocationId={selectedSavedLocationId}
-                                        setSelectedSavedLocationId={setSelectedSavedLocationId}
-                                        setDeliveryLocationAction={setDeliveryLocationAction}
-                                        customerPin={customerPin}
-                                        setCustomerPin={setCustomerPin}
-                                        serviceLocationLandmarkNote={serviceLocationLandmarkNote}
-                                        setServiceLocationLandmarkNote={setServiceLocationLandmarkNote}
-                                        handlePinMyLocation={handlePinMyLocation}
-                                        pinLocationLoading={pinLocationLoading}
-                                        deliveryLocationAction={deliveryLocationAction}
-                                        deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
-                                        handleAddPinnedLocation={handleAddPinnedLocation}
-                                        canAddPinnedLocation={canAddPinnedLocation}
-                                        isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
-                                        pinLocationError={pinLocationError}
-                                        showExpandedDeliveryMap={showExpandedDeliveryMap}
-                                        setShowExpandedDeliveryMap={setShowExpandedDeliveryMap}
-                                      />
+                                  <div style={{ display: 'grid', gap: 20 }}>
+                                    {isDgfyCustomerSignedIn || canUseGuestCheckoutFlow ? (
+                                      <>
+                                    <div>
+                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 1: Customer and Service Information</div>
+                                      <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
+                                        Capture contact details once, then choose the preferred schedule and service specifics for this booking.
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gap: 18 }}>
+                                      <section style={{ display: 'grid', gap: 14 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Customer Information</div>
+                                        {isDgfyCustomerSignedIn ? renderAccountOwnedIdentitySummary({
+                                          title: 'Customer Account',
+                                          subtitle: 'Your signed-in DGFY account will be used for this booking.'
+                                        }) : renderGuestIdentityFields({
+                                          title: 'Guest Details',
+                                          subtitle: 'Use guest booking now, or create a DGFY account later with these same details.',
+                                          requireEmail: bookingFieldPlan.emailField?.required === true,
+                                          includeAddress: bookingFieldPlan.requiresAddress,
+                                          showSavedDetailsCard: false,
+                                          addressLabel: 'Full Address',
+                                          addressPlaceholder: 'Barangay, street, subdivision, city, and other address details',
+                                          addressRequired: isAddressRequired
+                                        })}
+                                        {isDgfyCustomerSignedIn && bookingFieldPlan.requiresAddress && (
+                                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
+                                            <label ref={registerBookingFieldRef('customer_address')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                                              Full Address{isAddressRequired ? ' *' : ''}
+                                              <textarea
+                                                value={customerAddress}
+                                                onChange={(event) => setCustomerAddress(event.target.value)}
+                                                placeholder="Barangay, street, subdivision, city, and other address details"
+                                                style={{ ...BOOKING_FIELD_STYLE, minHeight: 92, resize: 'vertical' }}
+                                              />
+                                              {!bookingFieldPlan.addressField && (
+                                                <span style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#64748b' }}>
+                                                  This address will be included with the booking notes for the service team.
+                                                </span>
+                                              )}
+                                            </label>
+                                          </div>
+                                        )}
+                                      </section>
+
+                                      <section style={{ display: 'grid', gap: 14 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Schedule and Service Information</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
+                                          <label ref={registerBookingFieldRef('preferred_date')} style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+                                            <div style={{ fontSize: 12, color: '#475569' }}>Preferred Date *</div>
+                                            <div style={{ position: 'relative', minWidth: 0 }}>
+                                              <div
+                                                role="button"
+                                                tabIndex={0}
+                                                onMouseDown={(event) => {
+                                                  event.preventDefault();
+                                                  openPreferredBookingDatePicker();
+                                                }}
+                                                onClick={openPreferredBookingDatePicker}
+                                                onKeyDown={(event) => {
+                                                  if (event.key === 'Enter' || event.key === ' ') {
+                                                    event.preventDefault();
+                                                    openPreferredBookingDatePicker();
+                                                  }
+                                                }}
+                                                style={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: selectedServiceDatePart ? STYLES.colors.dark : '#94a3b8', fontWeight: selectedServiceDatePart ? 700 : 500, cursor: 'pointer' }}
+                                              >
+                                                <span>{selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Pick a preferred date'}</span>
+                                                <CalendarDays size={18} color={servicesPrimary} />
+                                              </div>
+                                              <input
+                                                ref={bookingPreferredDateInputRef}
+                                                type="date"
+                                                value={selectedServiceDatePart}
+                                                min={bookingDateOptions[0]?.value || undefined}
+                                                onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(event.target.value, getPreferredBookingTimeForDate(activeBookingService, event.target.value, selectedServiceTimePart)))}
+                                                aria-hidden="true"
+                                                tabIndex={-1}
+                                                style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', inset: 'auto' }}
+                                              />
+                                            </div>
+                                          </label>
+
+                                          <label ref={registerBookingFieldRef('preferred_time')} style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                              <div style={{ fontSize: 12, color: '#475569' }}>Preferred Time Slot *</div>
+                                              {selectedServiceDatePart ? (
+                                                <div style={{ fontSize: 12, color: '#64748b' }}>
+                                                  {bookingTimeSlotOptions.some((slot) => slot.source === 'availability')
+                                                    ? 'Available from service schedule'
+                                                    : 'Suggested times based on service duration'}
+                                                </div>
+                                              ) : null}
+                                            </div>
+                                            <StorefrontDropdown
+                                              value={selectedServiceTimePart}
+                                              disabled={!selectedServiceDatePart || bookingTimeSlotOptions.length === 0}
+                                              onChange={(nextValue) => setServiceAppointmentAt(combineDateAndTimeParts(selectedServiceDatePart, nextValue))}
+                                              options={bookingTimeSlotOptions.map((slot) => ({
+                                                value: slot.value,
+                                                label: slot.label
+                                              }))}
+                                              placeholder={
+                                                !selectedServiceDatePart
+                                                  ? 'Choose a date first'
+                                                  : bookingTimeSlotOptions.length === 0
+                                                    ? 'No suggested time slots available'
+                                                    : 'Select a time slot'
+                                              }
+                                              triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: 52, padding: '12px 48px 12px 13px' }}
+                                              menuStyle={{ borderRadius: 18 }}
+                                              selectedLabelStyle={{ fontWeight: selectedServiceDatePart && bookingTimeSlotOptions.length > 0 ? 700 : 500 }}
+                                            />
+                                          </label>
+
+                                          {bookingFieldPlan.unitTypeField ? (
+                                            <label ref={registerBookingFieldRef('unit_type')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                              {bookingFieldPlan.unitTypeField.label}{bookingFieldPlan.unitTypeField.required ? ' *' : ''}
+                                              {bookingFieldPlan.unitTypeField.type === 'select' ? (
+                                                <StorefrontDropdown
+                                                  value={serviceUnitType}
+                                                  onChange={setServiceUnitType}
+                                                  options={bookingFieldPlan.unitTypeField.options.map((option) => ({ value: option, label: option }))}
+                                                  placeholder="Select"
+                                                  triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 6, padding: '12px 48px 12px 13px' }}
+                                                  menuStyle={{ borderRadius: 18 }}
+                                                />
+                                              ) : (
+                                                <input value={serviceUnitType} onChange={(event) => setServiceUnitType(event.target.value)} placeholder="Specify the unit type" style={BOOKING_FIELD_STYLE} />
+                                              )}
+                                            </label>
+                                          ) : <div />}
+
+                                          <label ref={registerBookingFieldRef('unit_count')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                            {bookingFieldPlan.unitCountField?.label || 'Number of Units'} *
+                                            <input
+                                              type="number"
+                                              min="1"
+                                              step="1"
+                                              value={serviceDraftQuantity}
+                                              onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
+                                              style={BOOKING_FIELD_STYLE}
+                                            />
+                                          </label>
+                                        </div>
+                                      </section>
+
+                                      {bookingStepOneAdditionalFields.length > 0 && (
+                                        <section style={{ display: 'grid', gap: 14 }}>
+                                          <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Additional Service Details</div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
+                                            {bookingStepOneAdditionalFields.map((field) => (
+                                              <label
+                                                ref={registerBookingFieldRef(`intake_${field.id}`)}
+                                                key={`booking-step-one-${field.id}`}
+                                                style={{
+                                                  display: 'block',
+                                                  fontSize: 12,
+                                                  color: '#475569',
+                                                  minWidth: 0,
+                                                  gridColumn: !isMobileViewport && shouldBookingFieldSpanFullWidth(field) ? '1 / -1' : 'auto'
+                                                }}
+                                              >
+                                                {field.label}{field.required ? ' *' : ''}
+                                                {field.type === 'textarea' ? (
+                                                  <textarea value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={{ ...BOOKING_FIELD_STYLE, minHeight: 92, resize: 'vertical' }} />
+                                                ) : field.type === 'select' ? (
+                                                  <StorefrontDropdown
+                                                    value={serviceIntakeResponses[field.id] || ''}
+                                                    onChange={(nextValue) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: nextValue }))}
+                                                    options={field.options.map((option) => ({ value: option, label: option }))}
+                                                    placeholder="Select"
+                                                    triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 6, padding: '12px 48px 12px 13px' }}
+                                                    menuStyle={{ borderRadius: 18 }}
+                                                  />
+                                                ) : field.type === 'checkbox' ? (
+                                                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
+                                                    <input type="checkbox" checked={serviceIntakeResponses[field.id] === true} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))} />
+                                                    <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
+                                                  </div>
+                                                ) : (
+                                                  <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={BOOKING_FIELD_STYLE} />
+                                                )}
+                                              </label>
+                                            ))}
+                                          </div>
+                                        </section>
+                                      )}
+                                    </div>
+
+                                    {(missingCustomerInformation.length > 0 || missingScheduleAndServiceInfo.length > 0 || missingStepOneAdditionalFields.length > 0) && (
+                                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px', lineHeight: 1.6 }}>
+                                        Complete the required customer, schedule, and service details before continuing.
+                                      </div>
                                     )}
-                                  />
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                      <PrimaryButton
+                                        onClick={() => {
+                                          const firstMissingField = missingCustomerInformation[0]
+                                            || missingScheduleAndServiceInfo[0]
+                                            || missingStepOneAdditionalFields[0]?.label
+                                            || '';
+                                          if (!stepOneComplete) {
+                                            toast.error(firstMissingField ? `Complete "${firstMissingField}" before continuing.` : 'Complete the required booking details before continuing.');
+                                            return;
+                                          }
+                                          setServiceBookingStep(2);
+                                        }}
+                                        style={{ minHeight: 46 }}
+                                      >
+                                        Continue to Payment
+                                      </PrimaryButton>
+                                    </div>
+                                      </>
+                                    ) : renderGuestCheckoutEntry({
+                                      title: 'Continue to your booking',
+                                      description: 'Create an account or continue as guest to continue this booking.',
+                                      resumeTarget: {
+                                        checkoutTab: 'checkout',
+                                        serviceBookingStep: 1,
+                                        selectedServiceItemId: activeBookingService?.item_id ?? null
+                                      }
+                                    })}
+                                  </div>
                                 )}
 
                                 {serviceBookingStep === 2 && (
-                                  <ServiceBookingStepTwo
-                                    STYLES={STYLES}
-                                    GhostButton={GhostButton}
-                                    PrimaryButton={PrimaryButton}
-                                    isMobileViewport={isMobileViewport}
-                                    servicesPrimary={servicesPrimary}
-                                    servicesDisplayFont={servicesDisplayFont}
-                                    reviewServiceLines={reviewServiceLines}
-                                    reviewSections={reviewSections}
-                                    jumpToBookingField={jumpToBookingField}
-                                    selectedLocation={selectedLocation}
-                                    setServiceBookingStep={setServiceBookingStep}
-                                  />
+                                  <div style={{ display: 'grid', gap: 18 }}>
+                                    <div>
+                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 2: Payment Information</div>
+                                      <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
+                                        Choose how the service will be paid. The booking itself is still submitted through the current services contract.
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'grid', gap: 16 }}>
+                                      <label ref={registerBookingFieldRef('payment_timing')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, maxWidth: isMobileViewport ? '100%' : 360 }}>
+                                        Payment Timing
+                                        <StorefrontDropdown
+                                          value={servicePaymentTiming}
+                                          onChange={setServicePaymentTiming}
+                                          options={bookingPagePaymentOptions.map((option) => ({
+                                            value: option.value,
+                                            label: option.label
+                                          }))}
+                                          triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 6, padding: '12px 48px 12px 13px' }}
+                                          menuStyle={{ borderRadius: 18 }}
+                                        />
+                                      </label>
+
+                                      {servicePaymentTiming === 'prepaid' || servicePaymentTiming === 'deposit' ? (
+                                        <div style={{ display: 'grid', gap: 16 }}>
+                                          <div style={{ display: 'grid', gap: 10, padding: '16px 18px', borderRadius: 18, border: '1px solid #fed7aa', background: '#fff7ed' }}>
+                                            <div style={{ fontSize: 14, fontWeight: 900, color: '#9a3412' }}>
+                                              {servicePaymentTiming === 'deposit' ? 'Deposit payment preview' : 'Pay now preview'}
+                                            </div>
+                                            <div style={{ fontSize: 13, lineHeight: 1.7, color: '#9a3412' }}>
+                                              This is a temporary storefront payment UI. The current services backend still completes the actual payment handoff after the booking is submitted and returns a secure checkout link.
+                                            </div>
+                                          </div>
+
+                                          <div style={{ display: 'grid', gap: 14, padding: isMobileViewport ? 16 : 18, borderRadius: 22, border: '1px solid #dbe5ee', background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', boxShadow: '0 14px 36px rgba(15, 23, 42, 0.06)' }}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                              {[
+                                                { value: 'qr', label: 'QR Payment' },
+                                                { value: 'card', label: 'Card Details' }
+                                              ].map((option) => {
+                                                const isActive = servicePaymentPreviewMethod === option.value;
+                                                return (
+                                                  <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => setServicePaymentPreviewMethod(option.value)}
+                                                    style={{
+                                                      minHeight: 40,
+                                                      padding: '0 16px',
+                                                      borderRadius: 999,
+                                                      border: `1px solid ${isActive ? '#67e8f9' : '#dbe5ee'}`,
+                                                      background: isActive ? '#ecfeff' : '#fff',
+                                                      color: isActive ? '#155e75' : '#334155',
+                                                      fontSize: 13,
+                                                      fontWeight: 800,
+                                                      cursor: 'pointer',
+                                                      transition: 'all 0.2s ease'
+                                                    }}
+                                                  >
+                                                    {option.label}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+
+                                            {servicePaymentPreviewMethod === 'qr' && (
+                                              <div style={{ display: 'grid', gap: 16 }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '220px minmax(0, 1fr)', gap: 16, alignItems: 'stretch' }}>
+                                                  <div style={{ display: 'grid', placeItems: 'center', minHeight: 220, borderRadius: 22, background: 'radial-gradient(circle at top, #ecfeff 0%, #e0f2fe 52%, #ffffff 100%)', border: '1px dashed #67e8f9', padding: 18 }}>
+                                                    <div style={{ width: 160, height: 160, borderRadius: 20, background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', display: 'grid', placeItems: 'center', boxShadow: '0 18px 36px rgba(14, 165, 233, 0.18)' }}>
+                                                      <div style={{ width: 112, height: 112, borderRadius: 12, background: 'repeating-linear-gradient(90deg, #ffffff 0 10px, #0f172a 10px 20px), repeating-linear-gradient(0deg, #ffffff 0 10px, #0f172a 10px 20px)', backgroundBlendMode: 'screen' }} />
+                                                    </div>
+                                                  </div>
+                                                  <div style={{ display: 'grid', gap: 10 }}>
+                                                    <div style={{ fontSize: 16, fontWeight: 900, color: STYLES.colors.dark }}>QR payment preview</div>
+                                                    <div style={{ fontSize: 13, lineHeight: 1.7, color: '#475569' }}>
+                                                      Use this area later for bank transfer, e-wallet, or generated QR payment instructions. For now, the final payment link still appears only after the booking is submitted.
+                                                    </div>
+                                                    <div style={{ display: 'grid', gap: 8 }}>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', borderRadius: 16, background: '#ffffff', border: '1px solid #e2e8f0' }}>
+                                                        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Reference amount</span>
+                                                        <strong style={{ fontSize: 14, color: STYLES.colors.dark }}>{money(bookingSummaryAmount)}</strong>
+                                                      </div>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', borderRadius: 16, background: '#ffffff', border: '1px solid #e2e8f0' }}>
+                                                        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Payment mode</span>
+                                                        <strong style={{ fontSize: 14, color: STYLES.colors.dark }}>{servicePaymentTiming === 'deposit' ? 'Deposit' : 'Full payment'}</strong>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+
+                                                <label style={{ display: 'grid', gap: 10, fontSize: 12, color: '#475569' }}>
+                                                  Upload Receipt
+                                                  <div style={{ display: 'grid', gap: 10, padding: '18px 16px', borderRadius: 20, border: '1px dashed #94a3b8', background: '#fff' }}>
+                                                    <input
+                                                      type="file"
+                                                      accept="image/*,.pdf"
+                                                      onChange={(event) => setServicePaymentPreviewReceiptName(event.target.files?.[0]?.name || '')}
+                                                      style={{ fontSize: 13, color: '#334155' }}
+                                                    />
+                                                    <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+                                                      {servicePaymentPreviewReceiptName
+                                                        ? `Selected file: ${servicePaymentPreviewReceiptName}`
+                                                        : 'Attach a screenshot or receipt file here for the future QR payment flow preview.'}
+                                                    </div>
+                                                  </div>
+                                                </label>
+                                                <div style={{ fontSize: 12, lineHeight: 1.7, color: '#64748b' }}>
+                                                  This receipt upload is temporary UI only. The file is not sent anywhere in the current storefront booking contract.
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {servicePaymentPreviewMethod === 'card' && (
+                                              <div style={{ display: 'grid', gap: 14 }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                                                    Cardholder Name
+                                                    <input
+                                                      value={servicePaymentPreviewCard.cardholder}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, cardholder: event.target.value }))}
+                                                      placeholder="Name on card"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                                                    Card Number
+                                                    <input
+                                                      value={servicePaymentPreviewCard.cardNumber}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, cardNumber: event.target.value }))}
+                                                      placeholder="0000 0000 0000 0000"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                                    Expiry
+                                                    <input
+                                                      value={servicePaymentPreviewCard.expiry}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, expiry: event.target.value }))}
+                                                      placeholder="MM/YY"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                                    CVV
+                                                    <input
+                                                      value={servicePaymentPreviewCard.cvv}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, cvv: event.target.value }))}
+                                                      placeholder="123"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                </div>
+                                                <div style={{ fontSize: 12, lineHeight: 1.7, color: '#64748b' }}>
+                                                  Temporary preview only. These card fields are not submitted to the backend and are here to simulate the future pay-now experience.
+                                                </div>
+                                              </div>
+                                            )}
+
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div style={{ display: 'grid', gap: 10, padding: '16px 18px', borderRadius: 18, border: '1px solid #dbeafe', background: '#eff6ff' }}>
+                                          <div style={{ fontSize: 14, fontWeight: 900, color: '#1a4e8d' }}>
+                                            Pay later selected
+                                          </div>
+                                          <div style={{ fontSize: 13, lineHeight: 1.7, color: '#334155' }}>
+                                            No advance payment details are needed here. The store team will assist you with the next payment step after they review the booking.
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                      <GhostButton onClick={() => setServiceBookingStep(1)} style={{ minHeight: 46 }}>Back</GhostButton>
+                                      <PrimaryButton onClick={() => setServiceBookingStep(3)} style={{ minHeight: 46 }}>
+                                        Continue to Review
+                                      </PrimaryButton>
+                                    </div>
+                                  </div>
                                 )}
 
                                 {serviceBookingStep === 3 && (
-                                  <ServiceBookingStepThree
-                                    STYLES={STYLES}
-                                    BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
-                                    StorefrontDropdown={StorefrontDropdown}
-                                    GhostButton={GhostButton}
-                                    PrimaryButton={PrimaryButton}
-                                    servicesPrimary={servicesPrimary}
-                                    money={money}
-                                    registerBookingFieldRef={registerBookingFieldRef}
-                                    isMobileViewport={isMobileViewport}
-                                    servicePaymentTiming={servicePaymentTiming}
-                                    setServicePaymentTiming={setServicePaymentTiming}
-                                    bookingPagePaymentOptions={bookingPagePaymentOptions}
-                                    servicePaymentPreviewMethod={servicePaymentPreviewMethod}
-                                    setServicePaymentPreviewMethod={setServicePaymentPreviewMethod}
-                                    bookingSummaryAmount={bookingSummaryAmount}
-                                    servicePaymentPreviewReceiptName={servicePaymentPreviewReceiptName}
-                                    setServicePaymentPreviewReceiptName={setServicePaymentPreviewReceiptName}
-                                    servicePaymentPreviewCard={servicePaymentPreviewCard}
-                                    setServicePaymentPreviewCard={setServicePaymentPreviewCard}
-                                    servicesDisplayFont={servicesDisplayFont}
-                                    checkoutError={checkoutError}
-                                    storefrontClosedByHours={storefrontClosedByHours}
-                                    storefrontClosedTitle={STOREFRONT_CLOSED_TITLE}
-                                    storefrontClosedMessageBody={storefrontClosedMessageBody}
-                                    setServiceBookingStep={setServiceBookingStep}
-                                    toast={toast}
-                                    handleCheckout={handleCheckout}
-                                  />
+                                  <div style={{ display: 'grid', gap: 18 }}>
+                                    <div>
+                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 3: Review and Submit</div>
+                                      <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
+                                        Check the booking details before submitting. Use the edit actions to jump straight back to the relevant step.
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'grid', gap: 16 }}>
+                                      {reviewSections.map((section) => (
+                                        <section key={section.title} style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fcfdff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 12 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                            <div style={{ fontSize: 15, fontWeight: 900, color: STYLES.colors.dark }}>{section.title}</div>
+                                            <GhostButton onClick={() => jumpToBookingField(section.step, section.rows[0]?.fieldKey || '')} style={{ minHeight: 38, padding: '0 14px' }}>
+                                              Edit section
+                                            </GhostButton>
+                                          </div>
+                                          <div style={{ display: 'grid', gap: 10 }}>
+                                            {section.rows.map((row) => (
+                                              <div key={`${section.title}-${row.label}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(140px, 180px) minmax(0, 1fr) auto', gap: 10, alignItems: 'center', paddingTop: 10, borderTop: '1px solid #edf2f7' }}>
+                                                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{row.label}</div>
+                                                <div style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.55, wordBreak: 'break-word' }}>{row.value}</div>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => jumpToBookingField(section.step, row.fieldKey)}
+                                                  style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 800, cursor: 'pointer', padding: 0, justifySelf: isMobileViewport ? 'start' : 'end' }}
+                                                >
+                                                  Edit
+                                                </button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </section>
+                                      ))}
+                                    </div>
+                                    {selectedLocation?.is_open === false && (
+                                      <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
+                                        Selected location is closed and cannot accept bookings right now.
+                                      </div>
+                                    )}
+                                    {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                      <GhostButton onClick={() => setServiceBookingStep(2)} style={{ minHeight: 46 }}>Back</GhostButton>
+                                      <PrimaryButton
+                                        onClick={() => {
+                                          const firstMissingField = missingCustomerInformation[0]
+                                            || missingScheduleAndServiceInfo[0]
+                                            || missingStepOneAdditionalFields[0]?.label
+                                            || '';
+                                          if (!stepOneComplete) {
+                                            toast.error(firstMissingField ? `Complete "${firstMissingField}" before submitting the booking.` : 'Complete the required booking details before submitting.');
+                                            setServiceBookingStep(1);
+                                            return;
+                                          }
+                                          if (!paymentStepComplete) {
+                                            toast.error('Select a payment timing before submitting the booking.');
+                                            setServiceBookingStep(2);
+                                            return;
+                                          }
+                                          handleCheckout();
+                                        }}
+                                        style={{ minHeight: 46 }}
+                                      >
+                                        {checkoutLoading ? 'Submitting...' : 'Submit Booking'}
+                                      </PrimaryButton>
+                                    </div>
+                                  </div>
                                 )}
                               </section>
                             </div>
 
-                            <ServiceBookingSummaryCard
-                              isMobileViewport={isMobileViewport}
-                              STYLES={STYLES}
-                              servicesPrimary={servicesPrimary}
-                              money={money}
-                              bookingSummaryAmount={bookingSummaryAmount}
-                              summaryRows={serviceBookingSummaryRows}
-                              serviceLineItems={serviceBookingSummaryLineItems}
-                              bookingPagePaymentOptions={bookingPagePaymentOptions}
-                              servicePaymentTiming={servicePaymentTiming}
-                            />
+                            <aside style={{ display: 'grid', gap: 16, position: isMobileViewport ? 'static' : 'sticky', top: 100 }}>
+                              <div style={{ border: '1px solid #dbe5ee', borderRadius: 28, background: '#fff', padding: 24, boxShadow: '0 22px 56px rgba(15, 23, 42, 0.12)', display: 'grid', gap: 16 }}>
+                                <div>
+                                  <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking Summary</div>
+                                  <div style={{ marginTop: 6, fontSize: 32, fontWeight: 900, color: STYLES.colors.dark }}>
+                                    {money(bookingSummaryAmount)}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 10 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Service</span>
+                                    <strong>{serviceBookingSummaryTitle}</strong>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Schedule</span>
+                                    <strong>{serviceBookingSummarySchedule}</strong>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Units</span>
+                                    <strong>{bookingSummaryQuantity}</strong>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Payment</span>
+                                    <strong>{bookingPagePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Pending'}</strong>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 8, paddingTop: 4 }}>
+                                  {[{ label: 'Customer and service info ready', done: stepOneComplete }, { label: 'Payment choice selected', done: paymentStepComplete }, { label: 'Ready for final review', done: reviewStepReady }].map((item) => (
+                                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: item.done ? '#15803d' : '#64748b' }}>
+                                      <span style={{ width: 18, height: 18, borderRadius: 999, background: item.done ? '#16a34a' : '#e2e8f0', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 900 }}>
+                                        {item.done ? 'OK' : '-'}
+                                      </span>
+                                      {item.label}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </aside>
                           </div>
-                          </>
                           )}
                         </div>
                       </div>
@@ -15158,7 +16432,7 @@ export default function StorefrontApp() {
                                     fontWeight: 800
                                   }}
                                 >
-                                  {'\u00D7'}
+                                  Ã—
                                 </button>
                               </div>
 
@@ -15311,7 +16585,7 @@ export default function StorefrontApp() {
                                       <GhostButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); openServiceDetail(item); }}>
                                         View Details
                                       </GhostButton>
-                                      <PrimaryButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); addToCart(item, { sourceRect: getCartFlySourceRect(event) }); }} disabled={!available}>
+                                      <PrimaryButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); addToCart(item); }} disabled={!available}>
                                         Add to Cart
                                       </PrimaryButton>
                                     </div>
@@ -15401,17 +16675,12 @@ export default function StorefrontApp() {
 
                     <SharedStorefrontPromoSection
                       items={promoSectionModel}
+                      onPromoSelect={handlePromoCardApply}
                       isMobileViewport={isMobileViewport}
-                      layoutVariant="compact"
+                      layoutVariant="feature"
                       palette="teal"
                       titleFontFamily={servicesDisplayFont}
                       bodyFontFamily={servicesBodyFont}
-                      sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
-                      contentMaxWidth={1280}
-                      sectionBackground="#ffffff"
-                      titleSize={isMobileViewport ? 28 : 36}
-                      subtitleSize={isMobileViewport ? 14 : 16}
-                      collapseSpacing
                     />
 
                     <SharedStorefrontReviewsSection
@@ -15427,13 +16696,6 @@ export default function StorefrontApp() {
                         : 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.'}
                       titleFontFamily={servicesDisplayFont}
                       bodyFontFamily={servicesBodyFont}
-                      cardVariant="white"
-                      writeButtonColor={servicesPrimary}
-                      sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
-                      contentMaxWidth={1280}
-                      titleSize={isMobileViewport ? 28 : 36}
-                      subtitleSize={isMobileViewport ? 14 : 16}
-                      collapseSpacing
                       summaryEnabled
                       starSymbol="*"
                     />
@@ -15598,7 +16860,6 @@ export default function StorefrontApp() {
                       description={serviceHeroModel.tagline || serviceHeroModel.aboutText || 'Service storefront powered by SKUpervisor content.'}
                       displayFont={servicesDisplayFont}
                       bodyFontFamily={servicesBodyFont}
-                      sectionPadding={isMobileViewport ? '28px 16px 24px' : '48px 32px 36px'}
                       badgeLinks={serviceHeroModel.footerLinks.filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))}
                       columns={[
                         {
@@ -15678,7 +16939,7 @@ return (
         minWidth: isFnbMode && isMobileViewport ? 0 : undefined,
         boxSizing: 'border-box'
       }}>
-        
+
         {isFnbMode && isMobileViewport && (
           <div style={{ width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', padding: fnbMobileCatalogInlinePadding, display: 'grid', gap: 16, marginTop: 4 }}>
             {/* Header Section */}
@@ -15764,7 +17025,7 @@ return (
                     iconToken: section.visualMeta?.iconToken || 'menu',
                   }))
                 ];
-                
+
                 return (
                   <div style={{ display: 'grid', gap: 10, width: fnbMobileMenuInnerWidth, maxWidth: fnbMobileMenuInnerWidth, minWidth: 0, boxSizing: 'border-box', margin: '0 auto' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0, gap: 12, boxSizing: 'border-box' }}>
@@ -15894,7 +17155,7 @@ return (
             </div>
           </div>
         )}
-        
+
         {isFnbMode && !isMobileViewport && (
           <>
             <div style={{ maxWidth: 1320, margin: '0 auto', width: '100%', padding: '0 24px', display: 'grid', gap: 22 }}>
@@ -16402,7 +17663,6 @@ return (
                       available={available}
                       modeAdapter={modeAdapter}
                       addToCart={addToCart}
-                      getCartFlySourceRect={getCartFlySourceRect}
                       isMobileViewport={isMobileViewport}
                       fnbViewMode={fnbViewMode}
                       onViewDetails={openFnbDetail}
@@ -16422,7 +17682,7 @@ return (
                       background: '#fff', borderRadius: 20, border: `1px solid ${STYLES.colors.border}`,
                       overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'all 0.2s ease',
                       boxShadow: STYLES.shadow.sm, cursor: 'pointer'
-                    }} onClick={() => openServiceDetail(item)} data-cart-fly-origin="true">
+                    }} onClick={() => openServiceDetail(item)}>
                       <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: STYLES.colors.bg, position: 'relative', overflow: 'hidden' }}>
                         {imageUrl ? (
                           <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -16448,7 +17708,7 @@ return (
                           <div style={{ fontSize: 20, fontWeight: 900, color: servicesPrimaryDark, marginBottom: 12 }}>{money(item.default_sale_price ?? 0)}</div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                             <GhostButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); openServiceDetail(item); }}>Details</GhostButton>
-                            <PrimaryButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item, { sourceRect: getCartFlySourceRect(e) }); }} disabled={!available}>Add</PrimaryButton>
+                            <PrimaryButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item); }} disabled={!available}>Add</PrimaryButton>
                           </div>
                         </div>
                       </div>
@@ -16730,6 +17990,7 @@ return (
                     ? 'Your account details are already linked. Review them here before continuing to fulfillment.'
                     : 'Enter the customer details for this order before continuing to fulfillment.'}
                 </div>
+                {!isDgfyCustomerSignedIn && renderSavedDetailsCard()}
                 {isDgfyCustomerSignedIn ? renderAccountOwnedIdentitySummary({
                   title: 'Customer Account',
                   subtitle: 'These account details will be used for this order.'
@@ -16742,8 +18003,8 @@ return (
                   addressRequired: isDeliveryOrder
                 })}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: isMobileViewport ? 38 : 42, minWidth: isMobileViewport ? 140 : 172, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: isMobileViewport ? 14 : 15 }}>Back to Catalog</button>
-                  <button type="button" onClick={() => setSimpleOrderStep(2)} disabled={!simpleCustomerStepComplete} style={{ minHeight: isMobileViewport ? 38 : 42, minWidth: isMobileViewport ? 120 : 156, borderRadius: 12, border: 'none', background: simpleCustomerStepComplete ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: simpleCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: isMobileViewport ? 14 : 15 }}>Continue</button>
+                  <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 42, minWidth: isMobileViewport ? 156 : 172, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Back to Catalog</button>
+                  <button type="button" onClick={() => setSimpleOrderStep(2)} disabled={!simpleCustomerStepComplete} style={{ minHeight: 42, minWidth: isMobileViewport ? 140 : 156, borderRadius: 12, border: 'none', background: simpleCustomerStepComplete ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: simpleCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Continue</button>
                 </div>
                 {!simpleCustomerStepComplete && (
                   <div style={{ fontSize: 12, color: '#b45309' }}>
@@ -16759,26 +18020,21 @@ return (
                   simpleOrderStep: 1
                 }
               })}
-              {renderCheckoutPromoStack(
-                <OrderSummaryCard
-                  accentColor="#0f766e"
-                  totalLabel="Order Summary"
-                  totalAmount={totalsForDisplay.total_amount}
-                  money={money}
-                  sticky={isDesktopCheckout}
-                  statusRows={[
-                    { label: 'Customer', value: simpleHasCustomerIdentity ? 'Ready' : 'Needed' },
-                    { label: 'Contact', value: simpleHasPrimaryIdentityContact ? 'Ready' : 'Needed' },
-                    { label: 'Status', value: simpleCustomerStepComplete ? 'Ready for fulfillment' : 'Waiting for details' }
-                  ]}
-                  bodyFont={servicesBodyFont}
-                  displayFont={servicesDisplayFont}
-                />,
-                {
-                  accentColor: '#0f766e',
-                  bodyFont: servicesBodyFont
-                }
-              )}
+              <OrderSummaryCard
+                accentColor="#0f766e"
+                totalLabel="Order Summary"
+                totalAmount={totalsForDisplay.total_amount}
+                money={money}
+                sticky={isDesktopCheckout}
+                statusRows={[
+                  { label: 'Customer', value: simpleHasCustomerIdentity ? 'Ready' : 'Needed' },
+                  { label: 'Contact', value: simpleHasPrimaryIdentityContact ? 'Ready' : 'Needed' },
+                  { label: 'Status', value: simpleCustomerStepComplete ? 'Ready for fulfillment' : 'Waiting for details' }
+                ]}
+                promoSlot={renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
+                bodyFont={servicesBodyFont}
+                displayFont={servicesDisplayFont}
+              />
             </div>
           )}
 
@@ -16878,8 +18134,8 @@ return (
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={() => setSimpleOrderStep(1)} style={{ minHeight: isMobileViewport ? 38 : 42, minWidth: isMobileViewport ? 120 : 136, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: isMobileViewport ? 14 : 15 }}>Back</button>
-                  <button type="button" onClick={() => setSimpleOrderStep(3)} disabled={!simpleStepOneReady} style={{ minHeight: isMobileViewport ? 38 : 42, minWidth: isMobileViewport ? 140 : 156, borderRadius: 12, border: 'none', background: simpleStepOneReady ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: simpleStepOneReady ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: isMobileViewport ? 14 : 15 }}>Continue</button>
+                  <button type="button" onClick={() => setSimpleOrderStep(1)} style={{ minHeight: 42, minWidth: isMobileViewport ? 120 : 136, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Back</button>
+                  <button type="button" onClick={() => setSimpleOrderStep(3)} disabled={!simpleStepOneReady} style={{ minHeight: 42, minWidth: isMobileViewport ? 140 : 156, borderRadius: 12, border: 'none', background: simpleStepOneReady ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: simpleStepOneReady ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Continue</button>
                 </div>
                 {selectedLocation?.is_open === false && (
                   <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
@@ -16895,21 +18151,15 @@ return (
                   simpleOrderStep: 2
                 }
               })}
-              {renderCheckoutPromoStack(
-                <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
-                  <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
-                  <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>Ready for review</strong></div>
-                  </div>
-                </aside>,
-                {
-                  accentColor: '#0f766e',
-                  bodyFont: servicesBodyFont
-                }
-              )}
+              <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>Ready for review</strong></div>
+                </div>
+              </aside>
             </div>
           )}
 
@@ -16921,7 +18171,7 @@ return (
                 <PaymentMethodSelectorBlock
                   label="Payment Type"
                   value={fnbPaymentType}
-                  onChange={handlePaymentTypeChange}
+                  onChange={setFnbPaymentType}
                   options={[
                     { value: 'cash', label: 'Cash on delivery/pickup' },
                     { value: 'gcash', label: 'GCash' },
@@ -16942,45 +18192,37 @@ return (
                   ))}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: isMobileViewport ? 38 : 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: 'pointer', fontSize: isMobileViewport ? 14 : 15 }}>
+                  <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: 'pointer' }}>
                     {quoteResult ? 'Refresh Quote' : 'Get Quote'}
                   </button>
-                  <button type="button" onClick={handleCheckout} disabled={!simpleCheckoutAllowed} style={{ minHeight: isMobileViewport ? 38 : 44, borderRadius: 12, border: 'none', background: simpleCheckoutAllowed ? '#ea580c' : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: simpleCheckoutAllowed ? 'pointer' : 'not-allowed', fontSize: isMobileViewport ? 14 : 15 }}>
+                  <button type="button" onClick={handleCheckout} disabled={!simpleCheckoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: simpleCheckoutAllowed ? '#ea580c' : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: simpleCheckoutAllowed ? 'pointer' : 'not-allowed' }}>
                     {checkoutLoading ? 'Processing...' : 'Place Order'}
                   </button>
                 </div>
-                <button type="button" onClick={() => setSimpleOrderStep(2)} style={{ justifySelf: 'start', minHeight: isMobileViewport ? 38 : 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer', fontSize: isMobileViewport ? 14 : 15 }}>Back</button>
-                {storefrontClosedByHours && renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' })}
+                <button type="button" onClick={() => setSimpleOrderStep(2)} style={{ justifySelf: 'start', minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back</button>
                 {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
                 {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                {guestCheckoutDraftNotice && <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>{guestCheckoutDraftNotice}</p>}
                 {requireQuoteForCheckout && !quoteResult && cart.length > 0 && (
                   <div style={{ fontSize: 12, color: '#b45309' }}>Quote the order first so totals and fees are synced before checkout.</div>
                 )}
               </section>
-              {renderCheckoutPromoStack(
-                <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
-                  <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
-                  <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Payment</span><strong>{String(fnbPaymentType || 'cash').replace('_', ' ').toUpperCase()}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{simpleCheckoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields')}</strong></div>
-                  </div>
-                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
-                    {promoDiscountSummaryRow ? (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div>
-                    ) : null}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{totalsForDisplay.service_fee_label}</span><strong>{money(totalsForDisplay.service_fee_amount)}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
-                  </div>
-                </aside>,
-                {
-                  accentColor: '#0f766e',
-                  bodyFont: servicesBodyFont
-                }
-              )}
+              <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Payment</span><strong>{String(fnbPaymentType || 'cash').replace('_', ' ').toUpperCase()}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{simpleCheckoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields')}</strong></div>
+                </div>
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
+                  {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{totalsForDisplay.service_fee_label}</span><strong>{money(totalsForDisplay.service_fee_amount)}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
+                </div>
+              </aside>
             </div>
           )}
 
@@ -17030,6 +18272,7 @@ return (
         <>
           <SharedStorefrontPromoSection
             items={promoSectionModel}
+            onPromoSelect={handlePromoCardApply}
             isMobileViewport={isMobileViewport}
             layoutVariant="feature"
             palette="orange"
@@ -17093,6 +18336,7 @@ return (
         <>
           <SharedStorefrontPromoSection
             items={promoSectionModel}
+            onPromoSelect={handlePromoCardApply}
             isMobileViewport={isMobileViewport}
             layoutVariant="compact"
             palette="fnb"
@@ -17217,11 +18461,38 @@ return (
           return (
             <div style={{
               padding: 24, borderRadius: STYLES.radius.card, background: `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`,
-              color: '#fff', boxShadow: STYLES.shadow.md
+              color: '#fff', boxShadow: STYLES.shadow.md,
+              cursor: promo.promo_code ? 'pointer' : 'default'
             }}>
-              <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
-              <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>
-              <p style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>{promo.subtitle}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (promo.promo_code) {
+                    handlePromoCardApply(promo.promo_code);
+                  }
+                }}
+                disabled={!promo.promo_code}
+                style={{
+                  display: 'grid',
+                  gap: 0,
+                  width: '100%',
+                  textAlign: 'left',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'inherit',
+                  padding: 0,
+                  cursor: promo.promo_code ? 'pointer' : 'default'
+                }}
+              >
+                <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
+                <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>
+                <p style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>{promo.subtitle}</p>
+                {promo.promo_code ? (
+                  <span style={{ marginTop: 10, fontSize: 12, fontWeight: 800, opacity: 0.92 }}>
+                    Click to apply {String(promo.promo_code).trim().toUpperCase()}
+                  </span>
+                ) : null}
+              </button>
             </div>
           );
         })()}
@@ -17537,22 +18808,6 @@ return (
         )}
 
       </div>
-      <style>{`
-        @keyframes service-cart-fly-anim {
-          0% {
-            transform: translate3d(0, 0, 0) scale(1);
-            opacity: 0.96;
-          }
-          70% {
-            transform: translate3d(var(--service-cart-fly-x), var(--service-cart-fly-y), 0) scale(0.48);
-            opacity: 0.88;
-          }
-          100% {
-            transform: translate3d(var(--service-cart-fly-x), var(--service-cart-fly-y), 0) scale(0.2);
-            opacity: 0;
-          }
-        }
-      `}</style>
 
   { isStorePage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
     <>
@@ -17590,67 +18845,248 @@ return (
         );
       })()}
       {!isAccountDrawerOpen && isServicesCartDrawerMode && (
-        <ServiceCartDrawer
-          cartButtonRef={serviceCartFabRef}
-          isCheckoutOpen={isCheckoutOpen}
-          setIsCheckoutOpen={setIsCheckoutOpen}
-          isMobileViewport={isMobileViewport}
-          servicesPrimary={servicesPrimary}
-          servicesPrimaryDark={servicesPrimaryDark}
-          servicesPrimaryShadow={servicesPrimaryShadow}
-          servicesPrimaryShadowStrong={servicesPrimaryShadowStrong}
-          servicesDisplayFont={servicesDisplayFont}
-          serviceCartCount={serviceCartCount}
-          serviceCartLines={serviceCartLines}
-          cartImageErrors={cartImageErrors}
-          setCartImageErrors={setCartImageErrors}
-          withAssetOrigin={withAssetOrigin}
-          money={money}
-          updateQty={updateQty}
-          removeCartItem={removeCartItem}
-          productCartLines={productCartLines}
-          serviceCartTotal={serviceCartTotal}
-          hasServiceCart={hasServiceCart}
-          hasMixedServiceCart={hasMixedServiceCart}
-          openServiceCartEditor={openServiceCartEditor}
-          handleServicesCartCheckout={handleServicesCartCheckout}
-        />
-      )}
-      {(isServicesMode || isFnbMode) && serviceCartFlyAnimations.length > 0 && (
-        <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 2195 }}>
-          {serviceCartFlyAnimations.map((animation) => (
-            <div
-              key={animation.id}
+        <>
+          <button
+            type="button"
+            onClick={() => setIsCheckoutOpen((previous) => !previous)}
+            aria-label={isCheckoutOpen ? 'Close service cart' : 'Open service cart'}
+            style={{
+              position: 'fixed',
+              right: isMobileViewport ? 16 : 24,
+              bottom: isMobileViewport ? 16 : 24,
+              zIndex: 2100,
+              width: isMobileViewport ? 62 : 68,
+              height: isMobileViewport ? 62 : 68,
+              borderRadius: '50%',
+              border: '1px solid rgba(255,255,255,0.18)',
+              background: 'linear-gradient(135deg,#1a4586,#1a4e8d)',
+              color: '#fff',
+              boxShadow: '0 18px 38px rgba(26,69,134,.34)',
+              cursor: 'pointer',
+              display: 'grid',
+              placeItems: 'center'
+            }}
+          >
+            <span
               style={{
-                position: 'fixed',
-                left: animation.startX,
-                top: animation.startY,
-                width: animation.size,
-                height: animation.size,
-                borderRadius: 18,
-                background: isFnbMode
-                  ? 'linear-gradient(135deg, rgba(249,115,22,0.16), rgba(251,146,60,0.32))'
-                  : 'linear-gradient(135deg, rgba(15,118,110,0.16), rgba(45,212,191,0.32))',
-                border: isFnbMode
-                  ? '1px solid rgba(249,115,22,0.24)'
-                  : '1px solid rgba(15,118,110,0.22)',
-                boxShadow: '0 18px 38px rgba(15,23,42,0.16)',
-                backdropFilter: 'blur(8px)',
-                animation: `service-cart-fly-anim 620ms cubic-bezier(.2,.8,.2,1) forwards`,
-                '--service-cart-fly-x': `${animation.deltaX}px`,
-                '--service-cart-fly-y': `${animation.deltaY}px`
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                minWidth: 22,
+                height: 22,
+                padding: '0 6px',
+                borderRadius: 999,
+                background: '#0f172a',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 900,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '2px solid #fff'
               }}
             >
-              <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: isFnbMode ? '#ea580c' : '#0f766e' }}>
-                {isFnbMode ? (
-                  <ShoppingCart size={Math.max(18, Math.round(animation.size * 0.38))} strokeWidth={2.2} />
+              {serviceCartCount}
+            </span>
+            <ShoppingCart size={24} strokeWidth={2.2} />
+          </button>
+
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 2095,
+              pointerEvents: isCheckoutOpen ? 'auto' : 'none'
+            }}
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setIsCheckoutOpen(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  setIsCheckoutOpen(false);
+                }
+              }}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(15,23,42,.46)',
+                backdropFilter: 'blur(4px)',
+                opacity: isCheckoutOpen ? 1 : 0,
+                transition: 'opacity 180ms ease'
+              }}
+            />
+            <aside
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: isMobileViewport ? 'min(100vw, 100%)' : 'min(520px, calc(100vw - 40px))',
+                background: '#ffffff',
+                borderLeft: '1px solid #dbe5ee',
+                boxShadow: '0 24px 60px rgba(15,23,42,.18)',
+                display: 'flex',
+                flexDirection: 'column',
+                transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(104%)',
+                transition: 'transform 220ms ease'
+              }}
+            >
+              <div style={{ padding: isMobileViewport ? '18px 16px 14px' : '22px 20px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service Cart</div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>Added services</div>
+                    <div style={{ fontSize: 13, color: '#64748b' }}>Manage the service in cart, then continue to booking.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsCheckoutOpen(false)}
+                    style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 900, cursor: 'pointer' }}
+                  >
+                    x
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 10px' }}>
+                    {serviceCartCount} item{serviceCartCount === 1 ? '' : 's'}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>
+                    One service booking is submitted at a time.
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
+                {serviceCartLines.length === 0 ? (
+                  <div style={{ border: '1px dashed #cbd5e1', borderRadius: 20, background: '#f8fafc', padding: '28px 20px', textAlign: 'center', display: 'grid', gap: 8 }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>No service added yet</div>
+                    <div style={{ fontSize: 13, lineHeight: 1.6, color: '#64748b' }}>
+                      Add a service from the catalog to continue to booking.
+                    </div>
+                  </div>
                 ) : (
-                  <ShoppingBag size={Math.max(18, Math.round(animation.size * 0.38))} strokeWidth={2.2} />
+                  serviceCartLines.map((line) => (
+                    <div key={`services-cart-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 22, background: '#fff', boxShadow: '0 12px 28px rgba(15,23,42,.06)', padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+                        <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                          {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
+                            <img
+                              src={withAssetOrigin(line.image_url)}
+                              alt={line.variantName || line.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={() => {
+                                const normalizedLineItemId = Number(line.item_id);
+                                if (!Number.isFinite(normalizedLineItemId)) return;
+                                setCartImageErrors((previous) => {
+                                  const next = new Set(previous);
+                                  next.add(normalizedLineItemId);
+                                  return next;
+                                });
+                              }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>No image</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'start', gap: 10 }}>
+                              <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+                                <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {line.variantName || line.name}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+                                {money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}
+                              </div>
+                              <button
+                                type="button"
+                                aria-label={`Remove ${line.variantName || line.name}`}
+                                onClick={() => removeCartItem(line.item_id)}
+                                style={{ width: 28, height: 28, border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, alignSelf: 'center' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {!!line.serviceAreaLabel && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                {line.serviceAreaLabel}
+                              </span>
+                            )}
+                            {!!line.durationLabel && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                {line.durationLabel}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(line.item_id, Math.max(0, Number(line.quantity || 1) - 1))}
+                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                            >
+                              -
+                            </button>
+                            <span style={{ minWidth: 14, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                              {Math.max(1, Number(line.quantity || 1))}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(line.item_id, Number(line.quantity || 1) + 1)}
+                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                {productCartLines.length > 0 && (
+                  <div style={{ border: '1px solid #fdba74', background: '#fff7ed', color: '#9a3412', borderRadius: 16, padding: '12px 14px', fontSize: 13, lineHeight: 1.6 }}>
+                    Product items are not included in service booking. Continue with service booking only, or remove non-service items first.
+                  </div>
                 )}
               </div>
-            </div>
-          ))}
-        </div>
+
+              <div style={{ borderTop: '1px solid #e2e8f0', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12, background: '#ffffff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Current total</div>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{money(serviceCartTotal)}</div>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
+                    {serviceCartCount} selected
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleServicesCartCheckout}
+                  disabled={!hasServiceCart || hasMixedServiceCart}
+                  style={{
+                    minHeight: 50,
+                    borderRadius: 16,
+                    border: 'none',
+                    background: !hasServiceCart || hasMixedServiceCart ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`,
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: 900,
+                    cursor: !hasServiceCart || hasMixedServiceCart ? 'not-allowed' : 'pointer',
+                    boxShadow: !hasServiceCart || hasMixedServiceCart ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}`
+                  }}
+                >
+                  Order &amp; Purchase
+                </button>
+              </div>
+            </aside>
+          </div>
+        </>
       )}
       {!isAccountDrawerOpen && isSimpleCartSurfaceMode && (
         <>
@@ -17889,7 +19325,6 @@ return (
       )}
       <button
         type="button"
-        ref={isFnbMode ? serviceCartFabRef : undefined}
         onClick={() => {
           if (isServicesMode) {
             goStoreBookingPage();
@@ -18440,13 +19875,15 @@ return (
                                   onClick={(event) => {
                                     try {
                                       event.target.showPicker();
-                                    } catch { /* showPicker unsupported in this browser */ }
+                                    } catch (err) {
+                                      // Native picker support is optional; the input remains manually editable.
+                                    }
                                   }}
-                                  style={{ 
-                                    width: '100%', 
-                                    border: '1px solid #cbd5e1', 
-                                    borderRadius: 12, 
-                                    padding: '12px 14px 12px 42px', 
+                                  style={{
+                                    width: '100%',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: 12,
+                                    padding: '12px 14px 12px 42px',
                                     background: '#f8fafc',
                                     color: '#1e293b',
                                     fontSize: 14,
@@ -18493,123 +19930,128 @@ return (
                           <div style={{ display: 'grid', gridTemplateColumns: isFnbOrderResponsiveFlow ? '1fr' : '280px minmax(0, 1fr)', gap: 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
                             <div style={{ display: 'grid', gap: 12 }}>
                               {isFnbOrderResponsiveFlow ? (
-                                <>
-                                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>
-                                    Delivery address
-                                  </div>
-                                  {deliverySavedLocations.length === 0 ? (
-                                    <button
-                                      type="button"
-                                      aria-label="Add New Location"
-                                      onClick={() => setShowMobileAddressModal(true)}
-                                      style={{ minHeight: 44, borderRadius: 14, border: `1.5px solid ${fnbOrderBrandBorder}`, background: fnbOrderBrandTint, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, color: fnbOrderBrand, cursor: 'pointer', flexShrink: 0, boxShadow: `0 10px 20px ${fnbOrderBrandShadow}`, transition: 'all 200ms ease', fontSize: 13 }}
+                                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>
+                                  Saved locations
+                                </div>
+                              ) : null}
+                              <div
+                                id="delivery-saved-locations-list"
+                                className={deliverySavedLocations.length > 3 ? 'fnb-saved-locations-scroll' : undefined}
+                                style={{
+                                  maxHeight: deliverySavedLocations.length > 3 ? 336 : 'none',
+                                  overflowY: deliverySavedLocations.length > 3 ? 'auto' : 'visible',
+                                  display: 'grid',
+                                  gap: 10,
+                                  paddingRight: deliverySavedLocations.length > 3 ? 4 : 0
+                                }}
+                              >
+                                {deliverySavedLocations.map((location) => {
+                                  const isSelected = String(selectedSavedLocationId) === String(location.id) && deliveryLocationAction !== 'map' && deliveryLocationAction !== 'current';
+                                  return (
+                                    <div
+                                      key={`step-one-delivery-location-${location.id}`}
+                                      style={{
+                                        textAlign: 'left',
+                                        display: 'grid',
+                                        gap: isFnbOrderResponsiveFlow ? 8 : 8,
+                                        borderRadius: isFnbOrderResponsiveFlow ? 16 : 14,
+                                        border: `1.5px solid ${isSelected ? fnbOrderBrandBorder : '#dbe5ee'}`,
+                                        background: isSelected ? fnbOrderBrandTint : '#fff',
+                                        padding: isFnbOrderResponsiveFlow ? '12px 12px' : 14,
+                                        cursor: 'pointer',
+                                        boxShadow: isSelected ? `0 10px 20px ${fnbOrderBrandShadow}` : 'none',
+                                        flexShrink: 0
+                                      }}
                                     >
-                                      <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: fnbOrderBrand, background: '#dbeafe', transition: 'all 200ms ease' }}>
-                                        <Plus size={18} />
-                                      </span>
-                                      Add New Location
-                                    </button>
-                                  ) : (
-                                    <>
-                                      {(() => {
-                                        const activeLoc = deliverySavedLocations.find(l => String(l.id) === String(selectedSavedLocationId)) || deliverySavedLocations.find(l => l.isDefault) || deliverySavedLocations[0];
-                                        const isSelected = String(selectedSavedLocationId) === String(activeLoc.id) && deliveryLocationAction !== 'map' && deliveryLocationAction !== 'current';
-                                        return (
-                                          <SavedAddressCard
-                                            key={`step-one-delivery-location-${activeLoc.id}`}
-                                            address={activeLoc}
-                                            isSelected={isSelected}
-                                            isBusy={false}
-                                            onSelect={() => {
-                                              applySavedDeliveryLocation(activeLoc);
-                                              if (typeof handleSetDefaultDeliveryAddress === 'function' && !activeLoc.isDefault) {
-                                                handleSetDefaultDeliveryAddress(activeLoc);
-                                              }
-                                            }}
-                                            onSetDefault={activeLoc.source === 'account' ? () => handleSetDefaultDeliveryAddress(activeLoc) : undefined}
-                                            onRemove={(activeLoc.source === 'account' || activeLoc.source === 'local') ? () => handleRemoveDeliveryAddress(activeLoc) : undefined}
-                                            showActions={false}
-                                          />
-                                        );
-                                      })()}
-                                      <button type="button" onClick={() => setShowMobileAddressModal(true)} style={{ minHeight: 44, borderRadius: 14, background: fnbOrderBrandTint, border: `1.5px solid ${fnbOrderBrandBorder}`, color: fnbOrderBrand, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                                        View All Saved Addresses
+                                      <button
+                                        type="button"
+                                        onClick={() => applySavedDeliveryLocation(location)}
+                                        style={{ border: 'none', background: 'transparent', padding: 0, display: 'grid', gap: 6, textAlign: 'left', cursor: 'pointer' }}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: isFnbOrderResponsiveFlow ? 10 : 10, minWidth: 0, flex: 1 }}>
+                                            <div style={{ width: isFnbOrderResponsiveFlow ? 40 : 40, height: isFnbOrderResponsiveFlow ? 40 : 40, borderRadius: '50%', background: isSelected ? '#dbeafe' : '#eff6ff', display: 'grid', placeItems: 'center', flexShrink: 0, color: fnbOrderBrand }}>
+                                              <MapPin size={isFnbOrderResponsiveFlow ? 18 : 18} />
+                                            </div>
+                                            <div style={{ display: 'grid', gap: 6, minWidth: 0, flex: 1 }}>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                                <div style={{ fontSize: isFnbOrderResponsiveFlow ? 15 : 15, fontWeight: 700, color: '#1e293b', lineHeight: 1.25 }}>{location.label}</div>
+                                                {location.isDefault ? (
+                                                  <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 24, borderRadius: 999, background: '#dbeafe', color: fnbOrderBrandDark, padding: '0 10px', fontSize: 10, fontWeight: 700, letterSpacing: '0.01em', fontFamily: servicesBodyFont }}>
+                                                    Recommended
+                                                  </span>
+                                                ) : null}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          {isSelected && <CheckCircle2 size={isFnbOrderResponsiveFlow ? 24 : 18} color={fnbOrderBrand} />}
+                                        </div>
                                       </button>
-                                    </>
-                                  )}
-                                </>
-                              ) : (
-                                <>
-                                  <div
-                                    id="delivery-saved-locations-list"
-                                    className={deliverySavedLocations.length > 3 ? 'fnb-saved-locations-scroll' : undefined}
-                                    style={{
-                                      maxHeight: deliverySavedLocations.length > 3 ? 240 : 'none',
-                                      overflowY: deliverySavedLocations.length > 3 ? 'auto' : 'visible',
-                                      display: 'grid',
-                                      gap: 8,
-                                      paddingRight: deliverySavedLocations.length > 3 ? 4 : 0
-                                    }}
-                                  >
-                                    {deliverySavedLocations.map((location) => {
-                                      const isSelected = String(selectedSavedLocationId) === String(location.id) && deliveryLocationAction !== 'map' && deliveryLocationAction !== 'current';
-                                      return (
-                                        <SavedAddressCard
-                                          key={`step-one-delivery-location-${location.id}`}
-                                          address={location}
-                                          isSelected={isSelected}
-                                          isBusy={false}
-                                          onSelect={() => {
-                                            applySavedDeliveryLocation(location);
-                                            if (typeof handleSetDefaultDeliveryAddress === 'function' && !location.isDefault) {
-                                              handleSetDefaultDeliveryAddress(location);
-                                            }
-                                          }}
-                                          onSetDefault={location.source === 'account' ? () => handleSetDefaultDeliveryAddress(location) : undefined}
-                                          onRemove={(location.source === 'account' || location.source === 'local') ? () => handleRemoveDeliveryAddress(location) : undefined}
-                                          showActions={false}
-                                        />
-                                      );
-                                    })}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    aria-label="Add New Location"
-                                    title="Please pin your location in the map. Use maximize to enlarge the map."
-                                    onClick={() => {
-                                      setDeliveryLocationAction('map');
-                                      setSelectedSavedLocationId('');
-                                      setPinLocationError('');
-                                      setResolvedDeliveryAddress('');
-                                      setCustomerAddress('');
-                                      setCustomerPin(null);
-                                    }}
-                                    style={{
-                                      minHeight: 44,
-                                      borderRadius: 12,
-                                      border: `1.5px solid ${deliveryLocationAction === 'map' ? fnbOrderBrandBorder : '#dbe5ee'}`,
-                                      background: deliveryLocationAction === 'map' ? fnbOrderBrandTint : '#fff',
-                                      padding: '0 14px',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 12,
-                                      fontWeight: 700,
-                                      color: '#1e293b',
-                                      cursor: 'pointer',
-                                      flexShrink: 0,
-                                      boxShadow: deliveryLocationAction === 'map' ? `0 10px 20px ${fnbOrderBrandShadow}` : 'none',
-                                      transition: 'all 200ms ease',
-                                      fontSize: 13,
-                                      marginTop: 4
-                                    }}
-                                  >
-                                    <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: deliveryLocationAction === 'map' ? fnbOrderBrand : '#94a3b8', background: deliveryLocationAction === 'map' ? '#dbeafe' : 'transparent', transition: 'all 200ms ease' }}>
-                                      <Plus size={18} />
-                                    </span>
-                                    Add New Location
-                                  </button>
-                                </>
-                              )}
+                                      {(location.source === 'account' || location.source === 'local') && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                                          {location.source === 'account' && !location.isDefault ? (
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                handleSetDefaultDeliveryAddress(location);
+                                              }}
+                                              style={{ border: 'none', background: 'transparent', padding: 0, color: fnbOrderBrand, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: servicesBodyFont }}
+                                            >
+                                              Set default
+                                            </button>
+                                          ) : null}
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              handleRemoveDeliveryAddress(location);
+                                            }}
+                                            style={{ border: 'none', background: 'transparent', padding: 0, color: '#b91c1c', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: servicesBodyFont }}
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <button
+                                type="button"
+                                aria-label="Add New Location"
+                                title="Please pin your location in the map. Use maximize to enlarge the map."
+                                onClick={() => {
+                                  setDeliveryLocationAction('map');
+                                  setSelectedSavedLocationId('');
+                                  setPinLocationError('');
+                                  setResolvedDeliveryAddress('');
+                                  setCustomerAddress('');
+                                  setCustomerPin(null);
+                                }}
+                                style={{
+                                  minHeight: isFnbOrderResponsiveFlow ? 56 : 56,
+                                  borderRadius: isFnbOrderResponsiveFlow ? 16 : 14,
+                                  border: `1.5px solid ${deliveryLocationAction === 'map' ? fnbOrderBrandBorder : '#dbe5ee'}`,
+                                  background: deliveryLocationAction === 'map' ? fnbOrderBrandTint : '#fff',
+                                  padding: isFnbOrderResponsiveFlow ? '0 18px' : '0 16px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 12,
+                                  fontWeight: 700,
+                                  color: isFnbOrderResponsiveFlow ? fnbOrderBrand : '#1e293b',
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                  boxShadow: deliveryLocationAction === 'map' ? `0 10px 20px ${fnbOrderBrandShadow}` : 'none',
+                                  transition: 'all 200ms ease',
+                                  fontSize: isFnbOrderResponsiveFlow ? 13 : 14
+                                }}
+                              >
+                                <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: deliveryLocationAction === 'map' ? fnbOrderBrand : '#94a3b8', background: deliveryLocationAction === 'map' ? '#dbeafe' : 'transparent', transition: 'all 200ms ease' }}>
+                                  <Plus size={18} />
+                                </span>
+                                Add New Location
+                              </button>
                             </div>
                             <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', minWidth: 0 }}>
                               <div style={{ display: 'none' }} aria-hidden="true">Delivery orders need a pinned map location.</div>
@@ -18739,30 +20181,30 @@ return (
                                   }}
                                 >
                                   <div style={{
-                                    minHeight: 38,
-                                    borderRadius: 12,
+                                    minHeight: isFnbOrderResponsiveFlow ? 56 : 50,
+                                    borderRadius: isFnbOrderResponsiveFlow ? 16 : 14,
                                     border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? fnbOrderBrandSoft : '#dbe5ee'}`,
                                     background: '#fff',
-                                    padding: '0 12px',
+                                    padding: isFnbOrderResponsiveFlow ? '10px 12px' : '0 16px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: 10,
+                                    gap: isFnbOrderResponsiveFlow ? 10 : 0,
                                     color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8',
-                                    fontSize: 13,
+                                    fontSize: isFnbOrderResponsiveFlow ? 13 : 13,
                                     lineHeight: 1.4,
                                     fontFamily: servicesBodyFont,
                                     minWidth: 0
                                   }}>
                                     {isFnbOrderResponsiveFlow ? (
-                                      <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#eff6ff', color: fnbOrderBrand, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
-                                        <MapPin size={13} />
+                                      <span style={{ width: 28, height: 28, borderRadius: '50%', background: '#eff6ff', color: fnbOrderBrand, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
+                                        <MapPin size={15} />
                                       </span>
                                     ) : null}
-                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: 600 }}>
+                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: isFnbOrderResponsiveFlow ? 600 : 400 }}>
                                       {deliveryLocationDisplayAddress || 'Pinned delivery address will appear here.'}
                                     </span>
                                   </div>
-                                  <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isFnbOrderResponsiveFlow ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,78,141,0.15)' : 'none', fontFamily: servicesBodyFont }}>
+                                  <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: isFnbOrderResponsiveFlow ? 56 : 50, borderRadius: isFnbOrderResponsiveFlow ? 16 : 14, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: isFnbOrderResponsiveFlow ? '0 14px' : '0 16px', fontSize: isFnbOrderResponsiveFlow ? 13 : 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isFnbOrderResponsiveFlow ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 14px 28px rgba(26,78,141,0.18)' : 'none', fontFamily: servicesBodyFont }}>
                                     {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}
                                   </button>
                                 </div>
@@ -18895,11 +20337,6 @@ return (
                         totalLabel="Order Summary"
                         totalAmount={totalsForDisplay.total_amount}
                         money={money}
-                        promoPanel={renderPromoCodePanel({
-                          compact: true,
-                          accentColor: fnbOrderBrand,
-                          bodyFont: servicesBodyFont
-                        })}
                         statusRows={[
                           { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
                           { label: 'Schedule', value: fnbScheduleSummaryLabel },
@@ -18940,6 +20377,7 @@ return (
                           { label: 'Fees & Taxes', value: money(totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount) },
                           { label: 'Total', value: money(totalsForDisplay.total_amount), emphasis: true, borderTop: true }
                         ]}
+                        promoSlot={renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
                         bodyFont={servicesBodyFont}
                         displayFont={servicesDisplayFont}
                       />
@@ -18968,6 +20406,7 @@ return (
                             : 'Guest checkout uses the details you entered for this order only.'}
                         </div>
                       )}
+                      {!isDgfyCustomerSignedIn && renderSavedDetailsCard()}
                       {isDgfyCustomerSignedIn ? renderAccountOwnedIdentitySummary({
                         title: 'Customer Account',
                         subtitle: 'These account details will be used for this order.'
@@ -18986,8 +20425,8 @@ return (
 
                       {!isFnbOrderResponsiveFlow && (
                         <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                          <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-                          <button type="button" onClick={() => setFnbOrderStep(2)} disabled={!fnbCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: fnbCustomerStepComplete ? `linear-gradient(180deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, boxShadow: fnbCustomerStepComplete ? `0 8px 20px ${fnbOrderBrandShadow}` : 'none', cursor: fnbCustomerStepComplete ? 'pointer' : 'not-allowed', fontFamily: servicesBodyFont, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
+                          <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont }}>Back</button>
+                          <button type="button" onClick={() => setFnbOrderStep(2)} disabled={!fnbCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: fnbCustomerStepComplete ? `linear-gradient(180deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, boxShadow: fnbCustomerStepComplete ? `0 8px 20px ${fnbOrderBrandShadow}` : 'none', cursor: fnbCustomerStepComplete ? 'pointer' : 'not-allowed', fontFamily: servicesBodyFont }}>Continue</button>
                         </div>
                       )}
                       {!fnbCustomerStepComplete && (
@@ -19049,16 +20488,9 @@ return (
                             ))}
                           </div>
                         </div>
-                        {renderPromoCodePanel({
-                          compact: true,
-                          accentColor: fnbOrderBrand,
-                          bodyFont: servicesBodyFont
-                        })}
                         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
-                          {promoDiscountSummaryRow ? (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div>
-                          ) : null}
+                          {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Fees &amp; Taxes</span><strong>{money(totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount)}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: 8, borderTop: '1px solid #e2e8f0', fontSize: 16, color: '#1e293b' }}><span style={{ fontWeight: 800 }}>Total</span><strong style={{ fontWeight: 900 }}>{money(totalsForDisplay.total_amount)}</strong></div>
@@ -19087,11 +20519,8 @@ return (
                       <PaymentMethodSelectorBlock
                         label="Payment Type"
                         value={fnbPaymentType}
-                        onChange={handlePaymentTypeChange}
-                        options={[
-                          { value: 'cash', label: 'Cash on delivery/pickup' },
-                          { value: 'online', label: 'Online payment' }
-                        ]}
+                        onChange={setFnbPaymentType}
+                        options={STOREFRONT_CHECKOUT_PAYMENT_OPTIONS}
                         DropdownComponent={StorefrontDropdown}
                         triggerStyle={isFnbOrderResponsiveFlow
                           ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' }
@@ -19103,15 +20532,17 @@ return (
                         cashInfoAccent={fnbOrderBrand}
                         bodyFont={servicesBodyFont}
                       />
+                      {renderPromoCodePanel({ accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
                       {!isFnbOrderResponsiveFlow && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                          <button type="button" onClick={() => setFnbOrderStep(2)} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-                          <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: checkoutAllowed ? fnbOrderBrand : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: checkoutAllowed ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{checkoutLoading ? 'Processing...' : 'Place Order'}</button>
+                            <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: '#fff', color: fnbOrderBrandDark, fontWeight: 800, cursor: 'pointer' }}>Refresh Quote</button>
+                            <button type="button" onClick={handleCheckout} disabled={!fnbCheckoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: fnbCheckoutAllowed ? fnbOrderBrand : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: fnbCheckoutAllowed ? 'pointer' : 'not-allowed' }}>{checkoutLoading ? 'Processing...' : 'Place Order'}</button>
                         </div>
                       )}
-                      {storefrontClosedByHours && renderStorefrontClosedNotice({ accent: fnbOrderBrand, background: '#fff7ed', border: '#fdba74' })}
                       {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
                       {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                      {guestCheckoutDraftNotice && <p style={{ margin: 0, fontSize: 13, color: fnbOrderBrandDark }}>{guestCheckoutDraftNotice}</p>}
+                      {!isFnbOrderResponsiveFlow && <button type="button" onClick={() => setFnbOrderStep(2)} style={{ justifySelf: 'start', minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back</button>}
                     </section>
                     {isDesktopCheckout && <aside style={{ display: 'grid', gap: 14, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
                       <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 18, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 14 }}>
@@ -19120,7 +20551,7 @@ return (
                         <div style={{ display: 'grid', gap: 10, fontSize: 13, color: '#334155' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}</strong></div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{checkoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields')}</strong></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{fnbCheckoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields')}</strong></div>
                         </div>
                         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'grid', gap: 12 }}>
                           <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>Your Items</div>
@@ -19160,9 +20591,7 @@ return (
                         </div>
                         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
-                          {promoDiscountSummaryRow ? (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div>
-                          ) : null}
+                          {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Fees &amp; Taxes</span><strong>{money(totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount)}</strong></div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: 8, borderTop: '1px solid #e2e8f0', fontSize: 16, color: '#1e293b' }}><span style={{ fontWeight: 700 }}>Total</span><strong style={{ fontWeight: 800 }}>{money(totalsForDisplay.total_amount)}</strong></div>
@@ -19248,9 +20677,7 @@ return (
                             </div>
                             <div style={{ display: 'grid', gap: 10, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
-                              {promoDiscountSummaryRow ? (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div>
-                              ) : null}
+                              {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>Fees &amp; Taxes</span><strong>{money(fnbSummaryFeeAndTaxes)}</strong></div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
@@ -19282,15 +20709,15 @@ return (
                           style={{ display: 'grid', gridTemplateColumns: fnbOrderStep === 3 ? '1fr' : '1fr 1fr', gap: 12 }}
                         >
                           {fnbOrderStep === 2 && (
-                            <button key="fnb-responsive-footer-back" type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: isFnbOrderResponsiveFlow ? 38 : 44, borderRadius: 16, border: '1px solid #cbd5e1', background: '#fff', color: '#1e293b', fontWeight: 800, fontSize: isFnbOrderResponsiveFlow ? 14 : 16, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                              <ChevronLeft size={18} />
+                            <button key="fnb-responsive-footer-back" type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 48, borderRadius: 16, border: '1px solid #cbd5e1', background: '#fff', color: '#1e293b', fontWeight: 800, fontSize: 16, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                              <ChevronLeft size={20} />
                               Back
                             </button>
                           )}
                           {fnbOrderStep === 4 && (
-                            <button key="fnb-responsive-footer-back-to-fulfillment" type="button" onClick={() => setFnbOrderStep(2)} style={{ minHeight: isFnbOrderResponsiveFlow ? 38 : 44, borderRadius: 16, border: '1px solid #cbd5e1', background: '#fff', color: '#1e293b', fontWeight: 800, fontSize: isFnbOrderResponsiveFlow ? 14 : 16, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                              <ChevronLeft size={18} />
-                              Back
+                            <button key="fnb-responsive-footer-refresh" type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 48, borderRadius: 16, border: `1px solid ${fnbOrderBrand}`, background: '#fff', color: fnbOrderBrandDark, fontWeight: 800, fontSize: 16, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                              <RotateCcw size={18} />
+                              Refresh Quote
                             </button>
                           )}
                           <button
@@ -19309,24 +20736,24 @@ return (
                             }}
                             disabled={
                               fnbOrderStep === 3 ? !fnbCustomerStepComplete
-                                : fnbOrderStep === 4 ? !checkoutAllowed
+                                : fnbOrderStep === 4 ? !fnbCheckoutAllowed
                                   : !fnbFulfillmentStepComplete
                             }
                             style={{
-                              minHeight: isFnbOrderResponsiveFlow ? 38 : 44,
+                              minHeight: 48,
                               borderRadius: 16,
                               border: 'none',
                               background: `linear-gradient(180deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)`,
                               color: '#fff',
                               fontWeight: 900,
-                              fontSize: isFnbOrderResponsiveFlow ? 14 : 16,
+                              fontSize: 16,
                               cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               gap: 8,
                               boxShadow: `0 12px 24px ${fnbOrderBrandShadowStrong}`,
-                              opacity: (fnbOrderStep === 3 && !fnbCustomerStepComplete) || (fnbOrderStep === 4 && !checkoutAllowed) || (fnbOrderStep === 2 && !fnbFulfillmentStepComplete) ? 0.6 : 1
+                              opacity: (fnbOrderStep === 3 && !fnbCustomerStepComplete) || (fnbOrderStep === 4 && !fnbCheckoutAllowed) || (fnbOrderStep === 2 && !fnbFulfillmentStepComplete) ? 0.6 : 1
                             }}
                           >
                             {fnbOrderStep === 4 ? (
@@ -19345,75 +20772,6 @@ return (
                       </div>
                     </div>
                   </>
-                )}
-
-                {showMobileAddressModal && isFnbOrderResponsiveFlow && (
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)' }}>
-                    <div style={{ position: 'absolute', inset: 0 }} onClick={() => setShowMobileAddressModal(false)} />
-                    <div style={{ position: 'relative', background: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: '24px 16px max(24px, env(safe-area-inset-bottom))', display: 'grid', gap: 16, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 -10px 40px rgba(0,0,0,0.1)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', paddingTop: 6 }}>Saved Addresses</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
-                          <button type="button" onClick={() => setShowMobileAddressModal(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 999, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}>
-                            <X size={18} strokeWidth={2.5} />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Add New Location"
-                            onClick={() => {
-                              setShowMobileAddressModal(false);
-                              setDeliveryLocationAction('map');
-                              setSelectedSavedLocationId('');
-                              setPinLocationError('');
-                              setResolvedDeliveryAddress('');
-                              setCustomerAddress('');
-                              setCustomerPin(null);
-                            }}
-                            style={{
-                              height: 32,
-                              borderRadius: 999,
-                              border: 'none',
-                              background: fnbOrderBrandTint,
-                              padding: '0 14px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              fontWeight: 800,
-                              color: fnbOrderBrand,
-                              cursor: 'pointer',
-                              fontSize: 13
-                            }}
-                          >
-                            <Plus size={16} strokeWidth={2.5} />
-                            Add New Location
-                          </button>
-                        </div>
-                      </div>
-                      <div style={{ display: 'grid', gap: 10 }}>
-                        {deliverySavedLocations.map((location) => {
-                          const isSelected = String(selectedSavedLocationId) === String(location.id) && deliveryLocationAction !== 'map' && deliveryLocationAction !== 'current';
-                          return (
-                            <SavedAddressCard
-                              key={`modal-delivery-location-${location.id}`}
-                              address={location}
-                              isSelected={isSelected}
-                              isBusy={false}
-                              onSelect={() => {
-                                applySavedDeliveryLocation(location);
-                                if (typeof handleSetDefaultDeliveryAddress === 'function' && !location.isDefault) {
-                                  handleSetDefaultDeliveryAddress(location);
-                                }
-                                setShowMobileAddressModal(false);
-                              }}
-                              onSetDefault={location.source === 'account' ? () => handleSetDefaultDeliveryAddress(location) : undefined}
-                              onRemove={(location.source === 'account' || location.source === 'local') ? () => handleRemoveDeliveryAddress(location) : undefined}
-                              showActions={false}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
                 )}
 
                 {fnbOrderStep === 4 && checkoutResult && (
@@ -19615,12 +20973,6 @@ return (
                       <ChevronRight size={14} strokeWidth={2.5} />
                     </div>
                   </button>
-                  {renderPromoCodePanel({
-                    compact: true,
-                    accentColor: fnbOrderBrand,
-                    bodyFont: servicesBodyFont,
-                    isMobile: isMobileViewport
-                  })}
                   <div style={{ display: 'grid', gap: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#475569' }}>
                       <span>Subtotal</span>
@@ -19661,7 +21013,7 @@ return (
                 </div>
               </div>
             )}
-            {checkoutTab === 'review' && hasServiceCart && !isServicesMode && (
+            {checkoutTab === 'review' && hasServiceCart && (
               <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.25fr) minmax(280px, 360px)' : '1fr', gap: 16, alignItems: 'start' }}>
                 <section style={{ display: 'grid', gap: 14 }}>
                   <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 18, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
@@ -19804,7 +21156,7 @@ return (
               </div>
             )}
 
-            {checkoutTab === 'checkout' && !isFnbOrderSubpage && !isFnbMode && !isServicesMode && !(isSimpleMode && isResolvedOrderSubpage) && (
+            {checkoutTab === 'checkout' && !isFnbOrderSubpage && !isFnbMode && !(isSimpleMode && isResolvedOrderSubpage) && (
               <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(340px, 420px)' : '1fr', gap: 16, alignItems: 'start' }}>
                 {isDgfyCustomerSignedIn ? (
                 <section style={{ display: 'grid', gap: 14 }}>
@@ -20062,6 +21414,12 @@ return (
                           <span style={{ fontSize: 13, opacity: .95 }}>Items Subtotal</span>
                           <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.subtotal_amount)}</strong>
                         </div>
+                        {promoDiscountSummaryRow ? (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: 13, opacity: .95 }}>{promoDiscountSummaryRow.label}</span>
+                            <strong style={{ fontSize: 14 }}>{promoDiscountSummaryRow.value}</strong>
+                          </div>
+                        ) : null}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: 13, opacity: .95 }}>{totalsForDisplay.service_fee_label} (1%)</span>
                           <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.service_fee_amount)}</strong>
@@ -20098,11 +21456,31 @@ return (
                             ? (quoteNeedsRefresh ? 'Displayed totals are stale. Click Quote again to re-sync and unlock checkout.' : 'Totals are synced from the latest quote and checkout is enabled.')
                             : 'No quote yet. Click Quote to unlock checkout.'}
                       </div>
+                      {!hasServiceCart ? (
+                        <div style={{ marginTop: 12 }}>
+                          {renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
+                        </div>
+                      ) : null}
                       <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         {!hasServiceCart && checkoutPermitted && accessCapabilities.quote !== false && (
                           <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>{isFnbMode ? 'Refresh Quote' : 'Quote'}</button>
                         )}
-                        <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.2)', background: '#0b3d3a', color: '#fff', padding: '11px 12px', fontWeight: 800 }}>{checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : (isFnbMode ? 'Place Order' : 'Checkout'))}</button>
+                        <button
+                          type="button"
+                          onClick={handleCheckout}
+                          disabled={!(hasServiceCart ? checkoutAllowed : (isFnbMode ? fnbCheckoutAllowed : (isSimpleMode ? simpleCheckoutAllowed : checkoutAllowed)))}
+                          style={{
+                            borderRadius: 14,
+                            border: '1px solid rgba(255,255,255,.2)',
+                            background: (hasServiceCart ? checkoutAllowed : (isFnbMode ? fnbCheckoutAllowed : (isSimpleMode ? simpleCheckoutAllowed : checkoutAllowed))) ? '#0b3d3a' : '#64748b',
+                            color: '#fff',
+                            padding: '11px 12px',
+                            fontWeight: 800,
+                            cursor: (hasServiceCart ? checkoutAllowed : (isFnbMode ? fnbCheckoutAllowed : (isSimpleMode ? simpleCheckoutAllowed : checkoutAllowed))) ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          {checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : (isFnbMode ? 'Place Order' : 'Checkout'))}
+                        </button>
                       </div>
                     </div>
                     {hasStockViolation && (
@@ -20136,8 +21514,8 @@ return (
                         Quote synced. Total due: {money(totalsForDisplay.total_amount)}
                       </p>
                     )}
-                    {storefrontClosedByHours && renderStorefrontClosedNotice({ accent: servicesPrimary, background: '#eff6ff', border: '#bfdbfe' })}
                     {checkoutError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                    {guestCheckoutDraftNotice && <p style={{ marginTop: 10, fontSize: 13, color: '#0f766e' }}>{guestCheckoutDraftNotice}</p>}
                     {(checkoutResult?.tracking_pin || checkoutResult?.booking?.public_reference) && (
                       <div style={{ marginTop: 10, display: 'grid', gap: 8, border: '1px solid #99f6e4', background: '#ecfeff', borderRadius: 12, padding: '10px 12px' }}>
                         <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>
@@ -20214,13 +21592,13 @@ return (
                   const finalStatusLabel = activeStatus === 'completed'
                     ? getCompletedTrackingLabel(trackingOrderMethod)
                     : (trackingResult.status_label || trackingResult.status || 'Order placed');
-                  
+
                   const isPickup = trackingOrderMethod === 'pickup';
-                  
+
                   // Enforce DGFY Branding Theme overriding adapter colors
                   const dgfyPrimary = '#1A4E8D'; // Ocean Blue
                   const dgfySecondary = '#1A4586'; // Deep Blue
-                  const dgfyBg = '#EEF6FD'; 
+                  const dgfyBg = '#EEF6FD';
                   const dgfySecondaryBg = '#AEE8F4'; // Ice Blue
                   const dgfyBorder = '#8CB4D9';
                   const dgfySoftText = '#64748b';
@@ -20254,20 +21632,9 @@ return (
                     || 'Pickup branch'
                   ).trim();
                   const pickupBranchAddress = String(
-                    trackingResult.branchAddress
-                    || selectedStoreLocationForMap?.full_address
-                    || selectedStoreLocationForMap?.address_line
+                    selectedStoreLocationForMap?.address_line
                     || selectedStore?.address_line
                     || selectedStore?.locationLabel
-                    || ''
-                  ).trim();
-                  const resolvedTrackingDeliveryAddress = String(
-                    trackingResult.deliveryAddress
-                    || trackingResult.raw?.data?.order?.delivery_address
-                    || trackingResult.raw?.data?.delivery_address
-                    || trackingResult.raw?.order?.delivery_address
-                    || trackingResult.raw?.delivery_address
-                    || trackingResult.raw?.data?.payload?.delivery_address
                     || ''
                   ).trim();
                   const completionItems = Array.isArray(trackingResult.items) ? trackingResult.items : [];
@@ -20462,24 +21829,6 @@ return (
                       </div>
                     );
                   }
-                  if (isPickup && isMobileViewport) {
-                    return (
-                      <PickupTrackingMobileView
-                        trackingResult={trackingResult}
-                        trackingSteps={trackingSteps}
-                        activeStepIndex={activeStepIndex}
-                        activeStatus={activeStatus}
-                        statusGuidance={statusGuidance}
-                        etaHeadline={etaHeadline}
-                        theme={{ primary: dgfyPrimary, secondary: dgfySecondary, bg: dgfyBg, secondaryBg: dgfySecondaryBg, border: dgfyBorder, softText: dgfySoftText }}
-                        actions={{ copyTextToClipboard, setCheckoutTab, goStoreCatalogPage }}
-                        formatters={{ money, formatTicketDate }}
-                        trackingPinInput={trackingPinInput}
-                        TrackingRouteMap={TrackingRouteMap}
-                        mapProps={{ storePin: trackingMapCoordinates?.storePin, styleUrl: TILING_SERVER, transformRequest: tileTransformRequest }}
-                      />
-                    );
-                  }
 
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 360px', gap: 24 }}>
@@ -20501,7 +21850,7 @@ return (
                                     activeStatus === 'ready_for_pickup' ? 'Your Order is Ready for Pickup! \uD83C\uDF89' : 'Pickup Completed!'}
                                  </div>
                                  <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5, maxWidth: 420 }}>{statusGuidance}</div>
-                                 
+
                                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16, fontSize: 14, fontWeight: 600, fontFamily: servicesBodyFont }}>
                                    <span style={{ color: dgfySoftText }}>Order PIN</span>
                                    <span style={{ color: '#0f172a', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 10px' }}>{trackingResult.tracking_pin || trackingPinInput}</span>
@@ -20511,7 +21860,7 @@ return (
                                  </div>
                                </div>
                              </div>
-                             
+
                              <div style={{ zIndex: 1, display: 'flex', placeItems: 'center', justifyContent: 'center', opacity: 0.9 }}>
                                {(activeStatus === 'placed' || activeStatus === 'ready_for_pickup') && <ShoppingBag size={100} color={dgfyPrimary} strokeWidth={1.5} style={{ opacity: 0.8 }} />}
                                {activeStatus === 'confirmed' && <Store size={100} color={dgfyPrimary} strokeWidth={1.5} style={{ opacity: 0.8 }} />}
@@ -20534,19 +21883,15 @@ return (
                               </div>
                             </div>
 
-                            {/* Order Status */}
-                            <div style={{ background: '#fafaf9', border: '1px solid #e7e5e4', borderRadius: 20, padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden', position: 'relative', gap: 20 }}>
+                            {/* Top Banner (ETA) */}
+                            <div style={{ background: '#fafaf9', border: '1px solid #e7e5e4', borderRadius: 20, padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden', position: 'relative' }}>
                                <div style={{ zIndex: 2 }}>
-                                 <div style={{ fontSize: 14, fontWeight: 700, color: dgfySoftText, fontFamily: servicesBodyFont }}>Order status</div>
-                                 <div style={{ fontSize: 36, fontWeight: 800, color: '#0f172a', margin: '4px 0', fontFamily: servicesDisplayFont }}>{finalStatusLabel}</div>
+                                 <div style={{ fontSize: 14, fontWeight: 700, color: dgfySoftText, fontFamily: servicesBodyFont }}>Estimated arrival</div>
+                                 <div style={{ fontSize: 36, fontWeight: 800, color: '#0f172a', margin: '4px 0', fontFamily: servicesDisplayFont }}>{etaHeadline}</div>
                                  <div style={{ fontSize: 14, color: '#334155' }}>{statusGuidance}</div>
                                </div>
                                <div style={{ zIndex: 1, width: 140, height: 100, background: dgfyBg, borderRadius: 16, display: 'flex', placeItems: 'center', justifyContent: 'center' }}>
-                                 {activeStatus === 'placed' ? <Clock3 size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
-                                 {activeStatus === 'confirmed' ? <Store size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
-                                 {activeStatus === 'preparing' ? <ChefHat size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
-                                 {activeStatus === 'out_for_delivery' ? <Bike size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
-                                 {activeStatus === 'completed' ? <CheckCircle2 size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
+                                 <Bike size={48} color={dgfyPrimary} strokeWidth={1.5} />
                                </div>
                             </div>
                           </>
@@ -20569,7 +21914,7 @@ return (
                               borderRadius: 999
                             }}
                           />
-                          
+
                           {trackingSteps.map((step, index) => {
                             const done = index < activeStepIndex;
                             const active = index === activeStepIndex || (activeStatus === 'completed' && index === trackingSteps.length - 1);
@@ -20600,14 +21945,14 @@ return (
                         {isPickup ? (
                           <div style={{ background: dgfySecondaryBg, border: 'none', borderRadius: 16, padding: 20, display: 'flex', gap: 16, alignItems: 'center' }}>
                              <div style={{ color: dgfySecondary, display: 'flex', placeItems: 'center', flexShrink: 0 }}>
-                               <ShoppingBag size={24} strokeWidth={2.5} />
+                               <Clock3 size={24} strokeWidth={2.5} />
                              </div>
                              <div>
                                <div style={{ fontSize: 16, fontWeight: 800, color: dgfySecondary, fontFamily: servicesDisplayFont }}>
-                                 {activeStatus === 'ready_for_pickup' || activeStatus === 'completed' ? 'Please pick up your order as soon as possible.' : 'We are preparing your order.'}
+                                 {activeStatus === 'ready_for_pickup' || activeStatus === 'completed' ? 'Please pick up your order as soon as possible.' : `Usually ready in ~${trackingResult.etaMinutes || 15} minutes`}
                                </div>
                                <div style={{ fontSize: 13, color: '#334155', marginTop: 2 }}>
-                                 {activeStatus === 'ready_for_pickup' || activeStatus === 'completed' ? 'For the best quality, we recommend picking up your order right away.' : 'We will notify you when it is ready for pickup.'}
+                                 {activeStatus === 'ready_for_pickup' || activeStatus === 'completed' ? 'For the best quality, we recommend picking up your order right away.' : 'Estimated preparation time may change based on order volume.'}
                                </div>
                              </div>
                           </div>
@@ -20633,6 +21978,29 @@ return (
                           transformRequest={tileTransformRequest}
                           mapHeight={280}
                         />
+
+                        {/* Rider Card */}
+                        {!isPickup && (
+                          <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                               <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#f1f5f9', color: '#64748b', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 800 }}>JD</div>
+                               <div>
+                                 <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', fontFamily: servicesBodyFont }}>John D.</div>
+                                 <div style={{ fontSize: 13, color: dgfySoftText, display: 'flex', gap: 6, alignItems: 'center' }}>
+                                    Your Rider <span style={{ color: '#fbbf24' }}>â˜… 4.9</span>
+                                 </div>
+                               </div>
+                             </div>
+                             <div style={{ display: 'flex', gap: 8 }}>
+                               <button type="button" style={{ display: 'flex', gap: 6, alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 12, padding: '8px 16px', fontSize: 14, fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
+                                 <MessageSquare size={16} /> Chat
+                               </button>
+                               <button type="button" style={{ display: 'flex', gap: 6, alignItems: 'center', background: '#fff', border: `1px solid ${dgfyPrimary}`, borderRadius: 12, padding: '8px 16px', fontSize: 14, fontWeight: 700, color: dgfyPrimary, cursor: 'pointer' }}>
+                                 <Phone size={16} /> Call
+                               </button>
+                             </div>
+                          </div>
+                        )}
 
                         {/* Footer Badges */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, background: '#f8fafc', padding: 20, borderRadius: 16 }}>
@@ -20675,7 +22043,7 @@ return (
 
                       {/* Right Column: Order Details Sidebar */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        
+
                         {/* Receipt Box */}
                         <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 20, background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,.03)' }}>
                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -20696,7 +22064,7 @@ return (
                               <div style={{ display: 'grid', gap: 12 }}>
                                 {trackingResult.items && trackingResult.items.map((item, idx) => (
                                   <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                                    <div style={{ color: '#334155', flex: 1, paddingRight: 10 }}>{item.name} <span style={{ color: dgfySoftText }}>{'\u00D7'} {item.qty}</span></div>
+                                    <div style={{ color: '#334155', flex: 1, paddingRight: 10 }}>{item.name} <span style={{ color: dgfySoftText }}>Ã— {item.qty}</span></div>
                                     <div style={{ fontWeight: 600, color: '#0f172a', fontFamily: servicesBodyFont }}>{money(item.amount)}</div>
                                   </div>
                                 ))}
@@ -20730,10 +22098,10 @@ return (
                                <MapPin size={20} color={dgfyPrimary} style={{ flexShrink: 0, marginTop: 2 }} />
                                <div>
                                 <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', lineHeight: 1.4, fontFamily: servicesBodyFont }}>
-                                  {resolvedTrackingDeliveryAddress || 'Customer location unavailable'}
+                                  {trackingResult.deliveryAddress || 'Customer location unavailable'}
                                 </div>
                                 <div style={{ fontSize: 13, color: dgfySoftText, marginTop: 2 }}>
-                                  {resolvedTrackingDeliveryAddress ? 'Customer delivery address' : (trackingResult.branchName || 'Main Branch')}
+                                  {trackingResult.deliveryAddress ? 'Customer delivery address' : (trackingResult.branchName || 'Main Branch')}
                                 </div>
                               </div>
                              </div>
@@ -20796,6 +22164,21 @@ return (
                     <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Loading Order Details...</div>
                     <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>Fetching real-time status for {selectedTrackingPin}</div>
                   </div>
+                ) : trackingError ? (
+                  <div role="alert" style={{ border: isTrackingCooldownActive ? '1px solid #bfdbfe' : '1px solid #fecaca', borderRadius: 18, padding: isMobileViewport ? 24 : 32, background: isTrackingCooldownActive ? '#eff6ff' : '#fff7f7', boxShadow: '0 8px 24px rgba(15,23,42,.04)', maxWidth: 560, margin: '0 auto', textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: isTrackingCooldownActive ? '#1d4ed8' : '#991b1b' }}>
+                      {isTrackingCooldownActive ? 'Tracking is refreshing too often' : 'Tracking temporarily unavailable'}
+                    </div>
+                    <div style={{ fontSize: 14, lineHeight: 1.6, color: isTrackingCooldownActive ? '#1e3a8a' : '#7f1d1d', marginTop: 8 }}>{trackingError}</div>
+                    <div style={{ fontSize: 13, color: '#475569', marginTop: 8 }}>
+                      {isTrackingCooldownActive
+                        ? `Your order PIN is saved. We'll retry automatically in about ${trackingCooldownLabel}.`
+                        : 'Your order PIN is still saved. Automatic tracking will retry after the server wait period.'}
+                    </div>
+                    <button type="button" onClick={handleTrack} disabled={isTrackingRefreshing || isTrackingCooldownActive} style={{ marginTop: 18, minHeight: 42, borderRadius: 12, border: isTrackingCooldownActive ? '1px solid #93c5fd' : '1px solid #b91c1c', background: '#fff', color: isTrackingCooldownActive ? '#1d4ed8' : '#991b1b', padding: '0 18px', fontWeight: 800, cursor: isTrackingRefreshing ? 'wait' : (isTrackingCooldownActive ? 'not-allowed' : 'pointer'), opacity: isTrackingCooldownActive ? 0.78 : 1 }}>
+                      {isTrackingRefreshing ? 'Checking status...' : (isTrackingCooldownActive ? `Try again in ${trackingCooldownLabel}` : 'Try again')}
+                    </button>
+                  </div>
                 ) : null}
               </div>
             )}
@@ -20841,29 +22224,7 @@ return (
       )}
     </>
   )}
-      {isAccountDrawerOpen && (isGuestAccountDrawerState ? (
-        <DgfyCustomerAuthModal
-          isMobileViewport={isMobileViewport}
-          onClose={closeAccountDrawer}
-          savedCustomerDetails={savedCustomerDetails}
-          hasSavedCustomerDetails={hasSavedCustomerDetails}
-          onContinueAsGuest={() => {
-            if (hasSavedCustomerDetails) {
-              applySavedCustomerDetails();
-            }
-            closeAccountDrawer();
-          }}
-          onClearSavedDetails={clearSavedCustomerDetailsForDevice}
-          onOpenAuth={() => {
-            closeAccountDrawer();
-            openCanonicalDgfyAuth('customer');
-          }}
-          onOpenRegisterBusiness={() => {
-            closeAccountDrawer();
-            openBusinessRegistrationFlow();
-          }}
-        />
-      ) : (
+      {isAccountDrawerOpen && (
         <DgfyCustomerAccountPage
           isMobileViewport={isMobileViewport}
           onClose={closeAccountDrawer}
@@ -20874,11 +22235,9 @@ return (
           onSignOut={handleStorefrontSignOut}
           onHelp={() => toast.info('Help center is not connected yet.')}
           onRegisterBusiness={openBusinessRegistrationFlow}
-          onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
           onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
           onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
           onLeaveCompany={handleLeaveDgfyCompany}
-          onSwitchCompany={switchDgfyCompanyFromStorefront}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
           onUseAddressForCheckout={useAccountAddressForCheckout}
           onSaveAddress={handleSaveAccountAddress}
@@ -20896,16 +22255,11 @@ return (
           trackedCustomerActivity={trackedCustomerActivity}
           customerTrackLoadingReference={customerTrackLoadingReference}
           customerTrackError={customerTrackError}
-          onOpenStorefront={openStorefrontFromAccountEntry}
-          onSubmitCustomerReview={submitAccountReviewFromDashboard}
-          resolveStorefrontMeta={resolveStorefrontMetaForAccountEntry}
-          onOpenBusinessInventory={handleOpenBusinessInventory}
-          resolveBusinessAssetUrl={withAssetOrigin}
-          onOpenBusinessPos={handleOpenBusinessPos}
           accountOrderActionReference={accountOrderActionReference}
           accountAddressActionId={accountAddressActionId}
+          onOpenBusinessPos={handleOpenBusinessPos}
         />
-      ))}
+      )}
       {isGuestTrackingDrawerOpen && canOpenTrackingDrawer && !isStandaloneTrackingPage && (
         <GuestTrackingDrawer
           isOpen={isGuestTrackingDrawerOpen}
@@ -20916,8 +22270,8 @@ return (
           selectedStore={selectedStore}
           guestTrackedOrders={trackingDrawerOrders}
           trackingError={trackingError}
-          expandedGuestDrawerPins={expandedGuestDrawerPins}
-          onExpandedGuestDrawerPinsChange={setExpandedGuestDrawerPins}
+          expandedGuestDrawerPin={expandedGuestDrawerPin}
+          onExpandedGuestDrawerPinChange={setExpandedGuestDrawerPin}
           onClose={() => setIsGuestTrackingDrawerOpen(false)}
           openFullTrackingForPin={openFullTrackingForPin}
           withAssetOrigin={withAssetOrigin}
@@ -20928,28 +22282,6 @@ return (
         />
       )}
 
-      {isOnlinePaymentModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsOnlinePaymentModalOpen(false)}>
-          <div style={{ background: '#fff', borderRadius: 20, width: '90%', maxWidth: 400, padding: 24, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Payment Unavailable</div>
-              <button type="button" onClick={() => setIsOnlinePaymentModalOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', color: '#64748b' }}>
-                <X size={20} strokeWidth={2.5} />
-              </button>
-            </div>
-            <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 24 }}>
-              Online payment is not yet available. Please use cash on delivery/pickup for now.
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsOnlinePaymentModalOpen(false)}
-              style={{ width: '100%', minHeight: 44, borderRadius: 12, border: 'none', background: '#cbd5e1', color: '#1e293b', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
-            >
-              Okay
-            </button>
-          </div>
-        </div>
-      )}
     </main >
   );
 }
