@@ -980,6 +980,7 @@ const STORE_SERVICE_SUBPAGE = 'service';
 const STORE_ITEM_SUBPAGE = 'item';
 const storePath = (slug, subpage = null, query = '') => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${query || ''}`;
 const toNumberOrNull = (value) => {
+  if (value == null || String(value).trim() === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
@@ -2145,9 +2146,9 @@ function StoresMap({
       const bounds = [];
       const autoOpenCallbacks = [];
       const coordinateGroups = uniqueRows.reduce((acc, store) => {
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return acc;
+      const lat = toNumberOrNull(store?.latitude);
+      const lng = toNumberOrNull(store?.longitude);
+      if (lat == null || lng == null) return acc;
       const key = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
       if (!Array.isArray(acc[key])) {
         acc[key] = [];
@@ -2159,9 +2160,9 @@ function StoresMap({
 
       uniqueRows.forEach((store) => {
       if (!store) return;
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const lat = toNumberOrNull(store?.latitude);
+      const lng = toNumberOrNull(store?.longitude);
+      if (lat == null || lng == null) return;
       const coordinateKey = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
       if (renderedCoordinateGroups.has(coordinateKey)) return;
       renderedCoordinateGroups.add(coordinateKey);
