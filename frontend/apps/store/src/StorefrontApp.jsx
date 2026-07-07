@@ -7778,8 +7778,8 @@ export default function StorefrontApp() {
         const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
         const fallbackLat = toNumberOrNull(store?.latitude);
         const fallbackLng = toNumberOrNull(store?.longitude);
-        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? DEFAULT_CENTER.latitude;
-        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? DEFAULT_CENTER.longitude;
+        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? null;
+        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? null;
         const nearestPinWithDistance = hasDiscoveryLocation
           ? pins
             .map((location) => ({
