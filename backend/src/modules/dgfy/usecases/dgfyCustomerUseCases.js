@@ -239,7 +239,8 @@ const toPlainRecord = (value) => (
 
 const syncExplicitAccountOrderActivity = async ({ account, activity } = {}) => {
     const dgfyAccount = ensureAccount(account);
-    if (!activity || !ORDER_ACTIVITY_TYPES.has(String(activity.activity_type || '').trim().toLowerCase())) {
+    const activityType = String(activity.activity_type || '').trim().toLowerCase();
+    if (!activity || !['order', 'pos_order'].includes(activityType)) {
         return activity;
     }
     if (!activity.tenant_id || !activity.reference || String(activity.dgfy_account_id || '') !== String(dgfyAccount.id)) {
@@ -263,6 +264,20 @@ const syncExplicitAccountOrderActivity = async ({ account, activity } = {}) => {
                         attributes: storeCustomerAttributes
                     });
                 }
+            }
+
+            const PosTransactionLine = dbStore.get('PosTransactionLine');
+            const Item = dbStore.get('Item');
+            if (PosTransactionLine) {
+                const lineAttributes = await existingModelAttributes(sequelize, PosTransactionLine);
+                const itemAttributes = Item ? await existingModelAttributes(sequelize, Item) : [];
+                if (lineAttributes.length) include.push({
+                    model: PosTransactionLine,
+                    as: 'lines',
+                    required: false,
+                    attributes: lineAttributes,
+                    ...(Item && itemAttributes.length ? { include: [{ model: Item, as: 'item', required: false, attributes: itemAttributes }] } : {})
+                });
             }
 
             const row = await PosTransaction.findOne({
