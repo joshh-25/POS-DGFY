@@ -46,12 +46,17 @@ export const fnbTrackingAdapter = Object.freeze({
     return ctx.requestJson(`/api/v1/store/track/${encodeURIComponent(pin)}`, { storeSlug: input.storeSlug });
   },
   normalize: (raw, input) => {
-    const statusCode = String(raw?.status || '').trim().toLowerCase();
-    const statusLabel = String(raw?.status_label || raw?.status || 'Order placed').trim();
-    const reference = String(raw?.tracking_pin || input?.rawReference || '').trim().toUpperCase();
-    const orderMethod = String(raw?.order_method || raw?.order?.order_method || 'delivery').trim().toLowerCase();
-    const orderItems = Array.isArray(raw?.order?.items) ? raw.order.items : [];
-    const orderLines = Array.isArray(raw?.order?.lines) ? raw.order.lines : [];
+    const payload = raw?.data && typeof raw.data === 'object' ? raw.data : raw;
+    const order = payload?.order && typeof payload.order === 'object' ? payload.order : {};
+    const location = order?.location && typeof order.location === 'object'
+      ? order.location
+      : (payload?.location && typeof payload.location === 'object' ? payload.location : {});
+    const statusCode = String(payload?.status || order?.status || '').trim().toLowerCase();
+    const statusLabel = String(payload?.status_label || order?.status_label || payload?.status || order?.status || 'Order placed').trim();
+    const reference = String(payload?.tracking_pin || order?.tracking_pin || input?.rawReference || '').trim().toUpperCase();
+    const orderMethod = String(payload?.order_method || order?.order_method || 'delivery').trim().toLowerCase();
+    const orderItems = Array.isArray(order?.items) ? order.items : [];
+    const orderLines = Array.isArray(order?.lines) ? order.lines : [];
     const baseRows = orderItems.length > 0 ? orderItems : orderLines;
     const itemRows = baseRows.map((line) => {
       const quantity = Number.isFinite(Number(line?.quantity)) ? Number(line.quantity) : null;
@@ -76,15 +81,18 @@ export const fnbTrackingAdapter = Object.freeze({
       statusLabel,
       isTerminal: TERMINAL_STATUSES.has(statusCode),
       orderMethod,
-      updatedAt: String(raw?.order?.updated_at || '').trim() || null,
-      createdAt: String(raw?.order?.created_at || '').trim() || null,
-      etaMinutes: Number.isFinite(Number(raw?.estimated_wait_minutes)) ? Number(raw.estimated_wait_minutes) : null,
-      subtotalAmount: Number.isFinite(Number(raw?.order?.subtotal_amount)) ? Number(raw.order.subtotal_amount) : null,
-      deliveryFee: Number.isFinite(Number(raw?.order?.delivery_fee)) ? Number(raw.order.delivery_fee) : null,
-      serviceFeeAmount: Number.isFinite(Number(raw?.order?.service_fee_amount)) ? Number(raw.order.service_fee_amount) : null,
-      totalAmount: Number.isFinite(Number(raw?.order?.total_amount)) ? Number(raw.order.total_amount) : null,
-      branchName: String(raw?.location?.name || '').trim() || null,
-      deliveryAddress: String(raw?.order?.delivery_address || raw?.delivery_address || '').trim() || null,
+      updatedAt: String(order?.updated_at || payload?.updated_at || '').trim() || null,
+      createdAt: String(order?.created_at || payload?.created_at || '').trim() || null,
+      etaMinutes: Number.isFinite(Number(order?.estimated_wait_minutes ?? payload?.estimated_wait_minutes))
+        ? Number(order?.estimated_wait_minutes ?? payload?.estimated_wait_minutes)
+        : null,
+      subtotalAmount: Number.isFinite(Number(order?.subtotal_amount)) ? Number(order.subtotal_amount) : null,
+      deliveryFee: Number.isFinite(Number(order?.delivery_fee)) ? Number(order.delivery_fee) : null,
+      serviceFeeAmount: Number.isFinite(Number(order?.service_fee_amount)) ? Number(order.service_fee_amount) : null,
+      totalAmount: Number.isFinite(Number(order?.total_amount)) ? Number(order.total_amount) : null,
+      branchName: String(location?.name || '').trim() || null,
+      branchAddress: String(location?.full_address || location?.address_line || '').trim() || null,
+      deliveryAddress: String(order?.delivery_address || payload?.delivery_address || payload?.customer_address || '').trim() || null,
       items: itemRows,
       timeline: getTrackingFlowForOrderMethod(orderMethod).map((step, index, allSteps) => {
         const activeIndex = Math.max(0, allSteps.findIndex((item) => item.id === statusCode));

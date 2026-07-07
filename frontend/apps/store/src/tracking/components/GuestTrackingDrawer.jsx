@@ -1,4 +1,31 @@
-import { Check, ChevronDown, ChevronRight, ChevronUp, ChefHat, Clock, FileText, ShoppingBag, Store, X } from 'lucide-react';
+import React, { useState } from "react";
+import { ChevronDown, ChevronRight, ChevronUp, ExternalLink, Info, Package, Trash2, X, CalendarDays } from "lucide-react";
+
+function formatDrawerDate(value) {
+  if (!value) return "Today";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Today";
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const timeStr = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (isToday) return "Today, " + timeStr;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday, " + timeStr;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + ", " + timeStr;
+}
+
+function resolveStatusStyle(raw) {
+  const s = String(raw || "").toLowerCase().replace(/[^a-z ]/g, "").trim();
+  if (s.includes("confirm")) return { bg: "#f0fdf4", border: "#86efac", color: "#15803d", dot: "#22c55e", label: "Confirmed by store" };
+  if (s.includes("prepar")) return { bg: "#fff7ed", border: "#fdba74", color: "#c2410c", dot: "#f97316", label: "Preparing" };
+  if (s.includes("pickup") || s.includes("ready")) return { bg: "#faf5ff", border: "#d8b4fe", color: "#7e22ce", dot: "#a855f7", label: "Ready for Pickup" };
+  if (s.includes("delivered") && !s.includes("out")) return { bg: "#f0fdf4", border: "#86efac", color: "#15803d", dot: "#22c55e", label: "Delivered" };
+  if (s.includes("out")) return { bg: "#eff6ff", border: "#93c5fd", color: "#1d4ed8", dot: "#3b82f6", label: "Out for delivery" };
+  if (s.includes("cancel")) return { bg: "#fff1f2", border: "#fca5a5", color: "#b91c1c", dot: "#ef4444", label: "Cancelled" };
+  if (s.includes("placed") || s.includes("pending")) return { bg: "#eff6ff", border: "#bfdbfe", color: "#1d4ed8", dot: "#3b82f6", label: "Order placed" };
+  return { bg: "#f8fafc", border: "#cbd5e1", color: "#475569", dot: "#94a3b8", label: raw || "In Progress" };
+}
 
 function GuestTrackingDrawerCard({
   entry,
@@ -9,129 +36,359 @@ function GuestTrackingDrawerCard({
   selectedStore,
   withAssetOrigin,
   money,
-  formatTicketDate,
-  getTrackingFlowForOrderMethod
+  getTrackingFlowForOrderMethod,
 }) {
-  const statusLabel = String(entry.status_label || entry.status || 'In progress').trim() || 'In progress';
-  const entryMethod = String(entry.order_method || 'delivery').trim().toLowerCase();
-  const isPickup = entryMethod === 'pickup';
-  const badgeText = isPickup ? 'Pickup' : 'Delivery';
-  const trackingSteps = getTrackingFlowForOrderMethod(entryMethod);
-  const activeStepIndex = Math.max(0, trackingSteps.findIndex((step) => step.id === entry.status));
+  const rawStatus = String(entry.status_label || entry.status || "").trim();
+  const status = resolveStatusStyle(rawStatus);
+  const storeName = entry.store_name || selectedStore?.tenant_name || "Storefront";
+  const logoSource = entry.store_logo || selectedStore?.storefront_profile_image_url;
+  const dateLabel = formatDrawerDate(entry.created_at);
+  const totalAmount = money(entry.total_amount || 0);
+  const detailedOrderItems = Array.isArray(entry.items)
+    ? entry.items.filter((item) => String(item?.name || "").trim())
+    : [];
+  const fallbackOrderItems = detailedOrderItems.length === 0 && String(entry.item_name || "").trim()
+    ? [{
+      name: String(entry.item_name || "").trim(),
+      qty: Number.isFinite(Number(entry.item_count)) ? Math.max(1, Number(entry.item_count)) : 1,
+      amount: Number.isFinite(Number(entry.total_amount)) ? Number(entry.total_amount) : null,
+      subtitle: detailedOrderItems.length === 0 && Number(entry.item_count || 1) > 1
+        ? `${Math.max(1, Number(entry.item_count || 1))} items in this order`
+        : "Order summary"
+    }]
+    : [];
+  const orderItems = detailedOrderItems.length > 0 ? detailedOrderItems : fallbackOrderItems;
+  const subtotal = entry.subtotal != null ? money(entry.subtotal) : null;
+  const deliveryFee = entry.delivery_fee != null ? money(entry.delivery_fee) : null;
+  const serviceFee = entry.service_fee != null ? money(entry.service_fee) : null;
 
   return (
-    <div style={{ border: '1px solid #dbe5ee', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+    <div
+      style={{
+        flexShrink: 0,
+        border: expanded ? "1.5px solid #93c5fd" : "1px solid #e2e8f0",
+        borderRadius: 16,
+        background: "#fff",
+        overflow: "hidden",
+        boxShadow: expanded
+          ? "0 8px 28px rgba(26,78,141,0.10)"
+          : "0 2px 6px rgba(15,23,42,0.04)",
+        transition: "border-color 160ms ease, box-shadow 160ms ease",
+      }}
+    >
+      {/* Header row - always visible */}
       <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
-        style={{ padding: '12px 14px', display: 'grid', gap: 10, cursor: 'pointer', background: expanded ? '#f8fafc' : '#fff' }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onToggle(); }}
+        style={{
+          padding: "16px",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 12,
+          cursor: "pointer",
+          background: expanded ? "#f8fbff" : "#fff",
+          userSelect: "none",
+        }}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', gap: 12, alignItems: 'center' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-            {entry.store_logo || selectedStore?.storefront_profile_image_url ? (
-              <img src={withAssetOrigin(entry.store_logo || selectedStore?.storefront_profile_image_url)} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <span style={{ color: '#fff', fontSize: 10, fontWeight: 900 }}>LOGO</span>
-            )}
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {entry.store_name || selectedStore?.tenant_name || 'Storefront'}
-            </div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>#{entryPin}</div>
-          </div>
-          <div style={{ color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: '50%', background: '#f1f5f9', flexShrink: 0 }}>
-            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </div>
+        {/* Logo */}
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: "50%",
+            background: "#1a1a2e",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            flexShrink: 0,
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          {logoSource ? (
+            <img
+              src={withAssetOrigin(logoSource)}
+              alt={storeName}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <Package size={20} color="#fff" />
+          )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#1A4E8D', background: '#fff', border: '1px solid #AEE8F4', borderRadius: 999, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#1A4E8D' }} />
-            {statusLabel}
+
+        {/* Content Area */}
+        <div style={{ flex: 1, display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0 }}>
+          
+          {/* Left: Store info */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {storeName}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>
+              #{entryPin}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#94a3b8", fontWeight: 600, marginTop: 4 }}>
+              <CalendarDays size={12} /> {dateLabel}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onViewOrder();
-            }}
-            style={{ border: 'none', background: 'transparent', color: '#1A4E8D', fontSize: 12, fontWeight: 800, padding: '4px 0', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >
-            View Order <ChevronRight size={14} />
-          </button>
+
+          {/* Right: Status and Amount */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12, flexShrink: 0 }}>
+            
+            {/* Status pill with Chevron */}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                fontSize: 11,
+                fontWeight: 700,
+                color: status.color,
+                background: status.bg,
+                border: "1px solid " + status.border,
+                borderRadius: 999,
+                padding: "4px 8px 4px 10px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: status.dot,
+                  flexShrink: 0,
+                }}
+              />
+              {status.label}
+              {expanded ? (
+                <ChevronUp size={14} style={{ marginLeft: 2, color: status.color }} />
+              ) : (
+                <ChevronDown size={14} style={{ marginLeft: 2, color: status.color }} />
+              )}
+            </span>
+
+            {/* Amount */}
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>{totalAmount}</div>
+              <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, marginTop: 2 }}>
+                Total Amount
+              </div>
+            </div>
+
+          </div>
         </div>
       </div>
 
-      {expanded ? (
-        <div style={{ borderTop: '1px solid #e2e8f0', padding: '14px 14px 16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>Total Amount</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{money(entry.total_amount || 0)}</div>
+      {/* Expanded content */}
+      {expanded && (
+        <div style={{ borderTop: "1px solid #e8f0f8" }}>
+          {/* Product table */}
+          <div style={{ padding: "0 16px 16px" }}>
+            {/* Table header */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0,1fr) 56px 80px",
+                gap: 8,
+                padding: "10px 0 8px",
+                borderBottom: "1px solid #e2e8f0",
+                marginBottom: 4,
+              }}
+            >
+              <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Products
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center" }}>
+                QTY
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "right" }}>
+                Subtotal
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
-              <ShoppingBag size={14} color="#64748b" />
-              {entry.item_count || 1} Items
-            </div>
-          </div>
 
-          <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid #f1f5f9' }}>
-            <span style={{ color: '#0f172a', fontWeight: 800 }}>{badgeText}</span>
-            {entry.branch_name ? <span style={{ margin: '0 6px', color: '#1A4E8D' }}>-</span> : null}
-            {entry.branch_name ? <span>{entry.branch_name}</span> : null}
-          </div>
-
-          <div style={{ paddingLeft: 8, display: 'grid', gap: 0, marginBottom: 16 }}>
-            {trackingSteps.map((step, idx) => {
-              const isCompleted = idx < activeStepIndex;
-              const isActive = idx === activeStepIndex || (entry.status === 'completed' && idx === trackingSteps.length - 1);
-              const isFuture = !isCompleted && !isActive;
-              const circleBg = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#fff');
-              const circleBorder = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#94a3b8');
-              const textColor = isFuture ? '#64748b' : '#0f172a';
-              let stepTime = null;
-              if (idx === 0 && entry.created_at) stepTime = formatTicketDate(entry.created_at);
-              else if (isActive && entry.updated_at) stepTime = formatTicketDate(entry.updated_at);
-
-              return (
-                <div key={step.id} style={{ display: 'grid', gridTemplateColumns: '24px 1fr', gap: 12, position: 'relative', paddingBottom: idx === trackingSteps.length - 1 ? 0 : 14 }}>
-                  {idx !== trackingSteps.length - 1 ? (
-                    <div style={{ position: 'absolute', left: 11, top: 24, bottom: -4, width: 2, background: isCompleted ? '#16a34a' : '#e2e8f0', zIndex: 0 }} />
-                  ) : null}
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: circleBg, border: `2px solid ${circleBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1, color: isActive ? '#fff' : (isCompleted ? '#fff' : '#64748b') }}>
-                    {isPickup ? (
-                      isCompleted ? <Check size={12} strokeWidth={4} /> :
-                        idx === 0 ? <FileText size={10} strokeWidth={2.5} /> :
-                          idx === 1 ? <Store size={10} strokeWidth={2.5} /> :
-                            idx === 2 ? <ChefHat size={10} strokeWidth={2.5} /> :
-                              <ShoppingBag size={10} strokeWidth={2.5} />
-                    ) : (
-                      isCompleted ? <Check size={12} strokeWidth={4} /> : (isActive ? <span style={{ fontSize: 10, fontWeight: 900 }}>.</span> : <ShoppingBag size={10} />)
-                    )}
+            {/* Item rows */}
+            {orderItems.length > 0 ? (
+              orderItems.map((item, i) => {
+                const itemLogo = item.image_url || item.thumbnail;
+                const variantLabel = String(item.variant || item.size || item.variant_name || "").trim();
+                const itemQty = item.qty || item.quantity || 1;
+                const itemAmount = item.amount != null ? money(item.amount) : null;
+                return (
+                  <div
+                    key={entryPin + "-item-" + i}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0,1fr) 56px 80px",
+                      gap: 8,
+                      alignItems: "center",
+                      padding: "10px 0",
+                      borderBottom: i < orderItems.length - 1 ? "1px dashed #f1f5f9" : "none",
+                    }}
+                  >
+                    {/* Name + thumbnail */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          background: "#f1f5f9",
+                          overflow: "hidden",
+                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {itemLogo ? (
+                          <img
+                            src={withAssetOrigin(itemLogo)}
+                            alt={item.name}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <Package size={16} color="#94a3b8" />
+                        )}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", lineHeight: 1.3, wordBreak: "break-word" }}>
+                          {item.name}
+                        </div>
+                        {variantLabel && (
+                          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginTop: 2 }}>
+                            {variantLabel}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {/* Qty */}
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#334155", textAlign: "center" }}>
+                      {itemQty}x
+                    </div>
+                    {/* Subtotal */}
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", textAlign: "right" }}>
+                      {itemAmount || "-"}
+                    </div>
                   </div>
-                  <div style={{ display: 'grid', gap: 2, transform: 'translateY(-2px)' }}>
-                    <div style={{ fontSize: 13, fontWeight: isActive ? 800 : 600, color: isActive ? '#1A4E8D' : textColor }}>{step.label}</div>
-                    {stepTime ? <div style={{ fontSize: 11, color: '#64748b' }}>{stepTime}</div> : null}
+                );
+              })
+            ) : (
+              <div style={{ padding: "16px 0", fontSize: 12, color: "#64748b", textAlign: "center" }}>
+                Line items are available in the full tracking view.
+              </div>
+            )}
+
+            {/* Order totals */}
+            {(subtotal || deliveryFee || serviceFee) && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                {subtotal && (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                    <span>Subtotal</span><span style={{ fontWeight: 700, color: "#334155" }}>{subtotal}</span>
                   </div>
+                )}
+                {deliveryFee && (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                    <span>Delivery Fee</span><span style={{ fontWeight: 700, color: "#334155" }}>{deliveryFee}</span>
+                  </div>
+                )}
+                {serviceFee && (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                    <span>Service Fee</span><span style={{ fontWeight: 700, color: "#334155" }}>{serviceFee}</span>
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 900, color: "#0f172a", paddingTop: 8, borderTop: "1px solid #e2e8f0" }}>
+                  <span>Total</span><span>{totalAmount}</span>
                 </div>
-              );
-            })}
+              </div>
+            )}
           </div>
 
-          <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>Estimated Ready Time</div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>{entry.created_at ? new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Today'}</div>
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>
-              {entry.eta_minutes ? `${entry.eta_minutes} mins` : 'Pending'}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#64748b', marginTop: 14 }}>
-            <Clock size={12} /> Last updated: {entry.updated_at ? formatTicketDate(entry.updated_at) : 'just now'}
+          {/* View order details link */}
+          <div
+            style={{
+              borderTop: "1px solid #e8f0f8",
+              padding: "12px 16px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onViewOrder(); }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                border: "none",
+                background: "transparent",
+                color: "#1a4e8d",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              <ExternalLink size={14} />
+              View order details
+            </button>
+            <ChevronRight size={16} color="#94a3b8" />
           </div>
         </div>
-      ) : null}
+      )}
+    </div>
+  );
+}
+
+function TrackingEmptyState({ isAccountTracking }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "56px 24px",
+        textAlign: "center",
+        gap: 14,
+      }}
+    >
+      <div
+        style={{
+          width: 72,
+          height: 72,
+          borderRadius: "50%",
+          background: "#eff6ff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Package size={32} color="#93c5fd" />
+      </div>
+      <div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>
+          No active orders found.
+        </div>
+        <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6, maxWidth: 260 }}>
+          {isAccountTracking
+            ? "No in-progress account orders yet. Enter a tracking PIN to load a specific order."
+            : "Track an order using your order reference."}
+        </div>
+      </div>
     </div>
   );
 }
@@ -142,114 +399,192 @@ export function GuestTrackingDrawer({
   trackingPinInput,
   onTrackingPinInputChange,
   onTrack,
-  trackingError = '',
+  trackingError = "",
   selectedStore,
   guestTrackedOrders,
-  expandedGuestDrawerPin,
-  onExpandedGuestDrawerPinChange,
+  expandedGuestDrawerPins,
+  onExpandedGuestDrawerPinsChange,
   onClose,
   openFullTrackingForPin,
   withAssetOrigin,
   money,
   formatTicketDate,
   getTrackingFlowForOrderMethod,
-  isAccountTracking = false
+  isAccountTracking = false,
+  onClearAllOrders,
 }) {
   if (!isOpen) return null;
 
+  const drawerWidth = isMobileViewport ? "min(96vw, 480px)" : 500;
+
+  const filteredOrders = Array.isArray(guestTrackedOrders) ? guestTrackedOrders : [];
+  const expandedPins = Array.isArray(expandedGuestDrawerPins) ? expandedGuestDrawerPins : [];
+
   return (
-    <>
+    <React.Fragment>
+      {/* Backdrop */}
       <button
         type="button"
         aria-label="Close tracking drawer"
         onClick={onClose}
-        style={{ position: 'fixed', inset: 0, zIndex: 2498, border: 'none', background: 'rgba(15,23,42,0.28)', cursor: 'pointer' }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 2498,
+          border: "none",
+          background: "rgba(15,23,42,0.30)",
+          cursor: "pointer",
+        }}
       />
+
+      {/* Drawer */}
       <aside
         style={{
-          position: 'fixed',
+          position: "fixed",
           top: 0,
           right: 0,
           zIndex: 2499,
-          width: isMobileViewport ? 'min(94vw, 430px)' : 430,
-          maxWidth: '100vw',
-          height: '100vh',
-          background: '#fff',
-          borderLeft: '1px solid #dbe5ee',
-          boxShadow: '-16px 0 36px rgba(15,23,42,0.18)',
-          padding: isMobileViewport ? '14px 14px 16px' : '16px 14px 18px',
-          display: 'grid',
-          gridTemplateRows: 'auto auto 1fr',
-          gap: 12,
-          overflow: 'hidden',
-          overscrollBehavior: 'contain'
+          width: drawerWidth,
+          maxWidth: "100vw",
+          height: "100dvh",
+          background: "#f0f4f8",
+          borderLeft: "1px solid #dbe5ee",
+          boxShadow: "-20px 0 56px rgba(15,23,42,0.18)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          overscrollBehavior: "contain",
+          fontFamily: "inherit",
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: '#0f172a' }}>In Progress Orders</div>
-            <div style={{ marginTop: 2, fontSize: 12, color: '#64748b' }}>
-              {isAccountTracking ? 'Active orders linked to your DGFY account.' : 'Active guest orders saved on this device.'}
+        {/* ── Sticky Header ── */}
+        <div
+          style={{
+            background: "#fff",
+            borderBottom: "1px solid #e8f0f8",
+            padding: isMobileViewport ? "16px 16px" : "20px 22px",
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", letterSpacing: "-0.02em", lineHeight: 1.2 }}>
+                In Progress Orders
+              </div>
+              <div style={{ marginTop: 4, fontSize: 13, color: "#64748b", fontWeight: 600 }}>
+                {isAccountTracking
+                  ? "Active orders linked to your DGFY account."
+                  : "Active guest orders saved on this device."}
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                color: "#64748b",
+                padding: 0,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <X size={18} />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close tracking drawer"
-            style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: 0, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <X size={18} />
-          </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, alignItems: 'center', position: 'sticky', top: 0, zIndex: 2, background: '#fff', paddingBottom: 6, borderBottom: '1px solid #eef2f6' }}>
-          <input
-            value={trackingPinInput}
-            onChange={(e) => onTrackingPinInputChange(e.target.value.toUpperCase())}
-            placeholder="SK-018DS8"
-            style={{ minWidth: 0, border: '1px solid #cbd5e1', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}
-          />
-          <button
-            type="button"
-            onClick={onTrack}
-            disabled={!selectedStore}
-            style={{ minHeight: 40, borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '0 14px', fontWeight: 700, cursor: selectedStore ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap' }}
-          >
-            Track
-          </button>
-          {trackingError ? (
-            <div style={{ gridColumn: '1 / -1', color: '#b91c1c', fontSize: 12, lineHeight: 1.4, fontWeight: 600 }}>
-              {trackingError}
-            </div>
-          ) : null}
+
+        {/* ── Scrollable Orders ── */}
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            padding: isMobileViewport ? "16px 14px" : "20px 18px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          {filteredOrders.length === 0 ? (
+            <TrackingEmptyState isAccountTracking={isAccountTracking} />
+          ) : (
+            filteredOrders.map((entry) => {
+              const entryPin = String(entry.tracking_pin || "").trim().toUpperCase();
+              return (
+                <GuestTrackingDrawerCard
+                  key={"guest-track-drawer-" + entryPin}
+                  entry={entry}
+                  entryPin={entryPin}
+                  expanded={expandedPins.includes(entryPin)}
+                  onToggle={() => {
+                    const nextExpandedPins = expandedPins.includes(entryPin)
+                      ? expandedPins.filter((pin) => pin !== entryPin)
+                      : [...expandedPins, entryPin];
+                    onExpandedGuestDrawerPinsChange(nextExpandedPins);
+                  }}
+                  onViewOrder={() => openFullTrackingForPin(entryPin)}
+                  selectedStore={selectedStore}
+                  withAssetOrigin={withAssetOrigin}
+                  money={money}
+                  formatTicketDate={formatTicketDate}
+                  getTrackingFlowForOrderMethod={getTrackingFlowForOrderMethod}
+                />
+              );
+            })
+          )}
         </div>
-        <div style={{ minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', display: 'grid', gap: 8, alignContent: 'start', paddingRight: 2 }}>
-          {guestTrackedOrders.length === 0 ? (
-            <div style={{ fontSize: 13, color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px', background: '#f8fafc' }}>
-              {isAccountTracking
-                ? 'No in-progress account orders yet. Enter a tracking PIN to load a specific order.'
-                : 'No in-progress orders saved yet. Enter a tracking PIN from this storefront to load one.'}
-            </div>
-          ) : null}
-          {guestTrackedOrders.map((entry) => {
-            const entryPin = String(entry.tracking_pin || '').trim().toUpperCase();
-            return (
-              <GuestTrackingDrawerCard
-                key={`guest-track-drawer-${entryPin}`}
-                entry={entry}
-                entryPin={entryPin}
-                expanded={expandedGuestDrawerPin === entryPin}
-                onToggle={() => onExpandedGuestDrawerPinChange(expandedGuestDrawerPin === entryPin ? null : entryPin)}
-                onViewOrder={() => openFullTrackingForPin(entryPin)}
-                selectedStore={selectedStore}
-                withAssetOrigin={withAssetOrigin}
-                money={money}
-                formatTicketDate={formatTicketDate}
-                getTrackingFlowForOrderMethod={getTrackingFlowForOrderMethod}
-              />
-            );
-          })}
+
+        {/* ── Sticky Footer ── */}
+        <div
+          style={{
+            background: "#fff",
+            borderTop: "1px solid #e8f0f8",
+            padding: isMobileViewport ? "12px 16px" : "14px 22px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: 11, color: "#94a3b8", fontWeight: 600, lineHeight: 1.5, flex: 1 }}>
+            <Info size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+            Only showing active orders. Completed orders are not displayed.
+          </div>
+          {onClearAllOrders && Array.isArray(guestTrackedOrders) && guestTrackedOrders.length > 0 && (
+            <button
+              type="button"
+              onClick={onClearAllOrders}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                border: "1px solid #fca5a5",
+                borderRadius: 8,
+                background: "#fff",
+                color: "#b91c1c",
+                fontSize: 12,
+                fontWeight: 700,
+                padding: "6px 10px",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              <Trash2 size={12} />
+              Clear all orders
+            </button>
+          )}
         </div>
       </aside>
-    </>
+    </React.Fragment>
   );
 }
