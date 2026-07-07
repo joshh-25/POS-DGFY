@@ -1,7 +1,7 @@
 import { getStorefrontModeAdapter } from './modePresentationRegistry.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getServicesStorefrontViewModel } from './servicesStorefrontViewModel.js';
-import { formatStorefrontBusinessHoursDisplay } from '../../../src/features/settings/storefrontBusinessHours.js';
+import { formatStorefrontBusinessHoursDisplay, normalizeStorefrontBusinessHours } from '../../../src/features/settings/storefrontBusinessHours.js';
 
 const trimText = (value) => String(value || '').trim();
 
@@ -190,6 +190,7 @@ export const normalizeStorefrontPageModel = ({
   const messageHref = buildStorefrontMessageHref({ messengerLink, phone, email });
   const locationSummary = trimText(selectedStore?.location_name || selectedStore?.address_line);
   const addressLine = trimText(selectedStore?.address_line);
+  const rawHoursData = selectedStore?.storefront_hours ? normalizeStorefrontBusinessHours(selectedStore.storefront_hours) : null;
   const hours = trimText(
     formatStorefrontBusinessHoursDisplay(selectedStore?.storefront_hours)
     || selectedStore?.storefront_hours
@@ -201,7 +202,7 @@ export const normalizeStorefrontPageModel = ({
   if (facebookLink) contactRows.push({ label: 'Facebook', value: 'Facebook', href: facebookLink });
   if (messengerLink) contactRows.push({ label: 'Messenger', value: 'Messenger', href: messengerLink });
   if (instagramLink) contactRows.push({ label: 'Instagram', value: 'Instagram', href: instagramLink });
-  if (hours) contactRows.push({ label: 'Hours', value: hours, href: '' });
+  if (hours) contactRows.push({ label: 'Hours', value: hours, href: '', rawHoursData });
 
   const derivedServiceCategoryLabels = servicesViewModel.serviceGroups
     .map((group) => trimText(group?.categoryMeta?.label || group?.categoryKey))
@@ -251,6 +252,7 @@ export const normalizeStorefrontPageModel = ({
       phone,
       email,
       hours,
+      rawHoursData,
       messengerLink: preferredSupportLink,
       facebookLink,
       instagramLink,

@@ -475,7 +475,7 @@ export function FnbProductDetailsPage({
                     aria-label={`Add ${recommended.name} to cart`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onQuickAdd?.(recommended);
+                      onQuickAdd?.(recommended, event);
                     }}
                     style={{
                       width: 36,
@@ -545,7 +545,7 @@ export function FnbProductDetailsPage({
                       aria-label={`Add ${recommended.name} to cart`}
                       onClick={(event) => {
                         event.stopPropagation();
-                        onQuickAdd?.(recommended);
+                        onQuickAdd?.(recommended, event);
                       }}
                       style={{
                         width: 28,
@@ -1357,7 +1357,7 @@ export function FnbProductDetailsPage({
                   {/* Add to Cart - filled green (primary) */}
                   <button
                     type="button"
-                    onClick={onAddToCart}
+                    onClick={(event) => onAddToCart?.(event)}
                     disabled={!available}
                     style={{
                       ...actionButtonBase,
@@ -1375,7 +1375,7 @@ export function FnbProductDetailsPage({
                   {/* Buy Now - orange, no gradient */}
                   <button
                     type="button"
-                    onClick={onBuyNow}
+                    onClick={(event) => onBuyNow?.(event)}
                     disabled={!available}
                     style={{
                       ...actionButtonBase,
@@ -1443,7 +1443,7 @@ export function FnbProductDetailsPage({
               </button>
               <button
                 type="button"
-                onClick={onBuyNow}
+                onClick={(event) => onBuyNow?.(event)}
                 disabled={!available}
                 style={{
                   ...actionButtonBase,
@@ -1575,9 +1575,9 @@ export function FnbProductDetailsPage({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(event) => {
                         setIsMobileSummaryOpen(false);
-                        onAddToCart?.();
+                        onAddToCart?.(event);
                       }}
                       disabled={!available}
                       style={{
@@ -1606,4 +1606,3 @@ export function FnbProductDetailsPage({
     </section>
   );
 }
-

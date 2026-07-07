@@ -1,9 +1,9 @@
 import React from 'react';
 import QRCode from 'qrcode';
-import dgfyHeaderLogo from '../../../../../public/dgfy-logo.png';
+import dgfyHeaderLogo from '../../../../../../public/dgfy-logo.png';
 import { ArrowLeft, Mail, MapPin, MousePointer2, Search, Share2, ShoppingBag, ShoppingCart, Sparkles, Star } from 'lucide-react';
 import { getStorefrontModeAdapter } from '../../modePresentationRegistry.js';
-import { getDefaultStorefrontPath } from '../../defaultStorefrontRoute.js';
+import { buildStorefrontQrUrl } from '../../storefrontQrUrl.js';
 import { useStorefrontTemplateViewport } from './useStorefrontTemplateViewport.js';
 import './storefrontTemplate.css';
 
@@ -42,13 +42,15 @@ export function StoreDashboard({ pageModel = {}, onNavigate }) {
   const model = React.useMemo(() => buildTemplateModel(pageModel), [pageModel]);
   const [qrCodeDataUrl, setQrCodeDataUrl] = React.useState('');
 
-  const shareUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${getDefaultStorefrontPath()}`
-    : `https://dgfy.ph${getDefaultStorefrontPath()}`;
+  const shareUrl = React.useMemo(() => buildStorefrontQrUrl({
+    slug: model.navigation.storefrontSlug || model.hero.slug || '',
+    fallbackPath: '/store-template',
+    currentPath: typeof window !== 'undefined' ? window.location.pathname : '/store-template'
+  }), [model.navigation.storefrontSlug, model.hero.slug]);
 
   React.useEffect(() => {
     let ignore = false;
-    QRCode.toDataURL(model.hero.qrValue || shareUrl, {
+    QRCode.toDataURL(shareUrl, {
       margin: 0,
       width: 180,
       color: {
@@ -63,7 +65,7 @@ export function StoreDashboard({ pageModel = {}, onNavigate }) {
     return () => {
       ignore = true;
     };
-  }, [model.hero.qrValue, shareUrl]);
+  }, [shareUrl]);
 
   return (
     <div className="store-template">

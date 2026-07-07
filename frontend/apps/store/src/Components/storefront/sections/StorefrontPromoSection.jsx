@@ -17,7 +17,6 @@ const parseDiscountLabel = (raw) => {
 
 export function StorefrontPromoSection({
   items,
-  onPromoSelect,
   isMobileViewport,
   layoutVariant = 'feature',
   palette = 'orange',
@@ -103,7 +102,6 @@ export function StorefrontPromoSection({
         >
           {items.map((promoEntry, index) => {
             const badgeText      = cleanPromoText(promoEntry.badge);
-            const promoCode      = cleanPromoText(promoEntry.promoCode).toUpperCase();
             const titleText      = cleanPromoText(promoEntry.title);
             const headlineText   = cleanPromoText(promoEntry.headline);
             const subtitleText   = cleanPromoText(promoEntry.subtitle);
@@ -131,14 +129,10 @@ export function StorefrontPromoSection({
             const notchR   = isMobileViewport ? 13 : 15;
             const cardMinH = isMobileViewport ? 138 : 164;
             const disc     = parseDiscountLabel(promoOfferLabel);
-            const isClickable = typeof onPromoSelect === 'function' && Boolean(promoCode);
 
             return (
               <article
                 key={`promo-wrap-${index}`}
-                role={isClickable ? 'button' : undefined}
-                tabIndex={isClickable ? 0 : undefined}
-                aria-label={isClickable ? `Apply promo code ${promoCode}` : undefined}
                 style={{
                   position: 'relative',
                   display: 'flex',
@@ -151,19 +145,8 @@ export function StorefrontPromoSection({
                   boxShadow: `inset 0 0 0 1px ${cardBorder}, 0 4px 16px rgba(0,0,0,0.08)`,
                   overflow: 'hidden',
                   transition: 'transform 0.22s ease, box-shadow 0.22s ease',
-                  cursor: isClickable ? 'pointer' : 'default',
                   animation: layoutVariant === 'feature' ? 'promoCardFloatIn 380ms ease both' : undefined,
                   animationDelay: layoutVariant === 'feature' ? `${index * 80}ms` : undefined,
-                }}
-                onClick={() => {
-                  if (isClickable) onPromoSelect(promoCode);
-                }}
-                onKeyDown={(event) => {
-                  if (!isClickable) return;
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onPromoSelect(promoCode);
-                  }
                 }}
                 onMouseEnter={(e) => {
                   if (isMobileViewport) return;
@@ -404,21 +387,6 @@ export function StorefrontPromoSection({
                     <Calendar size={isMobileViewport ? 11 : 12} strokeWidth={2} color="#166534" />
                     {validityBadgeLabel}
                   </span>
-                  {promoCode ? (
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignSelf: 'flex-start',
-                        marginTop: 2,
-                        fontSize: isMobileViewport ? 11 : 12,
-                        fontWeight: 800,
-                        color: accentColor,
-                        fontFamily: bodyFontFamily
-                      }}
-                    >
-                      Click to apply {promoCode}
-                    </span>
-                  ) : null}
                 </div>
               </article>
             );
