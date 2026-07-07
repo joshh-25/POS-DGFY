@@ -52,7 +52,20 @@ const accountPanel = {
     balance: 8,
     transactions: []
   },
-  businessCompanies: []
+  businessCompanies: [
+    {
+      membership_id: 'membership-1',
+      tenant_id: 'tenant-1',
+      company_name: 'Space Bar',
+      membership_status: 'accepted',
+      tenant_status: 'active',
+      is_owner: true,
+      category_label: 'Food & Beverage',
+      address_line: 'Megaworld Boulevard, Iloilo Business Park',
+      storefront_cover_image_url: '/uploads/storefront-assets/space/cover.png',
+      storefront_profile_image_url: '/uploads/storefront-assets/space/profile.png'
+    }
+  ]
 };
 
 const renderDashboard = (props = {}) => render(
@@ -71,6 +84,8 @@ const renderDashboard = (props = {}) => render(
     accountPanel={accountPanel}
     activeOrders={accountPanel.orders}
     activeOrderCount={accountPanel.orders.length}
+    resolveBusinessAssetUrl={(value) => value}
+    onOpenBusinessPos={vi.fn()}
     {...props}
   />
 );
@@ -106,8 +121,8 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByText('PHP 251.49')).toBeTruthy();
     expect(screen.getByText('Placed')).toBeTruthy();
     expect(screen.getByText('Confirmed')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'View Receipt' })).toHaveLength(2);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Track' })[0]);
+    expect(screen.getAllByRole('button', { name: 'View Order' })).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Track Order' })[0]);
     expect(onTrackReference).toHaveBeenCalledTimes(1);
     expect(onTrackReference.mock.calls[0][0]).toMatchObject({ reference: 'SK-M3SGQA' });
   });
@@ -148,5 +163,61 @@ describe('DGFY customer account dashboard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
     fireEvent.click(screen.getByText('Mark all read'));
     expect(onMarkAllNotificationsRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows Set Default only for non-default addresses while keeping edit and delete available', () => {
+    const onSetDefaultAddress = vi.fn();
+    renderDashboard({ onSetDefaultAddress });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Addresses' }));
+
+    expect(screen.getAllByText('Default').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Iloilo Business Park').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Set Default' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set Default' }));
+    expect(onSetDefaultAddress).toHaveBeenCalledWith(expect.objectContaining({ address_id: 'addr-2' }));
+  }, 15000);
+
+  it('uses the authenticated account profile email in the Account tab instead of a stale contact string', () => {
+    renderDashboard({
+      accountIdentityContact: '+639108617987 | stale@example.com',
+      accountPanel: {
+        ...accountPanel,
+        me: {
+          ...accountPanel.me,
+          email: 'real-dgfy@example.com'
+        }
+      }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Account' }));
+
+    expect(screen.getAllByText('real-dgfy@example.com').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('stale@example.com')).toBeNull();
+  });
+
+  it('renders the premium business grid with direct POS access and storefront assets', () => {
+    const onOpenBusinessPos = vi.fn();
+    renderDashboard({
+      onOpenBusinessPos,
+      accountPanel: {
+        ...accountPanel,
+        businessStepUp: { verified: true }
+      }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Business Premium/i }));
+
+    expect(screen.getByText('Premium access to the companies and tools connected to this DGFY account.')).toBeTruthy();
+    expect(screen.getByText('Food & Beverage')).toBeTruthy();
+    expect(screen.getByAltText('Space Bar cover')).toBeTruthy();
+    expect(screen.getByAltText('Space Bar profile')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to POS' }));
+    expect(onOpenBusinessPos).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-1' }));
+    expect(screen.queryByRole('button', { name: 'Go to Inventory' })).toBeNull();
   });
 });

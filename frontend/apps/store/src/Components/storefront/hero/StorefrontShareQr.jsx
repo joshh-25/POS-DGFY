@@ -188,7 +188,7 @@ export function StorefrontShareQr({
     <div
       style={{
         position: 'absolute',
-        top: isMobileViewport ? 44 : 22,
+        top: isMobileViewport ? 22 : 22,
         left: 'auto',
         right: isMobileViewport ? 16 : `max(41px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 41px))`,
         transform: 'none',

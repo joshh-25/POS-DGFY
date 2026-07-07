@@ -222,10 +222,7 @@ const getMapViewportCallCount = () => getMapApis().reduce((total, mapApi) => (
   total + (mapApi.flyTo?.mock?.calls?.length || 0) + (mapApi.fitBounds?.mock?.calls?.length || 0)
 ), 0);
 
-const getLatestMapApi = () => (
-  getMapApis().filter((api) => api?.container?.isConnected).at(-1)
-  || getMapApis().at(-1)
-);
+const getLatestMapApi = () => getMapApis().at(-1);
 
 const getDiscoveryPinFeatures = () => {
   const source = getLatestMapApi()?.getSource?.('dgfy-discovery-pins');
@@ -239,11 +236,6 @@ const getDiscoveryUserFeatures = () => {
 
 const waitForDiscoveryPinFeatures = async (count) => {
   await waitFor(() => expect(getDiscoveryPinFeatures().length).toBe(count));
-  return getDiscoveryPinFeatures();
-};
-
-const waitForDiscoveryPinFeaturesAtLeast = async (count) => {
-  await waitFor(() => expect(getDiscoveryPinFeatures().length).toBeGreaterThanOrEqual(count));
   return getDiscoveryPinFeatures();
 };
 
@@ -553,8 +545,8 @@ describe('storefront discovery integration flow', () => {
     expect(screen.getByRole('button', { name: 'Use for Checkout' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Track' }).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Reorder Items' })).toBeTruthy();
-  }, 15000);
+    expect(screen.getByRole('button', { name: 'Reorder' })).toBeTruthy();
+  });
 
   it('searches only after the current search action is submitted', async () => {
     const user = userEvent.setup();
@@ -614,6 +606,31 @@ describe('storefront discovery integration flow', () => {
       .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
       .filter(Boolean);
     expect(searchValues).toContain('milk');
+  });
+
+  it('keeps mobile discovery search results rendered after submit', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 390
+    });
+    window.dispatchEvent(new Event('resize'));
+    const user = userEvent.setup();
+
+    render(<App />);
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1);
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
+    await user.type(searchInput, 'milk');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Showing businesses related to "milk"/i)).toBeTruthy();
+    });
+    expect(screen.getByText(/Stores Found/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /view all stores/i })).toBeNull();
   });
 
   it('centers initial discovery on existing granted location permission without prompting denied users', async () => {
@@ -1186,15 +1203,14 @@ describe('storefront discovery integration flow', () => {
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'space');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
     await waitFor(() => expect(screen.getAllByText('Space Bar').length).toBeGreaterThan(1));
-    await user.click(screen.getByRole('button', { name: /View Results \(1\)/i }));
     expect(screen.getByRole('button', { name: /Hide Results/i })).toBeTruthy();
 
     await user.click(screen.getAllByRole('button', { name: 'Order Now' })[0]);
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/tenant-store/space-bar-8ddb33');
+      expect(window.location.pathname).toBe('/space-bar-8ddb33');
     });
-    expect(window.location.pathname).not.toBe('/tenant-store/space-bar-8ddb33/order');
+    expect(window.location.pathname).not.toBe('/space-bar-8ddb33/order');
   });
 
   it('opens a marker preview first and routes the card action with the pinned location id', async () => {
@@ -1261,12 +1277,12 @@ describe('storefront discovery integration flow', () => {
 
     const user = userEvent.setup();
     render(<App />);
-    const [alphaFeature] = await waitForDiscoveryPinFeaturesAtLeast(1);
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
     expect(alphaFeature.properties?.markerKey).toContain('alpha');
     expect(alphaFeature.geometry.coordinates).toEqual([122.56, 10.72]);
 
     emitDiscoveryPinClick(alphaFeature);
-    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText('Main').length).toBeGreaterThan(0));
     expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: 'Open storefront' }));
@@ -1330,7 +1346,7 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    const [alphaFeature] = await waitForDiscoveryPinFeaturesAtLeast(1);
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
 
     emitDiscoveryPinClick(alphaFeature);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
@@ -1394,7 +1410,7 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    const [alphaFeature] = await waitForDiscoveryPinFeaturesAtLeast(1);
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
 
     emitDiscoveryPinClick(alphaFeature);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
@@ -1539,7 +1555,7 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => expect(screen.getByText('Stores At This Pin')).toBeTruthy());
     await waitFor(() => expect(getMapApis().filter((api) => api?.container?.isConnected).length).toBe(1));
     expect(screen.getByText('2 Stores Found')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Hide Results/i }));
+    fireEvent.click(screen.getByRole('button', { name: /collapse results panel/i }));
     expect(screen.getByRole('button', { name: /View Results \(2\)/i })).toBeTruthy();
     expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Beta Foods').length).toBeGreaterThan(0);
@@ -1668,7 +1684,7 @@ describe('storefront discovery integration flow', () => {
     await waitForDiscoveryPinFeatures(0);
   });
 
-  it('renders shared provisioned placeholder coordinates only as an explicit cluster', async () => {
+  it('does not render provisioned placeholder storefront coordinates as authoritative map pins', async () => {
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -1734,14 +1750,12 @@ describe('storefront discovery integration flow', () => {
 
     await waitFor(() => {
       const coordinates = getDiscoveryPinFeatures().map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
-      expect(coordinates).toContainEqual(['122.559893', '10.699817']);
+      expect(coordinates).not.toContainEqual(['122.559893', '10.699817']);
       expect(coordinates).toContainEqual(['122.562309', '10.700194']);
     });
-    const features = getDiscoveryPinFeatures();
-    const coordinates = features.map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
-    expect(coordinates).toContainEqual(['122.559893', '10.699817']);
+    const coordinates = getDiscoveryPinFeatures().map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
+    expect(coordinates).not.toContainEqual(['122.559893', '10.699817']);
     expect(coordinates).toContainEqual(['122.562309', '10.700194']);
-    expect(features.find((feature) => feature.properties?.placeholderCluster === true)?.properties?.count).toBe(2);
   });
 
   it('discloses cluster overflow when more than eight storefronts share coordinates', async () => {

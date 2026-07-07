@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, MapPin, Menu, Package, ShoppingBag, User, X } from 'lucide-react';
+import dgfyHeaderLogo from '../../../../../../public/dgfy-logo.png';
 
 const HERO_CANVAS_MAX_WIDTH = 1320;
-const DGFY_HEADER_LOGO_URL = '/dgfy-logo.png';
+const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_DISCOVERY_HOME_URL = 'https://dgfy.ph/';
 const DGFY_OCEAN_BLUE = '#1A4E8D';
 const DGFY_DEEP_BLUE = '#1A4586';
@@ -15,10 +16,12 @@ export function StorefrontHeaderNav({
   onShop,
   onTrack = null,
   onAccount = null,
+  onRegisterBusiness = null,
   branchSelector = null,
   activeOrderCount = 0,
   isAuthenticated = false,
   accountName = '',
+  accountEmail = '',
   accountInitials = '',
   storefrontName = '',
   storefrontModeLabel = '',
@@ -65,8 +68,6 @@ export function StorefrontHeaderNav({
   const resolvedStorefrontModeLabel = String(storefrontModeLabel || '').trim() || 'Local Business';
   const resolvedStorefrontSlug = String(storefrontSlug || '').trim();
   const resolvedStorefrontInitial = resolvedStorefrontName.charAt(0).toUpperCase() || 'S';
-  const resolvedFirstName = String(accountName || '').trim().split(/\s+/).filter(Boolean)[0] || 'My Account';
-
   const handleDrawerAction = (callback) => {
     setIsMobileMenuOpen(false);
     callback?.();
@@ -220,13 +221,13 @@ export function StorefrontHeaderNav({
                     aria-label={`${activeOrderCount} active order${activeOrderCount === 1 ? '' : 's'}`}
                     style={{
                       position: 'absolute',
-                      top: -2,
-                      right: -1,
-                      minWidth: 20,
-                      height: 20,
+                      top: -4,
+                      right: -4,
+                      minWidth: 18,
+                      height: 18,
                       borderRadius: 999,
-                      padding: '0 6px',
-                      background: '#f97316',
+                      padding: '0 5px',
+                      background: '#FF0000',
                       color: '#ffffff',
                       border: '2px solid #ffffff',
                       display: 'inline-flex',
@@ -235,7 +236,8 @@ export function StorefrontHeaderNav({
                       fontSize: 11,
                       fontWeight: 800,
                       lineHeight: 1,
-                      boxShadow: '0 8px 18px rgba(249, 115, 22, 0.28)',
+                      boxShadow: '0 8px 18px rgba(255, 0, 0, 0.22)',
+                      zIndex: 3,
                       pointerEvents: 'none'
                     }}
                   >
@@ -419,7 +421,9 @@ export function StorefrontHeaderNav({
               minWidth: 0,
               whiteSpace: 'nowrap',
               marginLeft: 'auto',
-              flex: '0 1 auto'
+              flex: '0 1 auto',
+              position: 'relative',
+              zIndex: 2
             }}
           >
             {branchSelector}
@@ -442,7 +446,7 @@ export function StorefrontHeaderNav({
                 Track Order
               </button>
             )}
-            <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, marginLeft: 4 }}>
+            <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, marginLeft: 4, zIndex: 3 }}>
               <button
                 type="button"
                 aria-label="Profile"
@@ -463,7 +467,10 @@ export function StorefrontHeaderNav({
                   padding: isAuthenticated ? '0' : '0 4px',
                   fontFamily: bodyFont || '"Source Sans 3", "Segoe UI", sans-serif',
                   fontSize: 15,
-                  fontWeight: 700
+                  fontWeight: 700,
+                  position: 'relative',
+                  zIndex: 3,
+                  pointerEvents: 'auto'
                 }}
                 onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.opacity = '0.9'; }}
                 onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.opacity = '1'; }}
@@ -482,12 +489,13 @@ export function StorefrontHeaderNav({
                         justifyContent: 'center',
                         fontSize: 13,
                         fontWeight: 800,
-                        flexShrink: 0
+                        flexShrink: 0,
+                        position: 'relative',
+                        zIndex: 1
                       }}
                     >
                       {resolvedInitials}
                     </span>
-                    <span style={{ lineHeight: 1, whiteSpace: 'nowrap' }}>{resolvedFirstName}</span>
                   </>
                 ) : (
                   <User size={20} strokeWidth={2.5} />
@@ -498,13 +506,13 @@ export function StorefrontHeaderNav({
                   aria-label={`${activeOrderCount} active order${activeOrderCount === 1 ? '' : 's'}`}
                   style={{
                     position: 'absolute',
-                    top: -2,
-                    right: -1,
-                    minWidth: 20,
-                    height: 20,
+                    top: -5,
+                    right: -5,
+                    minWidth: 18,
+                    height: 18,
                     borderRadius: 999,
-                    padding: '0 6px',
-                    background: '#f97316',
+                    padding: '0 5px',
+                    background: '#FF0000',
                     color: '#ffffff',
                     border: '2px solid #ffffff',
                     display: 'inline-flex',
@@ -513,7 +521,8 @@ export function StorefrontHeaderNav({
                     fontSize: 11,
                     fontWeight: 800,
                     lineHeight: 1,
-                    boxShadow: '0 8px 18px rgba(249, 115, 22, 0.28)',
+                    boxShadow: '0 8px 18px rgba(255, 0, 0, 0.22)',
+                    zIndex: 3,
                     pointerEvents: 'none'
                   }}
                 >
