@@ -99,7 +99,8 @@ export function DiscoveryHeader({
   onItemClick,
   accountName,
   accountInitials,
-  accountSubtitle = ''
+  accountSubtitle = '',
+  activeOrderCount = 0
 }) {
   const isMobileViewport = viewportMode === 'mobile';
   const isTabletViewport = viewportMode === 'tablet';
@@ -107,6 +108,34 @@ export function DiscoveryHeader({
   const accountPreviewSubtitle = isAuthenticated
     ? (accountSubtitle || accountLabel)
     : 'Sign in or create an account';
+  const avatarBadge = activeOrderCount > 0 ? (
+    <span
+      aria-label={`${activeOrderCount} in-progress order${activeOrderCount === 1 ? '' : 's'}`}
+      style={{
+        position: 'absolute',
+        top: -7,
+        right: -7,
+        minWidth: 18,
+        height: 18,
+        borderRadius: '50%',
+        background: '#FF0000',
+        color: '#ffffff',
+        border: '2px solid #ffffff',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 11,
+        fontWeight: 800,
+        lineHeight: 1,
+        boxSizing: 'border-box',
+        pointerEvents: 'none',
+        zIndex: 3,
+        boxShadow: '0 6px 14px rgba(255, 0, 0, 0.22)'
+      }}
+    >
+      {activeOrderCount > 99 ? '99+' : activeOrderCount}
+    </span>
+  ) : null;
   return (
     <nav className={cx('discovery-header', `discovery-header--${viewportMode}`)}>
       <div className="discovery-header__inner">
@@ -140,13 +169,16 @@ export function DiscoveryHeader({
                   aria-label={accountLabel}
                   className="discovery-header__mobileProfileTrigger"
                 >
-                  {accountInitials ? (
-                    <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>
-                      {accountInitials}
-                    </div>
-                  ) : (
-                    <UserCircle2 size={22} />
-                  )}
+                  <span style={{ position: 'relative', display: 'inline-flex', overflow: 'visible' }}>
+                    {accountInitials ? (
+                      <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, position: 'relative', zIndex: 1 }}>
+                        {accountInitials}
+                      </div>
+                    ) : (
+                      <UserCircle2 size={22} />
+                    )}
+                    {avatarBadge}
+                  </span>
                 </button>
               ) : null}
               <button type="button" onClick={onMenuToggle} className="discovery-header__menuButton" aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}>
@@ -163,15 +195,17 @@ export function DiscoveryHeader({
                   style={isAuthenticated ? { background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#101828', fontSize: isTabletViewport ? 14 : 15, fontWeight: 600 } : undefined}
                 >
                   {isAuthenticated ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {accountInitials ? (
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>
-                          {accountInitials}
-                        </div>
-                      ) : (
-                        <UserCircle2 size={isTabletViewport ? 14 : 15} />
-                      )}
-                      <span>{accountName ? accountName.split(' ')[0] : accountLabel}</span>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <span style={{ position: 'relative', display: 'inline-flex', overflow: 'visible' }}>
+                        {accountInitials ? (
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, position: 'relative', zIndex: 1 }}>
+                            {accountInitials}
+                          </div>
+                        ) : (
+                          <UserCircle2 size={isTabletViewport ? 14 : 15} />
+                        )}
+                        {avatarBadge}
+                      </span>
                       <ChevronDown size={14} style={{ marginLeft: 4 }} />
                     </div>
                   ) : (

@@ -6,12 +6,12 @@ export function OrderSummaryCard({
   statusRows = [],
   lineItems = [],
   totalsRows = [],
-  promoSlot = null,
   itemsTitle = 'Your Items',
   bodyFont = "'Avenir Next', 'Segoe UI', sans-serif",
   displayFont = "'Avenir Next', 'Segoe UI', sans-serif",
   sticky = false,
-  top = 8
+  top = 8,
+  promoPanel = null
 }) {
   return (
     <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: sticky ? 'sticky' : 'static', top }}>
@@ -27,7 +27,6 @@ export function OrderSummaryCard({
           ))}
         </div>
       )}
-      {promoSlot ? <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>{promoSlot}</div> : null}
       {lineItems.length > 0 && (
         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'grid', gap: 12 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', fontFamily: displayFont }}>{itemsTitle}</div>
@@ -47,6 +46,7 @@ export function OrderSummaryCard({
           </div>
         </div>
       )}
+      {promoPanel}
       {totalsRows.length > 0 && (
         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
           {totalsRows.map((row) => (

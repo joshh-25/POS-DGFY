@@ -83,14 +83,17 @@ export function MenuSection({ menu, categories, onAddToCart }) {
             </div>
             <div className="p-3">
               <h4 className="text-sm font-semibold text-gray-900 mb-1">{item.name}</h4>
-              <p className="text-xs text-gray-500 leading-relaxed mb-2 line-clamp-2">{item.description}</p>
+              <div className="relative h-[2.8rem] overflow-hidden mb-2">
+                <p className="text-xs text-gray-500 leading-relaxed">{item.description}</p>
+                <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white to-transparent pointer-events-none"></div>
+              </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm font-bold text-gray-900">₱{item.price.toFixed(2)}</span>
                 <button 
                   className="border border-[#E8540A] text-[#E8540A] bg-white px-3 py-1 rounded-md text-xs font-medium cursor-pointer hover:bg-orange-50 transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onAddToCart?.(item);
+                    onAddToCart?.(item, e);
                   }}
                 >
                   + Add
