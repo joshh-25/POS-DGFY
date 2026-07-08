@@ -20501,6 +20501,11 @@ return (
                             ))}
                           </div>
                         </div>
+                        {renderPromoCodePanel({
+                          compact: true,
+                          accentColor: fnbOrderBrand,
+                          bodyFont: servicesBodyFont
+                        })}
                         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
                           {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
@@ -20545,7 +20550,6 @@ return (
                         cashInfoAccent={fnbOrderBrand}
                         bodyFont={servicesBodyFont}
                       />
-                      {renderPromoCodePanel({ accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
                       {!isFnbOrderResponsiveFlow && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                             <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: '#fff', color: fnbOrderBrandDark, fontWeight: 800, cursor: 'pointer' }}>Refresh Quote</button>
@@ -20602,6 +20606,11 @@ return (
                             ))}
                           </div>
                         </div>
+                        {renderPromoCodePanel({
+                          compact: true,
+                          accentColor: fnbOrderBrand,
+                          bodyFont: servicesBodyFont
+                        })}
                         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
                           {promoDiscountSummaryRow ? <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div> : null}
@@ -20986,6 +20995,12 @@ return (
                       <ChevronRight size={14} strokeWidth={2.5} />
                     </div>
                   </button>
+                  {renderPromoCodePanel({
+                    compact: true,
+                    accentColor: fnbOrderBrand,
+                    bodyFont: servicesBodyFont,
+                    isMobile: isMobileViewport
+                  })}
                   <div style={{ display: 'grid', gap: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#475569' }}>
                       <span>Subtotal</span>
