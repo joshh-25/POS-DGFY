@@ -28,7 +28,9 @@ export function StorefrontPromoSection({
   sectionBackground = '#ffffff',
   mobileTrailingInset = 0,
   titleSize = null,
-  subtitleSize = null
+  subtitleSize = null,
+  activePromoCode = '',
+  onApplyPromo = null
 }) {
   if (!Array.isArray(items) || items.length === 0) return null;
 
@@ -117,9 +119,14 @@ export function StorefrontPromoSection({
             const description = descriptionParts.join(' | ') || 'Limited-time offer available in this storefront.';
 
             const promoBadgeLabel    = badgeText || titleText || 'Promo';
-            const promoOfferLabel    = headlineText || titleText || badgeText || 'Special Offer';
+            const promoOfferLabel    = cleanPromoText(promoEntry.discountLabel) || headlineText || titleText || badgeText || 'Special Offer';
             const promoDescLabel     = subtitleText || supportingText || description;
             const validityBadgeLabel = validityText || 'Limited time';
+            const promoCodeText      = cleanPromoText(promoEntry.promoCode || promoEntry.promo_code).toUpperCase();
+            const eligibleItemsText  = cleanPromoText(promoEntry.eligibleItemsText);
+            const eligibleCategoriesText = cleanPromoText(promoEntry.eligibleCategoriesText);
+            const isAppliedPromo     = Boolean(promoCodeText) && promoCodeText === String(activePromoCode || '').trim().toUpperCase();
+            const canApplyPromo      = Boolean(promoCodeText) && typeof onApplyPromo === 'function' && !isAppliedPromo;
 
             /* ─────────────────────────────────────────────────
                Modern food-delivery coupon style (applied universally)
@@ -366,27 +373,109 @@ export function StorefrontPromoSection({
                   />
 
                   {/* Validity pill — green, left-aligned */}
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignSelf: 'flex-start',
-                      alignItems: 'center',
-                      gap: 5,
-                      padding: isMobileViewport ? '4px 9px' : '5px 11px',
-                      borderRadius: 999,
-                      background: '#EAF8EC',
-                      border: '1px solid #BBF7D0',
-                      color: '#166534',
-                      fontSize: isMobileViewport ? 10 : 12,
-                      fontWeight: 600,
-                      lineHeight: 1,
-                      fontFamily: bodyFontFamily,
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <Calendar size={isMobileViewport ? 11 : 12} strokeWidth={2} color="#166534" />
-                    {validityBadgeLabel}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignSelf: 'flex-start',
+                        alignItems: 'center',
+                        gap: 5,
+                        padding: isMobileViewport ? '4px 9px' : '5px 11px',
+                        borderRadius: 999,
+                        background: '#EAF8EC',
+                        border: '1px solid #BBF7D0',
+                        color: '#166534',
+                        fontSize: isMobileViewport ? 10 : 12,
+                        fontWeight: 600,
+                        lineHeight: 1,
+                        fontFamily: bodyFontFamily,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <Calendar size={isMobileViewport ? 11 : 12} strokeWidth={2} color="#166534" />
+                      {validityBadgeLabel}
+                    </span>
+                    {promoCodeText ? (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          minHeight: isMobileViewport ? 24 : 28,
+                          padding: isMobileViewport ? '0 9px' : '0 11px',
+                          borderRadius: 999,
+                          background: '#ffffff',
+                          border: `1px solid ${cardBorder}`,
+                          color: '#0f172a',
+                          fontSize: isMobileViewport ? 10 : 12,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          fontFamily: bodyFontFamily,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <Tag size={isMobileViewport ? 11 : 12} color={accentColor} />
+                        <span style={{ color: '#64748b', fontWeight: 700 }}>Promo Code:</span>
+                        <span>{promoCodeText}</span>
+                      </span>
+                    ) : null}
+                    {isAppliedPromo ? (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          minHeight: isMobileViewport ? 24 : 28,
+                          padding: isMobileViewport ? '0 9px' : '0 11px',
+                          borderRadius: 999,
+                          background: accentTint,
+                          border: `1px solid ${cardBorder}`,
+                          color: accentColor,
+                          fontSize: isMobileViewport ? 10 : 12,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          fontFamily: bodyFontFamily,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Applied
+                      </span>
+                    ) : null}
+                    {canApplyPromo ? (
+                      <button
+                        type="button"
+                        onClick={() => onApplyPromo?.(promoCodeText)}
+                        style={{
+                          minHeight: isMobileViewport ? 24 : 28,
+                          padding: isMobileViewport ? '0 10px' : '0 12px',
+                          borderRadius: 999,
+                          border: `1px solid ${accentColor}`,
+                          background: '#ffffff',
+                          color: accentColor,
+                          fontSize: isMobileViewport ? 10 : 12,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          fontFamily: bodyFontFamily,
+                          whiteSpace: 'nowrap',
+                        }}
+                        >
+                          Use
+                        </button>
+                      ) : null}
+                  </div>
+                  {eligibleItemsText || eligibleCategoriesText ? (
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      {eligibleItemsText ? (
+                        <div style={{ fontSize: isMobileViewport ? 11 : 12, color: '#475569', lineHeight: 1.45, fontFamily: bodyFontFamily }}>
+                          <span style={{ fontWeight: 800, color: '#0f172a' }}>Eligible items:</span> {eligibleItemsText}
+                        </div>
+                      ) : null}
+                      {eligibleCategoriesText ? (
+                        <div style={{ fontSize: isMobileViewport ? 11 : 12, color: '#475569', lineHeight: 1.45, fontFamily: bodyFontFamily }}>
+                          <span style={{ fontWeight: 800, color: '#0f172a' }}>Eligible categories:</span> {eligibleCategoriesText}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </article>
             );
