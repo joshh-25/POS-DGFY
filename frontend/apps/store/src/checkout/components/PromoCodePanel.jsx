@@ -29,6 +29,7 @@ export function PromoCodePanel({
       ? { border: '#bbf7d0', background: '#f0fdf4', text: '#166534' }
       : { border: '#e2e8f0', background: '#ffffff', text: '#64748b' };
   const hasAppliedDiscount = String(appliedDiscountText || '').trim().length > 0;
+  const normalizedAvailablePromos = Array.isArray(availablePromos) ? availablePromos : [];
 
   const handleApply = (codeToApply) => {
     const finalCode = normalizePromoCode(codeToApply);
@@ -142,11 +143,14 @@ export function PromoCodePanel({
             ) : null}
 
             {/* AVAILABLE PROMOS LIST */}
-            {availablePromos.length > 0 && (
+            {normalizedAvailablePromos.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', paddingRight: 4, marginTop: 4 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Available Promos</div>
-                {availablePromos.map((promo, idx) => {
+                {normalizedAvailablePromos.map((promo, idx) => {
                   const promoCodeName = normalizePromoCode(promo.promoCode || promo.promo_code);
+                  const promoDiscountLabel = String(promo.discountLabel || '').trim();
+                  const promoEligibleItemsText = String(promo.eligibleItemsText || '').trim();
+                  const promoEligibleCategoriesText = String(promo.eligibleCategoriesText || '').trim();
                   const isApplied = hasCode && promoCodeName && normalizedCode === promoCodeName;
                   const canApplyPromo = promoCodeName.length > 0;
                   return (
@@ -156,13 +160,34 @@ export function PromoCodePanel({
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div style={{ fontSize: 15, fontWeight: 800, color: isApplied ? accentColor : '#0f172a' }}>
-                          {promoCodeName || String(promo.title || promo.headline || 'Store promo').trim() || 'Store promo'}
+                          {String(promo.title || promo.headline || promo.badge || 'Store promo').trim() || 'Store promo'}
                         </div>
+                        {promoDiscountLabel ? (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start', minHeight: 24, padding: '0 10px', borderRadius: 999, background: '#fff7ed', border: '1px solid #fdba74', color: '#c2410c', fontSize: 11, fontWeight: 800 }}>
+                            {promoDiscountLabel}
+                          </div>
+                        ) : null}
                         <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.4 }}>
                           {promo.subtitle || promo.supportingText || promo.description || 'Special offer'}
                         </div>
+                        {promoCodeName ? (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start', gap: 6, minHeight: 26, padding: '0 10px', borderRadius: 999, background: '#f8fafc', border: '1px solid #dbe5ee', color: '#0f172a', fontSize: 11, fontWeight: 800 }}>
+                            <span style={{ color: '#64748b', fontWeight: 700 }}>Promo Code:</span>
+                            <span>{promoCodeName}</span>
+                          </div>
+                        ) : null}
                         {promo.validityText ? (
                           <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{promo.validityText}</div>
+                        ) : null}
+                        {promoEligibleItemsText ? (
+                          <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.45 }}>
+                            <span style={{ fontWeight: 800, color: '#0f172a' }}>Eligible items:</span> {promoEligibleItemsText}
+                          </div>
+                        ) : null}
+                        {promoEligibleCategoriesText ? (
+                          <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.45 }}>
+                            <span style={{ fontWeight: 800, color: '#0f172a' }}>Eligible categories:</span> {promoEligibleCategoriesText}
+                          </div>
                         ) : null}
                       </div>
                       {isApplied ? (
@@ -178,7 +203,12 @@ export function PromoCodePanel({
                           Use
                         </button>
                       ) : (
-                        <span style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', whiteSpace: 'nowrap' }}>Store offer</span>
+                        <span
+                          title="This promo cannot be applied until POS saves a promo code."
+                          style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', whiteSpace: 'nowrap' }}
+                        >
+                          Promo code not set
+                        </span>
                       )}
                     </div>
                   );

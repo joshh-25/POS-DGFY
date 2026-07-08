@@ -11646,14 +11646,24 @@ export default function StorefrontApp() {
       code={promoCodeDraft}
       onChange={setPromoCodeDraft}
       onClear={() => setPromoCodeDraft('')}
+      onApplyPromo={handlePromoCardApply}
       statusMessage={promoStatusMessage}
       statusTone={promoStatusTone}
       appliedDiscountText={appliedPromoDiscountText}
       compact={options.compact === true}
       accentColor={options.accentColor || '#0f766e'}
       bodyFont={options.bodyFont || servicesBodyFont}
+      availablePromos={Array.isArray(promoSectionModel) ? promoSectionModel : []}
     />
-  ), [appliedPromoDiscountText, promoCodeDraft, promoStatusMessage, promoStatusTone, servicesBodyFont]);
+  ), [
+    appliedPromoDiscountText,
+    handlePromoCardApply,
+    promoCodeDraft,
+    promoSectionModel,
+    promoStatusMessage,
+    promoStatusTone,
+    servicesBodyFont
+  ]);
   const fnbFulfillmentStepComplete = hasDeliveryAddress({
     isDeliveryOrder,
     hasPinnedDeliveryLocation,
@@ -16675,7 +16685,8 @@ export default function StorefrontApp() {
 
                     <SharedStorefrontPromoSection
                       items={promoSectionModel}
-                      onPromoSelect={handlePromoCardApply}
+                      activePromoCode={promoCodeDraft}
+                      onApplyPromo={handlePromoCardApply}
                       isMobileViewport={isMobileViewport}
                       layoutVariant="feature"
                       palette="teal"
@@ -18272,7 +18283,8 @@ return (
         <>
           <SharedStorefrontPromoSection
             items={promoSectionModel}
-            onPromoSelect={handlePromoCardApply}
+            activePromoCode={promoCodeDraft}
+            onApplyPromo={handlePromoCardApply}
             isMobileViewport={isMobileViewport}
             layoutVariant="feature"
             palette="orange"
@@ -18336,7 +18348,8 @@ return (
         <>
           <SharedStorefrontPromoSection
             items={promoSectionModel}
-            onPromoSelect={handlePromoCardApply}
+            activePromoCode={promoCodeDraft}
+            onApplyPromo={handlePromoCardApply}
             isMobileViewport={isMobileViewport}
             layoutVariant="compact"
             palette="fnb"
