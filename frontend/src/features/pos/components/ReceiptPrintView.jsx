@@ -4,27 +4,11 @@ import resolveAssetUrl from '@/src/utils/assetUrl.js';
 const money = (value) => Number(value || 0).toFixed(2);
 const DGFY_BRAND_NAME = 'DGFY';
 const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
-const DGFY_ACRONYM = 'Discover Goods For You';
 const RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.25rem 1.25rem 3.25rem';
 const RECEIPT_LINE_GRID_COLUMNS_57MM = 'minmax(0, 1fr) 2.45rem 1.05rem 2.45rem';
 const RECEIPT_PAPER_WIDTHS = {
     '80mm': '80mm',
     '57mm': '57mm'
-};
-
-const parseTransactionMetadata = (value) => {
-    if (!value) return {};
-    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-    if (typeof value !== 'string') return {};
-    try {
-        const parsed = JSON.parse(value);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            return parsed;
-        }
-    } catch {
-        return {};
-    }
-    return {};
 };
 
 const parseArrayMetadata = (value) => {
@@ -85,8 +69,6 @@ const resolveDocumentType = ({ transaction, receiptContract }) => {
         return stored;
     }
 
-    const invoiceNumber = String(transaction?.invoice_number || '').toUpperCase();
-    if (invoiceNumber.startsWith('INV-')) return 'fiscal_invoice';
     return 'non_fiscal_slip';
 };
 
@@ -113,12 +95,6 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
     const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
     const documentType = resolveDocumentType({ transaction, receiptContract });
     const documentContext = resolveDocumentContext({ transaction, receiptContract, documentType });
-    const transactionMetadata = parseTransactionMetadata(transaction?.special_instructions);
-    const contractMetadata = transactionMetadata?.receipt_contract
-        && typeof transactionMetadata.receipt_contract === 'object'
-        ? transactionMetadata.receipt_contract
-        : {};
-    const receiptContractVersion = String(contractMetadata?.version || '').trim() || '2026.04.08';
     const isFiscal = documentType === 'fiscal_invoice';
     const isTrainingContext = documentContext === 'training_test';
     const taxpayerType = String(businessSettings.pos_taxpayer_type || '').trim().toLowerCase();
@@ -159,7 +135,6 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                 {businessSettings.pos_address && (
                     <p className="text-[9px] leading-snug text-slate-600 print:text-[8px]">{businessSettings.pos_address}</p>
                 )}
-                {businessSettings.pos_tin_branch && <p className="text-[9px] font-semibold text-slate-700 print:text-[8px]">{isVatRegistered ? 'VAT REG TIN' : 'NON-VAT REG TIN'}: {businessSettings.pos_tin_branch}</p>}
                 <h3 className="mt-1.5 text-[12px] font-bold tracking-wide text-slate-950 print:mt-1 print:text-[11px]">{documentLabel}</h3>
                 {!isFiscal && (
                     <div className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] uppercase leading-tight tracking-wide print:px-1 print:py-0.5 print:text-[8px] ${isTrainingContext ? 'border-red-300 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
@@ -167,8 +142,25 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                         <p>{isTrainingContext ? 'Training/Test mode only' : 'Non-fiscal document'}</p>
                     </div>
                 )}
+                {isFiscal && (
+                    <div className="mt-1 space-y-0.5 text-[9px] leading-tight text-slate-700 print:text-[8px]">
+                        {businessSettings.pos_tin_branch && <p>{isVatRegistered ? 'VAT REG TIN' : 'NON-VAT REG TIN'}: {businessSettings.pos_tin_branch}</p>}
+                        <p>MIN: {businessSettings.pos_min_number || '-'}</p>
+                        <p>PTU: {businessSettings.pos_ptu_number || '-'}</p>
+                        <p>ATP/OCN No.: {businessSettings.pos_accreditation_number || '-'}</p>
+                    </div>
+                )}
+                {isFiscal && (
+                    <div className="mt-2 border-t border-dashed border-slate-300 pt-2 text-left text-[10px] leading-snug text-slate-700 print:mt-1.5 print:pt-1.5 print:text-[9px]">
+                        <p className="mb-0.5 font-bold">SOLD TO:</p>
+                        <p>Customer/Registered Name: {transaction.customer_name || transaction.buyer_name || '________________'}</p>
+                        <p>TIN: {transaction.buyer_tin || '________________'}</p>
+                        <p>Business Address: {transaction.buyer_address || '____________________'}</p>
+                        {transaction.buyer_business_style && <p>Business Style: {transaction.buyer_business_style}</p>}
+                    </div>
+                )}
                 <div className="mt-2 space-y-0.5 text-left text-[10px] text-slate-700 print:mt-1.5 print:text-[9px]">
-                    <p className="flex justify-between gap-2"><span>Invoice No.</span><span className="text-right">{transaction.invoice_number || '-'}</span></p>
+                    <p className="flex justify-between gap-2"><span>Receipt No.</span><span className="text-right">{transaction.invoice_number || '-'}</span></p>
                     <p className="flex justify-between gap-2"><span>Date/Time</span><span className="text-right">{printedAt}</span></p>
                     <p className="flex justify-between gap-2"><span>Terminal</span><span className="text-right">{transaction.terminal_id || '-'}</span></p>
                     <p className="flex justify-between gap-2"><span>Cashier</span><span className="text-right">{transaction.cashier?.username || transaction.acceptedByUser?.username || '-'}</span></p>
@@ -180,13 +172,6 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                         {transaction.fnb_guest_count ? ` Guests ${transaction.fnb_guest_count}` : ''}
                     </p>
                 )}
-            </div>
-
-            <div className="mb-2 border-b border-dashed border-slate-300 pb-2 text-[10px] leading-snug text-slate-700 print:mb-1.5 print:pb-1.5 print:text-[9px]">
-                <p className="mb-0.5 font-bold">SOLD TO:</p>
-                <p>Customer/Registered Name: {transaction.customer_name || transaction.buyer_name || '________________'}</p>
-                <p>TIN: {transaction.buyer_tin || '________________'}</p>
-                <p>Business Address: {transaction.buyer_address || '____________________'}</p>
             </div>
 
             <div className="mb-2 space-y-1.5 text-[11px] print:mb-2 print:space-y-1 print:text-[10px]">
@@ -251,22 +236,26 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                     {governedDiscount.employee_id && <div className="flex justify-between gap-2 text-slate-600"><span>Employee ID</span><span className="text-right">{governedDiscount.employee_id}</span></div>}
                     {governedDiscount.reason && <div className="flex justify-between gap-2 text-slate-600"><span>Reason</span><span className="text-right">{governedDiscount.reason}</span></div>}
                 </>}
-                <div className="flex items-start justify-between gap-2 text-slate-600">
+                {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
                     <span className="min-w-0 flex-1">Vatable Sales</span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vatable_sales)}</span>
-                </div>
-                <div className="flex items-start justify-between gap-2 text-slate-600">
-                    <span className="min-w-0 flex-1">VAT Amount</span>
+                </div>}
+                {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
+                    <span className="min-w-0 flex-1">VAT 12%</span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vat_amount)}</span>
-                </div>
-                <div className="flex items-start justify-between gap-2 text-slate-600">
+                </div>}
+                {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
                     <span className="min-w-0 flex-1">VAT Exempt Sales</span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vat_exempt_sales)}</span>
-                </div>
-                <div className="flex items-start justify-between gap-2 text-slate-600">
+                </div>}
+                {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
                     <span className="min-w-0 flex-1">Zero Rated Sales</span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.zero_rated_sales)}</span>
-                </div>
+                </div>}
+                {!isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
+                    <span className="min-w-0 flex-1">Estimated Tax</span>
+                    <span className="shrink-0 whitespace-nowrap pl-2 text-right">Included</span>
+                </div>}
                 <div className="flex items-start justify-between gap-2 text-slate-600">
                     <span className="min-w-0 flex-1">
                         Discount
@@ -304,11 +293,10 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                     <p>SC/PWD/NAAC/MOV/Solo Parent ID No.: {governedDiscount?.senior_pwd_id_number || '____________'}</p>
                     <p>Signature: __________________________</p>
                 </div>
-                <div className="mt-2 border-t border-dashed border-slate-300 pt-2">
-                    <p>BIR Permit No.: {businessSettings.pos_ptu_number || '-'}</p>
-                    <p>ATP/OCN No.: {businessSettings.pos_accreditation_number || '-'}</p>
-                    <p>MIN: {businessSettings.pos_min_number || '-'}</p>
-                </div>
+            </div>
+            <div className="mt-2 border-t border-dashed border-slate-300 pt-2 text-center text-[9px] leading-snug text-slate-600 print:mt-1.5 print:pt-1.5 print:text-[8px]">
+                <p className="font-bold">{isFiscal ? 'FISCAL RECEIPT' : 'NON-FISCAL RECEIPT'}</p>
+                <p>{isFiscal ? 'Includes tax breakdown and fiscal identifiers.' : 'This document is not an official tax receipt.'}</p>
             </div>
             <div className="mt-2 space-y-0.5 border-t border-dashed border-slate-300 pt-2 text-center text-[9px] leading-snug text-slate-500 print:mt-1.5 print:pt-1.5 print:text-[8px]">
                 {businessSettings.pos_receipt_footer_message && (

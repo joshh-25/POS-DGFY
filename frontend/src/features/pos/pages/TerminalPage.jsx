@@ -109,6 +109,7 @@ const PosTenantSetupModal = lazy(() => import('../components/PosTenantSetupModal
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
+const ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY = 'pos_online_order_sound_enabled_v1';
 const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';
 const TERMINAL_LOCK_REASON_STORAGE_KEY = 'pos_terminal_lock_reason_v1';
 const TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY = 'pos_terminal_admin_lock_context_v1';
@@ -347,6 +348,11 @@ export default function TerminalPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = localStorage.getItem('posTerminalSidebarCollapsed');
     return stored === '1';
+  });
+  const [onlineOrderSoundEnabled, setOnlineOrderSoundEnabled] = useState(() => {
+    const stored = String(localStorage.getItem(ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY) || '').trim().toLowerCase();
+    if (!stored) return true;
+    return stored !== '0' && stored !== 'false' && stored !== 'off';
   });
   const [locked, setLocked] = useState(() => readStoredTerminalLock() || !getAccessToken());
   const [drawerOpen, setDrawerOpen] = useState(() => readStoredTerminalLock() || !getAccessToken());
@@ -1602,6 +1608,13 @@ export default function TerminalPage() {
   useEffect(() => {
     localStorage.setItem('posTerminalSidebarCollapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY,
+      onlineOrderSoundEnabled ? '1' : '0'
+    );
+  }, [onlineOrderSoundEnabled]);
 
   useEffect(() => {
     if (!activeTerminalId) return;
@@ -2914,6 +2927,7 @@ export default function TerminalPage() {
     }
 
     const payload = {
+      terminal_id: sanitizeTerminalId(activeTerminalId) || sanitizeTerminalId(shiftState.shift?.terminal_id) || resolveSelectedLoginTerminalId() || undefined,
       closing_cash_amount: closingCashAmount,
       closing_note: String(closeShiftForm.closingNote || '').trim() || undefined,
       idempotency_key: createIdempotencyKey('pos-shift-close')
@@ -4080,6 +4094,7 @@ export default function TerminalPage() {
           isMsmeMode={isMsmeMode}
           shiftState={shiftState}
           incomingOrdersState={incomingOrdersState}
+          onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           locationsState={locationsState}
           operatingLocationId={operatingLocationId}
           queueLocationScopeId={queueLocationScopeId}
@@ -4140,6 +4155,7 @@ export default function TerminalPage() {
           handleCheckoutCompleted={handleCheckoutCompleted}
           onPosSetupSaved={handlePosSetupSaved}
           onStorefrontSetupSaved={handleStorefrontSetupSaved}
+          setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
           setPosViewMode={setPosViewMode}
           modeChangeNotice={modeChangeNotice}
           dismissModeChangeNotice={dismissModeChangeNotice}

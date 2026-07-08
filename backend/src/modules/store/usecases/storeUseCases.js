@@ -44,6 +44,11 @@ import {
     isDateWithinStorefrontBusinessHours,
     normalizeStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';
+import {
+    buildCommercialPromoUsageUpdate,
+    normalizePromoCode,
+    resolveCommercialPromoApplication
+} from '../../shared/utils/commercialPromoPolicy.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -62,8 +67,6 @@ const MAX_TRACKING_PIN_ATTEMPTS = 20;
 const TRACKING_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const TRACKING_FAILURE_ALERT_THRESHOLD = Number.parseInt(process.env.STORE_TRACKING_ALERT_THRESHOLD, 10) || 5;
 const VAT_RATE = 0.12;
-const DEFAULT_PROMO_TIMEZONE = 'Asia/Manila';
-const PROMO_TIME_24H_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const FULFILLMENT_STATUSES = [
     'placed',
     'confirmed',
@@ -94,7 +97,6 @@ const toCentavos = (value) => Math.round(round4(value) * 100);
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const hashForLog = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 16);
 const hashStableFingerprint = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex');
-const normalizePromoCode = (value) => String(value || '').trim().toUpperCase().slice(0, 40);
 
 const normalizeFnbCourse = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
@@ -246,11 +248,11 @@ const CHECKOUT_SETTING_KEYS = Object.freeze([
     'pos_open_status',
     'pos_wait_time_minutes',
     'storefront_promo',
+    'storefront_promos',
     'storefront_hours',
     ...CUSTOMER_ACCESS_SETTING_KEYS
 ]);
 const STORE_HAS_NO_LOCATION_KEY = 'store_has_no_location';
-const STOREFRONT_PROMO_SETTING_KEY = 'storefront_promo';
 
 const toNumberOrNull = (value) => {
     const parsed = Number(value);
@@ -385,191 +387,7 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
     };
 };
 
-const parseStorefrontPromoConfig = (rawValue) => {
-    const value = rawValue && typeof rawValue === 'object' ? rawValue : {};
-    const discountPercent = Number(value.discount_percent);
-    const usageLimit = Number(value.usage_limit);
-    const usedCount = Number(value.used_count);
-    const validTimeStart = String(value.valid_time_start || '').trim();
-    const validTimeEnd = String(value.valid_time_end || '').trim();
-    return {
-        active: value.active === true,
-        title: String(value.title || '').trim(),
-        badge: String(value.badge || '').trim(),
-        subtitle: String(value.subtitle || '').trim(),
-        validityText: String(value.validity_text || '').trim(),
-        promoCode: normalizePromoCode(value.promo_code),
-        discountPercent: Number.isFinite(discountPercent) ? Math.max(0, Math.min(100, round4(discountPercent))) : 0,
-        usageLimit: Number.isInteger(usageLimit) && usageLimit > 0 ? usageLimit : null,
-        usedCount: Number.isInteger(usedCount) && usedCount >= 0 ? usedCount : 0,
-        targetItemIds: normalizePositiveIntList(value.target_item_ids),
-        validTimeStart: PROMO_TIME_24H_PATTERN.test(validTimeStart) ? validTimeStart : '',
-        validTimeEnd: PROMO_TIME_24H_PATTERN.test(validTimeEnd) ? validTimeEnd : ''
-    };
-};
-
-const parseTimeToMinutes = (value) => {
-    const match = String(value || '').trim().match(PROMO_TIME_24H_PATTERN);
-    if (!match) return null;
-    return (Number.parseInt(match[1], 10) * 60) + Number.parseInt(match[2], 10);
-};
-
-const formatPromoTimeLabel = (value) => {
-    const minutes = parseTimeToMinutes(value);
-    if (minutes == null) return String(value || '').trim();
-    const hour24 = Math.floor(minutes / 60) % 24;
-    const minute = minutes % 60;
-    const meridiem = hour24 >= 12 ? 'PM' : 'AM';
-    const hour12 = hour24 % 12 || 12;
-    return `${hour12}:${String(minute).padStart(2, '0')} ${meridiem}`;
-};
-
-const resolvePromoTimezone = (settings = {}) => {
-    const normalizedHours = normalizeStorefrontBusinessHours(settings?.storefront_hours?.value);
-    if (normalizedHours && typeof normalizedHours === 'object' && !Array.isArray(normalizedHours)) {
-        return String(normalizedHours.timezone || DEFAULT_PROMO_TIMEZONE).trim() || DEFAULT_PROMO_TIMEZONE;
-    }
-    return DEFAULT_PROMO_TIMEZONE;
-};
-
-const resolveZonedMinutes = (date, timezone) => {
-    try {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: timezone || DEFAULT_PROMO_TIMEZONE,
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        });
-        const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
-        const hour = Number.parseInt(parts.hour, 10);
-        const minute = Number.parseInt(parts.minute, 10);
-        if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
-        return (hour * 60) + minute;
-    } catch {
-        return null;
-    }
-};
-
-const isPromoTimeWindowActive = ({ now, startTime, endTime, timezone }) => {
-    const startMinutes = parseTimeToMinutes(startTime);
-    const endMinutes = parseTimeToMinutes(endTime);
-    if (startMinutes == null || endMinutes == null) return true;
-    const currentMinutes = resolveZonedMinutes(now, timezone);
-    if (currentMinutes == null) return true;
-    if (startMinutes === endMinutes) return true;
-    if (startMinutes < endMinutes) {
-        return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-    }
-    return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
-};
-
-const resolveStorefrontPromoApplication = ({
-    settings,
-    promoCode,
-    prepared,
-    now = new Date()
-}) => {
-    const enteredPromoCode = normalizePromoCode(promoCode);
-    const config = parseStorefrontPromoConfig(settings?.[STOREFRONT_PROMO_SETTING_KEY]?.value);
-    const preparedLines = Array.isArray(prepared?.preparedLines) ? prepared.preparedLines : [];
-    const subtotalAmount = round4(prepared?.subtotalAmount || 0);
-    if (!enteredPromoCode) {
-        return {
-            config,
-            enteredPromoCode: '',
-            applied: false,
-            discountAmount: 0,
-            discountRate: 0,
-            discountLabel: null,
-            message: ''
-        };
-    }
-
-    if (config.active !== true || !config.promoCode || enteredPromoCode !== config.promoCode || config.discountPercent <= 0) {
-        throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            'Invalid or inactive promo code.',
-            {
-                statusCode: 422,
-                details: {
-                    reason_code: 'INVALID_PROMO_CODE',
-                    promo_code: enteredPromoCode
-                }
-            }
-        );
-    }
-
-    if (config.usageLimit != null && config.usedCount >= config.usageLimit) {
-        throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            'Promo code has reached its usage limit.',
-            {
-                statusCode: 422,
-                details: {
-                    reason_code: 'PROMO_USAGE_LIMIT_REACHED',
-                    promo_code: enteredPromoCode,
-                    usage_limit: config.usageLimit,
-                    used_count: config.usedCount
-                }
-            }
-        );
-    }
-
-    const hasTimeWindow = config.validTimeStart && config.validTimeEnd;
-    if (hasTimeWindow && !isPromoTimeWindowActive({
-        now,
-        startTime: config.validTimeStart,
-        endTime: config.validTimeEnd,
-        timezone: resolvePromoTimezone(settings)
-    })) {
-        const message = `Promo code is only valid from ${formatPromoTimeLabel(config.validTimeStart)} to ${formatPromoTimeLabel(config.validTimeEnd)}.`;
-        throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            message,
-            {
-                statusCode: 422,
-                details: {
-                    reason_code: 'PROMO_TIME_RANGE_BLOCKED',
-                    promo_code: enteredPromoCode,
-                    valid_time_start: config.validTimeStart,
-                    valid_time_end: config.validTimeEnd
-                }
-            }
-        );
-    }
-
-    const targetItemIds = new Set(config.targetItemIds);
-    const eligibleLines = targetItemIds.size > 0
-        ? preparedLines.filter((line) => targetItemIds.has(parsePositiveInt(line?.item_id)))
-        : preparedLines;
-    const eligibleSubtotal = round4(eligibleLines.reduce((sum, line) => sum + round4(line?.line_subtotal || 0), 0));
-    if (targetItemIds.size > 0 && eligibleLines.length === 0) {
-        throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            'Promo code does not apply to the items in this order.',
-            {
-                statusCode: 422,
-                details: {
-                    reason_code: 'PROMO_ITEMS_NOT_IN_ORDER',
-                    promo_code: enteredPromoCode,
-                    target_item_ids: config.targetItemIds
-                }
-            }
-        );
-    }
-
-    const discountBaseAmount = targetItemIds.size > 0 ? eligibleSubtotal : subtotalAmount;
-    const discountAmount = Math.min(round4(discountBaseAmount), round4(discountBaseAmount * (config.discountPercent / 100)));
-    return {
-        config,
-        enteredPromoCode,
-        applied: discountAmount > 0,
-        discountAmount,
-        discountRate: config.discountPercent,
-        discountLabel: config.badge || config.title || `Promo Code (${enteredPromoCode})`,
-        message: 'Promo code applied successfully.'
-    };
-};
+const resolveStorefrontPromoApplication = (args) => resolveCommercialPromoApplication(args);
 
 const resolveDeliveryRadiusFlag = ({ orderMethod, location, deliveryLatitude, deliveryLongitude }) => {
     if (orderMethod !== 'delivery') return false;
@@ -2231,22 +2049,17 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
             }, { transaction });
 
             if (resolved.promoApplication.applied && typeof storeRepository.updateSettingByKey === 'function') {
-                const currentPromoSettingValue = (
-                    resolved.settings?.[STOREFRONT_PROMO_SETTING_KEY]?.value
-                    && typeof resolved.settings[STOREFRONT_PROMO_SETTING_KEY].value === 'object'
-                    && !Array.isArray(resolved.settings[STOREFRONT_PROMO_SETTING_KEY].value)
-                )
-                    ? resolved.settings[STOREFRONT_PROMO_SETTING_KEY].value
-                    : {};
-                const nextPromoSetting = {
-                    ...currentPromoSettingValue,
-                    used_count: Number(resolved.promoApplication.config.usedCount || 0) + 1
-                };
-                await storeRepository.updateSettingByKey(
-                    STOREFRONT_PROMO_SETTING_KEY,
-                    nextPromoSetting,
-                    { transaction, lock: true }
-                );
+                const promoUsageUpdate = buildCommercialPromoUsageUpdate({
+                    settings: resolved.settings,
+                    promoApplication: resolved.promoApplication
+                });
+                if (promoUsageUpdate) {
+                    await storeRepository.updateSettingByKey(
+                        promoUsageUpdate.key,
+                        promoUsageUpdate.value,
+                        { transaction, lock: true }
+                    );
+                }
             }
 
             const shouldCreateFnbKitchenOrder = (

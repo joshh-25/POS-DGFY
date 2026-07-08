@@ -1,7 +1,8 @@
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
+import { playOrderAlertWithIminBridge } from '../utils/iminHardwareBridge.js';
 
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
@@ -40,6 +41,7 @@ export default function TerminalPageLayout({
     isMsmeMode = false,
     shiftState,
     incomingOrdersState,
+    onlineOrderSoundEnabled = true,
     locationsState,
     operatingLocationId,
     queueLocationScopeId,
@@ -85,6 +87,7 @@ export default function TerminalPageLayout({
     refreshTerminalMeta = async () => {},
     onPosSetupSaved = async () => {},
     onStorefrontSetupSaved = async () => {},
+    setOnlineOrderSoundEnabled = () => {},
     queuedTerminalOperationCount,
     queuedTerminalBlockedCount = 0,
     queuedTerminalOperations = [],
@@ -123,6 +126,9 @@ export default function TerminalPageLayout({
 }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [capabilityNotice, setCapabilityNotice] = useState(null);
+  const hasHydratedIncomingOrdersRef = useRef(false);
+  const seenIncomingOrderIdsRef = useRef(new Set());
+  const lastOrderAlertAtRef = useRef(0);
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
   const actionableQueueCount = queueCount + blockedQueueCount;
@@ -167,11 +173,51 @@ export default function TerminalPageLayout({
     handleSelectViewMode,
     incomingOrders.length
   ]);
+
+  useEffect(() => {
+    hasHydratedIncomingOrdersRef.current = false;
+    seenIncomingOrderIdsRef.current = new Set();
+    lastOrderAlertAtRef.current = 0;
+  }, [queueLocationScopeId]);
+
+  useEffect(() => {
+    if (onlineOrderSoundEnabled !== true) return;
+    if (incomingOrdersState?.loading) return;
+    if (String(incomingOrdersState?.accessState || '').trim() !== 'allowed') return;
+
+    const currentOrderIds = incomingOrders
+      .map((order) => String(order?.pos_transaction_id || '').trim())
+      .filter(Boolean);
+
+    if (!hasHydratedIncomingOrdersRef.current) {
+      hasHydratedIncomingOrdersRef.current = true;
+      seenIncomingOrderIdsRef.current = new Set(currentOrderIds);
+      return;
+    }
+
+    const seenIds = seenIncomingOrderIdsRef.current;
+    const hasNewIncomingOrder = currentOrderIds.some((orderId) => !seenIds.has(orderId));
+    if (!hasNewIncomingOrder) return;
+
+    const now = Date.now();
+    if ((now - lastOrderAlertAtRef.current) >= 1000) {
+      try {
+        playOrderAlertWithIminBridge('new_order');
+      } catch {
+        // Browser and non-iMin surfaces should stay silent.
+      }
+      lastOrderAlertAtRef.current = now;
+    }
+
+    currentOrderIds.forEach((orderId) => {
+      seenIds.add(orderId);
+    });
+  }, [incomingOrders, incomingOrdersState?.accessState, incomingOrdersState?.loading, onlineOrderSoundEnabled]);
   const notificationCount = notifications.length;
   const primaryNotificationAction = notifications[0]?.onClick || null;
   const shellLayoutClassName = IS_DGFY_POS_SURFACE
-    ? 'lg:grid lg:grid-cols-[244px_minmax(0,1fr)]'
-    : 'xl:grid xl:grid-cols-[244px_minmax(0,1fr)]';
+    ? `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`
+    : `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`;
   const persistentSidebarClassName = IS_DGFY_POS_SURFACE
     ? 'hidden lg:flex lg:min-h-0 lg:overflow-hidden'
     : 'hidden xl:flex xl:min-h-0 xl:overflow-hidden';
@@ -312,31 +358,33 @@ export default function TerminalPageLayout({
   return (
     <div className={`dgfy-pos-shell h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden ${shellLayoutClassName}`}>
       {notificationPanel}
-      <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
-        <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
-          <TerminalWorkspaceSidebar
-            className={persistentSidebarBodyClassName}
-            locked={locked}
-            isMsmeMode={isMsmeMode}
-            terminalUser={terminalUser}
-            currentViewMode={posViewMode}
+      {!effectiveSidebarCollapsed && (
+        <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
+          <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
+            <TerminalWorkspaceSidebar
+              className={persistentSidebarBodyClassName}
+              locked={locked}
+              isMsmeMode={isMsmeMode}
+              terminalUser={terminalUser}
+              currentViewMode={posViewMode}
               canViewPos={canViewPos}
-            onboardingRestricted={onboardingRestricted}
-            allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
+              onboardingRestricted={onboardingRestricted}
+              allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
               canAdjustCashDrawer={canAdjustCashDrawer}
-            canCloseDay={canCloseDay}
-            shiftState={shiftState}
-            incomingOrdersState={incomingOrdersState}
-            locationsState={locationsState}
-            queueLocationScopeId={queueLocationScopeId}
-            queueSummary={queueSummary}
-            settingsTargetViewMode={settingsEntryViewMode}
-            onSelectViewMode={handleSelectViewMode}
-            onUnlock={() => setDrawerOpen(true)}
-            onLock={handleLock}
-          />
-        </Suspense>
-      </div>
+              canCloseDay={canCloseDay}
+              shiftState={shiftState}
+              incomingOrdersState={incomingOrdersState}
+              locationsState={locationsState}
+              queueLocationScopeId={queueLocationScopeId}
+              queueSummary={queueSummary}
+              settingsTargetViewMode={settingsEntryViewMode}
+              onSelectViewMode={handleSelectViewMode}
+              onUnlock={() => setDrawerOpen(true)}
+              onLock={handleLock}
+            />
+          </Suspense>
+        </div>
+      )}
       <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <div className={`dgfy-pos-panel border-b border-pos px-4 py-2 backdrop-blur sm:px-5 lg:px-7 ${lockedSurfaceClassName}`}>
         <div className={headerShellClassName}>
@@ -346,11 +394,16 @@ export default function TerminalPageLayout({
               type="button"
               onClick={() => {
                 if (locked) return;
+                if (isDesktopWide) {
+                  setSidebarCollapsed((collapsed) => !collapsed);
+                  return;
+                }
                 setMobileNavOpen(true);
               }}
               disabled={locked}
-              className={`${IS_DGFY_POS_SURFACE ? 'grid lg:hidden' : 'grid xl:hidden'} h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
-              aria-label="Open sidebar menu"
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
+              aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
+              aria-pressed={isDesktopWide ? effectiveSidebarCollapsed : undefined}
             >
               <Menu className="h-6 w-6" />
             </button>
@@ -502,7 +555,7 @@ export default function TerminalPageLayout({
               <POSCheckoutTerminal
                 sessionLocked={locked}
                 isMsmeMode={isMsmeMode}
-                sidebarCollapsed={false}
+                sidebarCollapsed={effectiveSidebarCollapsed}
                 canViewHistory={canViewPos}
                 selectedLocationId={operatingLocationId}
                 activeShiftId={activeShiftId}
@@ -579,6 +632,7 @@ export default function TerminalPageLayout({
                 queueLocationScopeId={queueLocationScopeId}
                 setQueueLocationScopeId={setQueueLocationScopeId}
                 incomingOrdersState={incomingOrdersState}
+                onlineOrderSoundEnabled={onlineOrderSoundEnabled}
                 incomingOrderActionState={incomingOrderActionState}
                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
                 handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
@@ -600,6 +654,7 @@ export default function TerminalPageLayout({
                 refreshTerminalMeta={refreshTerminalMeta}
                 onPosSetupSaved={onPosSetupSaved}
                 onStorefrontSetupSaved={onStorefrontSetupSaved}
+                setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
                 sectionIds={TERMINAL_SECTION_IDS}
               />
             </Suspense>

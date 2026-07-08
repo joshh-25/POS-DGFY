@@ -361,6 +361,7 @@ const POS_JSON_SETTING_KEYS = new Set([
     'storefront_gallery_images',
     'storefront_delivery_partners',
     'storefront_promo',
+    'storefront_promos',
     'storefront_review_summary',
     'storefront_hours'
 ]);

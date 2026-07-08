@@ -55,3 +55,9 @@ or Storefront promo configuration semantics.
 - POS production build: passed.
 - POS checkout DB integration test: passed using an isolated migrated database,
   including verified manager attribution persistence.
+
+## Rollout Note
+
+This governed change set also includes the paired POS frontend contract updates
+and terminal workflow hardening that were committed alongside the backend
+discount, cashier, and shift enforcement changes.
