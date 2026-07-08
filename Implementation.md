@@ -1,31 +1,445 @@
-# Implementation Steps: Copying dgfy-platform/develop to origin/develop
+# Implementation — New Online Order Notification Sound (APK)
 
-## Executed Git Commands
+## Overview
+Two layers of changes: Android Kotlin (APK native) and React frontend (WebView-side detection).
+**Detection logic lives entirely on the frontend.** Android is a dumb playback device only.
+No database migrations. No API changes. No UI layout changes.
 
-### 1. Fetch develop Branch from dgfy-platform
-```bash
-git fetch dgfy-platform develop:dgfy-develop-temp
-```
-Fetched the `develop` branch from the `dgfy-platform` remote and created local temporary branch `dgfy-develop-temp`. [Status: Completed]
+---
 
-### 2. Push to User's develop Branch
-```bash
-git push origin dgfy-develop-temp:develop
-```
-Pushed the fetched `develop` code to a new branch called `develop` on your own GitHub repository (`origin`). [Status: Completed]
+## Files Changed
 
-### 3. Cleanup Temporary Local Branch
-```bash
-git branch -D dgfy-develop-temp
-git branch -D pr-3-temp
-```
-Deleted the temporary local branches to clean up. [Status: Completed]
+### Android Layer
+
+#### [NEW] `android/imin-wrapper/app/src/main/res/raw/order_alert.mp3`
+- Add a short (~1–2 second) chime MP3 or WAV file
+- Bundled at APK build time — no runtime download, no network request
+
+#### [MODIFY] [IminBridge.kt](file:///c:/xampp/htdocs/POS-DGFY/android/imin-wrapper/app/src/main/java/com/dgfy/iminwrapper/IminBridge.kt)
+- Add `onPlayOrderAlert: ((String) -> Unit)? = null` to the class constructor
+- Add new `@JavascriptInterface` method:
+  ```kotlin
+  @JavascriptInterface
+  fun playOrderAlert(soundType: String): String {
+      onPlayOrderAlert?.invoke(soundType)
+      return JSONObject()
+          .put("success", true)
+          .put("message", "Order alert played")
+          .toString()
+  }
+  ```
+
+#### [MODIFY] [WebPosActivity.kt](file:///c:/xampp/htdocs/POS-DGFY/android/imin-wrapper/app/src/main/java/com/dgfy/iminwrapper/WebPosActivity.kt)
+- Add class-level fields:
+  ```kotlin
+  private lateinit var soundPool: SoundPool
+  private var orderAlertSoundId: Int = 0
+  private var orderAlertSoundLoaded: Boolean = false  // REQUIRED: load() is async
+  ```
+- In `onCreate`, after `setContentView`:
+  ```kotlin
+  soundPool = SoundPool.Builder().setMaxStreams(2).build()
+  soundPool.setOnLoadCompleteListener { _, sampleId, status ->
+      if (status == 0 && sampleId == orderAlertSoundId) {
+          orderAlertSoundLoaded = true
+      }
+  }
+  orderAlertSoundId = soundPool.load(this, R.raw.order_alert, 1)
+  ```
+- Pass `onPlayOrderAlert` lambda into `IminBridge(...)` — guards on `soundLoaded`:
+  ```kotlin
+  onPlayOrderAlert = { _ ->
+      runOnUiThread {
+          if (orderAlertSoundLoaded) {
+              soundPool.play(orderAlertSoundId, 1f, 1f, 1, 0, 1f)
+          }
+      }
+  }
+  ```
+- In `onDestroy`, release the pool before `super.onDestroy()`:
+  ```kotlin
+  if (::soundPool.isInitialized) soundPool.release()
+  ```
+
+> **Why `soundLoaded` is required**: `SoundPool.load()` is asynchronous. Without the
+> `setOnLoadCompleteListener` guard, calling `play()` immediately after `load()` returns 0
+> (plays nothing) because the audio data has not been decoded yet.
+
+---
+
+### Frontend Layer
+
+#### [MODIFY] [TerminalPageLayout.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalPageLayout.jsx)
+- Add three refs near the other `useRef` / `useState` declarations:
+  ```js
+  // Order alert sound: ID-delta detection (not count-based)
+  const hasHydratedIncomingOrdersRef = useRef(false);
+  const seenIncomingOrderIdsRef = useRef(new Set());
+  const lastAlertAtRef = useRef(0); // for burst throttle
+  ```
+- Add a `useEffect` watching `[incomingOrders, incomingOrdersState]` (placed near the
+  `notifications` useMemo block):
+  ```js
+  useEffect(() => {
+    // Wait until data is available and not in an error/loading state
+    const accessState = incomingOrdersState?.accessState;
+    if (
+      incomingOrdersState?.loading ||
+      !Array.isArray(incomingOrdersState?.orders) ||
+      accessState === 'forbidden' ||
+      accessState === 'error'
+    ) return;
+
+    const currentIds = incomingOrders
+      .map((order) => String(order.id ?? order.order_id ?? ''))
+      .filter(Boolean);
+
+    if (!hasHydratedIncomingOrdersRef.current) {
+      // First successful load — seed the seen set, play no sound
+      currentIds.forEach((id) => seenIncomingOrderIdsRef.current.add(id));
+      hasHydratedIncomingOrdersRef.current = true;
+      return;
+    }
+
+    // Subsequent polls — detect truly new IDs
+    const newIds = currentIds.filter((id) => !seenIncomingOrderIdsRef.current.has(id));
+
+    if (newIds.length > 0) {
+      // Throttle: no more than one chime per 3 seconds for order bursts
+      const now = Date.now();
+      if (now - lastAlertAtRef.current > 3000) {
+        lastAlertAtRef.current = now;
+        try {
+          window?.iMinBridge?.playOrderAlert?.('new_order');
+        } catch (_) {
+          // Silently ignore — iMinBridge does not exist in browser/desktop
+        }
+      }
+      // Merge new IDs into seen set regardless of throttle
+      newIds.forEach((id) => seenIncomingOrderIdsRef.current.add(id));
+    }
+  }, [incomingOrders, incomingOrdersState]);
+  ```
+
+> **Key design decisions:**
+> - `hasHydratedIncomingOrdersRef` prevents false alerts on first load, page reload, and reconnect
+> - `seenIncomingOrderIdsRef` as a `Set` prevents false alerts on count-stable order swaps in reverse
+> - `lastAlertAtRef` throttle prevents chime spam when 3+ orders arrive in the same poll burst
+> - All three are `useRef` — they persist across re-renders without triggering re-renders
+> - The `try/catch` ensures zero console noise in non-APK environments
+
+---
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Sound on app startup (existing orders) | **None** | First hydration seeds seen set without playing |
+| Sound on manual refresh (same IDs) | **None** | Seen set already contains all current IDs |
+| Missed sound when count unchanged but ID changed | **None** | ID-delta check catches this; count-check would miss it |
+| `soundPool.play()` before sound file loaded | **None** | `orderAlertSoundLoaded` guard — set only after `setOnLoadCompleteListener` fires |
+| Chime spam (3 orders arrive in same poll) | **None** | 3-second throttle; new IDs still merged into seen set |
+| `iMinBridge` missing in browser | **None** | `try/catch` + optional chaining (`?.`) silences it |
+| APK build breaks | **Low** | Additive only — new constructor param with default null, new method |
+
+---
+
+## Verification Steps
+- [ ] App opens with 3 existing pending orders → **no sound**
+- [ ] A 4th order arrives after hydration → **sound plays once**
+- [ ] 1 order removed, 1 new arrives (count unchanged) → **sound plays**
+- [ ] Manual refresh with same order IDs → **no sound**
+- [ ] APK destroyed and reopened with existing orders → **no sound**
+- [ ] Browser POS (no APK bridge) → **no crash, no console errors**
+- [ ] Multiple orders arrive in one poll burst → **one chime only**
+- [ ] Build APK (`./gradlew assembleDebug`) → **clean build**
+
+---
+
+# Previous Implementation: Redesign Terminal Registry Layout
+
+## Proposed Technical Changes
+
+### Frontend Component
+
+#### [MODIFY] [TerminalOperationsWorkspace.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx)
+- Import `Monitor` from `lucide-react` at the top.
+- Redesign Terminal Registry section inside `renderPosSetupPane`:
+  - Card container: Set to `rounded-2xl border border-slate-100 bg-white p-6 shadow-sm shadow-slate-200/40`.
+  - Header: Left-aligned flex layout with circular computer icon badge and right-aligned action buttons (Save Terminal Registry and Add Terminal, styled in custom outline/filled formats).
+  - Mode section: Sized as an inner bordered card with relative select input left and info description card right.
+  - Strict Location Binding section: Sized as a settings check card with left circular `ShieldCheck` icon.
+  - Readiness section: Sized as a highlighted status block (`rounded-xl border border-blue-100 bg-blue-50/20 p-4`) containing left search icon badge and a white horizontal statistics bar featuring colored dot status indicators.
+
+## Verification Steps
+- Run tests:
+  ```bash
+  npm run test:frontend -- src/pages/__tests__/Settings.deepLinking.integration.test.jsx
+  npm run test:frontend -- src/features/pos/__tests__/terminalLocationScope.integration.test.jsx
+  ```
 
 ---
 
 # Approved Code Edit Log
 
 Use this section to record each approved code edit with its date, problem, confirmed cause, implemented solution, affected files, and verification results.
+
+## 2026-07-07 — Redesign Cashier Closeout Defaults Layout
+
+### Error or problem
+
+The Cashier closeout defaults settings section on POS Setup was plain, lacked inner field icons, visual hierarchy, and an integrated status metric view.
+
+### Confirmed cause
+
+The inputs were formatted as plain controls without context icons, checkboxes used native browser styles, and the Live Queue statistics display occupied a simple, unstyled block.
+
+### Implemented solution
+
+- Replaced container wrapper with `rounded-2xl border border-slate-100 bg-white p-6 shadow-sm shadow-slate-200/40`.
+- Added circular settings icon badge (`Settings2`) and right-aligned blue "Save Defaults" button with inline `Save` icon.
+- Arranged elements in 4 distinct grid rows: row 1 (Queue Location Scope / Petty Cash Currency Symbol), row 2 (Petty Cash Amount / Default Wait Time), row 3 (Low Stock Alert Threshold / Live Queue card), and row 4 (POS visible to customers toggle switch card / Operational Snapshot card).
+- Placed blue leading icons inside inputs (`MapPin`, `CircleDollarSign`, `Banknote`, `Clock`, `AlertTriangle`).
+- Replaced the customer visibility checkbox with a custom switch slider component using state value `posForm.posOpenStatus`.
+- Integrated Live Queue and Operational Snapshot as two sibling stats cards displaying live orders length (`incomingOrders.length`).
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Frontend settings integration tests: **passed** (no regressions).
+- Terminal location scope integration tests: **8/8 passed**.
+
+## 2026-07-07 — Redesign Receipt & POS Metadata Layout
+
+### Error or problem
+
+The POS Setup Receipt & POS Metadata form was basic, flat, and lacked clear hierarchy, inner field indicators, and consistent alignment.
+
+### Confirmed cause
+
+The inputs were raw fields with height `h-11`, no inner icons, and plain gray borders, laid out inside a standard box wrapper with vertical inputs that didn't align Accreditation Number alongside TIN / Branch.
+
+### Implemented solution
+
+- Replaced container wrapper with `rounded-2xl border border-slate-100 bg-white p-6 shadow-sm shadow-slate-200/40`.
+- Configured card header to display circular document icon badge and right-aligned blue save setup button with inline `Save` icon.
+- Arranged inputs in two columns: row 1 (Registered Name / Business Name), row 2 (Business Style / Taxpayer Type), row 3 (TIN / Branch / Accreditation Number), row 4 (Business Address full width), row 5 (PTU Number / MIN Number), and row 6 (Receipt Footer Message full width).
+- Placed blue leading icons inside inputs (`UserRound`, `Store`, `Briefcase`, `Users` with right absolute `ChevronDown`, `#` label text, `Award`, `MapPin`, `FileText`, `ShieldCheck`, and `MessageSquare`).
+- Redesigned checkbox section as a border blue info box with checkbox details left and `AlertCircle` info icon right.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Frontend settings integration tests: **passed** (no regressions).
+- Terminal location scope integration tests: **8/8 passed**.
+
+## 2026-07-07 — Compact Settings Profile Setting Area Spacing
+
+### Error or problem
+
+The redesigned Settings Shared Account Profile card consumed too much space, resulting in excessive empty white space around inputs and text labels on desktop screen resolutions.
+
+### Confirmed cause
+
+The card padding (`p-8`), vertical margins (`space-y-6`), input heights (`h-14`), and button padding were set to large values, creating overly stretched layout sections.
+
+### Implemented solution
+
+- Reduced Profile card container padding from `p-8` (32px) to `p-6` (24px).
+- Tightened card vertical space margins from `space-y-6`/`mt-6` to `space-y-5`/`mt-5`.
+- Decreased input height from `h-14` (56px) to `h-12` (48px) and aligned leading input icons accordingly.
+- Compacted form grid spacing gap from `gap-6` to `gap-4` (16px).
+- Set Save Profile button height to `h-11` (44px) and adjusted bottom Company details card padding to `p-5` (20px).
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Frontend settings integration tests: **passed** (no regressions).
+- Terminal location scope integration tests: **8/8 passed**.
+
+## 2026-07-07 — Restore Settings Tab Buttons UI
+
+### Error or problem
+
+The Settings tab buttons redesign was too modern and oversized, and the vertical padding and spacing consumed too much space above the Profile settings card.
+
+### Confirmed cause
+
+The tabs buttons wrapper border/background was removed, and each button button styling was set to `h-16 rounded-2xl px-6 py-4` with shadows, causing an oversized aesthetic.
+
+### Implemented solution
+
+- Reverted main settings layout wrapper classes to `space-y-3` gap limits.
+- Restored original tabs background card container wrapper: `<div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">`.
+- Restored compact active and inactive tab buttons button sizes, rounded edges (`rounded-lg`), font properties (`font-extrabold text-[14px]`/`text-xs`), and icon styles (`className="h-4.5 w-4.5"`/`h-4 w-4 shrink-0`).
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Frontend settings integration tests: **passed** (no regressions).
+- Terminal location scope integration tests: **8/8 passed**.
+
+## 2026-07-07 — Redesign Profile Setting Content Area & Restore Sidebar
+
+### Error or problem
+
+The settings page dashboard was redesigned too broadly, affecting the sidebar layouts and the main app layout canvas background. The icons from the desired example were also not fully showing due to missing lucide imports.
+
+### Confirmed cause
+
+The sidebar and layout components were altered, causing discrepancies with the user's preferred sidebar style. The imports for `Mail` and `Phone` icons were not present inside `TerminalOperationsWorkspace.jsx`.
+
+### Implemented solution
+
+- Reverted `TerminalWorkspaceSidebar.jsx` logo alignment and button card active/inactive styles back to their original states completely.
+- Reverted `TerminalPageLayout.jsx` background and user identity chevron back to original.
+- Imported `Mail` and `Phone` from `lucide-react` at the top of `TerminalOperationsWorkspace.jsx`.
+- Individualized tab headers as rounded-2xl cards (Profile Setting active in brand blue bg `#1A4E8D`, inactive ones in border white cards).
+- Configured inputs inside Shared Account Profile card with custom height `h-14` and added leading icons (`UserRound`, `Mail`, and `Phone`) in relative wrappers.
+- Redesigned the top-right Company Token badge inside the profile card header, with an inline `ShieldCheck` security icon.
+- Added circular icon badges (`Store` and `ShieldCheck`) to bottom Company Name and Company Token cards, rendering them as two horizontal columns.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx` (reverted)
+- `frontend/src/features/pos/components/TerminalPageLayout.jsx` (reverted)
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Frontend settings integration tests: **passed** (no regressions).
+- Terminal location scope integration tests: **8/8 passed**.
+
+## 2026-07-07 — Fix Product Image Preview Fit & Aspect Ratio
+
+### Error or problem
+
+The item product image preview inside the Add and Edit modals was being cropped (using `object-cover` with small vertical height limits), causing parts of the uploaded item images to be cut off and hidden.
+
+### Confirmed cause
+
+The preview image tags had fixed heights and the `object-cover` crop styling, which sliced off margins of images that did not match the exact frame dimensions.
+
+### Implemented solution
+
+- Replaced `object-cover` with `object-contain` on the `<img />` tags to preserve their original aspect ratio.
+- Set container box rules to use flex alignment and centering with an explicit aspect-ratio: `aspect-[4/3]`, `max-h-[280px]`, `min-h-[220px]`, `w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl`.
+- Enforced these styles uniformly across new selections (`selectedImagePreviewUrl`, `editImagePreviewUrl`) and DB-loaded item previews inside both Add POS Item and Edit Item modals.
+- Staged absolute positioned close/clear buttons with `z-10` overlay to remain fully clickable.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Frontend settings integration tests: **passed** (no regressions).
+- Terminal location scope integration tests: **8/8 passed**.
+
+## 2026-07-07 — Redesign Edit Item Modal UI
+
+### Error or problem
+
+The Edit Item modal was visually outdated and inconsistent with the redesigned horizontal "Add POS Item" modal layout.
+
+### Confirmed cause
+
+The Edit Item modal retained the old narrow, vertically stacked format, causing mismatched aesthetics and an unnecessary vertical scrollbar on desktop viewports.
+
+### Implemented solution
+
+- Realigned the Edit Item modal wrapper to match the Add POS Item modal max-width (`max-w-[1150px]`) and max-height (`max-h-[92vh]`) using the dark navy layout (`bg-[#071325]`).
+- Placed a `Pencil` edit icon inside the blue square on the left of the compact header (`py-3 px-5`).
+- Arranged all form elements inside a white inner content card (`p-5 mx-5 mb-5 max-h-[calc(92vh-7.5rem)]`).
+- Divided the layout into a two-column horizontal view (image column on the left and input grid on the right).
+- Styled the Left Column image container to load either a newly selected image preview (with an X clear button) or the current item image (height `h-28`), alongside the compact dashed replace label.
+- Set input heights to `h-[44px]`, row gaps to 15px, and added the currency prepend `₱` tag to price and cost fields.
+- Formatted the Always Available toggle into a horizontal card layout matching the Add POS Item modal styling.
+- Compacted description Notes text area height to `h-[88px]` and added a character counter.
+- Compounded Cancel and Save buttons to compact size (`h-9`) inside the dark navy footer area.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Frontend settings integration tests: **passed** (no regressions).
+- Terminal location scope integration tests: **8/8 passed**.
+
+## 2026-07-07 — Redesign Add POS Item Modal UI & Refine Spacing
+
+### Error or problem
+
+The Add POS Item modal was layout-constrained, vertically scrolling, and did not follow the desired modern horizontal two-column layout. The initial redesign was correct, but the header, footer, and image containers were too tall, causing the white main content area to render an internal scrollbar on standard desktop screen sizes.
+
+### Confirmed cause
+
+The modal had a narrow max-width (`max-w-3xl`) and arranged all items vertically. Following the initial redesign, the header padding, upload box size, and button dimensions pushed the white inner container's scroll boundary past the screen limit.
+
+### Implemented solution
+
+- Enlarged the modal max-width to `max-w-[1150px]`, set max-height to `max-h-[92vh]`, and styled the background as dark navy (`bg-[#071325]`).
+- Compacted the header: set padding to `py-3 px-5`, shrunk the icon container to `h-9 w-9` (icon to `h-4.5 w-4.5`), and set close button to compact.
+- Wrapped all inputs inside a clean white card container (`bg-white rounded-xl p-5 mx-5 mb-5`) with max-height constraint `max-h-[calc(92vh-7.5rem)]`.
+- Created a two-column horizontal layout: Left image column (~28%), right form column (~72%).
+- Set Product Image upload min-height to `min-h-[120px]` and placeholder height to `py-4`.
+- Set preview image height to `h-28` with clean delete/close trigger button.
+- Arranged details form with a row gap of 15px, setting inputs height to `h-[44px]`.
+- Styled Selling and Cost Prices with prepend `₱` currency blocks matching the `h-[44px]` height.
+- Styled Always Available as compact horizontal card matching the `h-[44px]` height.
+- Styled notes textarea with height `h-[88px]` and character counter.
+- Created dark navy footer with Cancel and Save buttons styled to `h-9` and aligned bottom-right.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Frontend settings integration tests: **passed** (no regressions).
+- Terminal location scope integration tests: **8/8 passed**.
+
+## 2026-07-07 — Redesign Customer Access Mode storefront settings UI
+
+### Error or problem
+
+The Storefront Customer Access Mode setting used a generic and outdated select dropdown that did not follow the desired modern card-based designs and layout.
+
+### Confirmed cause
+
+The settings panel used a native HTML `<select>` dropdown selector alongside text-only option cards, which lacked modern visual cues, brand coloring, and dynamic active feedback indicators.
+
+### Implemented solution
+
+- Replaced the select dropdown and bottom info grid with a modern 4-card interactive grid representing the access modes.
+- Added a header area with a soft blue background icon, section title, and explanatory subtitle.
+- Designed each card with customized soft-colored circular backgrounds, mode icons, title, and description.
+- Configured active card styles including a deep-blue border, blue background tint, checkmark badge, and an emerald "Applied automatically" success status pill.
+- Integrated a visually hidden `<select>` element to maintain 100% backward compatibility with keyboard controls and deep-linking integration tests.
+- Re-implemented the runtime status alert below the cards with a dynamic title and active mode labels.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Frontend deep linking integration tests: **passed** (with visually hidden select box).
+- Terminal location scope integration tests: **8/8 passed**.
+- Cashier management and strict location binding contract tests: **passed** (no cashier regressions).
 
 ## 2026-07-04 — Silence nonessential standalone POS popups
 
@@ -1064,3 +1478,23 @@ The frontend storefront pages added on this branch caused CI check failures due 
 
 - Error: unused parameters, unused icon imports, and redundant Boolean castings caused frontend linting checks to fail.
 - Solution: clean up unused variables, strip unused icon imports, and simplify extra Boolean castings so the frontend linter passes with zero errors.
+
+## 2026-07-08 — Redesign Add and Edit POS Item Modals
+
+### Objective
+
+Redesign the "Add POS Item" and "Edit Item" modals inside the POS Management Panel (`TerminalOperationsWorkspace.jsx`) to align with the premium, compact, and polished styling of the settings panel and dialog systems.
+
+### Proposed Changes
+
+- **Modal Container**: Add backdrop blur (`backdrop-blur-sm bg-slate-950/60`) and soft rounded corners (`rounded-2xl`).
+- **Modal Header**: Sleek titles (`text-lg font-bold sm:text-xl`), text descriptions (`text-xs sm:text-sm text-[#64748B]`), and a circular close button (`h-8 w-8`) with an X icon.
+- **Left Column**: Clean rounded product image box (`rounded-xl` or `rounded-2xl`) and styled file input using Tailwind file-modifiers.
+- **Right Column**: Unified `h-11` heights, rounded-xl borders, custom dropdown styling, and premium switches (`bg-blue-600` when checked vs `bg-slate-200` when unchecked) representing Always Available and Senior/PWD Eligible.
+- **Footer Actions**: Modern buttons (`h-11`), rounded-xl, high-contrast hover colors.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `docs/Plan.md`
+- `Implementation.md`
