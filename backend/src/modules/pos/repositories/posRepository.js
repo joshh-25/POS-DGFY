@@ -340,7 +340,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 pos_visible: posVisible,
                 pos_always_available: override?.pos_always_available === true,
                 pos_image_path: override?.pos_image_path || null,
-                pos_image_url: override?.pos_image_url || storefrontImage?.storefront_image_url || null,
+                pos_image_url: storefrontImage?.storefront_image_url || null,
                 storefront_image_path: storefrontImage?.storefront_image_path || null,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
                 storefront_image_gallery: storefrontImage?.storefront_image_gallery || null
@@ -2926,13 +2926,18 @@ export const posRepository = {
             workflowMode,
             posReadiness: readiness
         });
+        const storefrontImageMap = await loadStorefrontCatalogImageMap([normalizedItemId]);
+        const storefrontImage = storefrontImageMap.get(normalizedItemId);
 
         return {
             item_id: payload.item_id,
             pos_visible: resolveCatalogVisibility({ item: payload, override: effectiveOverride, surface: 'pos' }),
             pos_always_available: effectiveOverride?.pos_always_available === true,
-            pos_image_url: effectiveOverride?.pos_image_url || null,
+            pos_image_url: storefrontImage?.storefront_image_url || null,
             pos_image_path: effectiveOverride?.pos_image_path || null,
+            storefront_image_path: storefrontImage?.storefront_image_path || null,
+            storefront_image_url: storefrontImage?.storefront_image_url || null,
+            storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
             pos_readiness: readiness,
             catalog_setup_recommendation: recommendation
         };

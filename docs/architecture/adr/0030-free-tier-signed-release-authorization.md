@@ -138,6 +138,36 @@ controller:
   amendment, but a genuinely different production-adjacent risk (e.g.
   broader credentials, additional services) should get its own review.
 
+## Amendment (2026-07-06)
+
+The DEV and STAGING servers are not directly reachable from GitHub Actions
+runners; they sit behind a VPN. This amendment covers adding a VPN hop to
+the `publish-platform.yml` deploy path introduced by the 2026-07-02
+amendment above, for those two environments only:
+
+- `.github/workflows/publish-platform.yml` gained an optional `vpn_required`
+  input. When true, it writes a provided `.ovpn` config to disk and runs
+  `kota65535/github-openvpn-connect-action` (with `OVPN_USERNAME`/
+  `OVPN_PASSWORD`) to bring up a VPN tunnel *before* the existing
+  SSH-configure and `docker compose pull && docker compose up -d` steps.
+  The SSH steps themselves are unchanged; `SSH_TARGET` for these
+  environments simply resolves to a private address only reachable once
+  the tunnel is up.
+- `.github/workflows/deployment-orchestrator.yml`, `build-develop.yml`, and
+  `build-staging.yml` set `vpn_required: true`. `build-main.yml` and
+  `build-beta-manual.yml` (BETA, standing in for prod) are unchanged and
+  keep direct SSH access, since that server is already reachable.
+- New environment-scoped credentials `OVPN_CONFIG`, `OVPN_USERNAME`, and
+  `OVPN_PASSWORD` are added only to the `DEV` and `STAGING` GitHub
+  Environments -- never to `PROD`/`BETA`.
+- This is the "genuinely different production-adjacent risk" the
+  2026-07-02 amendment anticipated needing its own review before extending
+  the SSH-pull pattern to QA/DEV. It is addressed here as a narrow,
+  reviewed extension: it does not touch the production/BETA credential
+  path, and it only adds network reachability (a VPN tunnel) ahead of the
+  same already-authorized SSH-pull deploy step -- it does not grant any
+  new deploy authority or broaden the production trust boundary.
+
 ## Consequences
 
 1. GitHub failures or bypassable repository settings cannot independently authorize production.

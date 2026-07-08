@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-06-30
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-06-30-release-qualification-baseline-repair
-classification: major
-surfaces: pos,terminal,storefront,settings
+classification: regulatory
+surfaces: pos,terminal,storefront,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.06.30
 verification_evidence: npm --prefix backend run lint,npm --prefix frontend run lint,npm --prefix frontend test -- --run focused-suites,npm --prefix frontend run build:all,npm run test:backend:matrix,npm run check:compliance
@@ -20,7 +20,7 @@ preflight_request_ref: RELEASE-QUALIFICATION-BASELINE-REPAIR-2026-06-30
 
 ## Compliance Impact Classification
 
-Major because the release repair touches compliance-sensitive POS use-case, workspace, and service files. The changes restore missing references, remove redundant error propagation, and satisfy release lint requirements without changing business decisions.
+Regulatory (surface-driven minimum). The release repair itself touches compliance-sensitive POS use-case, workspace, and service files, restoring missing references, removing redundant error propagation, and satisfying release lint requirements without changing business decisions. Classification is escalated to `regulatory` to satisfy the repository-wide compliance surface floor for compliance-sensitive files changed in this same branch/PR; this slice does not itself modify compliance policy evaluation logic.
 
 ## Affected Surfaces
 
@@ -28,6 +28,7 @@ Major because the release repair touches compliance-sensitive POS use-case, work
 2. POS item-operation error notifications.
 3. POS device-status background capability requests.
 4. Storefront and DGFY release qualification coverage.
+5. `compliance` — added to satisfy the repository-wide compliance surface floor for compliance-sensitive files changed in this same branch/PR; this slice does not itself modify compliance policy evaluation logic.
 
 ## Compliance Preconditions
 

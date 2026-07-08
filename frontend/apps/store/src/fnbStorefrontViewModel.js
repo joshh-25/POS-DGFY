@@ -269,8 +269,30 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
   const dessertCount = menuItems.filter((item) => item.productKind === 'Dessert').length;
   const readyNowCount = menuItems.filter((item) => item.availabilityMeta?.tone === 'ready').length;
   const prices = menuItems
+    .filter((item) => {
+      if (item.is_available === false) return false;
+      const status = normalizeKey(item.availability_status);
+      if (status === 'out_of_stock' || status === 'unavailable') return false;
+
+      if (item.is_addon === true || item.is_modifier === true) return false;
+
+      const pType = String(item.product_type || '').toLowerCase();
+      const cat = String(item.category || '').toLowerCase();
+      const mCat = String(item.menu_category || '').toLowerCase();
+      const iGrp = String(item.item_group || '').toLowerCase();
+      const name = String(item.name || '').toLowerCase();
+
+      const addonKeywords = ['add-on', 'addon', 'modifier', 'extra', 'topping'];
+      const hasAddonKeyword = (str) => addonKeywords.some(keyword => str.includes(keyword));
+
+      if (hasAddonKeyword(pType) || hasAddonKeyword(cat) || hasAddonKeyword(mCat) || hasAddonKeyword(iGrp) || hasAddonKeyword(name)) {
+        return false;
+      }
+
+      return true;
+    })
     .map((item) => Number(item?.default_sale_price))
-    .filter((value) => Number.isFinite(value) && value >= 0);
+    .filter((value) => Number.isFinite(value) && value > 0);
 
   return {
     menuItems,

@@ -68,8 +68,15 @@ import {
   listItemBarcodes,
   updateFolder
 } from '@/services/itemService.js';
-import { updatePosCatalogOverride, uploadPosCatalogImage } from '@/services/posCatalogService.js';
-import { updateStorefrontCatalogOverride, uploadStorefrontCatalogImage } from '@/services/storefrontCatalogService.js';
+import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
+import {
+  updateStorefrontCatalogOverride,
+  uploadStorefrontCatalogImages,
+  updateStorefrontCatalogGallery,
+  deleteStorefrontCatalogImage
+} from '@/services/storefrontCatalogService.js';
+import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
+import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
 import { deleteStorefrontAsset, getCompanyInfo, getAllSettings, updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
 import { updateProfile } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
@@ -180,6 +187,41 @@ const SETTINGS_FIELD_LABELS = {
 
 const money = (value) => Number(value || 0).toFixed(2);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
+
+const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
+const STOREFRONT_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+const parseStorefrontItemImageGallery = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const normalizeStorefrontItemGallery = (item = {}) => {
+  const entries = parseStorefrontItemImageGallery(item?.storefront_image_gallery);
+  const primaryUrl = item?.storefront_image_url || null;
+  const gallery = entries
+    .map((entry, index) => ({
+      path: entry?.path || null,
+      url: entry?.url || entry?.image_url || entry,
+      is_primary: index === 0,
+      sort_order: index
+    }))
+    .filter((entry) => entry.url || entry.path);
+  if (primaryUrl && !gallery.some((entry) => entry.url === primaryUrl)) {
+    gallery.unshift({ path: item?.storefront_image_path || null, url: primaryUrl, is_primary: true, sort_order: 0 });
+  }
+  return gallery.map((entry, index) => ({
+    ...entry,
+    is_primary: index === 0,
+    sort_order: index
+  }));
+};
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
 const CUSTOMER_ACCESS_MODE_OPTIONS = [
   { value: 'ghost', label: 'Ghost', description: 'Profile and contact only; catalog, cart, checkout, and booking are hidden.', icon: Ghost, iconClassName: 'bg-indigo-50 text-indigo-500' },
@@ -1219,8 +1261,6 @@ function ItemsWorkspace({
     description: '',
     pos_category: DEFAULT_POS_FOOD_CATEGORY
   });
-  const [editImageFile, setEditImageFile] = useState(null);
-  const [editImagePreviewUrl, setEditImagePreviewUrl] = useState('');
   const [savedMessage, setSavedMessage] = useState({ name: '', barcode: '', action: 'updated' });
   const [deletedItemName, setDeletedItemName] = useState('');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
@@ -1232,8 +1272,7 @@ function ItemsWorkspace({
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
-  const [selectedImageFile, setSelectedImageFile] = useState(null);
-  const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
+  const [selectedImageFiles, setSelectedImageFiles] = useState([]);
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
@@ -1404,28 +1443,6 @@ function ItemsWorkspace({
     ));
   }, [createForm.name, showCreateModal, skuSeedItems]);
 
-  useEffect(() => {
-    if (!selectedImageFile) {
-      setSelectedImagePreviewUrl('');
-      return undefined;
-    }
-
-    const objectUrl = URL.createObjectURL(selectedImageFile);
-    setSelectedImagePreviewUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [selectedImageFile]);
-
-  useEffect(() => {
-    if (!editImageFile) {
-      setEditImagePreviewUrl('');
-      return undefined;
-    }
-
-    const objectUrl = URL.createObjectURL(editImageFile);
-    setEditImagePreviewUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [editImageFile]);
-
   const sortedItems = useMemo(
     () => [...(Array.isArray(items) ? items : [])].sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''))),
     [items]
@@ -1546,7 +1563,6 @@ function ItemsWorkspace({
 
   const openEdit = (item) => {
     setEditingItemId(item?.item_id || null);
-    setEditImageFile(null);
     setEditForm({
       name: String(item?.name || ''),
       current_stock: String(item?.current_stock ?? '0'),
@@ -1563,7 +1579,6 @@ function ItemsWorkspace({
     if (!force && (savingItem || persistingEditAssets)) return;
     setEditingItemId(null);
     setPersistingEditAssets(false);
-    setEditImageFile(null);
     setEditForm({
       name: '',
       current_stock: '0',
@@ -1578,7 +1593,7 @@ function ItemsWorkspace({
 
   const openCreate = () => {
     setCreateForm(createEmptyPosItemForm());
-    setSelectedImageFile(null);
+    setSelectedImageFiles([]);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
   };
@@ -1587,7 +1602,7 @@ function ItemsWorkspace({
     if ((creatingItem || postCreateSaving) && !force) return;
     setShowCreateModal(false);
     setCreateForm(createEmptyPosItemForm());
-    setSelectedImageFile(null);
+    setSelectedImageFiles([]);
     if (force) setPendingCreateRecovery(null);
   };
 
@@ -1657,12 +1672,6 @@ function ItemsWorkspace({
       await updatePosCatalogOverride(activeEditItem.item_id, {
         pos_always_available: editForm.pos_always_available === true
       });
-      if (editImageFile) {
-        await Promise.all([
-          uploadPosCatalogImage(activeEditItem.item_id, editImageFile),
-          uploadStorefrontCatalogImage(activeEditItem.item_id, editImageFile)
-        ]);
-      }
       closeEdit({ force: true });
       await loadItems();
       setSavedMessage({ name, barcode: primaryBarcodes[String(activeEditItem.item_id)]?.code || '', action: 'updated' });
@@ -1673,7 +1682,98 @@ function ItemsWorkspace({
     }
   };
 
-  const runPostCreateStages = async ({ itemId, itemName, imageFile, posAlwaysAvailable }) => {
+  const handleSelectCreateImageFiles = (files) => {
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const remainingSlots = Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedImageFiles.length, 0);
+    const filesToAdd = normalizedFiles.slice(0, remainingSlots);
+    if (normalizedFiles.length > filesToAdd.length) {
+      toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be selected. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+    }
+    if (filesToAdd.length === 0) return;
+    setSelectedImageFiles((current) => [...current, ...filesToAdd].slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT));
+  };
+
+  const removeSelectedCreateImageFile = (imageIndex) => {
+    setSelectedImageFiles((current) => current.filter((_, index) => index !== imageIndex));
+  };
+
+  const handleUploadStorefrontImage = async (item, files) => {
+    const itemId = item?.item_id;
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
+    if (!itemId || normalizedFiles.length === 0) return;
+    const currentGallery = normalizeStorefrontItemGallery(item);
+    const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - currentGallery.length;
+    if (remainingSlots <= 0) {
+      toast.error(`Item image gallery is limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images per item.`);
+      return;
+    }
+    const filesToUpload = normalizedFiles.slice(0, remainingSlots);
+    const oversizedFile = filesToUpload.find((file) => Number(file?.size || 0) > STOREFRONT_ITEM_IMAGE_MAX_BYTES);
+    if (oversizedFile) {
+      toast.error(`Cannot upload ${oversizedFile.name || 'item image'}: image size must be 5 MB or smaller.`);
+      return;
+    }
+    if (normalizedFiles.length > remainingSlots) {
+      toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+    }
+
+    try {
+      await uploadStorefrontCatalogImages(itemId, filesToUpload);
+      await loadItems();
+      toast.success(filesToUpload.length > 1 ? `Item gallery updated for ${item.name}` : `Item image updated for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to upload item image');
+    }
+  };
+
+  const handleSetPrimaryStorefrontImage = async (item, imageIndex) => {
+    const itemId = item?.item_id;
+    if (!itemId) return;
+    const current = normalizeStorefrontItemGallery(item);
+    const normalizedImageIndex = Number.parseInt(imageIndex, 10);
+    if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex <= 0 || normalizedImageIndex >= current.length) return;
+    const nextGallery = [
+      current[normalizedImageIndex],
+      ...current.filter((_, index) => index !== normalizedImageIndex)
+    ].map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+
+    try {
+      await updateStorefrontCatalogGallery(itemId, nextGallery);
+      await loadItems();
+      toast.success(`Primary item image updated for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update primary item image');
+    }
+  };
+
+  const handleDeleteStorefrontImage = async (item, imageIndex = null) => {
+    const itemId = item?.item_id;
+    if (!itemId) return;
+
+    try {
+      const normalizedImageIndex = Number.parseInt(imageIndex, 10);
+      const isSingleImageDelete = Number.isInteger(normalizedImageIndex) && normalizedImageIndex >= 0;
+      if (isSingleImageDelete) {
+        const currentGallery = normalizeStorefrontItemGallery(item);
+        if (normalizedImageIndex >= currentGallery.length) {
+          toast.error('This item image is no longer available. Reopen the item and try again.');
+          return;
+        }
+        const nextGallery = currentGallery
+          .filter((_, index) => index !== normalizedImageIndex)
+          .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+        await updateStorefrontCatalogGallery(itemId, nextGallery);
+      } else {
+        await deleteStorefrontCatalogImage(itemId);
+      }
+      await loadItems();
+      toast.success(isSingleImageDelete ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to remove item image');
+    }
+  };
+
+  const runPostCreateStages = async ({ itemId, itemName, imageFiles, posAlwaysAvailable }) => {
     const failedStages = [];
     let barcodeCode = '';
 
@@ -1691,9 +1791,8 @@ function ItemsWorkspace({
       }
     };
 
-    if (imageFile) {
-      await runStage('pos_image', 'POS image upload', () => uploadPosCatalogImage(itemId, imageFile));
-      await runStage('storefront_image', 'Storefront image upload', () => uploadStorefrontCatalogImage(itemId, imageFile));
+    if (Array.isArray(imageFiles) && imageFiles.length > 0) {
+      await runStage('storefront_images', 'Item image gallery upload', () => uploadStorefrontCatalogImages(itemId, imageFiles));
     }
 
     const generatedBarcode = await runStage('barcode', 'barcode generation', () => generateItemBarcode(itemId, {
@@ -1714,7 +1813,7 @@ function ItemsWorkspace({
       setPendingCreateRecovery({
         itemId,
         name: itemName,
-        imageFile,
+        imageFiles,
         posAlwaysAvailable,
         failedStages
       });
@@ -1802,7 +1901,7 @@ function ItemsWorkspace({
         const result = await runPostCreateStages({
           itemId: pendingCreateRecovery.itemId,
           itemName: recoveryName,
-          imageFile: pendingCreateRecovery.imageFile || selectedImageFile,
+          imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
           posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable
         });
         await finalizeCreatedItem({
@@ -1836,7 +1935,7 @@ function ItemsWorkspace({
       const result = await runPostCreateStages({
         itemId,
         itemName: name,
-        imageFile: selectedImageFile,
+        imageFiles: selectedImageFiles,
         posAlwaysAvailable: createForm.pos_always_available === true
       });
 
@@ -2041,7 +2140,7 @@ function ItemsWorkspace({
         <div className="space-y-4">
           {filteredItems.map((item) => {
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
-            const imageUrl = item?.pos_image_url || item?.storefront_image_url || '';
+            const imageUrl = item?.storefront_image_url || '';
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -2259,50 +2358,55 @@ function ItemsWorkspace({
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
               <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-                {/* Left Column - Product Image */}
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Image</label>
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Images</label>
                     <p className="mt-0.5 text-[11px] leading-normal text-[#64748B]">
-                      The same image will be used for POS and storefront visibility.
+                      These images will be used for both POS and storefront visibility.
                     </p>
                   </div>
 
-                  <label htmlFor="pos-item-image" className="block cursor-pointer">
-                    <div className="flex h-44 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-blue-200 bg-slate-50/50 hover:bg-slate-50/80 transition-colors p-4">
-                      <div className="text-center">
-                        <ImagePlus className="mx-auto h-7 w-7 text-blue-500" />
-                        <p className="mt-2 text-xs font-bold text-[#0F172A]">Click to upload product image</p>
-                        <p className="mt-0.5 text-[10px] text-[#64748B]">JPG, PNG or WEBP (Max 5MB)</p>
-                        <p className="mt-2 text-[9px] leading-normal text-[#94A3B8] text-center">
-                          Only 1 image per item. The same image will be used for POS and storefront visibility.
-                        </p>
+                  <div className="flex h-56 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+                    {selectedImageFiles.length > 0 ? (
+                      <SelectedItemImageCarousel
+                        files={selectedImageFiles}
+                        itemName={createForm.name || 'Product'}
+                        disabled={creatingItem || postCreateSaving}
+                        onRemove={removeSelectedCreateImageFile}
+                      />
+                    ) : (
+                      <div className="px-6 text-center">
+                        <ImagePlus className="mx-auto h-8 w-8 text-slate-300" />
+                        <p className="mt-3 text-sm font-semibold text-[#334155]">Add product images</p>
+                        <p className="mt-1 text-xs text-[#64748B]">These images will be used for POS and storefront visibility.</p>
                       </div>
-                    </div>
-                  </label>
-                  <Input
-                    id="pos-item-image"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={creatingItem || postCreateSaving}
-                    onChange={(event) => setSelectedImageFile(event.target.files?.[0] || null)}
-                  />
+                    )}
+                  </div>
 
-                  {selectedImagePreviewUrl && (
-                    <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-1">
-                      <div className="relative h-44 overflow-hidden rounded-xl">
-                        <img src={selectedImagePreviewUrl} alt="Selected preview" className="h-full w-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => setSelectedImageFile(null)}
-                          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[#0F172A] text-white hover:bg-slate-800 transition-colors focus-visible:outline-none"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <div>
+                    <Label htmlFor="pos-item-image" className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Item images</Label>
+                    <label
+                      htmlFor="pos-item-image"
+                      className={`mt-2 flex h-11 cursor-pointer items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50 ${(creatingItem || postCreateSaving || selectedImageFiles.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) ? 'cursor-not-allowed opacity-50' : ''}`}
+                    >
+                      Choose Item Images
+                      <input
+                        id="pos-item-image"
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        disabled={creatingItem || postCreateSaving || selectedImageFiles.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
+                        onChange={(event) => {
+                          handleSelectCreateImageFiles(Array.from(event.target.files || []));
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                    <p className="mt-1 text-xs text-[#64748B]">
+                      {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedImageFiles.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Right Column - Form Fields */}
@@ -2562,66 +2666,70 @@ function ItemsWorkspace({
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
               <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-                {/* Left Column - Product Image */}
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Image</label>
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Images</label>
                     <p className="mt-0.5 text-[11px] leading-normal text-[#64748B]">
-                      The same image will update the POS and storefront record.
+                      These images update the POS and storefront record.
                     </p>
                   </div>
 
-                  <label htmlFor="pos-item-edit-image" className="block cursor-pointer">
-                    <div className="flex h-44 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-blue-200 bg-slate-50/50 hover:bg-slate-50/80 transition-colors p-4">
-                      <div className="text-center">
-                        <ImagePlus className="mx-auto h-7 w-7 text-blue-500" />
-                        <p className="mt-2 text-xs font-bold text-[#0F172A]">Click to upload product image</p>
-                        <p className="mt-0.5 text-[10px] text-[#64748B]">JPG, PNG or WEBP (Max 5MB)</p>
-                        <p className="mt-2 text-[9px] leading-normal text-[#94A3B8] text-center">
-                          Only 1 image per item. The same image will update the POS and storefront record.
-                        </p>
-                      </div>
-                    </div>
-                  </label>
-                  <Input
-                    id="pos-item-edit-image"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={savingItem || persistingEditAssets}
-                    onChange={(event) => setEditImageFile(event.target.files?.[0] || null)}
-                  />
-
-                  {editImagePreviewUrl ? (
-                    <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-1">
-                      <div className="relative h-44 overflow-hidden rounded-xl">
-                        <img src={editImagePreviewUrl} alt="Selected preview" className="h-full w-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => setEditImageFile(null)}
-                          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[#0F172A] text-white hover:bg-slate-800 transition-colors focus-visible:outline-none"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : activeEditItem?.pos_image_url || activeEditItem?.storefront_image_url ? (
-                    <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-1">
-                      <div className="relative h-44 overflow-hidden rounded-xl">
-                        <img
-                          src={activeEditItem?.pos_image_url || activeEditItem?.storefront_image_url}
-                          alt={activeEditItem?.name || 'Item image'}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                    </div>
-                  ) : null}
+                  {(() => {
+                    const editGallery = normalizeStorefrontItemGallery(activeEditItem || {});
+                    const editRemainingSlots = Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - editGallery.length, 0);
+                    return (
+                      <>
+                        <div className="flex h-56 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+                          {editGallery.length > 0 ? (
+                            <StorefrontImageCarousel
+                              gallery={editGallery}
+                              itemName={activeEditItem?.name || 'Product'}
+                              variant="wizard"
+                              onSetPrimary={(index) => handleSetPrimaryStorefrontImage(activeEditItem, index)}
+                              onRemove={(index) => handleDeleteStorefrontImage(activeEditItem, index)}
+                            />
+                          ) : (
+                            <div className="px-6 text-center">
+                              <ImagePlus className="mx-auto h-8 w-8 text-slate-300" />
+                              <p className="mt-3 text-sm font-semibold text-[#334155]">Add item images</p>
+                              <p className="mt-1 text-xs text-[#64748B]">These images update the POS and storefront record.</p>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <Label htmlFor="pos-item-edit-image" className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Item images</Label>
+                          <label
+                            htmlFor="pos-item-edit-image"
+                            className={`mt-2 flex h-11 cursor-pointer items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50 ${(savingItem || persistingEditAssets || editRemainingSlots === 0) ? 'cursor-not-allowed opacity-50' : ''}`}
+                          >
+                            Add Item Images
+                            <input
+                              id="pos-item-edit-image"
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              disabled={savingItem || persistingEditAssets || editRemainingSlots === 0}
+                              onChange={(event) => {
+                                const files = Array.from(event.target.files || []);
+                                if (files.length && activeEditItem) {
+                                  handleUploadStorefrontImage(activeEditItem, files);
+                                }
+                                event.target.value = '';
+                              }}
+                            />
+                          </label>
+                          <p className="mt-1 text-xs text-[#64748B]">
+                            {editRemainingSlots} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
-                {/* Right Column - Form Fields */}
                 <div className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
-                    {/* Item Name */}
                     <div className="space-y-1.5 sm:col-span-2">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Item Name <span className="text-rose-500">*</span>
@@ -2634,7 +2742,6 @@ function ItemsWorkspace({
                       />
                     </div>
 
-                    {/* Food Category */}
                     <div className="space-y-1.5 sm:col-span-2">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Food Category <span className="text-rose-500">*</span>
@@ -2656,7 +2763,6 @@ function ItemsWorkspace({
                       </div>
                     </div>
 
-                    {/* Stock Quantity */}
                     <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Stock Quantity <span className="text-rose-500">*</span>
@@ -2672,7 +2778,6 @@ function ItemsWorkspace({
                       />
                     </div>
 
-                    {/* Always Available Toggle Switch */}
                     <div className="flex flex-col justify-end">
                       <button
                         type="button"
@@ -2695,7 +2800,6 @@ function ItemsWorkspace({
                       </button>
                     </div>
 
-                    {/* Selling Price */}
                     <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Selling Price <span className="text-rose-500">*</span>
@@ -2714,7 +2818,6 @@ function ItemsWorkspace({
                       </div>
                     </div>
 
-                    {/* Cost Price */}
                     <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Cost Price <span className="text-rose-500">*</span>
@@ -2733,7 +2836,29 @@ function ItemsWorkspace({
                       </div>
                     </div>
 
-                    {/* Description / Notes */}
+                    <div className="flex flex-col justify-end">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={editForm.senior_pwd_discount_eligible}
+                        aria-label="Senior and PWD discount eligible"
+                        onClick={() => setEditForm((current) => ({
+                          ...current,
+                          senior_pwd_discount_eligible: !current.senior_pwd_discount_eligible
+                        }))}
+                        disabled={savingItem || persistingEditAssets}
+                        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-3.5 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">Senior/PWD Eligible</span>
+                          <span className="block truncate text-[10px] text-[#64748B]">Allow statutory discount selection.</span>
+                        </span>
+                        <span className={`relative h-5.5 w-10 shrink-0 rounded-full transition-colors ${editForm.senior_pwd_discount_eligible ? 'bg-blue-600' : 'bg-slate-200'}`}>
+                          <span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow transition-transform ${editForm.senior_pwd_discount_eligible ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                        </span>
+                      </button>
+                    </div>
+
                     <div className="space-y-1.5 sm:col-span-2">
                       <div className="flex justify-between items-center">
                         <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Description / Notes</label>

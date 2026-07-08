@@ -2,14 +2,13 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StoreDashboard } from '../Components/store/index.js';
 import { STORE_DATA } from '../data/storeData.js';
-import { getDefaultStorefrontPath } from '../defaultStorefrontRoute.js';
 
 export function StorePage() {
   const navigate = useNavigate();
 
   const handleNavigate = React.useCallback((kind) => {
     if (kind === 'brand') {
-      navigate(getDefaultStorefrontPath());
+      navigate('/store-template');
       return;
     }
   }, [navigate]);

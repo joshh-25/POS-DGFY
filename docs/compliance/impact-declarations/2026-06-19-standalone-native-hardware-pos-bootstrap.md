@@ -5,7 +5,7 @@ last_reviewed: 2026-06-19
 related_adr: docs/architecture/adr/0029-standalone-native-hardware-pos-runtime.md
 declaration_id: 2026-06-19-standalone-native-hardware-pos-bootstrap
 classification: regulatory
-surfaces: pos,terminal,compliance
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,CONFLICT,RESOURCE_NOT_FOUND
 policy_version: 2026.06.19
 verification_evidence: npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runInBand --runTestsByPath tests/mobilePosHandlers.transport.test.js tests/posHandlers.transport.test.js,git diff --check
@@ -30,6 +30,7 @@ This change introduces the first governed bootstrap slice for the standalone nat
 2. POS use-case layer additions that package catalog, settings, terminal policy, and replay responses for native hardware clients.
 3. Standalone hardware POS workspace scaffolding with local SQLite schema and sync-policy definitions.
 4. Architecture and UX parity documentation establishing the governed split between browser POS and native hardware POS.
+5. `settings` surface — the mobile-pos use-case layer packages terminal-location binding policy and other settings-scoped data into the bootstrap/replay payload for native hardware clients.
 
 ## Compliance Preconditions
 

@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-06
 related_adr: docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md
 declaration_id: 2026-07-06-pos-terminal-and-storefront-promo-hardening
-classification: major
-surfaces: pos,terminal,storefront,settings
+classification: regulatory
+surfaces: pos,terminal,storefront,settings,compliance
 reason_codes_impacted: POS_TERMINAL_UNLOCK_REQUIRED,PROMO_CODE_VALIDATION,PROMO_USAGE_LIMIT_REACHED
 policy_version: 2026.07.06
 verification_evidence: npm --prefix backend test -- --runTestsByPath tests/storeUsecases.applicationResult.test.js -t promo,npm run check:architecture,npm run build:pos,npm run build:store
@@ -20,10 +20,12 @@ preflight_request_ref: DGFY-101-POS-TERMINAL-PROMO-2026-07-06
 
 ## Compliance Impact Classification
 
-Major (surface-driven minimum). This slice changes POS terminal unlock messaging and
+Regulatory (surface-driven minimum). This slice changes POS terminal unlock messaging and
 tenant setup behavior, restores POS report/navigation correctness, and extends the
 Storefront promo-claim UX. It does not change payment authorization, fiscal receipt
-numbering, VAT/service-charge computation, or settlement policy.
+numbering, VAT/service-charge computation, or settlement policy. Classification is escalated
+to `regulatory` to satisfy the repository-wide compliance surface floor for compliance-sensitive
+files changed in this same branch/PR.
 
 ## Affected Surfaces
 
@@ -61,6 +63,9 @@ numbering, VAT/service-charge computation, or settlement policy.
    `frontend/src/features/dgfyRouteHelpers.js`,
    `frontend/Pages/Settings.jsx` — preserves POS/storefront navigation and settings
    contracts while moving operators into the corrected POS-facing entry points.
+6. `compliance` — added to satisfy the repository-wide compliance surface floor for
+   compliance-sensitive files changed in this same branch/PR; this slice does not itself
+   modify compliance policy evaluation logic.
 
 ## Compliance Preconditions
 

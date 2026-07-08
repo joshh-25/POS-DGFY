@@ -6,6 +6,11 @@
 # (2026-07-02)" section for the scoped decision that supersedes those rules
 # for this specific image-based deployment path.
 #
+# For environments whose server isn't directly reachable from GitHub Actions
+# (currently DEV/STAGING), set `vpn_required: true` to connect to a VPN via
+# OpenVPN before the SSH steps run -- see that ADR's "Amendment (2026-07-06)"
+# section for the scoped decision covering this VPN-gated variant.
+#
 # Assumes infrastructure/docker/docker-compose.yml + a filled-in .env +
 # nginx/ have already been copied to /opt/dgfy-platform on the target
 # server (see that file's header comment) and, for a fresh server,
@@ -19,6 +24,11 @@ on:
         description: GitHub Environment to resolve SSH_PRIVATE_KEY/SSH_TARGET secrets from
         required: true
         type: string
+      vpn_required:
+        description: Connect to a VPN (OVPN_CONFIG/OVPN_USERNAME/OVPN_PASSWORD secrets) before SSH-ing in
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,6 +40,27 @@ jobs:
     timeout-minutes: 10
     environment: ${{ inputs.environment }}
     steps:
+      - name: Write OpenVPN config
+        if: inputs.vpn_required
+        env:
+          OVPN_CONFIG: ${{ secrets.OVPN_CONFIG }}
+        run: |
+          printf '%s\n' "$OVPN_CONFIG" > /tmp/client.ovpn
+
+      - name: Install OpenVPN
+        if: inputs.vpn_required
+        run: |
+          sudo apt update
+          sudo apt install -y openvpn openvpn-systemd-resolved
+
+      - name: Connect to VPN
+        if: inputs.vpn_required
+        uses: kota65535/github-openvpn-connect-action@v2
+        with:
+          config_file: /tmp/client.ovpn
+          username: ${{ secrets.OVPN_USERNAME }}
+          password: ${{ secrets.OVPN_PASSWORD }}
+
       - name: Configure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}

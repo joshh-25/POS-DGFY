@@ -61,6 +61,22 @@ describe('Storefront requestJson CSRF/session helper', () => {
     expect(headers['x-csrf-token']).toBeUndefined();
   });
 
+  it('supports overriding credentials for public storefront requests', async () => {
+    await requestJson('/api/v1/store/follow/status?storefront_slug=space-bar&visitor_id=visitor-1234567890abcd', {
+      method: 'GET',
+      storeSlug: 'space-bar',
+      credentials: 'omit'
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/store/follow/status'),
+      expect.objectContaining({
+        method: 'GET',
+        credentials: 'omit'
+      })
+    );
+  });
+
   it('exposes retry metadata from a 429 response for completion-based schedulers', async () => {
     fetch.mockResolvedValueOnce({
       ok: false,

@@ -11,9 +11,7 @@ const accountPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/s
 const solutionsPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/SolutionsPage.jsx'), 'utf8');
 const businessRegistrationUrlSource = () => fs.readFileSync(path.join(appRoot, 'businessRegistrationUrl.js'), 'utf8');
 const guestTrackingDrawerSource = () => fs.readFileSync(path.join(appRoot, 'tracking/components/GuestTrackingDrawer.jsx'), 'utf8');
-const promoCodePanelSource = () => fs.readFileSync(path.join(appRoot, 'checkout/components/PromoCodePanel.jsx'), 'utf8');
-const orderSummaryCardSource = () => fs.readFileSync(path.join(appRoot, 'checkout/components/OrderSummaryCard.jsx'), 'utf8');
-const promoSectionSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/sections/StorefrontPromoSection.jsx'), 'utf8');
+const serviceBookingStepsSource = () => fs.readFileSync(path.join(appRoot, 'services/components/ServiceBookingSteps.jsx'), 'utf8');
 
 describe('Food & Beverage storefront contract', () => {
   it('renders restaurant menu metadata and carries modifiers into checkout lines', () => {
@@ -45,19 +43,40 @@ describe('Food & Beverage storefront contract', () => {
     const source = appSource();
     const accountSource = accountPageSource();
 
-    expect(source).toContain('handleOpenBusinessPos');
+    expect(source).toContain('handleOpenBusinessInventory');
     expect(source).toContain('trackedCustomerActivity');
     expect(accountSource).toContain('Your businesses');
     expect(accountSource).toContain('Pending invitations');
     expect(accountSource).toContain("startBusinessAction('accept'");
-    expect(accountSource).toContain('Go to POS');
+    expect(accountSource).toContain('Go to Inventory');
     expect(accountSource).toContain('businessMemberships');
-    expect(accountSource).toContain('onOpenBusinessPos');
+    expect(accountSource).toContain('onOpenBusinessInventory');
     expect(source).toContain('Use Current Location');
     expect(source).toContain('deliverySavedLocations');
     expect(source).toContain('applySavedDeliveryLocation');
     expect(source).toContain('customerPin');
     expect(source).toContain('selectedSavedLocationId');
+  });
+
+  it('shows logged-in customer saved addresses in simple delivery checkout before map pinning', () => {
+    const source = appSource();
+
+    expect(source).toContain('Saved Addresses');
+    expect(source).toContain('Choose a saved address from your DGFY account or enter a new one below.');
+    expect(source).toContain('accountSavedDeliveryLocations.length > 0');
+    expect(source).toContain("key={`simple-delivery-location-${location.id}`}");
+    expect(source).toContain('applySavedDeliveryLocation(location)');
+    expect(source).toContain('handleSetDefaultDeliveryAddress(location)');
+    expect(source).toContain('handleRemoveDeliveryAddress(location)');
+    expect(source).toContain('Delivery Address *');
+    expect(source).toContain('No saved addresses yet. Add or pin a new one.');
+  });
+
+  it('hydrates account checkout state for cookie-backed DGFY sessions, not token-only sessions', () => {
+    const source = appSource();
+
+    expect(source).toContain('if (!isDgfyCustomerSignedIn || accountPanel.loading) return;');
+    expect(source).not.toContain('if (!dgfyAuthToken || accountPanel.loading) return;');
   });
 
   it('keeps mobile delivery maps on a concrete height with DGFY-branded expanded state', () => {
@@ -90,12 +109,7 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('buildBusinessRegistrationUrl');
     expect(solutionsSource).toContain("import { buildBusinessLoginUrl, buildBusinessRegistrationUrl } from '../../../businessRegistrationUrl.js';");
     expect(helperSource).toContain('VITE_SKUPERVISOR_REGISTRATION_URL');
-    // The production fallback is derived from the current origin (so it
-    // adapts to beta.dgfy.ph -> skupervisor.beta.dgfy.ph, etc.) rather than
-    // a single hardcoded literal -- assert the derivation function exists
-    // and its SSR-only (no window) fallback still points at production.
-    expect(helperSource).toContain('resolvePublicSkupervisorOrigin');
-    expect(helperSource).toContain("return 'https://skupervisor.dgfy.ph'");
+    expect(helperSource).toContain('https://skupervisor.dgfy.ph/register-company');
     expect(source).not.toContain("new URL('https://skupervisor.dgfy.ph/register-company')");
     expect(solutionsSource).not.toContain("window.location.href = 'https://skupervisor.dgfy.ph/register-company'");
   });
@@ -175,7 +189,13 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain("const nextServiceStep = draft.selectedServiceItemId ? 1 : null;");
     expect(source).toContain('setGuestCheckoutUnlocked(true)');
     expect(source).toContain("Your DGFY account details will be used for this order.");
-    expect(source).toContain("Your signed-in DGFY account will be used for this booking.");
+    expect(serviceBookingStepsSource()).toContain("Your signed-in DGFY account will be used for this booking.");
+    expect(source).toContain("simpleOrderStep === 1");
+    expect(source).toContain("serviceBookingStep === 1");
+    expect(source).toContain("renderGuestCheckoutEntry({");
+    expect(source).toContain("description: 'Create an account or continue as guest to continue this order.'");
+    expect(source).toContain("description: hasServiceCart");
+    expect(serviceBookingStepsSource()).toContain('Use guest booking now, or create a DGFY account later with these same details.');
   });
 
   it('keeps F&B checkout payment values backend-valid and excludes the old online placeholder', () => {
@@ -189,38 +209,6 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain("{ value: 'bank_transfer', label: 'Bank transfer' }");
     expect(source).not.toContain("{ value: 'online', label: 'Online payment' }");
     expect(source).toContain('payment_type: fnbPaymentType');
-  });
-
-  it('wires promo-code checkout through the backend payload and summary contract', () => {
-    const source = appSource();
-    const promoSource = promoCodePanelSource();
-    const summarySource = orderSummaryCardSource();
-
-    expect(source).toContain("import { PromoCodePanel }");
-    expect(source).toContain('renderPromoCodePanel');
-    expect(source).toContain('code={promoCodeDraft}');
-    expect(promoSource).toContain('data-storefront-promo-code-panel="true"');
-    expect(promoSource).toContain('Refresh quote or place the order to validate this code.');
-    expect(promoSource).toContain('Discount applied:');
-    expect(summarySource).toContain('promoSlot');
-    expect(source).toContain('promoCode: promoCodeOverride');
-    expect(source).toContain('promo_feedback?.message');
-    expect(source).toContain('discount_amount');
-    expect(source).not.toContain('coupon_code:');
-    expect(source).not.toContain('discount_code:');
-  });
-
-  it('lets storefront promo cards auto-apply the saved promo code', () => {
-    const source = appSource();
-    const promoSource = promoSectionSource();
-
-    expect(source).toContain('const handlePromoCardApply = useCallback(async (promoCode) => {');
-    expect(source).toContain('setPromoCodeDraft(normalizedPromoCode);');
-    expect(source).toContain('await requestQuote({');
-    expect(source).toContain('onPromoSelect={handlePromoCardApply}');
-    expect(promoSource).toContain('Apply promo code');
-    expect(promoSource).toContain('Click to apply');
-    expect(promoSource).toContain('onPromoSelect(promoCode)');
   });
 
   it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {

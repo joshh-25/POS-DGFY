@@ -134,6 +134,10 @@ export const clearDgfyExplicitSignOut = () => {
   }
 };
 
+export const markDgfySessionActive = () => {
+  clearDgfyExplicitSignOut();
+};
+
 export const hasDgfyExplicitSignOut = () => {
   if (typeof window === 'undefined') return false;
   try {

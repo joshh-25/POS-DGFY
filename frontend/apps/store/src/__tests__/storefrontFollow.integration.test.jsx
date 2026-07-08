@@ -143,6 +143,52 @@ describe('storefront follow integration', () => {
     }, { timeout: 8000 });
   }, 10000);
 
+  it('repairs stale invalid visitor ids before loading follow status', async () => {
+    window.localStorage.setItem('dgfy_storefront_visitor_id', 'stale visitor id with spaces');
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('3 followers').length).toBeGreaterThan(0);
+    }, { timeout: 8000 });
+
+    const statusCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/store/follow/status'));
+    expect(statusCall).toBeTruthy();
+    const requestUrl = new URL(String(statusCall[0]));
+    const repairedVisitorId = requestUrl.searchParams.get('visitor_id');
+    expect(repairedVisitorId).toMatch(/^[A-Za-z0-9._:-]{16,128}$/);
+    expect(repairedVisitorId).not.toBe('stale visitor id with spaces');
+    expect(window.localStorage.getItem('dgfy_storefront_visitor_id')).toBe(repairedVisitorId);
+  }, 10000);
+
+  it('keeps follow status and follow actions on the public visitor-id contract', async () => {
+    window.sessionStorage.setItem('dgfy_store_customer_token', 'stale-store-token');
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Follow this storefront' })).toBeTruthy();
+    }, { timeout: 8000 });
+
+    const statusCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/store/follow/status'));
+    expect(statusCall).toBeTruthy();
+    expect(statusCall[1]?.headers?.Authorization).toBeUndefined();
+    expect(statusCall[1]?.credentials).toBe('omit');
+
+    await user.click(screen.getByRole('button', { name: 'Follow this storefront' }));
+
+    await waitFor(() => {
+      const followCall = fetchMock.mock.calls.find(([url, options]) => (
+        String(url).endsWith('/api/v1/store/follow')
+        && String(options?.method || '').toUpperCase() === 'POST'
+      ));
+      expect(followCall).toBeTruthy();
+      expect(followCall[1]?.headers?.Authorization).toBeUndefined();
+      expect(followCall[1]?.credentials).toBe('omit');
+    }, { timeout: 8000 });
+  }, 10000);
+
   it('renders explicit 429 follow errors', async () => {
     fetchMock.mockImplementation(async (url, options = {}) => {
       const normalized = String(url);
