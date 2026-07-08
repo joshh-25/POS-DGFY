@@ -48,6 +48,8 @@ android {
         }
 
         release {
+            manifestPlaceholders += mapOf()
+            signingConfig = signingConfigs.getByName("debug")
             manifestPlaceholders["usesCleartextTraffic"] = "false"
             optimization {
                 enable = false
