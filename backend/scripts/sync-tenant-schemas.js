@@ -52,6 +52,11 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         active_terminal_id: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD COLUMN `active_terminal_id` VARCHAR(100) GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN UPPER(TRIM(`terminal_id`)) ELSE NULL END) STORED"
         })
+    }),
+    pos_transaction_discounts: Object.freeze({
+        promo_code: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_discounts` ADD COLUMN `promo_code` VARCHAR(40) NULL COMMENT 'Commercial promo code validated by the server at checkout'"
+        })
     })
 });
 
@@ -141,6 +146,11 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
     pos_terminal_shifts: Object.freeze({
         uq_pos_terminal_shifts_active_terminal: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_terminal` (`active_terminal_id`)"
+        })
+    }),
+    pos_transaction_discounts: Object.freeze({
+        idx_pos_transaction_discounts_promo_code: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_discounts` ADD INDEX `idx_pos_transaction_discounts_promo_code` (`promo_code`)"
         })
     })
 });
