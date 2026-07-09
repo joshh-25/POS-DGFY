@@ -1,7 +1,7 @@
 import defaultDb from '../models/index.js';
 import logger from '../config/logger.js';
 
-const NON_TENANT_MODEL_EXPORTS = new Set([
+export const NON_TENANT_MODEL_EXPORTS = new Set([
     'sequelize',
     'Sequelize',
     'Tenant',
