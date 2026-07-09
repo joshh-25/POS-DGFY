@@ -6253,7 +6253,7 @@ export default function TerminalOperationsWorkspace({
       locked={locked}
       className={effectiveViewMode === 'items' ? 'px-5 pb-5 pt-2' : 'p-5'}
     >
-      <div key={effectiveViewMode} className="max-sm:animate-pos-slide-in">
+      <div key={effectiveViewMode} className="catalog-slide-enter">
         {content}
       </div>
       {locked && !isIncomingQueueView && (
