@@ -92,3 +92,6 @@ bun.lock
 
 local-test/
 local-dev/
+
+# Built Android release artifacts (scripts/build-android-beta-release.sh)
+/releases/android/
