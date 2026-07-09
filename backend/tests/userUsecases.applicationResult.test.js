@@ -5,11 +5,24 @@ import {
   buildChangePasswordUseCase,
   buildInviteUserUseCase,
   buildGetUserLocationGrantsUseCase,
-  buildUpdateUserLocationGrantsUseCase
+  buildUpdateUserLocationGrantsUseCase,
+  buildUpdatePosApprovalPinUseCase
 } from '../src/modules/users/usecases/userUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
 describe('user use-cases application result contract', () => {
+  it('updates an individual POS approval PIN through the user service boundary', async () => {
+    const updatePosApprovalPin = jest.fn().mockResolvedValue({
+      user_id: 8,
+      pos_approval_pin_configured: true
+    });
+    const useCase = buildUpdatePosApprovalPinUseCase({ userService: { updatePosApprovalPin } });
+
+    const result = await useCase({ adminUserId: 1, targetUserId: 8, pin: '2468', clear: false });
+
+    expect(result.success).toBe(true);
+    expect(updatePosApprovalPin).toHaveBeenCalledWith(1, 8, { pin: '2468', clear: false });
+  });
   it('getCurrentUser validates userId', async () => {
     const useCase = buildGetCurrentUserUseCase({
       userService: { getCurrentUser: jest.fn() }

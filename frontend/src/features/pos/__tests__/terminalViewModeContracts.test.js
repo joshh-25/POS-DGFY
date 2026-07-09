@@ -151,7 +151,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageLayoutContent).toContain("const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';");
     expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSurfaceClassName}`');
     expect(terminalPageLayoutContent).toContain('lg:px-7 ${lockedSurfaceClassName}');
-    expect(terminalPageLayoutContent).toContain('xl:touch-pan-y ${lockedSurfaceClassName}');
+    expect(terminalPageLayoutContent).toContain('touch-pan-y ${workspaceDesktopOverflowClassName} ${lockedSurfaceClassName}');
   });
 
   it('persists manual POS terminal lock across refresh until login succeeds', () => {
@@ -241,7 +241,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('canCloseDay={canCloseShift}');
     expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
     expect(posCheckoutTerminalContent).toContain('notifyPosActionBlocked');
-    expect(posCheckoutTerminalContent).toContain('disabled={posActionsBlocked || cart.length === 0}');
+    expect(posCheckoutTerminalContent).toContain('disabled={posActionsBlocked || safeCart.length === 0}');
     expect(skupervisorCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
     expect(skupervisorCheckoutTerminalContent).toContain('notifyPosActionBlocked');
     expect(skupervisorCheckoutTerminalContent).toContain('disabled={posActionsBlocked || cart.length === 0}');
@@ -277,17 +277,16 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('Go to History');
   });
 
-  it('supports manual POS discounts by percentage or fixed amount', () => {
+  it('supports governed manual POS discounts with percentage or fixed amount entry', () => {
     expect(posCheckoutTerminalContent).toContain("const [manualDiscountMode, setManualDiscountMode] = useState('none');");
     expect(posCheckoutTerminalContent).toContain("const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');");
     expect(posCheckoutTerminalContent).toContain('Discount Type');
-    expect(posCheckoutTerminalContent).toContain('<option value="none">No Manual Discount</option>');
     expect(posCheckoutTerminalContent).toContain('<option value="percentage">Percentage</option>');
-    expect(posCheckoutTerminalContent).toContain('<option value="amount">Manual Amount</option>');
-    expect(posCheckoutTerminalContent).toContain("manualDiscountMode !== 'none'");
-    expect(posCheckoutTerminalContent).toContain("discount_mode: selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none')");
-    expect(posCheckoutTerminalContent).toContain("manualDiscountMode === 'amount' ? 'Manual Discount Amount' : 'Manual Discount Percentage'");
-    expect(posCheckoutTerminalContent).toContain('Manual amount is capped at the item subtotal.');
+    expect(posCheckoutTerminalContent).toContain('<option value="fixed">Fixed Amount</option>');
+    expect(posCheckoutTerminalContent).toContain("['employee', 'manual'].includes(discountDraft.type)");
+    expect(posCheckoutTerminalContent).toContain("discount_mode: appliedDiscount ? 'amount' : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none'))");
+    expect(posCheckoutTerminalContent).toContain("discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'");
+    expect(posCheckoutTerminalContent).toContain('Select the discount and complete all required verification details.');
   });
 
   it('keeps history receipt modal close action in the header and print action in the footer', () => {
@@ -321,10 +320,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(receiptPrintViewContent).toContain('resolveReceiptLineUnitPrice');
     expect(receiptPrintViewContent).toContain('resolveReceiptLineTotal');
     expect(receiptPrintViewContent).toContain('splitReceiptItemName');
-    expect(receiptPrintViewContent).toContain("RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.75rem 1.5rem 3.75rem'");
+    expect(receiptPrintViewContent).toContain("RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.25rem 1.25rem 3.25rem'");
     expect(receiptPrintViewContent).toContain('itemNameParts.firstLine');
     expect(receiptPrintViewContent).toContain('itemNameParts.secondLine');
-    expect(receiptPrintViewContent).toContain('pr-24 text-[13px] font-medium leading-snug text-slate-900');
+    expect(receiptPrintViewContent).toContain('min-w-0 truncate font-medium leading-snug text-slate-900');
     expect(receiptPrintViewContent).toContain('last:border-b-0 last:pb-0');
   });
 
@@ -424,7 +423,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');
     expect(terminalLockDrawerContent).not.toContain('Company Token (Optional)');
-    expect(terminalLockDrawerContent).toContain('DGFY Email');
+    expect(terminalLockDrawerContent).toContain('DGFY or Cashier Email');
     expect(terminalLockDrawerContent).toContain('Company');
     expect(terminalLockDrawerContent).toContain('Continue to POS');
     expect(terminalLockDrawerContent).toContain('Select accessible company');

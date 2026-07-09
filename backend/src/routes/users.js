@@ -13,6 +13,7 @@ import {
   validateUpdateUserRole,
   validateUpdateUserStatus,
   validateUpdateUserPermissions,
+  validateUpdatePosApprovalPin,
   validateInviteUser,
   validateUpdateUserLocationGrants,
   validateEmailChangeOtpRequest
@@ -33,6 +34,7 @@ router.get('/role-catalog', authenticate, checkPermission(PERMISSIONS.SYSTEM.act
 router.put('/:user_id/role', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserRole, userController.updateUserRole);
 router.put('/:user_id/status', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserStatus, userController.updateUserStatus);
 router.put('/:user_id/permissions', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserPermissions, userController.updateUserPermissions);
+router.put('/:user_id/pos-approval-pin', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdatePosApprovalPin, userController.updatePosApprovalPin);
 router.put('/:user_id/password', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateResetLocalCashierPassword, userController.resetLocalCashierPassword);
 router.post('/cashier-provision', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateProvisionCashierFromGmail, userController.provisionCashierFromGmail);
 router.get('/:user_id/location-grants', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), userController.getUserLocationGrants);

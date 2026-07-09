@@ -3,6 +3,8 @@ import {
     listPosCatalogUseCase,
     scanPosBarcodeUseCase,
     checkoutPosUseCase,
+    listPosDiscountApproversUseCase,
+    verifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase,
     getPosReportsOverviewUseCase,
     exportPosReportsUseCase,
@@ -59,6 +61,37 @@ const defaultErrorPayload = (req, res, failure) => ({
     request_id: requestId(req, res),
     timestamp: timestamp()
 });
+
+export const listDiscountApprovers = async (req, res, next) => {
+    try {
+        const result = await listPosDiscountApproversUseCase();
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const verifyDiscountApproval = async (req, res, next) => {
+    try {
+        const result = await verifyPosDiscountApprovalUseCase({ payload: req.validatedData || req.body || {} });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS discount approval verified',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
 export const getReportsOverview = async (req, res, next) => {
     try {
@@ -1106,6 +1139,8 @@ export const deleteCatalogImage = async (req, res, next) => {
 };
 
 export default {
+    listDiscountApprovers,
+    verifyDiscountApproval,
     requireRegisteredTerminal,
     createSetupCashier,
     listSetupCashiers,

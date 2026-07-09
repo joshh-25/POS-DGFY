@@ -7,7 +7,8 @@ import org.json.JSONObject
 class IminBridge(
     private val drawerController: DrawerController,
     private val onWebPosReady: (() -> Unit)? = null,
-    private val onShowMessage: ((String, String) -> Unit)? = null
+    private val onShowMessage: ((String, String) -> Unit)? = null,
+    private val onPlayOrderAlert: ((String) -> Unit)? = null
 ) {
     @JavascriptInterface
     fun isIminWrapper(): Boolean = true
@@ -44,6 +45,15 @@ class IminBridge(
         return JSONObject()
             .put("success", true)
             .put("message", "Native message shown")
+            .toString()
+    }
+
+    @JavascriptInterface
+    fun playOrderAlert(soundType: String): String {
+        onPlayOrderAlert?.invoke(soundType)
+        return JSONObject()
+            .put("success", true)
+            .put("message", "Order alert played")
             .toString()
     }
 

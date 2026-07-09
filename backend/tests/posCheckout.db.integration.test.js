@@ -3,11 +3,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 import { Sequelize } from 'sequelize';
+import bcrypt from 'bcryptjs';
 import dbStore from '../src/utils/dbStore.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
-import { checkoutPosUseCase } from '../src/modules/pos/index.js';
 import { listPosCatalogUseCase } from '../src/modules/pos/index.js';
-import { sequelize as landlordSequelize } from '../src/models/index.js';
+import { buildCheckoutPosUseCase } from '../src/modules/pos/usecases/posUseCases.js';
+import { posRepository } from '../src/modules/pos/repositories/posRepository.js';
+import { inventoryStockCommandService } from '../src/modules/inventory/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +21,20 @@ const dbConfig = {
     password: process.env.DB_PASSWORD || '',
     port: Number(process.env.DB_PORT || 3306)
 };
+const adminSequelize = new Sequelize('mysql', dbConfig.user, dbConfig.password, {
+    host: dbConfig.host,
+    port: dbConfig.port,
+    dialect: 'mysql',
+    logging: false
+});
+const checkoutPosUseCase = buildCheckoutPosUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    resolveIdentityStatus: async () => ({
+        identity_mode: 'dgfy_membership',
+        membership_id: 1
+    })
+});
 
 const createIsolatedDbName = () => (
     `test_pos_checkout_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`
@@ -214,7 +230,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
     };
 
     beforeAll(async () => {
-        await landlordSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
+        await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
         runMigrationsForDb(dbName);
 
         tenantSequelize = new Sequelize(
@@ -237,7 +253,8 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         if (tenantSequelize) {
             await tenantSequelize.close();
         }
-        await landlordSequelize.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
+        await adminSequelize.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
+        await adminSequelize.close();
     }, 60000);
 
     it('runs against migrated POS schema and persists checkout stock movements', async () => {
@@ -297,9 +314,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             senior_pwd_discount_eligible: true
         });
 
-        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
-            userId: cashier.user_id,
-            payload: {
+        const checkoutResult = await checkoutAsCashier(cashier, {
                 idempotency_key: `idem-governed-${crypto.randomUUID()}`,
                 payment_type: 'cash',
                 order_method: 'dine_in',
@@ -314,11 +329,11 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                     method: 'percentage',
                     rate: 20,
                     customer_name: 'Integration Customer',
-                    id_number: 'SC-INTEGRATION'
+                    id_number: 'SC-INTEGRATION',
+                    eligible_item_ids: [product.item_id]
                 },
                 lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
-            }
-        }));
+        });
 
         expect(checkoutResult).toEqual(expect.objectContaining({ success: true }));
 
@@ -337,6 +352,46 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(allocation.transaction_line_id).toBe(transaction.lines[0].line_id);
         expect(allocation.item_id).toBe(product.item_id);
         expect(Number(allocation.gross_eligible_amount)).toBeGreaterThan(0);
+    });
+
+    it('persists the verified manager identity for an employee discount', async () => {
+        const cashier = await createCashier();
+        const approver = await models.User.create({
+            username: `manager_${crypto.randomUUID().slice(0, 8)}`,
+            email: `manager_${crypto.randomUUID().slice(0, 8)}@pos.test`,
+            password_hash: 'test-hash',
+            pos_approval_pin_hash: await bcrypt.hash('2468', 4),
+            role: 'manager',
+            is_active: true
+        });
+        const product = await createFinishedGood({ current_stock: 10 });
+
+        const checkoutResult = await checkoutAsCashier(cashier, {
+            idempotency_key: `idem-employee-${crypto.randomUUID()}`,
+            payment_type: 'cash',
+            order_method: 'dine_in',
+            governed_discount: {
+                type: 'employee',
+                method: 'percentage',
+                rate: 10,
+                employee_name: 'Untrusted Name',
+                employee_id: String(cashier.user_id),
+                approver_user_id: approver.user_id,
+                manager_pin: '2468',
+                reason: 'Staff meal'
+            },
+            lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
+        });
+
+        expect(checkoutResult.success).toBe(true);
+        const discount = await models.PosTransactionDiscount.findOne({
+            where: { transaction_id: checkoutResult.data.transaction.pos_transaction_id }
+        });
+        expect(discount.manager_approval_id).toBe(approver.user_id);
+        expect(discount.manager_approved_at).toBeInstanceOf(Date);
+        expect(discount.employee_id).toBe(String(cashier.user_id));
+        expect(discount.employee_name).toBe(cashier.username);
+        expect(discount.self_approved).toBe(false);
     });
 
     it('sells an always-available POS item at zero stock without creating a stock movement', async () => {
@@ -361,15 +416,12 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(Number(catalogItem.current_stock)).toBe(0);
 
         const idempotencyKey = `idem-always-available-${crypto.randomUUID()}`;
-        const checkoutResult = await runInTenantContext(() => checkoutPosUseCase({
-            userId: cashier.user_id,
-            payload: {
+        const checkoutResult = await checkoutAsCashier(cashier, {
                 idempotency_key: idempotencyKey,
                 payment_type: 'cash',
                 order_method: 'dine_in',
                 lines: [{ item_id: product.item_id, quantity: 2, sale_price: null }]
-            }
-        }));
+        });
 
         expect(checkoutResult.success).toBe(true);
         const persistedTx = await models.PosTransaction.findOne({

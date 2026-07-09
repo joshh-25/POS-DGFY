@@ -1286,6 +1286,77 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
 };
 
 export const posRepository = {
+    async findActiveDiscountRuleByType(type, options = {}) {
+        const PosDiscountRule = dbStore.get('PosDiscountRule');
+        const row = await PosDiscountRule.findOne({
+            where: { type, is_active: true },
+            order: [['id', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async findActiveEmployeeById(userId, options = {}) {
+        const User = dbStore.get('User');
+        const row = await User.findOne({
+            where: buildVisibleWhere({ user_id: userId, is_active: true }),
+            attributes: ['user_id', 'username', 'email', 'role'],
+            transaction: options.transaction
+        });
+        return toPlain(row);
+    },
+
+    async listActiveDiscountApprovers(options = {}) {
+        const User = dbStore.get('User');
+        const rows = await User.findAll({
+            where: buildVisibleWhere({
+                is_active: true,
+                role: { [Op.in]: ['admin', 'manager'] },
+                pos_approval_pin_hash: { [Op.ne]: '' }
+            }),
+            attributes: ['user_id', 'username', 'role', 'is_master_admin'],
+            order: [['username', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async findActiveDiscountApproverById(userId, options = {}) {
+        const User = dbStore.get('User');
+        const row = await User.findOne({
+            where: buildVisibleWhere({ user_id: userId, is_active: true }),
+            attributes: ['user_id', 'username', 'role', 'is_active', 'deleted_at', 'pos_approval_pin_hash'],
+            transaction: options.transaction
+        });
+        return toPlain(row);
+    },
+
+    async findSystemSettingByKey(key, options = {}) {
+        const SystemSetting = dbStore.get('SystemSetting');
+        const row = await SystemSetting.findOne({
+            where: { setting_key: key },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async updateSystemSettingValueByKey(key, value, options = {}) {
+        const SystemSetting = dbStore.get('SystemSetting');
+        const row = await SystemSetting.findOne({
+            where: { setting_key: key },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update({
+            setting_value: typeof value === 'string' ? value : JSON.stringify(value),
+            data_type: typeof value === 'string' ? row.data_type : 'json'
+        }, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
     async getItemById(itemId, options = {}) {
         const Item = dbStore.get('Item');
         return Item.findOne({
@@ -1715,6 +1786,7 @@ export const posRepository = {
         const transaction = options.transaction;
         const created = await PosTransactionDiscount.create({
             transaction_id: transactionId,
+            discount_rule_id: application.rule_id || null,
             discount_type: application.type,
             discount_method: calculation.method,
             discount_rate: calculation.rate,
@@ -1725,7 +1797,12 @@ export const posRepository = {
             senior_pwd_id_number: application.id_number || null,
             employee_name: application.employee_name || null,
             employee_id: application.employee_id || null,
-            reason: application.reason || null
+            promo_code: application.promo_code || null,
+            manager_approval_id: application.manager_approval_id || null,
+            manager_approved_at: application.manager_approved_at || null,
+            self_approved: application.self_approved === true,
+            reason: application.reason || null,
+            calculation_version: 'pos-discount.v2'
         }, { transaction });
         const transactionLines = await PosTransactionLine.findAll({
             where: { pos_transaction_id: transactionId },

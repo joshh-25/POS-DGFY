@@ -89,6 +89,23 @@ export const notifyIminWebPosReady = () => {
     }
 };
 
+export const playOrderAlertWithIminBridge = (soundType = 'new_order') => {
+    const bridge = getIminBridge();
+    if (!bridge || typeof bridge.playOrderAlert !== 'function') {
+        return { handled: false, result: null };
+    }
+
+    const result = parseBridgeResult(
+        bridge.playOrderAlert(String(soundType || 'new_order').trim() || 'new_order'),
+        'Order alert command sent.'
+    );
+
+    return {
+        handled: true,
+        result
+    };
+};
+
 const formatDiagnostics = (diagnostics) => {
     if (!diagnostics || typeof diagnostics !== 'object') return '';
     const details = [
@@ -159,8 +176,7 @@ const resolveDocumentType = (transaction, receiptContract) => {
     const transactionType = String(transaction?.document_type || '').toLowerCase();
     if (transactionType === 'fiscal_invoice' || transactionType === 'non_fiscal_slip') return transactionType;
 
-    const invoiceNumber = String(transaction?.invoice_number || '').toUpperCase();
-    return invoiceNumber.startsWith('INV-') ? 'fiscal_invoice' : 'non_fiscal_slip';
+    return 'non_fiscal_slip';
 };
 
 const resolveDocumentContext = (transaction, receiptContract, documentType) => {
@@ -171,18 +187,6 @@ const resolveDocumentContext = (transaction, receiptContract, documentType) => {
     if (['fiscal', 'non_fiscal', 'training_test'].includes(transactionContext)) return transactionContext;
 
     return documentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal';
-};
-
-const parseObjectMetadata = (value) => {
-    if (!value) return {};
-    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-    if (typeof value !== 'string') return {};
-    try {
-        const parsed = JSON.parse(value);
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-        return {};
-    }
 };
 
 const parseArrayMetadata = (value) => {
@@ -208,12 +212,6 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     const documentType = resolveDocumentType(transaction, receiptContract);
     const documentContext = resolveDocumentContext(transaction, receiptContract, documentType);
     const isFiscal = documentType === 'fiscal_invoice';
-    const transactionMetadata = parseObjectMetadata(transaction?.special_instructions);
-    const contractMetadata = transactionMetadata?.receipt_contract
-        && typeof transactionMetadata.receipt_contract === 'object'
-        ? transactionMetadata.receipt_contract
-        : {};
-    const receiptContractVersion = safeText(contractMetadata?.version, '2026.04.08');
     const restaurantServiceChargeAmount = Number(transaction?.restaurant_service_charge_amount || 0);
     const receiptRows = [];
     const taxpayerType = safeText(businessSettings.pos_taxpayer_type).toLowerCase();
@@ -238,7 +236,7 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         receiptRows.push(center(`MIN: ${businessSettings.pos_min_number}`));
     }
     if (isFiscal && businessSettings.pos_accreditation_number) {
-        pushCenteredWrapped(receiptRows, `Accreditation: ${businessSettings.pos_accreditation_number}`);
+        pushCenteredWrapped(receiptRows, `ATP/OCN No.: ${businessSettings.pos_accreditation_number}`);
     }
     if (isFiscal && businessSettings.pos_software_name) {
         pushCenteredWrapped(receiptRows, `Software: ${businessSettings.pos_software_name}`);
@@ -262,17 +260,22 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         );
     }
 
+    if (isFiscal) {
+        receiptRows.push('SOLD TO:');
+        pushCenteredWrapped(receiptRows, `Customer: ${transaction?.customer_name || transaction?.buyer_name || '________________'}`);
+        receiptRows.push(`TIN: ${transaction?.buyer_tin || '________________'}`);
+        pushCenteredWrapped(receiptRows, `Address: ${transaction?.buyer_address || '________________'}`);
+        if (transaction?.buyer_business_style) {
+            pushCenteredWrapped(receiptRows, `Business Style: ${transaction.buyer_business_style}`);
+        }
+    }
+
     receiptRows.push(
-        `Invoice No.: ${transaction?.invoice_number || '-'}`,
+        `Receipt No.: ${transaction?.invoice_number || '-'}`,
         `Date/Time: ${printedAt}`,
         `Terminal: ${transaction?.terminal_id || '-'}`,
         `Cashier: ${transaction?.cashier?.username || transaction?.acceptedByUser?.username || '-'}`
     );
-
-    receiptRows.push('SOLD TO:');
-    pushCenteredWrapped(receiptRows, `Customer: ${transaction?.customer_name || '________________'}`);
-    receiptRows.push(`TIN: ${transaction?.buyer_tin || '________________'}`);
-    pushCenteredWrapped(receiptRows, `Address: ${transaction?.buyer_address || '________________'}`);
 
     if (transaction?.fnb_check_id || transaction?.fnb_table_label_snapshot || transaction?.fnb_guest_count) {
         const fnbParts = [
@@ -307,14 +310,17 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         }
     });
 
-    receiptRows.push(
-        line(),
-        pair('TOTAL SALES', money(transaction?.subtotal_amount)),
-        pair('Vatable Sales', money(transaction?.vatable_sales)),
-        pair('VAT Amount', money(transaction?.vat_amount)),
-        pair('VAT Exempt Sales', money(transaction?.vat_exempt_sales)),
-        pair('Zero Rated Sales', money(transaction?.zero_rated_sales))
-    );
+    receiptRows.push(line(), pair('TOTAL SALES', money(transaction?.subtotal_amount)));
+    if (isFiscal) {
+        receiptRows.push(
+            pair('Vatable Sales', money(transaction?.vatable_sales)),
+            pair('VAT 12%', money(transaction?.vat_amount)),
+            pair('VAT Exempt Sales', money(transaction?.vat_exempt_sales)),
+            pair('Zero Rated Sales', money(transaction?.zero_rated_sales))
+        );
+    } else {
+        receiptRows.push(pair('Estimated Tax', 'Included'));
+    }
 
     const discountLabel = [
         'Discount',
@@ -348,11 +354,12 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     receiptRows.push(
         `Payment Method: ${safeText(transaction?.payment_type, '-').toUpperCase()}`,
         pair('Cash Received', money(transaction?.cash_received)),
-        pair('Change', money(transaction?.change_amount)),
+        pair('Change', money(transaction?.change_amount))
+    );
+    receiptRows.push(
         line(),
-        `BIR Permit No.: ${businessSettings.pos_ptu_number || '-'}`,
-        `ATP/OCN No.: ${businessSettings.pos_accreditation_number || '-'}`,
-        `MIN: ${businessSettings.pos_min_number || '-'}`
+        center(isFiscal ? 'FISCAL RECEIPT' : 'NON-FISCAL RECEIPT'),
+        center(isFiscal ? 'Includes tax breakdown and fiscal identifiers.' : 'This document is not an official tax receipt.')
     );
 
     if (businessSettings.pos_receipt_footer_message) {

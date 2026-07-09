@@ -15,9 +15,10 @@ export default sequelize.define('PosTransactionDiscount', {
   senior_pwd_id_number: DataTypes.STRING(100),
   employee_name: DataTypes.STRING(255),
   employee_id: DataTypes.STRING(100),
+  promo_code: DataTypes.STRING(40),
   manager_approval_id: DataTypes.INTEGER,
   manager_approved_at: DataTypes.DATE,
   self_approved: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   reason: DataTypes.STRING(500),
-  calculation_version: { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'pos-discount.v1' }
+  calculation_version: { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'pos-discount.v2' }
 }, { tableName: 'pos_transaction_discounts', timestamps: true, createdAt: 'created_at', updatedAt: false });

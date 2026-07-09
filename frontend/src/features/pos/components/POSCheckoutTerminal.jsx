@@ -1,20 +1,31 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+    Accessibility,
     AlertCircle,
+    BadgeCheck,
     ChevronDown,
     ChevronLeft,
     ChevronRight,
+    CreditCard,
     Delete,
     Filter,
     Folder,
     Gauge,
+    Info,
     Lock,
+    MessageSquare,
     Minus,
+    Pencil,
     Plus,
+    Percent,
     Printer,
     Search,
-    X
+    Tag,
+    UserRound,
+    X,
+    Eye,
+    EyeOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,7 +46,9 @@ import {
     fetchPosTransactionById,
     fetchPosDeviceStatus,
     printPosReceipt,
-    openPosDeviceDrawer
+    openPosDeviceDrawer,
+    fetchPosDiscountApprovers,
+    verifyPosDiscountApproval
 } from '../services/posService';
 import {
     TERMINAL_QUEUE_STATUS,
@@ -49,7 +62,7 @@ import {
     markTerminalOperationRetryScheduled
 } from '../services/terminalOperationQueueStore.js';
 import { getFolders } from '@/services/itemService.js';
-import { getAllSettings, verifyPosSettingsAccessPin } from '@/services/settingsService';
+import { getAllSettings } from '@/services/settingsService';
 import { resolveAppAssetUrl, resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { openSkupervisorPath } from '../utils/skupervisorHandoff.js';
 import {
@@ -88,24 +101,64 @@ const RECEIPT_PAPER_OPTIONS = [
 
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+const toArray = (value) => (Array.isArray(value) ? value : []);
+const normalizePromoCode = (value) => String(value || '').trim().toUpperCase().slice(0, 40);
+const normalizeCommercialPromoConfigs = (settings = {}) => {
+    const promos = Array.isArray(settings?.storefront_promos?.value) ? settings.storefront_promos.value : [];
+    const legacyPromo = settings?.storefront_promo?.value;
+    const normalized = promos
+        .filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry))
+        .map((entry) => ({ ...entry, promo_code: normalizePromoCode(entry.promo_code) }));
+    if (legacyPromo && typeof legacyPromo === 'object' && !Array.isArray(legacyPromo)) {
+        const legacyCode = normalizePromoCode(legacyPromo.promo_code);
+        if (legacyCode && !normalized.some((entry) => normalizePromoCode(entry.promo_code) === legacyCode)) {
+            normalized.push({ ...legacyPromo, promo_code: legacyCode });
+        }
+    }
+    return normalized;
+};
 const EMPTY_DISCOUNT_DRAFT = {
     type: 'senior', method: 'percentage', rate: '20', amount: '', customer_name: '',
-    id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', eligible_item_ids: []
+    id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], promo_code: ''
+};
+const DISCOUNT_TYPE_OPTIONS = [
+    { value: 'senior', label: 'Senior Citizen', icon: UserRound },
+    { value: 'pwd', label: 'PWD', icon: Accessibility },
+    { value: 'employee', label: 'Employee', icon: BadgeCheck },
+    { value: 'promo', label: 'Promo', icon: Tag },
+    { value: 'manual', label: 'Manual', icon: Pencil }
+];
+const DISCOUNT_INFO_MESSAGES = {
+    senior: 'Select a discount type to see the required fields. Other discount types will show different verification details.',
+    pwd: 'Select a discount type to see the required fields. Other discount types will show different verification details.',
+    employee: 'Employee discount requires valid employee verification and authorization.',
+    promo: 'Provide the promo details below to apply the discount.',
+    manual: 'Manual discounts require a valid reason and admin authorization.'
 };
 const calculateGovernedDiscount = (cart, application) => {
-    const subtotal = round4(cart.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.sale_price || 0), 0));
+    const cartRows = toArray(cart);
+    const eligibleItemIds = toArray(application?.eligible_item_ids);
+    const subtotal = round4(cartRows.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.sale_price || 0), 0));
     if (!application) return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: 0, total: subtotal };
     const statutory = application.type === 'senior' || application.type === 'pwd';
     if (!statutory) {
+        const selectedItemIds = new Set(eligibleItemIds.map(Number));
+        const discountBase = application.type === 'promo' && selectedItemIds.size > 0
+            ? round4(cartRows.reduce((sum, line) => (
+                selectedItemIds.has(Number(line.item_id))
+                    ? sum + Number(line.quantity || 0) * Number(line.sale_price || 0)
+                    : sum
+            ), 0))
+            : subtotal;
         const discountAmount = application.method === 'fixed'
-            ? Math.min(subtotal, Math.max(0, Number(application.amount || 0)))
-            : Math.min(subtotal, subtotal * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
+            ? Math.min(discountBase, Math.max(0, Number(application.amount || 0)))
+            : Math.min(discountBase, discountBase * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
         return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: round4(discountAmount), total: round4(subtotal - discountAmount) };
     }
-    const selected = new Set((application.eligible_item_ids || []).map(Number));
+    const selected = new Set(eligibleItemIds.map(Number));
     let vatRemoved = 0;
     let vatExemptAmount = 0;
-    cart.forEach((line) => {
+    cartRows.forEach((line) => {
         if (!selected.has(Number(line.item_id))) return;
         const gross = round4(Number(line.quantity || 0) * Number(line.sale_price || 0));
         const exempt = (line.vat_type || 'vatable') === 'vatable' ? round4(gross / 1.12) : gross;
@@ -542,6 +595,7 @@ export default function POSCheckoutTerminal({
     const [discountDraft, setDiscountDraft] = useState(EMPTY_DISCOUNT_DRAFT);
     const [appliedDiscount, setAppliedDiscount] = useState(null);
     const [discountApplying, setDiscountApplying] = useState(false);
+    const [showDiscountPin, setShowDiscountPin] = useState(false);
     const [cart, setCart] = useState([]);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [queuedCheckouts, setQueuedCheckouts] = useState([]);
@@ -563,6 +617,9 @@ export default function POSCheckoutTerminal({
     const [historyDateTo, setHistoryDateTo] = useState('');
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
     const [receiptSettings, setReceiptSettings] = useState({});
+    const [commercialPromoConfig, setCommercialPromoConfig] = useState([]);
+    const [discountApprovers, setDiscountApprovers] = useState([]);
+    const [discountApproversLoading, setDiscountApproversLoading] = useState(false);
     const [deviceStatus, setDeviceStatus] = useState(null);
     const [deviceStatusLoading, setDeviceStatusLoading] = useState(false);
     const [receiptPrinting, setReceiptPrinting] = useState(false);
@@ -634,6 +691,18 @@ export default function POSCheckoutTerminal({
     const checkoutPaneClassName = 'h-full max-h-full';
     const catalogPaneHeightClassName = 'h-full max-h-full';
     const currentSalePaneHeightClassName = 'h-full max-h-full';
+    const safeCatalog = toArray(catalog);
+    const safePosFolders = toArray(posFolders);
+    const safeDiscountProfiles = toArray(discountProfiles);
+    const safeCommercialPromoConfig = toArray(commercialPromoConfig);
+    const safeDiscountApprovers = toArray(discountApprovers);
+    const safeCart = toArray(cart);
+    const safeQueuedCheckouts = toArray(queuedCheckouts);
+    const safeHistoryRows = toArray(historyRows);
+    const safeEligibleDiscountItemIds = toArray(discountDraft?.eligible_item_ids);
+    const safeAppliedDiscount = appliedDiscount && typeof appliedDiscount === 'object'
+        ? { ...appliedDiscount, eligible_item_ids: toArray(appliedDiscount.eligible_item_ids) }
+        : null;
     const catalogCardClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
         : isTabletViewport
@@ -653,21 +722,21 @@ export default function POSCheckoutTerminal({
     const CATALOG_PAGE_SIZE = 12;
     const catalogPageSize = CATALOG_PAGE_SIZE;
     const selectedFolder = useMemo(() => (
-        posFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
-    ), [posFolders, selectedFolderId]);
+        safePosFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
+    ), [safePosFolders, selectedFolderId]);
     const totalCatalogPages = useMemo(() => (
-        Math.max(1, Math.ceil(catalog.length / catalogPageSize))
-    ), [catalog.length, catalogPageSize]);
+        Math.max(1, Math.ceil(safeCatalog.length / catalogPageSize))
+    ), [safeCatalog.length, catalogPageSize]);
     const visibleCatalogItems = useMemo(() => {
         const pageStart = (catalogPage - 1) * catalogPageSize;
-        return catalog.slice(pageStart, pageStart + catalogPageSize);
-    }, [catalog, catalogPage, catalogPageSize]);
+        return safeCatalog.slice(pageStart, pageStart + catalogPageSize);
+    }, [safeCatalog, catalogPage, catalogPageSize]);
     const visibleCatalogRange = useMemo(() => {
-        if (catalog.length === 0) return { start: 0, end: 0 };
+        if (safeCatalog.length === 0) return { start: 0, end: 0 };
         const start = (catalogPage - 1) * catalogPageSize + 1;
         const end = start + visibleCatalogItems.length - 1;
         return { start, end };
-    }, [catalog.length, catalogPage, catalogPageSize, visibleCatalogItems.length]);
+    }, [safeCatalog.length, catalogPage, catalogPageSize, visibleCatalogItems.length]);
     const handleCatalogPageChange = useCallback((direction) => {
         setCatalogPage((previous) => {
             if (direction === 'previous') {
@@ -721,18 +790,18 @@ export default function POSCheckoutTerminal({
     const isGlobalFeePolicyActive = Array.isArray(setupMeta.enabledFeeMethods)
         && setupMeta.enabledFeeMethods.includes('dgfy_global_1pct');
     const queuedCheckoutPendingCount = useMemo(() => (
-        queuedCheckouts.filter((entry) => (
+        safeQueuedCheckouts.filter((entry) => (
             String(entry?.status || '') === TERMINAL_QUEUE_STATUS.QUEUED
             || String(entry?.status || '') === TERMINAL_QUEUE_STATUS.REPLAYING
         )).length
-    ), [queuedCheckouts]);
+    ), [safeQueuedCheckouts]);
     const queuedCheckoutBlockedCount = useMemo(() => (
-        queuedCheckouts.filter((entry) => (
+        safeQueuedCheckouts.filter((entry) => (
             String(entry?.status || '') === TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED
         )).length
-    ), [queuedCheckouts]);
+    ), [safeQueuedCheckouts]);
     const offlineHistoryRows = useMemo(() => (
-        queuedCheckouts
+        safeQueuedCheckouts
             .filter((entry) => isCheckoutQueueEntry(entry))
             .map((entry) => {
                 const payload = entry?.payload && typeof entry.payload === 'object' ? entry.payload : {};
@@ -774,16 +843,16 @@ export default function POSCheckoutTerminal({
         historyPaymentType,
         historySearch,
         historyStatus,
-        queuedCheckouts
+        safeQueuedCheckouts
     ]);
     const visibleHistoryRows = useMemo(() => (
         historyPage === 1
-            ? [...offlineHistoryRows, ...historyRows]
-            : historyRows
-    ), [historyPage, historyRows, offlineHistoryRows]);
+            ? [...toArray(offlineHistoryRows), ...safeHistoryRows]
+            : safeHistoryRows
+    ), [historyPage, safeHistoryRows, offlineHistoryRows]);
     const visibleHistoryPagination = useMemo(() => {
-        const baseLimit = Number(historyPagination?.limit || historyRows.length || 20) || 20;
-        const baseTotal = Number(historyPagination?.total || historyRows.length || 0);
+        const baseLimit = Number(historyPagination?.limit || safeHistoryRows.length || 20) || 20;
+        const baseTotal = Number(historyPagination?.total || safeHistoryRows.length || 0);
         const offlineCount = historyPage === 1 ? offlineHistoryRows.length : 0;
         const total = baseTotal + offlineCount;
         return {
@@ -793,7 +862,7 @@ export default function POSCheckoutTerminal({
             total,
             totalPages: Math.max(1, Math.ceil(total / baseLimit))
         };
-    }, [historyPage, historyPagination, historyRows.length, offlineHistoryRows.length]);
+    }, [historyPage, historyPagination, safeHistoryRows.length, offlineHistoryRows.length]);
     const detectedPrinterCount = Number(deviceStatus?.bridge?.printersDetected || 0);
     const isPrinterAvailable = detectedPrinterCount > 0;
     const lastReceiptPendingSync = lastReceipt?.offline_sync_state === 'pending_sync';
@@ -1065,6 +1134,7 @@ export default function POSCheckoutTerminal({
         if (sessionLocked) {
             setReceiptSettings({});
             setDiscountProfiles([]);
+            setCommercialPromoConfig([]);
             return;
         }
         try {
@@ -1084,9 +1154,11 @@ export default function POSCheckoutTerminal({
                 pos_receipt_footer_message: allSettings?.pos_receipt_footer_message?.value || ''
             });
             setDiscountProfiles(normalizeDiscountProfiles(allSettings?.pos_discount_profiles?.value));
+            setCommercialPromoConfig(normalizeCommercialPromoConfigs(allSettings));
         } catch {
             setReceiptSettings({});
             setDiscountProfiles([]);
+            setCommercialPromoConfig([]);
         }
     }, [sessionLocked]);
 
@@ -1307,11 +1379,11 @@ export default function POSCheckoutTerminal({
 
     useEffect(() => {
         if (!selectedFolderId) return;
-        const stillExists = posFolders.some((folder) => Number(folder.folder_id) === Number(selectedFolderId));
+        const stillExists = safePosFolders.some((folder) => Number(folder.folder_id) === Number(selectedFolderId));
         if (!stillExists) {
             setSelectedFolderId(null);
         }
-    }, [posFolders, selectedFolderId]);
+    }, [safePosFolders, selectedFolderId]);
 
     useEffect(() => {
         if (!imagePreview) return undefined;
@@ -1336,18 +1408,18 @@ export default function POSCheckoutTerminal({
     }, []);
 
     const cartSubtotal = useMemo(
-        () => cart.reduce((sum, line) => sum + (Number(line.quantity) * Number(line.sale_price)), 0),
-        [cart]
+        () => safeCart.reduce((sum, line) => sum + (Number(line.quantity) * Number(line.sale_price)), 0),
+        [safeCart]
     );
 
     const governedDiscountTotals = useMemo(
-        () => calculateGovernedDiscount(cart, appliedDiscount),
-        [appliedDiscount, cart]
+        () => calculateGovernedDiscount(safeCart, safeAppliedDiscount),
+        [safeAppliedDiscount, safeCart]
     );
 
     const selectedDiscount = useMemo(
-        () => discountProfiles.find((profile) => profile.name === selectedDiscountProfile) || null,
-        [discountProfiles, selectedDiscountProfile]
+        () => safeDiscountProfiles.find((profile) => profile.name === selectedDiscountProfile) || null,
+        [safeDiscountProfiles, selectedDiscountProfile]
     );
 
     const manualDiscountRate = useMemo(() => {
@@ -1409,7 +1481,7 @@ export default function POSCheckoutTerminal({
 
     const vatBreakdown = useMemo(() => {
         const factor = cartSubtotal > 0 ? netItemsTotal / cartSubtotal : 1;
-        const adjustedLines = cart.map((line) => ({
+        const adjustedLines = safeCart.map((line) => ({
             vat_type: line.vat_type || 'vatable',
             gross: round4((Number(line.quantity) * Number(line.sale_price)) * factor)
         }));
@@ -1447,15 +1519,15 @@ export default function POSCheckoutTerminal({
             vatExemptSales,
             zeroRatedSales
         };
-    }, [cart, cartSubtotal, netItemsTotal, normalizedFnbContext, restaurantServiceChargeAmount]);
+    }, [safeCart, cartSubtotal, netItemsTotal, normalizedFnbContext, restaurantServiceChargeAmount]);
 
     const cartTotal = useMemo(
         () => round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount),
         [netItemsTotal, restaurantServiceChargeAmount, serviceFeeAmount]
     );
     const cartTotalQuantity = useMemo(
-        () => cart.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
-        [cart]
+        () => safeCart.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
+        [safeCart]
     );
     const isCashPayment = paymentType === 'cash';
     const customerPaymentAmount = useMemo(() => {
@@ -1547,6 +1619,7 @@ export default function POSCheckoutTerminal({
                             ...line,
                             quantity: safeQty,
                             vat_type: line.vat_type || item.vat_type || 'vatable',
+                            senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
                             scan_metadata: options.scanMetadata || line.scan_metadata || null
                         }
                         : line
@@ -1565,6 +1638,7 @@ export default function POSCheckoutTerminal({
                     unit_of_measure: item.unit_of_measure,
                     category: item.category,
                     vat_type: item.vat_type || 'vatable',
+                    senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
                     course: routed.course || normalizedFnbContext?.default_course || 'main',
                     kitchen_station_id: routed.kitchen_station_id || null,
                     fnbKitchenRoutes: Array.isArray(item.fnbKitchenRoutes) ? item.fnbKitchenRoutes : [],
@@ -1632,7 +1706,7 @@ export default function POSCheckoutTerminal({
             notifyPosActionBlocked();
             return;
         }
-        const existing = cart.find((line) => line.item_id === item.item_id);
+        const existing = safeCart.find((line) => line.item_id === item.item_id);
         if (!existing) {
             if (delta > 0) addToCart(item, { quantity: delta });
             return;
@@ -1644,7 +1718,7 @@ export default function POSCheckoutTerminal({
     const commitManualCartQuantity = (item) => {
         const parsedQuantity = Math.max(0, Math.floor(Number(quantityInputValue)) || 0);
         setEditingQuantityItemId(null);
-        const existing = cart.find((line) => line.item_id === item.item_id);
+        const existing = safeCart.find((line) => line.item_id === item.item_id);
         if (existing) {
             updateCartQuantity(getLineKey(existing), parsedQuantity);
         } else if (parsedQuantity > 0) {
@@ -1706,16 +1780,16 @@ export default function POSCheckoutTerminal({
             toast.error('Select a terminal ID before checkout.');
             return;
         }
-        if (cart.length === 0) {
+        if (safeCart.length === 0) {
             toast.error('Add at least one item before checkout.');
             return;
         }
         setCustomerPaymentAmountInput('0');
         setCheckoutConfirmModalOpen(true);
         setMobileCheckoutPanelOpen(false);
-    }, [cart.length, checkoutBlockedReason, normalizedTerminalId]);
+    }, [safeCart.length, checkoutBlockedReason, normalizedTerminalId]);
 
-    const openDiscountModal = () => {
+    const openDiscountModal = async () => {
         const eligibleItemIds = cart
             .filter((line) => line.senior_pwd_discount_eligible === true)
             .map((line) => Number(line.item_id));
@@ -1724,6 +1798,15 @@ export default function POSCheckoutTerminal({
             eligible_item_ids: eligibleItemIds
         });
         setDiscountModalOpen(true);
+        setDiscountApproversLoading(true);
+        try {
+            setDiscountApprovers(await fetchPosDiscountApprovers());
+        } catch (error) {
+            setDiscountApprovers([]);
+            toast.error(error?.response?.data?.message || 'Failed to load POS discount approvers.');
+        } finally {
+            setDiscountApproversLoading(false);
+        }
     };
 
     const handleApplyGovernedDiscount = async () => {
@@ -1733,39 +1816,79 @@ export default function POSCheckoutTerminal({
             toast.error('Customer name and Senior/PWD ID number are required.');
             return;
         }
-        if (statutory && discountDraft.eligible_item_ids.length === 0) {
+        if (statutory && safeEligibleDiscountItemIds.length === 0) {
             toast.error('Select at least one eligible item.');
             return;
         }
-        if (type === 'employee' && (!discountDraft.employee_name.trim() || !discountDraft.employee_id.trim())) {
-            toast.error('Employee name and employee ID are required.');
+        if (type === 'employee' && !discountDraft.employee_id.trim()) {
+            toast.error('Employee ID is required.');
             return;
         }
         if (['employee', 'manual'].includes(type) && !discountDraft.reason.trim()) {
             toast.error('A discount reason is required.');
             return;
         }
+        if (['employee', 'manual'].includes(type) && !Number(discountDraft.approver_user_id)) {
+            toast.error('Select the manager or admin approving this discount.');
+            return;
+        }
+        if (type === 'promo' && (!discountDraft.promo_code || !discountDraft.promo_code.trim())) {
+            toast.error('Promo code is required.');
+            return;
+        }
         const rate = Number(discountDraft.rate || 0);
         const amount = Number(discountDraft.amount || 0);
-        if (!statutory && discountDraft.method === 'percentage' && (!(rate > 0) || rate > 100)) {
+        if (!statutory && type !== 'promo' && discountDraft.method === 'percentage' && (!(rate > 0) || rate > 100)) {
             toast.error('Enter a discount rate from 0.01 to 100.');
             return;
         }
-        if (!statutory && discountDraft.method === 'fixed' && !(amount > 0)) {
+        if (!statutory && type !== 'promo' && discountDraft.method === 'fixed' && !(amount > 0)) {
             toast.error('Enter a fixed discount amount.');
             return;
         }
         setDiscountApplying(true);
         try {
-            if (['employee', 'manual'].includes(type)) {
-                await verifyPosSettingsAccessPin(discountDraft.manager_pin);
-            }
+            const verifiedApprover = ['employee', 'manual'].includes(type)
+                ? await verifyPosDiscountApproval({
+                    approver_user_id: Number(discountDraft.approver_user_id),
+                    manager_pin: discountDraft.manager_pin,
+                    employee_user_id: type === 'employee' ? Number(discountDraft.employee_id) : null
+                })
+                : null;
             const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', manual: 'Manual Discount' };
+            const enteredPromoCode = normalizePromoCode(discountDraft.promo_code);
+            const matchedPromoConfig = type === 'promo'
+                ? safeCommercialPromoConfig.find((entry) => normalizePromoCode(entry?.promo_code) === enteredPromoCode)
+                : null;
+            const configuredPromoRate = Number(matchedPromoConfig?.discount_percent || 0);
+            if (type === 'promo' && (
+                matchedPromoConfig?.active !== true
+                || !(configuredPromoRate > 0 && configuredPromoRate <= 100)
+            )) {
+                toast.error('Promo code is invalid or inactive.');
+                return;
+            }
+            const configuredTargetIds = type === 'promo'
+                ? [...new Set((Array.isArray(matchedPromoConfig?.target_item_ids) ? matchedPromoConfig.target_item_ids : [])
+                    .map(Number)
+                    .filter((itemId) => Number.isInteger(itemId) && itemId > 0))]
+                : [];
+            const cartItemIds = new Set(safeCart.map((line) => Number(line.item_id)));
+            const promoEligibleItemIds = configuredTargetIds.filter((itemId) => cartItemIds.has(itemId));
+            if (type === 'promo' && configuredTargetIds.length > 0 && promoEligibleItemIds.length === 0) {
+                toast.error('Promo code does not apply to the items in this order.');
+                return;
+            }
             setAppliedDiscount({
                 ...discountDraft,
                 label: labels[type],
-                rate: statutory ? 20 : rate,
-                amount: discountDraft.method === 'fixed' ? amount : null
+                method: type === 'promo' ? 'percentage' : discountDraft.method,
+                rate: statutory ? 20 : (type === 'promo' ? configuredPromoRate : rate),
+                amount: type !== 'promo' && discountDraft.method === 'fixed' ? amount : null,
+                promo_code: type === 'promo' ? enteredPromoCode : discountDraft.promo_code,
+                approver_user_id: verifiedApprover?.user_id || discountDraft.approver_user_id,
+                approver_name: verifiedApprover?.username || null,
+                eligible_item_ids: type === 'promo' ? promoEligibleItemIds : safeEligibleDiscountItemIds
             });
             setSelectedDiscountProfile('');
             setManualDiscountMode('none');
@@ -1790,7 +1913,7 @@ export default function POSCheckoutTerminal({
             return;
         }
 
-        if (cart.length === 0) {
+        if (safeCart.length === 0) {
             toast.error('Add at least one item before checkout.');
             return;
         }
@@ -1835,7 +1958,7 @@ export default function POSCheckoutTerminal({
             fnb_guest_count: normalizedFnbContext?.fnb_guest_count || undefined,
             fnb_server_id: normalizedFnbContext?.fnb_server_id || undefined,
             restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || undefined,
-            lines: cart.map((line) => ({
+            lines: safeCart.map((line) => ({
                 item_id: line.item_id,
                 quantity: Number(line.quantity),
                 sale_price: Number(line.sale_price),
@@ -1847,7 +1970,7 @@ export default function POSCheckoutTerminal({
                 scan_metadata: line.scan_metadata || undefined
             }))
         };
-        payload.offline_line_items_snapshot = cart.map((line) => ({
+        payload.offline_line_items_snapshot = safeCart.map((line) => ({
             line_id: line.line_key,
             line_key: line.line_key,
             item_id: line.item_id,
@@ -1895,7 +2018,7 @@ export default function POSCheckoutTerminal({
 
         const queueCheckoutIntentLocally = async (source) => {
             if (appliedDiscount) {
-                toast.error('Governed discounts require an online checkout so eligibility and Admin approval can be verified securely.');
+                toast.error('Governed discounts require an online checkout so eligibility and the selected approver can be verified securely.');
                 return;
             }
             await enqueueCheckoutIntent(payload, source);
@@ -2058,14 +2181,14 @@ export default function POSCheckoutTerminal({
     }, [loadDeviceStatus, normalizedTerminalId, receiptSettings]);
 
     const handlePrintOrder = useCallback(() => {
-        if (cart.length === 0) {
+        if (safeCart.length === 0) {
             toast.error('Add at least one item before printing an order.');
             return;
         }
 
         try {
             const result = printOrderWithIminBridge({
-                cart,
+                cart: safeCart,
                 terminalId: normalizedTerminalId,
                 orderMethod,
                 fnbContext: normalizedFnbContext
@@ -2080,7 +2203,7 @@ export default function POSCheckoutTerminal({
         } finally {
             loadDeviceStatus();
         }
-    }, [cart, loadDeviceStatus, normalizedFnbContext, normalizedTerminalId, orderMethod]);
+    }, [safeCart, loadDeviceStatus, normalizedFnbContext, normalizedTerminalId, orderMethod]);
 
     const printHistoryReceipt = useCallback(async (posTransactionId) => {
         const transactionId = Number(posTransactionId);
@@ -2376,7 +2499,7 @@ export default function POSCheckoutTerminal({
                             <span>All Items</span>
                             {!selectedFolderId && <X className="h-3.5 w-3.5 opacity-70" />}
                         </button>
-                        {posFolders.map((folder) => {
+                        {safePosFolders.map((folder) => {
                             const active = selectedFolderId === folder.folder_id;
                             return (
                                 <button
@@ -2420,7 +2543,7 @@ export default function POSCheckoutTerminal({
                             You need POS view permission to load POS categories.
                         </p>
                     )}
-                    {!posFoldersLoading && !posFoldersError && canViewHistory && posFolders.length === 0 && (
+                    {!posFoldersLoading && !posFoldersError && canViewHistory && safePosFolders.length === 0 && (
                         <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
                             No POS folder filters available yet.
                         </p>
@@ -2467,7 +2590,7 @@ export default function POSCheckoutTerminal({
                             const fallbackPosImageSrc = resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE);
                             const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
-                            const cartLineForItem = cart.find((line) => line.item_id === item.item_id);
+                            const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
                             return (
@@ -2709,7 +2832,7 @@ export default function POSCheckoutTerminal({
                                 <div className="text-center sm:text-left">
                                     <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#64748B]">Catalog Footer</p>
                                     <p className="text-xs font-semibold text-[#334155]">
-                                        Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {catalog.length || 0} items
+                                    Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {safeCatalog.length || 0} items
                                     </p>
                                 </div>
                                 <div className="flex items-center justify-center gap-3">
@@ -2826,7 +2949,7 @@ export default function POSCheckoutTerminal({
                 </div>
                 <div className="order-1 md:order-2 mb-4 border-b border-slate-200 pb-4">
                     <div className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
-                        {cart.length > 0 ? cart.map((line) => {
+                        {safeCart.length > 0 ? safeCart.map((line) => {
                             const lineKey = getLineKey(line);
                             return (
                                 <div key={lineKey} className="rounded-lg border border-slate-200 p-2.5">
@@ -2968,7 +3091,7 @@ export default function POSCheckoutTerminal({
                 </div>
                 </div>
 
-                {(checkoutBlockedReason || cart.length === 0) && (
+                {(checkoutBlockedReason || safeCart.length === 0) && (
                     <div className="border-t border-slate-200 pt-3">
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800">
                             {checkoutBlockedReason || 'Add at least one item before checkout.'}
@@ -2981,7 +3104,7 @@ export default function POSCheckoutTerminal({
                         type="button"
                         variant="outline"
                         onClick={handlePrintOrder}
-                        disabled={posActionsBlocked || cart.length === 0}
+                        disabled={posActionsBlocked || safeCart.length === 0}
                         className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-[#1A4E8D] bg-white px-2 text-center text-[12px] font-extrabold leading-tight text-[#1A4E8D] hover:bg-blue-50 sm:text-[13px] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Printer size={18} />
@@ -3033,7 +3156,7 @@ export default function POSCheckoutTerminal({
                         variant="outline"
                         className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-[#1A4E8D] bg-white px-2 text-center text-[12px] font-extrabold leading-tight text-[#1A4E8D] hover:bg-blue-50 sm:text-[13px]"
                         onClick={openDiscountModal}
-                        disabled={posActionsBlocked || cart.length === 0}
+                        disabled={posActionsBlocked || safeCart.length === 0}
                     >
                         Apply Discount
                     </Button>
@@ -3062,7 +3185,7 @@ export default function POSCheckoutTerminal({
                         <Button
                             type="button"
                             onClick={() => setMobileCheckoutPanelOpen(true)}
-                            disabled={posActionsBlocked || checkoutLoading || cart.length === 0}
+                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
                             className="h-11 shrink-0 rounded-lg bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             <Lock size={16} className="mr-1.5" />
@@ -3174,27 +3297,314 @@ export default function POSCheckoutTerminal({
             </section>
 
             <Dialog open={discountModalOpen} onOpenChange={setDiscountModalOpen}>
-                <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Apply Discount</DialogTitle>
-                        <DialogDescription>Select the discount and complete all required verification details.</DialogDescription>
+                <DialogContent className="relative flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-[900px] flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white p-0 shadow-xl shadow-slate-950/20 sm:w-[calc(100vw-2rem)]">
+                    <button
+                        type="button"
+                        onClick={() => setDiscountModalOpen(false)}
+                        className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-slate-100 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors focus-visible:outline-none"
+                        aria-label="Close discount modal"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+
+                    <DialogHeader className="shrink-0 border-b border-slate-100 px-5 py-4 text-left sm:px-6 sm:py-4.5">
+                        <DialogTitle className="text-lg font-extrabold tracking-tight text-[#0F172A] sm:text-xl">Apply Discount</DialogTitle>
+                        <DialogDescription className="mt-0.5 text-xs text-[#64748B] sm:text-[13px]">Select the discount and complete all required verification details.</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4">
-                        <label className="block text-sm font-semibold">Discount Type
-                            <select value={discountDraft.type} onChange={(event) => setDiscountDraft((prev) => ({ ...prev, type: event.target.value, rate: ['senior', 'pwd'].includes(event.target.value) ? '20' : prev.rate }))} className={`mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 ${POS_FORM_SELECT_CLASS}`}>
-                                <option value="senior">Senior Citizen</option><option value="pwd">PWD</option><option value="employee">Employee Discount</option><option value="promo">Promo Discount</option><option value="manual">Manual Discount</option>
-                            </select>
-                        </label>
-                        {['senior', 'pwd'].includes(discountDraft.type) && <>
-                            <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold">Customer Name<Input value={discountDraft.customer_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))} /></label><label className="text-sm font-semibold">Senior/PWD ID Number<Input value={discountDraft.id_number} onChange={(e) => setDiscountDraft((p) => ({ ...p, id_number: e.target.value }))} /></label></div>
-                            <div><p className="mb-2 text-sm font-semibold">Eligible Items</p><div className="space-y-2 rounded-lg border border-slate-200 p-3">{cart.map((line) => { const checked = discountDraft.eligible_item_ids.includes(Number(line.item_id)); return <label key={`discount-line-${line.item_id}`} className="flex items-center justify-between gap-3 text-sm"><span><input type="checkbox" className="mr-2" checked={checked} onChange={(e) => setDiscountDraft((p) => ({ ...p, eligible_item_ids: e.target.checked ? [...new Set([...p.eligible_item_ids, Number(line.item_id)])] : p.eligible_item_ids.filter((id) => id !== Number(line.item_id)) }))} />{line.item_name}</span><span className="text-xs text-slate-500">Qty {line.quantity}</span></label>; })}</div></div>
-                        </>}
-                        {discountDraft.type === 'employee' && <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold">Employee Name<Input value={discountDraft.employee_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_name: e.target.value }))} /></label><label className="text-sm font-semibold">Employee ID<Input value={discountDraft.employee_id} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_id: e.target.value }))} /></label></div>}
-                        {!['senior', 'pwd'].includes(discountDraft.type) && <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold">Method<select value={discountDraft.method} onChange={(e) => setDiscountDraft((p) => ({ ...p, method: e.target.value }))} className={`mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 ${POS_FORM_SELECT_CLASS}`}><option value="percentage">Percentage</option><option value="fixed">Fixed Amount</option></select></label><label className="text-sm font-semibold">{discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'}<Input type="number" min="0" max={discountDraft.method === 'percentage' ? 100 : undefined} value={discountDraft.method === 'fixed' ? discountDraft.amount : discountDraft.rate} onChange={(e) => setDiscountDraft((p) => ({ ...p, [p.method === 'fixed' ? 'amount' : 'rate']: e.target.value }))} /></label></div>}
-                        {['employee', 'manual'].includes(discountDraft.type) && <><label className="block text-sm font-semibold">Reason<Input value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} /></label><label className="block text-sm font-semibold">Admin PIN<Input type="password" inputMode="numeric" value={discountDraft.manager_pin} onChange={(e) => setDiscountDraft((p) => ({ ...p, manager_pin: e.target.value }))} /></label></>}
-                        <div className="rounded-lg bg-slate-50 p-3 text-sm"><div className="flex justify-between"><span>VAT Removed</span><span>PHP {money(calculateGovernedDiscount(cart, discountDraft).vatRemoved)}</span></div><div className="mt-1 flex justify-between"><span>Discount</span><span>PHP {money(calculateGovernedDiscount(cart, discountDraft).discountAmount)}</span></div><div className="mt-2 flex justify-between font-black"><span>Total Amount Due</span><span>PHP {money(calculateGovernedDiscount(cart, discountDraft).total)}</span></div></div>
+
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
+                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-5" role="tablist" aria-label="Discount Type">
+                            {DISCOUNT_TYPE_OPTIONS.map((option) => {
+                                const TypeIcon = option.icon;
+                                const active = discountDraft.type === option.value;
+                                return (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={active}
+                                        aria-controls="discount-type-panel"
+                                        className={`flex h-[46px] items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 ${
+                                            active
+                                                ? 'border-teal-600 bg-teal-50/20 text-teal-600 font-extrabold shadow-sm'
+                                                : 'border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-slate-50/50'
+                                        }`}
+                                        onClick={() => setDiscountDraft((previous) => ({
+                                            ...previous,
+                                            type: option.value,
+                                            rate: ['senior', 'pwd'].includes(option.value) ? '20' : previous.rate
+                                        }))}
+                                    >
+                                        <TypeIcon className={`h-4.5 w-4.5 shrink-0 transition-colors ${active ? 'text-teal-600' : 'text-slate-500'}`} aria-hidden="true" />
+                                        <span>{option.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="flex items-center gap-2.5 rounded-xl border border-blue-100 bg-blue-50/40 px-3.5 py-2.5 text-xs text-blue-700 font-medium">
+                            <Info className="h-4.5 w-4.5 shrink-0 text-blue-500" aria-hidden="true" />
+                            <p>{DISCOUNT_INFO_MESSAGES[discountDraft.type]}</p>
+                        </div>
+
+                        <div id="discount-type-panel" role="tabpanel" className="space-y-4">
+                            {['senior', 'pwd'].includes(discountDraft.type) && (
+                                <div className="space-y-4">
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
+                                            <div className="relative">
+                                                <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                                <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter customer name" value={discountDraft.customer_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))} />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Senior/PWD ID Number <span className="text-rose-500">*</span></label>
+                                            <div className="relative">
+                                                <CreditCard className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                                <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter ID number" value={discountDraft.id_number} onChange={(e) => setDiscountDraft((p) => ({ ...p, id_number: e.target.value }))} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="mb-2 text-xs sm:text-[13px] font-semibold text-[#0F172A]">Eligible Items</p>
+                                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                            {safeCart.map((line) => {
+                                                const itemEligible = line.senior_pwd_discount_eligible === true;
+                                                const checked = itemEligible && safeEligibleDiscountItemIds.includes(Number(line.item_id));
+                                                const catalogItem = safeCatalog.find((item) => item.item_id === line.item_id);
+                                                const imageSrc = catalogItem?.pos_image_url || catalogItem?.image_url || line.pos_image_url || '';
+                                                const resolvedSrc = imageSrc ? resolveAssetUrl(imageSrc) : '';
+
+                                                return (
+                                                    <label
+                                                        key={`discount-line-${line.item_id}`}
+                                                        className={`flex min-h-[46px] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs sm:text-sm transition-all ${
+                                                            !itemEligible
+                                                                ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-55'
+                                                                : 'cursor-pointer'
+                                                        } ${
+                                                            checked
+                                                                ? 'border-teal-200 bg-teal-50/10'
+                                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                                        }`}
+                                                    >
+                                                        <div className="flex min-w-0 items-center gap-2.5">
+                                                            <input
+                                                                type="checkbox"
+                                                                disabled={!itemEligible}
+                                                                className="h-4 w-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500 accent-teal-600 cursor-pointer"
+                                                                checked={checked}
+                                                                onChange={(e) =>
+                                                                    setDiscountDraft((p) => ({
+                                                                        ...p,
+                                                                        eligible_item_ids: e.target.checked
+                                                                            ? [...new Set([...toArray(p.eligible_item_ids), Number(line.item_id)])]
+                                                                            : toArray(p.eligible_item_ids).filter((id) => id !== Number(line.item_id))
+                                                                    }))
+                                                                }
+                                                            />
+
+                                                            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-md border border-slate-100 bg-slate-50 flex items-center justify-center">
+                                                                {resolvedSrc ? (
+                                                                    <img
+                                                                        src={resolvedSrc}
+                                                                        alt={line.item_name}
+                                                                        className="h-full w-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="text-[10px] font-bold text-slate-400 uppercase">
+                                                                        {line.item_name ? line.item_name.substring(0, 2) : 'IT'}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            <span className="truncate font-semibold text-slate-700">{line.item_name}</span>
+                                                        </div>
+
+                                                        <span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
+                                                            Qty: {formatQuantity(line.quantity)}
+                                                        </span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {discountDraft.type === 'employee' && (
+                                <div className="grid gap-3 sm:grid-cols-2 mb-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Employee Name <span className="font-medium text-slate-400">(verified by ID)</span></label>
+                                        <div className="relative">
+                                            <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee name" value={discountDraft.employee_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_name: e.target.value }))} />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Employee ID <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <CreditCard className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee ID" value={discountDraft.employee_id} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_id: e.target.value }))} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {['employee', 'manual'].includes(discountDraft.type) && (
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Method <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <CreditCard className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <select
+                                                value={discountDraft.method}
+                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, method: e.target.value }))}
+                                                className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                                            >
+                                                <option value="percentage">Percentage</option>
+                                                <option value="fixed">Fixed Amount</option>
+                                            </select>
+                                            <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">
+                                            {discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'} <span className="text-rose-500">*</span>
+                                        </label>
+                                        <div className="relative">
+                                            {discountDraft.method === 'fixed' ? (
+                                                <CreditCard className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            ) : (
+                                                <Percent className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            )}
+                                            <Input
+                                                className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
+                                                placeholder={discountDraft.method === 'fixed' ? 'Enter amount' : 'Enter rate'}
+                                                type="number"
+                                                min="0"
+                                                max={discountDraft.method === 'percentage' ? 100 : undefined}
+                                                value={discountDraft.method === 'fixed' ? discountDraft.amount : discountDraft.rate}
+                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, [p.method === 'fixed' ? 'amount' : 'rate']: e.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {discountDraft.type === 'promo' && (
+                                <div className="space-y-1.5 sm:col-span-2 mt-3">
+                                    <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Promo Code <span className="text-rose-500">*</span></label>
+                                    <div className="relative">
+                                        <Tag className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                        <Input
+                                            className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
+                                            placeholder="Enter promo code"
+                                            value={discountDraft.promo_code || ''}
+                                            onChange={(e) => setDiscountDraft((p) => ({ ...p, promo_code: e.target.value }))}
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-[#64748B] font-medium">Enter a valid promo or campaign code</p>
+                                </div>
+                            )}
+
+                            {['employee', 'manual'].includes(discountDraft.type) && (
+                                <div className="grid gap-3 sm:grid-cols-2 mt-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Approver <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <BadgeCheck className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <select
+                                                value={discountDraft.approver_user_id}
+                                                onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))}
+                                                disabled={discountApproversLoading}
+                                                className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 sm:text-sm"
+                                            >
+                                                <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select manager or admin'}</option>
+                                                {safeDiscountApprovers.map((approver) => (
+                                                    <option key={approver.user_id} value={approver.user_id}>
+                                                        {approver.username} ({approver.role})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                        </div>
+                                        {!discountApproversLoading && safeDiscountApprovers.length === 0 && (
+                                            <p className="text-[11px] font-medium text-amber-700">No approver PIN is configured. Ask the Master Admin to configure one in Manage Users.</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Reason <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <MessageSquare className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter reason" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Approver PIN <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input
+                                                className="h-11 rounded-xl border-slate-200 pl-10 pr-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
+                                                placeholder="Enter approver PIN"
+                                                type={showDiscountPin ? 'text' : 'password'}
+                                                inputMode="numeric"
+                                                value={discountDraft.manager_pin}
+                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, manager_pin: e.target.value }))}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowDiscountPin((prev) => !prev)}
+                                                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                                            >
+                                                {showDiscountPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 text-xs sm:text-sm text-[#334155] space-y-2">
+                            <div className="flex justify-between items-center">
+                                <span className="font-medium text-slate-500">VAT Removed</span>
+                                <span className="font-semibold tabular-nums text-slate-800">PHP {money(calculateGovernedDiscount(safeCart, { ...discountDraft, eligible_item_ids: safeEligibleDiscountItemIds }).vatRemoved)}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="font-medium text-slate-500">Discount</span>
+                                <span className="font-semibold tabular-nums text-slate-800">PHP {money(calculateGovernedDiscount(safeCart, { ...discountDraft, eligible_item_ids: safeEligibleDiscountItemIds }).discountAmount)}</span>
+                            </div>
+
+                            <div className="border-t border-slate-200/60 my-1.5" />
+
+                            <div className="flex justify-between items-center pt-0.5">
+                                <span className="font-extrabold text-slate-800">Total Amount Due</span>
+                                <span className="text-lg font-black tabular-nums text-teal-600 sm:text-xl">
+                                    PHP {money(calculateGovernedDiscount(safeCart, { ...discountDraft, eligible_item_ids: safeEligibleDiscountItemIds }).total)}
+                                </span>
+                            </div>
+                        </div>
                     </div>
-                    <DialogFooter><Button variant="outline" onClick={() => setDiscountModalOpen(false)}>Cancel</Button><Button onClick={handleApplyGovernedDiscount} disabled={discountApplying}>{discountApplying ? 'Verifying...' : 'Apply Discount'}</Button></DialogFooter>
+                    <DialogFooter className="shrink-0 border-t border-slate-100 bg-white px-5 py-3 sm:px-6 flex justify-end gap-2.5">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-[42px] rounded-xl px-5 text-xs sm:text-sm font-semibold text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
+                            onClick={() => setDiscountModalOpen(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            className="h-[42px] rounded-xl bg-teal-600 px-5 text-xs sm:text-sm font-bold text-white hover:bg-teal-700 transition-colors flex items-center justify-center"
+                            onClick={handleApplyGovernedDiscount}
+                            disabled={discountApplying}
+                        >
+                            <Tag className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                            {discountApplying ? 'Verifying...' : 'Apply Discount'}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -3239,13 +3649,13 @@ export default function POSCheckoutTerminal({
                                 <div>
                                     <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Items</p>
                                     <p className="mt-1 text-[12px] font-medium text-[#475569]">
-                                        {cart.length} item{cart.length === 1 ? '' : 's'} in this sale
+                                        {safeCart.length} item{safeCart.length === 1 ? '' : 's'} in this sale
                                     </p>
                                 </div>
                                 <span className="text-[12px] font-black text-[#0F172A]">PHP {money(cartTotal)}</span>
                             </div>
                             <div className="mt-3 space-y-2">
-                                {cart.map((line) => {
+                                {safeCart.map((line) => {
                                     const lineTotal = round4(Number(line.quantity || 0) * Number(line.sale_price || 0));
                                     return (
                                         <div key={getLineKey(line)} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
@@ -3309,7 +3719,7 @@ export default function POSCheckoutTerminal({
                         <Button
                             type="button"
                             onClick={handleCheckout}
-                            disabled={posActionsBlocked || checkoutLoading || cart.length === 0 || !isCustomerPaymentSufficient}
+                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCustomerPaymentSufficient}
                             className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
                         >
                             {checkoutLoading ? 'Processing...' : 'Confirm'}

@@ -8,9 +8,10 @@ const terminalPageSource = fs.readFileSync(path.resolve(__dirname, '../pages/Ter
 const posServiceSource = fs.readFileSync(path.resolve(__dirname, '../services/posService.js'), 'utf8');
 
 describe('POS terminal pairing contract', () => {
-  it('keeps pairing endpoints available for compatibility without normal shift-open dependency', () => {
-    expect(posServiceSource).toContain("api.get('/pos/terminal/paired'");
-    expect(posServiceSource).toContain("api.post('/pos/terminal/verify'");
+  it('uses registered terminal identity headers without restoring legacy pairing dependency', () => {
+    expect(posServiceSource).toContain("const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';");
+    expect(posServiceSource).toContain('const getRegisteredTerminalHeaders = (terminalId = \'\') => {');
+    expect(posServiceSource).toContain('headers: getRegisteredTerminalHeaders(payload?.terminal_id)');
     expect(terminalPageSource).not.toContain('fetchPairedPosTerminal');
     expect(terminalPageSource).not.toContain('pairedTerminalContext');
   });

@@ -190,6 +190,7 @@ const storefrontSocialLinksSchema = Joi.object({
   instagram: Joi.string().trim().max(255).allow('', null).optional()
 }).optional();
 const storefrontPromoSchema = Joi.object({
+  id: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9._-]*$/).allow('', null).optional(),
   title: Joi.string().trim().max(100).allow('', null).optional(),
   subtitle: Joi.string().trim().max(160).allow('', null).optional(),
   badge: Joi.string().trim().max(60).allow('', null).optional(),
@@ -262,6 +263,22 @@ const businessHoursDaySchema = Joi.object({
         message: 'Business hours intervals cannot overlap'
       });
     }
+  }
+  return value;
+}).messages({
+  'any.invalid': '{{#message}}'
+});
+const storefrontPromosSchema = Joi.array().items(storefrontPromoSchema).max(50).optional().custom((value, helpers) => {
+  const seenCodes = new Set();
+  for (const promo of Array.isArray(value) ? value : []) {
+    const code = String(promo?.promo_code || '').trim().toUpperCase();
+    if (!code) continue;
+    if (seenCodes.has(code)) {
+      return helpers.error('any.invalid', {
+        message: `Duplicate promo code: ${code}`
+      });
+    }
+    seenCodes.add(code);
   }
   return value;
 }).messages({
@@ -414,6 +431,7 @@ export const updateSettingsSchema = Joi.object({
   storefront_review_highlights: storefrontReviewHighlightsSchema,
   storefront_review_summary: storefrontReviewSummarySchema,
   storefront_promo: storefrontPromoSchema,
+  storefront_promos: storefrontPromosSchema,
   storefront_ui_v2_enabled: Joi.boolean().optional(),
   storefront_categories: storefrontCategoriesSchema,
   storefront_gallery_images: storefrontGalleryImagesSchema,
@@ -569,6 +587,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     storefront_review_highlights: storefrontReviewHighlightsSchema,
     storefront_review_summary: storefrontReviewSummarySchema,
     storefront_promo: storefrontPromoSchema,
+    storefront_promos: storefrontPromosSchema,
     storefront_ui_v2_enabled: Joi.boolean(),
     storefront_categories: storefrontCategoriesSchema,
     storefront_gallery_images: storefrontGalleryImagesSchema,

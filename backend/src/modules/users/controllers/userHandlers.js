@@ -9,6 +9,7 @@ import {
   updateUserRoleUseCase,
   updateUserStatusUseCase,
   updateUserPermissionsUseCase,
+  updatePosApprovalPinUseCase,
   getUserLocationGrantsUseCase,
   updateUserLocationGrantsUseCase,
   inviteUserUseCase,
@@ -399,6 +400,31 @@ export const updateUserPermissions = async (req, res, next) => {
   }
 };
 
+export const updatePosApprovalPin = async (req, res, next) => {
+  try {
+    const result = await updatePosApprovalPinUseCase({
+      adminUserId: req.user.user_id,
+      targetUserId: req.params.user_id,
+      pin: req.validatedData.pin,
+      clear: req.validatedData.clear === true
+    });
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: req.validatedData.clear === true
+          ? 'POS approval PIN cleared successfully'
+          : 'POS approval PIN configured successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getUserLocationGrants = async (req, res, next) => {
   try {
     const includeInactive = req.query?.include_inactive === 'true';
@@ -597,6 +623,7 @@ export default {
   updateUserRole,
   updateUserStatus,
   updateUserPermissions,
+  updatePosApprovalPin,
   getUserLocationGrants,
   updateUserLocationGrants,
   inviteUser,

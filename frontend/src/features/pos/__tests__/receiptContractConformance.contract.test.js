@@ -63,6 +63,24 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(screen.getByText('Non-fiscal document')).toBeTruthy();
     expect(screen.getByText('Powered by DGFY POS')).toBeTruthy();
     expect(screen.queryByText(/TIN\/Branch:/i)).toBeNull();
+    expect(screen.queryByText('SOLD TO:')).toBeNull();
+    expect(screen.queryByText('Vatable Sales')).toBeNull();
+    expect(screen.getByText('Estimated Tax')).toBeTruthy();
+    expect(screen.getByText('This document is not an official tax receipt.')).toBeTruthy();
+  });
+
+  it('does not infer fiscal status from an invoice number prefix', () => {
+    renderReceipt({
+      transaction: buildTransaction({
+        invoice_number: 'INV-LEGACY-001',
+        document_type: null,
+        document_context: null
+      }),
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+
+    expect(screen.getByText('NON-FISCAL SLIP')).toBeTruthy();
+    expect(screen.queryByText('VAT INVOICE')).toBeNull();
   });
 
   it('renders explicit training/test banner when context is training_test', () => {
@@ -95,6 +113,10 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
         invoice_number: 'INV-001001',
         document_type: 'fiscal_invoice',
         document_context: 'fiscal',
+        buyer_name: 'Juan Dela Cruz',
+        buyer_tin: '987-654-321-000',
+        buyer_address: '456 Buyer St',
+        buyer_business_style: 'Juan Trading',
         special_instructions: JSON.stringify({
           receipt_contract: {
             version: '2026.04.08',
@@ -117,10 +139,14 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
 
     expect(screen.getByText('VAT INVOICE')).toBeTruthy();
     expect(screen.getByText('VAT REG TIN: 123-456-789-000')).toBeTruthy();
-    expect(screen.getByText('BIR Permit No.: PTU-REF-999')).toBeTruthy();
+    expect(screen.getByText('PTU: PTU-REF-999')).toBeTruthy();
     expect(screen.getByText('MIN: MIN-2026-001')).toBeTruthy();
     expect(screen.getByText('ATP/OCN No.: BIR-TEST-2026-001')).toBeTruthy();
     expect(screen.queryByText('NOT A FISCAL RECEIPT')).toBeNull();
+    expect(screen.getByText('SOLD TO:')).toBeTruthy();
+    expect(screen.getByText('Business Style: Juan Trading')).toBeTruthy();
+    expect(screen.getByText('VAT 12%')).toBeTruthy();
+    expect(screen.getByText('Includes tax breakdown and fiscal identifiers.')).toBeTruthy();
   });
 
   it('keeps iMin hardware receipt fiscal compliance fields aligned with preview', () => {
@@ -155,7 +181,7 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     });
 
     expect(text).toContain('VAT REG TIN: 123-456-789-000');
-    expect(text).toContain('BIR Permit No.: PTU-REF-999');
+    expect(text).toContain('PTU: PTU-REF-999');
     expect(text).toContain('MIN: MIN-2026-001');
     expect(text).toContain('ATP/OCN No.: BIR-TEST-2026-001');
     expect(text).toContain('Powered by DGFY POS');
@@ -178,10 +204,7 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     const content = container.textContent || '';
     const orderedLabels = [
       'TOTAL SALES',
-      'Vatable Sales',
-      'VAT Amount',
-      'VAT Exempt Sales',
-      'Zero Rated Sales',
+      'Estimated Tax',
       'Discount',
       'DGFY convenience fee',
       'TOTAL AMOUNT DUE',
