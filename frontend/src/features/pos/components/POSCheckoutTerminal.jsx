@@ -186,6 +186,66 @@ const getMobileStockNameColorClassName = (stockValue, isAlwaysAvailable) => {
     if (numericStock > 0) return 'text-yellow-600';
     return 'text-red-600';
 };
+// Mobile-only "fly to checkout bar" animation. Fires after the cart update (never blocks or
+// delays it), animates a cloned .product-image from the tapped card to #checkout-bar, and
+// removes itself on finish/cancel. Skips silently if not mobile, no image, or no target -
+// never throws, never touches cart/backend state.
+const flyImageToCheckoutBar = (cardElement) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!window.matchMedia('(max-width: 639.98px)').matches) return;
+    if (!cardElement) return;
+
+    const sourceImg = cardElement.querySelector('.product-image');
+    if (!sourceImg || typeof sourceImg.animate !== 'function') return;
+
+    const checkoutBar = document.getElementById('checkout-bar');
+    if (!checkoutBar) return;
+    // Land on the Checkout button (right side of the bar) instead of the bar's midpoint;
+    // falls back to the bar itself if the button isn't in the DOM for some reason.
+    const checkoutTarget = document.getElementById('checkout-bar-button') || checkoutBar;
+
+    const sourceRect = sourceImg.getBoundingClientRect();
+    if (sourceRect.width === 0 || sourceRect.height === 0) return;
+    const targetRect = checkoutTarget.getBoundingClientRect();
+
+    const size = 44;
+    const clone = sourceImg.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.style.cssText = [
+        'position: fixed',
+        `left: ${sourceRect.left + (sourceRect.width / 2) - (size / 2)}px`,
+        `top: ${sourceRect.top + (sourceRect.height / 2) - (size / 2)}px`,
+        `width: ${size}px`,
+        `height: ${size}px`,
+        'border-radius: 9999px',
+        'object-fit: cover',
+        'pointer-events: none',
+        'z-index: 2147483647',
+        'will-change: transform, opacity'
+    ].join(';');
+    document.body.appendChild(clone);
+
+    const deltaX = (targetRect.left + targetRect.width / 2) - (sourceRect.left + sourceRect.width / 2);
+    const deltaY = (targetRect.top + targetRect.height / 2) - (sourceRect.top + sourceRect.height / 2);
+
+    const animation = clone.animate(
+        [
+            { transform: 'translate(0px, 0px) scale(1)', opacity: 1, offset: 0 },
+            { transform: `translate(${deltaX * 0.5}px, ${deltaY * 0.35}px) scale(0.7)`, opacity: 1, offset: 0.6 },
+            { transform: `translate(${deltaX}px, ${deltaY}px) scale(0.15)`, opacity: 0, offset: 1 }
+        ],
+        { duration: 550, easing: 'cubic-bezier(0.3, 0.7, 0.4, 1)', fill: 'forwards' }
+    );
+
+    const cleanup = () => clone.remove();
+    if (animation.finished && typeof animation.finished.then === 'function') {
+        animation.finished.then(cleanup).catch(cleanup);
+    } else {
+        animation.onfinish = cleanup;
+        animation.oncancel = cleanup;
+    }
+};
+
 const toValidPercentage = (value) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return 0;
@@ -589,6 +649,12 @@ export default function POSCheckoutTerminal({
     const [catalogError, setCatalogError] = useState('');
     const [editingQuantityItemId, setEditingQuantityItemId] = useState(null);
     const [quantityInputValue, setQuantityInputValue] = useState('');
+    // "+" button long-press quantity meter (mobile only): qtyMeterState drives the visible
+    // overlay; qtyMeterGestureRef holds the live, synchronously-updated gesture data so
+    // pointerup always reads the exact latest quantity regardless of render timing.
+    const [qtyMeterState, setQtyMeterState] = useState(null);
+    const qtyMeterTimerRef = useRef(null);
+    const qtyMeterGestureRef = useRef(null);
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
     const [catalogFiltersOpen, setCatalogFiltersOpen] = useState(false);
@@ -1739,6 +1805,104 @@ export default function POSCheckoutTerminal({
         }
     };
 
+    // "+" button long-press-to-drag quantity meter (mobile only). Tap (< 300ms, no drag) still
+    // adds exactly +1 with zero added delay. Holding past 300ms shows a vertical .qty-meter;
+    // dragging up (never down past 1) scales the pending quantity 1 -> 20 over ~96px, and the
+    // full amount is added in a single adjustCartQuantity call on release.
+    const QTY_METER_LONG_PRESS_MS = 300;
+    const QTY_METER_MOVE_CANCEL_PX = 10;
+    const QTY_METER_MAX_DRAG_PX = 96;
+    const QTY_METER_MIN_QTY = 1;
+    const QTY_METER_MAX_QTY = 20;
+
+    const clearQtyMeterTimer = () => {
+        if (qtyMeterTimerRef.current) {
+            clearTimeout(qtyMeterTimerRef.current);
+            qtyMeterTimerRef.current = null;
+        }
+    };
+
+    const handleQtyButtonPointerDown = (event, item) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        // Anchor point is the button itself (left edge, vertically centered), not the finger -
+        // the meter must stay put even as the finger drags around.
+        const buttonRect = event.currentTarget.getBoundingClientRect();
+        qtyMeterGestureRef.current = {
+            itemId: item.item_id,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            anchorX: buttonRect.left,
+            anchorY: buttonRect.top + (buttonRect.height / 2),
+            activated: false,
+            cancelled: false,
+            quantity: QTY_METER_MIN_QTY
+        };
+        clearQtyMeterTimer();
+        qtyMeterTimerRef.current = setTimeout(() => {
+            const gesture = qtyMeterGestureRef.current;
+            if (!gesture || gesture.itemId !== item.item_id || gesture.cancelled) return;
+            gesture.activated = true;
+            setQtyMeterState({ quantity: gesture.quantity, x: gesture.anchorX, y: gesture.anchorY });
+        }, QTY_METER_LONG_PRESS_MS);
+    };
+
+    const handleQtyButtonPointerMove = (event, item) => {
+        const gesture = qtyMeterGestureRef.current;
+        if (!gesture || gesture.itemId !== item.item_id || gesture.cancelled) return;
+
+        const deltaX = event.clientX - gesture.startX;
+        const deltaY = event.clientY - gesture.startY;
+
+        if (!gesture.activated) {
+            if (Math.hypot(deltaX, deltaY) > QTY_METER_MOVE_CANCEL_PX) {
+                gesture.cancelled = true;
+                clearQtyMeterTimer();
+            }
+            return;
+        }
+
+        // Upward drag only increases quantity; quantity never scales below 1.
+        // Position is intentionally NOT updated here - the meter stays fixed at the button
+        // anchor set on pointerdown regardless of where the finger moves.
+        const upwardPx = Math.min(QTY_METER_MAX_DRAG_PX, Math.max(0, -deltaY));
+        const ratio = upwardPx / QTY_METER_MAX_DRAG_PX;
+        const quantity = QTY_METER_MIN_QTY + Math.round(ratio * (QTY_METER_MAX_QTY - QTY_METER_MIN_QTY));
+        gesture.quantity = quantity;
+        setQtyMeterState({ quantity, x: gesture.anchorX, y: gesture.anchorY });
+    };
+
+    const handleQtyButtonPointerUp = (event, item) => {
+        const gesture = qtyMeterGestureRef.current;
+        clearQtyMeterTimer();
+        try {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {
+            // Capture may already be released by the browser; safe to ignore.
+        }
+
+        qtyMeterGestureRef.current = null;
+        setQtyMeterState(null);
+
+        if (!gesture || gesture.itemId !== item.item_id || gesture.cancelled) return;
+
+        const cardElement = event.currentTarget.closest('[data-pos-catalog-card]');
+        if (gesture.activated) {
+            adjustCartQuantity(item, gesture.quantity);
+        } else {
+            // Released before the long-press threshold with no cancelling movement = a tap.
+            adjustCartQuantity(item, 1);
+        }
+        flyImageToCheckoutBar(cardElement);
+    };
+
+    const handleQtyButtonPointerCancel = () => {
+        clearQtyMeterTimer();
+        qtyMeterGestureRef.current = null;
+        setQtyMeterState(null);
+    };
+
     const removeCartLine = (lineKey) => {
         if (posActionsBlocked) {
             notifyPosActionBlocked();
@@ -2292,7 +2456,7 @@ export default function POSCheckoutTerminal({
         <div className={modalOnly ? 'hidden' : shellClassName} aria-hidden={modalOnly ? 'true' : undefined}>
             <section className={currentViewMode === 'checkout' ? 'contents' : 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5'}>
             {currentViewMode === 'history' && (
-                <div key="view-history" className="max-sm:animate-pos-slide-in">
+                <div key="view-history" className="catalog-slide-enter">
                 <Suspense fallback={<section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS sales history...</section>}>
                     <POSTransactionHistoryPanel
                         historySearch={historySearch}
@@ -2329,7 +2493,7 @@ export default function POSCheckoutTerminal({
             )}
 
             {currentViewMode === 'checkout' && (
-                <div key="view-checkout" className="h-auto min-h-0 xl:h-full max-sm:animate-pos-slide-in">
+                <div key="view-checkout" className="h-auto min-h-0 xl:h-full catalog-slide-enter">
                 <>
                 <div className={checkoutGridClassName}>
             <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
@@ -2612,18 +2776,21 @@ export default function POSCheckoutTerminal({
                             return (
                                 <div
                                     key={item.item_id}
-                                    onClick={() => {
+                                    data-pos-catalog-card="true"
+                                    onClick={(event) => {
                                         if (isOutOfStock || posActionsBlocked) {
                                             if (posActionsBlocked) notifyPosActionBlocked();
                                             return;
                                         }
                                         addToCart(item);
+                                        flyImageToCheckoutBar(event.currentTarget);
                                     }}
                                     onKeyDown={(event) => {
                                         if (isOutOfStock || posActionsBlocked) return;
                                         if (event.key === 'Enter' || event.key === ' ') {
                                             event.preventDefault();
                                             addToCart(item);
+                                            flyImageToCheckoutBar(event.currentTarget);
                                         }
                                     }}
                                     role={isOutOfStock || posActionsBlocked ? 'group' : 'button'}
@@ -2644,7 +2811,7 @@ export default function POSCheckoutTerminal({
                                             <img
                                                 src={posImageSrc}
                                                 alt={`${item.name} menu`}
-                                                className="h-full w-full object-cover object-center"
+                                                className="product-image h-full w-full object-cover object-center"
                                                 onError={(event) => {
                                                     const fallbackSrc = fallbackPosImageSrc;
                                                     const currentSrc = String(event.currentTarget.src || '');
@@ -2765,10 +2932,19 @@ export default function POSCheckoutTerminal({
                                                     )}
                                                     <button
                                                         type="button"
-                                                        onClick={() => adjustCartQuantity(item, 1)}
+                                                        onPointerDown={(event) => {
+                                                            if (isOutOfStock || posActionsBlocked) return;
+                                                            handleQtyButtonPointerDown(event, item);
+                                                        }}
+                                                        onPointerMove={(event) => handleQtyButtonPointerMove(event, item)}
+                                                        onPointerUp={(event) => {
+                                                            if (isOutOfStock || posActionsBlocked) return;
+                                                            handleQtyButtonPointerUp(event, item);
+                                                        }}
+                                                        onPointerCancel={handleQtyButtonPointerCancel}
                                                         disabled={isOutOfStock || posActionsBlocked}
-                                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                                        aria-label={`Increase quantity for ${item.name}`}
+                                                        className="flex h-8 w-8 shrink-0 touch-none select-none items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                        aria-label={`Increase quantity for ${item.name}. Tap to add one, or press and hold then drag up to add more.`}
                                                     >
                                                         +
                                                     </button>
@@ -3186,6 +3362,7 @@ export default function POSCheckoutTerminal({
                 </div>
 
                 <div
+                    id="checkout-bar"
                     className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 pt-2.5 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] md:hidden"
                     style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}
                     role="region"
@@ -3201,6 +3378,7 @@ export default function POSCheckoutTerminal({
                             </p>
                         </div>
                         <Button
+                            id="checkout-bar-button"
                             type="button"
                             onClick={() => setMobileCheckoutPanelOpen(true)}
                             disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
@@ -3935,6 +4113,21 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
             )}
+            {qtyMeterState && typeof document !== 'undefined' && createPortal((
+                <div
+                    className="qty-meter"
+                    style={{ left: `${qtyMeterState.x}px`, top: `${qtyMeterState.y - 24}px` }}
+                    aria-live="polite"
+                >
+                    <span className="qty-meter__value">{qtyMeterState.quantity}</span>
+                    <div className="qty-meter__track">
+                        <div
+                            className="qty-meter__fill"
+                            style={{ height: `${((qtyMeterState.quantity - 1) / 19) * 100}%` }}
+                        />
+                    </div>
+                </div>
+            ), document.body)}
         </div>
     );
 }

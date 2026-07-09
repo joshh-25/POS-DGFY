@@ -257,6 +257,70 @@ body {
   border-color: var(--pos-shell-border);
 }
 
+/* Catalog navigation (Sell/History/Shift/etc.) slide-in: mobile only, right -> left entrance. */
+@media (max-width: 639.98px) {
+  .catalog-slide-enter {
+    animation: catalog-slide-enter 50ms ease-out;
+  }
+}
+
+@keyframes catalog-slide-enter {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* "+" button long-press quantity meter (mobile only, portaled to document.body). */
+.qty-meter {
+  position: fixed;
+  z-index: 2147483647;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.35);
+  /* Anchored to the button's left edge / vertical center; sit to its left with a small gap,
+     vertically centered on it - position is fixed and never re-derived from the finger. */
+  transform: translate(calc(-100% - 12px), -50%);
+}
+
+.qty-meter__value {
+  min-width: 24px;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
+.qty-meter__track {
+  position: relative;
+  width: 10px;
+  height: 96px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+
+.qty-meter__fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+  transition: height 40ms linear;
+}
+
 @media (max-width: 767.98px) {
   .pos-report-date-input::-webkit-calendar-picker-indicator {
     opacity: 0;
