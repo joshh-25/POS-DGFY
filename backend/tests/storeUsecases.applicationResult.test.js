@@ -1533,6 +1533,112 @@ describe('store use-cases application result contract', () => {
         }));
     });
 
+    it('storeCheckout increments only the matched multi-promo rule after a successful checkout', async () => {
+        const transaction = {
+            finished: false,
+            commit: jest.fn(async () => {
+                transaction.finished = 'commit';
+            }),
+            rollback: jest.fn(async () => {
+                transaction.finished = 'rollback';
+            }),
+            LOCK: { UPDATE: 'UPDATE' }
+        };
+        const updateSettingByKey = jest.fn().mockResolvedValue({});
+        const useCase = buildStoreCheckoutUseCase({
+            storeRepository: {
+                beginTransaction: jest.fn().mockResolvedValue(transaction),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
+                    {
+                        setting_key: 'storefront_promos',
+                        setting_value: JSON.stringify([
+                            { active: true, promo_code: 'SAVE10', discount_percent: 10, used_count: 4 },
+                            { active: true, promo_code: 'MEAL20', discount_percent: 20, used_count: 7, target_item_ids: [40] }
+                        ])
+                    }
+                ]),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 40,
+                        name: 'Chicken Meal',
+                        current_stock: 10,
+                        default_sale_price: 100,
+                        cost_per_unit: 40,
+                        unit_of_measure: 'plate',
+                        vat_type: 'vatable'
+                    }
+                ]),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                createOnlineTransactionWithLines: jest.fn().mockResolvedValue(902),
+                getOrderById: jest.fn().mockResolvedValue({
+                    pos_transaction_id: 902,
+                    tracking_pin: 'SK-PROMO2',
+                    invoice_number: 'INV-000902',
+                    order_source: 'online_store',
+                    order_method: 'pickup',
+                    payment_type: 'cash',
+                    payment_status: 'paid',
+                    fulfillment_status: 'placed',
+                    subtotal_amount: 100,
+                    discount_amount: 20,
+                    discount_label_snapshot: 'Promo Code (MEAL20)',
+                    discount_rate_snapshot: 20,
+                    service_fee_amount: 1,
+                    delivery_fee: 0,
+                    total_amount: 81,
+                    customer_name: 'Buyer',
+                    customer_phone: '0917',
+                    customer_email: null,
+                    location: { location_id: 2, name: 'Main', address_line: 'Address' },
+                    lines: []
+                }),
+                nextInvoiceNumber: jest.fn().mockResolvedValue('INV-000902'),
+                isTrackingPinTaken: jest.fn().mockResolvedValue(false),
+                updateSettingByKey
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                promo_code: 'MEAL20',
+                idempotency_key: 'promo-checkout-multi-success',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [{ item_id: 40, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(updateSettingByKey).toHaveBeenCalledWith(
+            'storefront_promos',
+            [
+                expect.objectContaining({ promo_code: 'SAVE10', used_count: 4 }),
+                expect.objectContaining({ promo_code: 'MEAL20', used_count: 8 })
+            ],
+            { transaction, lock: true }
+        );
+    });
+
     it('trackStoreOrder returns tracking payload for valid pin', async () => {
         const tenantId = '11111111-1111-4111-8111-111111111111';
         const useCase = buildTrackStoreOrderUseCase({

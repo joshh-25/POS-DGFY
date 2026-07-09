@@ -60,20 +60,28 @@ const discountBeneficiarySchema = Joi.object({
 
 const governedDiscountSchema = Joi.object({
     type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').required(),
-    label: Joi.string().trim().max(100).required(),
-    method: Joi.string().valid('percentage', 'fixed').required(),
+    label: Joi.string().trim().max(100).allow('', null).optional(),
+    method: Joi.string().valid('percentage', 'fixed').optional(),
     rate: Joi.number().min(0).max(100).allow(null).optional(),
     amount: Joi.number().min(0).allow(null).optional(),
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
     id_number: Joi.string().trim().max(100).allow('', null).optional(),
     employee_name: Joi.string().trim().max(255).allow('', null).optional(),
     employee_id: Joi.string().trim().max(100).allow('', null).optional(),
+    approver_user_id: Joi.number().integer().positive().allow(null).optional(),
+    promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
     reason: Joi.string().trim().max(500).allow('', null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     eligible_item_ids: Joi.array().items(Joi.number().integer().positive()).unique().default([]),
     vat_removed: Joi.number().min(0).optional(),
     vat_exempt_amount: Joi.number().min(0).optional(),
     discount_amount: Joi.number().min(0).optional()
+});
+
+const posDiscountApprovalSchema = Joi.object({
+    approver_user_id: Joi.number().integer().positive().required(),
+    manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).required(),
+    employee_user_id: Joi.number().integer().positive().allow(null).optional()
 });
 
 const checkoutPosSchema = Joi.object({
@@ -352,6 +360,7 @@ const cashDrawerEventSchema = Joi.object({
 
 const closeTerminalShiftSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    terminal_id: Joi.string().trim().uppercase().max(100).allow('', null).optional(),
     closing_cash_amount: Joi.number().min(0).precision(4).required(),
     closing_note: Joi.string().trim().max(255).allow(null, '').optional()
 });
@@ -480,6 +489,7 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 };
 
 export const validatePosCheckout = validateSchema(checkoutPosSchema, 'body', 'validatedData');
+export const validatePosDiscountApproval = validateSchema(posDiscountApprovalSchema, 'body', 'validatedData');
 export const validatePosTransactionsQuery = validateSchema(listTransactionsQuerySchema, 'query', 'validatedQuery');
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsQuery = validateSchema(posReportsQuerySchema, 'query', 'validatedQuery');

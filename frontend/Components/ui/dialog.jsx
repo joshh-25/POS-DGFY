@@ -19,7 +19,7 @@ const Dialog = ({ open, onOpenChange, children }) => {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div 
-        className="fixed inset-0 bg-black/50" 
+        className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" 
         onClick={() => onOpenChange && onOpenChange(false)}
       />
       <div className="relative z-50">

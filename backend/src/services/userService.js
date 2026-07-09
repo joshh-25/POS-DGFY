@@ -535,6 +535,7 @@ export const getAllUsers = async (options = {}) => {
       'created_at',
       'permissions',
       'is_master_admin',
+      'pos_approval_pin_hash',
       'invitation_status',
       'invitation_expires_at',
       'invitation_delivery_status',
@@ -561,6 +562,7 @@ export const getAllUsers = async (options = {}) => {
       created_at: user.created_at,
       permissions: resolveEffectivePermissions(user),
       is_master_admin: user.is_master_admin,
+      pos_approval_pin_configured: Boolean(String(user.pos_approval_pin_hash || '').trim()),
       invitation_status: user.invitation_status || null,
       invitation_expires_at: user.invitation_expires_at || null,
       invitation_delivery_status: user.invitation_delivery_status || null,
@@ -630,6 +632,9 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
   // Reset master admin flag if demoting from admin
   if (!isAdminLikeRole(assignment.role)) {
     updateData.is_master_admin = false;
+  }
+  if (!['admin', 'manager'].includes(assignment.role)) {
+    updateData.pos_approval_pin_hash = null;
   }
 
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
@@ -843,6 +848,36 @@ export const updateUserPermissions = async (adminUserId, targetUserId, permissio
     user_id: targetUser.user_id,
     permissions: targetUser.permissions,
     is_master_admin: targetUser.is_master_admin
+  };
+};
+
+export const updatePosApprovalPin = async (adminUserId, targetUserId, { pin = '', clear = false } = {}) => {
+  const User = dbStore.get('User');
+  const [adminUser, targetUser] = await Promise.all([
+    findVisibleUserById(User, adminUserId),
+    findVisibleUserById(User, targetUserId)
+  ]);
+  if (!adminUser?.is_master_admin) {
+    throw createError('Only the Master Admin can manage POS approval PINs', 403);
+  }
+  if (!targetUser) {
+    throw notFoundError('Target user not found');
+  }
+  assertAcceptedUserEditable(targetUser, 'manage POS approval PIN');
+  if (!targetUser.is_active || !['admin', 'manager'].includes(String(targetUser.role || '').toLowerCase())) {
+    throw createError('POS approval PINs can only be configured for active Admin or Manager users', 422);
+  }
+
+  const normalizedPin = String(pin || '').trim();
+  if (clear !== true && !/^[0-9]{4,12}$/.test(normalizedPin)) {
+    throw createError('POS approval PIN must contain 4 to 12 digits', 422);
+  }
+  const posApprovalPinHash = clear === true ? null : await hashPassword(normalizedPin);
+  await targetUser.update({ pos_approval_pin_hash: posApprovalPinHash });
+  return {
+    user_id: targetUser.user_id,
+    username: targetUser.username,
+    pos_approval_pin_configured: Boolean(posApprovalPinHash)
   };
 };
 

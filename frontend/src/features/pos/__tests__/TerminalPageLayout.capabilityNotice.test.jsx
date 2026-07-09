@@ -5,6 +5,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 
+const { playOrderAlertWithIminBridge } = vi.hoisted(() => ({
+  playOrderAlertWithIminBridge: vi.fn()
+}));
+
+vi.mock('../utils/iminHardwareBridge.js', () => ({
+  playOrderAlertWithIminBridge
+}));
+
 vi.mock('../components/POSCheckoutTerminal.jsx', () => ({
   default: () => <div>POSCheckoutTerminal</div>
 }));
@@ -39,6 +47,7 @@ const baseProps = {
   isMsmeMode: true,
   shiftState: {},
   incomingOrdersState: { orders: [] },
+  onlineOrderSoundEnabled: true,
   locationsState: {},
   operatingLocationId: 1,
   queueLocationScopeId: 1,
@@ -47,6 +56,7 @@ const baseProps = {
   setDrawerOpen: vi.fn(),
   effectiveSidebarCollapsed: true,
   setSidebarCollapsed: vi.fn(),
+  setOnlineOrderSoundEnabled: vi.fn(),
   queuedTerminalOperationCount: 0,
   queuedTerminalBlockedCount: 0,
   queueSummary: {},
@@ -66,6 +76,12 @@ const baseProps = {
 const renderLayout = () => render(
   <MemoryRouter>
     <TerminalPageLayout {...baseProps} />
+  </MemoryRouter>
+);
+
+const renderLayoutWithProps = (overrides = {}) => render(
+  <MemoryRouter>
+    <TerminalPageLayout {...baseProps} {...overrides} />
   </MemoryRouter>
 );
 
@@ -110,5 +126,89 @@ describe('TerminalPageLayout capability notice', () => {
     await waitFor(() => {
       expect(screen.queryByText(/IMS access is disabled/)).toBeNull();
     });
+  });
+
+  it('restores the desktop sidebar toggle button', () => {
+    renderLayout();
+
+    const [toggleButton] = screen.getAllByRole('button', { name: 'Show sidebar' });
+    fireEvent.click(toggleButton);
+
+    expect(baseProps.setSidebarCollapsed).toHaveBeenCalledTimes(1);
+    const toggleUpdater = baseProps.setSidebarCollapsed.mock.calls[0][0];
+    expect(toggleUpdater(true)).toBe(false);
+    expect(toggleUpdater(false)).toBe(true);
+    expect(baseProps.setMobileNavOpen).not.toHaveBeenCalled();
+  });
+
+  it('plays a native order alert only for newly seen incoming order ids after initial hydration', () => {
+    const initialOrders = [
+      { pos_transaction_id: 101, customer_name: 'Guest A' }
+    ];
+    const { rerender } = renderLayoutWithProps({
+      queueLocationScopeId: 5,
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'allowed',
+        orders: initialOrders
+      }
+    });
+
+    expect(playOrderAlertWithIminBridge).not.toHaveBeenCalled();
+
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout
+          {...baseProps}
+          queueLocationScopeId={5}
+          incomingOrdersState={{
+            loading: false,
+            accessState: 'allowed',
+            orders: [
+              ...initialOrders,
+              { pos_transaction_id: 102, customer_name: 'Guest B' }
+            ]
+          }}
+        />
+      </MemoryRouter>
+    );
+
+    expect(playOrderAlertWithIminBridge).toHaveBeenCalledTimes(1);
+    expect(playOrderAlertWithIminBridge).toHaveBeenCalledWith('new_order');
+  });
+
+  it('does not play a native order alert when the device setting is disabled', () => {
+    const initialOrders = [
+      { pos_transaction_id: 201, customer_name: 'Guest A' }
+    ];
+    const { rerender } = renderLayoutWithProps({
+      queueLocationScopeId: 7,
+      onlineOrderSoundEnabled: false,
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'allowed',
+        orders: initialOrders
+      }
+    });
+
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout
+          {...baseProps}
+          queueLocationScopeId={7}
+          onlineOrderSoundEnabled={false}
+          incomingOrdersState={{
+            loading: false,
+            accessState: 'allowed',
+            orders: [
+              ...initialOrders,
+              { pos_transaction_id: 202, customer_name: 'Guest B' }
+            ]
+          }}
+        />
+      </MemoryRouter>
+    );
+
+    expect(playOrderAlertWithIminBridge).not.toHaveBeenCalled();
   });
 });

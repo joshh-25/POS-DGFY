@@ -9,6 +9,8 @@ import {
     buildListPosCatalogUseCase,
     buildScanPosBarcodeUseCase,
     buildCheckoutPosUseCase,
+    buildListPosDiscountApproversUseCase,
+    buildVerifyPosDiscountApprovalUseCase,
     buildListPosTransactionsUseCase,
     buildGetPosReportsOverviewUseCase,
     buildExportPosReportsUseCase,
@@ -63,6 +65,8 @@ import {
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
 export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, inventoryCommandService: inventoryStockCommandService });
+export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
+export const verifyPosDiscountApprovalUseCase = buildVerifyPosDiscountApprovalUseCase({ posRepository });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
 export const getPosReportsOverviewUseCase = buildGetPosReportsOverviewUseCase({ posRepository });
 export const exportPosReportsUseCase = buildExportPosReportsUseCase({ posRepository });

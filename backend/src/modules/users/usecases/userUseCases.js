@@ -238,6 +238,29 @@ export const buildUpdateUserPermissionsUseCase = ({ userService }) => {
   };
 };
 
+export const buildUpdatePosApprovalPinUseCase = ({ userService }) => {
+  return async ({ adminUserId, targetUserId, pin, clear }) => {
+    const normalizedAdminUserId = parsePositiveInt(adminUserId);
+    const normalizedTargetUserId = parsePositiveInt(targetUserId);
+    if (!normalizedAdminUserId || !normalizedTargetUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'adminUserId and targetUserId must be positive integers',
+        { statusCode: 400 }
+      ));
+    }
+    try {
+      return ok(await userService.updatePosApprovalPin(
+        normalizedAdminUserId,
+        normalizedTargetUserId,
+        { pin, clear }
+      ));
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to update POS approval PIN'));
+    }
+  };
+};
+
 export const buildGetUserLocationGrantsUseCase = ({ userService }) => {
   return async ({ adminUserId, targetUserId, includeInactive = false }) => {
     const normalizedAdminUserId = parsePositiveInt(adminUserId);

@@ -34,6 +34,16 @@ export const createPosCheckout = async (payload) => {
     return response.data?.data;
 };
 
+export const fetchPosDiscountApprovers = async () => {
+    const response = await api.get('/pos/discount-approvers');
+    return response.data?.data?.approvers || [];
+};
+
+export const verifyPosDiscountApproval = async (payload = {}) => {
+    const response = await api.post('/pos/discount-approvals/verify', payload);
+    return response.data?.data?.approver || null;
+};
+
 export const fetchPosTransactions = async (params = {}) => {
     const response = await api.get('/pos/transactions', { params });
     return response.data?.data;
@@ -172,7 +182,9 @@ export const recordCashDrawerEvent = async (shiftId, payload = {}) => {
 };
 
 export const closeTerminalShift = async (shiftId, payload = {}) => {
-    const response = await api.post(`/pos/terminal/shifts/${shiftId}/close`, payload);
+    const response = await api.post(`/pos/terminal/shifts/${shiftId}/close`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
     return response.data?.data;
 };
 

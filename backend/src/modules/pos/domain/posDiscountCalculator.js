@@ -24,21 +24,31 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   const requestedRate = statutory ? 20 : clamp(application.rate, 0, 100);
   const method = String(application.method || 'percentage').toLowerCase() === 'fixed' ? 'fixed' : 'percentage';
   const selections = new Map((application.lines || []).map((entry) => [Number(entry.item_id), entry]));
-  let remainingFixed = method === 'fixed' ? clamp(application.amount, 0, subtotalAmount) : 0;
+  const restrictToSelections = !statutory && selections.size > 0;
   const eligibleBase = round4(normalizedLines.reduce((sum, line) => {
-    if (!statutory) return sum + line.gross_amount;
     const selected = selections.get(Number(line.item_id));
+    if (!statutory) return restrictToSelections && !selected ? sum : sum + line.gross_amount;
     const autoEligible = line.senior_pwd_discount_eligible === true;
-    if (!selected && !autoEligible) return sum;
-    const eligibleQuantity = clamp(selected?.eligible_quantity ?? line.quantity, 0, line.quantity);
+    if (!selected || !autoEligible) return sum;
+    const eligibleQuantity = clamp(selected.eligible_quantity ?? line.quantity, 0, line.quantity);
     return sum + round4(eligibleQuantity * line.sale_price);
   }, 0));
+  let remainingFixed = method === 'fixed' ? clamp(application.amount, 0, eligibleBase) : 0;
+  const fixedDiscountAmount = remainingFixed;
+  const eligibleLineIndexes = normalizedLines
+    .map((line, index) => {
+      const selected = selections.get(Number(line.item_id));
+      if (statutory) return selected && line.senior_pwd_discount_eligible === true ? index : null;
+      return !restrictToSelections || selected ? index : null;
+    })
+    .filter((index) => index != null);
+  const finalEligibleIndex = eligibleLineIndexes.at(-1);
 
   const calculatedLines = normalizedLines.map((line, index) => {
     const selected = selections.get(Number(line.item_id));
     const eligibleQuantity = statutory
-      ? ((selected || line.senior_pwd_discount_eligible === true) ? clamp(selected?.eligible_quantity ?? line.quantity, 0, line.quantity) : 0)
-      : line.quantity;
+      ? (selected && line.senior_pwd_discount_eligible === true ? clamp(selected.eligible_quantity ?? line.quantity, 0, line.quantity) : 0)
+      : (restrictToSelections && !selected ? 0 : line.quantity);
     const eligibleGross = round4(eligibleQuantity * line.sale_price);
     let vatRemoved = 0;
     let vatExemptAmount = 0;
@@ -53,9 +63,9 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
       discountAmount = round4(vatExemptAmount * 0.20);
     } else if (!statutory && eligibleGross > 0) {
       if (method === 'fixed') {
-        discountAmount = index === normalizedLines.length - 1
+        discountAmount = index === finalEligibleIndex
           ? remainingFixed
-          : round4(Math.min(remainingFixed, eligibleBase > 0 ? (eligibleGross / eligibleBase) * Number(application.amount || 0) : 0));
+          : round4(Math.min(remainingFixed, eligibleBase > 0 ? (eligibleGross / eligibleBase) * fixedDiscountAmount : 0));
         remainingFixed = round4(remainingFixed - discountAmount);
       } else {
         discountAmount = round4(eligibleGross * (requestedRate / 100));

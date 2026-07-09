@@ -34,7 +34,13 @@ import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsu
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
-import { POS_SETTINGS_ACCESS_PIN_HASH_KEY, verifyPosSettingsAccessPin } from '../../settings/usecases/posSettingsAccessPinPolicy.js';
+import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
+import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
+import {
+    STOREFRONT_PROMO_SETTING_KEY,
+    STOREFRONT_PROMOS_SETTING_KEY,
+    buildCommercialPromoUsageUpdate
+} from '../../shared/utils/commercialPromoPolicy.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -194,6 +200,16 @@ const normalizeJsonObject = (value, fallback = {}) => {
         return fallback;
     }
     return fallback;
+};
+const normalizeJsonArray = (value, fallback = []) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return fallback;
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : fallback;
+    } catch {
+        return fallback;
+    }
 };
 
 const stableStringify = (value) => {
@@ -1410,6 +1426,44 @@ const getPosSettings = async () => unwrapApplicationResultOrThrow(
     'Failed to retrieve POS setup settings'
 );
 
+export const buildListPosDiscountApproversUseCase = ({ posRepository }) => {
+    return async () => {
+        try {
+            const rows = await posRepository.listActiveDiscountApprovers();
+            return ok({
+                approvers: rows.map((row) => ({
+                    user_id: Number(row.user_id),
+                    username: String(row.username || '').trim(),
+                    role: String(row.role || '').trim().toLowerCase(),
+                    is_master_admin: row.is_master_admin === true
+                }))
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list POS discount approvers'));
+        }
+    };
+};
+
+export const buildVerifyPosDiscountApprovalUseCase = ({ posRepository }) => {
+    return async ({ payload = {} } = {}) => {
+        try {
+            const approverId = parsePositiveInt(payload.approver_user_id);
+            if (!approverId) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'approver_user_id is required', { statusCode: 422 });
+            }
+            const approver = await posRepository.findActiveDiscountApproverById(approverId);
+            const verified = await verifyPosDiscountApprover({
+                approver,
+                pin: payload.manager_pin,
+                employeeUserId: parsePositiveInt(payload.employee_user_id)
+            });
+            return ok({ approver: verified });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'POS discount approval failed'));
+        }
+    };
+};
+
 const enforcePosComplianceReadiness = (settings = {}) => {
     // Legacy strict toggle is retired. Dual-mode compliance policy is now the
     // single source of truth for fiscal and non-fiscal runtime enforcement.
@@ -2088,6 +2142,23 @@ export const buildCheckoutPosUseCase = ({
                     id_number: String(payload.discount_beneficiary.id_number || '').trim() || null
                 }
                 : null,
+            governed_discount: isPlainObject(payload.governed_discount)
+                ? {
+                    type: String(payload.governed_discount.type || '').trim().toLowerCase(),
+                    method: String(payload.governed_discount.method || '').trim().toLowerCase(),
+                    rate: payload.governed_discount.rate == null ? null : round4(payload.governed_discount.rate),
+                    amount: payload.governed_discount.amount == null ? null : round4(payload.governed_discount.amount),
+                    customer_name: String(payload.governed_discount.customer_name || '').trim() || null,
+                    id_number: String(payload.governed_discount.id_number || '').trim() || null,
+                    employee_id: String(payload.governed_discount.employee_id || '').trim() || null,
+                    approver_user_id: parsePositiveInt(payload.governed_discount.approver_user_id),
+                    reason: String(payload.governed_discount.reason || '').trim() || null,
+                    promo_code: String(payload.governed_discount.promo_code || '').trim().toUpperCase() || null,
+                    eligible_item_ids: [...new Set((payload.governed_discount.eligible_item_ids || [])
+                        .map((itemId) => parsePositiveInt(itemId))
+                        .filter(Boolean))]
+                }
+                : null,
             lines: lines
                 .map((line, index) => ({
                     sequence: index,
@@ -2431,17 +2502,58 @@ export const buildCheckoutPosUseCase = ({
             }
 
             subtotalAmount = round4(subtotalAmount);
-            const governedApplication = isPlainObject(payload.governed_discount) ? payload.governed_discount : null;
+            const governedDraft = isPlainObject(payload.governed_discount) ? payload.governed_discount : null;
+            let discountSettings = settings;
+            if (governedDraft?.type === 'promo') {
+                const promoSetting = await posRepository.findSystemSettingByKey(
+                    STOREFRONT_PROMO_SETTING_KEY,
+                    { transaction, lock: true }
+                );
+                const promosSetting = await posRepository.findSystemSettingByKey(
+                    STOREFRONT_PROMOS_SETTING_KEY,
+                    { transaction, lock: true }
+                );
+                discountSettings = {
+                    ...settings,
+                    [STOREFRONT_PROMO_SETTING_KEY]: {
+                        ...(settings?.[STOREFRONT_PROMO_SETTING_KEY] || {}),
+                        value: normalizeJsonObject(promoSetting?.setting_value, {})
+                    },
+                    [STOREFRONT_PROMOS_SETTING_KEY]: {
+                        ...(settings?.[STOREFRONT_PROMOS_SETTING_KEY] || {}),
+                        value: normalizeJsonArray(promosSetting?.setting_value, [])
+                    }
+                };
+            }
+            const governedResolution = governedDraft
+                ? await resolvePosGovernedDiscount({
+                    draft: governedDraft,
+                    preparedLines,
+                    subtotalAmount,
+                    settings: discountSettings,
+                    findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
+                    findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction })
+                })
+                : null;
+            const governedApplication = governedResolution?.application || null;
             if (governedApplication && ['employee', 'manual'].includes(governedApplication.type)) {
-                const SystemSetting = dbStore.get('SystemSetting');
-                const pinSetting = await SystemSetting.findOne({
-                    where: { setting_key: POS_SETTINGS_ACCESS_PIN_HASH_KEY },
-                    transaction
+                const approverId = parsePositiveInt(governedDraft.approver_user_id);
+                if (!approverId) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'A POS discount approver is required.',
+                        { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_REQUIRED' } }
+                    );
+                }
+                const approver = await posRepository.findActiveDiscountApproverById(approverId, { transaction });
+                const verifiedApprover = await verifyPosDiscountApprover({
+                    approver,
+                    pin: governedDraft.manager_pin,
+                    employeeUserId: governedApplication.type === 'employee' ? governedApplication.employee_id : null
                 });
-                await verifyPosSettingsAccessPin({
-                    pin: governedApplication.manager_pin,
-                    currentHash: pinSetting?.setting_value || ''
-                });
+                governedApplication.manager_approval_id = verifiedApprover.user_id;
+                governedApplication.manager_approved_at = new Date();
+                governedApplication.self_approved = false;
             }
             const governedCalculation = governedApplication ? calculatePosDiscount({
                 lines: preparedLines,
@@ -2450,7 +2562,8 @@ export const buildCheckoutPosUseCase = ({
                     method: governedApplication.method,
                     rate: governedApplication.rate,
                     amount: governedApplication.amount,
-                    lines: (governedApplication.eligible_item_ids || []).map((itemId) => ({ item_id: itemId }))
+                    max_discount_amount: governedApplication.max_discount_amount,
+                    lines: governedApplication.lines || []
                 }
             }) : null;
             const discountResolution = governedCalculation ? {
@@ -2671,6 +2784,19 @@ export const buildCheckoutPosUseCase = ({
                     application: governedApplication,
                     calculation: governedCalculation
                 }, { transaction });
+            }
+            if (governedResolution?.promo?.applied) {
+                const promoUsageUpdate = buildCommercialPromoUsageUpdate({
+                    settings: discountSettings,
+                    promoApplication: governedResolution.promo
+                });
+                if (promoUsageUpdate) {
+                    await posRepository.updateSystemSettingValueByKey(
+                        promoUsageUpdate.key,
+                        promoUsageUpdate.value,
+                        { transaction, lock: true }
+                    );
+                }
             }
 
             if (isFiscalReceipt && typeof posRepository.createFiscalEvent === 'function') {

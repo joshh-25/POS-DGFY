@@ -62,7 +62,7 @@ object AppConfig {
     }
 
     private fun useLivePosOrigin(): Boolean {
-        return !BuildConfig.DEBUG && !isProbablyEmulator()
+        return !isProbablyEmulator()
     }
 
     private fun isProbablyEmulator(): Boolean {

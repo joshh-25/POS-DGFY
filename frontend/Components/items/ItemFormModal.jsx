@@ -64,6 +64,7 @@ const MSME_VISIBLE_UPDATE_FIELDS = Object.freeze([
   'cost_per_unit',
   'default_sale_price',
   'vat_type',
+  'senior_pwd_discount_eligible',
   'max_capacity',
   'current_stock',
   'location_id',
@@ -218,6 +219,7 @@ export default function ItemFormModal({
     cost_per_unit: 0,
     default_sale_price: 0,
     vat_type: 'vatable',
+    senior_pwd_discount_eligible: false,
     max_capacity: 0,
     current_stock: 0,
     location_id: '',
@@ -445,6 +447,7 @@ export default function ItemFormModal({
         cost_per_unit: parseNum(item.cost_per_unit, 0),
         default_sale_price: parseNum(item.default_sale_price, 0),
         vat_type: item.vat_type || modeItemDefaults.vat_type || 'vatable',
+        senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
         max_capacity: parseNum(item.max_capacity, Number(modeItemDefaults.max_capacity || 0)),
         current_stock: initialLocationStock,
         location_id: initialLocationId,
@@ -534,6 +537,7 @@ export default function ItemFormModal({
         cost_per_unit: 0,
         default_sale_price: 0,
         vat_type: modeItemDefaults.vat_type || 'vatable',
+        senior_pwd_discount_eligible: false,
         max_capacity: Number(modeItemDefaults.max_capacity || 0),
         current_stock: 0,
         location_id: activeLocations.length === 1 ? String(activeLocations[0].location_id) : '',
@@ -937,6 +941,7 @@ export default function ItemFormModal({
       cost_per_unit: financialPolicy.show_cost ? toNumberOrNull(cleanedData.cost_per_unit) : null,
       default_sale_price: toNumberOrNull(cleanedData.default_sale_price),
       vat_type: cleanedData.vat_type || 'vatable',
+      senior_pwd_discount_eligible: cleanedData.senior_pwd_discount_eligible === true,
       max_capacity: Number(cleanedData.max_capacity) || null, // Allow null for drafts
       min_threshold: toNumberOrNull(cleanedData.min_threshold),
       purchase_allowance: toNumberOrNull(cleanedData.purchase_allowance),
@@ -1319,6 +1324,20 @@ export default function ItemFormModal({
                     <SelectItem value="zero_rated">Zero Rated</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 lg:col-span-3">
+                <div>
+                  <Label htmlFor="senior-pwd-discount-eligible" className="font-semibold text-slate-900">
+                    Senior/PWD Eligible
+                  </Label>
+                  <p className="text-xs text-slate-500">Allow this item to receive statutory Senior/PWD discounts.</p>
+                </div>
+                <Switch
+                  id="senior-pwd-discount-eligible"
+                  checked={formData.senior_pwd_discount_eligible === true}
+                  onCheckedChange={(checked) => handleChange('senior_pwd_discount_eligible', Boolean(checked))}
+                  disabled={isSaving}
+                />
               </div>
               <div className="space-y-2 lg:col-span-6">
                 <Label htmlFor="capacity">Max Capacity</Label>

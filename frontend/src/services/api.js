@@ -32,6 +32,34 @@ const logError = (...args) => {
   if (!isTestEnvironment) console.error(...args);
 };
 
+const formatApiValidationError = (data) => {
+  if (!data) return 'No validation details returned.';
+  if (typeof data === 'string') return data;
+
+  const message = data.message || data.error || data.error_message || data.details;
+  const fieldErrors = Array.isArray(data.errors)
+    ? data.errors
+        .map((entry) => {
+          if (!entry) return null;
+          if (typeof entry === 'string') return entry;
+          const field = entry.field || entry.path || entry.param || entry.key;
+          const detail = entry.message || entry.msg || entry.error || entry.reason;
+          if (field && detail) return `${field}: ${detail}`;
+          return detail || field || null;
+        })
+        .filter(Boolean)
+    : [];
+
+  const parts = [message, ...fieldErrors].filter(Boolean);
+  if (parts.length > 0) return parts.join(' | ');
+
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return String(data);
+  }
+};
+
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const RUNTIME_CONFIG = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 
@@ -463,7 +491,7 @@ api.interceptors.response.use(
 
     // Log detailed validation errors for 422 responses
     if (error.response?.status === 422) {
-      logError('❌ API 422 Validation Error:', error.response.data);
+      logError(`❌ API 422 Validation Error: ${formatApiValidationError(error.response.data)}`);
       if (error.response.data.errors) {
         if (!isTestEnvironment) {
           console.table(error.response.data.errors);
