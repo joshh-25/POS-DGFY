@@ -173,6 +173,19 @@ const formatQuantity = (value) => {
     if (!Number.isFinite(quantity)) return '0';
     return Number.isInteger(quantity) ? String(quantity) : String(round4(quantity));
 };
+// Mobile-only catalog name color: always-available items are always green; otherwise
+// green stock > 100, yellow 0 < stock < 100, red for stock <= 0 and for
+// null/undefined/non-numeric stock (safe default).
+const getMobileStockNameColorClassName = (stockValue, isAlwaysAvailable) => {
+    if (isAlwaysAvailable) return 'text-green-600';
+    const numericStock = Number(stockValue);
+    if (stockValue === null || stockValue === undefined || !Number.isFinite(numericStock)) {
+        return 'text-red-600';
+    }
+    if (numericStock > 100) return 'text-green-600';
+    if (numericStock > 0) return 'text-yellow-600';
+    return 'text-red-600';
+};
 const toValidPercentage = (value) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return 0;
@@ -672,8 +685,8 @@ export default function POSCheckoutTerminal({
     const searchBackspaceIntervalRef = useRef(null);
     const catalogSwipeStartXRef = useRef(null);
     const catalogSwipePointerIdRef = useRef(null);
-    const shellClassName = 'h-full min-h-0 space-y-5';
-    const checkoutGridClassName = 'grid h-full min-h-0 grid-cols-1 gap-4 pb-24 md:grid-cols-[minmax(0,1fr)_325px] md:overflow-hidden md:pb-0 2xl:gap-6';
+    const shellClassName = 'h-auto min-h-0 space-y-5 xl:h-full';
+    const checkoutGridClassName = 'grid min-h-0 grid-cols-1 gap-4 pb-24 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 xl:h-full xl:overflow-hidden 2xl:gap-6';
     const catalogGridClassName = useMemo(() => {
         if (isTabletViewport) {
             return IS_DGFY_POS_SURFACE
@@ -684,12 +697,12 @@ export default function POSCheckoutTerminal({
             ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[6.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
             : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[6.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
     }, [isTabletViewport, sidebarCollapsed]);
-    const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-hidden pr-0 pb-3';
+    const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-visible pr-0 pb-3 xl:overflow-hidden';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
     const currentSaleBodyClassName = 'min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y';
     const currentSaleItemsListClassName = 'pr-1';
     const checkoutPaneClassName = 'h-full max-h-full';
-    const catalogPaneHeightClassName = 'h-full max-h-full';
+    const catalogPaneHeightClassName = 'h-auto max-h-none xl:h-full xl:max-h-full';
     const currentSalePaneHeightClassName = 'h-full max-h-full';
     const safeCatalog = toArray(catalog);
     const safePosFolders = toArray(posFolders);
@@ -2316,10 +2329,10 @@ export default function POSCheckoutTerminal({
             )}
 
             {currentViewMode === 'checkout' && (
-                <div key="view-checkout" className="h-full min-h-0 max-sm:animate-pos-slide-in">
+                <div key="view-checkout" className="h-auto min-h-0 xl:h-full max-sm:animate-pos-slide-in">
                 <>
                 <div className={checkoutGridClassName}>
-            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
+            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
                     {isTabletViewport && renderViewModeControls()}
                     <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
                 <div className={`${isTabletViewport ? 'mb-3 gap-2.5' : 'mb-5 gap-4'} flex min-w-0 flex-col ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
@@ -2552,7 +2565,7 @@ export default function POSCheckoutTerminal({
                 )}
                 <div
                     data-testid="pos-catalog-scroll"
-                    className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pb-3 touch-pan-y select-none"
+                    className="overflow-visible pr-1 pb-3 touch-pan-y select-none xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overscroll-contain"
                     onTouchStart={(event) => {
                         const touch = event.touches?.[0];
                         if (!touch) return;
@@ -2593,6 +2606,9 @@ export default function POSCheckoutTerminal({
                             const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
+                            // Mobile-only: computed on every render from current item data, so it's
+                            // correct on initial render and never stale/flickering on resize.
+                            const mobileStockNameColorClassName = getMobileStockNameColorClassName(item.current_stock, isAlwaysAvailable);
                             return (
                                 <div
                                     key={item.item_id}
@@ -2678,7 +2694,9 @@ export default function POSCheckoutTerminal({
                                             code (sku_code) removed. "Always available" renders only when true —
                                             no placeholder when it doesn't apply. */}
                                         <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
-                                            <p className="min-w-0 text-[13px] font-black leading-tight text-[#0F172A]">{item.name}</p>
+                                            {/* Mobile-only stock color coding: applies only to the product name,
+                                                no other classes (size/weight/spacing) touched -> no layout shift. */}
+                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${mobileStockNameColorClassName}`}>{item.name}</p>
                                             <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
                                                 <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
                                                     {isAlwaysAvailable && (
