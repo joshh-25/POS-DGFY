@@ -5314,7 +5314,29 @@ function SettingsWorkspace({
         <p className="text-[13px] font-black text-[#0F172A]">Storefront Media</p>
         <p className="mt-1 text-[12px] text-[#475569]">Shared cover photo and profile icon for discovery cards and storefront header.</p>
         <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <div className="relative h-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 md:h-40">
+          {/* Mobile-only: profile icon wrapper moved OUTSIDE the cover's overflow-hidden box.
+              Previously the circular avatar was nested inside the cover container, so its
+              bottom half (via the -bottom-8 overlap offset) was clipped by that container's
+              overflow-hidden instead of only being rounded by it. Cover photo rendering itself
+              (image + rounded-xl clipping) is untouched. */}
+          <div className="relative sm:hidden">
+            <div className="h-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+              {storefrontAssets.cover ? (
+                <img src={resolveAssetUrl(storefrontAssets.cover)} alt="Storefront cover preview" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xs font-medium text-slate-500">No cover photo uploaded</div>
+              )}
+            </div>
+            <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow">
+              {storefrontAssets.profile ? (
+                <img src={resolveAssetUrl(storefrontAssets.profile)} alt="Storefront profile preview" className="h-full w-full object-contain" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500">No icon</div>
+              )}
+            </div>
+          </div>
+          {/* Tablet/desktop: original structure, unchanged. */}
+          <div className="relative hidden h-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:block md:h-40">
             {storefrontAssets.cover ? (
               <img src={resolveAssetUrl(storefrontAssets.cover)} alt="Storefront cover preview" className="h-full w-full object-cover" />
             ) : (
