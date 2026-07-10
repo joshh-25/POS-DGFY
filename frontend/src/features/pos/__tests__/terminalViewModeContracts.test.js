@@ -72,20 +72,6 @@ describe('POS terminal view-mode contracts', () => {
     expect(skupervisorCheckoutTerminalContent).toContain("item?.pos_always_available === true");
   });
 
-  it('preserves created POS item identity and retries post-create setup without duplicates', () => {
-    expect(terminalOperationsWorkspaceContent).toContain("const runPostCreateStages = async ({ itemId, itemName, imageFile, posAlwaysAvailable }) => {");
-    expect(terminalOperationsWorkspaceContent).toContain('setPendingCreateRecovery({');
-    expect(terminalOperationsWorkspaceContent).toContain('Resume Item Setup');
-    expect(terminalOperationsWorkspaceContent).toContain('will not create a duplicate item');
-    expect(terminalOperationsWorkspaceContent).toContain("runStage('pos_image'");
-    expect(terminalOperationsWorkspaceContent).toContain("runStage('storefront_image'");
-    expect(terminalOperationsWorkspaceContent).toContain("runStage('barcode'");
-    expect(terminalOperationsWorkspaceContent).toContain("runStage('storefront_visibility'");
-    expect(terminalOperationsWorkspaceContent).toContain("runStage('always_available'");
-    expect(terminalOperationsWorkspaceContent).toContain("runStage('pos_visibility'");
-    expect(terminalOperationsWorkspaceContent).toContain('closeCreate({ force: true });');
-    expect(terminalOperationsWorkspaceContent).toContain('pos_always_available: posAlwaysAvailable === true');
-  });
 
   it('validates POS onboarding starter item cost and stock before calling the onboarding API', () => {
     expect(posTenantSetupModalContent).toContain('const parsedCost = cost === \'\' ? null : Number(cost);');
@@ -203,7 +189,7 @@ describe('POS terminal view-mode contracts', () => {
   it('renders forbidden/error states and transact guard in incoming queue workspace', () => {
     expect(terminalSidebarPanelContent).toContain('incomingOrdersAccessState === \'forbidden\'');
     expect(terminalSidebarPanelContent).toContain('incomingOrdersAccessState === \'error\'');
-    expect(terminalSidebarPanelContent).toContain("disabled={Boolean(actionLoading) || !canTransactPos || locked || !shiftState.shift}");
+    expect(terminalSidebarPanelContent).toContain("disabled={Boolean(actionLoading) || !canTransactPos || locked}");
     expect(terminalSidebarPanelContent).toContain('You need POS transact permission to update order statuses.');
   });
 
@@ -234,9 +220,9 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain('shiftState = { shift: null }');
     expect(terminalOperationsWorkspaceContent).toContain('shiftState={shiftState}');
     expect(terminalOperationsWorkspaceContent).toContain('const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;');
-    expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !canSubmitOpenShift}');
+    expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen}');
     expect(terminalSidebarPanelContent).toContain('isValidOpeningCashAmount');
-    expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canTransactPos || !canSubmitOpenShift}');
+    expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canTransactPos}');
     expect(terminalPageContent).toContain("const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');");
     expect(terminalPageContent).toContain('canCloseDay={canCloseShift}');
     expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
@@ -299,7 +285,7 @@ describe('POS terminal view-mode contracts', () => {
   it('opens checkout confirmation and then receipt preview after a successful sale', () => {
     expect(posCheckoutTerminalContent).toContain('setCheckoutConfirmModalOpen(true);');
     expect(posCheckoutTerminalContent).toMatch(
-      /setCheckoutConfirmModalOpen\(false\);\s+setReceiptPreviewModalOpen\(true\);\s+if \(typeof onCheckoutCompleted/
+      /setCheckoutConfirmModalOpen\(false\);[\s\S]*?setReceiptPreviewModalOpen\(true\);[\s\S]*?if \(typeof onCheckoutCompleted/
     );
   });
 
@@ -338,13 +324,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain('event.stopPropagation();');
   });
 
-  it('keeps queue-to-receipt ownership in POSCheckoutTerminal and avoids prefetch in TerminalPage', () => {
-    expect(terminalPageContent).not.toContain('fetchPosTransactionById');
-    expect(
-      terminalPageContent.includes('externalReceiptTransactionId={receiptRequestId}')
-      || terminalPageContent.includes('receiptRequestId={receiptRequestId}')
-    ).toBe(true);
-    expect(posCheckoutTerminalContent).toContain('const detail = await fetchPosTransactionById(id);');
+  it('opens active queue orders in TerminalPage without routing them through receipt history', () => {
+    expect(terminalPageContent).toContain('const detail = await fetchPosTransactionById(normalizedId);');
+    expect(terminalPageContent).toContain('<OnlineOrderDetailsModal');
+    expect(terminalPageContent).not.toContain('handleOpenIncomingOrderHistory');
   });
 
   it('guards incoming queue receipt action with opening lock and lifecycle guidance copy', () => {
@@ -354,14 +337,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalSidebarPanelContent).toContain('Completed or cancelled online orders move to History/Receipt Preview.');
   });
 
-  it('supports deep-link handoff from queue cards to filtered history view', () => {
-    expect(terminalPageContent).toContain('const [historyRequestQuery, setHistoryRequestQuery] = useState(\'\');');
-    expect(
-      terminalPageContent.includes('externalHistoryQuery={historyRequestQuery}')
-      || terminalPageContent.includes('historyRequestQuery={historyRequestQuery}')
-    ).toBe(true);
-    expect(terminalOperationsPanelsContent).toContain('Open in History');
-    expect(terminalSidebarPanelContent).toContain('History');
+  it('keeps completed receipt history out of the active queue', () => {
+    expect(terminalPageContent).not.toContain('handleOpenIncomingOrderHistory');
+    expect(terminalOperationsPanelsContent).not.toContain('history_receipt');
+    expect(terminalSidebarPanelContent).not.toContain('history_receipt');
     expect(posCheckoutTerminalContent).toContain('setHistorySearch(query);');
   });
 

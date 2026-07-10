@@ -104,6 +104,8 @@ const POS_CHECKLIST_SEARCH_KEYS = [
 const MSME_RESTRICTED_CATEGORY_FILTERS = new Set(['raw_material', 'packaging', 'finished_goods', 'work_in_progress']);
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
 const STOREFRONT_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const normalizeFolderName = (value) => String(value || '').trim();
+const toFolderLookupKey = (value) => normalizeFolderName(value).toLowerCase();
 
 const parseStorefrontImageGallery = (value) => {
   if (Array.isArray(value)) return value;
@@ -928,8 +930,9 @@ export default function Items() {
 
     if (apiFolders && Array.isArray(apiFolders)) {
       apiFolders.forEach((folder) => {
-        if (!folder?.name) return;
-        map.set(folder.name, {
+        const normalizedName = normalizeFolderName(folder?.name);
+        if (!normalizedName) return;
+        map.set(toFolderLookupKey(normalizedName), {
           name: folder.name,
           folder_id: folder.folder_id,
           description: folder.description || '',
@@ -940,10 +943,12 @@ export default function Items() {
     }
 
     transientFolders.forEach((folderName) => {
-      if (!folderName) return;
-      if (!map.has(folderName)) {
-        map.set(folderName, {
-          name: folderName,
+      const normalizedName = normalizeFolderName(folderName);
+      if (!normalizedName) return;
+      const folderKey = toFolderLookupKey(normalizedName);
+      if (!map.has(folderKey)) {
+        map.set(folderKey, {
+          name: normalizedName,
           folder_id: null,
           description: '',
           show_in_pos_filter: true,
@@ -953,10 +958,12 @@ export default function Items() {
     });
 
     items.forEach((item) => {
-      if (!item.product_folder) return;
-      if (!map.has(item.product_folder)) {
-        map.set(item.product_folder, {
-          name: item.product_folder,
+      const normalizedName = normalizeFolderName(item.product_folder);
+      if (!normalizedName) return;
+      const folderKey = toFolderLookupKey(normalizedName);
+      if (!map.has(folderKey)) {
+        map.set(folderKey, {
+          name: normalizedName,
           folder_id: null,
           description: '',
           show_in_pos_filter: true,
@@ -971,32 +978,49 @@ export default function Items() {
   const folders = useMemo(() => folderEntries.map((entry) => entry.name), [folderEntries]);
   const productFolders = folders;
   const folderByName = useMemo(() => new Map(folderEntries.map((entry) => [entry.name, entry])), [folderEntries]);
+  const folderByLookupKey = useMemo(
+    () => new Map(folderEntries.map((entry) => [toFolderLookupKey(entry.name), entry])),
+    [folderEntries]
+  );
+
+  const findFolderEntry = useCallback((folderName) => {
+    const normalizedName = normalizeFolderName(folderName);
+    if (!normalizedName) return null;
+    return folderByLookupKey.get(toFolderLookupKey(normalizedName))
+      || folderByName.get(normalizedName)
+      || null;
+  }, [folderByLookupKey, folderByName]);
 
   const doesItemMatchFolder = useCallback((item, folderName) => {
-    if (!folderName) return false;
-    const folder = folderByName.get(folderName);
+    const normalizedFolderName = normalizeFolderName(folderName);
+    if (!normalizedFolderName) return false;
+    const folder = findFolderEntry(normalizedFolderName);
     if (folder?.folder_id) {
-      return Number(item?.folder_id) === Number(folder.folder_id) || item?.product_folder === folderName;
+      return Number(item?.folder_id) === Number(folder.folder_id)
+        || toFolderLookupKey(item?.product_folder) === toFolderLookupKey(folder.name);
     }
-    return item?.product_folder === folderName;
-  }, [folderByName]);
+    return toFolderLookupKey(item?.product_folder) === toFolderLookupKey(normalizedFolderName);
+  }, [findFolderEntry]);
 
   const buildFolderAssignmentPayload = useCallback((folderName) => {
-    if (!folderName) {
+    const normalizedFolderName = normalizeFolderName(folderName);
+    if (!normalizedFolderName) {
       return { folder_id: null, product_folder: null };
     }
 
-    const folder = folderByName.get(folderName);
+    const folder = findFolderEntry(normalizedFolderName);
     if (folder?.folder_id) {
       return { folder_id: folder.folder_id, product_folder: folder.name };
     }
 
-    return { product_folder: folderName };
-  }, [folderByName]);
+    return { product_folder: normalizedFolderName };
+  }, [findFolderEntry]);
 
   const resolveItemFolderName = useCallback((item) => {
     if (!item) return null;
-    if (item.product_folder) return item.product_folder;
+    if (item.product_folder) {
+      return findFolderEntry(item.product_folder)?.name || normalizeFolderName(item.product_folder);
+    }
 
     if (item.folder_id) {
       const matchingFolder = folderEntries.find((entry) => Number(entry.folder_id) === Number(item.folder_id));
@@ -1004,7 +1028,48 @@ export default function Items() {
     }
 
     return null;
-  }, [folderEntries]);
+  }, [findFolderEntry, folderEntries]);
+
+  const resolveFolderAssignmentForSave = useCallback(async (folderName) => {
+    const normalizedFolderName = normalizeFolderName(folderName);
+    if (!normalizedFolderName) {
+      return { folder_id: null, product_folder: null };
+    }
+
+    const existingFolder = findFolderEntry(normalizedFolderName);
+    if (existingFolder) {
+      return {
+        folder_id: existingFolder.folder_id ?? null,
+        product_folder: existingFolder.name
+      };
+    }
+
+    const createdFolder = await createApiFolder(normalizedFolderName, '');
+    if (createdFolder?.name) {
+      setTransientFolders((prev) => {
+        if (!prev.has(normalizedFolderName)) return prev;
+        const next = new Set(prev);
+        next.delete(normalizedFolderName);
+        return next;
+      });
+    }
+
+    return {
+      folder_id: createdFolder?.folder_id ?? null,
+      product_folder: createdFolder?.name || normalizedFolderName
+    };
+  }, [createApiFolder, findFolderEntry]);
+
+  const applyResolvedFolderAssignment = useCallback(async (payload) => {
+    if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'product_folder')) {
+      return payload;
+    }
+
+    return {
+      ...payload,
+      ...(await resolveFolderAssignmentForSave(payload.product_folder))
+    };
+  }, [resolveFolderAssignmentForSave]);
 
   const isItemUncategorized = useCallback((item) => !resolveItemFolderName(item), [resolveItemFolderName]);
 
@@ -1351,20 +1416,21 @@ export default function Items() {
         storefront_image_files: storefrontImageFiles = [],
         ...productPayload
       } = productData || {};
+      const resolvedProductPayload = await applyResolvedFolderAssignment(productPayload);
       let savedProduct = null;
       if (editingProduct) {
         // If finalizing a draft, use finalizeItem with the updated data
-        if (editingProduct.status === 'draft' && productPayload.status === 'active') {
-          savedProduct = await finalizeItem(editingProduct.item_id, productPayload);
+        if (editingProduct.status === 'draft' && resolvedProductPayload.status === 'active') {
+          savedProduct = await finalizeItem(editingProduct.item_id, resolvedProductPayload);
           toast.success('Product finalized successfully');
         } else {
           // Regular update (draft->draft or active->active)
-          savedProduct = await updateItem(editingProduct.item_id, productPayload);
+          savedProduct = await updateItem(editingProduct.item_id, resolvedProductPayload);
           toast.success('Product updated successfully');
         }
       } else {
         // Creating new product
-        savedProduct = await createItem(productPayload);
+        savedProduct = await createItem(resolvedProductPayload);
         toast.success('Product created successfully');
       }
       await applyStorefrontLocationAvailabilityPatch(savedProduct || editingProduct, storefrontLocationAvailabilityPatch);
@@ -1398,12 +1464,13 @@ export default function Items() {
         storefront_image_files: storefrontImageFiles = [],
         ...productPayload
       } = productData || {};
+      const resolvedProductPayload = await applyResolvedFolderAssignment(productPayload);
       let savedProduct = null;
       if (editingProduct) {
-        savedProduct = await updateItem(editingProduct.item_id, productPayload);
+        savedProduct = await updateItem(editingProduct.item_id, resolvedProductPayload);
         toast.success('Product draft updated successfully');
       } else {
-        savedProduct = await createItemDraft(productPayload);
+        savedProduct = await createItemDraft(resolvedProductPayload);
         toast.success('Product draft saved successfully');
       }
       await applyStorefrontLocationAvailabilityPatch(savedProduct || editingProduct, storefrontLocationAvailabilityPatch);
@@ -1427,17 +1494,24 @@ export default function Items() {
   const handleSave = async (itemData) => {
     try {
       const {
+        pos_always_available: requestedPosAlwaysAvailable = false,
         supplier_links: supplierLinks = [],
         supplier_links_dirty: supplierLinksDirty = false,
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
         storefront_image_files: storefrontImageFiles = [],
         ...itemPayload
       } = itemData || {};
+      const resolvedItemPayload = await applyResolvedFolderAssignment(itemPayload);
       const isEditingExistingItem = Boolean(editingItem);
+      const existingPosAlwaysAvailable = isEditingExistingItem
+        ? resolvePosConfig(editingItem).pos_always_available === true
+        : false;
+      const posAlwaysAvailableChanged = requestedPosAlwaysAvailable !== existingPosAlwaysAvailable;
       if (
         isEditingExistingItem
         && isMsmeMode
-        && Object.keys(itemPayload).length === 0
+        && Object.keys(resolvedItemPayload).length === 0
+        && !posAlwaysAvailableChanged
         && !supplierLinksDirty
       ) {
         toast.message('No item changes detected.');
@@ -1449,21 +1523,27 @@ export default function Items() {
 
       let savedItem = null;
       if (isEditingExistingItem) {
-        if (editingItem.status === 'draft' && itemPayload.status === 'active') {
-          savedItem = await finalizeItem(editingItem.item_id, itemPayload);
+        if (editingItem.status === 'draft' && resolvedItemPayload.status === 'active') {
+          savedItem = await finalizeItem(editingItem.item_id, resolvedItemPayload);
           toast.success('Item finalized successfully');
-        } else if (Object.keys(itemPayload).length > 0) {
-          savedItem = await updateItem(editingItem.item_id, itemPayload);
+        } else if (Object.keys(resolvedItemPayload).length > 0) {
+          savedItem = await updateItem(editingItem.item_id, resolvedItemPayload);
           toast.success('Item updated successfully');
         } else {
           savedItem = editingItem;
         }
       } else {
-        savedItem = await createItem(itemPayload);
+        savedItem = await createItem(resolvedItemPayload);
         toast.success('Item created successfully');
       }
 
       const targetItemId = Number(savedItem?.item_id || savedItem?.id || editingItem?.item_id || 0);
+      const posOverridePatch = {};
+
+      if (requestedPosAlwaysAvailable !== existingPosAlwaysAvailable) {
+        posOverridePatch.pos_always_available = requestedPosAlwaysAvailable === true;
+      }
+
       await applyStorefrontLocationAvailabilityPatch(savedItem || editingItem, storefrontLocationAvailabilityPatch);
       if (Array.isArray(storefrontImageFiles) && storefrontImageFiles.length > 0) {
         await handleUploadStorefrontImage(savedItem || editingItem, storefrontImageFiles);
@@ -1485,21 +1565,26 @@ export default function Items() {
       );
 
       if (createdViaMsmeSellablePreset) {
-        const createdItemId = Number(savedItem?.item_id || savedItem?.id || 0);
-        if (Number.isInteger(createdItemId) && createdItemId > 0) {
-          try {
-            const updatedOverride = await updatePosCatalogOverride(createdItemId, { pos_visible: true });
-            setPosCatalogOverrides((prev) => ({
-              ...prev,
-              [createdItemId]: { ...(prev[createdItemId] || {}), ...updatedOverride }
-            }));
+        posOverridePatch.pos_visible = true;
+      }
+
+      if (Number.isInteger(targetItemId) && targetItemId > 0 && Object.keys(posOverridePatch).length > 0) {
+        try {
+          const updatedOverride = await updatePosCatalogOverride(targetItemId, posOverridePatch);
+          setPosCatalogOverrides((prev) => ({
+            ...prev,
+            [targetItemId]: { ...(prev[targetItemId] || {}), ...updatedOverride }
+          }));
+          if (createdViaMsmeSellablePreset) {
             toast.success('Item created and set to show in POS.');
-          } catch (overrideError) {
-            if (overrideError?.reason_code === POS_READINESS_INCOMPLETE) {
-              toast.warning('Item created. POS visibility is blocked until readiness requirements are completed.');
-            } else {
-              toast.warning('Item was created, but auto-show in POS failed. Use "Fix POS Setup" to enable it.');
-            }
+          }
+        } catch (overrideError) {
+          if (createdViaMsmeSellablePreset && overrideError?.reason_code === POS_READINESS_INCOMPLETE) {
+            toast.warning('Item created. POS visibility is blocked until readiness requirements are completed.');
+          } else if (createdViaMsmeSellablePreset) {
+            toast.warning('Item was created, but auto-show in POS failed. Use "Fix POS Setup" to enable it.');
+          } else {
+            toast.warning('Item was saved, but POS availability settings did not update. Please retry from item edit.');
           }
         }
       }
@@ -1525,13 +1610,19 @@ export default function Items() {
   const handleSaveDraft = async (itemData) => {
     try {
       const {
+        pos_always_available: requestedPosAlwaysAvailable = false,
         supplier_links: _supplierLinks = [],
         supplier_links_dirty: _supplierLinksDirty = false,
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
         storefront_image_files: storefrontImageFiles = [],
         ...draftPayload
       } = itemData || {};
-      const savedDraft = await createItemDraft(draftPayload);
+      const resolvedDraftPayload = await applyResolvedFolderAssignment(draftPayload);
+      const savedDraft = await createItemDraft(resolvedDraftPayload);
+      const draftItemId = Number(savedDraft?.item_id || savedDraft?.id || 0);
+      if (Number.isInteger(draftItemId) && draftItemId > 0 && requestedPosAlwaysAvailable === true) {
+        await updatePosCatalogOverride(draftItemId, { pos_always_available: true });
+      }
       await applyStorefrontLocationAvailabilityPatch(savedDraft, storefrontLocationAvailabilityPatch);
       if (Array.isArray(storefrontImageFiles) && storefrontImageFiles.length > 0) {
         await handleUploadStorefrontImage(savedDraft, storefrontImageFiles);
@@ -1589,23 +1680,32 @@ export default function Items() {
 
   // Folder handlers
   const handleCreateFolder = async (folderName) => {
-    if (folders.includes(folderName)) {
-      toast.error(`Folder "${folderName}" already exists`);
+    const normalizedFolderName = normalizeFolderName(folderName);
+    if (!normalizedFolderName) {
+      toast.error('Folder name is required');
+      return;
+    }
+
+    const existingFolder = findFolderEntry(normalizedFolderName);
+    if (existingFolder) {
+      toast.error(`Folder "${existingFolder.name}" already exists`);
+      setCurrentFolder(existingFolder.name);
       return;
     }
 
     try {
-      await createApiFolder(folderName, '');
-      toast.success(`Folder "${folderName}" created successfully.`);
+      const createdFolder = await createApiFolder(normalizedFolderName, '');
+      const targetFolderName = createdFolder?.name || normalizedFolderName;
+      toast.success(`Folder "${targetFolderName}" created successfully.`);
+      setCurrentFolder(targetFolderName);
       // No need for transient set as apiFolders will update
     } catch (error) {
       console.error('Failed to create folder:', error);
       // Fallback to transient if API fails (or if implementation specific)
-      setTransientFolders(prev => new Set(prev).add(folderName));
+      setTransientFolders(prev => new Set(prev).add(normalizedFolderName));
       toast.warning(`Folder created locally only (API error: ${error.message})`);
+      setCurrentFolder(normalizedFolderName);
     }
-
-    setCurrentFolder(folderName);
   };
 
   const handleEnterFolder = (folderName) => {

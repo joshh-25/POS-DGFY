@@ -25,7 +25,9 @@ import {
     UserRound,
     X,
     Eye,
-    EyeOff
+    EyeOff,
+    Receipt,
+    ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,6 +46,7 @@ import {
     closePosDay,
     fetchPosTransactions,
     fetchPosTransactionById,
+    voidPosTransaction,
     fetchPosDeviceStatus,
     printPosReceipt,
     openPosDeviceDrawer,
@@ -63,7 +66,7 @@ import {
 } from '../services/terminalOperationQueueStore.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
-import { resolveAppAssetUrl, resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import { resolveAppAssetUrl, resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { openSkupervisorPath } from '../utils/skupervisorHandoff.js';
 import {
     notifyIminWebPosReady,
@@ -73,6 +76,7 @@ import {
 } from '../utils/iminHardwareBridge.js';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
+const OrderPreviewView = lazy(() => import('./OrderPreviewView.jsx'));
 const POSBarcodeScanner = lazy(() => import('./POSBarcodeScanner.jsx'));
 const POSTransactionHistoryPanel = lazy(() => import('./POSTransactionHistoryPanel.jsx'));
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
@@ -117,6 +121,10 @@ const normalizeCommercialPromoConfigs = (settings = {}) => {
     }
     return normalized;
 };
+const resolveCompanyIconFallbackUrl = (settings = {}) => (
+    resolveAssetUrl(settings?.storefront_profile_image_url || settings?.profile_image_url || '')
+    || resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE)
+);
 const EMPTY_DISCOUNT_DRAFT = {
     type: 'senior', method: 'percentage', rate: '20', amount: '', customer_name: '',
     id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], promo_code: ''
@@ -185,8 +193,6 @@ const VAT_TYPE_LABEL = {
     zero_rated: 'Zero Rated'
 };
 const OFFLINE_HISTORY_ROW_PREFIX = 'offline-checkout-';
-const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
-const DGFY_CONVENIENCE_FEE_RATE = 0.01;
 const normalizeDiscountProfiles = (rawProfiles) => {
     let profiles = rawProfiles;
     if (typeof profiles === 'string') {
@@ -547,6 +553,7 @@ export default function POSCheckoutTerminal({
     isMsmeMode = false,
     sidebarCollapsed = false,
     canViewHistory = true,
+    terminalUser = null,
     selectedLocationId = null,
     activeShiftId = null,
     terminalId = '',
@@ -616,6 +623,7 @@ export default function POSCheckoutTerminal({
     const [historyDateFrom, setHistoryDateFrom] = useState('');
     const [historyDateTo, setHistoryDateTo] = useState('');
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
+    const [voidingTransactionId, setVoidingTransactionId] = useState(null);
     const [receiptSettings, setReceiptSettings] = useState({});
     const [commercialPromoConfig, setCommercialPromoConfig] = useState([]);
     const [discountApprovers, setDiscountApprovers] = useState([]);
@@ -627,11 +635,13 @@ export default function POSCheckoutTerminal({
     const [drawerOpening, setDrawerOpening] = useState(false);
     const [imagePreview, setImagePreview] = useState(null);
     const [receiptPreviewModalOpen, setReceiptPreviewModalOpen] = useState(false);
+    const [receiptPreviewSource, setReceiptPreviewSource] = useState('receipt_preview');
     const [setupSnapshotModalOpen, setSetupSnapshotModalOpen] = useState(false);
     const [externalReceiptModalActive, setExternalReceiptModalActive] = useState(false);
 
     const closeReceiptPreviewModal = useCallback(() => {
         setReceiptPreviewModalOpen(false);
+        setReceiptPreviewSource('receipt_preview');
         if (externalReceiptModalActive) {
             setExternalReceiptModalActive(false);
             if (typeof onExternalReceiptClosed === 'function') {
@@ -700,6 +710,19 @@ export default function POSCheckoutTerminal({
     const safeQueuedCheckouts = toArray(queuedCheckouts);
     const safeHistoryRows = toArray(historyRows);
     const safeEligibleDiscountItemIds = toArray(discountDraft?.eligible_item_ids);
+    const signedInUserIsAdminLike = terminalUser?.is_master_admin === true
+        || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
+    const terminalPermissionList = useMemo(() => {
+        if (Array.isArray(terminalUser?.permissions)) return terminalUser.permissions;
+        if (typeof terminalUser?.permissions !== 'string') return [];
+        try {
+            const parsed = JSON.parse(terminalUser.permissions);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }, [terminalUser?.permissions]);
+    const canVoidTransactions = signedInUserIsAdminLike || terminalPermissionList.includes('pos:void');
     const safeAppliedDiscount = appliedDiscount && typeof appliedDiscount === 'object'
         ? { ...appliedDiscount, eligible_item_ids: toArray(appliedDiscount.eligible_item_ids) }
         : null;
@@ -1142,6 +1165,7 @@ export default function POSCheckoutTerminal({
             setReceiptSettings({
                 pos_registered_name: allSettings?.pos_registered_name?.value || '',
                 pos_business_name: allSettings?.pos_business_name?.value || '',
+                storefront_profile_image_url: allSettings?.storefront_profile_image_url?.value || '',
                 pos_taxpayer_type: allSettings?.pos_taxpayer_type?.value || '',
                 pos_tin_branch: allSettings?.pos_tin_branch?.value || '',
                 pos_address: allSettings?.pos_address?.value || '',
@@ -1191,6 +1215,7 @@ export default function POSCheckoutTerminal({
             setCurrentViewMode('receipt');
             setReceiptPreviewModalOpen(false);
         } else if (openModal) {
+            setReceiptPreviewSource('receipt_preview');
             setReceiptPreviewModalOpen(true);
         }
 
@@ -1211,6 +1236,33 @@ export default function POSCheckoutTerminal({
             setHistoryDetailLoading(false);
         }
     };
+
+    const handleVoidHistoryTransaction = useCallback(async (historyRow, reason) => {
+        const posTransactionId = Number(historyRow?.pos_transaction_id);
+        if (!Number.isInteger(posTransactionId) || posTransactionId <= 0) {
+            toast.error('Invalid POS transaction reference.');
+            return;
+        }
+        if (!canVoidTransactions) {
+            toast.error('You do not have permission to void POS transactions.');
+            return;
+        }
+
+        setVoidingTransactionId(posTransactionId);
+        try {
+            await voidPosTransaction(posTransactionId, {
+                reason,
+                terminal_id: normalizedTerminalId || undefined
+            });
+            toast.success('POS transaction voided.');
+            await loadHistory(historyPage);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Failed to void POS transaction.');
+            throw error;
+        } finally {
+            setVoidingTransactionId(null);
+        }
+    }, [canVoidTransactions, historyPage, loadHistory, normalizedTerminalId]);
 
     const buildSalesReportQuery = useCallback((row = null) => {
         const params = new URLSearchParams();
@@ -1252,6 +1304,7 @@ export default function POSCheckoutTerminal({
                 setLastReceipt(detail || null);
                 setLastReceiptContract(inferReceiptContract(detail));
                 setExternalReceiptModalActive(true);
+                setReceiptPreviewSource('receipt_preview');
                 setReceiptPreviewModalOpen(true);
             } catch (error) {
                 if (!cancelled) {
@@ -1454,10 +1507,7 @@ export default function POSCheckoutTerminal({
         }
     }, [manualDiscountAmountInput, manualDiscountRateInput, selectedDiscountProfile]);
 
-    const serviceFeeAmount = useMemo(
-        () => round4(Math.max(0, cartSubtotal) * DGFY_CONVENIENCE_FEE_RATE),
-        [cartSubtotal]
-    );
+    const serviceFeeAmount = 0;
 
     const netItemsTotal = useMemo(
         () => round4(Math.max(0, cartSubtotal - calculatedDiscountAmount - governedDiscountTotals.vatRemoved)),
@@ -1812,6 +1862,13 @@ export default function POSCheckoutTerminal({
     const handleApplyGovernedDiscount = async () => {
         const type = discountDraft.type;
         const statutory = type === 'senior' || type === 'pwd';
+        const employeeDiscountRequiresApproval = type === 'employee' && !signedInUserIsAdminLike;
+        const manualDiscountRequiresApproval = type === 'manual';
+        const discountRequiresApproval = employeeDiscountRequiresApproval || manualDiscountRequiresApproval;
+        if (!statutory && !discountDraft.customer_name.trim()) {
+            toast.error('Customer name is required for this discount.');
+            return;
+        }
         if (statutory && (!discountDraft.customer_name.trim() || !discountDraft.id_number.trim())) {
             toast.error('Customer name and Senior/PWD ID number are required.');
             return;
@@ -1820,15 +1877,11 @@ export default function POSCheckoutTerminal({
             toast.error('Select at least one eligible item.');
             return;
         }
-        if (type === 'employee' && !discountDraft.employee_id.trim()) {
-            toast.error('Employee ID is required.');
-            return;
-        }
-        if (['employee', 'manual'].includes(type) && !discountDraft.reason.trim()) {
+        if (type === 'manual' && !discountDraft.reason.trim()) {
             toast.error('A discount reason is required.');
             return;
         }
-        if (['employee', 'manual'].includes(type) && !Number(discountDraft.approver_user_id)) {
+        if (discountRequiresApproval && !Number(discountDraft.approver_user_id)) {
             toast.error('Select the manager or admin approving this discount.');
             return;
         }
@@ -1848,13 +1901,20 @@ export default function POSCheckoutTerminal({
         }
         setDiscountApplying(true);
         try {
-            const verifiedApprover = ['employee', 'manual'].includes(type)
+            const verifiedApprover = discountRequiresApproval
                 ? await verifyPosDiscountApproval({
+                    discount_type: type,
                     approver_user_id: Number(discountDraft.approver_user_id),
                     manager_pin: discountDraft.manager_pin,
                     employee_user_id: type === 'employee' ? Number(discountDraft.employee_id) : null
                 })
-                : null;
+                : (type === 'employee' && signedInUserIsAdminLike
+                    ? {
+                        user_id: Number(terminalUser?.user_id) || null,
+                        username: String(terminalUser?.username || '').trim() || null,
+                        bypassed_pin: true
+                    }
+                    : null);
             const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', manual: 'Manual Discount' };
             const enteredPromoCode = normalizePromoCode(discountDraft.promo_code);
             const matchedPromoConfig = type === 'promo'
@@ -2062,6 +2122,7 @@ export default function POSCheckoutTerminal({
             setAppliedDiscount(null);
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
+            setReceiptPreviewSource('order_preview');
             setReceiptPreviewModalOpen(true);
             if (typeof onCheckoutCompleted === 'function') {
                 onCheckoutCompleted(data?.transaction || null);
@@ -2217,6 +2278,7 @@ export default function POSCheckoutTerminal({
             const detail = await fetchPosTransactionById(transactionId);
             setLastReceipt(detail || null);
             setLastReceiptContract(inferReceiptContract(detail));
+            setReceiptPreviewSource('receipt_preview');
             setReceiptPreviewModalOpen(true);
         } catch (error) {
             toast.error(buildMissingFieldsMessage(error) || error?.response?.data?.message || 'Failed to load selected receipt.');
@@ -2277,9 +2339,17 @@ export default function POSCheckoutTerminal({
 
     return (
         <div className={modalOnly ? 'hidden' : shellClassName} aria-hidden={modalOnly ? 'true' : undefined}>
-            <section className={currentViewMode === 'checkout' ? 'contents' : 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5'}>
+            <section
+                className={
+                    currentViewMode === 'checkout'
+                        ? 'contents'
+                        : (currentViewMode === 'history'
+                            ? 'flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5'
+                            : 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5')
+                }
+            >
             {currentViewMode === 'history' && (
-                <div key="view-history" className="max-sm:animate-pos-slide-in">
+                <div key="view-history" className="h-full min-h-0 max-sm:animate-pos-slide-in">
                 <Suspense fallback={<section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS sales history...</section>}>
                     <POSTransactionHistoryPanel
                         historySearch={historySearch}
@@ -2302,6 +2372,9 @@ export default function POSCheckoutTerminal({
                         historyRows={visibleHistoryRows}
                         historyDetailLoading={historyDetailLoading}
                         openHistoryDetail={openHistoryDetail}
+                        canVoidTransactions={canVoidTransactions}
+                        onVoidTransaction={handleVoidHistoryTransaction}
+                        voidingTransactionId={voidingTransactionId}
                         loadHistory={loadHistory}
                         historyPage={historyPage}
                         historyPagination={visibleHistoryPagination}
@@ -2585,9 +2658,9 @@ export default function POSCheckoutTerminal({
                             const isServiceItem = isServiceCatalogItem(item);
                             const isAlwaysAvailable = item?.pos_always_available === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
-                            const configuredPosImageSrc = resolveAssetUrl(item.storefront_image_url);
+                            const configuredPosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail');
                             const mappedPosImageSrc = resolveAppAssetUrl(resolveMappedPosItemImage(item));
-                            const fallbackPosImageSrc = resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE);
+                            const fallbackPosImageSrc = resolveCompanyIconFallbackUrl(receiptSettings);
                             const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
                             const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
@@ -2909,8 +2982,7 @@ export default function POSCheckoutTerminal({
                     {currentSaleHelpOpen && (
                         <div className="absolute right-0 top-9 z-20 w-full max-w-[16rem] rounded-lg border border-amber-200 bg-white p-3 text-[12px] leading-5 text-slate-700 shadow-xl shadow-slate-900/10">
                             <p className="break-words font-semibold text-slate-800">Review cart, VAT, and total before checkout.</p>
-                            <p className="mt-2 break-words font-semibold text-slate-800">DGFY convenience fee (1%)</p>
-                            <p className="mt-1 break-words text-slate-600">Auto-calculated from gross item subtotal</p>
+                            <p className="mt-2 break-words text-slate-600">Online-order platform fees are not applied to in-store POS checkout.</p>
                         </div>
                     )}
                 </div>
@@ -3061,12 +3133,6 @@ export default function POSCheckoutTerminal({
                         <span className="text-[#334155]">Net Items</span>
                         <span className="font-extrabold text-[#0F172A]">PHP {money(netItemsTotal)}</span>
                     </div>
-                    <div className="flex justify-between">
-                        <span className="text-[#334155]">
-                            {DGFY_CONVENIENCE_FEE_LABEL} (1%)
-                        </span>
-                        <span className="font-extrabold text-[#0F172A]">+ PHP {money(serviceFeeAmount)}</span>
-                    </div>
                     <div className="border-t border-dashed border-slate-200 my-2" />
                     <div className="flex justify-between">
                         <span className="text-slate-600">Vatable Sales</span>
@@ -3201,38 +3267,10 @@ export default function POSCheckoutTerminal({
                 <div>
                     <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
                         <div>
-                            <h2 className="text-xl font-bold text-slate-900">Receipt Preview</h2>
-                            <p className="text-sm text-slate-600">Review the selected receipt.</p>
+                            <h2 className="text-xl font-bold text-slate-900">Order Preview</h2>
+                            <p className="text-sm text-slate-600">Review the selected order summary.</p>
                         </div>
                         <div className="flex items-center gap-2">
-                            <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
-                                Paper
-                                <select
-                                    value={receiptPaperWidth}
-                                    onChange={(event) => setReceiptPaperWidth(event.target.value)}
-                                    className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                                >
-                                    {RECEIPT_PAPER_OPTIONS.map((option) => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                </select>
-                            </label>
-                            {normalizedTerminalId && (
-                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                                    {terminalIdentityLabel}
-                                </span>
-                            )}
-                            <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${
-                                isPrinterAvailable
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                    : 'border-amber-200 bg-amber-50 text-amber-700'
-                            }`}>
-                                {deviceStatusLoading
-                                    ? 'Checking printer...'
-                                    : (isPrinterAvailable
-                                        ? `${detectedPrinterCount} printer${detectedPrinterCount === 1 ? '' : 's'} ready`
-                                        : 'Printer unavailable')}
-                            </span>
                             <Button
                                 type="button"
                                 variant="outline"
@@ -3251,28 +3289,13 @@ export default function POSCheckoutTerminal({
                             >
                                 {receiptPrinting ? 'Printing...' : 'Send to Printer'}
                             </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleOpenDrawer({
-                                    transactionId: Number(lastReceipt?.pos_transaction_id) || null,
-                                    reason: 'receipt_preview_drawer_open'
-                                })}
-                                disabled={!activeShiftId || drawerOpening}
-                            >
-                                {drawerOpening ? 'Opening...' : 'Open Drawer'}
-                            </Button>
                         </div>
                     </div>
                     {lastReceipt ? (
                         <div className="space-y-3">
-                            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
-                                <ReceiptPrintView
+                            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading order preview...</div>}>
+                                <OrderPreviewView
                                     transaction={lastReceipt}
-                                    businessSettings={receiptSettings}
-                                    receiptContract={lastReceiptContract}
-                                    paperWidth={receiptPaperWidth}
                                 />
                             </Suspense>
                         </div>
@@ -3348,16 +3371,22 @@ export default function POSCheckoutTerminal({
                         </div>
 
                         <div id="discount-type-panel" role="tabpanel" className="space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
+                                <div className="relative">
+                                    <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                    <Input
+                                        className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
+                                        placeholder="Enter customer name"
+                                        value={discountDraft.customer_name}
+                                        onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+
                             {['senior', 'pwd'].includes(discountDraft.type) && (
                                 <div className="space-y-4">
                                     <div className="grid gap-3 sm:grid-cols-2">
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
-                                            <div className="relative">
-                                                <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                                <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter customer name" value={discountDraft.customer_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))} />
-                                            </div>
-                                        </div>
                                         <div className="space-y-1.5">
                                             <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Senior/PWD ID Number <span className="text-rose-500">*</span></label>
                                             <div className="relative">
@@ -3374,7 +3403,7 @@ export default function POSCheckoutTerminal({
                                                 const checked = itemEligible && safeEligibleDiscountItemIds.includes(Number(line.item_id));
                                                 const catalogItem = safeCatalog.find((item) => item.item_id === line.item_id);
                                                 const imageSrc = catalogItem?.pos_image_url || catalogItem?.image_url || line.pos_image_url || '';
-                                                const resolvedSrc = imageSrc ? resolveAssetUrl(imageSrc) : '';
+                                                const resolvedSrc = imageSrc ? resolveAssetVariantUrl(imageSrc, 'thumbnail') : '';
 
                                                 return (
                                                     <label
@@ -3436,14 +3465,14 @@ export default function POSCheckoutTerminal({
                             {discountDraft.type === 'employee' && (
                                 <div className="grid gap-3 sm:grid-cols-2 mb-3">
                                     <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Employee Name <span className="font-medium text-slate-400">(verified by ID)</span></label>
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Employee Name <span className="font-medium text-slate-400">(optional)</span></label>
                                         <div className="relative">
                                             <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                             <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee name" value={discountDraft.employee_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_name: e.target.value }))} />
                                         </div>
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Employee ID <span className="text-rose-500">*</span></label>
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Employee ID <span className="font-medium text-slate-400">(optional)</span></label>
                                         <div className="relative">
                                             <CreditCard className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                             <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee ID" value={discountDraft.employee_id} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_id: e.target.value }))} />
@@ -3512,56 +3541,62 @@ export default function POSCheckoutTerminal({
                             {['employee', 'manual'].includes(discountDraft.type) && (
                                 <div className="grid gap-3 sm:grid-cols-2 mt-3">
                                     <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Approver <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <BadgeCheck className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <select
-                                                value={discountDraft.approver_user_id}
-                                                onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))}
-                                                disabled={discountApproversLoading}
-                                                className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 sm:text-sm"
-                                            >
-                                                <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select manager or admin'}</option>
-                                                {safeDiscountApprovers.map((approver) => (
-                                                    <option key={approver.user_id} value={approver.user_id}>
-                                                        {approver.username} ({approver.role})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        </div>
-                                        {!discountApproversLoading && safeDiscountApprovers.length === 0 && (
-                                            <p className="text-[11px] font-medium text-amber-700">No approver PIN is configured. Ask the Master Admin to configure one in Manage Users.</p>
-                                        )}
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Reason <span className="text-rose-500">*</span></label>
+                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">
+                                            Reason {discountDraft.type === 'manual' ? <span className="text-rose-500">*</span> : <span className="font-medium text-slate-400">(optional)</span>}
+                                        </label>
                                         <div className="relative">
                                             <MessageSquare className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                             <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter reason" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
                                         </div>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Approver PIN <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input
-                                                className="h-11 rounded-xl border-slate-200 pl-10 pr-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
-                                                placeholder="Enter approver PIN"
-                                                type={showDiscountPin ? 'text' : 'password'}
-                                                inputMode="numeric"
-                                                value={discountDraft.manager_pin}
-                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, manager_pin: e.target.value }))}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowDiscountPin((prev) => !prev)}
-                                                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
-                                            >
-                                                {showDiscountPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                            </button>
-                                        </div>
-                                    </div>
+                                    {(discountDraft.type === 'manual' || !signedInUserIsAdminLike) && (
+                                        <>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Approver <span className="text-rose-500">*</span></label>
+                                                <div className="relative">
+                                                    <BadgeCheck className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                                    <select
+                                                        value={discountDraft.approver_user_id}
+                                                        onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))}
+                                                        disabled={discountApproversLoading}
+                                                        className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 sm:text-sm"
+                                                    >
+                                                        <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select manager or admin'}</option>
+                                                        {safeDiscountApprovers.map((approver) => (
+                                                            <option key={approver.user_id} value={approver.user_id}>
+                                                                {approver.username} ({approver.role})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                                </div>
+                                                {!discountApproversLoading && safeDiscountApprovers.length === 0 && (
+                                                    <p className="text-[11px] font-medium text-amber-700">No approver PIN is configured. Ask the Master Admin to configure one in Manage Users.</p>
+                                                )}
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Approver PIN <span className="text-rose-500">*</span></label>
+                                                <div className="relative">
+                                                    <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                                    <Input
+                                                        className="h-11 rounded-xl border-slate-200 pl-10 pr-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
+                                                        placeholder="Enter approver PIN"
+                                                        type={showDiscountPin ? 'text' : 'password'}
+                                                        inputMode="numeric"
+                                                        value={discountDraft.manager_pin}
+                                                        onChange={(e) => setDiscountDraft((p) => ({ ...p, manager_pin: e.target.value }))}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowDiscountPin((prev) => !prev)}
+                                                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                                                    >
+                                                        {showDiscountPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -3733,45 +3768,62 @@ export default function POSCheckoutTerminal({
                     closeReceiptPreviewModal();
                 }
             }}>
-                <DialogContent className="pos-receipt-print-dialog flex h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:h-[calc(100dvh-3rem)] sm:w-full print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none">
-                    <DialogHeader className="border-b border-slate-200 px-4 py-3 print:hidden">
-                        <div className="flex items-start justify-between gap-3">
+                <DialogContent className={`pos-receipt-print-dialog flex h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-slate-200 p-0 shadow-2xl shadow-slate-950/25 sm:h-[calc(100dvh-3rem)] sm:w-full print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none ${
+                    receiptPreviewSource === 'order_preview' ? 'max-w-3xl bg-white' : 'max-w-xl bg-slate-50'
+                }`}>
+                    <DialogHeader className="relative border-b border-slate-200 bg-white px-5 py-3.5 print:hidden">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                                <Receipt className="h-5 w-5" />
+                            </div>
                             <div>
                                 <DialogTitle id="pos-history-receipt-modal-title" className="text-lg font-black text-[#0F172A]">
-                                    Receipt Preview
+                                    {receiptPreviewSource === 'order_preview' ? 'Order Preview' : 'Receipt Preview'}
                                 </DialogTitle>
-                                <DialogDescription className="mt-1 text-sm text-[#64748B]">
-                                    {lastReceiptPendingSync
-                                        ? 'Review the offline receipt. Sync the transaction before printing.'
-                                        : 'Review the selected receipt from history.'}
+                                <DialogDescription className="mt-0.5 text-xs text-[#64748B]">
+                                    {receiptPreviewSource === 'order_preview'
+                                        ? (lastReceiptPendingSync
+                                            ? 'Review the offline order summary. Sync the transaction before printing.'
+                                            : 'Review the selected order summary.')
+                                        : (lastReceiptPendingSync
+                                            ? 'Review the offline receipt. Sync the transaction before printing.'
+                                            : 'Review the selected receipt from history.')}
                                 </DialogDescription>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    onClick={closeReceiptPreviewModal}
-                                    aria-label="Close receipt preview"
-                                >
-                                    Close
-                                </Button>
-                            </div>
                         </div>
+                        <button
+                            type="button"
+                            onClick={closeReceiptPreviewModal}
+                            className="absolute right-5 top-1/2 -translate-y-1/2 rounded-xl border border-slate-200 p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#1A4E8D] focus:ring-offset-2"
+                            aria-label="Close receipt preview"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
                     </DialogHeader>
                     <div className="pos-receipt-print-content min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 print:overflow-visible print:p-0">
                         {lastReceipt ? (
-                            <div className="space-y-3 print:space-y-0">
-                                <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
-                                    <div className="pos-receipt-print-paper">
-                                        <ReceiptPrintView
+                            receiptPreviewSource === 'order_preview' ? (
+                                <div className="space-y-3 print:space-y-0">
+                                    <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading order preview...</div>}>
+                                        <OrderPreviewView
                                             transaction={lastReceipt}
-                                            businessSettings={receiptSettings}
-                                            receiptContract={lastReceiptContract}
-                                            paperWidth={receiptPaperWidth}
                                         />
-                                    </div>
-                                </Suspense>
-                            </div>
+                                    </Suspense>
+                                </div>
+                            ) : (
+                                <div className="flex justify-center space-y-3 print:space-y-0">
+                                    <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
+                                        <div className="pos-receipt-print-paper w-full max-w-[80mm] border border-slate-200 bg-white p-4 shadow-sm">
+                                            <ReceiptPrintView
+                                                transaction={lastReceipt}
+                                                businessSettings={receiptSettings}
+                                                receiptContract={lastReceiptContract}
+                                                paperWidth={receiptPaperWidth}
+                                            />
+                                        </div>
+                                    </Suspense>
+                                </div>
+                            )
                         ) : historyDetailLoading ? (
                             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600">
                                 Loading receipt details...
@@ -3782,26 +3834,50 @@ export default function POSCheckoutTerminal({
                             </div>
                         )}
                     </div>
-                    <DialogFooter className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 print:hidden">
-                        <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
-                            Paper
-                            <select
-                                value={receiptPaperWidth}
-                                onChange={(event) => setReceiptPaperWidth(event.target.value)}
-                                className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                            >
-                                {RECEIPT_PAPER_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                            </select>
-                        </label>
-                        <div className="flex flex-wrap items-center justify-end gap-2">
+                    <DialogFooter className={`flex flex-wrap items-center border-t border-slate-200 bg-white px-5 py-3 print:hidden ${
+                        receiptPreviewSource === 'order_preview' ? 'justify-between' : 'justify-between gap-3'
+                    }`}>
+                        {receiptPreviewSource !== 'order_preview' ? (
+                            <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
+                                Paper
+                                <select
+                                    value={receiptPaperWidth}
+                                    onChange={(event) => setReceiptPaperWidth(event.target.value)}
+                                    className="h-8 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-[#0F172A] focus:border-[#1A4E8D] focus:outline-none focus:ring-2 focus:ring-[#1A4E8D]"
+                                >
+                                    {RECEIPT_PAPER_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </select>
+                            </label>
+                        ) : (
                             <Button
                                 type="button"
                                 variant="outline"
-                                size="sm"
+                                onClick={closeReceiptPreviewModal}
+                                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-[#334155] hover:bg-slate-50"
+                            >
+                                <ArrowLeft className="h-4 w-4" />
+                                Close
+                            </Button>
+                        )}
+                        <div className="flex items-center gap-2">
+                            {receiptPreviewSource !== 'order_preview' && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={closeReceiptPreviewModal}
+                                    className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-[#334155] hover:bg-slate-50"
+                                >
+                                    <ArrowLeft className="h-4 w-4" />
+                                    Close
+                                </Button>
+                            )}
+                            <Button
+                                type="button"
                                 disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}
                                 onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}
+                                className="h-9 rounded-lg bg-[#1A4E8D] px-4 text-xs font-bold text-white shadow-md shadow-blue-900/20 hover:bg-[#143F73]"
                             >
                                 {receiptPrinting ? 'Printing...' : 'Print'}
                             </Button>

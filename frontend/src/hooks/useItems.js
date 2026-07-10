@@ -281,8 +281,9 @@ export const useFolders = () => {
   }, []);
 
   const createFolder = useCallback(async (name, description) => {
-    await itemService.createFolder({ name, description });
+    const createdFolder = await itemService.createFolder({ name, description });
     await fetchFolders(); // Refresh list
+    return createdFolder;
   }, [fetchFolders]);
 
   const updateFolder = useCallback(async (folderId, payload) => {
@@ -296,4 +297,3 @@ export const useFolders = () => {
 
   return { folders, loading, error, refetch: fetchFolders, createFolder, updateFolder };
 };
-

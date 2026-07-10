@@ -189,6 +189,11 @@ const resolveDocumentContext = (transaction, receiptContract, documentType) => {
     return documentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal';
 };
 
+const isStatutorySeniorPwdDiscount = (discount) => {
+    const discountType = safeText(discount?.discount_type).toLowerCase();
+    return discountType === 'senior' || discountType === 'pwd';
+};
+
 const parseArrayMetadata = (value) => {
     if (Array.isArray(value)) return value;
     if (typeof value !== 'string') return [];
@@ -213,6 +218,8 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     const documentContext = resolveDocumentContext(transaction, receiptContract, documentType);
     const isFiscal = documentType === 'fiscal_invoice';
     const restaurantServiceChargeAmount = Number(transaction?.restaurant_service_charge_amount || 0);
+    const governedDiscount = transaction?.discount && typeof transaction.discount === 'object' ? transaction.discount : null;
+    const showSeniorPwdReceiptFields = isStatutorySeniorPwdDiscount(governedDiscount);
     const receiptRows = [];
     const taxpayerType = safeText(businessSettings.pos_taxpayer_type).toLowerCase();
     const vatRegistered = !taxpayerType.includes('non');
@@ -328,6 +335,12 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         transaction?.discount_rate_snapshot != null ? `@ ${Number(transaction.discount_rate_snapshot).toFixed(2)}%` : ''
     ].filter(Boolean).join(' ');
     receiptRows.push(pair(discountLabel, money(transaction?.discount_amount)));
+    if (governedDiscount?.promo_code) {
+        receiptRows.push(`Promo Code: ${safeText(governedDiscount.promo_code)}`);
+    }
+    if (governedDiscount?.discount_type) {
+        receiptRows.push(`Discount Type: ${safeText(governedDiscount.discount_type).replaceAll('_', ' ').toUpperCase()}`);
+    }
 
     const serviceFeeLabel = [
         transaction?.service_fee_label_snapshot || 'DGFY convenience fee',
@@ -344,6 +357,9 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         ].filter(Boolean).join(' ');
         receiptRows.push(pair(restaurantChargeLabel, money(restaurantServiceChargeAmount)));
     }
+    if (Number(transaction?.delivery_fee || 0) > 0) {
+        receiptRows.push(pair('Delivery Fee', money(transaction.delivery_fee)));
+    }
 
     receiptRows.push(
         line('='),
@@ -353,9 +369,23 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
 
     receiptRows.push(
         `Payment Method: ${safeText(transaction?.payment_type, '-').toUpperCase()}`,
-        pair('Cash Received', money(transaction?.cash_received)),
-        pair('Change', money(transaction?.change_amount))
+        `Payment Status: ${safeText(transaction?.payment_status, '-').replaceAll('_', ' ').toUpperCase()}`
     );
+    if (transaction?.payment_reference) {
+        receiptRows.push(`Payment Reference: ${safeText(transaction.payment_reference)}`);
+    }
+    if (transaction?.payment_type === 'cash') {
+        receiptRows.push(
+            pair('Cash Received', money(transaction?.cash_received)),
+            pair('Change', money(transaction?.change_amount))
+        );
+    }
+    if (showSeniorPwdReceiptFields) {
+        receiptRows.push(
+            `SC/PWD/NAAC/MOV/Solo Parent ID No.: ${safeText(governedDiscount?.senior_pwd_id_number, '____________')}`,
+            'Signature: __________________________'
+        );
+    }
     receiptRows.push(
         line(),
         center(isFiscal ? 'FISCAL RECEIPT' : 'NON-FISCAL RECEIPT'),

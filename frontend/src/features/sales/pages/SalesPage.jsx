@@ -530,11 +530,16 @@ export default function SalesPage() {
                     <p><span className="text-slate-500">VAT Exempt:</span> {money(selected.vat_exempt_sales)}</p>
                     <p><span className="text-slate-500">Zero Rated:</span> {money(selected.zero_rated_sales)}</p>
                     <p><span className="text-slate-500">Service Fee:</span> {money(selected.service_fee_amount)}</p>
+                    <p><span className="text-slate-500">Delivery Fee:</span> {money(selected.delivery_fee)}</p>
+                    <p><span className="text-slate-500">Payment Status:</span> {selected.payment_status || '-'}</p>
+                    <p><span className="text-slate-500">Fulfillment Status:</span> {selected.fulfillment_status || '-'}</p>
                     <p><span className="text-slate-500">Service Fee Label:</span> {selected.service_fee_label_snapshot || '-'}</p>
                     <p><span className="text-slate-500">Service Fee Method:</span> {selected.service_fee_method_snapshot || '-'}</p>
                     <p><span className="text-slate-500">Discount:</span> {money(selected.discount_amount)}</p>
                     <p><span className="text-slate-500">Discount Preset:</span> {selected.discount_label_snapshot || '-'}</p>
                     <p><span className="text-slate-500">Discount Rate:</span> {selected.discount_rate_snapshot == null ? '-' : `${Number(selected.discount_rate_snapshot).toFixed(2)}%`}</p>
+                    <p><span className="text-slate-500">Discount Type:</span> {selected.discount_type || '-'}</p>
+                    <p><span className="text-slate-500">Promo Code:</span> {selected.promo_code || '-'}</p>
                   </>
                 )}
               </div>

@@ -220,6 +220,7 @@ export default function ItemFormModal({
     default_sale_price: 0,
     vat_type: 'vatable',
     senior_pwd_discount_eligible: false,
+    pos_always_available: false,
     max_capacity: 0,
     current_stock: 0,
     location_id: '',
@@ -362,6 +363,24 @@ export default function ItemFormModal({
   const [lastSuggestedSku, setLastSuggestedSku] = useState('');
   const isEditingDraft = item?.status === 'draft';
   const isSaving = Boolean(savingAction);
+  const folderSuggestionsListId = `item-folder-suggestions-${item?.item_id || item?.id || 'new'}`;
+  const normalizedFolderSuggestions = useMemo(() => {
+    const query = String(formData.product_folder || '').trim().toLowerCase();
+    const uniqueSuggestions = [];
+    const seen = new Set();
+
+    (Array.isArray(folders) ? folders : []).forEach((folderName) => {
+      const normalizedName = String(folderName || '').trim();
+      if (!normalizedName) return;
+      const lookupKey = normalizedName.toLowerCase();
+      if (seen.has(lookupKey)) return;
+      if (query && !lookupKey.includes(query)) return;
+      seen.add(lookupKey);
+      uniqueSuggestions.push(normalizedName);
+    });
+
+    return uniqueSuggestions.slice(0, 8);
+  }, [folders, formData.product_folder]);
 
   const runSaveAction = async (action, operation) => {
     if (savingActionRef.current) return;
@@ -448,6 +467,7 @@ export default function ItemFormModal({
         default_sale_price: parseNum(item.default_sale_price, 0),
         vat_type: item.vat_type || modeItemDefaults.vat_type || 'vatable',
         senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
+        pos_always_available: posConfig?.pos_always_available === true,
         max_capacity: parseNum(item.max_capacity, Number(modeItemDefaults.max_capacity || 0)),
         current_stock: initialLocationStock,
         location_id: initialLocationId,
@@ -538,6 +558,7 @@ export default function ItemFormModal({
         default_sale_price: 0,
         vat_type: modeItemDefaults.vat_type || 'vatable',
         senior_pwd_discount_eligible: false,
+        pos_always_available: false,
         max_capacity: Number(modeItemDefaults.max_capacity || 0),
         current_stock: 0,
         location_id: activeLocations.length === 1 ? String(activeLocations[0].location_id) : '',
@@ -1032,6 +1053,7 @@ export default function ItemFormModal({
     const finalPayload = msmeMode
       ? {
         ...submitPayload,
+        pos_always_available: cleanedData.pos_always_available === true,
         supplier_links: normalizedSupplierLinks,
         supplier_links_dirty: !areSupplierLinksEqual(normalizedSupplierLinks, item?.suppliers || []),
         storefront_location_availability: storefrontLocationAvailability,
@@ -1039,6 +1061,7 @@ export default function ItemFormModal({
       }
       : {
         ...submitPayload,
+        pos_always_available: cleanedData.pos_always_available === true,
         storefront_location_availability: storefrontLocationAvailability,
         storefront_image_files: selectedStorefrontImageFiles
       };
@@ -1202,30 +1225,42 @@ export default function ItemFormModal({
               </div>
             </div>
 
-            {/* Folder Assignment */}
-            {folders.length > 0 && (
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Folder className="w-4 h-4" />
-                  Folder
-                </Label>
-                <Select
-                  value={formData.product_folder || '__none__'}
-                  onValueChange={(v) => handleChange('product_folder', v === '__none__' ? '' : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="No folder (uncategorized)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">No folder (uncategorized)</SelectItem>
-                    {folders.map(folder => (
-                      <SelectItem key={folder} value={folder}>{folder}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-500">Assign this item to a folder for organization</p>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="product_folder" className="flex items-center gap-2">
+                <Folder className="w-4 h-4" />
+                Category
+              </Label>
+              <Input
+                id="product_folder"
+                list={folderSuggestionsListId}
+                value={formData.product_folder || ''}
+                onChange={(e) => handleChange('product_folder', e.target.value)}
+                placeholder="Type a category or leave blank"
+                autoComplete="off"
+              />
+              <datalist id={folderSuggestionsListId}>
+                {normalizedFolderSuggestions.map((folder) => (
+                  <option key={folder} value={folder} />
+                ))}
+              </datalist>
+              {normalizedFolderSuggestions.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {normalizedFolderSuggestions.map((folder) => (
+                    <button
+                      key={folder}
+                      type="button"
+                      onClick={() => handleChange('product_folder', folder)}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+                    >
+                      {folder}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-slate-500">
+                Existing categories are suggested as you type. A new category is saved automatically when you save the item.
+              </p>
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
@@ -1460,6 +1495,23 @@ export default function ItemFormModal({
                     </Button>
                   )}
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                <div>
+                  <Label htmlFor="pos-always-available" className="font-semibold text-slate-900">
+                    Always Available
+                  </Label>
+                  <p className="text-xs text-slate-500">
+                    Keep this item sellable in POS even when inventory stock is depleted.
+                  </p>
+                </div>
+                <Switch
+                  id="pos-always-available"
+                  checked={formData.pos_always_available === true}
+                  onCheckedChange={(checked) => handleChange('pos_always_available', Boolean(checked))}
+                  disabled={isSaving}
+                />
               </div>
 
               {Array.isArray(posConfig?.pos_readiness?.missing_requirements) && posConfig.pos_readiness.missing_requirements.length > 0 && (

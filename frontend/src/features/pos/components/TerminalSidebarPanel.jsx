@@ -7,6 +7,8 @@ import {
   FULFILLMENT_STATUS_LABELS,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
+  getFulfillmentActionLabel,
+  getIncomingOrderUtilityActions,
   getNextStatusActions
 } from './orderFulfillmentUi.js';
 
@@ -71,6 +73,15 @@ const parseDeliveryCoords = (order = {}) => {
   };
 };
 
+const DELIVERY_JOB_STATUS_LABELS = {
+  pending_dispatch: 'Pending Dispatch',
+  assigned: 'Assigned',
+  picked_up: 'Picked Up',
+  delivered: 'Delivered',
+  failed: 'Failed',
+  cancelled: 'Cancelled'
+};
+
 export default function TerminalSidebarPanel({
   className = 'hidden xl:flex',
   isCollapsed = false,
@@ -109,8 +120,6 @@ export default function TerminalSidebarPanel({
   handleIncomingOrderStatusChange = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
-  handleOpenIncomingOrderHistory = () => {},
-  incomingHistoryOpeningId = null,
   refreshIncomingOrders = () => {},
   handleLock,
   setDrawerOpen,
@@ -400,7 +409,7 @@ export default function TerminalSidebarPanel({
                 onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
                 placeholder="Opening shift cash note"
               />
-              <Button type="button" onClick={handleOpenShift} disabled={shiftActionLoading.open || locked || !canTransactPos || !canSubmitOpenShift}>
+              <Button type="button" onClick={handleOpenShift} disabled={shiftActionLoading.open || locked || !canTransactPos}>
                 {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
               </Button>
               {!canTransactPos && (
@@ -548,7 +557,10 @@ export default function TerminalSidebarPanel({
               {incomingOrders.map((order) => {
                 const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
                 const nextActions = getNextStatusActions(order);
+                const utilityActions = getIncomingOrderUtilityActions(order);
                 const deliveryCoords = parseDeliveryCoords(order);
+                const deliveryJob = order.deliveryJob || null;
+                const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
                 const mapLink = deliveryCoords
                   ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
                   : '';
@@ -566,11 +578,25 @@ export default function TerminalSidebarPanel({
                       PIN: <span className="font-semibold text-slate-900">{order.tracking_pin || '-'}</span>
                     </p>
                     <p className="text-[11px] text-slate-600">
-                      {ORDER_METHOD_LABELS[order.order_method] || order.order_method} / {PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type}
+                      Cashier: <span className="font-semibold text-slate-900">{cashierName}</span>
                     </p>
+                    <p className="text-[11px] text-slate-600">
+                      Payment: <span className="font-semibold text-slate-900">{PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type || '-'}</span>
+                    </p>
+                    <p className="text-[11px] text-slate-600">
+                      Mode: <span className="font-semibold text-slate-900">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</span>
+                    </p>
+                    <p className="text-[11px] text-slate-600">
+                      Order Time: <span className="font-semibold text-slate-900">{parseIsoDateTime(order.created_at)}</span>
+                    </p>
+                    {order.order_method === 'delivery' && (
+                      <p className="text-[11px] text-slate-600">
+                        Delivery: <span className="font-semibold text-slate-900">{deliveryJob?.provider || 'Manual'} · {DELIVERY_JOB_STATUS_LABELS[deliveryJob?.status] || deliveryJob?.status || 'Pending Dispatch'}</span>
+                      </p>
+                    )}
                     {order.delivery_address && (
                       <p className="text-[11px] text-slate-600">
-                        {order.delivery_address}
+                        Address: <span className="font-semibold text-slate-900">{order.delivery_address}</span>
                       </p>
                     )}
                     {deliveryCoords && (
@@ -596,32 +622,36 @@ export default function TerminalSidebarPanel({
                           size="sm"
                           variant={status === 'rejected' ? 'destructive' : 'outline'}
                           className="h-7 text-[11px]"
-                          disabled={Boolean(actionLoading) || !canTransactPos || locked || !shiftState.shift}
+                          disabled={Boolean(actionLoading) || !canTransactPos || locked}
                           onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
                         >
-                          {actionLoading === status ? 'Saving...' : (FULFILLMENT_STATUS_LABELS[status] || status)}
+                          {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
                         </Button>
                       ))}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-7 text-[11px]"
-                        disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
-                        onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id)}
-                      >
-                        {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Receipt'}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-[11px]"
-                        disabled={locked || !canViewPos || incomingHistoryOpeningId !== null}
-                        onClick={() => handleOpenIncomingOrderHistory?.(order)}
-                      >
-                        {incomingHistoryOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'History'}
-                      </Button>
+                      {utilityActions.includes('open_order') && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="h-7 text-[11px]"
+                          disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
+                          onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: false })}
+                        >
+                          {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Order'}
+                        </Button>
+                      )}
+                      {utilityActions.includes('print_order') && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[11px]"
+                          disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
+                          onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: true })}
+                        >
+                          {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Print Order'}
+                        </Button>
+                      )}
                     </div>
                     {!canTransactPos && (
                       <p className="mt-2 text-[11px] text-slate-500">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAppAssetUrl, resolveAssetOrigin, resolveAssetUrl } from '../assetUrl.js';
+import { resolveAppAssetUrl, resolveAssetOrigin, resolveAssetUrl, resolveAssetVariantUrl, resolveAssetVariantUrls } from '../assetUrl.js';
 
 describe('assetUrl utilities', () => {
   it('prefers VITE_ASSET_BASE_URL over API origins', () => {
@@ -40,5 +40,22 @@ describe('assetUrl utilities', () => {
     });
 
     expect(url).toBe('dgfypos://app/dist-apps/pos/pos-items/coffee.jpg');
+  });
+
+  it('resolves optimized asset variant siblings from the stored large url', () => {
+    const url = resolveAssetVariantUrl('/uploads/storefront-catalog/t1/item-1-abcd1234/large.webp', 'thumbnail', {
+      assetOrigin: 'https://api.surebizcorp.com'
+    });
+    expect(url).toBe('https://api.surebizcorp.com/uploads/storefront-catalog/t1/item-1-abcd1234/thumb.webp');
+  });
+
+  it('returns aligned variant urls for optimized assets', () => {
+    expect(resolveAssetVariantUrls('/uploads/storefront-catalog/t1/item-1-abcd1234/large.webp', {
+      assetOrigin: 'https://api.surebizcorp.com'
+    })).toEqual({
+      thumbnail_url: 'https://api.surebizcorp.com/uploads/storefront-catalog/t1/item-1-abcd1234/thumb.webp',
+      medium_url: 'https://api.surebizcorp.com/uploads/storefront-catalog/t1/item-1-abcd1234/medium.webp',
+      large_url: 'https://api.surebizcorp.com/uploads/storefront-catalog/t1/item-1-abcd1234/large.webp'
+    });
   });
 });

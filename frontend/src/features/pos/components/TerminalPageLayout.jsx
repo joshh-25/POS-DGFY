@@ -77,9 +77,7 @@ export default function TerminalPageLayout({
     incomingOrderActionState,
     handleIncomingOrderStatusChange,
     handleOpenIncomingOrderReceipt,
-    handleOpenIncomingOrderHistory,
     incomingReceiptOpeningId,
-    incomingHistoryOpeningId,
     refreshIncomingOrders,
     activeShiftId,
     checkoutBlockedReason,
@@ -109,7 +107,6 @@ export default function TerminalPageLayout({
     setIncomingReceiptOpeningId,
     historyRequestQuery,
     setHistoryRequestQuery,
-    setIncomingHistoryOpeningId,
     catalogSearchPrefill,
     onCatalogSearchHydrated,
     drawerOpen,
@@ -557,6 +554,7 @@ export default function TerminalPageLayout({
                 isMsmeMode={isMsmeMode}
                 sidebarCollapsed={effectiveSidebarCollapsed}
                 canViewHistory={canViewPos}
+                terminalUser={terminalUser}
                 selectedLocationId={operatingLocationId}
                 activeShiftId={activeShiftId}
                 terminalId={normalizedActiveTerminalId}
@@ -580,7 +578,6 @@ export default function TerminalPageLayout({
                 }}
                 onExternalHistoryHydrated={() => {
                   setHistoryRequestQuery('');
-                  setIncomingHistoryOpeningId(null);
                 }}
                 externalCatalogSearch={catalogSearchPrefill}
                 onExternalCatalogHydrated={onCatalogSearchHydrated}
@@ -636,9 +633,7 @@ export default function TerminalPageLayout({
                 incomingOrderActionState={incomingOrderActionState}
                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
                 handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
-                handleOpenIncomingOrderHistory={handleOpenIncomingOrderHistory}
                 incomingReceiptOpeningId={incomingReceiptOpeningId}
-                incomingHistoryOpeningId={incomingHistoryOpeningId}
                 refreshIncomingOrders={refreshIncomingOrders}
                 queueStatusFilter={queueStatusFilter}
                 setQueueStatusFilter={setQueueStatusFilter}
