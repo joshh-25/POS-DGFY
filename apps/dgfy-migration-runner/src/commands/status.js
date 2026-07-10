@@ -46,7 +46,7 @@ export async function runStatus({} = {}) {
   };
 
   const reportJsonPath = await writeJsonReport(config.reportDir, 'status', report);
-  const reportSummaryPath = await writeSummaryReport(config.reportDir, 'status', report);
+  const reportSummaryPath = await writeSummaryReport(config.reportDir, 'status', report, 'success');
 
   await recordCommandComplete(metaSequelize, executionId, {
     exitStatus: 'success',

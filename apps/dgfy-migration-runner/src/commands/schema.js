@@ -105,7 +105,7 @@ export async function runSchemaMigrate({ confirmDestructive = false } = {}) {
     };
 
     const reportJsonPath = await writeJsonReport(config.reportDir, 'schema:migrate', report);
-    const reportSummaryPath = await writeSummaryReport(config.reportDir, 'schema:migrate', report);
+    const reportSummaryPath = await writeSummaryReport(config.reportDir, 'schema:migrate', report, 'success');
 
     await recordCommandComplete(metaSequelize, executionId, {
       exitStatus: 'success',

@@ -66,7 +66,7 @@ export async function runRollbackPlan({} = {}) {
   };
 
   const reportJsonPath = await writeJsonReport(config.reportDir, 'rollback-plan', report);
-  const reportSummaryPath = await writeSummaryReport(config.reportDir, 'rollback-plan', report);
+  const reportSummaryPath = await writeSummaryReport(config.reportDir, 'rollback-plan', report, 'success');
 
   await recordCommandComplete(metaSequelize, executionId, {
     exitStatus: 'success',

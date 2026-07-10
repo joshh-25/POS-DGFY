@@ -55,7 +55,7 @@ export async function runDataDryRun({} = {}) {
     };
 
     const reportJsonPath = await writeJsonReport(config.reportDir, 'data:dry-run', report);
-    const reportSummaryPath = await writeSummaryReport(config.reportDir, 'data:dry-run', report);
+    const reportSummaryPath = await writeSummaryReport(config.reportDir, 'data:dry-run', report, 'success');
 
     await recordCommandComplete(metaSequelize, executionId, {
       exitStatus: 'success',
@@ -119,7 +119,7 @@ export async function runDataApply({ confirmDestructive = false } = {}) {
     };
 
     const reportJsonPath = await writeJsonReport(config.reportDir, 'data:apply', report);
-    const reportSummaryPath = await writeSummaryReport(config.reportDir, 'data:apply', report);
+    const reportSummaryPath = await writeSummaryReport(config.reportDir, 'data:apply', report, 'success');
 
     await recordCommandComplete(metaSequelize, executionId, {
       exitStatus: 'success',
