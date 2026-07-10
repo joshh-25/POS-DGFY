@@ -122,6 +122,48 @@ describe('runVerify', () => {
 
     expect(report.summary.target_db_reachable).toBe(false);
   });
+
+  test('a failed health check still completes the command_executions row as exit_status=success (D-18: only command/reporting failures should mark failed)', async () => {
+    mockCreateTargetConnection.mockReset().mockReturnValue({
+      authenticate: jest.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+    });
+
+    await runVerify({});
+
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'success' })
+    );
+  });
+
+  test('a report-write failure marks the command execution failed while still returning the report (never throwing)', async () => {
+    mockCreateTargetConnection.mockReset().mockReturnValue({
+      authenticate: jest.fn().mockResolvedValue(undefined)
+    });
+
+    // Point REPORT_DIR at an existing FILE (not a directory) so
+    // writeJsonReport's fs.mkdir(dirname(filePath), { recursive: true })
+    // throws EEXIST — simulating a report-write failure without touching
+    // the filesystem module itself.
+    const notADirectory = path.join(os.tmpdir(), `dgfy-migration-runner-verify-not-a-dir-${Date.now()}`);
+    await fs.writeFile(notADirectory, 'not a directory');
+    applyEnv({ REPORT_DIR: notADirectory });
+
+    let report;
+    await expect((async () => {
+      report = await runVerify({});
+    })()).resolves.toBeUndefined();
+
+    expect(report.summary.metadata_schema_ok).toBe(true);
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'failed', errorMessage: expect.any(String) })
+    );
+
+    await fs.rm(notADirectory, { force: true });
+  });
 });
 
 describe('runStatus', () => {
@@ -154,6 +196,22 @@ describe('runStatus', () => {
     expect(report.command).toBe('status');
     expect(report.summary.recent_commands).toBe(1);
     expect(report.summary.schema_migrations_executed).toBe(0);
+  });
+
+  test('D-18: a failure after recordCommandStart marks command_executions failed and rethrows instead of leaving the row stuck at running', async () => {
+    const queryError = new Error('ER_LOCK_WAIT_TIMEOUT');
+    mockCreateMetaConnection.mockReset().mockReturnValue({
+      config: {},
+      query: jest.fn().mockRejectedValue(queryError)
+    });
+
+    await expect(runStatus({})).rejects.toThrow('ER_LOCK_WAIT_TIMEOUT');
+
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'failed', errorMessage: 'ER_LOCK_WAIT_TIMEOUT' })
+    );
   });
 });
 
@@ -193,5 +251,18 @@ describe('runRollbackPlan', () => {
     expect(report.results.length).toBeGreaterThan(0);
     expect(report.results[0].migration).toBe(PLACEHOLDER_MIGRATION_NAME);
     expect(report.results[0].estimated_risk).toBe('low');
+  });
+
+  test('D-18: a failure after recordCommandStart marks command_executions failed and rethrows instead of leaving the row stuck at running', async () => {
+    const storageError = new Error('ER_ACCESS_DENIED');
+    mockStorageExecuted.mockClear().mockRejectedValue(storageError);
+
+    await expect(runRollbackPlan({})).rejects.toThrow('ER_ACCESS_DENIED');
+
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'failed', errorMessage: 'ER_ACCESS_DENIED' })
+    );
   });
 });
