@@ -41,8 +41,7 @@ import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsu
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
-    isDateWithinStorefrontBusinessHours,
-    normalizeStorefrontBusinessHours
+    isDateWithinStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';
 import {
     buildCommercialPromoUsageUpdate,
@@ -82,14 +81,6 @@ const trackingFailureCounters = new Map();
 const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-};
-
-const normalizePositiveIntList = (value, maxItems = 200) => {
-    if (!Array.isArray(value)) return [];
-    return [...new Set(value
-        .map((entry) => parsePositiveInt(entry))
-        .filter((entry) => Number.isInteger(entry) && entry > 0))]
-        .slice(0, maxItems);
 };
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
