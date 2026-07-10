@@ -1,4 +1,3 @@
-import { readdirSync } from 'fs';
 import { createRequire } from 'module';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -21,31 +20,24 @@ const __dirname = dirname(__filename);
 const MIGRATIONS_DIR = join(__dirname, '..', 'migrations', 'schema');
 
 /**
- * Lists every `.cjs` migration file under MIGRATIONS_DIR via a plain
- * filesystem read (no Umzug, no DB). This is used to compute the D-09
- * destructive-op gate BEFORE any DB connection factory is called — Umzug's
- * own `pending()` can't be used for that check because its storage is
- * backed by the meta DB connection, which must not be created yet.
- *
- * WR-04 (accepted, documented in `schema migrate --help`): because this scan
- * covers every migration file that has ever existed (not just ones Umzug
- * would consider pending), once a single destructive migration has shipped,
- * `--confirm-destructive` is required on every future `schema migrate` run —
- * even for unrelated, non-destructive migrations added later. Scoping this
- * to only-pending migrations would require a meta-DB connection before the
- * gate runs, which is exactly the ordering this function exists to avoid.
+ * D-17: destructive classification is pending-only. Rather than re-scanning
+ * the filesystem (the WR-04 all-file scan this replaces), the `meta` field
+ * each migration module exports is carried through from `resolveMigration`
+ * onto the object Umzug returns from `pending()` — so this check only ever
+ * looks at migrations that are actually pending, using the modules Umzug
+ * already loaded. A historical migration that has already executed (and is
+ * therefore absent from `pending()`) can never force --confirm-destructive
+ * for unrelated future additive work.
  */
-function listMigrationFiles() {
-  return readdirSync(MIGRATIONS_DIR)
-    .filter((file) => file.endsWith('.cjs'))
-    .sort()
-    .map((file) => join(MIGRATIONS_DIR, file));
+function isPendingMigrationDestructive(pendingMigrations) {
+  return pendingMigrations.some((migration) => migration.meta?.destructive === true);
 }
 
 function resolveMigration({ name, path, context }) {
   const migration = requireCjs(path);
   return {
     name,
+    meta: migration.meta,
     up: async () => migration.up(context, Sequelize),
     down: async () => migration.down(context, Sequelize)
   };
@@ -63,12 +55,9 @@ export async function runSchemaMigrate({ confirmDestructive = false } = {}) {
     throw new EnvValidationError(errors.join('; '));
   }
 
+  // D-16/D-17: target DB name validation still happens before any connection
+  // and before any target mutation, regardless of destructive classification.
   assertTargetDbNameAllowed(config.targetDb.name, config.runtimeMode);
-
-  // Per-migration-file destructive check (D-09): computed from the files on
-  // disk, before any target/meta connection factory is invoked.
-  const isDestructive = listMigrationFiles().some((path) => requireCjs(path).meta?.destructive === true);
-  assertDestructiveAllowed({ isDestructive, confirmDestructive, runtimeMode: config.runtimeMode });
 
   let metaSequelize;
   let executionId;
@@ -89,6 +78,12 @@ export async function runSchemaMigrate({ confirmDestructive = false } = {}) {
     });
 
     const pendingMigrations = await umzug.pending();
+
+    // D-17: pending-only destructive gate — computed after metadata
+    // bootstrap and Umzug pending resolution, using only pending migration
+    // modules, and still enforced before any target mutation (umzug.up()).
+    const isDestructive = isPendingMigrationDestructive(pendingMigrations);
+    assertDestructiveAllowed({ isDestructive, confirmDestructive, runtimeMode: config.runtimeMode });
 
     const mode = confirmDestructive ? 'apply-destructive' : 'apply';
     executionId = await recordCommandStart(metaSequelize, {

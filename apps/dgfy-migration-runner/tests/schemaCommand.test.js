@@ -2,6 +2,14 @@ import { jest } from '@jest/globals';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+// Real (unmocked) safety-gate implementations, imported statically up front
+// so later tests can explicitly re-register the REAL behavior even after an
+// earlier isolated test's jest.unstable_mockModule(...) stub for the same
+// specifier — that stub registration outlives jest.resetModules() and would
+// otherwise silently leak a permissive assertDestructiveAllowed() into any
+// later test that doesn't re-mock this module itself.
+import { assertDestructiveAllowed as realAssertDestructiveAllowed } from '../src/safety/destructiveGate.js';
+import { assertTargetDbNameAllowed as realAssertTargetDbNameAllowed } from '../src/safety/targetGuard.js';
 
 const PLACEHOLDER_MIGRATION_NAME = '00000000000000-runner-contract-placeholder.cjs';
 
@@ -230,6 +238,15 @@ describe('runSchemaMigrate — D-17 pending-only destructive classification', ()
         unlogMigration: jest.fn().mockResolvedValue(undefined),
         executed: jest.fn().mockResolvedValue([])
       }))
+    }));
+    // Re-register the REAL safety gates explicitly (see the import comment
+    // at the top of this file) so an earlier isolated test's stub mock for
+    // these same specifiers can never leak into these tests.
+    jest.unstable_mockModule('../src/safety/destructiveGate.js', () => ({
+      assertDestructiveAllowed: realAssertDestructiveAllowed
+    }));
+    jest.unstable_mockModule('../src/safety/targetGuard.js', () => ({
+      assertTargetDbNameAllowed: realAssertTargetDbNameAllowed
     }));
   }
 
