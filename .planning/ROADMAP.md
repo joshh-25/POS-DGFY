@@ -31,7 +31,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Operator can choose schema, data dry-run, data apply, verify, status/reporting, and rollback-plan support commands from the same image.
   3. Runner refuses to connect until required environment, target database, runtime mode, and destructive-operation flags are valid.
   4. Every runner command leaves database-backed metadata plus machine-readable and human-readable evidence.
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Runner foundation: env validation (RUN-03) + safety gates + lazy DB connection factories
+- [ ] 01-02-PLAN.md — Migration metadata store (RUN-04) + JSON/summary report writers (RUN-05)
+- [ ] 01-03-PLAN.md — CLI command surface (RUN-02): schema/data/verify/status/rollback-plan + Commander dispatch
+- [ ] 01-04-PLAN.md — One-shot container packaging (RUN-01): Dockerfile + entrypoint
 
 ### Phase 2: DGFY Database Foundation
 **Goal**: DGFY landlord and tenant database foundations exist beside legacy with additive, repeatable migrations and schema verification.
@@ -106,7 +112,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Architecture and Migration Runner Contract | 0/TBD | Not started | - |
+| 1. Architecture and Migration Runner Contract | 0/4 | Planned | - |
 | 2. DGFY Database Foundation | 0/TBD | Not started | - |
 | 3. Old-to-New Migration Proof | 0/TBD | Not started | - |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 0/TBD | Not started | - |
