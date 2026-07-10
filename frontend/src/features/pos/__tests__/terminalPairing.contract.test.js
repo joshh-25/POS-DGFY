@@ -33,15 +33,17 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain("!cashierResumeUnlock && terminalUnlockMode !== 'relock'");
   });
 
-  it('returns to cashier login after close shift instead of terminal unlock', () => {
-    expect(terminalPageSource).toContain("reason: 'shift_closed'");
-    expect(terminalPageSource).toContain("setStoredTerminalLockReason('full_auth')");
+  it('keeps the terminal session open after a successful close shift', () => {
+    expect(terminalPageSource).toContain("toast.success('Shift closed successfully. Open a new shift manually when you are ready.')");
+    expect(terminalPageSource).toContain('setStoredTerminalLock(false);');
+    expect(terminalPageSource).toContain("setStoredTerminalLockReason('');");
+    expect(terminalPageSource).toContain('setLocked(false);');
     expect(terminalPageSource).toContain('setTerminalUnlockModalOpen(false)');
-    expect(terminalPageSource).toContain('setDrawerOpen(true)');
-    expect(terminalPageSource).toContain('Cashier login is required for the next shift.');
+    expect(terminalPageSource).toContain('setDrawerOpen(false)');
+    expect(terminalPageSource).toContain('await refreshOperationalContext();');
   });
 
-  it('restores an open shift on refresh while close shift still returns to login', () => {
+  it('restores an open shift on refresh while queued close still returns to login', () => {
     expect(terminalPageSource).toContain('allowWhileLocked = false');
     expect(terminalPageSource).toContain('const storedLockActive = readStoredTerminalLock();');
     expect(terminalPageSource).toContain("storedReason !== 'terminal_reunlock'");

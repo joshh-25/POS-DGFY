@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { CalendarDays, ChevronDown, Globe, ListFilter, RefreshCcw, RotateCcw, Search, Store, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 
 const money = (value) => Number(value || 0).toFixed(2);
@@ -75,6 +83,9 @@ export default function POSTransactionHistoryPanel({
     historyRows,
     historyDetailLoading,
     openHistoryDetail,
+    canVoidTransactions = false,
+    onVoidTransaction = async () => {},
+    voidingTransactionId = null,
     loadHistory,
     historyPage,
     historyPagination,
@@ -86,6 +97,8 @@ export default function POSTransactionHistoryPanel({
 }) {
     const [expandedRowId, setExpandedRowId] = useState(null);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
+    const [voidTarget, setVoidTarget] = useState(null);
+    const [voidReason, setVoidReason] = useState('');
     const totalEntries = Number(historyPagination?.total || historyRows.length || 0);
     const pageSize = Number(historyPagination?.limit || historyRows.length || 10);
     const pageStart = totalEntries === 0 ? 0 : ((Math.max(1, historyPage) - 1) * pageSize) + 1;
@@ -104,6 +117,23 @@ export default function POSTransactionHistoryPanel({
         loadHistory(1);
     };
 
+    const closeVoidDialog = () => {
+        if (voidingTransactionId !== null) return;
+        setVoidTarget(null);
+        setVoidReason('');
+    };
+
+    const submitVoid = async () => {
+        if (!voidTarget || String(voidReason).trim().length < 3) return;
+        try {
+            await onVoidTransaction(voidTarget, String(voidReason).trim());
+            setVoidTarget(null);
+            setVoidReason('');
+        } catch {
+            // The action handler reports the server error and keeps this dialog open for correction.
+        }
+    };
+
     useEffect(() => {
         if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
         const media = window.matchMedia('(min-width: 768px) and (max-width: 1279px)');
@@ -118,7 +148,7 @@ export default function POSTransactionHistoryPanel({
     }, []);
 
     return (
-        <section className="space-y-4 rounded-xl bg-white p-1 lg:p-0">
+        <section className="flex h-full min-h-0 flex-col gap-4 rounded-xl bg-white p-1 lg:p-0">
                 <div className="flex flex-col gap-3 border-b border-slate-200 px-3 pb-4 pt-2 xl:flex-row xl:items-start xl:justify-between lg:px-4">
                     <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto">
                         <IconInput icon={Search}>
@@ -249,8 +279,8 @@ export default function POSTransactionHistoryPanel({
                     </div>
                 </div>
 
-                <div className="overflow-hidden border-t border-slate-200">
-                    <div className="dgfy-pos-scrollbar-hidden overflow-x-auto" aria-busy={historyLoading}>
+                <div className="min-h-0 flex-1 overflow-hidden border-t border-slate-200">
+                    <div className="dgfy-pos-scrollbar-hidden h-full overflow-auto" aria-busy={historyLoading}>
                         <table className={`w-full text-[13px] ${isTabletViewport ? 'min-w-[820px]' : 'min-w-[1220px]'}`} aria-label="POS transaction history table">
                             <caption className="sr-only">POS transaction history with receipt and sales report actions</caption>
                             <thead>
@@ -280,6 +310,7 @@ export default function POSTransactionHistoryPanel({
                                     const dateTime = formatDateTime(row.created_at);
                                     const sourceKey = row.order_source === 'online_store' ? 'online_store' : 'in_store';
                                     const isOfflinePending = row.offline_sync_state === 'pending_sync';
+                                    const canVoidRow = canVoidTransactions && !isOfflinePending && row.status !== 'voided';
                                     const expanded = expandedRowId === row.pos_transaction_id;
                                     return (
                                         <React.Fragment key={row.pos_transaction_id}>
@@ -335,6 +366,23 @@ export default function POSTransactionHistoryPanel({
                                                                 <span>Receipt</span>
                                                             </>
                                                         </Button>
+                                                        {canVoidRow && (
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="h-12 border-rose-200 px-3 text-[11px] font-extrabold text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    setVoidTarget(row);
+                                                                    setVoidReason('');
+                                                                }}
+                                                                disabled={voidingTransactionId !== null}
+                                                                aria-label={`Void transaction ${row.invoice_number || row.pos_transaction_id}`}
+                                                            >
+                                                                Void
+                                                            </Button>
+                                                        )}
                                                         {isTabletViewport && (
                                                             <Button
                                                                 type="button"
@@ -461,6 +509,39 @@ export default function POSTransactionHistoryPanel({
                         </div>
                     </div>
                 </div>
+            <Dialog open={Boolean(voidTarget)} onOpenChange={(open) => !open && closeVoidDialog()}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Void Transaction</DialogTitle>
+                        <DialogDescription>
+                            This records a void and reverses the transaction stock movements. Enter a reason to continue.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        <label htmlFor="pos-void-reason" className="text-sm font-semibold text-slate-900">Void reason</label>
+                        <Input
+                            id="pos-void-reason"
+                            value={voidReason}
+                            onChange={(event) => setVoidReason(event.target.value)}
+                            minLength={3}
+                            maxLength={255}
+                            placeholder="Required reason"
+                            disabled={voidingTransactionId !== null}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={closeVoidDialog} disabled={voidingTransactionId !== null}>Cancel</Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={submitVoid}
+                            disabled={String(voidReason).trim().length < 3 || voidingTransactionId !== null}
+                        >
+                            {voidingTransactionId !== null ? 'Voiding...' : 'Confirm Void'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </section>
     );
 }

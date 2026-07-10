@@ -41,6 +41,26 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.sections.supporting.hasGallery).toBe(true);
   });
 
+  it('uses all active commercial promos and preserves the legacy promo only as a fallback', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        storefront_promo: { active: true, promo_code: 'LEGACY', title: 'Legacy promo' },
+        storefront_promos: [
+          { active: true, promo_code: 'SAVE10', title: '10% off', discount_percent: 10 },
+          { active: true, promo_code: 'SAVE20', title: '20% off', discount_percent: 20 },
+          { active: false, promo_code: 'HIDDEN', title: 'Hidden promo', discount_percent: 5 }
+        ]
+      },
+      catalog: []
+    });
+
+    expect(model.supporting.promo.items).toEqual([
+      expect.objectContaining({ promo_code: 'SAVE10' }),
+      expect.objectContaining({ promo_code: 'SAVE20' })
+    ]);
+    expect(model.supporting.promo.items).toHaveLength(2);
+  });
+
   it('preserves external, backend-local, and path-only storefront gallery images', () => {
     const model = normalizeStorefrontPageModel({
       selectedStore: {

@@ -37,6 +37,40 @@ const normalizeLinkMap = (value) => (
   parseOptionalObject(value) || {}
 );
 
+const normalizeStorefrontPromos = ({ promos, legacyPromo } = {}) => {
+  const seenCodes = new Set();
+  const normalize = (entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const promoCode = trimText(entry.promo_code || entry.promoCode).toUpperCase();
+    const title = trimText(entry.title);
+    const badge = trimText(entry.badge);
+    const discountPercent = Number(entry.discount_percent ?? entry.discountPercent);
+    if (entry.active !== true || (!promoCode && !title && !badge)) return null;
+    if (promoCode && seenCodes.has(promoCode)) return null;
+    if (promoCode) seenCodes.add(promoCode);
+    return {
+      ...entry,
+      promo_code: promoCode,
+      title,
+      badge,
+      subtitle: trimText(entry.subtitle),
+      validity_text: trimText(entry.validity_text || entry.validityText),
+      discount_percent: Number.isFinite(discountPercent) ? discountPercent : null,
+      valid_from: trimText(entry.valid_from || entry.validFrom),
+      valid_until: trimText(entry.valid_until || entry.validUntil),
+      active: true
+    };
+  };
+
+  const configuredPromos = parseOptionalArray(promos);
+  const normalized = configuredPromos.map(normalize).filter(Boolean);
+  if (configuredPromos.length === 0 && normalized.length === 0) {
+    const legacy = normalize(legacyPromo);
+    if (legacy) normalized.push(legacy);
+  }
+  return normalized;
+};
+
 const normalizeTextArray = (value) => parseOptionalArray(value)
   .map((entry) => String(entry || '').trim())
   .filter(Boolean);
@@ -167,7 +201,14 @@ export const normalizeStorefrontPageModel = ({
   const isSimpleMode = modeAdapter.isSimpleMode === true;
   const isHospitalityMode = modeAdapter.isHospitalityMode === true;
   const socialLinks = normalizeLinkMap(selectedStore?.storefront_social_links);
-  const promo = normalizeLinkMap(selectedStore?.storefront_promo);
+  const legacyPromo = normalizeLinkMap(selectedStore?.storefront_promo);
+  const promos = normalizeStorefrontPromos({
+    promos: selectedStore?.storefront_promos,
+    legacyPromo
+  });
+  const promo = promos.length > 0
+    ? { active: true, items: promos }
+    : legacyPromo;
   const reviewSummary = normalizeReviewSummary(selectedStore?.storefront_review_summary);
   const reviewHighlights = parseOptionalArray(selectedStore?.storefront_review_highlights)
     .filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry));

@@ -79,9 +79,10 @@ const governedDiscountSchema = Joi.object({
 });
 
 const posDiscountApprovalSchema = Joi.object({
-    approver_user_id: Joi.number().integer().positive().required(),
-    manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).required(),
-    employee_user_id: Joi.number().integer().positive().allow(null).optional()
+    approver_user_id: Joi.number().integer().positive().allow(null).optional(),
+    manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
+    employee_user_id: Joi.number().integer().positive().allow(null).optional(),
+    discount_type: Joi.string().valid('employee', 'manual').optional()
 });
 
 const checkoutPosSchema = Joi.object({
@@ -391,7 +392,9 @@ const fiscalPrintEventSchema = Joi.object({
 });
 
 const voidPosTransactionSchema = Joi.object({
-    reason: Joi.string().trim().min(3).max(255).required()
+    reason: Joi.string().trim().min(3).max(255).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });
 
 const esalesGenerateSchema = Joi.object({

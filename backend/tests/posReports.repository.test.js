@@ -8,6 +8,8 @@ const PosTransactionLineModel = { modelName: 'PosTransactionLine' };
 const ItemModel = { modelName: 'Item' };
 const UserModel = { modelName: 'User' };
 const PosTerminalShiftModel = { modelName: 'PosTerminalShift' };
+const PosTransactionDiscountModel = { modelName: 'PosTransactionDiscount' };
+const PosTransactionDiscountLineModel = { modelName: 'PosTransactionDiscountLine' };
 
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
     default: {
@@ -23,6 +25,10 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
                     return UserModel;
                 case 'PosTerminalShift':
                     return PosTerminalShiftModel;
+                case 'PosTransactionDiscount':
+                    return PosTransactionDiscountModel;
+                case 'PosTransactionDiscountLine':
+                    return PosTransactionDiscountLineModel;
                 default:
                     return null;
             }
@@ -59,8 +65,14 @@ describe('posRepository reports analytics', () => {
                 order_method: 'dine_in',
                 cashier_id: 9,
                 cashier: { user_id: 9, username: 'cashier-1' },
-                discount: { discount_type: 'senior', discount_amount: 10, vat_removed: 2 },
-                discount_label_snapshot: 'Senior Citizen',
+                discount: {
+                    discount_type: 'promo',
+                    discount_amount: 10,
+                    vat_removed: 0,
+                    promo_code: 'SAVE10',
+                    lines: [{ transaction_line_id: 501, discount_amount: 10, vat_removed: 0 }]
+                },
+                discount_label_snapshot: 'Summer Promo',
                 shift: {
                     pos_terminal_shift_id: 3,
                     business_date: '2026-06-22',
@@ -73,6 +85,7 @@ describe('posRepository reports analytics', () => {
                     cash_variance_amount: -5
                 },
                 lines: [{
+                    line_id: 501,
                     item_id: 1,
                     quantity: 2,
                     cost_snapshot: 30,
@@ -142,6 +155,15 @@ describe('posRepository reports analytics', () => {
             service_fees: 5,
             total_transactions: 2
         }));
+        expect(result.daily_report.discount_breakdown).toEqual([
+            expect.objectContaining({
+                discount_label: 'Summer Promo (SAVE10)',
+                discount_type: 'promo',
+                promo_code: 'SAVE10',
+                transaction_count: 1,
+                discount_amount: 10
+            })
+        ]);
         expect(result.daily_report.order_method_breakdown).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 order_method: 'dine_in',

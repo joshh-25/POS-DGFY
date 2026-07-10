@@ -90,7 +90,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         callback
     );
 
-    const createCashier = async () => {
+    const createCashier = async (userOverrides = {}) => {
         const suffix = crypto.randomUUID().slice(0, 8);
         const terminalId = `POS-TEST-${suffix}`.toUpperCase();
         const cashier = await models.User.create({
@@ -98,7 +98,8 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             email: `cashier_${suffix}@pos.test`,
             password_hash: 'test-hash',
             role: 'staff',
-            is_active: true
+            is_active: true,
+            ...userOverrides
         });
         const location = await models.TenantLocation.create({
             name: `POS Test ${suffix}`,
@@ -374,6 +375,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                 type: 'employee',
                 method: 'percentage',
                 rate: 10,
+                customer_name: 'Employee Buyer',
                 employee_name: 'Untrusted Name',
                 employee_id: String(cashier.user_id),
                 approver_user_id: approver.user_id,
@@ -392,6 +394,34 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(discount.employee_id).toBe(String(cashier.user_id));
         expect(discount.employee_name).toBe(cashier.username);
         expect(discount.self_approved).toBe(false);
+    });
+
+    it('allows admin operators to apply employee discounts without approver PIN and without employee identity fields', async () => {
+        const adminOperator = await createCashier({ role: 'admin' });
+        const product = await createFinishedGood({ current_stock: 10 });
+
+        const checkoutResult = await checkoutAsCashier(adminOperator, {
+            idempotency_key: `idem-employee-admin-${crypto.randomUUID()}`,
+            payment_type: 'cash',
+            order_method: 'dine_in',
+            governed_discount: {
+                type: 'employee',
+                method: 'percentage',
+                rate: 10,
+                customer_name: 'Employee Buyer'
+            },
+            lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
+        });
+
+        expect(checkoutResult.success).toBe(true);
+        const discount = await models.PosTransactionDiscount.findOne({
+            where: { transaction_id: checkoutResult.data.transaction.pos_transaction_id }
+        });
+        expect(discount.manager_approval_id).toBe(adminOperator.user_id);
+        expect(discount.manager_approved_at).toBeInstanceOf(Date);
+        expect(discount.employee_id).toBeNull();
+        expect(discount.employee_name).toBeNull();
+        expect(discount.self_approved).toBe(true);
     });
 
     it('sells an always-available POS item at zero stock without creating a stock movement', async () => {

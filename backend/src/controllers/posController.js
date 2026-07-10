@@ -111,6 +111,8 @@ export default {
     createSetupCashier,
     listSetupCashiers,
     loginCashier,
+    listDiscountApprovers,
+    verifyDiscountApproval,
     listCatalog,
     scanBarcode,
     checkout,

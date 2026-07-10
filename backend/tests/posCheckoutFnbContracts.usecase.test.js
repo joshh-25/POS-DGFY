@@ -1169,7 +1169,11 @@ describe('POS checkout F&B contracts', () => {
         };
         const posRepository = {
             getTransactionById: jest.fn().mockResolvedValue(fiscalTransaction),
-            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({
+                shiftId: 901,
+                terminalId: 'TERM-CURRENT',
+                locationId: 9
+            })),
             listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([{
                 movement_id: 901,
                 item_id: 1,
@@ -1186,7 +1190,11 @@ describe('POS checkout F&B contracts', () => {
 
         const result = await runInTenantContext(() => useCase({
             posTransactionId: 177,
-            payload: { reason: 'Customer returned all items' },
+            payload: {
+                reason: 'Customer returned all items',
+                shift_id: 901,
+                terminal_id: 'TERM-CURRENT'
+            },
             user: { user_id: 12 }
         }));
 
@@ -1212,6 +1220,10 @@ describe('POS checkout F&B contracts', () => {
             event_type: 'void',
             invoice_number: 'INV-000001'
         }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(posRepository.getTerminalShiftById).toHaveBeenCalledWith(901, expect.objectContaining({
+            transaction: expect.any(Object),
+            lock: true
+        }));
     });
 
     it('generates an eSales report package with hash and fiscal ledger event', async () => {

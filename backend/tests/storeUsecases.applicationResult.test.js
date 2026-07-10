@@ -1421,6 +1421,7 @@ describe('store use-cases application result contract', () => {
             LOCK: { UPDATE: 'UPDATE' }
         };
         const updateSettingByKey = jest.fn().mockResolvedValue({});
+        const createOnlineTransactionWithLines = jest.fn().mockResolvedValue(901);
         const useCase = buildStoreCheckoutUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
@@ -1467,7 +1468,7 @@ describe('store use-cases application result contract', () => {
                     }
                 ]),
                 findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
-                createOnlineTransactionWithLines: jest.fn().mockResolvedValue(901),
+                createOnlineTransactionWithLines,
                 getOrderById: jest.fn().mockResolvedValue({
                     pos_transaction_id: 901,
                     tracking_pin: 'SK-PROMO1',
@@ -1504,6 +1505,9 @@ describe('store use-cases application result contract', () => {
                 order_method: 'pickup',
                 payment_type: 'cash',
                 promo_code: 'SAVE20',
+                payment_status: 'paid',
+                payment_reference: 'CLIENT-SUPPLIED-REFERENCE',
+                payment_provider: 'client-supplied-provider',
                 idempotency_key: 'promo-checkout-success',
                 customer_name: 'Buyer',
                 customer_phone: '0917',
@@ -1522,6 +1526,30 @@ describe('store use-cases application result contract', () => {
             promo_code: 'SAVE20',
             message: 'Promo code applied successfully.'
         });
+        expect(createOnlineTransactionWithLines).toHaveBeenCalledWith(expect.objectContaining({
+            header: expect.objectContaining({
+                payment_type: 'cash',
+                payment_status: 'unpaid',
+                payment_reference: null,
+                payment_provider: null,
+                subtotal_amount: 100,
+                discount_amount: 20,
+                service_fee_amount: 1,
+                delivery_fee: 0,
+                total_amount: 81
+            }),
+            discount: expect.objectContaining({
+                promo_code: 'SAVE20',
+                discount_rate: 20,
+                discount_amount: 20,
+                lines: [expect.objectContaining({
+                    item_id: 40,
+                    gross_eligible_amount: 100,
+                    discount_amount: 20,
+                    final_line_amount: 80
+                })]
+            })
+        }), { transaction });
         expect(updateSettingByKey).toHaveBeenCalledWith(
             'storefront_promo',
             expect.any(Object),

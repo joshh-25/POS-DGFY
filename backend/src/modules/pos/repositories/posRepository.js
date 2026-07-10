@@ -13,6 +13,7 @@ import {
     buildCatalogSetupRecommendation,
     buildPosReadiness
 } from '../../shared/utils/catalogSetupPolicy.js';
+import { deriveImageAssetVariantUrls } from '../../shared/utils/imageAssetStorage.js';
 import {
     detectBarcodeSymbology,
     isBarcodeScopeAllowedForSurface,
@@ -341,8 +342,16 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 pos_always_available: override?.pos_always_available === true,
                 pos_image_path: override?.pos_image_path || null,
                 pos_image_url: storefrontImage?.storefront_image_url || null,
+                pos_image_variants: deriveImageAssetVariantUrls({
+                    storedPath: storefrontImage?.storefront_image_path || null,
+                    storedUrl: storefrontImage?.storefront_image_url || null
+                }),
                 storefront_image_path: storefrontImage?.storefront_image_path || null,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
+                storefront_image_variants: deriveImageAssetVariantUrls({
+                    storedPath: storefrontImage?.storefront_image_path || null,
+                    storedUrl: storefrontImage?.storefront_image_url || null
+                }),
                 storefront_image_gallery: storefrontImage?.storefront_image_gallery || null
             };
         })
@@ -498,6 +507,23 @@ const buildTransactionInclude = () => ([
         model: dbStore.get('StoreCustomer'),
         as: 'storeCustomer',
         attributes: ['customer_id', 'dgfy_account_id', 'email', 'name', 'phone']
+    },
+    {
+        model: dbStore.get('DeliveryJob'),
+        as: 'deliveryJob',
+        required: false,
+        attributes: [
+            'delivery_job_id',
+            'provider',
+            'provider_delivery_id',
+            'status',
+            'tracking_url',
+            'pickup_ready_at',
+            'picked_up_at',
+            'delivered_at',
+            'failure_reason',
+            'provider_payload'
+        ]
     },
     {
         model: dbStore.get('FnbCheck'),
@@ -779,6 +805,16 @@ const buildReportInclude = () => ([
         attributes: ['user_id', 'username']
     },
     {
+        model: dbStore.get('PosTransactionDiscount'),
+        as: 'discount',
+        required: false,
+        include: [{
+            model: dbStore.get('PosTransactionDiscountLine'),
+            as: 'lines',
+            required: false
+        }]
+    },
+    {
         model: dbStore.get('User'),
         as: 'acceptedByUser',
         attributes: ['user_id', 'username']
@@ -1007,6 +1043,23 @@ const buildTopItems = (rows = [], limit = 10) => {
         .slice(0, limit);
 };
 
+const buildDiscountBreakdown = (rows = []) => {
+    const groups = groupRowsBy(
+        rows.filter((row) => Number(row.discount_amount || 0) > 0),
+        (row) => `${row.discount_type || 'legacy'}::${row.promo_code || row.discount_label || 'Discount'}`
+    );
+    return Array.from(groups.values()).map((entries) => ({
+        discount_label: entries[0]?.promo_code
+            ? `${entries[0]?.discount_label || 'Promo'} (${entries[0].promo_code})`
+            : (entries[0]?.discount_label || 'Discount'),
+        discount_type: entries[0]?.discount_type || 'legacy',
+        promo_code: entries[0]?.promo_code || null,
+        transaction_count: new Set(entries.map((entry) => entry.transaction_id)).size,
+        discount_amount: sumBy(entries, (entry) => entry.discount_amount),
+        vat_removed: sumBy(entries, (entry) => entry.vat_removed)
+    })).sort((left, right) => Number(right.discount_amount || 0) - Number(left.discount_amount || 0));
+};
+
 const buildFilterOptions = (transactions = [], lineRows = []) => {
     const cashierMap = new Map();
     transactions.forEach((transaction) => {
@@ -1036,6 +1089,8 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
         const totalServiceFeeAmount = Number(transaction?.service_fee_amount || 0) + Number(transaction?.restaurant_service_charge_amount || 0);
         const vatAmount = Number(transaction?.vat_amount || 0);
         const discountAmount = Number(transaction?.discount_amount || 0);
+        const discountAllocations = Array.isArray(transaction?.discount?.lines) ? transaction.discount.lines : [];
+        const discountAllocationByLineId = new Map(discountAllocations.map((allocation) => [Number(allocation.transaction_line_id), allocation]));
         const sourceLabel = resolveReportSourceLabel(transaction);
 
         (Array.isArray(transaction?.lines) ? transaction.lines : []).forEach((line) => {
@@ -1048,7 +1103,10 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
             const quantity = Number(line?.quantity || 0);
             const grossSales = round4(line?.line_subtotal || 0);
             const share = subtotalAmount > 0 ? grossSales / subtotalAmount : 0;
-            const lineDiscount = round4(discountAmount * share);
+            const persistedDiscountAllocation = discountAllocationByLineId.get(Number(line?.line_id));
+            const lineDiscount = persistedDiscountAllocation
+                ? round4(persistedDiscountAllocation.discount_amount)
+                : round4(discountAmount * share);
             const lineRefund = isVoidedOrRefunded ? grossSales : 0;
             const lineNetSales = round4(Math.max(0, grossSales - lineDiscount - lineRefund));
             const lineCostPerUnit = line?.cost_snapshot != null ? Number(line.cost_snapshot || 0) : Number(item?.cost_per_unit || 0);
@@ -1077,6 +1135,12 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 gross_sales: grossSales,
                 net_sales: lineNetSales,
                 discount_amount: lineDiscount,
+                discount_label: transaction?.discount_label_snapshot || null,
+                discount_type: transaction?.discount?.discount_type || null,
+                promo_code: transaction?.discount?.promo_code || null,
+                vat_removed: persistedDiscountAllocation
+                    ? round4(persistedDiscountAllocation.vat_removed)
+                    : round4(Number(transaction?.discount?.vat_removed || 0) * share),
                 refund_amount: lineRefund,
                 vat_amount: isVoidedOrRefunded ? 0 : round4(vatAmount * share),
                 service_fee_amount: isVoidedOrRefunded ? 0 : round4(totalServiceFeeAmount * share),
@@ -1156,6 +1220,7 @@ const buildReportPayloadFromTransactions = (transactions = [], filters = {}) => 
         },
         daily_report: {
             summary,
+            discount_breakdown: buildDiscountBreakdown(normalizedLines),
             payment_breakdown: buildPaymentBreakdown(normalizedLines),
             order_method_breakdown: buildOrderMethodBreakdown(normalizedLines),
             cashier_summary: buildCashierSummary(normalizedLines),
@@ -1268,6 +1333,18 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
     rows.push(['Payment Method', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
     (payload?.daily_report?.payment_breakdown || []).forEach((entry) => {
         rows.push([entry.payment_method, entry.total_transactions, round4(entry.net_sales), round4(entry.pos_profit_loss)]);
+    });
+    rows.push([]);
+    rows.push(['Discount', 'Type', 'Promo Code', 'Transactions', 'Discount Total', 'VAT Removed']);
+    (payload?.daily_report?.discount_breakdown || []).forEach((entry) => {
+        rows.push([
+            entry.discount_label,
+            entry.discount_type,
+            entry.promo_code || '',
+            entry.transaction_count,
+            round4(entry.discount_amount),
+            round4(entry.vat_removed)
+        ]);
     });
     rows.push([]);
     rows.push(['Top Item', 'SKU', 'Category', 'Qty', 'Net Sales', 'COGS', 'POS Profit/Loss']);
@@ -2751,6 +2828,10 @@ export const posRepository = {
                 pos_always_available: override?.pos_always_available === true,
                 pos_image_path: override?.pos_image_path || null,
                 pos_image_url: override?.pos_image_url || null,
+                pos_image_variants: deriveImageAssetVariantUrls({
+                    storedPath: override?.pos_image_path || null,
+                    storedUrl: override?.pos_image_url || null
+                }),
                 pos_readiness: readiness
             }
         };
@@ -2871,6 +2952,10 @@ export const posRepository = {
                 pos_always_available: override?.pos_always_available === true,
                 pos_image_url: override?.pos_image_url || null,
                 pos_image_path: override?.pos_image_path || null,
+                pos_image_variants: deriveImageAssetVariantUrls({
+                    storedPath: override?.pos_image_path || null,
+                    storedUrl: override?.pos_image_url || null
+                }),
                 has_override: Boolean(override),
                 pos_readiness: readiness,
                 catalog_setup_recommendation: recommendation
@@ -2935,8 +3020,16 @@ export const posRepository = {
             pos_always_available: effectiveOverride?.pos_always_available === true,
             pos_image_url: storefrontImage?.storefront_image_url || null,
             pos_image_path: effectiveOverride?.pos_image_path || null,
+            pos_image_variants: deriveImageAssetVariantUrls({
+                storedPath: storefrontImage?.storefront_image_path || null,
+                storedUrl: storefrontImage?.storefront_image_url || null
+            }),
             storefront_image_path: storefrontImage?.storefront_image_path || null,
             storefront_image_url: storefrontImage?.storefront_image_url || null,
+            storefront_image_variants: deriveImageAssetVariantUrls({
+                storedPath: storefrontImage?.storefront_image_path || null,
+                storedUrl: storefrontImage?.storefront_image_url || null
+            }),
             storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
             pos_readiness: readiness,
             catalog_setup_recommendation: recommendation
@@ -3073,6 +3166,15 @@ export const posRepository = {
                 }
             ],
             order: [['opened_at', 'DESC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+    },
+
+    async countOpenTerminalShifts(options = {}) {
+        const PosTerminalShift = dbStore.get('PosTerminalShift');
+        return PosTerminalShift.count({
+            where: { status: 'open' },
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });

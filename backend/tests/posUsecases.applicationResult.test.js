@@ -929,7 +929,7 @@ describe('pos use-cases application result contract', () => {
         });
 
         const result = await useCase({
-            files: [{ path: tempPath, mimetype: 'image/png', originalname: 'POS-703.png', size: 5 * 1024 * 1024 + 1 }],
+            files: [{ path: tempPath, mimetype: 'image/png', originalname: 'POS-703.png', size: 10 * 1024 * 1024 + 1 }],
             user: editableUser
         });
 

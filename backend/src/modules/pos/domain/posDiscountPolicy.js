@@ -43,6 +43,9 @@ export const resolvePosGovernedDiscount = async ({
 }) => {
     if (!draft || typeof draft !== 'object') return null;
     const type = text(draft.type).toLowerCase();
+    if (type && !STATUTORY_TYPES.has(type) && !text(draft.customer_name)) {
+        validationError('Customer name is required for this discount.', 'DISCOUNT_CUSTOMER_NAME_REQUIRED');
+    }
 
     if (type === 'promo') {
         const promo = resolveCommercialPromoApplication({
@@ -94,13 +97,18 @@ export const resolvePosGovernedDiscount = async ({
 
     if (type === 'employee') {
         const employeeId = positiveInt(draft.employee_id);
-        if (!employeeId || typeof findActiveEmployee !== 'function') {
-            validationError('A valid active employee ID is required.', 'EMPLOYEE_ID_REQUIRED');
+        if (employeeId) {
+            if (typeof findActiveEmployee !== 'function') {
+                validationError('A valid active employee ID is required.', 'EMPLOYEE_ID_REQUIRED');
+            }
+            const employee = await findActiveEmployee(employeeId);
+            if (!employee) validationError('Employee ID does not match an active employee.', 'EMPLOYEE_NOT_FOUND');
+            application.employee_id = String(employee.user_id);
+            application.employee_name = text(employee.username);
+        } else {
+            application.employee_id = null;
+            application.employee_name = null;
         }
-        const employee = await findActiveEmployee(employeeId);
-        if (!employee) validationError('Employee ID does not match an active employee.', 'EMPLOYEE_NOT_FOUND');
-        application.employee_id = String(employee.user_id);
-        application.employee_name = text(employee.username);
     }
 
     if (type === 'manual' && text(draft.reason).length < 3) {

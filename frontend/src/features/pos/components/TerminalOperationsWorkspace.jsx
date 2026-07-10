@@ -45,6 +45,7 @@ import {
   Trash2,
   TrendingUp,
   Truck,
+  Upload,
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -59,6 +60,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { useCreateItem, useDeleteItem, useUpdateItem } from '@/hooks/useItems.js';
 import {
   createFolder,
@@ -71,13 +73,14 @@ import {
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
 import {
   updateStorefrontCatalogOverride,
+  uploadStorefrontCatalogImage,
   uploadStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
   deleteStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
-import { deleteStorefrontAsset, getCompanyInfo, getAllSettings, updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
+import { deleteStorefrontAsset, getCompanyInfo, getAllSettings, updateSettingByKey, updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
 import { updateProfile } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
@@ -189,7 +192,17 @@ const money = (value) => Number(value || 0).toFixed(2);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
-const STOREFRONT_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const STOREFRONT_ITEM_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+
+const resolveStoredItemImageUrl = (urlOrPath) => {
+  const raw = String(urlOrPath || '').trim();
+  if (!raw) return '';
+  if (/^(data|blob):/i.test(raw)) return raw;
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('/uploads/') || raw.startsWith('/')) {
+    return resolveAssetUrl(raw);
+  }
+  return resolveAssetUrl(`/uploads/${raw.replace(/^\/+/, '')}`);
+};
 
 const parseStorefrontItemImageGallery = (value) => {
   if (Array.isArray(value)) return value;
@@ -204,17 +217,22 @@ const parseStorefrontItemImageGallery = (value) => {
 
 const normalizeStorefrontItemGallery = (item = {}) => {
   const entries = parseStorefrontItemImageGallery(item?.storefront_image_gallery);
-  const primaryUrl = item?.storefront_image_url || null;
+  const primaryUrl = resolveStoredItemImageUrl(item?.storefront_image_url || item?.storefront_image_path || null) || null;
   const gallery = entries
     .map((entry, index) => ({
       path: entry?.path || null,
-      url: entry?.url || entry?.image_url || entry,
+      url: resolveStoredItemImageUrl(entry?.url || entry?.image_url || entry?.path || entry),
       is_primary: index === 0,
       sort_order: index
     }))
     .filter((entry) => entry.url || entry.path);
   if (primaryUrl && !gallery.some((entry) => entry.url === primaryUrl)) {
-    gallery.unshift({ path: item?.storefront_image_path || null, url: primaryUrl, is_primary: true, sort_order: 0 });
+    gallery.unshift({
+      path: item?.storefront_image_path || null,
+      url: primaryUrl,
+      is_primary: true,
+      sort_order: 0
+    });
   }
   return gallery.map((entry, index) => ({
     ...entry,
@@ -276,6 +294,8 @@ const createBlankStorefrontPromo = () => ({
   used_count: 0,
   valid_time_start: '',
   valid_time_end: '',
+  valid_from: '',
+  valid_until: '',
   target_item_ids: [],
   active: false
 });
@@ -293,6 +313,8 @@ const normalizeStorefrontPromoConfig = (raw = {}) => {
     used_count: promo.used_count == null || promo.used_count === '' ? 0 : Number(promo.used_count),
     valid_time_start: String(promo.valid_time_start || ''),
     valid_time_end: String(promo.valid_time_end || ''),
+    valid_from: String(promo.valid_from || ''),
+    valid_until: String(promo.valid_until || ''),
     target_item_ids: normalizePositiveIntegerList(promo.target_item_ids),
     active: promo.active === true
   };
@@ -316,6 +338,19 @@ const hasMeaningfulStorefrontPromo = (promo) => Boolean(
   || promo?.active === true
   || normalizePositiveIntegerList(promo?.target_item_ids).length > 0
 );
+const getStorefrontPromoDate = () => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+const isStorefrontPromoExpired = (promo) => {
+  const validUntil = String(promo?.valid_until || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(validUntil) && validUntil < getStorefrontPromoDate();
+};
 
 const parseJsonObjectSetting = (raw) => {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -768,7 +803,7 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !canSubmitOpenShift}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
@@ -973,7 +1008,7 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !canSubmitOpenShift}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
@@ -1477,6 +1512,24 @@ function ItemsWorkspace({
     foodCategoryOptions.forEach((option) => labels.set(option.value, option.label));
     return labels;
   }, [foodCategoryOptions]);
+  const createFoodCategorySuggestions = useMemo(() => {
+    const query = String(createForm.pos_category || '').trim().toLowerCase();
+    return foodCategoryOptions
+      .map((option) => String(option?.name || '').trim())
+      .filter(Boolean)
+      .filter((name, index, values) => values.findIndex((value) => normalizeFolderNameKey(value) === normalizeFolderNameKey(name)) === index)
+      .filter((name) => query.length === 0 || normalizeFolderNameKey(name).includes(query))
+      .slice(0, 8);
+  }, [createForm.pos_category, foodCategoryOptions]);
+  const editFoodCategorySuggestions = useMemo(() => {
+    const query = String(editForm.pos_category || '').trim().toLowerCase();
+    return foodCategoryOptions
+      .map((option) => String(option?.name || '').trim())
+      .filter(Boolean)
+      .filter((name, index, values) => values.findIndex((value) => normalizeFolderNameKey(value) === normalizeFolderNameKey(name)) === index)
+      .filter((name) => query.length === 0 || normalizeFolderNameKey(name).includes(query))
+      .slice(0, 8);
+  }, [editForm.pos_category, foodCategoryOptions]);
 
   const resolveFoodCategorySelection = useCallback((selection = '') => {
     const normalizedSelection = String(selection || '').trim();
@@ -1684,13 +1737,13 @@ function ItemsWorkspace({
 
   const handleSelectCreateImageFiles = (files) => {
     const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
-    const remainingSlots = Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedImageFiles.length, 0);
-    const filesToAdd = normalizedFiles.slice(0, remainingSlots);
-    if (normalizedFiles.length > filesToAdd.length) {
-      toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be selected. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+    if (normalizedFiles.length === 0) return;
+    const firstFile = normalizedFiles[0];
+    if (firstFile.size > STOREFRONT_ITEM_IMAGE_MAX_BYTES) {
+      toast.error(`Cannot upload ${firstFile.name || 'item image'}: image size must be 10 MB or smaller.`);
+      return;
     }
-    if (filesToAdd.length === 0) return;
-    setSelectedImageFiles((current) => [...current, ...filesToAdd].slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT));
+    setSelectedImageFiles([firstFile]);
   };
 
   const removeSelectedCreateImageFile = (imageIndex) => {
@@ -1701,28 +1754,21 @@ function ItemsWorkspace({
     const itemId = item?.item_id;
     const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
     if (!itemId || normalizedFiles.length === 0) return;
-    const currentGallery = normalizeStorefrontItemGallery(item);
-    const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - currentGallery.length;
-    if (remainingSlots <= 0) {
-      toast.error(`Item image gallery is limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images per item.`);
+    const fileToUpload = normalizedFiles[0];
+    if (fileToUpload.size > STOREFRONT_ITEM_IMAGE_MAX_BYTES) {
+      toast.error(`Cannot upload ${fileToUpload.name || 'item image'}: image size must be 10 MB or smaller.`);
       return;
-    }
-    const filesToUpload = normalizedFiles.slice(0, remainingSlots);
-    const oversizedFile = filesToUpload.find((file) => Number(file?.size || 0) > STOREFRONT_ITEM_IMAGE_MAX_BYTES);
-    if (oversizedFile) {
-      toast.error(`Cannot upload ${oversizedFile.name || 'item image'}: image size must be 5 MB or smaller.`);
-      return;
-    }
-    if (normalizedFiles.length > remainingSlots) {
-      toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
     }
 
     try {
-      await uploadStorefrontCatalogImages(itemId, filesToUpload);
+      setPersistingEditAssets(true);
+      await uploadStorefrontCatalogImage(itemId, fileToUpload);
       await loadItems();
-      toast.success(filesToUpload.length > 1 ? `Item gallery updated for ${item.name}` : `Item image updated for ${item.name}`);
+      toast.success(`Item image updated for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to upload item image');
+    } finally {
+      setPersistingEditAssets(false);
     }
   };
 
@@ -2360,53 +2406,55 @@ function ItemsWorkspace({
               <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Images</label>
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Image</label>
                     <p className="mt-0.5 text-[11px] leading-normal text-[#64748B]">
-                      These images will be used for both POS and storefront visibility.
+                      The same image will be used for POS and storefront visibility.
                     </p>
                   </div>
 
-                  <div className="flex h-56 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50">
-                    {selectedImageFiles.length > 0 ? (
-                      <SelectedItemImageCarousel
-                        files={selectedImageFiles}
-                        itemName={createForm.name || 'Product'}
+                  <label
+                    htmlFor="pos-item-image"
+                    className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/10 p-5 text-center transition-colors hover:bg-blue-50/20 ${(creatingItem || postCreateSaving) ? 'cursor-not-allowed opacity-50' : ''}`}
+                  >
+                    <Upload className="mx-auto h-10 w-10 text-blue-500" aria-hidden="true" />
+                    <p className="mt-3 text-xs sm:text-sm font-semibold text-[#0F172A]">Click to upload product image</p>
+                    <p className="mt-1 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (Max 10MB)</p>
+                    <p className="mt-3 text-[10px] leading-normal text-[#94A3B8]">
+                      Only 1 image per item. The same image will be used for POS and storefront visibility.
+                    </p>
+                    <input
+                      id="pos-item-image"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={creatingItem || postCreateSaving}
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files || []);
+                        if (files.length) {
+                          handleSelectCreateImageFiles(files);
+                        }
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+
+                  {selectedImageFiles.length > 0 && (
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                      <img
+                        src={URL.createObjectURL(selectedImageFiles[0])}
+                        alt="Product preview"
+                        className="h-40 w-full rounded-xl object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeSelectedCreateImageFile(0)}
                         disabled={creatingItem || postCreateSaving}
-                        onRemove={removeSelectedCreateImageFile}
-                      />
-                    ) : (
-                      <div className="px-6 text-center">
-                        <ImagePlus className="mx-auto h-8 w-8 text-slate-300" />
-                        <p className="mt-3 text-sm font-semibold text-[#334155]">Add product images</p>
-                        <p className="mt-1 text-xs text-[#64748B]">These images will be used for POS and storefront visibility.</p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="pos-item-image" className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Item images</Label>
-                    <label
-                      htmlFor="pos-item-image"
-                      className={`mt-2 flex h-11 cursor-pointer items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50 ${(creatingItem || postCreateSaving || selectedImageFiles.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) ? 'cursor-not-allowed opacity-50' : ''}`}
-                    >
-                      Choose Item Images
-                      <input
-                        id="pos-item-image"
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        disabled={creatingItem || postCreateSaving || selectedImageFiles.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
-                        onChange={(event) => {
-                          handleSelectCreateImageFiles(Array.from(event.target.files || []));
-                          event.target.value = '';
-                        }}
-                      />
-                    </label>
-                    <p className="mt-1 text-xs text-[#64748B]">
-                      {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedImageFiles.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
-                    </p>
-                  </div>
+                        className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80 text-white hover:bg-slate-900 transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Right Column - Form Fields */}
@@ -2426,7 +2474,7 @@ function ItemsWorkspace({
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     {/* Item Name */}
-                    <div className="space-y-1.5 sm:col-span-2">
+                    <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Item Name <span className="text-rose-500">*</span>
                       </label>
@@ -2440,25 +2488,39 @@ function ItemsWorkspace({
                     </div>
 
                     {/* Food Category */}
-                    <div className="space-y-1.5 sm:col-span-2">
+                    <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Food Category <span className="text-rose-500">*</span>
                       </label>
-                      <div className="relative">
-                        <select
-                          value={createForm.pos_category}
-                          onChange={(event) => setCreateForm((current) => ({ ...current, pos_category: event.target.value }))}
-                          className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm font-medium text-[#0F172A] shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          disabled={creatingItem || postCreateSaving}
-                        >
-                          {foodCategoryOptions.map((option) => (
-                            <option key={option.value} value={option.name}>
-                              {option.label}
-                            </option>
+                      <Input
+                        list="pos-items-create-food-category-options"
+                        value={createForm.pos_category}
+                        onChange={(event) => setCreateForm((current) => ({ ...current, pos_category: event.target.value }))}
+                        className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                        disabled={creatingItem || postCreateSaving}
+                        placeholder="Type or select a food category"
+                        autoComplete="off"
+                      />
+                      <datalist id="pos-items-create-food-category-options">
+                        {createFoodCategorySuggestions.map((categoryName) => (
+                          <option key={categoryName} value={categoryName} />
+                        ))}
+                      </datalist>
+                      {createFoodCategorySuggestions.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {createFoodCategorySuggestions.map((categoryName) => (
+                            <button
+                              key={categoryName}
+                              type="button"
+                              onClick={() => setCreateForm((current) => ({ ...current, pos_category: categoryName }))}
+                              className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+                              disabled={creatingItem || postCreateSaving}
+                            >
+                              {categoryName}
+                            </button>
                           ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                      </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Stock Quantity */}
@@ -2478,26 +2540,22 @@ function ItemsWorkspace({
                     </div>
 
                     {/* Always Available Toggle Switch */}
-                    <div className="flex flex-col justify-end">
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={createForm.pos_always_available}
-                        onClick={() => setCreateForm((current) => ({
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                      <div className="min-w-0">
+                        <label htmlFor="pos-items-create-always-available" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                          Always Available
+                        </label>
+                        <span className="block text-[10px] text-[#64748B]">Allow POS sales at zero stock.</span>
+                      </div>
+                      <Switch
+                        id="pos-items-create-always-available"
+                        checked={createForm.pos_always_available === true}
+                        onCheckedChange={(checked) => setCreateForm((current) => ({
                           ...current,
-                          pos_always_available: !current.pos_always_available
+                          pos_always_available: Boolean(checked)
                         }))}
                         disabled={creatingItem || postCreateSaving}
-                        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-3.5 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">Always Available</span>
-                          <span className="block truncate text-[10px] text-[#64748B]">Allow POS sales at zero stock.</span>
-                        </span>
-                        <span className={`relative h-5.5 w-10 shrink-0 rounded-full transition-colors ${createForm.pos_always_available ? 'bg-blue-600' : 'bg-slate-200'}`}>
-                          <span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow transition-transform ${createForm.pos_always_available ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                        </span>
-                      </button>
+                      />
                     </div>
 
                     {/* Selling Price */}
@@ -2550,39 +2608,25 @@ function ItemsWorkspace({
                     </div>
 
                     {/* Senior/PWD Eligible Toggle switch */}
-                    <div className="flex flex-col justify-end">
-                      <button
-                        type="button"
-                        role="switch"
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                      <div className="min-w-0">
+                        <label htmlFor="pos-items-create-senior-pwd" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                          Senior/PWD Eligible
+                        </label>
+                        <span className="block text-[10px] text-[#64748B]">Allow statutory discount selection.</span>
+                      </div>
+                      <Switch
+                        id="pos-items-create-senior-pwd"
                         aria-checked={createForm.senior_pwd_discount_eligible}
-                        aria-label="Senior and PWD discount eligible"
-                        onClick={() => setCreateForm((current) => ({
+                        checked={createForm.senior_pwd_discount_eligible === true}
+                        onCheckedChange={(checked) => setCreateForm((current) => ({
                           ...current,
-                          senior_pwd_discount_eligible: !current.senior_pwd_discount_eligible
+                          senior_pwd_discount_eligible: Boolean(checked)
                         }))}
                         disabled={creatingItem || postCreateSaving}
-                        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-3.5 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">Senior/PWD Eligible</span>
-                          <span className="block truncate text-[10px] text-[#64748B]">Allow statutory discount selection.</span>
-                        </span>
-                        <span className={`relative h-5.5 w-10 shrink-0 rounded-full transition-colors ${createForm.senior_pwd_discount_eligible ? 'bg-blue-600' : 'bg-slate-200'}`}>
-                          <span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow transition-transform ${createForm.senior_pwd_discount_eligible ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                        </span>
-                      </button>
+                      />
                     </div>
 
-                    {/* Barcode notification box */}
-                    <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-3.5 py-2.5 sm:col-span-2">
-                      <Barcode className="h-5 w-5 shrink-0 text-blue-500" aria-hidden="true" />
-                      <div className="text-xs font-medium text-blue-700">
-                        <span className="block font-bold">Barcode</span>
-                        <span className="block mt-0.5 leading-normal text-blue-600/90">
-                          POS will generate the barcode from the saved item ID when you click Save Item.
-                        </span>
-                      </div>
-                    </div>
 
                     {/* Description / notes */}
                     <div className="space-y-1.5 sm:col-span-2">
@@ -2668,61 +2712,59 @@ function ItemsWorkspace({
               <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Images</label>
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Image</label>
                     <p className="mt-0.5 text-[11px] leading-normal text-[#64748B]">
-                      These images update the POS and storefront record.
+                      The same image will be used for POS and storefront visibility.
                     </p>
                   </div>
 
                   {(() => {
                     const editGallery = normalizeStorefrontItemGallery(activeEditItem || {});
-                    const editRemainingSlots = Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - editGallery.length, 0);
                     return (
                       <>
-                        <div className="flex h-56 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50">
-                          {editGallery.length > 0 ? (
-                            <StorefrontImageCarousel
-                              gallery={editGallery}
-                              itemName={activeEditItem?.name || 'Product'}
-                              variant="wizard"
-                              onSetPrimary={(index) => handleSetPrimaryStorefrontImage(activeEditItem, index)}
-                              onRemove={(index) => handleDeleteStorefrontImage(activeEditItem, index)}
-                            />
-                          ) : (
-                            <div className="px-6 text-center">
-                              <ImagePlus className="mx-auto h-8 w-8 text-slate-300" />
-                              <p className="mt-3 text-sm font-semibold text-[#334155]">Add item images</p>
-                              <p className="mt-1 text-xs text-[#64748B]">These images update the POS and storefront record.</p>
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor="pos-item-edit-image" className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Item images</Label>
-                          <label
-                            htmlFor="pos-item-edit-image"
-                            className={`mt-2 flex h-11 cursor-pointer items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50 ${(savingItem || persistingEditAssets || editRemainingSlots === 0) ? 'cursor-not-allowed opacity-50' : ''}`}
-                          >
-                            Add Item Images
-                            <input
-                              id="pos-item-edit-image"
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              className="hidden"
-                              disabled={savingItem || persistingEditAssets || editRemainingSlots === 0}
-                              onChange={(event) => {
-                                const files = Array.from(event.target.files || []);
-                                if (files.length && activeEditItem) {
-                                  handleUploadStorefrontImage(activeEditItem, files);
-                                }
-                                event.target.value = '';
-                              }}
-                            />
-                          </label>
-                          <p className="mt-1 text-xs text-[#64748B]">
-                            {editRemainingSlots} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
+                        <label
+                          htmlFor="pos-item-edit-image"
+                          className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/10 p-5 text-center transition-colors hover:bg-blue-50/20 ${(savingItem || persistingEditAssets) ? 'cursor-not-allowed opacity-50' : ''}`}
+                        >
+                          <Upload className="mx-auto h-10 w-10 text-blue-500" aria-hidden="true" />
+                          <p className="mt-3 text-xs sm:text-sm font-semibold text-[#0F172A]">Click to upload product image</p>
+                          <p className="mt-1 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (Max 10MB)</p>
+                          <p className="mt-3 text-[10px] leading-normal text-[#94A3B8]">
+                            Only 1 image per item. The same image will be used for POS and storefront visibility.
                           </p>
-                        </div>
+                          <input
+                            id="pos-item-edit-image"
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={savingItem || persistingEditAssets}
+                            onChange={(event) => {
+                              const files = Array.from(event.target.files || []);
+                              if (files.length && activeEditItem) {
+                                handleUploadStorefrontImage(activeEditItem, files);
+                              }
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+
+                        {editGallery.length > 0 && (
+                          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                            <img
+                              src={editGallery[0].url}
+                              alt="Product preview"
+                              className="h-40 w-full rounded-xl object-contain"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStorefrontImage(activeEditItem)}
+                              disabled={savingItem || persistingEditAssets}
+                              className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80 text-white hover:bg-slate-900 transition-colors"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
                       </>
                     );
                   })()}
@@ -2730,7 +2772,7 @@ function ItemsWorkspace({
 
                 <div className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5 sm:col-span-2">
+                    <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Item Name <span className="text-rose-500">*</span>
                       </label>
@@ -2742,25 +2784,39 @@ function ItemsWorkspace({
                       />
                     </div>
 
-                    <div className="space-y-1.5 sm:col-span-2">
+                    <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Food Category <span className="text-rose-500">*</span>
                       </label>
-                      <div className="relative">
-                        <select
-                          value={editForm.pos_category}
-                          onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
-                          className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm font-medium text-[#0F172A] shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          disabled={savingItem || persistingEditAssets}
-                        >
-                          {foodCategoryOptions.map((option) => (
-                            <option key={option.value} value={option.name}>
-                              {option.label}
-                            </option>
+                      <Input
+                        list="pos-items-edit-food-category-options"
+                        value={editForm.pos_category}
+                        onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
+                        className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                        disabled={savingItem || persistingEditAssets}
+                        placeholder="Type or select a food category"
+                        autoComplete="off"
+                      />
+                      <datalist id="pos-items-edit-food-category-options">
+                        {editFoodCategorySuggestions.map((categoryName) => (
+                          <option key={categoryName} value={categoryName} />
+                        ))}
+                      </datalist>
+                      {editFoodCategorySuggestions.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {editFoodCategorySuggestions.map((categoryName) => (
+                            <button
+                              key={categoryName}
+                              type="button"
+                              onClick={() => setEditForm((current) => ({ ...current, pos_category: categoryName }))}
+                              className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+                              disabled={savingItem || persistingEditAssets}
+                            >
+                              {categoryName}
+                            </button>
                           ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                      </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">
@@ -2778,26 +2834,22 @@ function ItemsWorkspace({
                       />
                     </div>
 
-                    <div className="flex flex-col justify-end">
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={editForm.pos_always_available}
-                        onClick={() => setEditForm((current) => ({
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                      <div className="min-w-0">
+                        <label htmlFor="pos-items-edit-always-available" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                          Always Available
+                        </label>
+                        <span className="block text-[10px] text-[#64748B]">Allow POS sales at zero stock.</span>
+                      </div>
+                      <Switch
+                        id="pos-items-edit-always-available"
+                        checked={editForm.pos_always_available === true}
+                        onCheckedChange={(checked) => setEditForm((current) => ({
                           ...current,
-                          pos_always_available: !current.pos_always_available
+                          pos_always_available: Boolean(checked)
                         }))}
                         disabled={savingItem || persistingEditAssets}
-                        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-3.5 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">Always Available</span>
-                          <span className="block truncate text-[10px] text-[#64748B]">Allow POS sales at zero stock.</span>
-                        </span>
-                        <span className={`relative h-5.5 w-10 shrink-0 rounded-full transition-colors ${editForm.pos_always_available ? 'bg-blue-600' : 'bg-slate-200'}`}>
-                          <span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow transition-transform ${editForm.pos_always_available ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                        </span>
-                      </button>
+                      />
                     </div>
 
                     <div className="space-y-1.5">
@@ -2836,27 +2888,23 @@ function ItemsWorkspace({
                       </div>
                     </div>
 
-                    <div className="flex flex-col justify-end">
-                      <button
-                        type="button"
-                        role="switch"
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                      <div className="min-w-0">
+                        <label htmlFor="pos-items-edit-senior-pwd" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                          Senior/PWD Eligible
+                        </label>
+                        <span className="block text-[10px] text-[#64748B]">Allow statutory discount selection.</span>
+                      </div>
+                      <Switch
+                        id="pos-items-edit-senior-pwd"
                         aria-checked={editForm.senior_pwd_discount_eligible}
-                        aria-label="Senior and PWD discount eligible"
-                        onClick={() => setEditForm((current) => ({
+                        checked={editForm.senior_pwd_discount_eligible === true}
+                        onCheckedChange={(checked) => setEditForm((current) => ({
                           ...current,
-                          senior_pwd_discount_eligible: !current.senior_pwd_discount_eligible
+                          senior_pwd_discount_eligible: Boolean(checked)
                         }))}
                         disabled={savingItem || persistingEditAssets}
-                        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-3.5 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">Senior/PWD Eligible</span>
-                          <span className="block truncate text-[10px] text-[#64748B]">Allow statutory discount selection.</span>
-                        </span>
-                        <span className={`relative h-5.5 w-10 shrink-0 rounded-full transition-colors ${editForm.senior_pwd_discount_eligible ? 'bg-blue-600' : 'bg-slate-200'}`}>
-                          <span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow transition-transform ${editForm.senior_pwd_discount_eligible ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                        </span>
-                      </button>
+                      />
                     </div>
 
                     <div className="space-y-1.5 sm:col-span-2">
@@ -3151,6 +3199,8 @@ function SettingsWorkspace({
     storefrontPromoUsedCount: '0',
     storefrontPromoValidTimeStart: '',
     storefrontPromoValidTimeEnd: '',
+    storefrontPromoValidFrom: '',
+    storefrontPromoValidUntil: '',
     storefrontPromoTargetItemIds: [],
     storefrontPromoActive: false,
     storefrontPromoId: '',
@@ -3216,6 +3266,8 @@ function SettingsWorkspace({
       used_count: storefrontForm.storefrontPromoUsedCount,
       valid_time_start: storefrontForm.storefrontPromoValidTimeStart,
       valid_time_end: storefrontForm.storefrontPromoValidTimeEnd,
+      valid_from: storefrontForm.storefrontPromoValidFrom,
+      valid_until: storefrontForm.storefrontPromoValidUntil,
       target_item_ids: storefrontForm.storefrontPromoTargetItemIds,
       active: storefrontForm.storefrontPromoActive
     });
@@ -3462,6 +3514,8 @@ function SettingsWorkspace({
         storefrontPromoUsedCount: selectedStorefrontPromo.used_count == null ? '0' : String(selectedStorefrontPromo.used_count),
         storefrontPromoValidTimeStart: String(selectedStorefrontPromo.valid_time_start || ''),
         storefrontPromoValidTimeEnd: String(selectedStorefrontPromo.valid_time_end || ''),
+        storefrontPromoValidFrom: String(selectedStorefrontPromo.valid_from || ''),
+        storefrontPromoValidUntil: String(selectedStorefrontPromo.valid_until || ''),
         storefrontPromoTargetItemIds: normalizePositiveIntegerList(selectedStorefrontPromo.target_item_ids),
         storefrontPromoActive: selectedStorefrontPromo.active === true,
         storefrontFollowEnabled: settingsPayload?.storefront_follow_enabled?.value === true,
@@ -3871,6 +3925,8 @@ function SettingsWorkspace({
     used_count: form.storefrontPromoUsedCount === '' ? 0 : Number(form.storefrontPromoUsedCount),
     valid_time_start: String(form.storefrontPromoValidTimeStart || '').trim(),
     valid_time_end: String(form.storefrontPromoValidTimeEnd || '').trim(),
+    valid_from: String(form.storefrontPromoValidFrom || '').trim(),
+    valid_until: String(form.storefrontPromoValidUntil || '').trim(),
     target_item_ids: normalizePositiveIntegerList(form.storefrontPromoTargetItemIds),
     active: form.storefrontPromoActive === true
   }), [storefrontForm]);
@@ -3901,6 +3957,8 @@ function SettingsWorkspace({
     storefrontPromoUsedCount: promo?.used_count == null ? '0' : String(promo.used_count),
     storefrontPromoValidTimeStart: String(promo?.valid_time_start || ''),
     storefrontPromoValidTimeEnd: String(promo?.valid_time_end || ''),
+    storefrontPromoValidFrom: String(promo?.valid_from || ''),
+    storefrontPromoValidUntil: String(promo?.valid_until || ''),
     storefrontPromoTargetItemIds: normalizePositiveIntegerList(promo?.target_item_ids),
     storefrontPromoActive: promo?.active === true
   }), []);
@@ -4029,6 +4087,34 @@ function SettingsWorkspace({
       setSavingTab('');
     }
   }, [hasActivePrimaryStorefrontLocation, hydrateSettingsWorkspace, mergeCurrentStorefrontPromoList, onStorefrontSetupSaved, openValidationModal, storefrontForm, storefrontLocationRequired]);
+
+  const handleCustomerAccessModeChange = useCallback(async (nextMode) => {
+    const normalizedMode = normalizeCustomerAccessMode(nextMode);
+    const previousMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMode);
+    if (!normalizedMode || normalizedMode === previousMode) return;
+
+    setStorefrontForm((current) => ({ ...current, customerAccessMode: normalizedMode }));
+    setSavingTab('storefront_access_mode');
+    try {
+      await updateSettingByKey('customer_access_mode', normalizedMode);
+      const refreshedSettings = await getAllSettings({ force: true });
+      const refreshedRuntime = mapCustomerAccessRuntimeSettings(refreshedSettings);
+      setStorefrontForm((current) => ({
+        ...current,
+        ...refreshedRuntime
+      }));
+      await onStorefrontSetupSaved?.();
+      toast.success('Customer access mode updated.');
+    } catch (error) {
+      setStorefrontForm((current) => ({
+        ...current,
+        customerAccessMode: previousMode
+      }));
+      toast.error(error?.response?.data?.message || 'Failed to update customer access mode.');
+    } finally {
+      setSavingTab('');
+    }
+  }, [onStorefrontSetupSaved, storefrontForm.customerAccessMode]);
 
   const addStorefrontPromoTargetItem = useCallback(() => {
     const selectedItemId = toPositiveInt(storefrontPromoCandidateItemId);
@@ -5256,8 +5342,8 @@ function SettingsWorkspace({
             id="pos-customer-access-mode"
             className="sr-only"
             value={requestedCustomerAccessMode}
-            onChange={(event) => setStorefrontForm((current) => ({ ...current, customerAccessMode: normalizeCustomerAccessMode(event.target.value) }))}
-            disabled={locked || loading}
+            onChange={(event) => void handleCustomerAccessModeChange(event.target.value)}
+            disabled={locked || loading || savingTab === 'storefront_access_mode'}
           >
             {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
               <option
@@ -5275,7 +5361,7 @@ function SettingsWorkspace({
               const ModeIcon = option.icon;
               const isSelected = requestedCustomerAccessMode === option.value;
               const isUnavailable = CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[platformMaxCustomerAccessMode];
-              const isDisabled = locked || loading || isUnavailable;
+              const isDisabled = locked || loading || savingTab === 'storefront_access_mode' || isUnavailable;
               return (
                 <button
                   key={option.value}
@@ -5303,7 +5389,9 @@ function SettingsWorkspace({
                   {isSelected ? (
                     <span className="col-span-2 mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700 sm:mt-auto">
                       <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                      {effectiveCustomerAccessMode === option.value ? 'Applied automatically' : `Requested; effective ${effectiveCustomerAccessMode}`}
+                      {savingTab === 'storefront_access_mode'
+                        ? 'Saving automatically'
+                        : (effectiveCustomerAccessMode === option.value ? 'Applied automatically' : `Requested; effective ${effectiveCustomerAccessMode}`)}
                     </span>
                   ) : null}
                 </button>
@@ -5600,8 +5688,8 @@ function SettingsWorkspace({
                           <p className="text-[13px] font-black text-[#0F172A]">{promo.promo_code || 'No code yet'}</p>
                           <p className="text-[11px] font-semibold text-slate-500">{promo.title || promo.badge || 'Untitled promo'}</p>
                         </div>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${promo.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                          {promo.active ? 'Active' : 'Off'}
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${isStorefrontPromoExpired(promo) ? 'bg-rose-100 text-rose-700' : promo.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {isStorefrontPromoExpired(promo) ? 'Expired' : promo.active ? 'Active' : 'Off'}
                         </span>
                       </div>
                     </button>
@@ -5664,6 +5752,14 @@ function SettingsWorkspace({
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">End Time</Label>
                 <Input type="time" value={storefrontForm.storefrontPromoValidTimeEnd} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeEnd: event.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">Start Date</Label>
+                <Input type="date" value={storefrontForm.storefrontPromoValidFrom} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidFrom: event.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">End Date</Label>
+                <Input type="date" value={storefrontForm.storefrontPromoValidUntil} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidUntil: event.target.value }))} />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <div className="space-y-1">
@@ -6007,8 +6103,6 @@ export default function TerminalOperationsWorkspace({
   handleIncomingOrderStatusChange = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
-  handleOpenIncomingOrderHistory = () => {},
-  incomingHistoryOpeningId = null,
   refreshIncomingOrders = () => {},
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
@@ -6043,8 +6137,6 @@ export default function TerminalOperationsWorkspace({
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
-          handleOpenIncomingOrderHistory={handleOpenIncomingOrderHistory}
-          incomingHistoryOpeningId={incomingHistoryOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}
           locationsState={locationsState}
           queueLocationScopeId={queueLocationScopeId}
@@ -6193,8 +6285,6 @@ export default function TerminalOperationsWorkspace({
     handleIncomingOrderStatusChange,
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
-    handleOpenIncomingOrderHistory,
-    incomingHistoryOpeningId,
     handleOpenShift,
     handleSwitchShiftLocation,
     handleRecordCashEvent,

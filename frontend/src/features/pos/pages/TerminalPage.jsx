@@ -5,6 +5,7 @@ import {
   closeTerminalShift,
   fetchIncomingOnlineOrders,
   fetchPosCatalog,
+  fetchPosTransactionById,
   fetchCurrentTerminalShift,
   fetchTerminalTodayDashboard,
   openPosDeviceDrawer,
@@ -89,8 +90,10 @@ import {
   resolveTenantSetupStepValue,
   resolveTenantSetupViewMode
 } from '../utils/setupFlow.js';
+import { printOrderWithIminBridge } from '../utils/iminHardwareBridge.js';
 
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
+import OnlineOrderDetailsModal from '../components/OnlineOrderDetailsModal.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -133,7 +136,7 @@ const OPERATIONS_VIEW_MODES = [
 ];
 const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'settings_profile', 'settings_pos', 'settings_storefront'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'terminal_setup']);
-const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items']);
+const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items', 'history']);
 const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);
 const CASHIER_ALLOWED_VIEW_MODES = new Set([
   ...CHECKOUT_VIEW_MODES,
@@ -485,7 +488,10 @@ export default function TerminalPage() {
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
-  const [incomingHistoryOpeningId, setIncomingHistoryOpeningId] = useState(null);
+  const [incomingOrderModalOpen, setIncomingOrderModalOpen] = useState(false);
+  const [incomingOrderDetail, setIncomingOrderDetail] = useState(null);
+  const [incomingOrderModalMode, setIncomingOrderModalMode] = useState('view');
+  const [incomingOrderPrintLoading, setIncomingOrderPrintLoading] = useState(false);
   const [catalogSearchPrefill, setCatalogSearchPrefill] = useState(() => {
     if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
@@ -1296,7 +1302,7 @@ export default function TerminalPage() {
     if (!token) {
       if (readStoredTerminalLockReason() === 'shift_closed') {
         setStoredTerminalLock(true);
-        setStoredTerminalLockReason('full_auth');
+        setStoredTerminalLockReason('shift_closed');
       }
       resetSettingsAccessPinState();
       setTerminalUser(null);
@@ -2164,20 +2170,49 @@ export default function TerminalPage() {
     resetDgfyPosIdentity({ nextEmail: '', revokeServerSession: true });
   }, [resetDgfyPosIdentity]);
 
+  const resolveCompanyTokenFromEmailLookupState = useCallback((identifier, preferredCompanyToken = '') => {
+    const normalizedIdentifier = String(identifier || '').trim().toLowerCase();
+    const normalizedPreferred = String(preferredCompanyToken || '').trim();
+    const lookupEmail = String(emailCompanyLookup?.email || '').trim().toLowerCase();
+    if (!normalizedIdentifier || normalizedIdentifier !== lookupEmail) return '';
+    const lookupCompanies = Array.isArray(emailCompanyLookup?.companies) ? emailCompanyLookup.companies : [];
+    if (lookupCompanies.length === 0) return '';
+    if (
+      normalizedPreferred
+      && lookupCompanies.some((company) => String(company?.company_token || '').trim() === normalizedPreferred)
+    ) {
+      return normalizedPreferred;
+    }
+    if (lookupCompanies.length === 1) {
+      return String(lookupCompanies[0]?.company_token || '').trim();
+    }
+    return '';
+  }, [emailCompanyLookup]);
+
+  const resolveCompanyTokenForEmailIdentifier = useCallback(async (identifier, companyTokenHint = '') => {
+    const normalizedIdentifier = String(identifier || '').trim();
+    const currentCompanyToken = String(companyTokenHint || getCompanyToken() || '').trim();
+    const cachedCompanyToken = resolveCompanyTokenFromEmailLookupState(normalizedIdentifier, currentCompanyToken);
+    if (cachedCompanyToken) {
+      return cachedCompanyToken;
+    }
+    try {
+      return String(await lookupCompanyToken(normalizedIdentifier, currentCompanyToken) || '').trim();
+    } catch (lookupError) {
+      if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
+        throw lookupError;
+      }
+      return currentCompanyToken;
+    }
+  }, [resolveCompanyTokenFromEmailLookupState]);
+
   const authenticateCashierCredentials = async ({ identifier, password, companyTokenHint = '' }) => {
     const normalizedIdentifier = String(identifier || '').trim();
     const normalizedPassword = String(password || '');
     const currentCompanyToken = String(companyTokenHint || getCompanyToken() || '').trim();
     let resolvedCompanyToken = '';
     if (normalizedIdentifier.includes('@')) {
-      try {
-        resolvedCompanyToken = String(await lookupCompanyToken(normalizedIdentifier, currentCompanyToken) || '').trim();
-      } catch (lookupError) {
-        if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
-          throw lookupError;
-        }
-        resolvedCompanyToken = currentCompanyToken;
-      }
+      resolvedCompanyToken = await resolveCompanyTokenForEmailIdentifier(normalizedIdentifier, currentCompanyToken);
     } else {
       resolvedCompanyToken = currentCompanyToken;
     }
@@ -2274,14 +2309,7 @@ export default function TerminalPage() {
     try {
       let resolvedCompanyToken = companyTokenHint;
       if (identifier.includes('@')) {
-        try {
-          resolvedCompanyToken = String(await lookupCompanyToken(identifier, companyTokenHint) || '').trim();
-        } catch (lookupError) {
-          if (!companyTokenHint || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
-            throw lookupError;
-          }
-          resolvedCompanyToken = companyTokenHint;
-        }
+        resolvedCompanyToken = await resolveCompanyTokenForEmailIdentifier(identifier, companyTokenHint);
       }
       if (!resolvedCompanyToken) {
         throw createTerminalLoginError(
@@ -2492,7 +2520,7 @@ export default function TerminalPage() {
     const currentCompanyToken = String(getCompanyToken() || '').trim();
     let resolvedCompanyToken = '';
     try {
-      resolvedCompanyToken = String(await lookupCompanyToken(email, currentCompanyToken) || '').trim();
+      resolvedCompanyToken = await resolveCompanyTokenForEmailIdentifier(email, currentCompanyToken);
     } catch (lookupError) {
       if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
         throw lookupError;
@@ -2512,7 +2540,7 @@ export default function TerminalPage() {
       );
     } catch (error) {
       if (isCompanyTokenResolutionError(error)) {
-        resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
+        resolvedCompanyToken = await resolveCompanyTokenForEmailIdentifier(email, '');
         if (!resolvedCompanyToken) {
           throw createTerminalLoginError(
             'Unable to resolve company token for this account.',
@@ -3000,7 +3028,7 @@ export default function TerminalPage() {
         setPosViewMode('shift_controls');
         return;
       }
-      toast.success('Shift closed successfully. Cashier login is required for the next shift.');
+      toast.success('Shift closed successfully. Open a new shift manually when you are ready.');
       setCloseShiftConfirmOpen(false);
       setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
       setShiftState({
@@ -3008,32 +3036,26 @@ export default function TerminalPage() {
         shift: null,
         cashSummary: null
       });
-      setCashierUnlockSession(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
-      clearClientSession({
-        reason: 'shift_closed',
-        broadcast: true,
-        emitAuthEvents: true,
-        redirectTo: null
-      });
       setTerminalUnlockRequired(false);
       setTerminalUnlockMode('shift_start');
-      setStoredTerminalLock(true);
-      setStoredTerminalLockReason('shift_closed');
-      setLocked(true);
-      setTerminalUnlockForm({
-        terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId(),
+      setStoredTerminalLock(false);
+      setStoredTerminalLockReason('');
+      setLocked(false);
+      setTerminalUnlockForm((prev) => ({
+        ...prev,
+        terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId() || prev.terminalId,
         terminalPassword: '',
-        cashierEmail: '',
         cashierPassword: '',
         openingFloatAmount: '',
         openingNote: ''
-      });
+      }));
       setTerminalUnlockModalOpen(false);
-      setDrawerOpen(true);
+      setDrawerOpen(false);
       setMobileNavOpen(false);
       setPosViewMode('checkout');
+      await refreshOperationalContext();
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
         await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
@@ -3139,7 +3161,7 @@ export default function TerminalPage() {
     }
   };
 
-  const handleOpenIncomingOrderReceipt = (posTransactionId) => {
+  const handleOpenIncomingOrderReceipt = async (posTransactionId, { printMode = false } = {}) => {
     const normalizedId = Number.parseInt(posTransactionId, 10);
     if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
       toast.error('Invalid order reference.');
@@ -3149,41 +3171,51 @@ export default function TerminalPage() {
     if (incomingReceiptOpeningId !== null) return;
 
     setIncomingReceiptOpeningId(normalizedId);
-    setReceiptReturnViewMode(posViewMode);
-    setReceiptRequestId(normalizedId);
-    if (workspacePaneRef.current) {
-      workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    try {
+      const detail = await fetchPosTransactionById(normalizedId);
+      setIncomingOrderDetail(detail || null);
+      setIncomingOrderModalMode(printMode ? 'print' : 'view');
+      setIncomingOrderModalOpen(true);
+      setMobileNavOpen(false);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to load the active online order.');
+    } finally {
+      setIncomingReceiptOpeningId(null);
     }
-    setMobileNavOpen(false);
   };
 
-  const handleOpenIncomingOrderHistory = (order = {}) => {
-    const normalizedId = Number.parseInt(order?.pos_transaction_id, 10);
-    if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
-      toast.error('Invalid order reference.');
+  const handleIncomingOrderModalOpenChange = useCallback((open) => {
+    setIncomingOrderModalOpen(open);
+    if (!open) {
+      setIncomingOrderDetail(null);
+      setIncomingOrderModalMode('view');
+      setIncomingOrderPrintLoading(false);
+    }
+  }, []);
+
+  const handlePrintIncomingOrder = useCallback(async () => {
+    if (!incomingOrderDetail) {
+      toast.error('No active order is loaded for printing.');
       return;
     }
 
-    if (incomingHistoryOpeningId !== null) return;
-
-    const query = String(
-      order?.tracking_pin
-      || order?.invoice_number
-      || `#${normalizedId}`
-    ).trim();
-    if (!query) {
-      toast.error('No searchable reference found for this order.');
-      return;
+    setIncomingOrderPrintLoading(true);
+    try {
+      const result = printOrderWithIminBridge({
+        cart: Array.isArray(incomingOrderDetail.lines) ? incomingOrderDetail.lines : [],
+        terminalId: String(activeTerminalId || ''),
+        orderMethod: incomingOrderDetail.order_method || '',
+        fnbContext: null
+      });
+      if (result?.handled !== true && typeof window !== 'undefined' && typeof window.print === 'function') {
+        window.print();
+      }
+    } catch (error) {
+      toast.error(error?.message || 'Failed to print the active order.');
+    } finally {
+      setIncomingOrderPrintLoading(false);
     }
-
-    setIncomingHistoryOpeningId(normalizedId);
-    setHistoryRequestQuery(query);
-    setPosViewMode('history');
-    if (workspacePaneRef.current) {
-      workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-    setMobileNavOpen(false);
-  };
+  }, [activeTerminalId, incomingOrderDetail]);
 
   const handleCheckoutCompleted = useCallback(async () => {
     await refreshOperationalContext();
@@ -3437,7 +3469,6 @@ export default function TerminalPage() {
   const handleSkipShiftOpeningForAdmin = useCallback(() => {
     setAdminShiftPromptSkipped(true);
     setPosViewMode('shift_controls');
-    toast.message('Admin navigation mode active. Open a shift to start selling or close an active cashier shift.');
   }, []);
 
   const cashierResumeUnlock = terminalUnlockMode === 'cashier_resume';
@@ -4066,6 +4097,15 @@ export default function TerminalPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <OnlineOrderDetailsModal
+          open={incomingOrderModalOpen}
+          onOpenChange={handleIncomingOrderModalOpenChange}
+          order={incomingOrderDetail}
+          loading={incomingReceiptOpeningId !== null && !incomingOrderDetail}
+          mode={incomingOrderModalMode}
+          onPrint={handlePrintIncomingOrder}
+          printLoading={incomingOrderPrintLoading}
+        />
         <TerminalPageLayout
           locked={locked}
           isOnline={isOnline}
@@ -4133,9 +4173,7 @@ export default function TerminalPage() {
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
-          handleOpenIncomingOrderHistory={handleOpenIncomingOrderHistory}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
-          incomingHistoryOpeningId={incomingHistoryOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}
           setSidebarCollapsed={setSidebarCollapsed}
           activeShiftId={activeShiftId}
@@ -4166,7 +4204,6 @@ export default function TerminalPage() {
           setIncomingReceiptOpeningId={setIncomingReceiptOpeningId}
           historyRequestQuery={historyRequestQuery}
           setHistoryRequestQuery={setHistoryRequestQuery}
-          setIncomingHistoryOpeningId={setIncomingHistoryOpeningId}
           catalogSearchPrefill={catalogSearchPrefill}
           onCatalogSearchHydrated={handleCatalogSearchHydrated}
           drawerOpen={drawerOpen}

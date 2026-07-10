@@ -19,6 +19,7 @@ import {
     buildCatalogSetupRecommendation,
     buildStorefrontReadiness
 } from '../../shared/utils/catalogSetupPolicy.js';
+import { deriveImageAssetVariantUrls } from '../../shared/utils/imageAssetStorage.js';
 import {
     buildBarcodeConflictPayload,
     detectBarcodeSymbology,
@@ -124,6 +125,18 @@ const normalizeStorefrontImageGallery = (value) => {
         .map((entry, index) => ({
             path: String(entry?.path || '').trim() || null,
             url: String(entry?.url || '').trim() || null,
+            variants: entry?.variants && typeof entry.variants === 'object'
+                ? {
+                    thumbnail_url: entry.variants.thumbnail_url || null,
+                    medium_url: entry.variants.medium_url || null,
+                    large_url: entry.variants.large_url || null
+                }
+                : deriveImageAssetVariantUrls({
+                    storedPath: String(entry?.path || '').trim() || null,
+                    storedUrl: String(entry?.url || '').trim() || null
+                }),
+            original_path: String(entry?.original_path || '').trim() || null,
+            classification: String(entry?.classification || '').trim() || null,
             is_primary: entry?.is_primary === true,
             sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
         }))
@@ -153,10 +166,27 @@ const buildStorefrontImageGallery = ({ primaryPath = null, primaryUrl = null, ga
         .map((entry, index) => ({
             path: entry.path || null,
             url: entry.url || null,
+            variants: entry.variants || deriveImageAssetVariantUrls({
+                storedPath: entry.path || null,
+                storedUrl: entry.url || null
+            }),
+            original_path: entry.original_path || null,
+            classification: entry.classification || null,
             is_primary: false,
             sort_order: index + 1
         }));
-    return (primary.path || primary.url) ? [primary, ...rest] : rest;
+    const enrichedPrimary = (primary.path || primary.url)
+        ? {
+            ...primary,
+            variants: deriveImageAssetVariantUrls({
+                storedPath: primary.path || null,
+                storedUrl: primary.url || null
+            }),
+            original_path: normalized[0]?.original_path || null,
+            classification: normalized[0]?.classification || null
+        }
+        : null;
+    return enrichedPrimary ? [enrichedPrimary, ...rest] : rest;
 };
 
 const getCachedSettingsForTenant = async () => {
@@ -2246,6 +2276,10 @@ export const itemRepository = {
             }),
             storefront_image_path: effectiveOverride?.storefront_image_path || null,
             storefront_image_url: effectiveOverride?.storefront_image_url || null,
+            storefront_image_variants: deriveImageAssetVariantUrls({
+                storedPath: effectiveOverride?.storefront_image_path || null,
+                storedUrl: effectiveOverride?.storefront_image_url || null
+            }),
             storefront_image_gallery: buildStorefrontImageGallery({
                 primaryPath: effectiveOverride?.storefront_image_path || null,
                 primaryUrl: effectiveOverride?.storefront_image_url || null,
@@ -2796,11 +2830,40 @@ export const itemRepository = {
     },
     async createFolder(name, description = '', parent_id = null) {
         const ItemFolder = dbStore.get('ItemFolder');
+        const normalizedName = String(name || '').trim();
+        const normalizedDescription = String(description || '').trim();
+
+        if (!normalizedName) {
+            const error = new Error('Folder name is required');
+            error.statusCode = 400;
+            throw error;
+        }
 
         try {
+            const existingFolders = await ItemFolder.findAll({
+                attributes: ['folder_id', 'name', 'description', 'show_in_pos_filter', 'parent_id']
+            });
+            const normalizedLookup = normalizedName.toLowerCase();
+            const existingFolder = existingFolders.find((folder) => (
+                String(folder?.name || '').trim().toLowerCase() === normalizedLookup
+                && Number(folder?.parent_id || 0) === Number(parent_id || 0)
+            ));
+
+            if (existingFolder) {
+                return {
+                    success: true,
+                    folder_id: existingFolder.folder_id,
+                    name: existingFolder.name,
+                    description: existingFolder.description || '',
+                    parent_id: existingFolder.parent_id,
+                    show_in_pos_filter: existingFolder.show_in_pos_filter !== false,
+                    message: `Inventory folder "${existingFolder.name}" already exists`
+                };
+            }
+
             const folder = await ItemFolder.create({
-                name,
-                description,
+                name: normalizedName,
+                description: normalizedDescription,
                 show_in_pos_filter: true,
                 parent_id
             });
@@ -2809,12 +2872,14 @@ export const itemRepository = {
                 success: true,
                 folder_id: folder.folder_id,
                 name: folder.name,
+                description: folder.description || '',
+                parent_id: folder.parent_id,
                 show_in_pos_filter: folder.show_in_pos_filter !== false,
-                message: `Inventory folder "${name}" created successfully`
+                message: `Inventory folder "${folder.name}" created successfully`
             };
         } catch (error) {
             if (error.name === 'SequelizeUniqueConstraintError') {
-                throw new Error(`Folder "${name}" already exists`, { cause: error });
+                throw new Error(`Folder "${normalizedName}" already exists`, { cause: error });
             }
             logger.error('Error creating inventory folder:', error);
             throw error;
