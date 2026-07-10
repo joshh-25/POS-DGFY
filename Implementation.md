@@ -2250,3 +2250,73 @@ POS transaction reads failed with `Table '<tenant>.delivery_jobs' doesn't exist`
 - `frontend/apps/store/src/checkout/components/PromoCodePanel.jsx`
 - `frontend/apps/store/src/__tests__/PromoCodePanel.test.jsx`
 - `Implementation.md`
+
+---
+
+## 2026-07-10 — Display all active Storefront promo codes
+
+### Confirmed problem
+
+- POS persisted multiple commercial promotions in `storefront_promos`, but the landlord discovery index and public Storefront profile exposed only the legacy single `storefront_promo` field.
+- The Storefront could therefore render only one card even when multiple active promo codes existed.
+
+### Implemented solution
+
+- Added the additive `storefront_promos` discovery-index field and migration.
+- Discovery synchronization and public profile reads now project all active, redeemable promo display fields without exposing item-targeting internals.
+- Storefront cards render the complete current promo list, suppress entries outside their validity dates, and retain legacy single-promo fallback support.
+- Promo cards flip to reveal the code and provide an explicit Copy button; copying does not apply the promo automatically.
+
+### Files changed
+
+- `backend/migrations/20260710000002-add-storefront-promos-to-discovery-index.cjs`
+- `backend/src/models/Landlord/StorefrontDiscoveryIndex.js`
+- `backend/src/services/storefrontDiscoveryIndexService.js`
+- `backend/src/modules/storefrontDiscovery/repositories/storefrontDiscoveryRepository.js`
+- `backend/src/modules/shared/utils/commercialPromoPolicy.js`
+- `frontend/apps/store/src/normalizeStorefrontPageModel.js`
+- `frontend/apps/store/src/StorefrontApp.jsx`
+- `frontend/apps/store/src/Components/storefront/sections/StorefrontPromoSection.jsx`
+- `backend/tests/commercialPromoPolicy.unit.test.js`
+- `frontend/apps/store/src/__tests__/normalizeStorefrontPageModel.test.js`
+- `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Synchronize Storefront ordering with POS shifts
+
+### Confirmed problem
+
+- An open tenant location could still reject Storefront checkout because the global `pos_open_status` setting remained `false` after a POS shift was opened.
+- The Storefront error mapper incorrectly presented this POS-ordering state as a closed location.
+
+### Implemented solution
+
+- A successful POS shift open now sets `pos_open_status` to `true`.
+- Closing the final open POS shift sets `pos_open_status` to `false`; closing one of multiple shifts keeps ordering available.
+- Storefront now identifies the POS-ordering closure separately from an inactive or closed location.
+
+### Files changed
+
+- `backend/src/modules/pos/repositories/posRepository.js`
+- `backend/src/modules/pos/usecases/posUseCases.js`
+- `frontend/apps/store/src/storefrontErrorMessages.js`
+- `frontend/apps/store/src/__tests__/storefrontErrorMessages.test.js`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Compact responsive Open Order modal
+
+### Implemented solution
+
+- Reorganized the active-order preview into a compact horizontal desktop layout using the existing POS dialog, button, icon, typography, and color system.
+- Added a dense status strip and grouped ordered items, customer/delivery information, notes, and totals into responsive cards.
+- Kept the footer actions fixed while allowing only the modal body to scroll when content exceeds the available viewport.
+- Preserved all existing order fields, loading and error states, print behavior, and close behavior.
+
+### Files changed
+
+- `frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx`
+- `Implementation.md`
