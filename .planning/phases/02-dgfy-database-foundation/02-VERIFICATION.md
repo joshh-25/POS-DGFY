@@ -1,46 +1,29 @@
 ---
 phase: 02-dgfy-database-foundation
-verified: 2026-07-11T00:00:00Z
-status: gaps_found
-score: 3/4 must-haves verified
+verified: 2026-07-10T23:50:11Z
+status: human_needed
+score: 4/4 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "Re-running schema migration and verification proves expected tables, columns, indexes, constraints, metadata records, and tenant coverage."
-    status: failed
-    reason: >
-      Code review finding CR-01 (.planning/phases/02-dgfy-database-foundation/02-REVIEW.md) is
-      unresolved in the codebase as of this verification. verify.js's `migration_metadata` block
-      (src/commands/verify.js:337-355) wraps the primary target's check AND the entire
-      `for (const name of businessDbNames)` loop in a single try/catch, unlike `business_schemas`
-      which correctly scopes try/catch per target. Directly verified by reading the current file:
-      the exact code the review quoted is still present, byte-for-byte. If any business target's
-      `checkMigrationMetadata` throws partway through a multi-target run, the catch block (a)
-      pushes a second finding mislabeled with the PRIMARY target's database name instead of the
-      target that actually failed, (b) silently drops any business targets that succeeded before
-      the failing one, and (c) produces no entry at all for the target that failed. Since
-      `idempotency` is derived directly from `migration_metadata`, this corruption cascades into
-      the idempotency section (D-22) as well. No test in phase02Verification.test.js exercises a
-      mid-loop business-target failure (confirmed by reading the file's `migration_metadata`
-      describe block — both tests there only vary which migrations are recorded, never inject a
-      thrown error partway through the loop), so this defect is both real and currently untested.
-      This is precisely the scenario D-21/D-22 exist to make trustworthy (per-target migration
-      metadata evidence that CI/deploy tooling and operators can rely on), so a partial-failure run
-      produces misleading, not merely incomplete, evidence.
-    artifacts:
-      - path: "apps/dgfy-migration-runner/src/commands/verify.js"
-        issue: "migration_metadata try/catch scoped across the whole business-target loop (lines 337-355) instead of per-target like business_schemas (lines 319-333)."
-    missing:
-      - "Scope the migration_metadata try/catch per target (primary target and each business target independently), matching the business_schemas pattern, so one target's failure cannot mislabel or hide another target's already-computed finding."
-      - "Add a regression test in phase02Verification.test.js that injects a thrown error on a middle business target's checkMigrationMetadata call and asserts every other target's finding survives intact with the correct target_database on the failed entry."
+re_verification:
+  previous_status: gaps_found
+  previous_score: 3/4
+  gaps_closed:
+    - "Re-running schema migration and verification proves expected tables, columns, indexes, constraints, metadata records, and tenant coverage. (CR-01: migration_metadata try/catch was scoped across the whole business-target loop instead of per-target; now split into two independently-scoped blocks, mirroring business_schemas.)"
+  gaps_remaining: []
+  regressions: []
+human_verification:
+  - test: "Run the gated real-MySQL Phase 02 integration test end-to-end: `RUN_PHASE02_INTEGRATION=true npm --prefix apps/dgfy-migration-runner test -- phase02Integration.test.js --watchman=false` in an environment with real, reachable MySQL admin credentials."
+    expected: "The test creates disposable dgfy_core_it_*/dgfy_business_it*/sku_it_* schemas, runs schema migrate, reruns it (asserting executed === 0), runs verify, and asserts every report section (core_schema, business_schemas, migration_metadata, tenant_coverage, idempotency, legacy_non_mutation) plus every summary.*_ok flag, then cleans up only its own disposable schemas."
+    why_human: "Requires live MySQL admin credentials that remain intentionally inaccessible to this automated verification session (sandbox permission settings deny reading .env/.env.example). This item carries forward unchanged from the prior verification pass and from 02-04-SUMMARY.md's own disclosed 'Known Gaps' (D6, human_judgment: true) — it is unrelated to the CR-01 gap closed by Plan 02-05."
 ---
 
 # Phase 2: DGFY Database Foundation Verification Report
 
 **Phase Goal:** DGFY landlord and tenant database foundations exist beside legacy with additive, repeatable migrations and schema verification.
-**Verified:** 2026-07-11
-**Status:** gaps_found
-**Re-verification:** No — initial verification (ROADMAP.md's `[x]` mark and completion date were applied prematurely by the Plan 02-04 executor's final commit `185bfbf3`, before this verification step ever ran; that mark is not treated as evidence per the task's explicit instruction, and this report re-derives status independently from the codebase).
+**Verified:** 2026-07-10
+**Status:** human_needed
+**Re-verification:** Yes — after gap closure (Plan 02-05, gap_closure: true, closing the single CR-01 gap from the prior 02-VERIFICATION.md pass). ROADMAP.md's `[x]` mark on Phase 2 was applied automatically by the `roadmap update-plan-progress` tool based on plan-count/summary-count parity, not by this verification step; that mark is not treated as evidence and status here is re-derived independently from the codebase, exactly as the prior verification pass did.
 
 ## Goal Achievement
 
@@ -48,86 +31,92 @@ gaps:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Operator can create DGFY landlord and tenant schemas without mutating legacy schemas by default. | ✓ VERIFIED | `assertTargetDbNameAllowed` (src/safety/targetGuard.js) rejects any non-`dgfy_`-prefixed target before any connection. `ensureLegacyFingerprintBaseline()`/`computeLegacySchemaFingerprint()` (schema.js) capture a durable pre-migration `information_schema` fingerprint of the legacy DB and `checkLegacyNonMutation()` (verify.js) fails closed if no baseline exists. 59/59 dgfyCoreSchema/dgfyBusinessSchema/phase02Verification unit tests pass exercising this logic against fake QueryInterfaces. The one live-MySQL end-to-end confirmation (`phase02Integration.test.js`) is gated behind `RUN_PHASE02_INTEGRATION=true` + real DB credentials that are not available in this sandbox (permission-denied on `.env`/`.env.example` reads by design) — its clean-skip path was confirmed (1 skipped, 0 failed) but its assertions were never exercised against a live database, exactly as 02-04-SUMMARY.md's own "Known Gaps" section discloses. This residual gap is routed to Human Verification below rather than treated as a failure, since the underlying logic is otherwise fully covered by unit tests against real Umzug/QueryInterface call shapes. |
-| 2 | Developer can inspect landlord tables for Accounts, Businesses, Branches, Tenancy registry, tenant DB pointers, and migration metadata. | ✓ VERIFIED | `dgfyCoreContract.js` and `20260710020000-create-dgfy-core-foundation.cjs` both define/create `accounts`, `businesses`, `business_memberships`, `business_database_registry` (tenant DB pointers: `database_name`, `stable_opaque_suffix`, status, verified_at), `business_audit_logs`, and `storefront_discovery_index` (the "Branches" success-criteria wording is satisfied via the locked D-10/D-11 decision that canonical branches live tenant-local and `dgfy_core` only keeps a discovery/routing projection — documented explicitly in docs/database/dgfy-foundation.md and enforced by a dedicated "no canonical branches/locations in dgfy_core" test). Migration metadata itself lives in the separate `dgfy_migration_meta` DB per D-04, inspectable via `dgfy_migration_meta.schema_migrations`/`command_executions`. |
-| 3 | Developer can inspect tenant foundation tables for Staff Accounts, Assignments, Terminal identity, and tenant-local ownership metadata. | ✓ VERIFIED | `dgfyBusinessContract.js` and `20260710021000-create-dgfy-business-foundation.cjs` create `staff_accounts`, `account_staff_assignments`, `roles`/`role_permissions`, `terminal_identities`, `tenant_ownership_metadata`, `tenant_audit_logs`, plus canonical `locations`. 20/20 dgfyBusinessSchema.test.js tests assert every contract table/index/FK is created, cross-database references to `dgfy_core` are deliberately plain UUID columns (MySQL cannot FK across databases), and every product/POS/inventory/fiscal/promo table name is absent. |
-| 4 | Re-running schema migration and verification proves expected tables, columns, indexes, constraints, metadata records, and tenant coverage. | ✗ FAILED (partial) | `verify.js` implements `core_schema`, `business_schemas`, `migration_metadata`, `tenant_coverage`, `idempotency`, and `legacy_non_mutation` report sections, and 29/29 phase02Verification/reportCommands tests pass for the paths those tests exercise. However, code review finding **CR-01** (02-REVIEW.md) is unresolved in the current code: `migration_metadata`'s try/catch wraps the primary target AND the entire business-target loop together (verify.js:337-355), so a mid-loop failure on one business target silently drops already-computed results for earlier targets, mislabels the failing target's entry with the primary target's database name, and cascades into `idempotency` (which is derived directly from `migration_metadata`). This is untested and directly undermines the trustworthiness of the very evidence D-21/D-22 require. See Gaps Summary below. |
+| 1 | Operator can create DGFY landlord and tenant schemas without mutating legacy schemas by default. | ✓ VERIFIED | Unchanged since prior pass. `assertTargetDbNameAllowed` (src/safety/targetGuard.js) rejects any non-`dgfy_`-prefixed target before any connection. `ensureLegacyFingerprintBaseline()`/`computeLegacySchemaFingerprint()` (schema.js) capture a durable pre-migration `information_schema` fingerprint of the legacy DB and `checkLegacyNonMutation()` (verify.js) fails closed if no baseline exists. Full runner suite (132 passed, 1 skipped) confirms this logic against fake QueryInterfaces. The one live-MySQL end-to-end confirmation (`phase02Integration.test.js`) remains gated behind `RUN_PHASE02_INTEGRATION=true` + real DB credentials unavailable in this sandbox — routed to Human Verification below, same as the prior pass. |
+| 2 | Developer can inspect landlord tables for Accounts, Businesses, Branches, Tenancy registry, tenant DB pointers, and migration metadata. | ✓ VERIFIED | Unchanged since prior pass. `dgfyCoreContract.js` still defines `accounts`, `businesses`, `business_memberships`, `business_database_registry` (tenant DB pointers), `business_audit_logs`, `storefront_discovery_index`; migration metadata lives in the separate `dgfy_migration_meta` DB per D-04. Confirmed via direct file read and passing `dgfyCoreSchema.test.js` suite. |
+| 3 | Developer can inspect tenant foundation tables for Staff Accounts, Assignments, Terminal identity, and tenant-local ownership metadata. | ✓ VERIFIED | Unchanged since prior pass. `dgfyBusinessContract.js` still creates `staff_accounts`, `account_staff_assignments`, `roles`/`role_permissions`, `terminal_identities`, `tenant_ownership_metadata`, `tenant_audit_logs`, `locations`. Confirmed via direct file read and passing `dgfyBusinessSchema.test.js` suite. |
+| 4 | Re-running schema migration and verification proves expected tables, columns, indexes, constraints, metadata records, and tenant coverage. | ✓ VERIFIED | **CR-01 gap now closed.** Direct read of `apps/dgfy-migration-runner/src/commands/verify.js` (lines 337-369) confirms the previously-shared try/catch is now two independently-scoped blocks: one wrapping only the primary target's `checkMigrationMetadata` call (337-352), and one wrapping each business-target iteration individually inside its own try/catch (354-369) — mirroring `business_schemas`'s existing per-target pattern exactly, byte-for-byte matching what 02-REVIEW.md's re-review and 02-05-SUMMARY.md claim. Independently falsified in this verification session (not merely trusted from SUMMARY): checked out commit `cdb591b4` (the test-only commit) into an isolated worktree and ran the new regression test against the pre-fix `verify.js` — it failed exactly as claimed (3 entries instead of 4, `dgfy_business_gamma` never checked, the failing `dgfy_business_beta` entry mislabeled `target_database: 'dgfy_core'`). Re-ran the same test against current `HEAD` — 21/21 `phase02Verification.test.js` tests pass, including the CR-01 regression test with all 4 targets (`core`/`alpha`/`beta`/`gamma`) present and correctly attributed. Full runner suite re-run in this session: 132 passed, 1 skipped (the unrelated gated live-MySQL test), no regressions. `npm run lint:docs` and `npm run check:architecture` both pass. See Anti-Patterns Found below for one new, non-blocking Warning (idempotency error-fallback sentinel gap) surfaced by the gap-closure re-review that this verifier independently confirmed but judged does not rise to blocking severity. |
 
-**Score:** 3/4 truths verified (0 present, behavior-unverified)
+**Score:** 4/4 truths verified (0 present, behavior-unverified)
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `apps/dgfy-migration-runner/src/commands/schema.js` | Pending-only destructive gate, multi-target migration, legacy fingerprint baseline capture | ✓ VERIFIED | Confirmed `isPendingMigrationDestructive`/`assertDestructiveAllowed` ordering (post-metadata-bootstrap, pre-`umzug.up()`), `ensureLegacyFingerprintBaseline()`, `buildMigrationsForKind()`, business-target loop. |
-| `apps/dgfy-migration-runner/src/commands/verify.js` | D-21 through D-24 verification report sections | ⚠️ VERIFIED WITH DEFECT | All six sections exist and are wired to real schema/metadata inspection, but `migration_metadata`'s try/catch scoping bug (CR-01) is unresolved — see Truth #4 and Gaps Summary. |
-| `apps/dgfy-migration-runner/src/schemaContracts/dgfyCoreContract.js` | `dgfy_core` table/column/index/FK/reject-list contract | ✓ VERIFIED | 6 tables, plain names, `rejectedTables` covers product/POS/inventory/fiscal/promo domains. |
-| `apps/dgfy-migration-runner/src/schemaContracts/dgfyBusinessContract.js` | `dgfy_business_*` tenant foundation contract | ✓ VERIFIED | 8 tables (locations, staff_accounts, account_staff_assignments, roles, role_permissions, terminal_identities, tenant_ownership_metadata, tenant_audit_logs), same reject list. |
-| `apps/dgfy-migration-runner/src/migrations/schema/20260710020000-create-dgfy-core-foundation.cjs` | Additive idempotent core migration | ✓ VERIFIED | Existence-guarded `createTable`/`addIndex` for every contract table; 19/19 dgfyCoreSchema tests pass including idempotency and rollback. |
-| `apps/dgfy-migration-runner/src/migrations/schema/20260710021000-create-dgfy-business-foundation.cjs` | Additive idempotent business migration | ✓ VERIFIED | Existence-guarded `createTable`/`addIndex` for every contract table; 20/20 dgfyBusinessSchema tests pass including idempotency and rollback. |
-| `docs/database/dgfy-foundation.md` | Governed schema/verification-evidence doc | ✓ VERIFIED | Authoritative front matter, `last_reviewed: 2026-07-11`, cites DBF-01–05/D-01–24; `npm run lint:docs` passes (21 governed docs validated). |
-| `apps/dgfy-migration-runner/tests/phase02Integration.test.js` | Real MySQL end-to-end evidence | ⚠️ EXISTS, UNCONFIRMED LIVE | Gated behind `RUN_PHASE02_INTEGRATION=true`; confirmed clean-skip locally (1 skipped) but never run against a live MySQL server in this or the executor's session (env credentials denied by sandbox permissions). Routed to Human Verification. |
+| `apps/dgfy-migration-runner/src/commands/schema.js` | Pending-only destructive gate, multi-target migration, legacy fingerprint baseline capture | ✓ VERIFIED | Unchanged since prior pass; not touched by Plan 02-05. |
+| `apps/dgfy-migration-runner/src/commands/verify.js` | D-21 through D-24 verification report sections | ✓ VERIFIED | All six sections exist, wired to real schema/metadata inspection, and `migration_metadata`'s try/catch is now correctly per-target scoped (CR-01 resolved). One new non-blocking Warning identified in this pass (idempotency sentinel gap on the error path) — see Anti-Patterns Found. |
+| `apps/dgfy-migration-runner/src/schemaContracts/dgfyCoreContract.js` | `dgfy_core` table/column/index/FK/reject-list contract | ✓ VERIFIED | Unchanged since prior pass. |
+| `apps/dgfy-migration-runner/src/schemaContracts/dgfyBusinessContract.js` | `dgfy_business_*` tenant foundation contract | ✓ VERIFIED | Unchanged since prior pass. |
+| `apps/dgfy-migration-runner/src/migrations/schema/20260710020000-create-dgfy-core-foundation.cjs` | Additive idempotent core migration | ✓ VERIFIED | Unchanged since prior pass. |
+| `apps/dgfy-migration-runner/src/migrations/schema/20260710021000-create-dgfy-business-foundation.cjs` | Additive idempotent business migration | ✓ VERIFIED | Unchanged since prior pass. |
+| `docs/database/dgfy-foundation.md` | Governed schema/verification-evidence doc | ✓ VERIFIED | `npm run lint:docs` passes (21 governed docs validated), re-confirmed in this session. |
+| `apps/dgfy-migration-runner/tests/phase02Verification.test.js` | Regression test proving mid-loop business-target failure isolation | ✓ VERIFIED | New CR-01 regression test present (lines 360-414); independently re-run and confirmed passing (21/21) and independently confirmed RED against the pre-fix commit — see Truth #4 evidence. |
+| `apps/dgfy-migration-runner/tests/phase02Integration.test.js` | Real MySQL end-to-end evidence | ⚠️ EXISTS, UNCONFIRMED LIVE | Unchanged since prior pass; still gated behind `RUN_PHASE02_INTEGRATION=true`, confirmed clean-skip (1 skipped) in this session's full-suite run. Routed to Human Verification. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `dgfyCoreContract.js` | migration + `verify.js` | Shared contract shape (`Object.entries(contract.tables)`) | ✓ WIRED | Migration and verify both consume the identical contract object; confirmed by direct source read. |
-| `dgfyBusinessContract.js` | migration + `verify.js` | Shared contract shape | ✓ WIRED | Same pattern as core contract. |
-| `business_database_registry` | `verify.js` tenant coverage | `SELECT database_name FROM business_database_registry` | ✓ WIRED (registry-gaps informational only, per D-08 accepted initial-verification input) | `checkTenantCoverage()` confirmed at verify.js:185-213. |
-| `schema.js` legacy fingerprint baseline | `verify.js` legacy_non_mutation | Shared `computeLegacySchemaFingerprint()`/`LEGACY_FINGERPRINT_ARTIFACT_NAME` | ✓ WIRED | Both files import the same exported function/constant; confirmed. |
-| `dgfy_migration_meta.schema_migrations` (target-scoped) | `migration_metadata` + `idempotency` | `MetaSequelizeStorage.executed()` per target | ⚠️ WIRED BUT NOT FAULT-ISOLATED | Wiring exists and passes for every currently-tested happy/first-failure path, but is not per-target fault-isolated (CR-01) — see Truth #4. |
+| `dgfyCoreContract.js` | migration + `verify.js` | Shared contract shape (`Object.entries(contract.tables)`) | ✓ WIRED | Unchanged since prior pass. |
+| `dgfyBusinessContract.js` | migration + `verify.js` | Shared contract shape | ✓ WIRED | Unchanged since prior pass. |
+| `business_database_registry` | `verify.js` tenant coverage | `SELECT database_name FROM business_database_registry` | ✓ WIRED (registry-gaps informational only, per D-08) | Unchanged since prior pass. |
+| `schema.js` legacy fingerprint baseline | `verify.js` legacy_non_mutation | Shared `computeLegacySchemaFingerprint()`/`LEGACY_FINGERPRINT_ARTIFACT_NAME` | ✓ WIRED | Unchanged since prior pass. |
+| `dgfy_migration_meta.schema_migrations` (target-scoped) | `migration_metadata` + `idempotency` | `MetaSequelizeStorage.executed()` per target | ✓ WIRED AND FAULT-ISOLATED | **CR-01 resolved.** Primary target and each business target are each wrapped in their own independent try/catch; a mid-loop failure on one business target can no longer drop, duplicate, or mislabel another target's entry — confirmed by direct read and independent RED/GREEN test execution (see Truth #4). Caveat: `idempotency`'s derivation still treats an error-path `missing_migrations: []` fallback identically to a genuine "zero pending migrations" result (pre-existing, not introduced by 02-05) — see Anti-Patterns Found. This does not corrupt `migration_metadata` itself (which correctly flags `ok:false` with an `error` field for the failed target), only the *derived* `idempotency` entry for that same target. |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Full runner unit suite | `npm --prefix apps/dgfy-migration-runner test -- --watchman=false` | 131 passed, 1 skipped (gated integration test, no live MySQL) | ✓ PASS |
-| Pending-only destructive gate (D-17) | `npm --prefix apps/dgfy-migration-runner test -- schemaCommand.test.js` | 9/9 passed, including the 3 named D-17 tests | ✓ PASS |
-| Core/business schema contract + migration idempotency | `npm --prefix apps/dgfy-migration-runner test -- dgfyCoreSchema.test.js dgfyBusinessSchema.test.js phase02Verification.test.js` | 59/59 passed | ✓ PASS |
-| CR-01 code fix confirmation | Direct read of `apps/dgfy-migration-runner/src/commands/verify.js` lines 337-355 | Code is unchanged from the reviewed snapshot; bug is present verbatim | ✗ FAIL (confirms gap) |
-| Docs/architecture gates | `npm run lint:docs && npm run check:architecture` | Both OK | ✓ PASS |
+| Full runner unit suite (re-run this session) | `npm --prefix apps/dgfy-migration-runner test -- --watchman=false` | 132 passed, 1 skipped (gated integration test, no live MySQL) | ✓ PASS |
+| CR-01 regression test, current code (re-run this session) | `npm --prefix apps/dgfy-migration-runner test -- phase02Verification.test.js --watchman=false` | 21/21 passed | ✓ PASS |
+| CR-01 regression test, pre-fix code (independent falsification, this session) | Checked out `cdb591b4` in an isolated `git worktree`, ran `npm test -- phase02Verification.test.js --watchman=false -t "CR-01"` | Failed exactly as claimed: 3 entries instead of 4, `dgfy_business_gamma` never checked, `dgfy_business_beta`'s failure mislabeled `target_database: 'dgfy_core'` | ✓ PASS (confirms genuine regression test, not vacuous) |
+| Docs/architecture gates (re-run this session) | `npm run lint:docs && npm run check:architecture` | Both OK | ✓ PASS |
+| Debt-marker scan on files touched by 02-05 | `grep -n -E "TBD\|FIXME\|XXX\|TODO\|HACK\|PLACEHOLDER" verify.js phase02Verification.test.js` | No matches | ✓ PASS |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan(s) | Description | Status | Evidence |
 |-------------|----------------|--------------|--------|----------|
-| DBF-01 | 02-02, 02-03, 02-04 | New DGFY landlord schema created beside legacy without mutating it by default | ✓ SATISFIED | Target guard + legacy fingerprint baseline/comparison mechanism implemented and unit-tested; live-DB confirmation pending (Human Verification). |
-| DBF-02 | 02-02 | Landlord schema contains Accounts, Businesses, Branches, Tenancy registry, tenant DB pointers, migration metadata | ✓ SATISFIED | All tables present in contract + migration; "Branches" satisfied via documented D-10/D-11 projection-only design. |
-| DBF-03 | 02-03 | Tenant schema foundation contains Staff Accounts, Assignments, Terminal identity, tenant-local ownership metadata | ✓ SATISFIED | All tables present in contract + migration. |
-| DBF-04 | 02-01, 02-02, 02-03, 02-04 | Migrations additive/repeatable/tracked by metadata, no `sync({alter:true})` | ⚠️ PARTIALLY SATISFIED | Migrations are additive/idempotent (verified). Metadata tracking itself is target-scoped and correct in the happy path, but the CR-01 defect means multi-target failure evidence cannot be trusted — this is the mechanism DBF-04 relies on for "tracked by migration metadata." |
-| DBF-05 | 02-01, 02-04 | Verification proves tables/columns/indexes/constraints/migration records/tenant coverage | ⚠️ PARTIALLY SATISFIED | All six report sections exist and are wired; CR-01 undermines the reliability of `migration_metadata`/`idempotency` findings under partial failure, which DBF-05 requires operators/CI to trust as evidence. |
+| DBF-01 | 02-02, 02-03, 02-04 | New DGFY landlord schema created beside legacy without mutating it by default | ✓ SATISFIED | Unchanged since prior pass; live-DB confirmation still pending (Human Verification). |
+| DBF-02 | 02-02 | Landlord schema contains Accounts, Businesses, Branches, Tenancy registry, tenant DB pointers, migration metadata | ✓ SATISFIED | Unchanged since prior pass. |
+| DBF-03 | 02-03 | Tenant schema foundation contains Staff Accounts, Assignments, Terminal identity, tenant-local ownership metadata | ✓ SATISFIED | Unchanged since prior pass. |
+| DBF-04 | 02-01, 02-02, 02-03, 02-04, 02-05 | Migrations additive/repeatable/tracked by metadata, no `sync({alter:true})` | ✓ SATISFIED | CR-01 fix closes the multi-target fault-isolation gap; `migration_metadata` per-target tracking is now trustworthy under partial failure. The pre-existing, narrower idempotency-sentinel Warning (see Anti-Patterns) does not undermine this requirement's core claim (metadata tracking exists, is additive, and is per-target attributable). |
+| DBF-05 | 02-01, 02-04, 02-05 | Verification proves tables/columns/indexes/constraints/migration records/tenant coverage | ✓ SATISFIED | All six report sections exist, are wired, and `migration_metadata`'s per-target evidence is now fault-isolated. The idempotency-sentinel Warning is scoped to the `idempotency` section's error-path only (a D-22 concern), tracked as a follow-up rather than blocking this requirement's core evidence claim. |
 
-No orphaned requirements — REQUIREMENTS.md's Phase 2 row (DBF-01 through DBF-05) is fully covered by the union of `requirements`/`requirements_covered` fields across all four plans.
+No orphaned requirements — REQUIREMENTS.md's Phase 2 row (DBF-01 through DBF-05) is fully covered by the union of `requirements` fields across all five plans (02-01 through 02-05).
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `apps/dgfy-migration-runner/src/commands/verify.js` | 337-355 | Un-scoped try/catch across primary + business-target loop (CR-01, unresolved) | 🛑 Blocker | Silently drops/mislabels per-target migration-metadata and idempotency evidence on partial failure. |
-| `apps/dgfy-migration-runner/src/commands/verify.js` | 441 | Falsy `if (executionId)` reintroduces the WR-02 falsy-`0` pitfall `schema.js` explicitly guards against (WR-01, unresolved) | ⚠️ Warning | Latent only (MySQL auto-increment starts at 1); inconsistent with the project's own documented invariant. |
-| `apps/dgfy-migration-runner/src/config/env.js` | 38-62 | `parseBusinessDbNames` does not reject duplicate `DGFY_BUSINESS_DB_NAMES` entries (WR-02, unresolved) | ⚠️ Warning | Duplicate targets would double-migrate/double-report the same business DB. |
-| `apps/dgfy-migration-runner/src/commands/schema.js` | 83-88 | `ensureLegacyFingerprintBaseline` treats any `fs.access` failure (not just ENOENT) as "missing, capture now" (WR-03, unresolved) | ⚠️ Warning | Non-ENOENT failures could silently overwrite the D-23 non-mutation baseline; not observed in tests. |
-| `apps/dgfy-migration-runner/src/migrations/schema/20260710020000-create-dgfy-core-foundation.cjs`, `...021000-create-dgfy-business-foundation.cjs` | ~285-303 | Dead PostgreSQL-only `DROP TYPE` statements guarded by a MySQL dialect check, always fail and are swallowed (WR-04, unresolved) | ℹ️ Info | Harmless (caught via `.catch(() => {})`) but misleading dead code. |
-| `apps/dgfy-migration-runner/src/metadata/bootstrap.js` | 78-113 | `ensureMetadataSchema` docstring overstates drift detection (missing-column-only, not type/nullability) (WR-05, unresolved) | ℹ️ Info | Documentation/implementation gap; not a functional defect today. |
+| `apps/dgfy-migration-runner/src/commands/verify.js` | 337-355 (prior) | ~~Un-scoped try/catch across primary + business-target loop (CR-01)~~ | **RESOLVED** | Closed by Plan 02-05, commit `c158f28f`; independently re-verified in this session (direct read + RED/GREEN test execution). |
+| `apps/dgfy-migration-runner/src/commands/verify.js` | 342-352, 354-369, 375-379 | **NEW (this pass):** Error-fallback objects in both the primary-target and business-loop catch blocks hardcode `missing_migrations: []`; `idempotency`'s derivation (`(finding.missing_migrations \|\| []).length === 0`) treats this identically to a genuinely fully-migrated target, so a target whose `migration_metadata` check errored (`ok:false`) reports `idempotency.ok:true, pending_migrations:[]` — a false-clean signal for `summary.idempotency_ok` specifically, indistinguishable from "verified, zero pending." Independently confirmed by direct code read (verify.js:375-379) — matches 02-REVIEW.md's WR-01 finding on the re-review. Pre-existing (not introduced by the CR-01 fix); untested. Judged non-blocking: `migration_metadata` itself (the primary D-21 evidence, and the field an operator/CI gate would check first) correctly reports `ok:false` with an `error` message for the failed target — no evidence is dropped, duplicated, or misattributed, unlike CR-01. The gap is narrower and scoped only to the *derived* `idempotency` section's error path (a rare code path — connection/storage failure — not the common case), and is one field's interpretation, not a structural loop/attribution defect. | ⚠️ Warning | Narrow, error-path-only; does not affect the primary migration_metadata evidence or the common happy-path/pending-migration case. Recommended follow-up: use a `null` sentinel for `missing_migrations` on the error path and have `idempotency` treat `null` as "unknown" rather than "zero pending," per 02-REVIEW.md's suggested fix. |
+| `apps/dgfy-migration-runner/tests/phase02Verification.test.js` | — | **NEW (this pass, info-level):** No regression test proves a primary-target-only `migration_metadata` failure leaves the business loop unaffected (structurally guaranteed by the CR-01 fix's two separate statement blocks, but untested) | ℹ️ Info | Completeness gap in an otherwise strong regression test; not a live bug (matches 02-REVIEW.md's IN-01). |
+| `apps/dgfy-migration-runner/tests/phase02Verification.test.js` | 252-263 | **NEW (this pass, info-level):** Stale `void originalShowAllTables;` no-op in the rejected-tables test | ℹ️ Info | Dead code, no functional impact (matches 02-REVIEW.md's IN-02). |
+| `apps/dgfy-migration-runner/src/commands/verify.js` | 455 | Falsy `if (executionId)` reintroduces the WR-02 falsy-`0` pitfall `schema.js` explicitly guards against | ⚠️ Warning | Unchanged since prior pass; still present, still latent-only (MySQL auto-increment starts at 1), still not touched by Plan 02-05 (out of scope for the CR-01 gap closure). |
+| `apps/dgfy-migration-runner/src/config/env.js` | 38-62 | `parseBusinessDbNames` does not reject duplicate `DGFY_BUSINESS_DB_NAMES` entries | ⚠️ Warning | Unchanged since prior pass. |
+| `apps/dgfy-migration-runner/src/commands/schema.js` | 83-88 | `ensureLegacyFingerprintBaseline` treats any `fs.access` failure (not just ENOENT) as "missing, capture now" | ⚠️ Warning | Unchanged since prior pass. |
+| Migration files (both) | ~285-303 | Dead PostgreSQL-only `DROP TYPE` statements, always fail and are swallowed | ℹ️ Info | Unchanged since prior pass. |
+| `apps/dgfy-migration-runner/src/metadata/bootstrap.js` | 78-113 | `ensureMetadataSchema` docstring overstates drift detection | ℹ️ Info | Unchanged since prior pass. |
 
-No `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` markers found in any file modified by this phase (direct grep across all `src/commands`, `src/config`, `src/metadata`, `src/schemaContracts`, and both migration files — zero matches).
+No `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` markers found in `verify.js` or `phase02Verification.test.js` (the two files modified by Plan 02-05), re-confirmed by direct grep in this session.
 
 ## Human Verification Required
 
 ### 1. Run the gated real-MySQL Phase 02 integration test end-to-end
 
-**Test:** Run `RUN_PHASE02_INTEGRATION=true npm --prefix apps/dgfy-migration-runner test -- phase02Integration.test.js --watchman=false` in an environment with real, reachable MySQL admin credentials (a MySQL server is reachable on `127.0.0.1:3306` in this sandbox, but its credentials are gated by permission settings that deny reading `.env`/`.env.example`, so this verifier could not exercise it).
+**Test:** Run `RUN_PHASE02_INTEGRATION=true npm --prefix apps/dgfy-migration-runner test -- phase02Integration.test.js --watchman=false` in an environment with real, reachable MySQL admin credentials.
 **Expected:** The test creates disposable `dgfy_core_it_*`/`dgfy_business_it*`/`sku_it_*` schemas, runs `schema migrate`, reruns it (asserting `executed === 0`), runs `verify`, and asserts every report section (`core_schema`, `business_schemas`, `migration_metadata`, `tenant_coverage`, `idempotency`, `legacy_non_mutation`) plus every `summary.*_ok` flag, then cleans up only its own disposable schemas.
-**Why human:** Requires live MySQL credentials that are intentionally inaccessible to this automated verification session; this is the same gap the Plan 04 executor's own SUMMARY.md "Known Gaps" section discloses (D6, `human_judgment: true`).
+**Why human:** Requires live MySQL admin credentials that remain intentionally inaccessible to this automated verification session (sandbox permission settings deny reading `.env`/`.env.example`). Unchanged, carried forward from the prior verification pass and from 02-04-SUMMARY.md's own disclosed "Known Gaps" (D6, `human_judgment: true`) — unrelated to the CR-01 gap this re-verification closes.
 
 ## Gaps Summary
 
-One must-have truth is not fully achieved: **"Re-running schema migration and verification proves expected tables, columns, indexes, constraints, metadata records, and tenant coverage."** The verification command's design is sound and its happy-path behavior is well-tested (29/29 phase02Verification tests pass), but the unresolved CR-01 code-review finding — confirmed still present in `apps/dgfy-migration-runner/src/commands/verify.js` at the exact lines the review cited — means the `migration_metadata` (and derived `idempotency`) report sections can silently lose, duplicate, or mislabel per-target evidence the moment any business target's metadata check throws mid-loop. Since D-21/D-22 (and the requirements DBF-04/DBF-05 built on them) exist specifically to make this per-target evidence trustworthy for CI/deploy tooling and operators, an untested failure-cascade bug in the exact code path responsible for that evidence is a goal-blocking gap, not a cosmetic one. The fix is small and well-scoped (mirror the already-correct `business_schemas` per-target try/catch pattern) and should be closed with a regression test proving a mid-loop business-target failure cannot corrupt other targets' findings before this phase is considered complete.
+**No gaps remain.** The single gap from the prior verification pass — CR-01, `migration_metadata`'s shared try/catch spanning the primary target and the entire business-target loop — is confirmed closed: `verify.js` now scopes try/catch independently per target (primary target and each business target), mirroring `business_schemas`'s already-correct pattern. This was independently re-verified in this session by (1) direct source read of the current code, (2) re-running the new regression test against current `HEAD` (21/21 pass, all 4 targets correctly present/attributed), (3) checking out the pre-fix commit into an isolated worktree and confirming the same test fails exactly as claimed (RED), and (4) re-running the full 133-test runner suite (132 passed, 1 pre-existing unrelated skip) plus `lint:docs`/`check:architecture` gates. DBF-04 and DBF-05 both move from "partially satisfied" to fully satisfied with respect to CR-01.
 
-Four smaller warnings/info items (WR-01 through WR-05, IN-01/IN-02 in 02-REVIEW.md) remain unresolved but do not block the phase goal on their own; they are listed above for completeness and should be tracked as follow-up hardening.
+Phase status is `human_needed` rather than `passed` only because one pre-existing, unrelated human-verification item remains open: the gated live-MySQL integration test (`phase02Integration.test.js`, `RUN_PHASE02_INTEGRATION=true`) still cannot be executed in this sandbox due to credential-access restrictions. This is not a regression and not part of the CR-01 gap.
+
+One new, non-blocking Warning was surfaced by the gap-closure code re-review (02-REVIEW.md) and independently confirmed in this pass: `migration_metadata`'s error-fallback objects hardcode `missing_migrations: []`, which causes the *derived* `idempotency` section to report a false-clean `ok:true, pending_migrations:[]` for a target whose migration_metadata check actually errored (`ok:false`). This is judged non-blocking because (a) it is pre-existing, not introduced by the CR-01 fix, (b) the primary `migration_metadata` evidence itself remains correct and un-corrupted (no dropped/duplicated/misattributed entries — the defining characteristic of CR-01 that made it blocking), and (c) it is narrowly scoped to one derived field's interpretation of an uncommon error path, not a structural loop/attribution defect. It is recorded as a follow-up hardening item (recommended fix: use a `null` sentinel for `missing_migrations` on the error path, with `idempotency` treating `null` as "unknown" rather than "zero pending") alongside the five pre-existing Warning/Info items (unchanged since the prior pass) that also do not block phase completion.
 
 ---
 
-*Verified: 2026-07-11*
+*Verified: 2026-07-10*
 *Verifier: Claude (gsd-verifier)*
