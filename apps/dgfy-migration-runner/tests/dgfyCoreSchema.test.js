@@ -1,4 +1,22 @@
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { jest } from '@jest/globals';
+import { Sequelize } from 'sequelize';
+
 import { dgfyCoreContract } from '../src/schemaContracts/dgfyCoreContract.js';
+
+const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const MIGRATION_PATH = join(
+  __dirname,
+  '..',
+  'src',
+  'migrations',
+  'schema',
+  '20260710020000-create-dgfy-core-foundation.cjs'
+);
 
 const CORE_TABLE_NAMES = [
   'accounts',
@@ -101,6 +119,119 @@ describe('dgfyCoreContract', () => {
       expect(Array.isArray(table.indexes)).toBe(true);
       expect(typeof table.projectionOnly).toBe('boolean');
       expect(name).toBe(name.toLowerCase());
+    });
+  });
+});
+
+describe('dgfy_core foundation migration (20260710020000-create-dgfy-core-foundation.cjs)', () => {
+  let migration;
+  let queryInterface;
+  let createdTables;
+  let createdIndexes;
+  let createTableCalls;
+
+  beforeEach(() => {
+    delete require.cache[require.resolve(MIGRATION_PATH)];
+    // eslint-disable-next-line global-require, import/no-dynamic-require
+    migration = require(MIGRATION_PATH);
+
+    createdTables = [];
+    createdIndexes = [];
+    createTableCalls = [];
+
+    queryInterface = {
+      showAllTables: jest.fn().mockResolvedValue([]),
+      showIndex: jest.fn().mockResolvedValue([]),
+      createTable: jest.fn().mockImplementation(async (name, columns) => {
+        createdTables.push(name);
+        createTableCalls.push({ name, columns });
+      }),
+      addIndex: jest.fn().mockImplementation(async (table, columns, options) => {
+        createdIndexes.push({ table, columns, name: options?.name, unique: Boolean(options?.unique) });
+      }),
+      dropTable: jest.fn().mockResolvedValue(undefined)
+    };
+  });
+
+  test('exports non-destructive meta describing the additive foundation migration', () => {
+    expect(migration.meta).toBeDefined();
+    expect(migration.meta.destructive).toBe(false);
+    expect(typeof migration.meta.rollbackDescription).toBe('string');
+  });
+
+  test('up() uses QueryInterface with existence guards, not sequelize.sync', async () => {
+    await migration.up(queryInterface, Sequelize);
+
+    expect(queryInterface.showAllTables).toHaveBeenCalled();
+    expect(queryInterface.createTable).toHaveBeenCalled();
+  });
+
+  test('up() creates exactly the contract core tables and no out-of-scope tables', async () => {
+    await migration.up(queryInterface, Sequelize);
+
+    Object.keys(dgfyCoreContract.tables).forEach((name) => {
+      expect(createdTables).toContain(name);
+    });
+    expect(createdTables.sort()).toEqual(Object.keys(dgfyCoreContract.tables).sort());
+
+    dgfyCoreContract.rejectedTables.forEach((name) => {
+      expect(createdTables).not.toContain(name);
+    });
+  });
+
+  test('up() does not create canonical branches/locations tables; storefront_discovery_index is the only discovery table', async () => {
+    await migration.up(queryInterface, Sequelize);
+
+    expect(createdTables).not.toContain('branches');
+    expect(createdTables).not.toContain('locations');
+    expect(createdTables).toContain('storefront_discovery_index');
+  });
+
+  test('up() requests every index declared in the contract, matching unique flags', async () => {
+    await migration.up(queryInterface, Sequelize);
+    const byName = new Map(createdIndexes.map((entry) => [entry.name, entry]));
+
+    Object.values(dgfyCoreContract.tables).forEach((table) => {
+      table.indexes.forEach((indexName) => {
+        expect(byName.has(indexName)).toBe(true);
+        const expectedUnique = table.uniqueConstraints.includes(indexName);
+        expect(byName.get(indexName).unique).toBe(expectedUnique);
+      });
+    });
+  });
+
+  test('up() wires foreign keys declared in the contract onto the correct columns', async () => {
+    await migration.up(queryInterface, Sequelize);
+    const columnsByTable = new Map(createTableCalls.map((entry) => [entry.name, entry.columns]));
+
+    Object.entries(dgfyCoreContract.tables).forEach(([tableName, table]) => {
+      table.foreignKeys.forEach((fk) => {
+        const columnDef = columnsByTable.get(tableName)?.[fk.column];
+        expect(columnDef).toBeDefined();
+        expect(columnDef.references).toBeDefined();
+        expect(columnDef.references.model).toBe(fk.referencesTable);
+        expect(columnDef.references.key).toBe(fk.referencesColumn);
+      });
+    });
+  });
+
+  test('up() is idempotent: skips createTable/addIndex when tables and indexes already exist', async () => {
+    const existingTableNames = Object.keys(dgfyCoreContract.tables);
+    queryInterface.showAllTables.mockResolvedValue(existingTableNames);
+    const allIndexNames = Object.values(dgfyCoreContract.tables).flatMap((table) => table.indexes);
+    queryInterface.showIndex.mockResolvedValue(allIndexNames.map((name) => ({ name })));
+
+    await migration.up(queryInterface, Sequelize);
+
+    expect(queryInterface.createTable).not.toHaveBeenCalled();
+    expect(queryInterface.addIndex).not.toHaveBeenCalled();
+  });
+
+  test('down() drops every contract table', async () => {
+    await migration.down(queryInterface, Sequelize);
+
+    Object.keys(dgfyCoreContract.tables).forEach((name) => {
+      expect(queryInterface.dropTable).toHaveBeenCalledWith(name);
     });
   });
 });
