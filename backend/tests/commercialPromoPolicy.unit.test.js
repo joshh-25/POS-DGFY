@@ -1,4 +1,19 @@
-import { resolveCommercialPromoApplication } from '../src/modules/shared/utils/commercialPromoPolicy.js';
+import { parsePublicCommercialPromos, resolveCommercialPromoApplication } from '../src/modules/shared/utils/commercialPromoPolicy.js';
+
+describe('public commercial promo projection', () => {
+    test('exposes all active redeemable promos without internal item targeting data', () => {
+        expect(parsePublicCommercialPromos([
+            { active: true, promo_code: 'SAVE10', title: '10% off', discount_percent: 10, target_item_ids: [1] },
+            { active: true, promo_code: 'SAVE20', title: '20% off', discount_percent: 20, target_item_ids: [2] },
+            { active: false, promo_code: 'HIDDEN', discount_percent: 50 }
+        ])).toEqual([
+            expect.objectContaining({ promo_code: 'SAVE10', discount_percent: 10 }),
+            expect.objectContaining({ promo_code: 'SAVE20', discount_percent: 20 })
+        ]);
+        expect(parsePublicCommercialPromos([{ active: true, promo_code: 'SAVE10', discount_percent: 10, target_item_ids: [1] }])[0])
+            .not.toHaveProperty('target_item_ids');
+    });
+});
 
 describe('commercial promo authoritative allocations', () => {
     test('rejects an active promo after its configured end date', () => {

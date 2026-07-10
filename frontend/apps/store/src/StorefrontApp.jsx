@@ -6441,6 +6441,9 @@ export default function StorefrontApp() {
       const validityText = String(entry.validity_text || entry.validityText || '').trim();
       const headline = String(entry.headline || entry.primary_text || '').trim();
       const supportingText = String(entry.supporting_text || entry.secondary_text || '').trim();
+      const discountPercent = Number(entry.discount_percent ?? entry.discountPercent);
+      const validFrom = String(entry.valid_from || entry.validFrom || '').trim();
+      const validUntil = String(entry.valid_until || entry.validUntil || '').trim();
       if (!title && !subtitle && !badge && !validityText && !headline && !supportingText && !promoCode) return null;
       return {
         title,
@@ -6449,20 +6452,32 @@ export default function StorefrontApp() {
         promoCode,
         validityText,
         headline,
-        supportingText
+        supportingText,
+        discountLabel: Number.isFinite(discountPercent) && discountPercent > 0 ? `${discountPercent}% OFF` : '',
+        validFrom,
+        validUntil
       };
     };
+
+    const manilaDate = (() => {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(new Date()).map((part) => [part.type, part.value]));
+      return `${parts.year}-${parts.month}-${parts.day}`;
+    })();
 
     let promoItems = [];
     if (rawPromo?.active === true) {
       const rawItems = Array.isArray(rawPromo.items) ? rawPromo.items : [];
-      promoItems = rawItems.map(normalizePromoEntry).filter(Boolean);
+      promoItems = rawItems
+        .map(normalizePromoEntry)
+        .filter((entry) => entry && (!entry.validFrom || entry.validFrom <= manilaDate) && (!entry.validUntil || entry.validUntil >= manilaDate));
       if (promoItems.length === 0) {
         const normalizedSingle = normalizePromoEntry(rawPromo);
         if (normalizedSingle) promoItems = [normalizedSingle];
       }
     }
-    return promoItems.slice(0, 3);
+    return promoItems;
   }, [supportingSectionModel?.promo]);
   const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
   const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';

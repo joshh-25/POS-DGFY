@@ -69,6 +69,34 @@ export const parseCommercialPromoConfigs = (settings = {}) => {
     return configs;
 };
 
+// Public storefront cards need only display and redemption fields. Keep internal
+// allocation data such as target item IDs out of the discovery read model.
+export const parsePublicCommercialPromos = (rawValue) => {
+    const entries = Array.isArray(rawValue) ? rawValue : [];
+    return entries
+        .map((entry, index) => parseCommercialPromoConfig(entry, {
+            sourceKey: STOREFRONT_PROMOS_SETTING_KEY,
+            sourceIndex: index
+        }))
+        .filter((config) => config.active && config.promoCode && config.discountPercent > 0)
+        .map((config) => ({
+            id: config.promoId || null,
+            title: String(config.raw.title || '').trim(),
+            subtitle: String(config.raw.subtitle || '').trim(),
+            badge: String(config.raw.badge || '').trim(),
+            validity_text: String(config.raw.validity_text || '').trim(),
+            promo_code: config.promoCode,
+            discount_percent: config.discountPercent,
+            usage_limit: config.usageLimit,
+            used_count: config.usedCount,
+            valid_time_start: config.validTimeStart,
+            valid_time_end: config.validTimeEnd,
+            valid_from: config.validFrom,
+            valid_until: config.validUntil,
+            active: true
+        }));
+};
+
 const timeToMinutes = (value) => {
     const match = String(value || '').trim().match(PROMO_TIME_24H_PATTERN);
     return match ? (Number(match[1]) * 60) + Number(match[2]) : null;

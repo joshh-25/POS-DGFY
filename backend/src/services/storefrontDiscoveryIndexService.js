@@ -23,6 +23,7 @@ import {
     isCustomerAccessModesEnabled,
     resolveAccessPolicyFromSettings
 } from '../modules/shared/utils/customerAccessPolicy.js';
+import { parsePublicCommercialPromos } from '../modules/shared/utils/commercialPromoPolicy.js';
 
 const STOREFRONT_SETTING_KEYS = Object.freeze([
     'ops_workflow_mode',
@@ -43,6 +44,7 @@ const STOREFRONT_SETTING_KEYS = Object.freeze([
     'storefront_social_links',
     'storefront_review_highlights',
     'storefront_promo',
+    'storefront_promos',
     'storefront_ui_v2_enabled',
     'storefront_categories',
     'storefront_gallery_images',
@@ -698,6 +700,7 @@ const buildTenantSnapshot = async (tenant) => {
         .filter(Boolean)
         .slice(0, 8);
     const storefrontPromoRaw = parseJsonObject(settings.storefront_promo) || null;
+    const storefrontPromos = parsePublicCommercialPromos(parseJsonArray(settings.storefront_promos));
     const storefrontPromo = storefrontPromoRaw
         ? {
             title: toTrimmedString(storefrontPromoRaw.title, 100),
@@ -762,6 +765,7 @@ const buildTenantSnapshot = async (tenant) => {
         storefront_social_links: storefrontSocialLinks,
         storefront_review_highlights: storefrontReviewHighlights,
         storefront_promo: storefrontPromo,
+        storefront_promos: storefrontPromos,
         storefront_ui_v2_enabled: storefrontUiV2Enabled,
         storefront_categories: storefrontCategories,
         storefront_gallery_images: storefrontGalleryImages,

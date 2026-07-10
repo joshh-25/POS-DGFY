@@ -1,24 +1,164 @@
-import React from 'react';
-import { Percent, Sparkles, Calendar, Tag, Coffee, Utensils } from 'lucide-react';
+import React, { useState } from 'react';
+import { Calendar, Check, Copy, Tag } from 'lucide-react';
 
 const cleanPromoText = (value) => String(value || '').trim();
 
-/* ── Parse "10% OFF" → { top: "10%", bottom: "OFF" } ── */
 const parseDiscountLabel = (raw) => {
-  const text = String(raw || '').trim();
-  // Match "10% OFF" or "10%OFF" or "10%" patterns
-  const m = text.match(/^(\d+(?:\.\d+)?\s*%)\s*(OFF)?$/i);
-  if (m) return { top: m[1].replace(/\s+/, ''), bottom: m[2] ? 'OFF' : '' };
-  // Match "FREE" or standalone words
+  const text = cleanPromoText(raw);
+  const match = text.match(/^(\d+(?:\.\d+)?\s*%)\s*(OFF)?$/i);
+  if (match) return { top: match[1].replace(/\s+/, ''), bottom: match[2] ? 'OFF' : '' };
   const parts = text.split(/\s+/);
-  if (parts.length >= 2) return { top: parts[0], bottom: parts.slice(1).join(' ') };
-  return { top: text, bottom: '' };
+  return { top: parts[0] || 'PROMO', bottom: parts.slice(1).join(' ') };
 };
+
+function PromoCard({
+  promoEntry,
+  index,
+  isMobileViewport,
+  accentColor,
+  accentDark,
+  accentTint,
+  cardBorder,
+  bodyFontFamily,
+  titleFontFamily,
+  activePromoCode,
+  onApplyPromo
+}) {
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [didCopy, setDidCopy] = useState(false);
+  const promoCode = cleanPromoText(promoEntry.promoCode || promoEntry.promo_code).toUpperCase();
+  const title = cleanPromoText(promoEntry.title) || cleanPromoText(promoEntry.badge) || 'Storefront Promo';
+  const offer = cleanPromoText(promoEntry.discountLabel) || cleanPromoText(promoEntry.headline) || title;
+  const description = cleanPromoText(promoEntry.subtitle) || cleanPromoText(promoEntry.supportingText) || 'Limited-time offer available in this storefront.';
+  const validity = cleanPromoText(promoEntry.validityText) || 'Limited time';
+  const discount = parseDiscountLabel(offer);
+  const isApplied = Boolean(promoCode) && promoCode === cleanPromoText(activePromoCode).toUpperCase();
+  const canApply = Boolean(promoCode) && typeof onApplyPromo === 'function' && !isApplied;
+  const cardMinHeight = isMobileViewport ? 156 : 178;
+
+  const copyCode = async (event) => {
+    event.stopPropagation();
+    if (!promoCode) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(promoCode);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = promoCode;
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+      }
+      setDidCopy(true);
+      window.setTimeout(() => setDidCopy(false), 1800);
+    } catch {
+      setDidCopy(false);
+    }
+  };
+
+  const faceStyle = {
+    position: 'absolute',
+    inset: 0,
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
+    borderRadius: isMobileViewport ? 20 : 24,
+    overflow: 'hidden'
+  };
+
+  return (
+    <div style={{ minHeight: cardMinHeight, perspective: '1200px' }}>
+      <div
+        style={{
+          position: 'relative',
+          minHeight: cardMinHeight,
+          transformStyle: 'preserve-3d',
+          transition: 'transform 560ms cubic-bezier(0.2, 0.72, 0.2, 1)',
+          transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+          animation: `promoCardFloatIn 380ms ease ${index * 80}ms both`
+        }}
+      >
+        <button
+          type="button"
+          aria-label={`Show promo code for ${title}`}
+          aria-pressed={isFlipped}
+          onClick={() => setIsFlipped(true)}
+          style={{
+            ...faceStyle,
+            display: 'flex',
+            padding: 0,
+            border: 'none',
+            textAlign: 'left',
+            cursor: 'pointer',
+            background: '#ffffff',
+            boxShadow: `inset 0 0 0 1px ${cardBorder}, 0 4px 16px rgba(0,0,0,0.08)`,
+            color: '#0f172a'
+          }}
+        >
+          <div style={{
+            width: isMobileViewport ? 112 : 148,
+            flexShrink: 0,
+            display: 'grid',
+            placeItems: 'center',
+            background: `linear-gradient(145deg, ${accentColor}, ${accentDark})`,
+            color: '#ffffff',
+            textAlign: 'center',
+            padding: 12
+          }}>
+            <div>
+              <div style={{ fontSize: isMobileViewport ? 34 : 48, fontWeight: 900, lineHeight: 0.95 }}>{discount.top}</div>
+              {discount.bottom ? <div style={{ marginTop: 5, fontSize: isMobileViewport ? 15 : 21, fontWeight: 800, letterSpacing: '0.08em' }}>{discount.bottom}</div> : null}
+            </div>
+          </div>
+          <div style={{ flex: 1, minWidth: 0, display: 'grid', alignContent: 'center', gap: 10, padding: isMobileViewport ? '16px 17px' : '20px 22px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: accentColor, fontSize: 12, fontWeight: 800, fontFamily: bodyFontFamily, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              <span style={{ display: 'grid', placeItems: 'center', width: 30, height: 30, borderRadius: '50%', background: accentTint }}><Tag size={14} /></span>
+              {cleanPromoText(promoEntry.badge) || title}
+            </div>
+            <div style={{ fontSize: isMobileViewport ? 16 : 19, fontWeight: 800, lineHeight: 1.25, fontFamily: titleFontFamily }}>{description}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#166534', fontSize: 12, fontWeight: 700, fontFamily: bodyFontFamily }}>
+              <Calendar size={14} /> {validity}
+            </div>
+            {promoCode ? <span style={{ color: '#64748b', fontSize: 11, fontWeight: 800, fontFamily: bodyFontFamily }}>Tap to reveal code</span> : null}
+          </div>
+        </button>
+
+        <section
+          aria-label={`${title} promo code`}
+          style={{
+            ...faceStyle,
+            display: 'grid',
+            alignContent: 'center',
+            gap: 14,
+            padding: isMobileViewport ? 18 : 24,
+            boxSizing: 'border-box',
+            transform: 'rotateY(180deg)',
+            background: `linear-gradient(135deg, ${accentDark}, ${accentColor})`,
+            color: '#ffffff',
+            boxShadow: `inset 0 0 0 1px ${accentColor}, 0 4px 16px rgba(0,0,0,0.12)`
+          }}
+        >
+          <div style={{ fontFamily: bodyFontFamily, fontSize: 12, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.82 }}>Promo code</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px dashed rgba(255,255,255,0.72)', borderRadius: 14, padding: '12px 14px', background: 'rgba(255,255,255,0.1)' }}>
+            <code style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: isMobileViewport ? 17 : 21, fontWeight: 900, letterSpacing: '0.08em', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{promoCode || 'NO CODE'}</code>
+            {promoCode ? <button type="button" onClick={copyCode} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 10, padding: '8px 10px', cursor: 'pointer', background: '#ffffff', color: accentDark, fontSize: 12, fontWeight: 800 }}>{didCopy ? <Check size={15} /> : <Copy size={15} />}{didCopy ? 'Copied' : 'Copy'}</button> : null}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setIsFlipped(false)} style={{ border: '1px solid rgba(255,255,255,0.65)', borderRadius: 999, padding: '7px 12px', background: 'transparent', color: '#ffffff', cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>Back</button>
+            {isApplied ? <span style={{ fontSize: 12, fontWeight: 800 }}>Applied</span> : null}
+            {canApply ? <button type="button" onClick={() => onApplyPromo(promoCode)} style={{ border: 'none', borderRadius: 999, padding: '8px 13px', background: '#ffffff', color: accentDark, cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>Use promo</button> : null}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
 
 export function StorefrontPromoSection({
   items,
   isMobileViewport,
-  layoutVariant = 'feature',
   palette = 'orange',
   titleFontFamily,
   bodyFontFamily,
@@ -33,453 +173,22 @@ export function StorefrontPromoSection({
   onApplyPromo = null
 }) {
   if (!Array.isArray(items) || items.length === 0) return null;
-
   const isTeal = palette === 'teal';
-  const isFnb  = palette === 'fnb';
-
-  /* ── Section & card colour tokens ── */
+  const isFnb = palette === 'fnb';
   const accentColor = isFnb ? '#f97316' : (isTeal ? '#0f766e' : '#1a4e8d');
-  const accentDark  = isFnb ? '#c2410c' : (isTeal ? '#134e4a' : '#1e3a6e');
-  const accentSoft  = isFnb ? '#16a34a' : accentColor;
-  const accentTint  = isFnb ? '#fff7ed' : (isTeal ? '#ecfeff' : '#eef6fd');
-  const cardBorder  = isFnb ? '#ffe4c8' : (isTeal ? '#99f6e4' : '#dbe5ee');
-  const mobileTrailingSpace = Math.max(0, Number(mobileTrailingInset) || 0);
-  const mobileContentPaddingRight = 16 + mobileTrailingSpace;
+  const accentDark = isFnb ? '#c2410c' : (isTeal ? '#134e4a' : '#1e3a6e');
+  const accentTint = isFnb ? '#fff7ed' : (isTeal ? '#ecfeff' : '#eef6fd');
+  const cardBorder = isFnb ? '#ffe4c8' : (isTeal ? '#99f6e4' : '#dbe5ee');
 
   return (
-    <section
-      style={{
-        marginLeft: isMobileViewport ? 0 : 'calc(50% - 50vw)',
-        width: isMobileViewport ? '100%' : '100vw',
-        marginTop: 0,
-        marginBottom: 0,
-        padding: sectionPadding || (isMobileViewport ? '32px 0' : '48px 0'),
-        background: sectionBackground,
-        display: 'grid',
-        gap: 0,
-        boxSizing: 'border-box',
-        borderTop: `1px solid ${collapseSpacing ? '#edf2f7' : '#f1f5f9'}`,
-        borderBottom: collapseSpacing ? 'none' : '1px solid #f1f5f9'
-      }}
-    >
-      <div
-        style={{
-          maxWidth: contentMaxWidth,
-          width: '100%',
-          margin: '0 auto',
-          paddingLeft: isMobileViewport ? 16 : 24,
-          paddingRight: isMobileViewport ? mobileContentPaddingRight : 24,
-          boxSizing: 'border-box',
-          display: 'grid',
-          gap: isMobileViewport ? 16 : 24
-        }}
-      >
-        {/* Section heading */}
-        <div style={{ display: 'grid', gap: 6 }}>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: titleSize || (isMobileViewport ? 28 : 36),
-              fontWeight: 800,
-              color: '#0f172a',
-              fontFamily: titleFontFamily,
-              lineHeight: 1.08
-            }}
-          >
-            Current Promos
-          </h2>
-          <p style={{ margin: 0, fontSize: subtitleSize || (isMobileViewport ? 14 : 16), color: '#64748b', lineHeight: 1.45, fontFamily: bodyFontFamily }}>
-            Limited-time offers available from this storefront.
-          </p>
+    <section style={{ marginLeft: isMobileViewport ? 0 : 'calc(50% - 50vw)', width: isMobileViewport ? '100%' : '100vw', padding: sectionPadding || (isMobileViewport ? '32px 0' : '48px 0'), background: sectionBackground, borderTop: `1px solid ${collapseSpacing ? '#edf2f7' : '#f1f5f9'}`, borderBottom: collapseSpacing ? 'none' : '1px solid #f1f5f9' }}>
+      <div style={{ maxWidth: contentMaxWidth, width: '100%', margin: '0 auto', paddingLeft: isMobileViewport ? 16 : 24, paddingRight: isMobileViewport ? 16 + Math.max(0, Number(mobileTrailingInset) || 0) : 24, boxSizing: 'border-box' }}>
+        <div style={{ display: 'grid', gap: 6, marginBottom: isMobileViewport ? 16 : 24 }}>
+          <h2 style={{ margin: 0, color: '#0f172a', fontSize: titleSize || (isMobileViewport ? 28 : 36), fontWeight: 800, lineHeight: 1.08, fontFamily: titleFontFamily }}>Current Promos</h2>
+          <p style={{ margin: 0, color: '#64748b', fontSize: subtitleSize || (isMobileViewport ? 14 : 16), lineHeight: 1.45, fontFamily: bodyFontFamily }}>Tap a promo to reveal and copy its code.</p>
         </div>
-
-        {/* Promo cards grid */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(auto-fill, minmax(360px, 580px))',
-            gap: isMobileViewport ? 16 : 20,
-            justifyContent: 'start',
-          }}
-        >
-          {items.map((promoEntry, index) => {
-            const badgeText      = cleanPromoText(promoEntry.badge);
-            const titleText      = cleanPromoText(promoEntry.title);
-            const headlineText   = cleanPromoText(promoEntry.headline);
-            const subtitleText   = cleanPromoText(promoEntry.subtitle);
-            const supportingText = cleanPromoText(promoEntry.supportingText);
-            const validityText   = cleanPromoText(promoEntry.validityText);
-
-            const title = titleText || badgeText || headlineText || 'Storefront Promo';
-            const descriptionParts = [];
-            if (headlineText && headlineText !== title) descriptionParts.push(headlineText);
-            if (subtitleText && subtitleText !== title && !descriptionParts.includes(subtitleText)) descriptionParts.push(subtitleText);
-            if (supportingText && !descriptionParts.includes(supportingText)) descriptionParts.push(supportingText);
-            if (badgeText && badgeText !== title && !descriptionParts.includes(badgeText)) descriptionParts.push(badgeText);
-            const description = descriptionParts.join(' | ') || 'Limited-time offer available in this storefront.';
-
-            const promoBadgeLabel    = badgeText || titleText || 'Promo';
-            const promoOfferLabel    = cleanPromoText(promoEntry.discountLabel) || headlineText || titleText || badgeText || 'Special Offer';
-            const promoDescLabel     = subtitleText || supportingText || description;
-            const validityBadgeLabel = validityText || 'Limited time';
-            const promoCodeText      = cleanPromoText(promoEntry.promoCode || promoEntry.promo_code).toUpperCase();
-            const eligibleItemsText  = cleanPromoText(promoEntry.eligibleItemsText);
-            const eligibleCategoriesText = cleanPromoText(promoEntry.eligibleCategoriesText);
-            const isAppliedPromo     = Boolean(promoCodeText) && promoCodeText === String(activePromoCode || '').trim().toUpperCase();
-            const canApplyPromo      = Boolean(promoCodeText) && typeof onApplyPromo === 'function' && !isAppliedPromo;
-
-            /* ─────────────────────────────────────────────────
-               Modern food-delivery coupon style (applied universally)
-            ───────────────────────────────────────────────── */
-            /* Sizing tokens */
-            const leftW    = isMobileViewport ? 110 : 148;
-            const notchR   = isMobileViewport ? 13 : 15;
-            const cardMinH = isMobileViewport ? 138 : 164;
-            const disc     = parseDiscountLabel(promoOfferLabel);
-
-            return (
-              <article
-                key={`promo-wrap-${index}`}
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'stretch',
-                  minHeight: cardMinH,
-                  borderRadius: isMobileViewport ? 20 : 24,
-                  background: '#ffffff',
-                  // Use inset box shadow instead of border so inner notches can sit "on top" of the stroke
-                  boxShadow: `inset 0 0 0 1px ${cardBorder}, 0 4px 16px rgba(0,0,0,0.08)`,
-                  overflow: 'hidden',
-                  transition: 'transform 0.22s ease, box-shadow 0.22s ease',
-                  animation: layoutVariant === 'feature' ? 'promoCardFloatIn 380ms ease both' : undefined,
-                  animationDelay: layoutVariant === 'feature' ? `${index * 80}ms` : undefined,
-                }}
-                onMouseEnter={(e) => {
-                  if (isMobileViewport) return;
-                  e.currentTarget.style.transform = 'translateY(-3px)';
-                  e.currentTarget.style.boxShadow = `inset 0 0 0 1px ${cardBorder}, 0 12px 32px rgba(0,0,0,0.13)`;
-                }}
-                onMouseLeave={(e) => {
-                  if (isMobileViewport) return;
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = `inset 0 0 0 1px ${cardBorder}, 0 4px 16px rgba(0,0,0,0.08)`;
-                }}
-              >
-                {/* ── Left inner notch (ticket punch) ── */}
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    left: -notchR,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    width: notchR * 2,
-                    height: notchR * 2,
-                    borderRadius: '50%',
-                    background: sectionBackground,
-                    boxShadow: `inset 0 0 0 1px ${cardBorder}`,
-                    zIndex: 10,
-                    pointerEvents: 'none',
-                  }}
-                />
-                {/* ── Right inner notch (ticket punch) ── */}
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    right: -notchR,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    width: notchR * 2,
-                    height: notchR * 2,
-                    borderRadius: '50%',
-                    background: sectionBackground,
-                    boxShadow: `inset 0 0 0 1px ${cardBorder}`,
-                    zIndex: 10,
-                    pointerEvents: 'none',
-                  }}
-                />
-
-                {/* ── LEFT: Theme colored discount panel ── */}
-                <div
-                  style={{
-                    position: 'relative',
-                    width: leftW,
-                    flexShrink: 0,
-                    background: `linear-gradient(145deg, ${accentColor} 0%, ${accentDark} 100%)`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: isMobileViewport ? '14px 10px' : '20px 14px',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {/* Soft radial highlight top-left */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: 'radial-gradient(circle at 28% 18%, rgba(255,255,255,0.22) 0%, transparent 55%)',
-                      pointerEvents: 'none',
-                    }}
-                  />
-
-                  {/* Watermark F&B icons — low opacity bottom-right */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute',
-                      bottom: isMobileViewport ? 6 : 10,
-                      right: isMobileViewport ? 6 : 10,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-end',
-                      gap: isMobileViewport ? 3 : 5,
-                      opacity: 0.14,
-                      color: '#ffffff',
-                      transform: 'rotate(-8deg)',
-                      pointerEvents: 'none',
-                    }}
-                  >
-                    <Coffee   size={isMobileViewport ? 22 : 30} strokeWidth={1.4} />
-                    <Utensils size={isMobileViewport ? 20 : 26} strokeWidth={1.4} />
-                  </div>
-
-                  {/* Perforated seam on right edge */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      right: 0,
-                      bottom: 0,
-                      width: 2,
-                      background: 'repeating-linear-gradient(to bottom, rgba(255,255,255,0.38) 0px, rgba(255,255,255,0.38) 5px, transparent 5px, transparent 10px)',
-                      pointerEvents: 'none',
-                    }}
-                  />
-
-                  {/* Discount text */}
-                  <div
-                    style={{
-                      position: 'relative',
-                      zIndex: 1,
-                      textAlign: 'center',
-                      color: '#ffffff',
-                      fontFamily: titleFontFamily || 'inherit',
-                      userSelect: 'none',
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: isMobileViewport ? 36 : 48,
-                        fontWeight: 900,
-                        lineHeight: 0.92,
-                        letterSpacing: '-0.04em',
-                      }}
-                    >
-                      {disc.top}
-                    </div>
-                    {disc.bottom && (
-                      <div
-                        style={{
-                          fontSize: isMobileViewport ? 17 : 23,
-                          fontWeight: 800,
-                          lineHeight: 1.15,
-                          letterSpacing: '0.08em',
-                          marginTop: isMobileViewport ? 4 : 6,
-                        }}
-                      >
-                        {disc.bottom}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* ── RIGHT: Content panel ── */}
-                <div
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    gap: isMobileViewport ? 7 : 10,
-                    padding: isMobileViewport ? '13px 14px 13px 18px' : '18px 22px 18px 22px',
-                    minWidth: 0,
-                    background: '#ffffff',
-                  }}
-                >
-                  {/* Promo badge row: colored circle icon + label */}
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-                    <div
-                      style={{
-                        width: isMobileViewport ? 26 : 30,
-                        height: isMobileViewport ? 26 : 30,
-                        borderRadius: '50%',
-                        background: accentTint,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Tag size={isMobileViewport ? 12 : 14} color={accentColor} strokeWidth={2.2} />
-                    </div>
-                    <span
-                      style={{
-                        fontSize: isMobileViewport ? 10 : 12,
-                        fontWeight: 600,
-                        color: accentColor,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        fontFamily: bodyFontFamily,
-                        lineHeight: 1.2,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {promoBadgeLabel}
-                    </span>
-                  </div>
-
-                  {/* Main offer description — largest text, 2-line clamp */}
-                  <div
-                    style={{
-                      fontSize: isMobileViewport ? 15 : 19,
-                      fontWeight: 700,
-                      color: '#0F172A',
-                      lineHeight: 1.3,
-                      letterSpacing: '-0.02em',
-                      fontFamily: titleFontFamily || 'inherit',
-                      overflow: 'hidden',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                    }}
-                  >
-                    {promoDescLabel}
-                  </div>
-
-                  {/* Thin dashed divider */}
-                  <div
-                    style={{
-                      borderTop: '1px dashed rgba(0,0,0,0.1)',
-                      flexShrink: 0,
-                    }}
-                  />
-
-                  {/* Validity pill — green, left-aligned */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignSelf: 'flex-start',
-                        alignItems: 'center',
-                        gap: 5,
-                        padding: isMobileViewport ? '4px 9px' : '5px 11px',
-                        borderRadius: 999,
-                        background: '#EAF8EC',
-                        border: '1px solid #BBF7D0',
-                        color: '#166534',
-                        fontSize: isMobileViewport ? 10 : 12,
-                        fontWeight: 600,
-                        lineHeight: 1,
-                        fontFamily: bodyFontFamily,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <Calendar size={isMobileViewport ? 11 : 12} strokeWidth={2} color="#166534" />
-                      {validityBadgeLabel}
-                    </span>
-                    {promoCodeText ? (
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          minHeight: isMobileViewport ? 24 : 28,
-                          padding: isMobileViewport ? '0 9px' : '0 11px',
-                          borderRadius: 999,
-                          background: '#ffffff',
-                          border: `1px solid ${cardBorder}`,
-                          color: '#0f172a',
-                          fontSize: isMobileViewport ? 10 : 12,
-                          fontWeight: 800,
-                          lineHeight: 1,
-                          fontFamily: bodyFontFamily,
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        <Tag size={isMobileViewport ? 11 : 12} color={accentColor} />
-                        <span style={{ color: '#64748b', fontWeight: 700 }}>Promo Code:</span>
-                        <span>{promoCodeText}</span>
-                      </span>
-                    ) : null}
-                    {isAppliedPromo ? (
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          minHeight: isMobileViewport ? 24 : 28,
-                          padding: isMobileViewport ? '0 9px' : '0 11px',
-                          borderRadius: 999,
-                          background: accentTint,
-                          border: `1px solid ${cardBorder}`,
-                          color: accentColor,
-                          fontSize: isMobileViewport ? 10 : 12,
-                          fontWeight: 800,
-                          lineHeight: 1,
-                          fontFamily: bodyFontFamily,
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Applied
-                      </span>
-                    ) : null}
-                    {canApplyPromo ? (
-                      <button
-                        type="button"
-                        onClick={() => onApplyPromo?.(promoCodeText)}
-                        style={{
-                          minHeight: isMobileViewport ? 24 : 28,
-                          padding: isMobileViewport ? '0 10px' : '0 12px',
-                          borderRadius: 999,
-                          border: `1px solid ${accentColor}`,
-                          background: '#ffffff',
-                          color: accentColor,
-                          fontSize: isMobileViewport ? 10 : 12,
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          fontFamily: bodyFontFamily,
-                          whiteSpace: 'nowrap',
-                        }}
-                        >
-                          Use
-                        </button>
-                      ) : null}
-                  </div>
-                  {eligibleItemsText || eligibleCategoriesText ? (
-                    <div style={{ display: 'grid', gap: 4 }}>
-                      {eligibleItemsText ? (
-                        <div style={{ fontSize: isMobileViewport ? 11 : 12, color: '#475569', lineHeight: 1.45, fontFamily: bodyFontFamily }}>
-                          <span style={{ fontWeight: 800, color: '#0f172a' }}>Eligible items:</span> {eligibleItemsText}
-                        </div>
-                      ) : null}
-                      {eligibleCategoriesText ? (
-                        <div style={{ fontSize: isMobileViewport ? 11 : 12, color: '#475569', lineHeight: 1.45, fontFamily: bodyFontFamily }}>
-                          <span style={{ fontWeight: 800, color: '#0f172a' }}>Eligible categories:</span> {eligibleCategoriesText}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })}
+        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(auto-fill, minmax(360px, 580px))', gap: isMobileViewport ? 16 : 20, justifyContent: 'start' }}>
+          {items.map((promoEntry, index) => <PromoCard key={promoEntry.promoCode || promoEntry.promo_code || `${promoEntry.title}-${index}`} {...{ promoEntry, index, isMobileViewport, accentColor, accentDark, accentTint, cardBorder, bodyFontFamily, titleFontFamily, activePromoCode, onApplyPromo }} />)}
         </div>
       </div>
     </section>

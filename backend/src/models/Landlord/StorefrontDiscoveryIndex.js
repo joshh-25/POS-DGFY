@@ -140,6 +140,10 @@ export default (sequelize) => {
             type: DataTypes.JSON,
             allowNull: true
         },
+        storefront_promos: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
         storefront_ui_v2_enabled: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
