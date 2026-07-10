@@ -2126,3 +2126,27 @@ The local POS backend failed to start with `TypeError: minimatch is not a functi
 - `frontend/src/features/pos/services/posService.js`
 - `frontend/src/features/pos/__tests__/orderFulfillmentUi.test.js`
 - `Implementation.md`
+
+---
+
+## 2026-07-10 — Apply delivery job schema and support local MariaDB tenants
+
+### Confirmed problem
+
+POS transaction reads failed with `Table '<tenant>.delivery_jobs' doesn't exist` because the delivery-job model was active before existing tenant schemas had received the additive table. The tenant repair registry also used the MySQL 8-only `utf8mb4_0900_ai_ci` collation, which local XAMPP MariaDB 10.4 rejects.
+
+### Implemented solution
+
+- Changed the `delivery_jobs` tenant repair DDL to the cross-compatible `utf8mb4_general_ci` collation.
+- Applied the additive tenant schema repair locally; Masu Cafe and eight other active tenant schemas received `delivery_jobs`.
+- Verified the Masu Cafe table columns, unique keys, delivery lookup indexes, and foreign keys to `pos_transactions` and `tenant_locations`.
+- Kept the committed Sequelize migration and tenant schema registry entry as the PR rollout path for new and existing tenant schemas.
+
+### Remaining local drift
+
+- One disposable QA tenant still has older unrelated POS discount schema drift whose pre-existing registry DDL uses the MySQL 8-only collation. Masu Cafe and the delivery-job rollout are healthy.
+
+### Files changed
+
+- `backend/scripts/sync-tenant-schemas.js`
+- `Implementation.md`
