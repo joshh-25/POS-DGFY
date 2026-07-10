@@ -987,6 +987,11 @@ const buildShiftClosedError = () => new DomainError(
         }
     }
 );
+const POS_OPEN_STATUS_SETTING_KEY = 'pos_open_status';
+const syncStorefrontOrderingStatus = async ({ posRepository, isOpen }) => {
+    if (typeof posRepository?.updateSystemSettingValueByKey !== 'function') return;
+    await posRepository.updateSystemSettingValueByKey(POS_OPEN_STATUS_SETTING_KEY, isOpen);
+};
 
 const resolvePairingIdentityStatus = async ({ tenantId, user }) => {
     const status = await getDgfyLegacyLinkStatus({ tenantId, user });
@@ -4881,6 +4886,7 @@ export const buildOpenTerminalShiftUseCase = ({
                         }
                     });
                 }
+                await syncStorefrontOrderingStatus({ posRepository, isOpen: true });
                 const replayPayload = {
                     reused_existing: true,
                     compliance_decision: complianceDecision,
@@ -4951,6 +4957,7 @@ export const buildOpenTerminalShiftUseCase = ({
                     }
                 );
             }
+            await syncStorefrontOrderingStatus({ posRepository, isOpen: true });
             const hydratedCreated = await posRepository.getTerminalShiftById(
                 created.pos_terminal_shift_id
             );
@@ -5492,6 +5499,12 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 closed_by: normalizedUserId,
                 status: 'closed'
             });
+            if (typeof posRepository.countOpenTerminalShifts === 'function') {
+                const remainingOpenShiftCount = await posRepository.countOpenTerminalShifts();
+                if (remainingOpenShiftCount === 0) {
+                    await syncStorefrontOrderingStatus({ posRepository, isOpen: false });
+                }
+            }
 
             const replayPayload = {
                 compliance_decision: complianceDecision,

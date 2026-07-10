@@ -3171,6 +3171,15 @@ export const posRepository = {
         });
     },
 
+    async countOpenTerminalShifts(options = {}) {
+        const PosTerminalShift = dbStore.get('PosTerminalShift');
+        return PosTerminalShift.count({
+            where: { status: 'open' },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+    },
+
     async createTerminalShift(payload = {}, options = {}) {
         const PosTerminalShift = dbStore.get('PosTerminalShift');
         return PosTerminalShift.create(payload, { transaction: options.transaction });

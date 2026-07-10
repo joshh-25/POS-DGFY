@@ -116,6 +116,14 @@ describe('storefront error message normalization', () => {
     expect(message).toContain('currently closed');
   });
 
+  it('keeps POS ordering closure distinct from a closed location', () => {
+    const message = normalizeStorefrontErrorMessage({
+      message: 'Storefront ordering is currently closed by the POS'
+    });
+    expect(message).toContain('no active POS shift');
+    expect(message).not.toContain('Selected location');
+  });
+
   it('classifies 500 catalog errors as runtime issues (not setup guidance)', () => {
     const result = classifyStoreCatalogError({
       status: 500,
