@@ -33,6 +33,7 @@ import ItemBarcode from './ItemBarcode.js';
 import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
 import PosTransaction from './PosTransaction.js';
+import DeliveryJob from './DeliveryJob.js';
 import PosTransactionLine from './PosTransactionLine.js';
 import PosDiscountRule from './PosDiscountRule.js';
 import PosTransactionDiscount from './PosTransactionDiscount.js';
@@ -373,6 +374,9 @@ PosTransaction.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'locat
 PosTransaction.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
+PosTransaction.hasOne(DeliveryJob, { foreignKey: 'pos_transaction_id', as: 'deliveryJob' });
+DeliveryJob.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+DeliveryJob.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalEvents' });
 PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
@@ -649,6 +653,7 @@ const db = {
   DispatchOrder,
   DispatchOrderLine,
   PosTransaction,
+  DeliveryJob,
   PosTransactionLine,
   PosDiscountRule,
   PosTransactionDiscount,

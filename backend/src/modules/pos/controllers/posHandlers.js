@@ -77,7 +77,10 @@ export const listDiscountApprovers = async (req, res, next) => {
 
 export const verifyDiscountApproval = async (req, res, next) => {
     try {
-        const result = await verifyPosDiscountApprovalUseCase({ payload: req.validatedData || req.body || {} });
+        const result = await verifyPosDiscountApprovalUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => ({

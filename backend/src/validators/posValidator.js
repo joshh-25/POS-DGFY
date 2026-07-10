@@ -79,9 +79,10 @@ const governedDiscountSchema = Joi.object({
 });
 
 const posDiscountApprovalSchema = Joi.object({
-    approver_user_id: Joi.number().integer().positive().required(),
-    manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).required(),
-    employee_user_id: Joi.number().integer().positive().allow(null).optional()
+    approver_user_id: Joi.number().integer().positive().allow(null).optional(),
+    manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
+    employee_user_id: Joi.number().integer().positive().allow(null).optional(),
+    discount_type: Joi.string().valid('employee', 'manual').optional()
 });
 
 const checkoutPosSchema = Joi.object({

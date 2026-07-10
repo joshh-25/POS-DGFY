@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import logger from '../../../config/logger.js';
+import { deriveImageAssetVariantUrls } from '../../shared/utils/imageAssetStorage.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertStoreRepositoryContract } from '../contracts/storeRepository.contract.js';
 import { isCatalogItemVisible, resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
@@ -40,6 +41,16 @@ const buildOrderInclude = () => ([
         model: dbStore.get('StoreCustomer'),
         as: 'storeCustomer',
         attributes: ['customer_id', 'dgfy_account_id', 'email', 'name', 'phone']
+    },
+    {
+        model: dbStore.get('PosTransactionDiscount'),
+        as: 'discount',
+        required: false,
+        include: [{
+            model: dbStore.get('PosTransactionDiscountLine'),
+            as: 'lines',
+            required: false
+        }]
     },
     {
         model: dbStore.get('User'),
@@ -367,6 +378,16 @@ const normalizeStorefrontImageGallery = (value) => {
         .map((entry, index) => ({
             path: entry?.path || null,
             url: entry?.url || null,
+            variants: entry?.variants && typeof entry.variants === 'object'
+                ? {
+                    thumbnail_url: entry.variants.thumbnail_url || null,
+                    medium_url: entry.variants.medium_url || null,
+                    large_url: entry.variants.large_url || null
+                }
+                : deriveImageAssetVariantUrls({
+                    storedPath: entry?.path || null,
+                    storedUrl: entry?.url || null
+                }),
             is_primary: entry?.is_primary === true,
             sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
         }))
@@ -393,6 +414,10 @@ const mapStorefrontCatalogImageGallery = (row = {}, options = {}) => {
         .filter((entry) => entry.url)
         .map((entry, index) => ({
             url: entry.url,
+            variants: entry.variants || deriveImageAssetVariantUrls({
+                storedPath: entry.path || null,
+                storedUrl: entry.url || null
+            }),
             is_primary: index === 0,
             sort_order: index
         }));
@@ -663,6 +688,9 @@ export const storeRepository = {
                 cost_per_unit: row.cost_per_unit,
                 vat_type: row.vat_type,
                 image_url: mapStorefrontCatalogImageUrl(row, { allowLegacyPosFallback }),
+                image_variants: deriveImageAssetVariantUrls({
+                    storedUrl: mapStorefrontCatalogImageUrl(row, { allowLegacyPosFallback })
+                }),
                 image_gallery: mapStorefrontCatalogImageGallery(row, { allowLegacyPosFallback }),
                 service_detail: row?.serviceDetail || null,
                 nutrition: row?.nutrition || null,
@@ -864,6 +892,9 @@ export const storeRepository = {
                         default_sale_price: item.default_sale_price,
                         vat_type: item.vat_type,
                         image_url: mapStorefrontCatalogImageUrl(item),
+                        image_variants: deriveImageAssetVariantUrls({
+                            storedUrl: mapStorefrontCatalogImageUrl(item)
+                        }),
                         image_gallery: mapStorefrontCatalogImageGallery(item),
                         service_detail: item.serviceDetail || null
                     },
@@ -1358,9 +1389,12 @@ export const storeRepository = {
         return `INV-${String(nextValue).padStart(6, '0')}`;
     },
 
-    async createOnlineTransactionWithLines({ header, lines }, options = {}) {
+    async createOnlineTransactionWithLines({ header, lines, discount = null }, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const PosTransactionLine = dbStore.get('PosTransactionLine');
+        const PosTransactionDiscount = dbStore.get('PosTransactionDiscount');
+        const PosTransactionDiscountLine = dbStore.get('PosTransactionDiscountLine');
+        const DeliveryJob = dbStore.get('DeliveryJob');
         const transaction = options.transaction;
 
         const created = await PosTransaction.create(header, { transaction });
@@ -1371,6 +1405,53 @@ export const storeRepository = {
             })),
             { transaction }
         );
+
+        if (discount && PosTransactionDiscount && PosTransactionDiscountLine) {
+            const createdDiscount = await PosTransactionDiscount.create({
+                transaction_id: created.pos_transaction_id,
+                discount_rule_id: null,
+                discount_type: 'promo',
+                discount_method: 'percentage',
+                discount_rate: discount.discount_rate,
+                discount_amount: discount.discount_amount,
+                vat_removed: 0,
+                vat_exempt_amount: 0,
+                promo_code: discount.promo_code,
+                calculation_version: 'pos-discount.v2'
+            }, { transaction });
+            const transactionLines = await PosTransactionLine.findAll({
+                where: { pos_transaction_id: created.pos_transaction_id },
+                order: [['line_id', 'ASC']],
+                transaction
+            });
+            const allocations = Array.isArray(discount.lines) ? discount.lines : [];
+            const allocationRows = transactionLines.map((line, index) => {
+                const allocation = allocations[index] || {};
+                return {
+                    transaction_discount_id: createdDiscount.id,
+                    transaction_line_id: line.line_id,
+                    item_id: line.item_id,
+                    eligible_quantity: allocation.eligible_quantity || 0,
+                    gross_eligible_amount: allocation.gross_eligible_amount || 0,
+                    vat_removed: 0,
+                    vat_exempt_amount: 0,
+                    discount_amount: allocation.discount_amount || 0,
+                    final_line_amount: allocation.final_line_amount ?? line.line_subtotal
+                };
+            });
+            if (allocationRows.length > 0) {
+                await PosTransactionDiscountLine.bulkCreate(allocationRows, { transaction });
+            }
+        }
+
+        if (header.order_method === 'delivery' && DeliveryJob) {
+            await DeliveryJob.create({
+                pos_transaction_id: created.pos_transaction_id,
+                location_id: header.location_id || null,
+                provider: 'manual',
+                status: 'pending_dispatch'
+            }, { transaction });
+        }
 
         return created.pos_transaction_id;
     },

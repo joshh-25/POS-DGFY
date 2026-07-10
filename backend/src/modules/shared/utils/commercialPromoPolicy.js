@@ -111,7 +111,7 @@ export const resolveCommercialPromoApplication = ({ settings = {}, promoCode, pr
         || parseCommercialPromoConfig(null);
     const preparedLines = Array.isArray(prepared.preparedLines) ? prepared.preparedLines : [];
     const subtotalAmount = round4(prepared.subtotalAmount || 0);
-    if (!enteredPromoCode) return { config, enteredPromoCode: '', applied: false, discountAmount: 0, discountRate: 0, discountLabel: null, eligibleItemIds: [], message: '' };
+    if (!enteredPromoCode) return { config, enteredPromoCode: '', applied: false, discountAmount: 0, discountRate: 0, discountLabel: null, eligibleItemIds: [], lineAllocations: [], message: '' };
     if (!config.active || !config.promoCode || enteredPromoCode !== config.promoCode || config.discountPercent <= 0) {
         promoError('Invalid or inactive promo code.', 'INVALID_PROMO_CODE');
     }
@@ -128,14 +128,40 @@ export const resolveCommercialPromoApplication = ({ settings = {}, promoCode, pr
     if (targets.size > 0 && eligibleLines.length === 0) promoError('Promo code does not apply to the items in this order.', 'PROMO_ITEMS_NOT_IN_ORDER');
     const eligibleSubtotal = round4(eligibleLines.reduce((sum, line) => sum + round4(line.line_subtotal ?? (Number(line.quantity) * Number(line.sale_price))), 0));
     const base = targets.size > 0 ? eligibleSubtotal : subtotalAmount;
+    const discountAmount = round4(base * (config.discountPercent / 100));
+    const eligibleIndexes = preparedLines
+        .map((line, index) => (eligibleLines.includes(line) ? index : null))
+        .filter((index) => index != null);
+    let allocatedDiscount = 0;
+    const lineAllocations = preparedLines.map((line, index) => {
+        const lineSubtotal = round4(line.line_subtotal ?? (Number(line.quantity) * Number(line.sale_price)));
+        const isEligible = eligibleIndexes.includes(index);
+        const isLastEligible = isEligible && index === eligibleIndexes[eligibleIndexes.length - 1];
+        const lineDiscount = !isEligible
+            ? 0
+            : isLastEligible
+                ? round4(discountAmount - allocatedDiscount)
+                : round4(lineSubtotal * (config.discountPercent / 100));
+        allocatedDiscount = round4(allocatedDiscount + lineDiscount);
+        return {
+            item_id: toPositiveInt(line.item_id),
+            eligible_quantity: isEligible ? round4(line.quantity) : 0,
+            gross_eligible_amount: isEligible ? lineSubtotal : 0,
+            vat_removed: 0,
+            vat_exempt_amount: 0,
+            discount_amount: lineDiscount,
+            final_line_amount: round4(lineSubtotal - lineDiscount)
+        };
+    });
     return {
         config,
         enteredPromoCode,
         applied: base > 0,
-        discountAmount: round4(base * (config.discountPercent / 100)),
+        discountAmount,
         discountRate: config.discountPercent,
         discountLabel: config.badge || config.title || `Promo Code (${enteredPromoCode})`,
         eligibleItemIds: [...new Set(eligibleLines.map((line) => toPositiveInt(line.item_id)).filter(Boolean))],
+        lineAllocations,
         message: 'Promo code applied successfully.'
     };
 };

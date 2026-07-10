@@ -47,7 +47,7 @@ describe('POS governed discount policy', () => {
 
     test('resolves promo rate and targets from commercial Storefront configuration', async () => {
         const result = await resolvePosGovernedDiscount({
-            draft: { type: 'promo', promo_code: ' save10 ', method: 'fixed', rate: 99 },
+            draft: { type: 'promo', promo_code: ' save10 ', method: 'fixed', rate: 99, customer_name: 'Promo Buyer' },
             preparedLines,
             subtotalAmount: 180,
             settings: {
@@ -69,7 +69,7 @@ describe('POS governed discount policy', () => {
 
     test('resolves promo rate and targets from multiple Storefront promo configurations', async () => {
         const result = await resolvePosGovernedDiscount({
-            draft: { type: 'promo', promo_code: ' meal15 ', method: 'fixed', rate: 99 },
+            draft: { type: 'promo', promo_code: ' meal15 ', method: 'fixed', rate: 99, customer_name: 'Promo Buyer' },
             preparedLines,
             subtotalAmount: 180,
             settings: {
@@ -98,7 +98,7 @@ describe('POS governed discount policy', () => {
 
     test('falls back to legacy single Storefront promo when multi-promo settings are absent', async () => {
         const result = await resolvePosGovernedDiscount({
-            draft: { type: 'promo', promo_code: 'save10' },
+            draft: { type: 'promo', promo_code: 'save10', customer_name: 'Promo Buyer' },
             preparedLines,
             subtotalAmount: 180,
             settings: {
@@ -117,7 +117,7 @@ describe('POS governed discount policy', () => {
 
     test('canonicalizes employee identity from an active user record', async () => {
         const result = await resolvePosGovernedDiscount({
-            draft: { type: 'employee', employee_id: '7', employee_name: 'Spoofed', method: 'percentage', rate: 50 },
+            draft: { type: 'employee', customer_name: 'Employee Buyer', employee_id: '7', employee_name: 'Spoofed', method: 'percentage', rate: 50 },
             preparedLines,
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type],
@@ -125,5 +125,48 @@ describe('POS governed discount policy', () => {
         });
 
         expect(result.application).toMatchObject({ employee_id: '7', employee_name: 'cashier-seven', rate: 15 });
+    });
+
+    test('allows employee discounts without an employee ID', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: { type: 'employee', customer_name: 'Employee Buyer', method: 'percentage', rate: 50, employee_name: 'Optional display name' },
+            preparedLines,
+            subtotalAmount: 180,
+            findActiveRule: async (type) => rules[type]
+        });
+
+        expect(result.application).toMatchObject({ employee_id: null, employee_name: null, rate: 15 });
+    });
+
+    test('requires customer name for non-statutory promo discounts', async () => {
+        await expect(resolvePosGovernedDiscount({
+            draft: { type: 'promo', promo_code: 'SAVE10' },
+            preparedLines,
+            subtotalAmount: 180,
+            settings: {
+                storefront_promo: {
+                    value: { active: true, promo_code: 'SAVE10', discount_percent: 10, target_item_ids: [1] }
+                }
+            }
+        })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
+    });
+
+    test('requires customer name for employee discounts before resolving the employee', async () => {
+        await expect(resolvePosGovernedDiscount({
+            draft: { type: 'employee', employee_id: '7' },
+            preparedLines,
+            subtotalAmount: 180,
+            findActiveRule: async (type) => rules[type],
+            findActiveEmployee: async () => ({ user_id: 7, username: 'cashier-seven' })
+        })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
+    });
+
+    test('requires customer name for manual discounts while preserving existing manual controls', async () => {
+        await expect(resolvePosGovernedDiscount({
+            draft: { type: 'manual', method: 'percentage', rate: 10, reason: 'Manager approved' },
+            preparedLines,
+            subtotalAmount: 180,
+            findActiveRule: async (type) => rules[type]
+        })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
     });
 });
