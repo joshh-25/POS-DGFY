@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Runner refuses to connect until required environment, target database, runtime mode, and destructive-operation flags are valid.
   4. Every runner command leaves database-backed metadata plus machine-readable and human-readable evidence.
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 
 Plans:
 **Wave 1**
@@ -44,7 +44,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Migration metadata store (RUN-04) + JSON/summary report writers (RUN-05)
+- [x] 01-02-PLAN.md — Migration metadata store (RUN-04) + JSON/summary report writers (RUN-05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -145,7 +145,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Architecture and Migration Runner Contract | 1/4 | In Progress | - |
+| 1. Architecture and Migration Runner Contract | 2/4 | In Progress|  |
 | 2. DGFY Database Foundation | 0/TBD | Not started | - |
 | 3. Old-to-New Migration Proof | 0/TBD | Not started | - |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 0/TBD | Not started | - |

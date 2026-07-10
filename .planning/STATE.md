@@ -6,15 +6,15 @@ current_phase: 01
 current_phase_name: Architecture and Migration Runner Contract
 status: executing
 stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-07-10T11:09:02.028Z"
+last_updated: "2026-07-10T11:19:01.216Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
-  percent: 25
+  completed_plans: 2
+  percent: 0
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 ## Current Position
 
 Phase: 01 (Architecture and Migration Runner Contract) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-10 — Phase 01 execution started
 
@@ -56,6 +56,7 @@ Progress: [███░░░░░░░] 25%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 32min | 3 tasks | 12 files |
+| Phase 01 P02 | 11min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,9 @@ Recent decisions affecting current work:
 - [Roadmap]: Defer Product, POS checkout, payment, fiscal, and frontend migration to later milestones.
 - [Phase ?]: Inlined new Sequelize(...) separately in each DB factory function (source/target/meta) rather than a shared helper, so the plan's zero-top-level-call acceptance test holds literally
 - [Phase ?]: Pinned mysql2 to ^3.6.5 in apps/dgfy-migration-runner per package legitimacy audit (latest 3.22.6 flagged too-new)
+- [Phase ?]: ensureMetadataSchema() self-heals dgfy_migration_meta via a short-lived raw mysql2 connection reusing metaSequelize.config credentials, then fails fast with MetadataSchemaError on any later structural mismatch instead of silently addColumn-ing
+- [Phase ?]: MetaSequelizeStorage is a custom Umzug storage class backed by dgfy_migration_meta.schema_migrations rather than the default SequelizeMeta table
+- [Phase ?]: buildSummaryLine() unconditionally skips non-null object/array summary fields so the summary.txt file never contains a raw JSON dump, by construction rather than convention
 
 ### Pending Todos
 
@@ -94,6 +98,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-10T11:08:14.824Z
+Last session: 2026-07-10T11:16:43.304Z
 Stopped at: Completed 01-01-PLAN.md
 Resume file: None

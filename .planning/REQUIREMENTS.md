@@ -36,8 +36,8 @@ Requirements for the initial database-first refactor milestone. Each maps to roa
 - [x] **RUN-01**: Operator can build and run a dedicated migration runner container separately from long-running backend/API containers.
 - [ ] **RUN-02**: Operator can execute explicit runner commands for schema migration, data migration dry-run, data migration apply, verification, status/reporting, and rollback-plan support.
 - [x] **RUN-03**: Runner validates required environment variables, target database names, runtime mode, and destructive-operation flags before connecting to any database.
-- [ ] **RUN-04**: Runner stores schema/data migration execution metadata in database-backed tables, not local files inside the container.
-- [ ] **RUN-05**: Runner produces machine-readable report files and concise human-readable summaries for every command.
+- [x] **RUN-04**: Runner stores schema/data migration execution metadata in database-backed tables, not local files inside the container.
+- [x] **RUN-05**: Runner produces machine-readable report files and concise human-readable summaries for every command.
 
 ### Database Foundation
 
@@ -111,8 +111,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RUN-01 | Phase 1 | Complete |
 | RUN-02 | Phase 1 | Pending |
 | RUN-03 | Phase 1 | Complete |
-| RUN-04 | Phase 1 | Pending |
-| RUN-05 | Phase 1 | Pending |
+| RUN-04 | Phase 1 | Complete |
+| RUN-05 | Phase 1 | Complete |
 | DBF-01 | Phase 2 | Pending |
 | DBF-02 | Phase 2 | Pending |
 | DBF-03 | Phase 2 | Pending |
