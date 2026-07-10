@@ -339,19 +339,33 @@ export async function runVerify({} = {}) {
     migrationMetadata.push(
       await checkMigrationMetadata(metaSequelize, resolveTargetKind(config.targetDb.name), config.targetDb.name)
     );
-    for (const name of businessDbNames) {
-      // eslint-disable-next-line no-await-in-loop
-      migrationMetadata.push(await checkMigrationMetadata(metaSequelize, 'business', name));
-    }
   } catch (error) {
     migrationMetadata.push({
       target_database: config.targetDb.name,
+      kind: resolveTargetKind(config.targetDb.name),
       ok: false,
       expected_migrations: [],
       executed_migrations: [],
       missing_migrations: [],
       error: error.message
     });
+  }
+
+  for (const name of businessDbNames) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      migrationMetadata.push(await checkMigrationMetadata(metaSequelize, 'business', name));
+    } catch (error) {
+      migrationMetadata.push({
+        target_database: name,
+        kind: 'business',
+        ok: false,
+        expected_migrations: [],
+        executed_migrations: [],
+        missing_migrations: [],
+        error: error.message
+      });
+    }
   }
 
   // D-22: idempotency — derived directly from migration_metadata's
