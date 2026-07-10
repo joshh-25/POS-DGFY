@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 1
+current_phase: 01
 current_phase_name: Architecture and Migration Runner Contract
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-07-10T10:39:24.118Z"
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-07-10T11:09:02.028Z"
 last_activity: 2026-07-10
-last_activity_desc: Roadmap created from database-first DGFY standalone refactor requirements.
+last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 4
+  completed_plans: 1
+  percent: 25
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-10)
 
 **Core value:** DGFY can become a standalone multi-tenant POS and Storefront system without breaking the existing live platform during migration.
-**Current focus:** Phase 1: Architecture and Migration Runner Contract
+**Current focus:** Phase 01 — Architecture and Migration Runner Contract
 
 ## Current Position
 
-Phase: 1 of 7 (Architecture and Migration Runner Contract)
-Plan: TBD in current phase
+Phase: 01 (Architecture and Migration Runner Contract) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-10 - Roadmap created from database-first DGFY standalone refactor requirements.
+Last activity: 2026-07-10 — Phase 01 execution started
 
-Progress: [----------] 0%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [----------] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01 P01 | 32min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Limit first backend scope to Accounts, Businesses, and Tenancy.
 - [Roadmap]: Keep legacy live; allow only approved compatibility seams under ADR 0003.
 - [Roadmap]: Defer Product, POS checkout, payment, fiscal, and frontend migration to later milestones.
+- [Phase ?]: Inlined new Sequelize(...) separately in each DB factory function (source/target/meta) rather than a shared helper, so the plan's zero-top-level-call acceptance test holds literally
+- [Phase ?]: Pinned mysql2 to ^3.6.5 in apps/dgfy-migration-runner per package legitimacy audit (latest 3.22.6 flagged too-new)
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-10T09:56:02.080Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-architecture-and-migration-runner-contract/01-CONTEXT.md
+Last session: 2026-07-10T11:08:14.824Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
