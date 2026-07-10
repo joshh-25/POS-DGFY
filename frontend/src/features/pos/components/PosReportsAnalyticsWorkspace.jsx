@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { loadOfflinePosReportSnapshot, saveOfflinePosReportSnapshot } from '../services/offlinePosSnapshotStore.js';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -219,6 +220,8 @@ const DataTable = ({ columns = [], rows = [], emptyMessage = 'No rows found.' })
 function PosReportsAnalyticsWorkspace({
   terminalMeta,
   reportRefreshKey = 0,
+  isOnline = true,
+  offlineSnapshotScope = {},
   sectionId
 }) {
   const [activeSection, setActiveSection] = useState('daily');
@@ -236,6 +239,15 @@ function PosReportsAnalyticsWorkspace({
     dateFrom: normalizeReportDateInput(dateRange.dateFrom),
     dateTo: normalizeReportDateInput(dateRange.dateTo)
   }), [dateRange.dateFrom, dateRange.dateTo]);
+  const offlineReportKey = useMemo(() => JSON.stringify({
+    granularity,
+    dateFrom: normalizedDateRange.dateFrom,
+    dateTo: normalizedDateRange.dateTo,
+    cashierId,
+    paymentType,
+    source,
+    category
+  }), [category, cashierId, granularity, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, paymentType, source]);
 
   const handleSectionChange = (sectionId) => {
     const nextSection = String(sectionId || 'daily').trim() || 'daily';
@@ -255,6 +267,15 @@ function PosReportsAnalyticsWorkspace({
     const loadReports = async () => {
       setLoading(true);
       setError('');
+      if (!isOnline) {
+        const snapshot = loadOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey);
+        if (!cancelled) {
+          setReportData(snapshot?.payload || null);
+          setError(snapshot ? 'Offline estimate from the last synced report. Pending local sales are not final until Sync completes.' : 'No cached report exists for this filter. Reconnect once to load it.');
+          setLoading(false);
+        }
+        return;
+      }
       try {
         const payload = await fetchPosReportsOverview({
           granularity,
@@ -267,6 +288,7 @@ function PosReportsAnalyticsWorkspace({
         });
         if (!cancelled) {
           setReportData(payload);
+          saveOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, payload);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -286,7 +308,7 @@ function PosReportsAnalyticsWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [category, cashierId, granularity, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, paymentType, reportRefreshKey, source]);
+  }, [category, cashierId, granularity, isOnline, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, offlineReportKey, offlineSnapshotScope, paymentType, reportRefreshKey, source]);
 
   const summaryCards = reportData?.summary_cards || {};
   const filterOptions = reportData?.filter_options || {};

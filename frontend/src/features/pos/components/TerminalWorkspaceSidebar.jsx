@@ -43,6 +43,7 @@ export default function TerminalWorkspaceSidebar({
   showBrand = true,
   showIdentityInSidebar = false,
   locked = false,
+  isOnline = true,
   isMsmeMode = false,
   terminalUser = null,
   currentViewMode = 'checkout',
@@ -142,7 +143,7 @@ export default function TerminalWorkspaceSidebar({
               caption={
                 locked
                   ? 'Unlock terminal to continue'
-                  : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions'))
+                : (!isOnline ? 'Cached offline estimate only' : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions')))
               }
               testId="pos-nav-reports"
             />
@@ -156,7 +157,7 @@ export default function TerminalWorkspaceSidebar({
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (!navigationShiftReady ? 'Protected by POS access PIN' : (isCashierRole ? 'View store items only' : 'Edit SKUpervisor item price and cost'))))
+                : (!isOnline ? 'Offline item drafts will sync manually' : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (!navigationShiftReady ? 'Protected by POS access PIN' : (isCashierRole ? 'View store items only' : 'Edit SKUpervisor item price and cost')))))
             }
             testId="pos-nav-items"
           />
@@ -166,11 +167,11 @@ export default function TerminalWorkspaceSidebar({
               icon={Truck}
               active={currentViewMode === 'incoming_queue'}
               onClick={() => onSelectViewMode('incoming_queue')}
-               disabled={locked || onboardingRestricted || !canViewPos || !navigationShiftReady}
+               disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !navigationShiftReady}
                caption={
                  locked
                    ? 'Unlock terminal to continue'
-                 : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Accept, reject, and progress online orders' : 'Admin queue review available without an active shift'))))
+                 : (!isOnline ? 'Available online only' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Accept, reject, and progress online orders' : 'Admin queue review available without an active shift')))))
                }
              />
            )}
@@ -192,13 +193,13 @@ export default function TerminalWorkspaceSidebar({
             icon={Settings2}
             active={['location_scope', 'terminal_setup', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
             onClick={() => onSelectViewMode(settingsTargetViewMode)}
-            disabled={locked}
+            disabled={locked || !isOnline}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (isCashierRole
+                : (!isOnline ? 'Available online only' : (isCashierRole
                   ? 'Profile, POS setup, and storefront tools'
-                  : 'Profile, POS setup, and storefront tools')
+                  : 'Profile, POS setup, and storefront tools'))
             }
             testId="pos-nav-settings"
           />
