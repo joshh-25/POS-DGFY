@@ -1,5 +1,5 @@
 import { createRequire } from 'module';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 import { validateEnv } from '../config/env.js';
@@ -44,7 +44,16 @@ export async function runRollbackPlan({} = {}) {
     const executedNames = await storage.executed();
 
     const entries = executedNames.map((name) => {
-      const migrationPath = join(MIGRATIONS_DIR, name);
+      // WR-06: `name` comes from schema_migrations.name in the meta DB — a
+      // high-trust source, but not one this function should blindly trust
+      // to build a require()-executed filesystem path. Reject anything that
+      // isn't a bare filename (rejects `/`, `..`, absolute paths, etc.)
+      // before it can resolve outside MIGRATIONS_DIR.
+      const safeName = basename(name);
+      if (safeName !== name) {
+        throw new Error(`Refusing to load migration with unsafe name: ${name}`);
+      }
+      const migrationPath = join(MIGRATIONS_DIR, safeName);
       const migration = requireCjs(migrationPath);
       return {
         name,
