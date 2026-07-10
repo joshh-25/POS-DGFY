@@ -65,7 +65,8 @@ export async function runDataDryRun({} = {}) {
 
     return report;
   } catch (error) {
-    if (metaSequelize && executionId) {
+    // executionId can legitimately be 0 — do not treat it as falsy (WR-02).
+    if (metaSequelize && executionId !== undefined && executionId !== null) {
       await recordCommandComplete(metaSequelize, executionId, {
         exitStatus: 'failed',
         errorMessage: error.message
@@ -129,7 +130,8 @@ export async function runDataApply({ confirmDestructive = false } = {}) {
 
     return report;
   } catch (error) {
-    if (metaSequelize && executionId) {
+    // executionId can legitimately be 0 — do not treat it as falsy (WR-02).
+    if (metaSequelize && executionId !== undefined && executionId !== null) {
       await recordCommandComplete(metaSequelize, executionId, {
         exitStatus: 'failed',
         errorMessage: error.message
