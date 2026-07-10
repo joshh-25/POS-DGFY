@@ -24,8 +24,14 @@ export function buildProgram() {
   const schemaCmd = new Command('schema').description('Schema migration commands');
   schemaCmd
     .command('migrate')
-    .description('Run pending schema migrations through Umzug')
-    .option('--confirm-destructive', 'Required when pending migrations include destructive DDL (per D-09/D-10)')
+    .description(
+      'Run pending schema migrations through Umzug. Note: the destructive-migration ' +
+      'gate scans every migration file that has ever existed under migrations/schema ' +
+      '(not just pending ones), because it must run before any meta-DB connection is ' +
+      'opened. Once a single destructive migration has shipped, --confirm-destructive ' +
+      'is required on every future migrate run, even for unrelated non-destructive work.'
+    )
+    .option('--confirm-destructive', 'Required when any migration file (past or pending) is marked destructive (per D-09/D-10)')
     .action(async (options) => {
       await runSchemaMigrate({ confirmDestructive: Boolean(options.confirmDestructive) });
     });

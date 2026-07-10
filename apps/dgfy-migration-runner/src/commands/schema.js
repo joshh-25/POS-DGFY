@@ -26,6 +26,14 @@ const MIGRATIONS_DIR = join(__dirname, '..', 'migrations', 'schema');
  * destructive-op gate BEFORE any DB connection factory is called — Umzug's
  * own `pending()` can't be used for that check because its storage is
  * backed by the meta DB connection, which must not be created yet.
+ *
+ * WR-04 (accepted, documented in `schema migrate --help`): because this scan
+ * covers every migration file that has ever existed (not just ones Umzug
+ * would consider pending), once a single destructive migration has shipped,
+ * `--confirm-destructive` is required on every future `schema migrate` run —
+ * even for unrelated, non-destructive migrations added later. Scoping this
+ * to only-pending migrations would require a meta-DB connection before the
+ * gate runs, which is exactly the ordering this function exists to avoid.
  */
 function listMigrationFiles() {
   return readdirSync(MIGRATIONS_DIR)
