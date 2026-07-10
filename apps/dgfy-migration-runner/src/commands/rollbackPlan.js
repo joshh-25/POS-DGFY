@@ -39,40 +39,51 @@ export async function runRollbackPlan({} = {}) {
     runtimeMode: config.runtimeMode
   });
 
-  const storage = new MetaSequelizeStorage({ sequelize: metaSequelize });
-  const executedNames = await storage.executed();
+  try {
+    const storage = new MetaSequelizeStorage({ sequelize: metaSequelize });
+    const executedNames = await storage.executed();
 
-  const entries = executedNames.map((name) => {
-    const migrationPath = join(MIGRATIONS_DIR, name);
-    const migration = requireCjs(migrationPath);
-    return {
-      name,
-      rollbackDescription: migration.meta?.rollbackDescription || null,
-      estimatedRisk: migration.meta?.estimatedRisk || null
+    const entries = executedNames.map((name) => {
+      const migrationPath = join(MIGRATIONS_DIR, name);
+      const migration = requireCjs(migrationPath);
+      return {
+        name,
+        rollbackDescription: migration.meta?.rollbackDescription || null,
+        estimatedRisk: migration.meta?.estimatedRisk || null
+      };
+    });
+
+    const report = {
+      generated_at: new Date().toISOString(),
+      command: 'rollback-plan',
+      summary: {
+        migrations_covered: entries.length
+      },
+      results: entries.map((entry) => ({
+        migration: entry.name,
+        rollback_description: entry.rollbackDescription,
+        estimated_risk: entry.estimatedRisk
+      }))
     };
-  });
 
-  const report = {
-    generated_at: new Date().toISOString(),
-    command: 'rollback-plan',
-    summary: {
-      migrations_covered: entries.length
-    },
-    results: entries.map((entry) => ({
-      migration: entry.name,
-      rollback_description: entry.rollbackDescription,
-      estimated_risk: entry.estimatedRisk
-    }))
-  };
+    const reportJsonPath = await writeJsonReport(config.reportDir, 'rollback-plan', report);
+    const reportSummaryPath = await writeSummaryReport(config.reportDir, 'rollback-plan', report, 'success');
 
-  const reportJsonPath = await writeJsonReport(config.reportDir, 'rollback-plan', report);
-  const reportSummaryPath = await writeSummaryReport(config.reportDir, 'rollback-plan', report, 'success');
+    await recordCommandComplete(metaSequelize, executionId, {
+      exitStatus: 'success',
+      reportJsonPath,
+      reportSummaryPath
+    });
 
-  await recordCommandComplete(metaSequelize, executionId, {
-    exitStatus: 'success',
-    reportJsonPath,
-    reportSummaryPath
-  });
-
-  return report;
+    return report;
+  } catch (error) {
+    // executionId can legitimately be 0 — do not treat it as falsy (WR-02).
+    if (executionId !== undefined && executionId !== null) {
+      await recordCommandComplete(metaSequelize, executionId, {
+        exitStatus: 'failed',
+        errorMessage: error.message
+      });
+    }
+    throw error;
+  }
 }

@@ -28,31 +28,42 @@ export async function runStatus({} = {}) {
     runtimeMode: config.runtimeMode
   });
 
-  const [rows] = await metaSequelize.query(
-    'SELECT command, mode, actor, runtime_mode, started_at, completed_at, exit_status FROM command_executions ORDER BY started_at DESC LIMIT 20'
-  );
+  try {
+    const [rows] = await metaSequelize.query(
+      'SELECT command, mode, actor, runtime_mode, started_at, completed_at, exit_status FROM command_executions ORDER BY started_at DESC LIMIT 20'
+    );
 
-  const storage = new MetaSequelizeStorage({ sequelize: metaSequelize });
-  const executedNames = await storage.executed();
+    const storage = new MetaSequelizeStorage({ sequelize: metaSequelize });
+    const executedNames = await storage.executed();
 
-  const report = {
-    generated_at: new Date().toISOString(),
-    command: 'status',
-    summary: {
-      recent_commands: rows.length,
-      schema_migrations_executed: executedNames.length
-    },
-    results: rows
-  };
+    const report = {
+      generated_at: new Date().toISOString(),
+      command: 'status',
+      summary: {
+        recent_commands: rows.length,
+        schema_migrations_executed: executedNames.length
+      },
+      results: rows
+    };
 
-  const reportJsonPath = await writeJsonReport(config.reportDir, 'status', report);
-  const reportSummaryPath = await writeSummaryReport(config.reportDir, 'status', report, 'success');
+    const reportJsonPath = await writeJsonReport(config.reportDir, 'status', report);
+    const reportSummaryPath = await writeSummaryReport(config.reportDir, 'status', report, 'success');
 
-  await recordCommandComplete(metaSequelize, executionId, {
-    exitStatus: 'success',
-    reportJsonPath,
-    reportSummaryPath
-  });
+    await recordCommandComplete(metaSequelize, executionId, {
+      exitStatus: 'success',
+      reportJsonPath,
+      reportSummaryPath
+    });
 
-  return report;
+    return report;
+  } catch (error) {
+    // executionId can legitimately be 0 — do not treat it as falsy (WR-02).
+    if (executionId !== undefined && executionId !== null) {
+      await recordCommandComplete(metaSequelize, executionId, {
+        exitStatus: 'failed',
+        errorMessage: error.message
+      });
+    }
+    throw error;
+  }
 }
