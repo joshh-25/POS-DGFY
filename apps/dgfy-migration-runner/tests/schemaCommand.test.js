@@ -3,6 +3,8 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
+const PLACEHOLDER_MIGRATION_NAME = '00000000000000-runner-contract-placeholder.cjs';
+
 const ORIGINAL_ENV = { ...process.env };
 
 function baseEnv(overrides = {}) {
@@ -117,9 +119,9 @@ describe('runSchemaMigrate', () => {
     expect(report.migrations_executed.some((name) => name.includes('runner-contract-placeholder'))).toBe(true);
   });
 
-  test('assertTargetDbNameAllowed and assertDestructiveAllowed are both called before createTargetConnection/createMetaConnection', async () => {
+  test('assertTargetDbNameAllowed is called before createTargetConnection/createMetaConnection, and assertDestructiveAllowed is called after meta connection + pending resolution but before umzug.up()', async () => {
     // Isolated module registry: mock the safety gates too, so real call
-    // order across all four functions can be observed directly.
+    // order across all functions can be observed directly.
     jest.resetModules();
     const localCallOrder = [];
 
@@ -161,6 +163,18 @@ describe('runSchemaMigrate', () => {
         return true;
       })
     }));
+    jest.unstable_mockModule('umzug', () => ({
+      Umzug: jest.fn().mockImplementation(() => ({
+        pending: jest.fn(async () => {
+          localCallOrder.push('umzug.pending');
+          return [{ name: PLACEHOLDER_MIGRATION_NAME, meta: undefined }];
+        }),
+        up: jest.fn(async () => {
+          localCallOrder.push('umzug.up');
+          return [{ name: PLACEHOLDER_MIGRATION_NAME }];
+        })
+      }))
+    }));
 
     const { runSchemaMigrate: isolatedRunSchemaMigrate } = await import('../src/commands/schema.js');
 
@@ -170,16 +184,122 @@ describe('runSchemaMigrate', () => {
     const destructiveGateIdx = localCallOrder.indexOf('assertDestructiveAllowed');
     const targetConnIdx = localCallOrder.indexOf('createTargetConnection');
     const metaConnIdx = localCallOrder.indexOf('createMetaConnection');
+    const pendingIdx = localCallOrder.indexOf('umzug.pending');
+    const upIdx = localCallOrder.indexOf('umzug.up');
 
     expect(targetGuardIdx).toBeGreaterThanOrEqual(0);
     expect(destructiveGateIdx).toBeGreaterThanOrEqual(0);
     expect(targetConnIdx).toBeGreaterThanOrEqual(0);
     expect(metaConnIdx).toBeGreaterThanOrEqual(0);
+    expect(pendingIdx).toBeGreaterThanOrEqual(0);
+    expect(upIdx).toBeGreaterThanOrEqual(0);
+
+    // Target DB name validation happens before any connection is opened.
     expect(targetGuardIdx).toBeLessThan(targetConnIdx);
-    expect(destructiveGateIdx).toBeLessThan(targetConnIdx);
     expect(targetGuardIdx).toBeLessThan(metaConnIdx);
-    expect(destructiveGateIdx).toBeLessThan(metaConnIdx);
+
+    // D-17: destructive classification is computed AFTER metadata bootstrap
+    // and Umzug pending resolution (it needs to know which migrations are
+    // actually pending), but it must still run before any target mutation.
+    expect(metaConnIdx).toBeLessThan(pendingIdx);
+    expect(pendingIdx).toBeLessThan(destructiveGateIdx);
+    expect(destructiveGateIdx).toBeLessThan(upIdx);
 
     jest.resetModules();
+  });
+});
+
+describe('runSchemaMigrate — D-17 pending-only destructive classification', () => {
+  function mockCommonDeps() {
+    jest.unstable_mockModule('../src/config/db.js', () => ({
+      createSourceConnection: jest.fn(),
+      createTargetConnection: jest.fn(() => ({ getQueryInterface: () => ({}) })),
+      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() }))
+    }));
+    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+      META_DB_NAME: 'dgfy_migration_meta',
+      COMMAND_EXECUTIONS_TABLE: 'command_executions',
+      SCHEMA_MIGRATIONS_TABLE: 'schema_migrations',
+      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
+      recordCommandStart: jest.fn().mockResolvedValue(1),
+      recordCommandComplete: jest.fn().mockResolvedValue(undefined)
+    }));
+    jest.unstable_mockModule('../src/metadata/storage.js', () => ({
+      MetaSequelizeStorage: jest.fn().mockImplementation(() => ({
+        logMigration: jest.fn().mockResolvedValue(undefined),
+        unlogMigration: jest.fn().mockResolvedValue(undefined),
+        executed: jest.fn().mockResolvedValue([])
+      }))
+    }));
+  }
+
+  let reportDir;
+
+  beforeEach(async () => {
+    jest.resetModules();
+    reportDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dgfy-migration-runner-schema-d17-'));
+    applyEnv({ REPORT_DIR: reportDir });
+  });
+
+  afterEach(async () => {
+    await fs.rm(reportDir, { recursive: true, force: true });
+    restoreEnv();
+    jest.resetModules();
+  });
+
+  test('a historical executed destructive migration does not force --confirm-destructive when the only pending migration is additive', async () => {
+    mockCommonDeps();
+    const mockUp = jest.fn().mockResolvedValue([{ name: 'additive-new-table.cjs' }]);
+    jest.unstable_mockModule('umzug', () => ({
+      Umzug: jest.fn().mockImplementation(() => ({
+        // Only the additive migration is pending — the historical destructive
+        // migration is already executed, so it must not appear here.
+        pending: jest.fn().mockResolvedValue([{ name: 'additive-new-table.cjs', meta: { destructive: false } }]),
+        up: mockUp
+      }))
+    }));
+
+    const { runSchemaMigrate } = await import('../src/commands/schema.js');
+
+    const report = await runSchemaMigrate({ confirmDestructive: false });
+
+    expect(mockUp).toHaveBeenCalled();
+    expect(report.migrations_executed).toEqual(['additive-new-table.cjs']);
+  });
+
+  test('a pending destructive migration without --confirm-destructive throws before umzug.up() runs', async () => {
+    mockCommonDeps();
+    const mockUp = jest.fn().mockResolvedValue([{ name: 'pending-destructive.cjs' }]);
+    jest.unstable_mockModule('umzug', () => ({
+      Umzug: jest.fn().mockImplementation(() => ({
+        pending: jest.fn().mockResolvedValue([{ name: 'pending-destructive.cjs', meta: { destructive: true } }]),
+        up: mockUp
+      }))
+    }));
+
+    const { runSchemaMigrate } = await import('../src/commands/schema.js');
+
+    await expect(runSchemaMigrate({ confirmDestructive: false })).rejects.toThrow(
+      /confirm-destructive/i
+    );
+    expect(mockUp).not.toHaveBeenCalled();
+  });
+
+  test('a pending destructive migration with --confirm-destructive executes successfully', async () => {
+    mockCommonDeps();
+    const mockUp = jest.fn().mockResolvedValue([{ name: 'pending-destructive.cjs' }]);
+    jest.unstable_mockModule('umzug', () => ({
+      Umzug: jest.fn().mockImplementation(() => ({
+        pending: jest.fn().mockResolvedValue([{ name: 'pending-destructive.cjs', meta: { destructive: true } }]),
+        up: mockUp
+      }))
+    }));
+
+    const { runSchemaMigrate } = await import('../src/commands/schema.js');
+
+    const report = await runSchemaMigrate({ confirmDestructive: true });
+
+    expect(mockUp).toHaveBeenCalled();
+    expect(report.migrations_executed).toEqual(['pending-destructive.cjs']);
   });
 });
