@@ -1,6 +1,19 @@
 import { resolveCommercialPromoApplication } from '../src/modules/shared/utils/commercialPromoPolicy.js';
 
 describe('commercial promo authoritative allocations', () => {
+    test('rejects an active promo after its configured end date', () => {
+        expect(() => resolveCommercialPromoApplication({
+            settings: {
+                storefront_promos: {
+                    value: [{ active: true, promo_code: 'OLD20', discount_percent: 20, valid_until: '2026-07-09' }]
+                }
+            },
+            promoCode: 'OLD20',
+            prepared: { subtotalAmount: 100, preparedLines: [{ item_id: 1, quantity: 1, sale_price: 100, line_subtotal: 100 }] },
+            now: new Date('2026-07-10T12:00:00+08:00')
+        })).toThrow('Promo code has expired.');
+    });
+
     test('allocates only eligible lines and reconciles rounding to the header discount', () => {
         const result = resolveCommercialPromoApplication({
             settings: {

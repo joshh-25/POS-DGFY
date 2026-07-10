@@ -2216,3 +2216,20 @@ POS transaction reads failed with `Table '<tenant>.delivery_jobs' doesn't exist`
 
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `Implementation.md`
+
+---
+
+## 2026-07-10 — Enforce commercial promo expiry dates
+
+### Implemented solution
+
+- Added optional `valid_from` and `valid_until` dates to commercial promo settings.
+- Expired promos now display an `Expired` status in POS settings and are rejected by the server for both POS and Storefront checkout.
+- Existing promos without dates remain valid according to their existing active, usage-limit, and daily time-window rules.
+
+### Files changed
+
+- `backend/src/modules/shared/utils/commercialPromoPolicy.js`
+- `backend/tests/commercialPromoPolicy.unit.test.js`
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `Implementation.md`

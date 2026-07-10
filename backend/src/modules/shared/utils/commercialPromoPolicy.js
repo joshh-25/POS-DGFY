@@ -5,6 +5,7 @@ export const STOREFRONT_PROMO_SETTING_KEY = 'storefront_promo';
 export const STOREFRONT_PROMOS_SETTING_KEY = 'storefront_promos';
 const DEFAULT_PROMO_TIMEZONE = 'Asia/Manila';
 const PROMO_TIME_24H_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const PROMO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toPositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -38,7 +39,9 @@ export const parseCommercialPromoConfig = (rawValue, meta = {}) => {
         usedCount: Number.isInteger(usedCount) && usedCount >= 0 ? usedCount : 0,
         targetItemIds: [...new Set((Array.isArray(value.target_item_ids) ? value.target_item_ids : []).map(toPositiveInt).filter(Boolean))],
         validTimeStart: PROMO_TIME_24H_PATTERN.test(String(value.valid_time_start || '').trim()) ? String(value.valid_time_start).trim() : '',
-        validTimeEnd: PROMO_TIME_24H_PATTERN.test(String(value.valid_time_end || '').trim()) ? String(value.valid_time_end).trim() : ''
+        validTimeEnd: PROMO_TIME_24H_PATTERN.test(String(value.valid_time_end || '').trim()) ? String(value.valid_time_end).trim() : '',
+        validFrom: PROMO_DATE_PATTERN.test(String(value.valid_from || '').trim()) ? String(value.valid_from).trim() : '',
+        validUntil: PROMO_DATE_PATTERN.test(String(value.valid_until || '').trim()) ? String(value.valid_until).trim() : ''
     };
 };
 
@@ -85,6 +88,20 @@ const zonedMinutes = (date, timezone) => {
     }
 };
 
+const zonedDate = (date, timezone) => {
+    try {
+        const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(date).map((part) => [part.type, part.value]));
+        return `${parts.year}-${parts.month}-${parts.day}`;
+    } catch {
+        return date.toISOString().slice(0, 10);
+    }
+};
+
 const isActiveTime = ({ now, start, end, timezone }) => {
     const startMinutes = timeToMinutes(start);
     const endMinutes = timeToMinutes(end);
@@ -120,6 +137,13 @@ export const resolveCommercialPromoApplication = ({ settings = {}, promoCode, pr
     }
     const hours = normalizeStorefrontBusinessHours(settings?.storefront_hours?.value);
     const timezone = String(hours?.timezone || DEFAULT_PROMO_TIMEZONE).trim() || DEFAULT_PROMO_TIMEZONE;
+    const currentDate = zonedDate(now, timezone);
+    if (config.validUntil && currentDate > config.validUntil) {
+        promoError('Promo code has expired.', 'PROMO_EXPIRED', { valid_until: config.validUntil });
+    }
+    if (config.validFrom && currentDate < config.validFrom) {
+        promoError('Promo code is not active yet.', 'PROMO_NOT_STARTED', { valid_from: config.validFrom });
+    }
     if (config.validTimeStart && config.validTimeEnd && !isActiveTime({ now, start: config.validTimeStart, end: config.validTimeEnd, timezone })) {
         promoError('Promo code is outside its valid time window.', 'PROMO_TIME_RANGE_BLOCKED');
     }

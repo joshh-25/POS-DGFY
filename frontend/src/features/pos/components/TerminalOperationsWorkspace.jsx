@@ -294,6 +294,8 @@ const createBlankStorefrontPromo = () => ({
   used_count: 0,
   valid_time_start: '',
   valid_time_end: '',
+  valid_from: '',
+  valid_until: '',
   target_item_ids: [],
   active: false
 });
@@ -311,6 +313,8 @@ const normalizeStorefrontPromoConfig = (raw = {}) => {
     used_count: promo.used_count == null || promo.used_count === '' ? 0 : Number(promo.used_count),
     valid_time_start: String(promo.valid_time_start || ''),
     valid_time_end: String(promo.valid_time_end || ''),
+    valid_from: String(promo.valid_from || ''),
+    valid_until: String(promo.valid_until || ''),
     target_item_ids: normalizePositiveIntegerList(promo.target_item_ids),
     active: promo.active === true
   };
@@ -334,6 +338,10 @@ const hasMeaningfulStorefrontPromo = (promo) => Boolean(
   || promo?.active === true
   || normalizePositiveIntegerList(promo?.target_item_ids).length > 0
 );
+const isStorefrontPromoExpired = (promo) => {
+  const validUntil = String(promo?.valid_until || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(validUntil) && validUntil < new Date().toISOString().slice(0, 10);
+};
 
 const parseJsonObjectSetting = (raw) => {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -3182,6 +3190,8 @@ function SettingsWorkspace({
     storefrontPromoUsedCount: '0',
     storefrontPromoValidTimeStart: '',
     storefrontPromoValidTimeEnd: '',
+    storefrontPromoValidFrom: '',
+    storefrontPromoValidUntil: '',
     storefrontPromoTargetItemIds: [],
     storefrontPromoActive: false,
     storefrontPromoId: '',
@@ -3247,6 +3257,8 @@ function SettingsWorkspace({
       used_count: storefrontForm.storefrontPromoUsedCount,
       valid_time_start: storefrontForm.storefrontPromoValidTimeStart,
       valid_time_end: storefrontForm.storefrontPromoValidTimeEnd,
+      valid_from: storefrontForm.storefrontPromoValidFrom,
+      valid_until: storefrontForm.storefrontPromoValidUntil,
       target_item_ids: storefrontForm.storefrontPromoTargetItemIds,
       active: storefrontForm.storefrontPromoActive
     });
@@ -3493,6 +3505,8 @@ function SettingsWorkspace({
         storefrontPromoUsedCount: selectedStorefrontPromo.used_count == null ? '0' : String(selectedStorefrontPromo.used_count),
         storefrontPromoValidTimeStart: String(selectedStorefrontPromo.valid_time_start || ''),
         storefrontPromoValidTimeEnd: String(selectedStorefrontPromo.valid_time_end || ''),
+        storefrontPromoValidFrom: String(selectedStorefrontPromo.valid_from || ''),
+        storefrontPromoValidUntil: String(selectedStorefrontPromo.valid_until || ''),
         storefrontPromoTargetItemIds: normalizePositiveIntegerList(selectedStorefrontPromo.target_item_ids),
         storefrontPromoActive: selectedStorefrontPromo.active === true,
         storefrontFollowEnabled: settingsPayload?.storefront_follow_enabled?.value === true,
@@ -3902,6 +3916,8 @@ function SettingsWorkspace({
     used_count: form.storefrontPromoUsedCount === '' ? 0 : Number(form.storefrontPromoUsedCount),
     valid_time_start: String(form.storefrontPromoValidTimeStart || '').trim(),
     valid_time_end: String(form.storefrontPromoValidTimeEnd || '').trim(),
+    valid_from: String(form.storefrontPromoValidFrom || '').trim(),
+    valid_until: String(form.storefrontPromoValidUntil || '').trim(),
     target_item_ids: normalizePositiveIntegerList(form.storefrontPromoTargetItemIds),
     active: form.storefrontPromoActive === true
   }), [storefrontForm]);
@@ -3932,6 +3948,8 @@ function SettingsWorkspace({
     storefrontPromoUsedCount: promo?.used_count == null ? '0' : String(promo.used_count),
     storefrontPromoValidTimeStart: String(promo?.valid_time_start || ''),
     storefrontPromoValidTimeEnd: String(promo?.valid_time_end || ''),
+    storefrontPromoValidFrom: String(promo?.valid_from || ''),
+    storefrontPromoValidUntil: String(promo?.valid_until || ''),
     storefrontPromoTargetItemIds: normalizePositiveIntegerList(promo?.target_item_ids),
     storefrontPromoActive: promo?.active === true
   }), []);
@@ -5657,8 +5675,8 @@ function SettingsWorkspace({
                           <p className="text-[13px] font-black text-[#0F172A]">{promo.promo_code || 'No code yet'}</p>
                           <p className="text-[11px] font-semibold text-slate-500">{promo.title || promo.badge || 'Untitled promo'}</p>
                         </div>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${promo.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                          {promo.active ? 'Active' : 'Off'}
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${isStorefrontPromoExpired(promo) ? 'bg-rose-100 text-rose-700' : promo.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {isStorefrontPromoExpired(promo) ? 'Expired' : promo.active ? 'Active' : 'Off'}
                         </span>
                       </div>
                     </button>
@@ -5721,6 +5739,14 @@ function SettingsWorkspace({
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">End Time</Label>
                 <Input type="time" value={storefrontForm.storefrontPromoValidTimeEnd} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeEnd: event.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">Start Date</Label>
+                <Input type="date" value={storefrontForm.storefrontPromoValidFrom} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidFrom: event.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12px] font-semibold text-slate-600">End Date</Label>
+                <Input type="date" value={storefrontForm.storefrontPromoValidUntil} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidUntil: event.target.value }))} />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <div className="space-y-1">
