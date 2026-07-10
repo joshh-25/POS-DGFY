@@ -1,0 +1,197 @@
+import { jest } from '@jest/globals';
+import { createRequire } from 'module';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const requireCjs = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PLACEHOLDER_MIGRATION_NAME = '00000000000000-runner-contract-placeholder.cjs';
+const PLACEHOLDER_MIGRATION_PATH = join(__dirname, '..', 'src', 'migrations', 'schema', PLACEHOLDER_MIGRATION_NAME);
+
+const ORIGINAL_ENV = { ...process.env };
+
+function baseEnv(overrides = {}) {
+  return {
+    RUNTIME_MODE: 'development',
+    SOURCE_DB_HOST: 'localhost',
+    SOURCE_DB_PORT: '3306',
+    SOURCE_DB_USER: 'source_user',
+    SOURCE_DB_PASSWORD: 'source_pass',
+    SOURCE_DB_NAME: 'legacy_ims',
+    TARGET_DB_HOST: 'localhost',
+    TARGET_DB_PORT: '3306',
+    TARGET_DB_USER: 'target_user',
+    TARGET_DB_PASSWORD: 'target_pass',
+    TARGET_DB_NAME: 'dgfy_landlord',
+    MIGRATION_ACTOR: 'operator@dgfy.ph',
+    ...overrides
+  };
+}
+
+function applyEnv(overrides = {}) {
+  const env = baseEnv(overrides);
+  Object.keys(env).forEach((key) => {
+    process.env[key] = env[key];
+  });
+}
+
+function restoreEnv() {
+  Object.keys(process.env).forEach((key) => {
+    if (!(key in ORIGINAL_ENV)) {
+      delete process.env[key];
+    }
+  });
+  Object.assign(process.env, ORIGINAL_ENV);
+}
+
+const mockCreateTargetConnection = jest.fn();
+const mockCreateMetaConnection = jest.fn();
+const mockEnsureMetadataSchema = jest.fn().mockResolvedValue(undefined);
+const mockRecordCommandStart = jest.fn().mockResolvedValue(1);
+const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
+const mockStorageExecuted = jest.fn().mockResolvedValue([]);
+
+jest.unstable_mockModule('../src/config/db.js', () => ({
+  createSourceConnection: jest.fn(),
+  createTargetConnection: mockCreateTargetConnection,
+  createMetaConnection: mockCreateMetaConnection
+}));
+
+jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+  META_DB_NAME: 'dgfy_migration_meta',
+  COMMAND_EXECUTIONS_TABLE: 'command_executions',
+  SCHEMA_MIGRATIONS_TABLE: 'schema_migrations',
+  ensureMetadataSchema: mockEnsureMetadataSchema,
+  recordCommandStart: mockRecordCommandStart,
+  recordCommandComplete: mockRecordCommandComplete
+}));
+
+jest.unstable_mockModule('../src/metadata/storage.js', () => ({
+  MetaSequelizeStorage: jest.fn().mockImplementation(() => ({
+    logMigration: jest.fn().mockResolvedValue(undefined),
+    unlogMigration: jest.fn().mockResolvedValue(undefined),
+    executed: mockStorageExecuted
+  }))
+}));
+
+const { runVerify } = await import('../src/commands/verify.js');
+const { runStatus } = await import('../src/commands/status.js');
+const { runRollbackPlan } = await import('../src/commands/rollbackPlan.js');
+
+describe('runVerify', () => {
+  let reportDir;
+
+  beforeEach(async () => {
+    reportDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dgfy-migration-runner-verify-'));
+    applyEnv({ REPORT_DIR: reportDir });
+
+    mockEnsureMetadataSchema.mockReset().mockResolvedValue(undefined);
+    mockRecordCommandStart.mockClear().mockResolvedValue(1);
+    mockRecordCommandComplete.mockClear();
+    mockCreateMetaConnection.mockReset().mockReturnValue({ config: {}, query: jest.fn() });
+  });
+
+  afterEach(async () => {
+    await fs.rm(reportDir, { recursive: true, force: true });
+    restoreEnv();
+  });
+
+  test("report has summary.metadata_schema_ok and summary.target_db_reachable boolean fields", async () => {
+    mockCreateTargetConnection.mockReset().mockReturnValue({
+      authenticate: jest.fn().mockResolvedValue(undefined)
+    });
+
+    const report = await runVerify({});
+
+    expect(typeof report.summary.metadata_schema_ok).toBe('boolean');
+    expect(typeof report.summary.target_db_reachable).toBe('boolean');
+    expect(report.summary.metadata_schema_ok).toBe(true);
+    expect(report.summary.target_db_reachable).toBe(true);
+  });
+
+  test('a failed target DB authenticate() flips target_db_reachable to false instead of throwing', async () => {
+    mockCreateTargetConnection.mockReset().mockReturnValue({
+      authenticate: jest.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+    });
+
+    const report = await runVerify({});
+
+    expect(report.summary.target_db_reachable).toBe(false);
+  });
+});
+
+describe('runStatus', () => {
+  let reportDir;
+
+  beforeEach(async () => {
+    reportDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dgfy-migration-runner-status-'));
+    applyEnv({ REPORT_DIR: reportDir });
+
+    mockEnsureMetadataSchema.mockReset().mockResolvedValue(undefined);
+    mockRecordCommandStart.mockClear().mockResolvedValue(1);
+    mockRecordCommandComplete.mockClear();
+    mockStorageExecuted.mockClear().mockResolvedValue([]);
+    mockCreateMetaConnection.mockReset().mockReturnValue({
+      config: {},
+      query: jest.fn().mockResolvedValue([[
+        { command: 'schema:migrate', mode: 'apply', actor: 'operator@dgfy.ph', runtime_mode: 'development', started_at: new Date(), completed_at: new Date(), exit_status: 'success' }
+      ], []])
+    });
+  });
+
+  afterEach(async () => {
+    await fs.rm(reportDir, { recursive: true, force: true });
+    restoreEnv();
+  });
+
+  test('returns recent_commands and schema_migrations_executed counts', async () => {
+    const report = await runStatus({});
+
+    expect(report.command).toBe('status');
+    expect(report.summary.recent_commands).toBe(1);
+    expect(report.summary.schema_migrations_executed).toBe(0);
+  });
+});
+
+describe('runRollbackPlan', () => {
+  let reportDir;
+  let migrationModule;
+  let downSpy;
+
+  beforeEach(async () => {
+    reportDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dgfy-migration-runner-rollback-'));
+    applyEnv({ REPORT_DIR: reportDir });
+
+    mockEnsureMetadataSchema.mockReset().mockResolvedValue(undefined);
+    mockRecordCommandStart.mockClear().mockResolvedValue(1);
+    mockRecordCommandComplete.mockClear();
+    mockCreateMetaConnection.mockReset().mockReturnValue({ config: {}, query: jest.fn() });
+    mockStorageExecuted.mockClear().mockResolvedValue([PLACEHOLDER_MIGRATION_NAME]);
+
+    // Node's CJS require cache is shared across require() calls resolving to
+    // the same absolute path — rollbackPlan.js's internal requireCjs(path)
+    // returns this exact same module object, so spying on `down` here proves
+    // rollbackPlan.js never invokes it.
+    migrationModule = requireCjs(PLACEHOLDER_MIGRATION_PATH);
+    downSpy = jest.spyOn(migrationModule, 'down');
+  });
+
+  afterEach(async () => {
+    await fs.rm(reportDir, { recursive: true, force: true });
+    restoreEnv();
+    downSpy.mockRestore();
+  });
+
+  test('never calls a migration down() while still returning a non-empty results array', async () => {
+    const report = await runRollbackPlan({});
+
+    expect(downSpy).not.toHaveBeenCalled();
+    expect(report.results.length).toBeGreaterThan(0);
+    expect(report.results[0].migration).toBe(PLACEHOLDER_MIGRATION_NAME);
+    expect(report.results[0].estimated_risk).toBe('low');
+  });
+});
