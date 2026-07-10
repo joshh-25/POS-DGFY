@@ -3057,6 +3057,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
         const reason = String(payload.reason || '').trim();
+        const activeShiftId = parsePositiveInt(payload.shift_id);
+        const activeTerminalId = sanitizeTerminalId(payload.terminal_id) || null;
         if (!normalizedTransactionId) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -3068,6 +3070,13 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'Void reason is required',
+                { statusCode: 422 }
+            ));
+        }
+        if (!activeShiftId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'An active shift is required to void a POS transaction',
                 { statusCode: 422 }
             ));
         }
@@ -3087,8 +3096,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: actorUserId,
-                terminalId: sanitizeTerminalId(existing.terminal_id) || null,
-                locationId: parsePositiveInt(existing.location_id) || null,
+                shiftId: activeShiftId,
+                terminalId: activeTerminalId,
                 transaction,
                 lock: true
             });

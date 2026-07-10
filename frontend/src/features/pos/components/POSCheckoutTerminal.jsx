@@ -1247,11 +1247,16 @@ export default function POSCheckoutTerminal({
             toast.error('You do not have permission to void POS transactions.');
             return;
         }
+        if (!activeShiftId) {
+            toast.error('Open a shift before voiding a POS transaction.');
+            return;
+        }
 
         setVoidingTransactionId(posTransactionId);
         try {
             await voidPosTransaction(posTransactionId, {
                 reason,
+                shift_id: activeShiftId,
                 terminal_id: normalizedTerminalId || undefined
             });
             toast.success('POS transaction voided.');
@@ -1262,7 +1267,7 @@ export default function POSCheckoutTerminal({
         } finally {
             setVoidingTransactionId(null);
         }
-    }, [canVoidTransactions, historyPage, loadHistory, normalizedTerminalId]);
+    }, [activeShiftId, canVoidTransactions, historyPage, loadHistory, normalizedTerminalId]);
 
     const buildSalesReportQuery = useCallback((row = null) => {
         const params = new URLSearchParams();

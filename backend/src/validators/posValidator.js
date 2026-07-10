@@ -392,7 +392,9 @@ const fiscalPrintEventSchema = Joi.object({
 });
 
 const voidPosTransactionSchema = Joi.object({
-    reason: Joi.string().trim().min(3).max(255).required()
+    reason: Joi.string().trim().min(3).max(255).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });
 
 const esalesGenerateSchema = Joi.object({
