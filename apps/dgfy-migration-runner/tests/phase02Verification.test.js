@@ -356,6 +356,62 @@ describe('runVerify — Phase 02 schema/metadata verification evidence', () => {
       expect(betaFinding.missing_migrations).toEqual(BUSINESS_MIGRATION_NAMES);
       expect(report.summary.migration_metadata_ok).toBe(false);
     });
+
+    test('CR-01 regression: a mid-loop business-target failure cannot drop or mislabel other targets\' findings', async () => {
+      mockCreateTargetConnection.mockReset().mockReturnValue({
+        ...buildFakeConnectionSatisfyingContract(dgfyCoreContract),
+        authenticate: jest.fn().mockResolvedValue(undefined)
+      });
+      mockCreateBusinessTargetConnection.mockReset().mockImplementation(() => buildFakeConnectionSatisfyingContract(dgfyBusinessContract));
+      applyEnv({ REPORT_DIR: reportDir, DGFY_BUSINESS_DB_NAMES: 'dgfy_business_alpha,dgfy_business_beta,dgfy_business_gamma' });
+
+      executedByTarget['dgfy_core'] = CORE_MIGRATION_NAMES;
+      executedByTarget['dgfy_business_alpha'] = BUSINESS_MIGRATION_NAMES;
+      executedByTarget['dgfy_business_gamma'] = BUSINESS_MIGRATION_NAMES;
+      // dgfy_business_beta deliberately left unset — its storage call throws instead of resolving.
+
+      MockMetaSequelizeStorage
+        .mockImplementationOnce(({ targetDatabase }) => ({
+          logMigration: jest.fn().mockResolvedValue(undefined),
+          unlogMigration: jest.fn().mockResolvedValue(undefined),
+          executed: jest.fn().mockResolvedValue(executedByTarget[targetDatabase] || [])
+        }))
+        .mockImplementationOnce(({ targetDatabase }) => ({
+          logMigration: jest.fn().mockResolvedValue(undefined),
+          unlogMigration: jest.fn().mockResolvedValue(undefined),
+          executed: jest.fn().mockResolvedValue(executedByTarget[targetDatabase] || [])
+        }))
+        .mockImplementationOnce(() => ({
+          logMigration: jest.fn().mockResolvedValue(undefined),
+          unlogMigration: jest.fn().mockResolvedValue(undefined),
+          executed: jest.fn().mockRejectedValue(new Error('storage read failed for dgfy_business_beta'))
+        }))
+        .mockImplementationOnce(({ targetDatabase }) => ({
+          logMigration: jest.fn().mockResolvedValue(undefined),
+          unlogMigration: jest.fn().mockResolvedValue(undefined),
+          executed: jest.fn().mockResolvedValue(executedByTarget[targetDatabase] || [])
+        }));
+
+      const report = await runVerify({});
+
+      expect(report.migration_metadata).toHaveLength(4);
+
+      const coreFinding = report.migration_metadata.find((m) => m.target_database === 'dgfy_core');
+      const alphaFinding = report.migration_metadata.find((m) => m.target_database === 'dgfy_business_alpha');
+      const betaFinding = report.migration_metadata.find((m) => m.target_database === 'dgfy_business_beta');
+      const gammaFinding = report.migration_metadata.find((m) => m.target_database === 'dgfy_business_gamma');
+
+      expect(coreFinding.ok).toBe(true);
+      expect(alphaFinding.ok).toBe(true);
+      expect(gammaFinding.ok).toBe(true);
+
+      expect(betaFinding).toBeDefined();
+      expect(betaFinding.target_database).toBe('dgfy_business_beta');
+      expect(betaFinding.ok).toBe(false);
+      expect(betaFinding.error).toContain('storage read failed for dgfy_business_beta');
+
+      expect(report.summary.migration_metadata_ok).toBe(false);
+    });
   });
 
   test('runVerify continues to never throw even when a schema check fails outright', async () => {
