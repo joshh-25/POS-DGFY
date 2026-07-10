@@ -485,6 +485,7 @@ const toSlug = (v) => String(v || '').trim().toLowerCase();
 const isStorefrontLocationAvailable = (location) => Boolean(location)
   && location.is_active !== false
   && location.is_open !== false;
+const isStorefrontLocationAvailabilityMessage = (message) => /selected location is currently closed|selected location is inactive|no active tenant location/i.test(String(message || ''));
 const normalizeServiceFormFields = (schema) => {
   const fields = Array.isArray(schema?.fields) ? schema.fields : Array.isArray(schema?.questions) ? schema.questions : [];
   return fields
@@ -6198,6 +6199,7 @@ export default function StorefrontApp() {
   const [quoteResult, setQuoteResult] = useState(null);
   const [quoteNeedsRefresh, setQuoteNeedsRefresh] = useState(true);
   const [quoteError, setQuoteError] = useState('');
+  const [promoError, setPromoError] = useState('');
   const [checkoutResult, setCheckoutResult] = useState(null);
 
   const [checkoutError, setCheckoutError] = useState('');
@@ -9034,8 +9036,8 @@ export default function StorefrontApp() {
     };
   }, [quoteResult, cartTotal]);
   const activePromoFeedback = checkoutResult?.promo_feedback || quoteResult?.promo_feedback || null;
-  const promoStatusMessage = checkoutError || quoteError || activePromoFeedback?.message || '';
-  const promoStatusTone = checkoutError || quoteError
+  const promoStatusMessage = promoError || activePromoFeedback?.message || '';
+  const promoStatusTone = promoError
     ? 'error'
     : (activePromoFeedback?.applied ? 'success' : 'idle');
   const appliedPromoDiscountText = totalsForDisplay.discount_amount > 0
@@ -10470,7 +10472,7 @@ export default function StorefrontApp() {
     const normalizedPromoCode = String(promoCode || '').trim().toUpperCase();
     if (!normalizedPromoCode) return;
     setPromoCodeDraft(normalizedPromoCode);
-    setQuoteError('');
+    setPromoError('');
 
     if (!Array.isArray(cart) || cart.length === 0) {
       toast.success(`Promo code ${normalizedPromoCode} added. Add items to validate the discount.`);
@@ -10504,12 +10506,16 @@ export default function StorefrontApp() {
       const violation = extractStockViolation(error);
       if (violation) {
         const message = buildStockExceededMessage(violation);
-        setQuoteError(message);
+        setPromoError(message);
         toast.error(message);
         return;
       }
       const message = normalizeStorefrontErrorMessage(error, 'Unable to apply promo code right now.');
-      setQuoteError(message);
+      if (isStorefrontLocationAvailabilityMessage(message)) {
+        setQuoteError(message);
+      } else {
+        setPromoError(message);
+      }
       toast.error(message);
     }
   }, [
@@ -11651,7 +11657,10 @@ export default function StorefrontApp() {
     <PromoCodePanel
       code={promoCodeDraft}
       onChange={setPromoCodeDraft}
-      onClear={() => setPromoCodeDraft('')}
+      onClear={() => {
+        setPromoCodeDraft('');
+        setPromoError('');
+      }}
       onApplyPromo={handlePromoCardApply}
       statusMessage={promoStatusMessage}
       statusTone={promoStatusTone}

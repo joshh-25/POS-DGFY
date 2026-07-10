@@ -2233,3 +2233,20 @@ POS transaction reads failed with `Table '<tenant>.delivery_jobs' doesn't exist`
 - `backend/tests/commercialPromoPolicy.unit.test.js`
 - `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
 - `Implementation.md`
+
+---
+
+## 2026-07-10 — Separate promo feedback from location availability errors
+
+### Implemented solution
+
+- Promo modal feedback now contains only promo validation results.
+- Location availability failures remain in the checkout state instead of being presented as promo-code errors.
+- Display-only promo cards without a saved promo code are excluded from the usable promo list.
+
+### Files changed
+
+- `frontend/apps/store/src/StorefrontApp.jsx`
+- `frontend/apps/store/src/checkout/components/PromoCodePanel.jsx`
+- `frontend/apps/store/src/__tests__/PromoCodePanel.test.jsx`
+- `Implementation.md`

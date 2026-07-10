@@ -29,7 +29,8 @@ export function PromoCodePanel({
       ? { border: '#bbf7d0', background: '#f0fdf4', text: '#166534' }
       : { border: '#e2e8f0', background: '#ffffff', text: '#64748b' };
   const hasAppliedDiscount = String(appliedDiscountText || '').trim().length > 0;
-  const normalizedAvailablePromos = Array.isArray(availablePromos) ? availablePromos : [];
+  const normalizedAvailablePromos = (Array.isArray(availablePromos) ? availablePromos : [])
+    .filter((promo) => normalizePromoCode(promo?.promoCode || promo?.promo_code).length > 0);
 
   const handleApply = (codeToApply) => {
     const finalCode = normalizePromoCode(codeToApply);
@@ -202,14 +203,7 @@ export function PromoCodePanel({
                         >
                           Use
                         </button>
-                      ) : (
-                        <span
-                          title="This promo cannot be applied until POS saves a promo code."
-                          style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', whiteSpace: 'nowrap' }}
-                        >
-                          Promo code not set
-                        </span>
-                      )}
+                      ) : null}
                     </div>
                   );
                 })}
