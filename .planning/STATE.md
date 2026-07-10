@@ -6,14 +6,14 @@ current_phase: 02
 current_phase_name: dgfy-database-foundation
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-10T16:17:39.279Z"
+last_updated: "2026-07-10T16:34:51.160Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 14
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 ## Current Position
 
 Phase: 02 (dgfy-database-foundation) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-10 — Phase 02 execution started
 
@@ -60,6 +60,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 01 P03 | 14min | 3 tasks | 11 files |
 | Phase 01 P04 | 18min | 2 tasks | 2 files |
 | Phase 02 P01 | 25min | 3 tasks | 7 files |
+| Phase 02 P02 | 25min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Runner: pending-only destructive classification is computed from Umzug's own pending() result (meta carried through resolveMigration) rather than a second filesystem scan
 - [Phase ?]: Runner: verify.js distinguishes failed health checks (findings) from genuine report-write failures when setting command_executions.exit_status
 - [Phase ?]: Runner: REPORT_DIR defaults to /reports (container-safe) instead of the dev-oriented ./reports
+- [Phase ?]: dgfy_core tables use plain names (accounts, businesses, business_memberships, business_database_registry, business_audit_logs, storefront_discovery_index) per D-05
+- [Phase ?]: No canonical branches/locations table was created in dgfy_core (D-10); storefront_discovery_index is projection-only
+- [Phase ?]: business_database_registry stores only database_name/stable_opaque_suffix/status/verified_at, never credentials (D-08, ASVS V6)
 
 ### Pending Todos
 
@@ -108,6 +112,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-10T16:17:07.968Z
+Last session: 2026-07-10T16:33:36.765Z
 Stopped at: Phase 2 context gathered
 Resume file: .planning/phases/02-dgfy-database-foundation/02-CONTEXT.md
