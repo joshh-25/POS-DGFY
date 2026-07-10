@@ -84,7 +84,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY (`id`),\n"
             + "  KEY `idx_pos_discount_rules_type_active` (`type`,`is_active`)\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     pos_transaction_discounts: Object.freeze({
         sql: "CREATE TABLE `pos_transaction_discounts` (\n"
@@ -114,7 +114,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_transaction_discounts_ibfk_1` FOREIGN KEY (`transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `pos_transaction_discounts_ibfk_2` FOREIGN KEY (`discount_rule_id`) REFERENCES `pos_discount_rules` (`id`) ON DELETE SET NULL,\n"
             + "  CONSTRAINT `pos_transaction_discounts_ibfk_3` FOREIGN KEY (`manager_approval_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     delivery_jobs: Object.freeze({
         sql: "CREATE TABLE `delivery_jobs` (\n"
@@ -160,7 +160,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `idx_pos_discount_lines_discount` (`transaction_discount_id`),\n"
             + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_1` FOREIGN KEY (`transaction_discount_id`) REFERENCES `pos_transaction_discounts` (`id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_2` FOREIGN KEY (`transaction_line_id`) REFERENCES `pos_transaction_lines` (`line_id`) ON DELETE CASCADE\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     })
 });
 
