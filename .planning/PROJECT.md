@@ -26,11 +26,11 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - ✓ Existing deployable surfaces include backend API, standalone `apps/dgfy-api`, POS frontend, Storefront frontend, Skupervisor IMS frontend, Docker Compose infrastructure, MySQL, Redis, and Nginx routing — existing.
 - ✓ Existing POS, Storefront, fiscal/compliance, payment, tenant provisioning, and discovery flows are valuable enough to preserve during the refactor — existing.
 - ✓ Existing architecture governance already accepts phased migration through compatibility facades rather than a big-bang rewrite — `docs/architecture/adr/0003-migration-facade-strategy.md`.
+- ✓ Dedicated database migration runner container built as a one-shot deploy artifact (`apps/dgfy-migration-runner`), separate from long-running API containers, with Docker packaging verified via build+run — validated in Phase 1: Architecture and Migration Runner Contract.
+- ✓ Runner supports multiple commands from one migration image — schema migrate, data dry-run/apply, verify, status, rollback-plan — with pre-connection env/destructive-op validation and DB-backed execution metadata — validated in Phase 1: Architecture and Migration Runner Contract.
 
 ### Active
 
-- [ ] Build a dedicated database migration runner container as a one-shot deploy artifact, separate from long-running API containers.
-- [ ] Support multiple runner commands from one migration image, including schema migration, data migration, verification, and rollback/runbook support.
 - [ ] Create new `dgfy_*` database foundations beside the legacy SKUpervisor/current landlord + tenant databases, without mutating legacy schemas as the default path.
 - [ ] Define and migrate the new DGFY landlord foundation for Accounts, Businesses, Branches, Tenancy registry, and migration metadata.
 - [ ] Define and migrate the tenant foundation needed for Staff Accounts, Assignments, Terminal identity, and tenant-local operational ownership.
@@ -58,6 +58,8 @@ The first implementation direction has been adjusted from backend-login-first to
 
 Existing codebase concerns make this database-first approach necessary: tenant schema drift has already recurred, existing tenant repairs require explicit handling, and current deploy defaults can report drift without applying repairs. The new refactor must treat migration execution, tenant schema coverage, and verification as first-class release artifacts.
 
+**Phase 1 complete (2026-07-10):** The migration runner contract (`apps/dgfy-migration-runner`) is built, tested (46/46), and independently Docker-packaged, satisfying RUN-01 through RUN-05. It currently drives only a placeholder schema migration — no real `dgfy_*` landlord/tenant schema exists yet. Code review flagged 6 non-blocking warnings to prioritize before Phase 2 builds real migrations on top of this contract: most notably the destructive-op gate over-scans all migration files instead of just pending ones (will misbehave once a real destructive migration exists), and several command handlers don't mark `command_executions` rows `failed` on error. See `01-REVIEW.md` and `01-VERIFICATION.md` for full detail.
+
 ## Constraints
 
 - **Architecture**: Follow `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`, and `docs/architecture/ARCHITECTURE_GOVERNANCE.md`; backend work must preserve `routes -> controllers -> usecases -> repositories -> models`.
@@ -75,7 +77,7 @@ Existing codebase concerns make this database-first approach necessary: tenant s
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Database-first refactor | Backend APIs should be built against a stable new DGFY schema, not inferred while still coupled to SKUpervisor tables. | — Pending |
-| One migration image with multiple commands | Keeps schema/data/verify/rollback tooling together while allowing deploy scripts to run each command once and explicitly. | — Pending |
+| One migration image with multiple commands | Keeps schema/data/verify/rollback tooling together while allowing deploy scripts to run each command once and explicitly. | ✓ Built in Phase 1 — `apps/dgfy-migration-runner` with 6 Commander subcommands, DB-backed metadata, JSON+summary reports (46/46 tests, Docker build/run verified) |
 | New `dgfy_*` databases beside legacy | Reduces risk to existing users and enables old-to-new migration rehearsal without mutating live legacy schemas by default. | — Pending |
 | Accounts + Businesses + Tenancy as first backend scope | Identity and tenant routing are the foundation for every later POS/Product/Storefront domain. | — Pending |
 | No legacy edits except approved seams | Preserves current uptime while allowing narrow compatibility wiring when migration requires it. | — Pending |
@@ -100,4 +102,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Update Context with current state
 
 ---
-*Last updated: 2026-07-10 after initialization*
+*Last updated: 2026-07-10 after Phase 1 completion*
