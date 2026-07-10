@@ -94,7 +94,9 @@ describe('runSchemaMigrate', () => {
 
     fakeQueryInterface = {
       showAllTables: jest.fn().mockResolvedValue([]),
-      createTable: jest.fn().mockResolvedValue(undefined)
+      showIndex: jest.fn().mockResolvedValue([]),
+      createTable: jest.fn().mockResolvedValue(undefined),
+      addIndex: jest.fn().mockResolvedValue(undefined)
     };
 
     mockCreateTargetConnection.mockReset().mockReturnValue({
