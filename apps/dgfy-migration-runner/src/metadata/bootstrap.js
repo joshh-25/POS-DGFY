@@ -108,7 +108,12 @@ export async function ensureMetadataSchema(metaSequelize) {
 /**
  * Records the start of a command execution. bulkInsert doesn't reliably
  * return the inserted id across dialects, so the id is fetched separately
- * via LAST_INSERT_ID().
+ * via LAST_INSERT_ID(). LAST_INSERT_ID() is per-connection/session, so the
+ * insert and the follow-up SELECT are wrapped in the same transaction —
+ * Sequelize pins every query issued against a transaction to the single
+ * pooled connection that transaction was opened on, guaranteeing the SELECT
+ * observes the INSERT that just happened (rather than racing a different
+ * pooled connection's own last-insert value).
  */
 export async function recordCommandStart(metaSequelize, {
     command,
@@ -120,23 +125,25 @@ export async function recordCommandStart(metaSequelize, {
     checksum
 }) {
     const now = new Date();
-    await metaSequelize.getQueryInterface().bulkInsert(COMMAND_EXECUTIONS_TABLE, [{
-        command,
-        mode,
-        args_json: argsJson,
-        actor,
-        runtime_mode: runtimeMode,
-        migration_file: migrationFile,
-        checksum,
-        started_at: now,
-        exit_status: 'running',
-        created_at: now,
-        updated_at: now
-    }]);
+    return metaSequelize.transaction(async (transaction) => {
+        await metaSequelize.getQueryInterface().bulkInsert(COMMAND_EXECUTIONS_TABLE, [{
+            command,
+            mode,
+            args_json: argsJson,
+            actor,
+            runtime_mode: runtimeMode,
+            migration_file: migrationFile,
+            checksum,
+            started_at: now,
+            exit_status: 'running',
+            created_at: now,
+            updated_at: now
+        }], { transaction });
 
-    const [rows] = await metaSequelize.query('SELECT LAST_INSERT_ID() AS id');
-    const row = Array.isArray(rows) ? rows[0] : rows;
-    return row ? Number(row.id) : null;
+        const [rows] = await metaSequelize.query('SELECT LAST_INSERT_ID() AS id', { transaction });
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return row ? Number(row.id) : null;
+    });
 }
 
 export async function recordCommandComplete(metaSequelize, executionId, {

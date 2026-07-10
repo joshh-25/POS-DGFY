@@ -33,7 +33,11 @@ function buildMetaSequelize({ showAllTables, createTable, describeTable, addColu
             bulkInsert,
             bulkUpdate
         }),
-        query
+        query,
+        // recordCommandStart wraps its insert + LAST_INSERT_ID() lookup in a
+        // transaction (WR-01) to guarantee same-connection affinity — mimic
+        // Sequelize's real transaction() by just invoking the callback.
+        transaction: jest.fn((callback) => callback('fake-transaction'))
     };
 }
 
