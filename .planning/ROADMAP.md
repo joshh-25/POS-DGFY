@@ -13,7 +13,7 @@ DGFY moves from an IMS-backed foundation to standalone `dgfy_*` landlord and ten
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Architecture and Migration Runner Contract** - Operators get one explicit migration image contract before any schema or API work depends on it.
+- [x] **Phase 1: Architecture and Migration Runner Contract** - Operators get one explicit migration image contract before any schema or API work depends on it. (completed 2026-07-10)
 - [ ] **Phase 2: DGFY Database Foundation** - New landlord and tenant `dgfy_*` schemas exist beside legacy and can be verified repeatably.
 - [ ] **Phase 3: Old-to-New Migration Proof** - Operators can rehearse and apply legacy-to-DGFY data transformations with retry and verification evidence.
 - [ ] **Phase 4: Backend Accounts, Businesses, and Tenancy Foundation** - Backend APIs use the stable DGFY schema for the first standalone identity and tenancy scope.
@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Runner refuses to connect until required environment, target database, runtime mode, and destructive-operation flags are valid.
   4. Every runner command leaves database-backed metadata plus machine-readable and human-readable evidence.
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -52,7 +52,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 01-04-PLAN.md — One-shot container packaging (RUN-01): Dockerfile + entrypoint
+- [x] 01-04-PLAN.md — One-shot container packaging (RUN-01): Dockerfile + entrypoint
 
 ### Phase 2: DGFY Database Foundation
 
@@ -145,7 +145,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Architecture and Migration Runner Contract | 3/4 | In Progress|  |
+| 1. Architecture and Migration Runner Contract | 4/4 | Complete   | 2026-07-10 |
 | 2. DGFY Database Foundation | 0/TBD | Not started | - |
 | 3. Old-to-New Migration Proof | 0/TBD | Not started | - |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 0/TBD | Not started | - |
