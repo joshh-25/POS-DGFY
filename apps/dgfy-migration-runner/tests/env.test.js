@@ -49,7 +49,8 @@ describe('validateEnv', () => {
             },
             metaDb: { name: 'dgfy_migration_meta' },
             reportDir: './reports',
-            actor: 'operator@dgfy.ph'
+            actor: 'operator@dgfy.ph',
+            businessDbNames: []
         });
     });
 
@@ -103,6 +104,84 @@ describe('validateEnv', () => {
 
         expect(result.valid).toBe(true);
         expect(result.config.reportDir).toBe('/custom/mounted/reports');
+    });
+
+    test('DGFY_BUSINESS_DB_NAMES unset yields an empty businessDbNames list without errors (Plan 03 D-02)', () => {
+        const env = baseEnv();
+        delete env.DGFY_BUSINESS_DB_NAMES;
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(true);
+        expect(result.config.businessDbNames).toEqual([]);
+    });
+
+    test('DGFY_BUSINESS_DB_NAMES parses a comma-separated list of valid dgfy_business_* names', () => {
+        const env = baseEnv({ DGFY_BUSINESS_DB_NAMES: 'dgfy_business_alpha, dgfy_business_beta' });
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(true);
+        expect(result.config.businessDbNames).toEqual(['dgfy_business_alpha', 'dgfy_business_beta']);
+    });
+
+    test('DGFY_BUSINESS_DB_NAMES rejects an empty entry in the list', () => {
+        const env = baseEnv({ DGFY_BUSINESS_DB_NAMES: 'dgfy_business_alpha,,dgfy_business_beta' });
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(false);
+        expect(result.config).toBeNull();
+        expect(result.errors.some((message) => message.includes('DGFY_BUSINESS_DB_NAMES') && message.includes('empty'))).toBe(true);
+    });
+
+    test('DGFY_BUSINESS_DB_NAMES rejects a legacy (non dgfy_-prefixed) database name', () => {
+        const env = baseEnv({ DGFY_BUSINESS_DB_NAMES: 'sku_inventory_manager' });
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((message) => message.includes('DGFY_BUSINESS_DB_NAMES'))).toBe(true);
+    });
+
+    test('DGFY_BUSINESS_DB_NAMES rejects a dgfy_core-style (non-business) database name', () => {
+        const env = baseEnv({ DGFY_BUSINESS_DB_NAMES: 'dgfy_core' });
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((message) => message.includes('DGFY_BUSINESS_DB_NAMES'))).toBe(true);
+    });
+
+    test('DGFY_BUSINESS_DB_NAMES rejects a display-name-derived entry', () => {
+        const env = baseEnv({ DGFY_BUSINESS_DB_NAMES: "dgfy_business_Joe's Cafe" });
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((message) => message.includes('DGFY_BUSINESS_DB_NAMES'))).toBe(true);
+    });
+
+    test('DGFY_BUSINESS_DB_NAMES rejects a suffix-less dgfy_business_ entry', () => {
+        const env = baseEnv({ DGFY_BUSINESS_DB_NAMES: 'dgfy_business_' });
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((message) => message.includes('DGFY_BUSINESS_DB_NAMES'))).toBe(true);
+    });
+
+    test('TARGET_DB_NAME=dgfy_core behavior is unaffected by DGFY_BUSINESS_DB_NAMES', () => {
+        const env = baseEnv({
+            TARGET_DB_NAME: 'dgfy_core',
+            DGFY_BUSINESS_DB_NAMES: 'dgfy_business_alpha'
+        });
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(true);
+        expect(result.config.targetDb.name).toBe('dgfy_core');
+        expect(result.config.businessDbNames).toEqual(['dgfy_business_alpha']);
     });
 
     test('env.js source contains no sequelize/mysql2 import', () => {
