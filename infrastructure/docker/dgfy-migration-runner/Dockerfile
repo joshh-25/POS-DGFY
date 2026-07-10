@@ -8,6 +8,15 @@ RUN npm ci --omit=dev
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
+# WR-08: config/env.js defaults REPORT_DIR to the dev-oriented relative path
+# `./reports` when unset. Without this, an operator who forgets to pass
+# REPORT_DIR=/reports at `docker run`/compose time would silently write
+# reports to the ephemeral /app/reports instead of the bind-mounted /reports
+# volume provisioned below — reports lost the moment the container exits,
+# with no error raised. Setting it here gives the container a correct,
+# container-appropriate default independent of .env.example's dev value;
+# it can still be overridden at runtime like any other env var.
+ENV REPORT_DIR=/reports
 WORKDIR /app
 
 # Same tini/su-exec/non-root pattern as infrastructure/docker/dgfy-api/Dockerfile,
