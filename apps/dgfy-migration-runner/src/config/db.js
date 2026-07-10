@@ -52,3 +52,26 @@ export function createMetaConnection(config) {
         define: { timestamps: true, underscored: false, freezeTableName: true }
     });
 }
+
+/**
+ * Plan 03 (D-02/D-08, Task 2): per-database connection factory for the
+ * explicit dgfy_business_* target list. Reuses the same target host/user/
+ * password credentials as createTargetConnection() — only the database name
+ * differs per selected business target — so the schema command can migrate
+ * one or more dgfy_business_* databases deterministically without a second
+ * credential source.
+ *
+ * @param {object} config validated config from validateEnv()
+ * @param {string} databaseName a dgfy_business_* database name
+ */
+export function createBusinessTargetConnection(config, databaseName) {
+    const { host, port, user, password } = config.targetDb;
+    return new Sequelize(databaseName, user, password, {
+        host,
+        port,
+        dialect: 'mysql',
+        logging: false,
+        pool: poolForRuntimeMode(config.runtimeMode),
+        define: { timestamps: true, underscored: false, freezeTableName: true }
+    });
+}
