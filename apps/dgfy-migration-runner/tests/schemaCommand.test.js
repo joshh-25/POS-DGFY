@@ -51,6 +51,7 @@ function restoreEnv() {
 
 const mockCreateTargetConnection = jest.fn();
 const mockCreateMetaConnection = jest.fn();
+const mockCreateBusinessTargetConnection = jest.fn();
 const mockEnsureMetadataSchema = jest.fn().mockResolvedValue(undefined);
 const mockRecordCommandStart = jest.fn().mockResolvedValue(1);
 const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
@@ -66,7 +67,8 @@ const MockMetaSequelizeStorage = jest.fn().mockImplementation(() => ({
 jest.unstable_mockModule('../src/config/db.js', () => ({
   createSourceConnection: jest.fn(),
   createTargetConnection: mockCreateTargetConnection,
-  createMetaConnection: mockCreateMetaConnection
+  createMetaConnection: mockCreateMetaConnection,
+  createBusinessTargetConnection: mockCreateBusinessTargetConnection
 }));
 
 jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
@@ -103,6 +105,9 @@ describe('runSchemaMigrate', () => {
       getQueryInterface: () => fakeQueryInterface
     });
     mockCreateMetaConnection.mockReset().mockReturnValue({ config: {}, query: jest.fn() });
+    mockCreateBusinessTargetConnection.mockReset().mockImplementation(() => ({
+      getQueryInterface: () => fakeQueryInterface
+    }));
     mockEnsureMetadataSchema.mockClear();
     mockRecordCommandStart.mockClear().mockResolvedValue(1);
     mockRecordCommandComplete.mockClear();
@@ -144,7 +149,8 @@ describe('runSchemaMigrate', () => {
       createMetaConnection: jest.fn(() => {
         localCallOrder.push('createMetaConnection');
         return { config: {}, query: jest.fn() };
-      })
+      }),
+      createBusinessTargetConnection: jest.fn(() => ({ getQueryInterface: () => fakeQueryInterface }))
     }));
     jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
       META_DB_NAME: 'dgfy_migration_meta',
@@ -224,7 +230,8 @@ describe('runSchemaMigrate — D-17 pending-only destructive classification', ()
     jest.unstable_mockModule('../src/config/db.js', () => ({
       createSourceConnection: jest.fn(),
       createTargetConnection: jest.fn(() => ({ getQueryInterface: () => ({}) })),
-      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() }))
+      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() })),
+      createBusinessTargetConnection: jest.fn(() => ({ getQueryInterface: () => ({}) }))
     }));
     jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
       META_DB_NAME: 'dgfy_migration_meta',
@@ -320,5 +327,130 @@ describe('runSchemaMigrate — D-17 pending-only destructive classification', ()
 
     expect(mockUp).toHaveBeenCalled();
     expect(report.migrations_executed).toEqual(['pending-destructive.cjs']);
+  });
+});
+
+describe('runSchemaMigrate — Plan 03 business database target selection', () => {
+  function mockCommonDepsWithTargetAwareUmzug() {
+    const targetDatabasesUsed = [];
+    const connectionCallOrder = [];
+
+    jest.unstable_mockModule('../src/config/db.js', () => ({
+      createSourceConnection: jest.fn(),
+      createTargetConnection: jest.fn(() => {
+        connectionCallOrder.push('createTargetConnection:dgfy_core');
+        return { getQueryInterface: () => ({}) };
+      }),
+      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() })),
+      createBusinessTargetConnection: jest.fn((_config, databaseName) => {
+        connectionCallOrder.push(`createBusinessTargetConnection:${databaseName}`);
+        return { getQueryInterface: () => ({}) };
+      })
+    }));
+    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+      META_DB_NAME: 'dgfy_migration_meta',
+      COMMAND_EXECUTIONS_TABLE: 'command_executions',
+      SCHEMA_MIGRATIONS_TABLE: 'schema_migrations',
+      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
+      recordCommandStart: jest.fn().mockResolvedValue(1),
+      recordCommandComplete: jest.fn().mockResolvedValue(undefined)
+    }));
+    jest.unstable_mockModule('../src/metadata/storage.js', () => ({
+      MetaSequelizeStorage: jest.fn().mockImplementation(({ targetDatabase }) => {
+        targetDatabasesUsed.push(targetDatabase);
+        return {
+          targetDatabase,
+          logMigration: jest.fn().mockResolvedValue(undefined),
+          unlogMigration: jest.fn().mockResolvedValue(undefined),
+          executed: jest.fn().mockResolvedValue([])
+        };
+      })
+    }));
+    jest.unstable_mockModule('../src/safety/destructiveGate.js', () => ({
+      assertDestructiveAllowed: realAssertDestructiveAllowed
+    }));
+    jest.unstable_mockModule('../src/safety/targetGuard.js', () => ({
+      assertTargetDbNameAllowed: realAssertTargetDbNameAllowed
+    }));
+    jest.unstable_mockModule('umzug', () => ({
+      // Umzug's mock constructor reads back the storage's targetDatabase so
+      // each target's pending()/up() can return a target-distinguishable
+      // migration name without a real DB.
+      Umzug: jest.fn().mockImplementation(({ storage }) => {
+        const migrationName = `migration-for-${storage.targetDatabase}.cjs`;
+        return {
+          pending: jest.fn().mockResolvedValue([{ name: migrationName, meta: { destructive: false } }]),
+          up: jest.fn().mockResolvedValue([{ name: migrationName }])
+        };
+      })
+    }));
+
+    return { targetDatabasesUsed, connectionCallOrder };
+  }
+
+  let reportDir;
+
+  beforeEach(async () => {
+    jest.resetModules();
+    reportDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dgfy-migration-runner-schema-business-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(reportDir, { recursive: true, force: true });
+    restoreEnv();
+    jest.resetModules();
+  });
+
+  test('migrates every configured dgfy_business_* target in declared order using target-scoped storage', async () => {
+    const { targetDatabasesUsed, connectionCallOrder } = mockCommonDepsWithTargetAwareUmzug();
+    applyEnv({
+      REPORT_DIR: reportDir,
+      TARGET_DB_NAME: 'dgfy_core',
+      DGFY_BUSINESS_DB_NAMES: 'dgfy_business_alpha,dgfy_business_beta'
+    });
+
+    const { runSchemaMigrate } = await import('../src/commands/schema.js');
+    const report = await runSchemaMigrate({});
+
+    // Deterministic order matches the declared DGFY_BUSINESS_DB_NAMES order.
+    expect(connectionCallOrder).toEqual([
+      'createTargetConnection:dgfy_core',
+      'createBusinessTargetConnection:dgfy_business_alpha',
+      'createBusinessTargetConnection:dgfy_business_beta'
+    ]);
+    expect(targetDatabasesUsed).toEqual(['dgfy_core', 'dgfy_business_alpha', 'dgfy_business_beta']);
+
+    // Report lists every processed business database target and its own
+    // per-target migration result — no credentials, database names only.
+    expect(report.target_database).toBe('dgfy_core');
+    expect(report.business_targets).toEqual([
+      { database: 'dgfy_business_alpha', migrations_executed: ['migration-for-dgfy_business_alpha.cjs'] },
+      { database: 'dgfy_business_beta', migrations_executed: ['migration-for-dgfy_business_beta.cjs'] }
+    ]);
+    expect(JSON.stringify(report)).not.toMatch(/target_pass|password/i);
+  });
+
+  test('with no DGFY_BUSINESS_DB_NAMES configured, only the primary target is migrated and business_targets is empty', async () => {
+    mockCommonDepsWithTargetAwareUmzug();
+    applyEnv({ REPORT_DIR: reportDir, TARGET_DB_NAME: 'dgfy_core' });
+
+    const { runSchemaMigrate } = await import('../src/commands/schema.js');
+    const report = await runSchemaMigrate({});
+
+    expect(report.business_targets).toEqual([]);
+  });
+
+  test('an invalid DGFY_BUSINESS_DB_NAMES entry is rejected by validateEnv before any connection is opened', async () => {
+    const { connectionCallOrder } = mockCommonDepsWithTargetAwareUmzug();
+    applyEnv({
+      REPORT_DIR: reportDir,
+      TARGET_DB_NAME: 'dgfy_core',
+      DGFY_BUSINESS_DB_NAMES: 'sku_inventory_manager'
+    });
+
+    const { runSchemaMigrate } = await import('../src/commands/schema.js');
+
+    await expect(runSchemaMigrate({})).rejects.toThrow(/DGFY_BUSINESS_DB_NAMES/);
+    expect(connectionCallOrder).toEqual([]);
   });
 });
