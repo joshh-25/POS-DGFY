@@ -25,7 +25,7 @@ describe('MetaSequelizeStorage', () => {
         expect(rows[0].executed_at).toBeInstanceOf(Date);
     });
 
-    test('unlogMigration calls bulkDelete with { name }', async () => {
+    test('unlogMigration calls bulkDelete with { name, target_database }', async () => {
         const bulkDelete = jest.fn().mockResolvedValue();
         const sequelize = buildSequelize({ bulkInsert: jest.fn(), bulkDelete, query: jest.fn() });
         const storage = new MetaSequelizeStorage({ sequelize });
@@ -35,8 +35,25 @@ describe('MetaSequelizeStorage', () => {
         expect(bulkDelete).toHaveBeenCalledTimes(1);
         expect(bulkDelete).toHaveBeenCalledWith(
             SCHEMA_MIGRATIONS_TABLE,
-            { name: '00000000000000-runner-contract-placeholder' }
+            { name: '00000000000000-runner-contract-placeholder', target_database: 'default' }
         );
+    });
+
+    test('logMigration/unlogMigration/executed are scoped by an explicit targetDatabase (Plan 03 D-21)', async () => {
+        const bulkInsert = jest.fn().mockResolvedValue();
+        const bulkDelete = jest.fn().mockResolvedValue();
+        const query = jest.fn().mockResolvedValue([[], []]);
+        const sequelize = buildSequelize({ bulkInsert, bulkDelete, query });
+        const storage = new MetaSequelizeStorage({ sequelize, targetDatabase: 'dgfy_business_alpha' });
+
+        await storage.logMigration({ name: 'x' });
+        expect(bulkInsert.mock.calls[0][1][0].target_database).toBe('dgfy_business_alpha');
+
+        await storage.unlogMigration({ name: 'x' });
+        expect(bulkDelete).toHaveBeenCalledWith(SCHEMA_MIGRATIONS_TABLE, { name: 'x', target_database: 'dgfy_business_alpha' });
+
+        await storage.executed();
+        expect(query.mock.calls[0][1]).toEqual({ replacements: ['dgfy_business_alpha'] });
     });
 
     test('executed() resolves to a plain array of migration-name strings', async () => {

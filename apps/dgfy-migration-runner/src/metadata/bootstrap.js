@@ -30,9 +30,16 @@ const COMMAND_EXECUTIONS_COLUMNS = {
 
 /**
  * Umzug's SCHEMA_MIGRATIONS_TABLE contract (storage.js reads/writes exactly this shape).
+ *
+ * Plan 03 (D-21/T-02-03-02): `target_database` joins `name` in a composite
+ * primary key so the same migration filename can be recorded independently
+ * for `dgfy_core` and every selected `dgfy_business_*` database — a core
+ * migration record can never satisfy (or hide) a business database's own
+ * pending-migration state, and vice versa.
  */
 const SCHEMA_MIGRATIONS_COLUMNS = {
     name: { type: DataTypes.STRING(255), primaryKey: true },
+    target_database: { type: DataTypes.STRING(128), primaryKey: true },
     checksum: { type: DataTypes.STRING(64), allowNull: true },
     executed_at: { type: DataTypes.DATE, allowNull: false }
 };
