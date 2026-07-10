@@ -241,6 +241,95 @@ Tenancy are stable (see `.planning/PROJECT.md` Out of Scope).
   schemas are provably unmutated (pre/post `information_schema`
   fingerprints).
 
+## Verification Evidence (DBF-01 through DBF-05, D-21 through D-24, Plan 04)
+
+Phase 02 completion is proven by running the migration runner's `verify`
+command and inspecting its JSON report, not by intent or code review alone.
+`apps/dgfy-migration-runner/src/commands/verify.js` produces the following
+report sections, each with a matching `summary.<section>_ok` boolean:
+
+| Report section | Proves | Requirement |
+|---|---|---|
+| `core_schema` | Every `dgfyCoreContract.js` table/column/index/unique-constraint/foreign-key exists in the targeted `dgfy_core` database, and no out-of-scope `rejectedTables` entry is present. | DBF-02, DBF-05, D-21 |
+| `business_schemas` | The same, per configured `dgfy_business_*` target, against `dgfyBusinessContract.js`. | DBF-03, DBF-05, D-21 |
+| `migration_metadata` | `dgfy_migration_meta.schema_migrations` has a target-scoped record for every Phase 02 migration file expected for that target's kind (`core`/`business`) — missing records are reported per target database, not only by filename. | DBF-04, DBF-05, D-21 |
+| `tenant_coverage` | Every explicitly targeted `dgfy_business_*` database has its expected tenant schema, cross-checked against `dgfy_core.business_database_registry` when that table is reachable. A registry gap (no row yet for an explicit target) is flagged in `registry_gaps` but does not fail `ok` — Phase 02 does not seed registry rows; the explicit `DGFY_BUSINESS_DB_NAMES` target list is the accepted initial-verification input (D-08). | DBF-05, D-21 |
+| `idempotency` | Zero pending Phase 02 migrations remain for `dgfy_core` and every `dgfy_business_*` target (derived from the same target-scoped migration metadata `migration_metadata` computes) — proof that a rerun of `schema migrate` against an already-migrated target is a pure no-op. | DBF-04, D-22 |
+| `legacy_non_mutation` | The legacy/current `sku_*` schema (`SOURCE_DB_NAME`) is unchanged: a durable pre-migration `information_schema` fingerprint (tables/columns/indexes/constraints) is captured once by `schema migrate` (`ensureLegacyFingerprintBaseline()`, written to `<REPORT_DIR>/legacy-fingerprint-baseline.json` and referenced by `legacy_fingerprint_baseline_path` in the `schema:migrate` report) and compared against a freshly computed fingerprint of the same schema during `verify`. | DBF-01, D-23 |
+
+**Legacy non-mutation requires the baseline artifact to exist first.**
+`verify` fails closed (`legacy_non_mutation.ok: false`,
+`legacy_non_mutation.baseline_found: false`) if `schema migrate` has never
+run and no baseline artifact is present — D-23 requires observable
+non-mutation proof, not an assumption that migrations never touched legacy
+schemas. Running `schema migrate` at least once before `verify` is
+therefore a precondition for legacy non-mutation evidence, not an optional
+step.
+
+`verify()` never throws: every check above is wrapped so a connection or
+introspection failure becomes an `ok: false` finding (with an `error`
+field) rather than an uncaught exception, per D-24's requirement that
+verification always emits machine-readable JSON and a human-readable
+summary, even when checks fail.
+
+### Local Evidence Commands
+
+Run these in order from `apps/dgfy-migration-runner/` (or via
+`npm --prefix apps/dgfy-migration-runner ...` from the repo root):
+
+```bash
+# 1. Runner unit tests (schema contracts, hardening gates, report sections)
+npm test -- --watchman=false
+
+# 2. Gated real MySQL-backed integration evidence (skips cleanly without a
+#    real MySQL server + explicit opt-in; never fails unrelated environments)
+RUN_PHASE02_INTEGRATION=true \
+PHASE02_IT_DB_HOST=<host> PHASE02_IT_DB_USER=<user> PHASE02_IT_DB_PASSWORD=<password> \
+npm test -- phase02Integration.test.js --watchman=false
+
+# 3. Real schema migration against dgfy_core, then one or more
+#    dgfy_business_* targets (TARGET_DB_NAME / DGFY_BUSINESS_DB_NAMES env)
+TARGET_DB_NAME=dgfy_core node src/cli.js schema migrate
+TARGET_DB_NAME=dgfy_core DGFY_BUSINESS_DB_NAMES=dgfy_business_<suffix> node src/cli.js schema migrate
+
+# 4. Rerun the same command(s) — proves additive/idempotent behavior
+#    (summary.total_pending and summary.executed must both be 0)
+TARGET_DB_NAME=dgfy_core DGFY_BUSINESS_DB_NAMES=dgfy_business_<suffix> node src/cli.js schema migrate
+
+# 5. Verify — inspect the JSON report's core_schema/business_schemas/
+#    migration_metadata/tenant_coverage/idempotency/legacy_non_mutation
+#    sections and summary.*_ok booleans
+TARGET_DB_NAME=dgfy_core DGFY_BUSINESS_DB_NAMES=dgfy_business_<suffix> node src/cli.js verify
+
+# 6. Documentation and architecture gates (final, repo-root commands)
+npm run lint:docs
+npm run check:architecture
+```
+
+Production use requires an operator to supply real `SOURCE_DB_*`/
+`TARGET_DB_*` credentials, `DGFY_BUSINESS_DB_NAMES`, and `MIGRATION_ACTOR`
+via the runner's environment/deployment configuration — no external
+dashboard or additional service setup is required beyond what
+`apps/dgfy-migration-runner`'s existing Docker packaging (Phase 01) already
+provides.
+
+### Rollback Considerations
+
+- Every Phase 02 migration is additive only (existence-guarded
+  `createTable`/`addIndex`, never `sequelize.sync({ alter: true })`); there
+  is no automated destructive rollback path.
+- `rollback-plan` (Phase 01) generates a report-only artifact describing
+  what a manual rollback would need to reverse — it never executes a
+  migration's `down()`.
+- For an irreversible incident, recovery is a database backup/restore
+  operation performed by an operator, not a runner command.
+- If `verify`'s `legacy_non_mutation` section ever reports `ok: false`,
+  stop Phase 02 schema migration work immediately and preserve the JSON/
+  summary reports and the fingerprint baseline artifact before attempting
+  any further migration — per this document's own threat model, legacy
+  mutation is a high-severity Tampering finding, not a warning to route
+  around.
+
 ## Threat Model Summary
 
 See `02-02-PLAN.md`'s and `02-03-PLAN.md`'s `<threat_model>` sections for the
