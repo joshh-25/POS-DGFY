@@ -39,13 +39,24 @@ export async function runVerify({} = {}) {
     targetDbReachable = false;
   }
 
-  const executionId = await recordCommandStart(metaSequelize, {
-    command: 'verify',
-    mode: 'verify',
-    argsJson: JSON.stringify({}),
-    actor: config.actor,
-    runtimeMode: config.runtimeMode
-  });
+  // recordCommandStart inserts into command_executions, which lives in the
+  // same metadata schema ensureMetadataSchema() just checked. When that
+  // schema is missing/broken (metadataSchemaOk === false) this insert will
+  // itself throw — but verify()'s own contract (see JSDoc above) is to
+  // always complete and report findings rather than crash, so audit-trail
+  // bookkeeping here is best-effort only.
+  let executionId = null;
+  try {
+    executionId = await recordCommandStart(metaSequelize, {
+      command: 'verify',
+      mode: 'verify',
+      argsJson: JSON.stringify({}),
+      actor: config.actor,
+      runtimeMode: config.runtimeMode
+    });
+  } catch (error) {
+    executionId = null;
+  }
 
   const report = {
     generated_at: new Date().toISOString(),
@@ -57,14 +68,28 @@ export async function runVerify({} = {}) {
     }
   };
 
-  const reportJsonPath = await writeJsonReport(config.reportDir, 'verify', report);
-  const reportSummaryPath = await writeSummaryReport(config.reportDir, 'verify', report);
+  let reportJsonPath = null;
+  let reportSummaryPath = null;
+  try {
+    reportJsonPath = await writeJsonReport(config.reportDir, 'verify', report);
+    reportSummaryPath = await writeSummaryReport(config.reportDir, 'verify', report, 'success');
+  } catch (error) {
+    // still return the report even if the report writer itself fails —
+    // verify() must never throw.
+  }
 
-  await recordCommandComplete(metaSequelize, executionId, {
-    exitStatus: 'success',
-    reportJsonPath,
-    reportSummaryPath
-  });
+  if (executionId) {
+    try {
+      await recordCommandComplete(metaSequelize, executionId, {
+        exitStatus: 'success',
+        reportJsonPath,
+        reportSummaryPath
+      });
+    } catch (error) {
+      // best-effort — do not let audit bookkeeping crash verify's own
+      // never-throws contract.
+    }
+  }
 
   return report;
 }
