@@ -70,20 +70,29 @@ export async function runVerify({} = {}) {
 
   let reportJsonPath = null;
   let reportSummaryPath = null;
+  // D-18: a failed health check (metadata_schema_ok/target_db_reachable
+  // false) is a reported *finding*, not a command failure — verify's own
+  // job is to detect and report exactly that, so those paths above stay
+  // exit_status=success. A genuine report-write failure here, though, IS a
+  // command/reporting failure per D-18's acceptance criteria, so it's
+  // tracked separately and reflected in the completed row's exit_status.
+  let reportWriteError = null;
   try {
     reportJsonPath = await writeJsonReport(config.reportDir, 'verify', report);
     reportSummaryPath = await writeSummaryReport(config.reportDir, 'verify', report, 'success');
   } catch (error) {
     // still return the report even if the report writer itself fails —
     // verify() must never throw.
+    reportWriteError = error;
   }
 
   if (executionId) {
     try {
       await recordCommandComplete(metaSequelize, executionId, {
-        exitStatus: 'success',
+        exitStatus: reportWriteError ? 'failed' : 'success',
         reportJsonPath,
-        reportSummaryPath
+        reportSummaryPath,
+        errorMessage: reportWriteError ? reportWriteError.message : undefined
       });
     } catch (error) {
       // best-effort — do not let audit bookkeeping crash verify's own
