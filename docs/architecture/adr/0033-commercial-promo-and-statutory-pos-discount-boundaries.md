@@ -47,6 +47,14 @@ item targets, time window, and usage limit.
    VAT and discount totals are ignored.
 9. The POS modal keeps five visible type cards. Promo exposes only Promo Code;
    Method and Rate remain available only for Employee and Manual intent.
+10. Storefront promo checkout persists a `pos_transaction_discounts` promo audit
+    row and saved per-line allocations in the same tenant transaction as the
+    order. POS details, receipts, and reports read these saved snapshots instead
+    of reconstructing promo identity or redistributing targeted discounts.
+11. Storefront payment state is server-derived. Only a webhook-confirmed QR Ph
+    finalization is persisted as `paid` with provider metadata. Public checkout
+    payment selections without verified collection remain `unpaid`; submitted
+    client payment status, provider, and reference values are not authoritative.
 
 ## Boundary Consequences
 
@@ -82,6 +90,11 @@ both Storefront and POS without affecting completed transactions.
 5. Rendered POS checks for desktop and tablet before release approval.
 6. Individual approval tests for invalid PIN, invalid role, self-approval, and
    persisted approver identity.
+7. Storefront promo persistence tests covering canonical promo code, header
+   totals, per-line allocation reconciliation, usage-counter atomicity, and POS
+   report/receipt consumption.
+8. Storefront payment tests proving unverified client metadata cannot create a
+   paid order and webhook-confirmed QR Ph retains verified provider evidence.
 
 ## Authoritative Sources
 
