@@ -6,14 +6,14 @@ current_phase: 02
 current_phase_name: dgfy-database-foundation
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-10T16:34:51.160Z"
+last_updated: "2026-07-10T16:58:30.337Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 14
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 ## Current Position
 
 Phase: 02 (dgfy-database-foundation) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-07-10 — Phase 02 execution started
 
@@ -61,6 +61,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 01 P04 | 18min | 2 tasks | 2 files |
 | Phase 02 P01 | 25min | 3 tasks | 7 files |
 | Phase 02 P02 | 25min | 3 tasks | 5 files |
+| Phase 02 P03 | 12min | 4 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,10 @@ Recent decisions affecting current work:
 - [Phase ?]: dgfy_core tables use plain names (accounts, businesses, business_memberships, business_database_registry, business_audit_logs, storefront_discovery_index) per D-05
 - [Phase ?]: No canonical branches/locations table was created in dgfy_core (D-10); storefront_discovery_index is projection-only
 - [Phase ?]: business_database_registry stores only database_name/stable_opaque_suffix/status/verified_at, never credentials (D-08, ASVS V6)
+- [Phase ?]: Runner: schema migration metadata is target-scoped via a target_database column (composite key with name), so dgfy_core and every dgfy_business_* database track the same migration filename independently
+- [Phase ?]: Runner: added DGFY_BUSINESS_DB_NAMES explicit target list, validated by BUSINESS_DB_NAME_PATTERN before any connection (RUN-03), for initial dgfy_business_* schema migration coverage
+- [Phase ?]: Runner: schema migration files declare meta.targetKind ('core' default / 'business') so a business foundation migration can never run against dgfy_core (or vice versa) while staying in the same migrations directory
+- [Phase ?]: dgfy_business_* tenant foundation cross-database references (dgfy_account_id, business_id, owner_dgfy_account_id, actor_dgfy_account_id) are opaque UUID columns with no foreign key, since MySQL cannot enforce FKs across separate databases
 
 ### Pending Todos
 
@@ -112,6 +117,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-10T16:33:36.765Z
+Last session: 2026-07-10T16:56:10.410Z
 Stopped at: Phase 2 context gathered
 Resume file: .planning/phases/02-dgfy-database-foundation/02-CONTEXT.md

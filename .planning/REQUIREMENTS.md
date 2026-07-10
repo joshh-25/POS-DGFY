@@ -43,7 +43,7 @@ Requirements for the initial database-first refactor milestone. Each maps to roa
 
 - [x] **DBF-01**: New DGFY landlord schema is created beside legacy/current databases without mutating legacy schemas by default.
 - [x] **DBF-02**: DGFY landlord schema contains Accounts, Businesses, Branches, Tenancy registry, tenant database pointers, and migration metadata needed by the first backend scope.
-- [ ] **DBF-03**: New DGFY tenant schema foundation contains Staff Accounts, Assignments, Terminal identity, and tenant-local ownership metadata needed by the first backend scope.
+- [x] **DBF-03**: New DGFY tenant schema foundation contains Staff Accounts, Assignments, Terminal identity, and tenant-local ownership metadata needed by the first backend scope.
 - [x] **DBF-04**: Schema migrations are additive, repeatable, and tracked by migration metadata with no reliance on `sync({ alter: true })` as the production migration strategy.
 - [x] **DBF-05**: Schema verification proves expected tables, columns, indexes, constraints, migration records, and tenant coverage for all targeted `dgfy_*` schemas.
 
@@ -115,7 +115,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RUN-05 | Phase 1 | Complete |
 | DBF-01 | Phase 2 | Complete |
 | DBF-02 | Phase 2 | Complete |
-| DBF-03 | Phase 2 | Pending |
+| DBF-03 | Phase 2 | Complete |
 | DBF-04 | Phase 2 | Complete |
 | DBF-05 | Phase 2 | Complete |
 | MIG-01 | Phase 3 | Pending |
