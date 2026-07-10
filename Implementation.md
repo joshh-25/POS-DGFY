@@ -2150,3 +2150,50 @@ POS transaction reads failed with `Table '<tenant>.delivery_jobs' doesn't exist`
 
 - `backend/scripts/sync-tenant-schemas.js`
 - `Implementation.md`
+
+---
+
+## 2026-07-10 — Clear lint warnings, complete legacy tenant repair, and split POS operations loading
+
+### Implemented solution
+
+- Restored the three route-backed handlers to their compatibility facades' default exports, removing unused-import lint warnings without changing route behavior.
+- Removed two unused Storefront helper declarations/imports from the Store use-case module.
+- Updated the remaining discount-schema repair DDL to use `utf8mb4_general_ci`, which works on local MariaDB and MySQL 8. Existing table collations remain unchanged.
+- Lazy-loaded the POS Operations workspace and separated map/vendor bundles so terminal startup does not load optional operations and map code.
+
+### Deferred deliberately
+
+- Redis remains optional and unchanged; it is not an application failure in this local configuration.
+
+### Files changed
+
+- `backend/src/controllers/posController.js`
+- `backend/src/controllers/userController.js`
+- `backend/src/modules/store/usecases/storeUseCases.js`
+- `backend/scripts/sync-tenant-schemas.js`
+- `frontend/src/features/pos/components/TerminalPageLayout.jsx`
+- `frontend/apps/pos/vite.config.js`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Validate voids against the operator's active shift
+
+### Confirmed problem
+
+- The void action searched for an open shift using the historical transaction's terminal and location. A valid current shift on another terminal or location was rejected as closed.
+
+### Implemented solution
+
+- The POS history action now submits its current `shift_id` and terminal identity with the void request.
+- The backend requires that shift, verifies it is open and owned by the authenticated user, and no longer binds void authorization to the original transaction's terminal or location.
+- Stock reversal and fiscal void evidence remain unchanged.
+
+### Files changed
+
+- `backend/src/validators/posValidator.js`
+- `backend/src/modules/pos/usecases/posUseCases.js`
+- `backend/tests/posCheckoutFnbContracts.usecase.test.js`
+- `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `Implementation.md`
