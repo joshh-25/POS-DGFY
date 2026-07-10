@@ -108,38 +108,38 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RUN-01 | TBD | Pending |
-| RUN-02 | TBD | Pending |
-| RUN-03 | TBD | Pending |
-| RUN-04 | TBD | Pending |
-| RUN-05 | TBD | Pending |
-| DBF-01 | TBD | Pending |
-| DBF-02 | TBD | Pending |
-| DBF-03 | TBD | Pending |
-| DBF-04 | TBD | Pending |
-| DBF-05 | TBD | Pending |
-| MIG-01 | TBD | Pending |
-| MIG-02 | TBD | Pending |
-| MIG-03 | TBD | Pending |
-| MIG-04 | TBD | Pending |
-| MIG-05 | TBD | Pending |
-| API-01 | TBD | Pending |
-| API-02 | TBD | Pending |
-| API-03 | TBD | Pending |
-| API-04 | TBD | Pending |
-| API-05 | TBD | Pending |
-| API-06 | TBD | Pending |
-| CMP-01 | TBD | Pending |
-| CMP-02 | TBD | Pending |
-| CMP-03 | TBD | Pending |
-| CMP-04 | TBD | Pending |
-| CMP-05 | TBD | Pending |
+| RUN-01 | Phase 1 | Pending |
+| RUN-02 | Phase 1 | Pending |
+| RUN-03 | Phase 1 | Pending |
+| RUN-04 | Phase 1 | Pending |
+| RUN-05 | Phase 1 | Pending |
+| DBF-01 | Phase 2 | Pending |
+| DBF-02 | Phase 2 | Pending |
+| DBF-03 | Phase 2 | Pending |
+| DBF-04 | Phase 2 | Pending |
+| DBF-05 | Phase 2 | Pending |
+| MIG-01 | Phase 3 | Pending |
+| MIG-02 | Phase 3 | Pending |
+| MIG-03 | Phase 3 | Pending |
+| MIG-04 | Phase 3 | Pending |
+| MIG-05 | Phase 3 | Pending |
+| API-01 | Phase 4 | Pending |
+| API-02 | Phase 4 | Pending |
+| API-03 | Phase 4 | Pending |
+| API-04 | Phase 4 | Pending |
+| API-05 | Phase 4 | Pending |
+| API-06 | Phase 4 | Pending |
+| CMP-01 | Phase 5 | Pending |
+| CMP-02 | Phase 5 | Pending |
+| CMP-03 | Phase 5 | Pending |
+| CMP-04 | Phase 6 | Pending |
+| CMP-05 | Phase 7 | Pending |
 
 **Coverage:**
 - v1 requirements: 26 total
-- Mapped to phases: 0
-- Unmapped: 26 (roadmap pending)
+- Mapped to phases: 26
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-10 after initial definition*
+*Last updated: 2026-07-10 after roadmap creation*
