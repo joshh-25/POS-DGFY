@@ -346,17 +346,15 @@ ORDER BY table_schema, table_name, ordinal_position;
 |---|-------|---------|---------------|
 | A1 | Operational POS/inventory/product foreign keys to landlord branch projection are warning signs. | Common Pitfalls | Low; locked decisions already prohibit operational branch truth in landlord. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **How will Phase 02 choose the initial `dgfy_business_<stable_opaque_suffix>` databases to create?**
    - What we know: D-02 locks the name pattern and D-08 locks the registry fields. [VERIFIED: 02-CONTEXT.md]
-   - What's unclear: whether Phase 02 seeds one test business DB, creates all configured targets from env, or reads a fixture list. [ASSUMED]
-   - Recommendation: planner should add an explicit target-list contract before migration implementation.
+   - Resolution: Plan 03 adds an explicit target-list contract for initial verification, while `dgfy_core.business_database_registry` remains the source of truth once registry rows exist. Plan 03 also requires target-scoped migration metadata so each selected `dgfy_business_*` database is migrated independently.
 
 2. **Should Phase 02 create a new authoritative `docs/database/dgfy-foundation.md`?**
    - What we know: docs/database is the schema contract location and schema.md is legacy/reference-heavy. [VERIFIED: docs/database/README.md, docs/database/schema.md]
-   - What's unclear: whether documentation updates are required in this phase or deferred until APIs. [ASSUMED]
-   - Recommendation: create a focused DGFY foundation doc if implementation changes cross a governed database contract.
+   - Resolution: Plans 02, 03, and 04 create and maintain `docs/database/dgfy-foundation.md` as the Phase 02 DGFY database foundation contract, including verification evidence and scope exclusions.
 
 ## Environment Availability
 

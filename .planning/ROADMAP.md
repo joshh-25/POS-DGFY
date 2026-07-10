@@ -66,7 +66,24 @@ Plans:
   3. Developer can inspect tenant foundation tables for Staff Accounts, Assignments, Terminal identity, and tenant-local ownership metadata.
   4. Re-running schema migration and verification proves expected tables, columns, indexes, constraints, metadata records, and tenant coverage.
 
-**Plans**: TBD
+**Plans**: 0/4 plans complete
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Runner hardening before DGFY schema migrations
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — DGFY core landlord schema foundation
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02-03-PLAN.md — DGFY per-business schema foundation and target selection
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 02-04-PLAN.md — Schema verification evidence and documentation closure
 
 ### Phase 3: Old-to-New Migration Proof
 
