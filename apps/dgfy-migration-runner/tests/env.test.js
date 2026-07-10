@@ -86,6 +86,25 @@ describe('validateEnv', () => {
         expect(result.errors.some((message) => message.includes('MIGRATION_ACTOR'))).toBe(true);
     });
 
+    test('reportDir defaults to /reports when REPORT_DIR is not set (D-20: container-safe default)', () => {
+        const env = baseEnv();
+        delete env.REPORT_DIR;
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(true);
+        expect(result.config.reportDir).toBe('/reports');
+    });
+
+    test('reportDir honors an explicit REPORT_DIR override instead of the /reports default', () => {
+        const env = baseEnv({ REPORT_DIR: '/custom/mounted/reports' });
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(true);
+        expect(result.config.reportDir).toBe('/custom/mounted/reports');
+    });
+
     test('env.js source contains no sequelize/mysql2 import', () => {
         const source = readFileSync(join(__dirname, '..', 'src', 'config', 'env.js'), 'utf8');
         const withoutComments = source
