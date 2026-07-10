@@ -6,6 +6,7 @@ import {
     recordCommandStart,
     recordCommandComplete
 } from '../src/metadata/bootstrap.js';
+import { MetaSequelizeStorage } from '../src/metadata/storage.js';
 import { MetadataSchemaError } from '../src/utils/errors.js';
 
 const EXPECTED_COMMAND_EXECUTIONS_COLUMNS = [
@@ -13,7 +14,10 @@ const EXPECTED_COMMAND_EXECUTIONS_COLUMNS = [
     'started_at', 'completed_at', 'exit_status', 'report_json_path', 'report_summary_path',
     'error_message', 'created_at', 'updated_at'
 ];
-const EXPECTED_SCHEMA_MIGRATIONS_COLUMNS = ['name', 'checksum', 'executed_at'];
+// Plan 03 (D-21/T-02-03-02): target_database joins the composite key so the
+// same migration filename can be tracked independently per dgfy_core /
+// dgfy_business_* target.
+const EXPECTED_SCHEMA_MIGRATIONS_COLUMNS = ['name', 'target_database', 'checksum', 'executed_at'];
 
 function describeTableFixture(columnNames) {
     return columnNames.reduce((acc, name) => {
@@ -168,5 +172,85 @@ describe('recordCommandComplete', () => {
         expect(values.exit_status).toBe('success');
         expect(values.completed_at).toBeInstanceOf(Date);
         expect(where).toEqual({ id: 42 });
+    });
+});
+
+describe('MetaSequelizeStorage — target-scoped metadata (Plan 03 D-21/T-02-03-02)', () => {
+    function buildFakeMetaSequelize({ rows }) {
+        // Simulates dgfy_migration_meta.schema_migrations as an in-memory list
+        // of { name, target_database, executed_at } rows so bulkInsert/
+        // bulkDelete/query can be asserted against target-scoped behavior
+        // without a real MySQL connection.
+        const bulkInsert = jest.fn(async (_table, records) => {
+            rows.push(...records);
+        });
+        const bulkDelete = jest.fn(async (_table, where) => {
+            for (let i = rows.length - 1; i >= 0; i -= 1) {
+                if (rows[i].name === where.name && rows[i].target_database === where.target_database) {
+                    rows.splice(i, 1);
+                }
+            }
+        });
+        const query = jest.fn(async (_sql, options) => {
+            const targetDatabase = options?.replacements?.[0];
+            const matched = rows
+                .filter((row) => row.target_database === targetDatabase)
+                .sort((a, b) => a.executed_at - b.executed_at);
+            return [matched, []];
+        });
+        return {
+            getQueryInterface: () => ({ bulkInsert, bulkDelete }),
+            query
+        };
+    }
+
+    test('the same migration name is recorded independently for dgfy_core and multiple dgfy_business_* targets', async () => {
+        const rows = [];
+        const metaSequelize = buildFakeMetaSequelize({ rows });
+
+        const coreStorage = new MetaSequelizeStorage({ sequelize: metaSequelize, targetDatabase: 'dgfy_core' });
+        const alphaStorage = new MetaSequelizeStorage({ sequelize: metaSequelize, targetDatabase: 'dgfy_business_alpha' });
+        const betaStorage = new MetaSequelizeStorage({ sequelize: metaSequelize, targetDatabase: 'dgfy_business_beta' });
+
+        await coreStorage.logMigration({ name: '20260710021000-create-dgfy-business-foundation.cjs' });
+        await alphaStorage.logMigration({ name: '20260710021000-create-dgfy-business-foundation.cjs' });
+
+        expect(rows).toHaveLength(2);
+        expect(await coreStorage.executed()).toEqual(['20260710021000-create-dgfy-business-foundation.cjs']);
+        expect(await alphaStorage.executed()).toEqual(['20260710021000-create-dgfy-business-foundation.cjs']);
+        // beta never had this migration logged — its own pending/executed state
+        // must not be satisfied by alpha's or core's record of the same name.
+        expect(await betaStorage.executed()).toEqual([]);
+    });
+
+    test("one business database's executed migrations never appear in another business database's pending/executed state", async () => {
+        const rows = [];
+        const metaSequelize = buildFakeMetaSequelize({ rows });
+        const alphaStorage = new MetaSequelizeStorage({ sequelize: metaSequelize, targetDatabase: 'dgfy_business_alpha' });
+        const betaStorage = new MetaSequelizeStorage({ sequelize: metaSequelize, targetDatabase: 'dgfy_business_beta' });
+
+        await alphaStorage.logMigration({ name: 'shared-additive-migration.cjs' });
+
+        expect(await alphaStorage.executed()).toEqual(['shared-additive-migration.cjs']);
+        expect(await betaStorage.executed()).toEqual([]);
+
+        await betaStorage.logMigration({ name: 'shared-additive-migration.cjs' });
+        expect(await betaStorage.executed()).toEqual(['shared-additive-migration.cjs']);
+
+        // unlogMigration on one target must not remove the other target's record.
+        await alphaStorage.unlogMigration({ name: 'shared-additive-migration.cjs' });
+        expect(await alphaStorage.executed()).toEqual([]);
+        expect(await betaStorage.executed()).toEqual(['shared-additive-migration.cjs']);
+    });
+
+    test('logMigration writes target_database on every inserted row', async () => {
+        const bulkInsert = jest.fn().mockResolvedValue();
+        const metaSequelize = { getQueryInterface: () => ({ bulkInsert }), query: jest.fn() };
+        const storage = new MetaSequelizeStorage({ sequelize: metaSequelize, targetDatabase: 'dgfy_business_gamma' });
+
+        await storage.logMigration({ name: 'x.cjs' });
+
+        const [, rows] = bulkInsert.mock.calls[0];
+        expect(rows[0].target_database).toBe('dgfy_business_gamma');
     });
 });
