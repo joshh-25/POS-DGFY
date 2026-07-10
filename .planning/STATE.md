@@ -6,14 +6,14 @@ current_phase: 01
 current_phase_name: Architecture and Migration Runner Contract
 status: executing
 stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-07-10T11:19:01.216Z"
+last_updated: "2026-07-10T11:31:47.200Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 ## Current Position
 
 Phase: 01 (Architecture and Migration Runner Contract) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-07-10 — Phase 01 execution started
 
@@ -57,6 +57,7 @@ Progress: [███░░░░░░░] 25%
 *Updated after each plan completion*
 | Phase 01 P01 | 32min | 3 tasks | 12 files |
 | Phase 01 P02 | 11min | 3 tasks | 7 files |
+| Phase 01 P03 | 14min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,8 @@ Recent decisions affecting current work:
 - [Phase ?]: ensureMetadataSchema() self-heals dgfy_migration_meta via a short-lived raw mysql2 connection reusing metaSequelize.config credentials, then fails fast with MetadataSchemaError on any later structural mismatch instead of silently addColumn-ing
 - [Phase ?]: MetaSequelizeStorage is a custom Umzug storage class backed by dgfy_migration_meta.schema_migrations rather than the default SequelizeMeta table
 - [Phase ?]: buildSummaryLine() unconditionally skips non-null object/array summary fields so the summary.txt file never contains a raw JSON dump, by construction rather than convention
+- [Phase ?]: Computed the D-09 destructive-op check via a direct filesystem scan of migration files instead of umzug.pending(), resolving an ordering conflict between the plan text and its own acceptance criteria
+- [Phase ?]: Exported buildProgram() from cli.js with an isMainModule guard (mirroring sync-tenant-schemas.js) so CLI dispatch is testable in-process without spawning a child process
 
 ### Pending Todos
 
@@ -98,6 +101,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-10T11:16:43.304Z
+Last session: 2026-07-10T11:31:23.457Z
 Stopped at: Completed 01-01-PLAN.md
 Resume file: None
