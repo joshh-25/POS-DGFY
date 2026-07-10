@@ -1,5 +1,13 @@
+import { promises as fs } from 'fs';
+import { join } from 'path';
+
 import { validateEnv } from '../config/env.js';
-import { createTargetConnection, createMetaConnection, createBusinessTargetConnection } from '../config/db.js';
+import {
+  createTargetConnection,
+  createMetaConnection,
+  createBusinessTargetConnection,
+  createSourceConnection
+} from '../config/db.js';
 import { assertTargetDbNameAllowed } from '../safety/targetGuard.js';
 import { ensureMetadataSchema, recordCommandStart, recordCommandComplete } from '../metadata/bootstrap.js';
 import { writeJsonReport } from '../reports/reportWriter.js';
@@ -7,7 +15,12 @@ import { writeSummaryReport } from '../reports/summaryWriter.js';
 import { EnvValidationError } from '../utils/errors.js';
 import { dgfyCoreContract } from '../schemaContracts/dgfyCoreContract.js';
 import { dgfyBusinessContract } from '../schemaContracts/dgfyBusinessContract.js';
-import { resolveTargetKind, buildMigrationsForKind } from './schema.js';
+import {
+  resolveTargetKind,
+  buildMigrationsForKind,
+  computeLegacySchemaFingerprint,
+  LEGACY_FINGERPRINT_ARTIFACT_NAME
+} from './schema.js';
 import { MetaSequelizeStorage } from '../metadata/storage.js';
 
 /**
@@ -159,6 +172,97 @@ async function checkMigrationMetadata(metaSequelize, kind, targetDatabase) {
 }
 
 /**
+ * D-08/T-02-04-03: cross-checks the explicit `businessDbNames` target list
+ * against `dgfy_core.business_database_registry` (queried on the primary
+ * target connection — the registry lives in dgfy_core) when that table is
+ * reachable, and against each target's own `business_schemas` finding for
+ * "has the tenant foundation actually been migrated" coverage. Registry
+ * gaps are reported but never fail `ok` on their own — Phase 02 explicitly
+ * accepts the operator-supplied target list as sufficient initial
+ * verification input before registry rows exist (D-08, 02-RESEARCH.md
+ * Open Question 1).
+ */
+async function checkTenantCoverage({ targetSequelize, businessDbNames, businessSchemas }) {
+  let registryAvailable = true;
+  let registryDatabaseNames = new Set();
+  try {
+    const [rows] = await targetSequelize.query('SELECT database_name FROM business_database_registry');
+    registryDatabaseNames = new Set((rows || []).map((row) => row.database_name));
+  } catch (error) {
+    registryAvailable = false;
+  }
+
+  const schemaOkByName = new Map(businessSchemas.map((result) => [result.database, result.ok]));
+
+  const targets = businessDbNames.map((name) => ({
+    database: name,
+    has_expected_schema: schemaOkByName.get(name) === true,
+    registry_covered: registryAvailable ? registryDatabaseNames.has(name) : null
+  }));
+
+  const registryGaps = registryAvailable
+    ? targets.filter((target) => !target.registry_covered).map((target) => target.database)
+    : [];
+
+  return {
+    ok: targets.every((target) => target.has_expected_schema),
+    registry_available: registryAvailable,
+    targets,
+    registry_gaps: registryGaps
+  };
+}
+
+/**
+ * D-23: compares the durable pre-migration legacy fingerprint baseline
+ * (written once by schema.js's ensureLegacyFingerprintBaseline(), read back
+ * from its well-known path under config.reportDir) against a freshly
+ * computed post-migration fingerprint of the same legacy database. Fails
+ * closed (ok:false, baseline_found:false) when the baseline artifact is
+ * missing — D-23 requires observable non-mutation proof, not intent.
+ */
+async function checkLegacyNonMutation(config) {
+  const baselinePath = join(config.reportDir, LEGACY_FINGERPRINT_ARTIFACT_NAME);
+
+  let baseline;
+  try {
+    const raw = await fs.readFile(baselinePath, 'utf8');
+    baseline = JSON.parse(raw);
+  } catch (error) {
+    return {
+      ok: false,
+      baseline_found: false,
+      baseline_path: baselinePath,
+      reason: 'Legacy non-mutation baseline artifact is missing — run schema migrate first to capture it.'
+    };
+  }
+
+  const legacyDatabase = baseline.legacy_database || config.sourceDb.name;
+
+  try {
+    const sourceSequelize = createSourceConnection(config);
+    const currentFingerprint = await computeLegacySchemaFingerprint(sourceSequelize, legacyDatabase);
+    const unchanged = JSON.stringify(baseline.fingerprint) === JSON.stringify(currentFingerprint);
+
+    return {
+      ok: unchanged,
+      baseline_found: true,
+      baseline_path: baselinePath,
+      legacy_database: legacyDatabase,
+      baseline_captured_at: baseline.captured_at,
+      unchanged
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      baseline_found: true,
+      baseline_path: baselinePath,
+      legacy_database: legacyDatabase,
+      error: error.message
+    };
+  }
+}
+
+/**
  * Runs metadata schema and target DB connectivity checks, plus Phase 02
  * schema/metadata verification evidence (D-21/D-22): expected-schema checks
  * for `dgfy_core` and every configured `dgfy_business_*` target, and
@@ -250,6 +354,31 @@ export async function runVerify({} = {}) {
     });
   }
 
+  // D-22: idempotency — derived directly from migration_metadata's
+  // missing_migrations per target (the same metadata-backed pending check;
+  // see checkMigrationMetadata's docstring). Zero missing migrations means a
+  // rerun of schema migrate against that target would be a pure no-op.
+  const idempotency = migrationMetadata.map((finding) => ({
+    target_database: finding.target_database,
+    ok: (finding.missing_migrations || []).length === 0,
+    pending_migrations: finding.missing_migrations || []
+  }));
+
+  // D-08/T-02-04-03: tenant_coverage — cross-check the explicit business
+  // target list against dgfy_core.business_database_registry (when
+  // reachable) and each target's own schema-check outcome.
+  let tenantCoverage;
+  try {
+    tenantCoverage = await checkTenantCoverage({ targetSequelize, businessDbNames, businessSchemas });
+  } catch (error) {
+    tenantCoverage = { ok: false, registry_available: false, targets: [], registry_gaps: [], error: error.message };
+  }
+
+  // D-23: legacy_non_mutation — pre/post information_schema fingerprint
+  // comparison for the legacy/current sku_* schema. Never throws; a missing
+  // baseline or comparison failure surfaces as ok:false.
+  const legacyNonMutation = await checkLegacyNonMutation(config);
+
   // recordCommandStart inserts into command_executions, which lives in the
   // same metadata schema ensureMetadataSchema() just checked. When that
   // schema is missing/broken (metadataSchemaOk === false) this insert will
@@ -275,13 +404,19 @@ export async function runVerify({} = {}) {
     core_schema: coreSchema,
     business_schemas: businessSchemas,
     migration_metadata: migrationMetadata,
+    tenant_coverage: tenantCoverage,
+    idempotency,
+    legacy_non_mutation: legacyNonMutation,
     summary: {
       metadata_schema_ok: metadataSchemaOk,
       target_db_reachable: targetDbReachable,
       target_db_name: config.targetDb.name,
       core_schema_ok: coreSchema.ok,
       business_schemas_ok: businessSchemas.every((result) => result.ok),
-      migration_metadata_ok: migrationMetadata.every((result) => result.ok)
+      migration_metadata_ok: migrationMetadata.every((result) => result.ok),
+      tenant_coverage_ok: tenantCoverage.ok,
+      idempotency_ok: idempotency.every((result) => result.ok),
+      legacy_non_mutation_ok: legacyNonMutation.ok
     }
   };
 
