@@ -338,9 +338,18 @@ const hasMeaningfulStorefrontPromo = (promo) => Boolean(
   || promo?.active === true
   || normalizePositiveIntegerList(promo?.target_item_ids).length > 0
 );
+const getStorefrontPromoDate = () => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
 const isStorefrontPromoExpired = (promo) => {
   const validUntil = String(promo?.valid_until || '').trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(validUntil) && validUntil < new Date().toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(validUntil) && validUntil < getStorefrontPromoDate();
 };
 
 const parseJsonObjectSetting = (raw) => {

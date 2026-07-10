@@ -38,4 +38,4 @@ Major. This change adds server-side validation to the existing commercial promo 
 
 - Backend lint passes.
 - Commercial promo expiry unit test passes.
-- POS production build passes.
+- POS production build passes, including the Asia/Manila expiry badge alignment.
