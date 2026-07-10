@@ -33,6 +33,8 @@ import {
 } from '@/services/dgfyAuthService.js';
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
+import { createItem } from '@/services/itemService.js';
+import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
 import { getAllUsers } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import api from '@/services/api.js';
@@ -64,6 +66,7 @@ import {
   markTerminalOperationRetryScheduled,
   pruneTerminalOperationHistory
 } from '../services/terminalOperationQueueStore.js';
+import { consumeManualPosSyncAttempt, getManualPosSyncPolicy } from '../services/manualPosSyncPolicyStore.js';
 import {
   DEFAULT_TERMINAL_ID_OPTIONS,
   TERMINAL_REGISTRY_MODES,
@@ -498,6 +501,7 @@ export default function TerminalPage() {
     return String(params.get('catalog_search') || '').trim();
   });
   const [queuedTerminalOperations, setQueuedTerminalOperations] = useState([]);
+  const [manualSyncPolicy, setManualSyncPolicy] = useState(() => getManualPosSyncPolicy());
   const [queueStatusFilter, setQueueStatusFilter] = useState('all');
   const [queueSummary, setQueueSummary] = useState({
     total: 0,
@@ -557,6 +561,14 @@ export default function TerminalPage() {
     return window.innerWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX;
   });
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
+  const manualSyncScope = useMemo(() => ({
+    terminalId: activeTerminalId,
+    userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email
+  }), [activeTerminalId, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
+
+  useEffect(() => {
+    setManualSyncPolicy(getManualPosSyncPolicy(manualSyncScope));
+  }, [manualSyncScope]);
   const modePosDefaults = useMemo(
     () => resolveBusinessModePosDefaults(workflowMode),
     [workflowMode]
@@ -779,19 +791,6 @@ export default function TerminalPage() {
     setQueueSummary(summary);
   }, []);
 
-  const requestBackgroundQueueReplay = useCallback(async () => {
-    if (typeof window === 'undefined') return false;
-    if (!('serviceWorker' in navigator)) return false;
-    const registration = await navigator.serviceWorker.ready.catch(() => null);
-    if (!registration || !('sync' in registration)) return false;
-    try {
-      await registration.sync.register('pos-terminal-operation-replay');
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
-
   const enqueueTerminalOperationIntent = useCallback(async (entry, source = 'manual') => {
     const intentId = String(entry?.intent_id || entry?.payload?.idempotency_key || '').trim();
     if (!intentId) return null;
@@ -801,9 +800,18 @@ export default function TerminalPage() {
     }, source);
     await pruneTerminalOperationHistory({ keep: QUEUE_HISTORY_LIMIT });
     await refreshTerminalOperationQueue();
-    await requestBackgroundQueueReplay();
     return intentId;
-  }, [refreshTerminalOperationQueue, requestBackgroundQueueReplay]);
+  }, [refreshTerminalOperationQueue]);
+
+  const queueOfflineItemDraft = useCallback(async (payload) => {
+    const intentId = createIdempotencyKey('pos-item-draft');
+    await enqueueTerminalOperationIntent({
+      intent_id: intentId,
+      operation: 'item_create',
+      payload: { ...payload, offline_draft_intent_id: intentId }
+    }, 'offline_item_draft');
+    return intentId;
+  }, [enqueueTerminalOperationIntent]);
 
   const resetSettingsAccessPinState = useCallback(() => {
     setSettingsAccessPinModalOpen(false);
@@ -1176,6 +1184,19 @@ export default function TerminalPage() {
             }
             await updateOnlineOrderStatus(transactionId, payload);
             shouldRefreshIncoming = true;
+          } else if (operation === 'item_create') {
+            const itemPayload = { ...payload };
+            const posAlwaysAvailable = itemPayload.pos_always_available === true;
+            delete itemPayload.offline_draft_intent_id;
+            delete itemPayload.pos_always_available;
+            const createdItem = await createItem(itemPayload);
+            const itemId = Number(createdItem?.item_id || createdItem?.id || 0);
+            if (!Number.isInteger(itemId) || itemId <= 0) {
+              throw new Error('Offline item draft synced without a valid item ID.');
+            }
+            if (posAlwaysAvailable) {
+              await updatePosCatalogOverride(itemId, { pos_always_available: true });
+            }
           } else {
             throw new Error(`Unsupported queued operation '${operation}'.`);
           }
@@ -1184,6 +1205,11 @@ export default function TerminalPage() {
           replayedCount += 1;
         } catch (error) {
           const errorDetails = resolveTerminalOperationErrorDetails(error);
+          if (operation === 'item_create') {
+            await markTerminalOperationFailedManualResolution(intentId, { error: errorDetails });
+            failedManualCount += 1;
+            continue;
+          }
           if (!isRetryableTerminalOperationError(error)) {
             await markTerminalOperationFailedManualResolution(intentId, { error: errorDetails });
             failedManualCount += 1;
@@ -1227,7 +1253,6 @@ export default function TerminalPage() {
         toast.message(
           `${retryScheduledCount} queued terminal operation${retryScheduledCount === 1 ? '' : 's'} scheduled for retry.`
         );
-        await requestBackgroundQueueReplay();
       }
 
       if (failedManualCount > 0) {
@@ -1245,7 +1270,6 @@ export default function TerminalPage() {
     refreshIncomingOrders,
     refreshOperationalContext,
     refreshTerminalOperationQueue,
-    requestBackgroundQueueReplay
   ]);
 
   const filteredQueueEntries = useMemo(() => {
@@ -1258,13 +1282,27 @@ export default function TerminalPage() {
     if (!normalizedIntentId) return;
     await markTerminalOperationQueued(normalizedIntentId, { preserveAttempts: true });
     await refreshTerminalOperationQueue();
-    if (isOnline) {
-      await replayQueuedTerminalOperations({ force: true });
-      return;
+    toast.message('Queued operation is ready. Press Sync to send it when you are online.');
+  }, [refreshTerminalOperationQueue]);
+
+  const handleManualUniversalSync = useCallback(async () => {
+    if (locked) return { allowed: false };
+    if (!isOnline) {
+      toast.error('Reconnect to the internet before syncing pending POS records.');
+      return { allowed: false };
     }
-    await requestBackgroundQueueReplay();
-    toast.message('Queued operation set back to queued. It will replay when connectivity returns.');
-  }, [isOnline, refreshTerminalOperationQueue, replayQueuedTerminalOperations, requestBackgroundQueueReplay]);
+
+    const nextPolicy = consumeManualPosSyncAttempt(manualSyncScope);
+    setManualSyncPolicy(nextPolicy);
+    if (!nextPolicy.allowed) {
+      const resetTime = new Date(nextPolicy.resetAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      toast.error(`Daily sync limit reached. Sync is available again after ${resetTime}.`);
+      return { allowed: false };
+    }
+
+    await replayQueuedTerminalOperations({ toastIfEmpty: false, force: true });
+    return { allowed: true, remaining: nextPolicy.remaining };
+  }, [isOnline, locked, manualSyncScope, replayQueuedTerminalOperations]);
 
   const handleResolveQueuedOperation = useCallback(async (intentId) => {
     const normalizedIntentId = String(intentId || '').trim();
@@ -3244,6 +3282,12 @@ export default function TerminalPage() {
       return;
     }
     const isSettingsViewMode = SETTINGS_VIEW_MODES.has(nextMode);
+    const isOfflineOnlineOnlyMode = isSettingsViewMode || nextMode === 'incoming_queue';
+    if (!isOnline && isOfflineOnlineOnlyMode) {
+      toast.error('This POS area is available online only. Offline mode supports local sales, pending receipts, and history.');
+      setMobileNavOpen(false);
+      return;
+    }
     const isShiftExemptViewMode = SHIFT_EXEMPT_VIEW_MODES.has(nextMode);
     const isPinProtectedViewMode = PIN_PROTECTED_VIEW_MODES.has(nextMode);
     if (setupFlowActive) {
@@ -3290,6 +3334,7 @@ export default function TerminalPage() {
     canAdminBypassShiftPrompt,
     commitViewModeSelection,
     isCashierRole,
+    isOnline,
     locked,
     requiresOpenShift,
     resumeTenantSetupFlow,
@@ -3394,26 +3439,14 @@ export default function TerminalPage() {
       await refreshTerminalOperationQueue();
     };
     const handleOffline = () => setIsOnline(false);
-    const handleServiceWorkerMessage = async (event) => {
-      const eventType = String(event?.data?.type || '').trim();
-      if (eventType !== 'pos-terminal-replay-requested') return;
-      await replayQueuedTerminalOperations({ force: true });
-    };
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
-      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
-    }
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
-        navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
-      }
     };
-  }, [refreshTerminalOperationQueue, replayQueuedTerminalOperations]);
+  }, [refreshTerminalOperationQueue]);
 
   useEffect(() => {
     if (locked) return;
@@ -4178,6 +4211,14 @@ export default function TerminalPage() {
           setSidebarCollapsed={setSidebarCollapsed}
           activeShiftId={activeShiftId}
           checkoutBlockedReason={checkoutBlockedReason}
+          offlineSnapshotScope={{
+            terminalId: activeTerminalId,
+            locationId: operatingLocationId,
+            userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email
+          }}
+          onQueueOfflineItemDraft={queueOfflineItemDraft}
+          onManualUniversalSync={handleManualUniversalSync}
+          manualSyncPolicy={manualSyncPolicy}
           refreshTerminalUser={hydrateUser}
           refreshTerminalMeta={hydrateTerminalMeta}
           queuedTerminalOperationCount={queueSummary.pending}

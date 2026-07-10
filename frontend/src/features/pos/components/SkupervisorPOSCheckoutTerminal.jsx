@@ -25,6 +25,7 @@ import {
     markTerminalOperationReplaying,
     markTerminalOperationRetryScheduled
 } from '../services/terminalOperationQueueStore.js';
+import { consumeManualPosSyncAttempt, getManualPosSyncPolicy } from '../services/manualPosSyncPolicyStore.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
@@ -341,6 +342,7 @@ export default function POSCheckoutTerminal({
     const { can } = usePermission();
     const canOverridePrice = can('pos:price_override');
     const [viewMode, setViewMode] = useState('checkout');
+    const [manualSyncPolicy, setManualSyncPolicy] = useState(() => getManualPosSyncPolicy({ terminalId }));
     const [catalog, setCatalog] = useState([]);
     const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
     const [catalogError, setCatalogError] = useState('');
@@ -915,21 +917,18 @@ export default function POSCheckoutTerminal({
     }, [syncQueuedCheckoutsState]);
 
     useEffect(() => {
-        if (sessionLocked || queueReplayManagedExternally) return undefined;
+        setManualSyncPolicy(getManualPosSyncPolicy({ terminalId }));
+    }, [terminalId]);
 
-        const handleOnline = () => {
-            replayQueuedCheckouts().catch(() => {});
-        };
-
-        if (typeof navigator !== 'undefined' && navigator.onLine !== false) {
-            replayQueuedCheckouts().catch(() => {});
+    const handleManualQueuedCheckoutSync = useCallback(async () => {
+        const nextPolicy = consumeManualPosSyncAttempt({ terminalId });
+        setManualSyncPolicy(nextPolicy);
+        if (!nextPolicy.allowed) {
+            toast.error('Daily sync limit reached. Sync is available again after local midnight.');
+            return;
         }
-
-        window.addEventListener('online', handleOnline);
-        return () => {
-            window.removeEventListener('online', handleOnline);
-        };
-    }, [queueReplayManagedExternally, replayQueuedCheckouts, sessionLocked]);
+        await replayQueuedCheckouts({ toastIfEmpty: true });
+    }, [replayQueuedCheckouts, terminalId]);
 
     useEffect(() => {
         if (sessionLocked) return undefined;
@@ -1626,13 +1625,14 @@ export default function POSCheckoutTerminal({
                             disabled={
                                 queueReplayManagedExternally
                                 || replayingQueuedCheckouts
+                                || manualSyncPolicy.remaining <= 0
                                 || (typeof navigator !== 'undefined' && navigator.onLine === false)
                             }
-                            onClick={() => replayQueuedCheckouts({ toastIfEmpty: true })}
+                            onClick={handleManualQueuedCheckoutSync}
                         >
                             {queueReplayManagedExternally
                                 ? 'Replay in Sync Queue'
-                                : (replayingQueuedCheckouts ? 'Replaying...' : 'Replay queued checkouts')}
+                                : (replayingQueuedCheckouts ? 'Syncing...' : 'Sync queued checkouts')}
                         </Button>
                     </div>
                     <p className="text-xs text-amber-800">

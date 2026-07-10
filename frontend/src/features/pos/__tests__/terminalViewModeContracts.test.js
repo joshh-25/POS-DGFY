@@ -344,12 +344,15 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('setHistorySearch(query);');
   });
 
-  it('persists offline checkout intents and exposes replay affordance', () => {
+  it('persists offline checkout intents and exposes the manual universal sync policy', () => {
     expect(posCheckoutTerminalContent).toContain('CHECKOUT_QUEUE_OPERATION = \'checkout\'');
     expect(posCheckoutTerminalContent).toContain('enqueueTerminalOperationIntent');
     expect(posCheckoutTerminalContent).toContain('TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED');
     expect(terminalPageContent).toContain(".filter((candidate) => String(candidate?.operation || '').trim() !== 'checkout')");
-    expect(posHistoryPanelContent).toContain('Sync Pending Transactions');
+    expect(posHistoryPanelContent).toContain('Sync All Pending Records');
+    expect(posHistoryPanelContent).toContain('universalPendingSyncCount');
+    expect(terminalPageContent).toContain('consumeManualPosSyncAttempt');
+    expect(terminalPageContent).not.toContain('requestBackgroundQueueReplay');
     expect(posCheckoutTerminalContent).toContain('pending transaction');
     expect(posCheckoutTerminalContent).toContain('idempotency_key');
   });
