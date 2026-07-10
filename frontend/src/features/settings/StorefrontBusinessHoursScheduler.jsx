@@ -93,7 +93,8 @@ function DayChip({
   onMouseDown,
   onMouseEnter,
   onClick,
-  variant = 'default'
+  variant = 'default',
+  className = ''
 }) {
   const checkedClasses = variant === 'success'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
@@ -105,7 +106,7 @@ function DayChip({
       aria-label={accessibleLabel}
       aria-pressed={checked}
       disabled={disabled}
-      className={`inline-flex min-h-10 select-none items-center gap-2 rounded-2xl border px-3.5 py-2 text-[13px] font-semibold transition ${checked ? checkedClasses : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-blue-700'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+      className={`inline-flex min-h-10 select-none items-center gap-2 rounded-2xl border px-3.5 py-2 text-[13px] font-semibold transition ${checked ? checkedClasses : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-blue-700'} ${disabled ? 'cursor-not-allowed opacity-60' : ''} ${className}`}
       onMouseDown={onMouseDown}
       onMouseEnter={onMouseEnter}
       onClick={onClick}
@@ -310,13 +311,16 @@ export default function StorefrontBusinessHoursScheduler({
 
             <div>
               <span className="mb-2 block text-sm font-semibold text-slate-700">Applies to</span>
-              <div className="flex flex-wrap gap-2">
+              {/* Mobile only (below sm:): 2-column grid, order preserved (All Days, Mon-Sat, Sun).
+                  sm: and up reverts to the original flex-wrap pill row - untouched. */}
+              <div className="time-sets-days grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                 <DayChip
                   label="All Days"
                   accessibleLabel="Select All Days"
                   checked={allDaysSelected}
                   disabled={disabled}
                   onClick={() => setSelectedDays(allDaysSelected ? [] : ALL_DAY_KEYS)}
+                  className="time-sets-day-item max-sm:w-full max-sm:justify-center"
                 />
 
                 {STOREFRONT_BUSINESS_DAY_OPTIONS.slice(1).concat(STOREFRONT_BUSINESS_DAY_OPTIONS.slice(0, 1)).map((day) => {
@@ -337,6 +341,7 @@ export default function StorefrontBusinessHoursScheduler({
                         setDaySelected(day.key, dragState.checked);
                       }}
                       onClick={() => setDaySelected(day.key, !checked)}
+                      className="time-sets-day-item max-sm:w-full max-sm:justify-center"
                     />
                   );
                 })}
@@ -361,7 +366,8 @@ export default function StorefrontBusinessHoursScheduler({
           <h4 className="text-[22px] font-semibold tracking-tight text-slate-950">Schedule Sets</h4>
 
           <div className="mt-6 overflow-hidden rounded-[22px] border border-slate-200">
-            <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_92px] items-center gap-4 border-b border-slate-200 bg-slate-50/90 px-6 py-4 text-sm font-semibold text-slate-500">
+            {/* Column header only applies to the desktop/tablet table layout below. */}
+            <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_92px] items-center gap-4 border-b border-slate-200 bg-slate-50/90 px-6 py-4 text-sm font-semibold text-slate-500 sm:grid">
               <span>Time Range</span>
               <span>Applies to</span>
               <span className="text-right"> </span>
@@ -372,39 +378,78 @@ export default function StorefrontBusinessHoursScheduler({
                 {scheduleSets.map((set) => {
                   const appliesToAll = set.dayKeys.length === ALL_DAY_KEYS.length;
                   return (
-                    <div key={set.key} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_92px] items-center gap-4 px-6 py-5">
-                      <div className="flex items-center gap-3 text-lg font-medium text-slate-800">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500">
-                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <circle cx="12" cy="12" r="8" />
-                            <path d="M12 8v4l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </span>
-                        <span>{formatTimeLabel(set.open)} - {formatTimeLabel(set.close)}</span>
+                    <React.Fragment key={set.key}>
+                      {/* Mobile only: time range + Remove stay on row 1 (.time-set-header),
+                          selected days move to a 2-column grid below (.time-set-days). */}
+                      <div className="time-set-item flex flex-col gap-3 px-6 py-5 sm:hidden">
+                        <div className="time-set-header flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 text-lg font-medium text-slate-800">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500">
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                <circle cx="12" cy="12" r="8" />
+                                <path d="M12 8v4l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </span>
+                            <span>{formatTimeLabel(set.open)} - {formatTimeLabel(set.close)}</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+                            disabled={disabled}
+                            onClick={() => handleRemoveSet(set.dayKeys)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="time-set-days grid grid-cols-2 gap-2">
+                          {appliesToAll ? (
+                            <DayChip label="All days" checked disabled variant="success" className="time-set-day w-full justify-center" />
+                          ) : (
+                            set.dayKeys.map((dayKey) => {
+                              const day = STOREFRONT_BUSINESS_DAY_OPTIONS.find((entry) => entry.key === dayKey);
+                              return <DayChip key={`${set.key}-${dayKey}-mobile`} label={day?.label || dayKey} checked disabled className="time-set-day w-full justify-center" />;
+                            })
+                          )}
+                        </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        {appliesToAll ? (
-                          <DayChip label="All days" checked disabled variant="success" />
-                        ) : (
-                          set.dayKeys.map((dayKey) => {
-                            const day = STOREFRONT_BUSINESS_DAY_OPTIONS.find((entry) => entry.key === dayKey);
-                            return <DayChip key={`${set.key}-${dayKey}`} label={day?.label || dayKey} checked disabled />;
-                          })
-                        )}
-                      </div>
+                      {/* Desktop/tablet: original 3-column table row, unchanged. */}
+                      <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_92px] items-center gap-4 px-6 py-5 sm:grid">
+                        <div className="flex items-center gap-3 text-lg font-medium text-slate-800">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500">
+                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                              <circle cx="12" cy="12" r="8" />
+                              <path d="M12 8v4l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </span>
+                          <span>{formatTimeLabel(set.open)} - {formatTimeLabel(set.close)}</span>
+                        </div>
 
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
-                          disabled={disabled}
-                          onClick={() => handleRemoveSet(set.dayKeys)}
-                        >
-                          Remove
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          {appliesToAll ? (
+                            <DayChip label="All days" checked disabled variant="success" />
+                          ) : (
+                            set.dayKeys.map((dayKey) => {
+                              const day = STOREFRONT_BUSINESS_DAY_OPTIONS.find((entry) => entry.key === dayKey);
+                              return <DayChip key={`${set.key}-${dayKey}`} label={day?.label || dayKey} checked disabled />;
+                            })
+                          )}
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+                            disabled={disabled}
+                            onClick={() => handleRemoveSet(set.dayKeys)}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    </React.Fragment>
                   );
                 })}
               </div>

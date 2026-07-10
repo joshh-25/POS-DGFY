@@ -181,6 +181,79 @@ const formatQuantity = (value) => {
     if (!Number.isFinite(quantity)) return '0';
     return Number.isInteger(quantity) ? String(quantity) : String(round4(quantity));
 };
+// Mobile-only catalog name color: always-available items are always green; otherwise
+// green stock > 100, yellow 0 < stock < 100, red for stock <= 0 and for
+// null/undefined/non-numeric stock (safe default).
+const getMobileStockNameColorClassName = (stockValue, isAlwaysAvailable) => {
+    if (isAlwaysAvailable) return 'text-green-600';
+    const numericStock = Number(stockValue);
+    if (stockValue === null || stockValue === undefined || !Number.isFinite(numericStock)) {
+        return 'text-red-600';
+    }
+    if (numericStock > 100) return 'text-green-600';
+    if (numericStock > 0) return 'text-yellow-600';
+    return 'text-red-600';
+};
+// Mobile-only "fly to checkout bar" animation. Fires after the cart update (never blocks or
+// delays it), animates a cloned .product-image from the tapped card to #checkout-bar, and
+// removes itself on finish/cancel. Skips silently if not mobile, no image, or no target -
+// never throws, never touches cart/backend state.
+const flyImageToCheckoutBar = (cardElement) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!window.matchMedia('(max-width: 639.98px)').matches) return;
+    if (!cardElement) return;
+
+    const sourceImg = cardElement.querySelector('.product-image');
+    if (!sourceImg || typeof sourceImg.animate !== 'function') return;
+
+    const checkoutBar = document.getElementById('checkout-bar');
+    if (!checkoutBar) return;
+    // Land on the Checkout button (right side of the bar) instead of the bar's midpoint;
+    // falls back to the bar itself if the button isn't in the DOM for some reason.
+    const checkoutTarget = document.getElementById('checkout-bar-button') || checkoutBar;
+
+    const sourceRect = sourceImg.getBoundingClientRect();
+    if (sourceRect.width === 0 || sourceRect.height === 0) return;
+    const targetRect = checkoutTarget.getBoundingClientRect();
+
+    const size = 44;
+    const clone = sourceImg.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.style.cssText = [
+        'position: fixed',
+        `left: ${sourceRect.left + (sourceRect.width / 2) - (size / 2)}px`,
+        `top: ${sourceRect.top + (sourceRect.height / 2) - (size / 2)}px`,
+        `width: ${size}px`,
+        `height: ${size}px`,
+        'border-radius: 9999px',
+        'object-fit: cover',
+        'pointer-events: none',
+        'z-index: 2147483647',
+        'will-change: transform, opacity'
+    ].join(';');
+    document.body.appendChild(clone);
+
+    const deltaX = (targetRect.left + targetRect.width / 2) - (sourceRect.left + sourceRect.width / 2);
+    const deltaY = (targetRect.top + targetRect.height / 2) - (sourceRect.top + sourceRect.height / 2);
+
+    const animation = clone.animate(
+        [
+            { transform: 'translate(0px, 0px) scale(1)', opacity: 1, offset: 0 },
+            { transform: `translate(${deltaX * 0.5}px, ${deltaY * 0.35}px) scale(0.7)`, opacity: 1, offset: 0.6 },
+            { transform: `translate(${deltaX}px, ${deltaY}px) scale(0.15)`, opacity: 0, offset: 1 }
+        ],
+        { duration: 550, easing: 'cubic-bezier(0.3, 0.7, 0.4, 1)', fill: 'forwards' }
+    );
+
+    const cleanup = () => clone.remove();
+    if (animation.finished && typeof animation.finished.then === 'function') {
+        animation.finished.then(cleanup).catch(cleanup);
+    } else {
+        animation.onfinish = cleanup;
+        animation.oncancel = cleanup;
+    }
+};
+
 const toValidPercentage = (value) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return 0;
@@ -583,6 +656,12 @@ export default function POSCheckoutTerminal({
     const [catalogError, setCatalogError] = useState('');
     const [editingQuantityItemId, setEditingQuantityItemId] = useState(null);
     const [quantityInputValue, setQuantityInputValue] = useState('');
+    // "+" button long-press quantity meter (mobile only): qtyMeterState drives the visible
+    // overlay; qtyMeterGestureRef holds the live, synchronously-updated gesture data so
+    // pointerup always reads the exact latest quantity regardless of render timing.
+    const [qtyMeterState, setQtyMeterState] = useState(null);
+    const qtyMeterTimerRef = useRef(null);
+    const qtyMeterGestureRef = useRef(null);
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
     const [catalogFiltersOpen, setCatalogFiltersOpen] = useState(false);
@@ -682,8 +761,8 @@ export default function POSCheckoutTerminal({
     const searchBackspaceIntervalRef = useRef(null);
     const catalogSwipeStartXRef = useRef(null);
     const catalogSwipePointerIdRef = useRef(null);
-    const shellClassName = 'h-full min-h-0 space-y-5';
-    const checkoutGridClassName = 'grid h-full min-h-0 grid-cols-1 gap-4 pb-24 md:grid-cols-[minmax(0,1fr)_325px] md:overflow-hidden md:pb-0 2xl:gap-6';
+    const shellClassName = 'h-auto min-h-0 space-y-5 xl:h-full';
+    const checkoutGridClassName = 'grid min-h-0 grid-cols-1 gap-4 pb-24 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 xl:h-full xl:overflow-hidden 2xl:gap-6';
     const catalogGridClassName = useMemo(() => {
         if (isTabletViewport) {
             return IS_DGFY_POS_SURFACE
@@ -694,12 +773,12 @@ export default function POSCheckoutTerminal({
             ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[6.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
             : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[6.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
     }, [isTabletViewport, sidebarCollapsed]);
-    const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-hidden pr-0 pb-3';
+    const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-visible pr-0 pb-3 xl:overflow-hidden';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
     const currentSaleBodyClassName = 'min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y';
     const currentSaleItemsListClassName = 'pr-1';
     const checkoutPaneClassName = 'h-full max-h-full';
-    const catalogPaneHeightClassName = 'h-full max-h-full';
+    const catalogPaneHeightClassName = 'h-auto max-h-none xl:h-full xl:max-h-full';
     const currentSalePaneHeightClassName = 'h-full max-h-full';
     const safeCatalog = toArray(catalog);
     const safePosFolders = toArray(posFolders);
@@ -1781,6 +1860,104 @@ export default function POSCheckoutTerminal({
         }
     };
 
+    // "+" button long-press-to-drag quantity meter (mobile only). Tap (< 300ms, no drag) still
+    // adds exactly +1 with zero added delay. Holding past 300ms shows a vertical .qty-meter;
+    // dragging up (never down past 1) scales the pending quantity 1 -> 20 over ~96px, and the
+    // full amount is added in a single adjustCartQuantity call on release.
+    const QTY_METER_LONG_PRESS_MS = 300;
+    const QTY_METER_MOVE_CANCEL_PX = 10;
+    const QTY_METER_MAX_DRAG_PX = 96;
+    const QTY_METER_MIN_QTY = 1;
+    const QTY_METER_MAX_QTY = 20;
+
+    const clearQtyMeterTimer = () => {
+        if (qtyMeterTimerRef.current) {
+            clearTimeout(qtyMeterTimerRef.current);
+            qtyMeterTimerRef.current = null;
+        }
+    };
+
+    const handleQtyButtonPointerDown = (event, item) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        // Anchor point is the button itself (left edge, vertically centered), not the finger -
+        // the meter must stay put even as the finger drags around.
+        const buttonRect = event.currentTarget.getBoundingClientRect();
+        qtyMeterGestureRef.current = {
+            itemId: item.item_id,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            anchorX: buttonRect.left,
+            anchorY: buttonRect.top + (buttonRect.height / 2),
+            activated: false,
+            cancelled: false,
+            quantity: QTY_METER_MIN_QTY
+        };
+        clearQtyMeterTimer();
+        qtyMeterTimerRef.current = setTimeout(() => {
+            const gesture = qtyMeterGestureRef.current;
+            if (!gesture || gesture.itemId !== item.item_id || gesture.cancelled) return;
+            gesture.activated = true;
+            setQtyMeterState({ quantity: gesture.quantity, x: gesture.anchorX, y: gesture.anchorY });
+        }, QTY_METER_LONG_PRESS_MS);
+    };
+
+    const handleQtyButtonPointerMove = (event, item) => {
+        const gesture = qtyMeterGestureRef.current;
+        if (!gesture || gesture.itemId !== item.item_id || gesture.cancelled) return;
+
+        const deltaX = event.clientX - gesture.startX;
+        const deltaY = event.clientY - gesture.startY;
+
+        if (!gesture.activated) {
+            if (Math.hypot(deltaX, deltaY) > QTY_METER_MOVE_CANCEL_PX) {
+                gesture.cancelled = true;
+                clearQtyMeterTimer();
+            }
+            return;
+        }
+
+        // Upward drag only increases quantity; quantity never scales below 1.
+        // Position is intentionally NOT updated here - the meter stays fixed at the button
+        // anchor set on pointerdown regardless of where the finger moves.
+        const upwardPx = Math.min(QTY_METER_MAX_DRAG_PX, Math.max(0, -deltaY));
+        const ratio = upwardPx / QTY_METER_MAX_DRAG_PX;
+        const quantity = QTY_METER_MIN_QTY + Math.round(ratio * (QTY_METER_MAX_QTY - QTY_METER_MIN_QTY));
+        gesture.quantity = quantity;
+        setQtyMeterState({ quantity, x: gesture.anchorX, y: gesture.anchorY });
+    };
+
+    const handleQtyButtonPointerUp = (event, item) => {
+        const gesture = qtyMeterGestureRef.current;
+        clearQtyMeterTimer();
+        try {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {
+            // Capture may already be released by the browser; safe to ignore.
+        }
+
+        qtyMeterGestureRef.current = null;
+        setQtyMeterState(null);
+
+        if (!gesture || gesture.itemId !== item.item_id || gesture.cancelled) return;
+
+        const cardElement = event.currentTarget.closest('[data-pos-catalog-card]');
+        if (gesture.activated) {
+            adjustCartQuantity(item, gesture.quantity);
+        } else {
+            // Released before the long-press threshold with no cancelling movement = a tap.
+            adjustCartQuantity(item, 1);
+        }
+        flyImageToCheckoutBar(cardElement);
+    };
+
+    const handleQtyButtonPointerCancel = () => {
+        clearQtyMeterTimer();
+        qtyMeterGestureRef.current = null;
+        setQtyMeterState(null);
+    };
+
     const removeCartLine = (lineKey) => {
         if (posActionsBlocked) {
             notifyPosActionBlocked();
@@ -2354,7 +2531,7 @@ export default function POSCheckoutTerminal({
                 }
             >
             {currentViewMode === 'history' && (
-                <div key="view-history" className="h-full min-h-0 max-sm:animate-pos-slide-in">
+                <div key="view-history" className="catalog-slide-enter h-full min-h-0 max-sm:animate-pos-slide-in">
                 <Suspense fallback={<section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS sales history...</section>}>
                     <POSTransactionHistoryPanel
                         historySearch={historySearch}
@@ -2394,10 +2571,10 @@ export default function POSCheckoutTerminal({
             )}
 
             {currentViewMode === 'checkout' && (
-                <div key="view-checkout" className="h-full min-h-0 max-sm:animate-pos-slide-in">
+                <div key="view-checkout" className="h-auto min-h-0 xl:h-full catalog-slide-enter">
                 <>
                 <div className={checkoutGridClassName}>
-            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
+            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
                     {isTabletViewport && renderViewModeControls()}
                     <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
                 <div className={`${isTabletViewport ? 'mb-3 gap-2.5' : 'mb-5 gap-4'} flex min-w-0 flex-col ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
@@ -2630,7 +2807,7 @@ export default function POSCheckoutTerminal({
                 )}
                 <div
                     data-testid="pos-catalog-scroll"
-                    className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pb-3 touch-pan-y select-none"
+                    className="overflow-visible pr-1 pb-3 touch-pan-y select-none xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overscroll-contain"
                     onTouchStart={(event) => {
                         const touch = event.touches?.[0];
                         if (!touch) return;
@@ -2671,21 +2848,27 @@ export default function POSCheckoutTerminal({
                             const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
+                            // Mobile-only: computed on every render from current item data, so it's
+                            // correct on initial render and never stale/flickering on resize.
+                            const mobileStockNameColorClassName = getMobileStockNameColorClassName(item.current_stock, isAlwaysAvailable);
                             return (
                                 <div
                                     key={item.item_id}
-                                    onClick={() => {
+                                    data-pos-catalog-card="true"
+                                    onClick={(event) => {
                                         if (isOutOfStock || posActionsBlocked) {
                                             if (posActionsBlocked) notifyPosActionBlocked();
                                             return;
                                         }
                                         addToCart(item);
+                                        flyImageToCheckoutBar(event.currentTarget);
                                     }}
                                     onKeyDown={(event) => {
                                         if (isOutOfStock || posActionsBlocked) return;
                                         if (event.key === 'Enter' || event.key === ' ') {
                                             event.preventDefault();
                                             addToCart(item);
+                                            flyImageToCheckoutBar(event.currentTarget);
                                         }
                                     }}
                                     role={isOutOfStock || posActionsBlocked ? 'group' : 'button'}
@@ -2706,7 +2889,7 @@ export default function POSCheckoutTerminal({
                                             <img
                                                 src={posImageSrc}
                                                 alt={`${item.name} menu`}
-                                                className="h-full w-full object-cover object-center"
+                                                className="product-image h-full w-full object-cover object-center"
                                                 onError={(event) => {
                                                     const fallbackSrc = fallbackPosImageSrc;
                                                     const currentSrc = String(event.currentTarget.src || '');
@@ -2756,7 +2939,9 @@ export default function POSCheckoutTerminal({
                                             code (sku_code) removed. "Always available" renders only when true —
                                             no placeholder when it doesn't apply. */}
                                         <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
-                                            <p className="min-w-0 text-[13px] font-black leading-tight text-[#0F172A]">{item.name}</p>
+                                            {/* Mobile-only stock color coding: applies only to the product name,
+                                                no other classes (size/weight/spacing) touched -> no layout shift. */}
+                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${mobileStockNameColorClassName}`}>{item.name}</p>
                                             <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
                                                 <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
                                                     {isAlwaysAvailable && (
@@ -2825,10 +3010,19 @@ export default function POSCheckoutTerminal({
                                                     )}
                                                     <button
                                                         type="button"
-                                                        onClick={() => adjustCartQuantity(item, 1)}
+                                                        onPointerDown={(event) => {
+                                                            if (isOutOfStock || posActionsBlocked) return;
+                                                            handleQtyButtonPointerDown(event, item);
+                                                        }}
+                                                        onPointerMove={(event) => handleQtyButtonPointerMove(event, item)}
+                                                        onPointerUp={(event) => {
+                                                            if (isOutOfStock || posActionsBlocked) return;
+                                                            handleQtyButtonPointerUp(event, item);
+                                                        }}
+                                                        onPointerCancel={handleQtyButtonPointerCancel}
                                                         disabled={isOutOfStock || posActionsBlocked}
-                                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                                        aria-label={`Increase quantity for ${item.name}`}
+                                                        className="flex h-8 w-8 shrink-0 touch-none select-none items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                        aria-label={`Increase quantity for ${item.name}. Tap to add one, or press and hold then drag up to add more.`}
                                                     >
                                                         +
                                                     </button>
@@ -3239,6 +3433,7 @@ export default function POSCheckoutTerminal({
                 </div>
 
                 <div
+                    id="checkout-bar"
                     className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 pt-2.5 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] md:hidden"
                     style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}
                     role="region"
@@ -3254,6 +3449,7 @@ export default function POSCheckoutTerminal({
                             </p>
                         </div>
                         <Button
+                            id="checkout-bar-button"
                             type="button"
                             onClick={() => setMobileCheckoutPanelOpen(true)}
                             disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
@@ -3998,6 +4194,21 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
             )}
+            {qtyMeterState && typeof document !== 'undefined' && createPortal((
+                <div
+                    className="qty-meter"
+                    style={{ left: `${qtyMeterState.x}px`, top: `${qtyMeterState.y - 24}px` }}
+                    aria-live="polite"
+                >
+                    <span className="qty-meter__value">{qtyMeterState.quantity}</span>
+                    <div className="qty-meter__track">
+                        <div
+                            className="qty-meter__fill"
+                            style={{ height: `${((qtyMeterState.quantity - 1) / 19) * 100}%` }}
+                        />
+                    </div>
+                </div>
+            ), document.body)}
         </div>
     );
 }
