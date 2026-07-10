@@ -29,7 +29,7 @@ export default function TerminalLockDrawer({
 
   return (
     <div
-      className={`fixed top-0 right-0 z-50 h-full w-full max-w-md border-l shadow-2xl shadow-slate-950/30 transition-transform duration-300 ${
+      className={`dgfy-pos-terminal-lock-drawer fixed top-0 right-0 z-50 h-full w-full max-w-md border-l shadow-2xl shadow-slate-950/30 transition-transform duration-300 ${
         drawerOpen ? 'translate-x-0' : 'translate-x-full'
       }`}
       style={{
