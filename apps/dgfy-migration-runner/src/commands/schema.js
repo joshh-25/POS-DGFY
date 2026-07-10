@@ -1,12 +1,17 @@
 import { createRequire } from 'module';
-import { readdirSync } from 'fs';
+import { readdirSync, promises as fsPromises } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { Sequelize } from 'sequelize';
 import { Umzug } from 'umzug';
 
 import { validateEnv, BUSINESS_DB_NAME_PATTERN } from '../config/env.js';
-import { createTargetConnection, createMetaConnection, createBusinessTargetConnection } from '../config/db.js';
+import {
+  createTargetConnection,
+  createMetaConnection,
+  createBusinessTargetConnection,
+  createSourceConnection
+} from '../config/db.js';
 import { assertTargetDbNameAllowed } from '../safety/targetGuard.js';
 import { assertDestructiveAllowed } from '../safety/destructiveGate.js';
 import { ensureMetadataSchema, recordCommandStart, recordCommandComplete } from '../metadata/bootstrap.js';
@@ -19,6 +24,81 @@ const requireCjs = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const MIGRATIONS_DIR = join(__dirname, '..', 'migrations', 'schema');
+
+/**
+ * D-23: filename of the durable pre-migration legacy/current sku_* schema
+ * fingerprint baseline artifact, written once under config.reportDir by
+ * ensureLegacyFingerprintBaseline() and read back by verify.js's
+ * legacy_non_mutation check. A fixed, well-known filename (rather than a
+ * timestamped report-style name) so verify.js can locate it deterministically
+ * without scanning the report directory.
+ */
+export const LEGACY_FINGERPRINT_ARTIFACT_NAME = 'legacy-fingerprint-baseline.json';
+
+/**
+ * D-23: computes an information_schema-based structural fingerprint (tables/
+ * columns/indexes/constraints) of the legacy/current schema `legacyDbName` on
+ * the given (read-only use) Sequelize connection. Exported so verify.js can
+ * compute the exact same shape for baseline-vs-current comparison — the
+ * fingerprint shape must match exactly on both sides for the comparison to
+ * mean anything.
+ */
+export async function computeLegacySchemaFingerprint(sourceSequelize, legacyDbName) {
+  const [columns] = await sourceSequelize.query(
+    `SELECT table_name, column_name, column_type, is_nullable, column_default
+     FROM information_schema.columns
+     WHERE table_schema = ?
+     ORDER BY table_name, ordinal_position`,
+    { replacements: [legacyDbName] }
+  );
+  const [indexes] = await sourceSequelize.query(
+    `SELECT table_name, index_name, non_unique, column_name, seq_in_index
+     FROM information_schema.statistics
+     WHERE table_schema = ?
+     ORDER BY table_name, index_name, seq_in_index`,
+    { replacements: [legacyDbName] }
+  );
+  const [constraints] = await sourceSequelize.query(
+    `SELECT table_name, constraint_name, constraint_type
+     FROM information_schema.table_constraints
+     WHERE table_schema = ?
+     ORDER BY table_name, constraint_name`,
+    { replacements: [legacyDbName] }
+  );
+  return { columns, indexes, constraints };
+}
+
+/**
+ * D-23: captures a durable pre-migration information_schema fingerprint of
+ * the legacy/current schema (config.sourceDb.name) the FIRST time schema
+ * migrate ever runs, and persists it as a JSON artifact under
+ * config.reportDir. Never overwrites an existing baseline on later reruns —
+ * D-23's non-mutation proof depends on comparing against the original
+ * pre-any-DGFY-migration state, not a moving snapshot. Read-only against the
+ * source connection; never mutates legacy schemas.
+ */
+export async function ensureLegacyFingerprintBaseline(config) {
+  const baselinePath = join(config.reportDir, LEGACY_FINGERPRINT_ARTIFACT_NAME);
+
+  try {
+    await fsPromises.access(baselinePath);
+    return { path: baselinePath, captured: false };
+  } catch (error) {
+    // Missing (or otherwise unreadable) — fall through and capture it now.
+  }
+
+  const sourceSequelize = createSourceConnection(config);
+  const fingerprint = await computeLegacySchemaFingerprint(sourceSequelize, config.sourceDb.name);
+  const payload = {
+    captured_at: new Date().toISOString(),
+    legacy_database: config.sourceDb.name,
+    fingerprint
+  };
+
+  await fsPromises.mkdir(dirname(baselinePath), { recursive: true });
+  await fsPromises.writeFile(baselinePath, JSON.stringify(payload, null, 2), 'utf8');
+  return { path: baselinePath, captured: true };
+}
 
 /**
  * D-17: destructive classification is pending-only. Rather than re-scanning
@@ -45,7 +125,7 @@ function isPendingMigrationDestructive(pendingMigrations) {
  * directory (matching the plan's file layout) while guaranteeing a
  * business-only migration can never run against dgfy_core, and vice versa.
  */
-function resolveTargetKind(databaseName) {
+export function resolveTargetKind(databaseName) {
   return BUSINESS_DB_NAME_PATTERN.test(databaseName) ? 'business' : 'core';
 }
 
@@ -62,7 +142,7 @@ function listMigrationFiles() {
  * so a dgfy_business_* foundation migration is structurally excluded from a
  * dgfy_core run's pending/executed state, and vice versa.
  */
-function buildMigrationsForKind(kind, context) {
+export function buildMigrationsForKind(kind, context) {
   return listMigrationFiles()
     .map((file) => {
       const path = join(MIGRATIONS_DIR, file);
@@ -111,6 +191,11 @@ export async function runSchemaMigrate({ confirmDestructive = false } = {}) {
   let executionId;
 
   try {
+    // D-23: capture (or confirm already-captured) the durable pre-migration
+    // legacy/current sku_* schema fingerprint baseline BEFORE any target
+    // schema mutation below. Read-only against the source connection.
+    const legacyBaseline = await ensureLegacyFingerprintBaseline(config);
+
     const primaryTargetSequelize = createTargetConnection(config);
     metaSequelize = createMetaConnection(config);
     await ensureMetadataSchema(metaSequelize);
@@ -186,6 +271,10 @@ export async function runSchemaMigrate({ confirmDestructive = false } = {}) {
       target_database: config.targetDb.name,
       migrations_executed: primaryExecuted.map((migration) => migration.name),
       business_targets: businessTargets,
+      // D-23: path to the durable pre-migration legacy fingerprint baseline
+      // artifact — verify.js reads this same well-known path to compare
+      // against a freshly computed post-migration fingerprint.
+      legacy_fingerprint_baseline_path: legacyBaseline.path,
       summary: {
         total_pending: primaryPending.length + totalBusinessPending,
         executed: primaryExecuted.length + totalBusinessExecuted

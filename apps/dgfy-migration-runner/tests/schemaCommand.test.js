@@ -65,7 +65,7 @@ const MockMetaSequelizeStorage = jest.fn().mockImplementation(() => ({
 }));
 
 jest.unstable_mockModule('../src/config/db.js', () => ({
-  createSourceConnection: jest.fn(),
+  createSourceConnection: jest.fn(() => ({ query: jest.fn().mockResolvedValue([[], []]) })),
   createTargetConnection: mockCreateTargetConnection,
   createMetaConnection: mockCreateMetaConnection,
   createBusinessTargetConnection: mockCreateBusinessTargetConnection
@@ -141,7 +141,7 @@ describe('runSchemaMigrate', () => {
     const localCallOrder = [];
 
     jest.unstable_mockModule('../src/config/db.js', () => ({
-      createSourceConnection: jest.fn(),
+      createSourceConnection: jest.fn(() => ({ query: jest.fn().mockResolvedValue([[], []]) })),
       createTargetConnection: jest.fn(() => {
         localCallOrder.push('createTargetConnection');
         return { getQueryInterface: () => fakeQueryInterface };
@@ -228,7 +228,7 @@ describe('runSchemaMigrate', () => {
 describe('runSchemaMigrate — D-17 pending-only destructive classification', () => {
   function mockCommonDeps() {
     jest.unstable_mockModule('../src/config/db.js', () => ({
-      createSourceConnection: jest.fn(),
+      createSourceConnection: jest.fn(() => ({ query: jest.fn().mockResolvedValue([[], []]) })),
       createTargetConnection: jest.fn(() => ({ getQueryInterface: () => ({}) })),
       createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() })),
       createBusinessTargetConnection: jest.fn(() => ({ getQueryInterface: () => ({}) }))
@@ -336,7 +336,7 @@ describe('runSchemaMigrate — Plan 03 business database target selection', () =
     const connectionCallOrder = [];
 
     jest.unstable_mockModule('../src/config/db.js', () => ({
-      createSourceConnection: jest.fn(),
+      createSourceConnection: jest.fn(() => ({ query: jest.fn().mockResolvedValue([[], []]) })),
       createTargetConnection: jest.fn(() => {
         connectionCallOrder.push('createTargetConnection:dgfy_core');
         return { getQueryInterface: () => ({}) };
