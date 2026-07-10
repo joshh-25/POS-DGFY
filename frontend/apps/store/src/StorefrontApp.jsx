@@ -482,6 +482,9 @@ const DISCOVERY_CATEGORY_MATCHERS = Object.freeze({
 const money = (v) => `PHP ${Number(v || 0).toFixed(2)}`;
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toSlug = (v) => String(v || '').trim().toLowerCase();
+const isStorefrontLocationAvailable = (location) => Boolean(location)
+  && location.is_active !== false
+  && location.is_open !== false;
 const normalizeServiceFormFields = (schema) => {
   const fields = Array.isArray(schema?.fields) ? schema.fields : Array.isArray(schema?.questions) ? schema.questions : [];
   return fields
@@ -7006,10 +7009,10 @@ export default function StorefrontApp() {
           const primaryLocation = nextPrimaryLocationId == null
             ? null
             : (locations.find((location) => Number(location.location_id) === Number(nextPrimaryLocationId)) || null);
-          const firstOpenLocation = locations.find((location) => location?.is_open !== false) || null;
+          const firstAvailableLocation = locations.find(isStorefrontLocationAvailable) || null;
           const fallbackLocationId = (
-            preferredLocation?.location_id
-            ?? firstOpenLocation?.location_id
+            (isStorefrontLocationAvailable(preferredLocation) ? preferredLocation?.location_id : null)
+            ?? firstAvailableLocation?.location_id
             ?? primaryLocation?.location_id
             ?? locations[0]?.location_id
             ?? null
@@ -7022,7 +7025,10 @@ export default function StorefrontApp() {
         }
         }
       } catch {
-        const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
+        const fallbackPrimaryLocationId = profileLocations.find(isStorefrontLocationAvailable)?.location_id
+          ?? profileLocations.find((location) => location.is_primary_storefront)?.location_id
+          ?? profile.location_id
+          ?? null;
         setStoreLocations(profileLocations);
         setPrimaryLocationId(fallbackPrimaryLocationId);
         resolvedCatalogLocationId = fallbackPrimaryLocationId;
@@ -9402,13 +9408,13 @@ export default function StorefrontApp() {
       if (selectedLocationId != null) setSelectedLocationId(null);
       return;
     }
-    const exists = storeLocations.some((location) => Number(location.location_id) === Number(selectedLocationId));
-    if (!exists) {
+    const selectedLocation = storeLocations.find((location) => Number(location.location_id) === Number(selectedLocationId)) || null;
+    if (!isStorefrontLocationAvailable(selectedLocation)) {
       const primaryLocation = primaryLocationId == null
         ? null
         : (storeLocations.find((location) => Number(location.location_id) === Number(primaryLocationId)) || null);
-      const firstOpenLocation = storeLocations.find((location) => location?.is_open !== false) || null;
-      const fallbackLocationId = (firstOpenLocation?.location_id ?? primaryLocation?.location_id ?? storeLocations[0]?.location_id ?? null);
+      const firstAvailableLocation = storeLocations.find(isStorefrontLocationAvailable) || null;
+      const fallbackLocationId = (firstAvailableLocation?.location_id ?? primaryLocation?.location_id ?? storeLocations[0]?.location_id ?? null);
       setSelectedLocationId(fallbackLocationId);
     }
   }, [storeLocations, selectedLocationId, primaryLocationId]);

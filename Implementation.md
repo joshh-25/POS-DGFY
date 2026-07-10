@@ -2197,3 +2197,22 @@ POS transaction reads failed with `Table '<tenant>.delivery_jobs' doesn't exist`
 - `backend/tests/posCheckoutFnbContracts.usecase.test.js`
 - `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
 - `Implementation.md`
+
+---
+
+## 2026-07-10 — Prefer an available Storefront location for checkout
+
+### Confirmed problem
+
+- Storefront retained a preferred or previously selected location even after that location was manually closed, blocking checkout although another active, open location could accept the order.
+
+### Implemented solution
+
+- Storefront now keeps a selected location only when it is both active and open.
+- Location selection now prefers an active, open branch during initial load, fallback recovery, and later location-list refreshes.
+- The manual location Open toggle remains an intentional online-order override; the business-hours schedule remains a separate time gate.
+
+### Files changed
+
+- `frontend/apps/store/src/StorefrontApp.jsx`
+- `Implementation.md`
