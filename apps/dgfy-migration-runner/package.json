@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/cli.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest --config jest.config.cjs --runInBand",
-    "lint": "eslint src"
+    "lint": "echo 'lint: deferred — no eslint devDependency/config shipped for this package yet (see WR-07, phase 01 code review)' && exit 0"
   },
   "dependencies": {
     "commander": "^15.0.0",
