@@ -6,6 +6,10 @@
 // injecting values into process.env ahead of an explicit env argument.
 export const RUNTIME_MODES = ['development', 'staging', 'production'];
 export const TARGET_DB_NAME_PATTERN = /^dgfy_[a-z0-9_]+$/;
+// Plan 03 (D-02/D-03): per-business operational databases are named
+// dgfy_business_<stable_opaque_suffix> — the suffix must be a non-empty
+// opaque identifier, never a sanitized/derived business display name.
+export const BUSINESS_DB_NAME_PATTERN = /^dgfy_business_[a-z0-9][a-z0-9_]*$/;
 
 const REQUIRED_NON_EMPTY_VARS = [
     'SOURCE_DB_HOST',
@@ -19,6 +23,42 @@ const REQUIRED_NON_EMPTY_VARS = [
 
 function isBlank(value) {
     return value === undefined || value === null || String(value).trim() === '';
+}
+
+/**
+ * Plan 03 (D-02/D-03/T-02-03-01): parses the optional comma-separated
+ * DGFY_BUSINESS_DB_NAMES env var into an explicit target-list of
+ * dgfy_business_* database names for the schema command to migrate. Pure
+ * function — no I/O, no connection — so invalid/legacy/display-derived
+ * names are rejected here, before any connection is opened (RUN-03).
+ *
+ * @param {string|undefined} rawValue
+ * @returns {{ names: string[], errors: string[] }}
+ */
+function parseBusinessDbNames(rawValue) {
+    if (isBlank(rawValue)) {
+        return { names: [], errors: [] };
+    }
+
+    const entries = String(rawValue).split(',').map((entry) => entry.trim());
+    const errors = [];
+    const names = [];
+
+    entries.forEach((entry, index) => {
+        if (entry === '') {
+            errors.push(`DGFY_BUSINESS_DB_NAMES entry at position ${index + 1} is empty`);
+            return;
+        }
+        if (!BUSINESS_DB_NAME_PATTERN.test(entry)) {
+            errors.push(
+                `DGFY_BUSINESS_DB_NAMES entry "${entry}" does not match required pattern ${BUSINESS_DB_NAME_PATTERN}`
+            );
+            return;
+        }
+        names.push(entry);
+    });
+
+    return { names, errors };
 }
 
 /**
@@ -54,6 +94,12 @@ export function validateEnv(env = process.env) {
         errors.push('MIGRATION_ACTOR is required and must not be the "unknown" fallback when RUNTIME_MODE=production');
     }
 
+    // Plan 03 (D-02/D-03): explicit dgfy_business_* target-list for initial
+    // tenant coverage. Invalid/legacy/display-derived entries are rejected
+    // here — before any connection is opened — never silently dropped.
+    const { names: businessDbNames, errors: businessDbNameErrors } = parseBusinessDbNames(env.DGFY_BUSINESS_DB_NAMES);
+    errors.push(...businessDbNameErrors);
+
     if (errors.length > 0) {
         return { valid: false, errors, config: null };
     }
@@ -83,7 +129,11 @@ export function validateEnv(env = process.env) {
         // reports the moment the container is removed (WR-08). Local/dev
         // usage overrides this via REPORT_DIR in .env.
         reportDir: env.REPORT_DIR || '/reports',
-        actor
+        actor,
+        // Plan 03 (D-02/D-08): explicit initial-verification business target
+        // list. Empty when unset — the schema command then migrates only
+        // TARGET_DB_NAME (unchanged single-target behavior).
+        businessDbNames
     };
 
     return { valid: true, errors: [], config };
