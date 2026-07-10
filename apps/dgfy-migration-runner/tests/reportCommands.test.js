@@ -123,6 +123,23 @@ describe('runVerify', () => {
     expect(report.summary.target_db_reachable).toBe(false);
   });
 
+  test('D-19: the real .summary.txt file written for a successful run contains status=success, never status=unknown', async () => {
+    mockCreateTargetConnection.mockReset().mockReturnValue({
+      authenticate: jest.fn().mockResolvedValue(undefined)
+    });
+
+    const report = await runVerify({});
+
+    const files = await fs.readdir(reportDir);
+    const summaryFile = files.find((file) => file.endsWith('.summary.txt'));
+    expect(summaryFile).toBeDefined();
+
+    const contents = await fs.readFile(path.join(reportDir, summaryFile), 'utf8');
+    expect(contents).toContain('status=success');
+    expect(contents).not.toContain('status=unknown');
+    expect(report.summary.metadata_schema_ok).toBe(true);
+  });
+
   test('a failed health check still completes the command_executions row as exit_status=success (D-18: only command/reporting failures should mark failed)', async () => {
     mockCreateTargetConnection.mockReset().mockReturnValue({
       authenticate: jest.fn().mockRejectedValue(new Error('ECONNREFUSED'))

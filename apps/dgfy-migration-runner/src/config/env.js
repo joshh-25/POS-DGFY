@@ -77,7 +77,12 @@ export function validateEnv(env = process.env) {
         metaDb: {
             name: 'dgfy_migration_meta'
         },
-        reportDir: env.REPORT_DIR || './reports',
+        // D-20: default to the container-safe absolute mount point. The
+        // Dockerfile pre-creates and chowns /reports; a relative default
+        // would silently resolve against WORKDIR /app instead, losing
+        // reports the moment the container is removed (WR-08). Local/dev
+        // usage overrides this via REPORT_DIR in .env.
+        reportDir: env.REPORT_DIR || '/reports',
         actor
     };
 
