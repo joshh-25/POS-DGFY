@@ -5280,7 +5280,11 @@ function SettingsWorkspace({
                 <button
                   key={option.value}
                   type="button"
-                  className={`relative flex min-h-64 flex-col items-center rounded-2xl border px-5 py-7 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${isSelected ? 'border-2 border-blue-600 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'} ${isDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                  // Mobile (<sm): compact 2-col grid - image spans both rows on the left,
+                  // label/description auto-flow into the right column via CSS grid's default
+                  // row-then-column placement (no extra wrapper needed).
+                  // sm: and up: original vertical/centered card layout, unchanged.
+                  className={`relative grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1 rounded-2xl border px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:flex sm:min-h-64 sm:flex-col sm:items-center sm:gap-0 sm:px-5 sm:py-7 sm:text-center ${isSelected ? 'border-2 border-blue-600 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'} ${isDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
                   onClick={() => setStorefrontForm((current) => ({ ...current, customerAccessMode: option.value }))}
                   disabled={isDisabled}
                   aria-pressed={isSelected}
@@ -5291,13 +5295,13 @@ function SettingsWorkspace({
                       <Check className="h-5 w-5 stroke-[3]" />
                     </span>
                   ) : null}
-                  <span className={`grid h-20 w-20 place-items-center rounded-full ${option.iconClassName}`} aria-hidden="true">
+                  <span className={`row-span-2 grid h-20 w-20 shrink-0 place-items-center self-center rounded-full ${option.iconClassName}`} aria-hidden="true">
                     <ModeIcon className="h-10 w-10 stroke-[1.8]" />
                   </span>
-                  <span className={`mt-5 text-[17px] font-black ${isSelected ? 'text-blue-600' : 'text-[#0F172A]'}`}>{option.label}</span>
-                  <span className="mt-3 text-[13px] leading-6 text-[#475569]">{option.description}</span>
+                  <span className={`min-w-0 text-[17px] font-black sm:mt-5 ${isSelected ? 'text-blue-600' : 'text-[#0F172A]'}`}>{option.label}</span>
+                  <span className="min-w-0 text-[13px] leading-6 text-[#475569] sm:mt-3">{option.description}</span>
                   {isSelected ? (
-                    <span className="mt-auto inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700">
+                    <span className="col-span-2 mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700 sm:mt-auto">
                       <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                       {effectiveCustomerAccessMode === option.value ? 'Applied automatically' : `Requested; effective ${effectiveCustomerAccessMode}`}
                     </span>
