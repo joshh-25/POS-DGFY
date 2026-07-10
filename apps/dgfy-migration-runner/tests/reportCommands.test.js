@@ -56,9 +56,10 @@ const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
 const mockStorageExecuted = jest.fn().mockResolvedValue([]);
 
 jest.unstable_mockModule('../src/config/db.js', () => ({
-  createSourceConnection: jest.fn(),
+  createSourceConnection: jest.fn(() => ({ query: jest.fn().mockResolvedValue([[], []]) })),
   createTargetConnection: mockCreateTargetConnection,
-  createMetaConnection: mockCreateMetaConnection
+  createMetaConnection: mockCreateMetaConnection,
+  createBusinessTargetConnection: jest.fn()
 }));
 
 jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({

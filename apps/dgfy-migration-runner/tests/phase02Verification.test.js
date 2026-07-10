@@ -74,16 +74,17 @@ function buildFakeConnectionSatisfyingContract(contract, { missingTable, tableOv
     return Promise.resolve(indexNames.map((name) => ({ name, unique: uniqueSet.has(name) })));
   });
 
-  const query = jest.fn(() => {
-    const rows = [];
-    Object.entries(contract.tables).forEach(([tableName, tableContract]) => {
-      if (tableOverrides[tableName]?.foreignKeys === 'none') {
-        return;
-      }
-      (tableContract.foreignKeys || []).forEach((fk) => {
-        rows.push({ col: fk.column, refTable: fk.referencesTable, refColumn: fk.referencesColumn });
-      });
-    });
+  const query = jest.fn((sql, options) => {
+    // Mirrors the real information_schema query's WHERE table_name = ?
+    // filtering, so an FK override on one table can never leak into another
+    // table's foreign-key check via an identically-shaped FK elsewhere.
+    const queriedTableName = options?.replacements?.[1];
+    const tableContract = contract.tables[queriedTableName];
+    const rows = tableOverrides[queriedTableName]?.foreignKeys === 'none' || !tableContract
+      ? []
+      : (tableContract.foreignKeys || []).map((fk) => (
+        { col: fk.column, refTable: fk.referencesTable, refColumn: fk.referencesColumn }
+      ));
     return Promise.resolve([rows]);
   });
 
