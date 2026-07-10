@@ -2,7 +2,12 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { Sequelize } from 'sequelize';
-import { createSourceConnection, createTargetConnection, createMetaConnection } from '../src/config/db.js';
+import {
+    createSourceConnection,
+    createTargetConnection,
+    createMetaConnection,
+    createBusinessTargetConnection
+} from '../src/config/db.js';
 import { computeFileChecksum } from '../src/metadata/checksum.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,20 +23,31 @@ const fixtureConfig = {
 };
 
 describe('DB connection factories', () => {
-    test('createSourceConnection, createTargetConnection, createMetaConnection are exported functions', () => {
+    test('createSourceConnection, createTargetConnection, createMetaConnection, createBusinessTargetConnection are exported functions', () => {
         expect(typeof createSourceConnection).toBe('function');
         expect(typeof createTargetConnection).toBe('function');
         expect(typeof createMetaConnection).toBe('function');
+        expect(typeof createBusinessTargetConnection).toBe('function');
     });
 
     test('each factory returns a Sequelize instance without throwing or opening a socket', () => {
         const source = createSourceConnection(fixtureConfig);
         const target = createTargetConnection(fixtureConfig);
         const meta = createMetaConnection(fixtureConfig);
+        const business = createBusinessTargetConnection(fixtureConfig, 'dgfy_business_alpha');
 
         expect(source).toBeInstanceOf(Sequelize);
         expect(target).toBeInstanceOf(Sequelize);
         expect(meta).toBeInstanceOf(Sequelize);
+        expect(business).toBeInstanceOf(Sequelize);
+    });
+
+    test('createBusinessTargetConnection uses targetDb credentials but the given business database name', () => {
+        const business = createBusinessTargetConnection(fixtureConfig, 'dgfy_business_alpha');
+
+        expect(business.config.database).toBe('dgfy_business_alpha');
+        expect(business.config.host).toBe(fixtureConfig.targetDb.host);
+        expect(business.config.username).toBe(fixtureConfig.targetDb.user);
     });
 
     test('db.js source has zero top-level (module-scope) new Sequelize( calls', () => {
@@ -58,7 +74,7 @@ describe('DB connection factories', () => {
         expect(topLevelCalls).toEqual([]);
 
         const totalOccurrences = (codeLines.join('\n').match(/new Sequelize\(/g) || []).length;
-        expect(totalOccurrences).toBe(3);
+        expect(totalOccurrences).toBe(4);
     });
 });
 
