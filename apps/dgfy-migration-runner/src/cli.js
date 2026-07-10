@@ -1,11 +1,16 @@
 import { Command } from 'commander';
+import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 import { runSchemaMigrate } from './commands/schema.js';
 import { runDataDryRun, runDataApply } from './commands/data.js';
 import { runVerify } from './commands/verify.js';
 import { runStatus } from './commands/status.js';
 import { runRollbackPlan } from './commands/rollbackPlan.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /**
  * Builds the Commander program wiring all six RUN-02 subcommands to their
@@ -78,6 +83,13 @@ export function buildProgram() {
 }
 
 async function main() {
+  // WR-05: dotenv.config() is a process-entrypoint concern, not something
+  // src/config/env.js should do at import time — load the real .env file
+  // here, immediately before anything else runs, so a developer's local
+  // .env can never leak into process.env ahead of a test's explicit
+  // applyEnv()/env argument override.
+  dotenv.config({ path: join(__dirname, '..', '.env') });
+
   const program = buildProgram();
   await program.parseAsync(process.argv);
 }
@@ -87,7 +99,7 @@ async function main() {
 // backend/scripts/sync-tenant-schemas.js's isMainModule pattern) so that
 // importing this module from a test (to reuse buildProgram()) does not also
 // trigger a real process.argv parse / process.exit.
-const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const isMainModule = process.argv[1] && __filename === process.argv[1];
 if (isMainModule) {
   main().catch((error) => {
     console.error(`[dgfy-migration-runner] fatal: ${error.message}`);

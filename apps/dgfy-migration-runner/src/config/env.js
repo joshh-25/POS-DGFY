@@ -1,12 +1,9 @@
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-dotenv.config({ path: join(__dirname, '..', '..', '.env') });
-
+// NOTE (WR-05): loading a real .env file is a process-entrypoint concern,
+// not something this module should do at import time — see cli.js's main()
+// for the actual dotenv.config() call. Keeping this module free of
+// import-time side effects means it can be safely imported by tests (or any
+// other command module) without ever touching the filesystem or silently
+// injecting values into process.env ahead of an explicit env argument.
 export const RUNTIME_MODES = ['development', 'staging', 'production'];
 export const TARGET_DB_NAME_PATTERN = /^dgfy_[a-z0-9_]+$/;
 
