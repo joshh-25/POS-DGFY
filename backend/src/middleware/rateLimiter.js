@@ -138,6 +138,31 @@ const normalizeHostHeader = (value) => {
   return trimmed.split(':')[0] || '';
 };
 
+const AUTHENTICATED_POS_BOOTSTRAP_READ_PATHS = new Set([
+  '/api/v1/settings',
+  '/api/v1/settings/company-info',
+  '/api/v1/users/me',
+  '/api/v1/users',
+  '/api/v1/tenant-locations',
+  '/api/v1/items',
+  '/api/v1/items/folders',
+  '/api/v1/pos/catalog',
+  '/api/v1/pos/setup/cashiers',
+  '/api/v1/pos/device/status',
+  '/api/v1/pos/terminal/shifts/current',
+  '/api/v1/pos/terminal/dashboard/today',
+  '/api/v1/pos/incoming-orders'
+]);
+
+const isAuthenticatedPosBootstrapRead = (req) => {
+  if (String(req?.method || '').toUpperCase() !== 'GET') return false;
+  const path = String(req?.originalUrl || req?.path || '').split('?')[0];
+  if (!AUTHENTICATED_POS_BOOTSTRAP_READ_PATHS.has(path)) return false;
+  const authHeader = String(req?.headers?.authorization || '').trim();
+  const companyToken = normalizeCompanyTokenHeader(req?.headers?.['x-company-token']);
+  return Boolean(authHeader) && Boolean(companyToken);
+};
+
 const LOCAL_POS_ORIGINS = new Set([
   'dgfypos://app',
   'http://localhost:5174',
@@ -437,6 +462,7 @@ export const generalLimiter = rateLimit({
     if (req.path === '/health') return true;
     if (process.env.NODE_ENV === 'test') return true;
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    if (isAuthenticatedPosBootstrapRead(req)) return true;
     return false;
   },
 });

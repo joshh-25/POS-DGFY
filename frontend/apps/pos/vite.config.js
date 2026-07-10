@@ -70,6 +70,19 @@ export default defineConfig({
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/pos'),
-    emptyOutDir: true
+    emptyOutDir: true,
+    // Keep optional map rendering separate from the terminal's primary startup path.
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('maplibre-gl')) return 'vendor-maplibre';
+          if (id.includes('qrcode')) return 'vendor-qrcode';
+          if (id.includes('lucide-react')) return 'vendor-icons';
+          return undefined;
+        }
+      }
+    }
   }
 });

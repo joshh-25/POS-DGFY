@@ -482,6 +482,10 @@ const DISCOVERY_CATEGORY_MATCHERS = Object.freeze({
 const money = (v) => `PHP ${Number(v || 0).toFixed(2)}`;
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toSlug = (v) => String(v || '').trim().toLowerCase();
+const isStorefrontLocationAvailable = (location) => Boolean(location)
+  && location.is_active !== false
+  && location.is_open !== false;
+const isStorefrontLocationAvailabilityMessage = (message) => /selected location is currently closed|selected location is inactive|no active tenant location/i.test(String(message || ''));
 const normalizeServiceFormFields = (schema) => {
   const fields = Array.isArray(schema?.fields) ? schema.fields : Array.isArray(schema?.questions) ? schema.questions : [];
   return fields
@@ -6195,6 +6199,7 @@ export default function StorefrontApp() {
   const [quoteResult, setQuoteResult] = useState(null);
   const [quoteNeedsRefresh, setQuoteNeedsRefresh] = useState(true);
   const [quoteError, setQuoteError] = useState('');
+  const [promoError, setPromoError] = useState('');
   const [checkoutResult, setCheckoutResult] = useState(null);
 
   const [checkoutError, setCheckoutError] = useState('');
@@ -6436,6 +6441,9 @@ export default function StorefrontApp() {
       const validityText = String(entry.validity_text || entry.validityText || '').trim();
       const headline = String(entry.headline || entry.primary_text || '').trim();
       const supportingText = String(entry.supporting_text || entry.secondary_text || '').trim();
+      const discountPercent = Number(entry.discount_percent ?? entry.discountPercent);
+      const validFrom = String(entry.valid_from || entry.validFrom || '').trim();
+      const validUntil = String(entry.valid_until || entry.validUntil || '').trim();
       if (!title && !subtitle && !badge && !validityText && !headline && !supportingText && !promoCode) return null;
       return {
         title,
@@ -6444,20 +6452,32 @@ export default function StorefrontApp() {
         promoCode,
         validityText,
         headline,
-        supportingText
+        supportingText,
+        discountLabel: Number.isFinite(discountPercent) && discountPercent > 0 ? `${discountPercent}% OFF` : '',
+        validFrom,
+        validUntil
       };
     };
+
+    const manilaDate = (() => {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(new Date()).map((part) => [part.type, part.value]));
+      return `${parts.year}-${parts.month}-${parts.day}`;
+    })();
 
     let promoItems = [];
     if (rawPromo?.active === true) {
       const rawItems = Array.isArray(rawPromo.items) ? rawPromo.items : [];
-      promoItems = rawItems.map(normalizePromoEntry).filter(Boolean);
+      promoItems = rawItems
+        .map(normalizePromoEntry)
+        .filter((entry) => entry && (!entry.validFrom || entry.validFrom <= manilaDate) && (!entry.validUntil || entry.validUntil >= manilaDate));
       if (promoItems.length === 0) {
         const normalizedSingle = normalizePromoEntry(rawPromo);
         if (normalizedSingle) promoItems = [normalizedSingle];
       }
     }
-    return promoItems.slice(0, 3);
+    return promoItems;
   }, [supportingSectionModel?.promo]);
   const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
   const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
@@ -7006,10 +7026,10 @@ export default function StorefrontApp() {
           const primaryLocation = nextPrimaryLocationId == null
             ? null
             : (locations.find((location) => Number(location.location_id) === Number(nextPrimaryLocationId)) || null);
-          const firstOpenLocation = locations.find((location) => location?.is_open !== false) || null;
+          const firstAvailableLocation = locations.find(isStorefrontLocationAvailable) || null;
           const fallbackLocationId = (
-            preferredLocation?.location_id
-            ?? firstOpenLocation?.location_id
+            (isStorefrontLocationAvailable(preferredLocation) ? preferredLocation?.location_id : null)
+            ?? firstAvailableLocation?.location_id
             ?? primaryLocation?.location_id
             ?? locations[0]?.location_id
             ?? null
@@ -7022,7 +7042,10 @@ export default function StorefrontApp() {
         }
         }
       } catch {
-        const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
+        const fallbackPrimaryLocationId = profileLocations.find(isStorefrontLocationAvailable)?.location_id
+          ?? profileLocations.find((location) => location.is_primary_storefront)?.location_id
+          ?? profile.location_id
+          ?? null;
         setStoreLocations(profileLocations);
         setPrimaryLocationId(fallbackPrimaryLocationId);
         resolvedCatalogLocationId = fallbackPrimaryLocationId;
@@ -9028,8 +9051,8 @@ export default function StorefrontApp() {
     };
   }, [quoteResult, cartTotal]);
   const activePromoFeedback = checkoutResult?.promo_feedback || quoteResult?.promo_feedback || null;
-  const promoStatusMessage = checkoutError || quoteError || activePromoFeedback?.message || '';
-  const promoStatusTone = checkoutError || quoteError
+  const promoStatusMessage = promoError || activePromoFeedback?.message || '';
+  const promoStatusTone = promoError
     ? 'error'
     : (activePromoFeedback?.applied ? 'success' : 'idle');
   const appliedPromoDiscountText = totalsForDisplay.discount_amount > 0
@@ -9402,13 +9425,13 @@ export default function StorefrontApp() {
       if (selectedLocationId != null) setSelectedLocationId(null);
       return;
     }
-    const exists = storeLocations.some((location) => Number(location.location_id) === Number(selectedLocationId));
-    if (!exists) {
+    const selectedLocation = storeLocations.find((location) => Number(location.location_id) === Number(selectedLocationId)) || null;
+    if (!isStorefrontLocationAvailable(selectedLocation)) {
       const primaryLocation = primaryLocationId == null
         ? null
         : (storeLocations.find((location) => Number(location.location_id) === Number(primaryLocationId)) || null);
-      const firstOpenLocation = storeLocations.find((location) => location?.is_open !== false) || null;
-      const fallbackLocationId = (firstOpenLocation?.location_id ?? primaryLocation?.location_id ?? storeLocations[0]?.location_id ?? null);
+      const firstAvailableLocation = storeLocations.find(isStorefrontLocationAvailable) || null;
+      const fallbackLocationId = (firstAvailableLocation?.location_id ?? primaryLocation?.location_id ?? storeLocations[0]?.location_id ?? null);
       setSelectedLocationId(fallbackLocationId);
     }
   }, [storeLocations, selectedLocationId, primaryLocationId]);
@@ -10464,7 +10487,7 @@ export default function StorefrontApp() {
     const normalizedPromoCode = String(promoCode || '').trim().toUpperCase();
     if (!normalizedPromoCode) return;
     setPromoCodeDraft(normalizedPromoCode);
-    setQuoteError('');
+    setPromoError('');
 
     if (!Array.isArray(cart) || cart.length === 0) {
       toast.success(`Promo code ${normalizedPromoCode} added. Add items to validate the discount.`);
@@ -10498,12 +10521,16 @@ export default function StorefrontApp() {
       const violation = extractStockViolation(error);
       if (violation) {
         const message = buildStockExceededMessage(violation);
-        setQuoteError(message);
+        setPromoError(message);
         toast.error(message);
         return;
       }
       const message = normalizeStorefrontErrorMessage(error, 'Unable to apply promo code right now.');
-      setQuoteError(message);
+      if (isStorefrontLocationAvailabilityMessage(message)) {
+        setQuoteError(message);
+      } else {
+        setPromoError(message);
+      }
       toast.error(message);
     }
   }, [
@@ -11645,7 +11672,10 @@ export default function StorefrontApp() {
     <PromoCodePanel
       code={promoCodeDraft}
       onChange={setPromoCodeDraft}
-      onClear={() => setPromoCodeDraft('')}
+      onClear={() => {
+        setPromoCodeDraft('');
+        setPromoError('');
+      }}
       onApplyPromo={handlePromoCardApply}
       statusMessage={promoStatusMessage}
       statusTone={promoStatusTone}

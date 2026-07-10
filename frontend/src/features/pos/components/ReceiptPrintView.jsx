@@ -86,6 +86,11 @@ const resolveDocumentContext = ({ transaction, receiptContract, documentType }) 
     return documentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal';
 };
 
+const isStatutorySeniorPwdDiscount = (governedDiscount) => {
+    const discountType = String(governedDiscount?.discount_type || '').trim().toLowerCase();
+    return discountType === 'senior' || discountType === 'pwd';
+};
+
 export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' }) {
     if (!transaction) return null;
 
@@ -102,6 +107,7 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
     const documentLabel = isFiscal ? (isVatRegistered ? 'VAT INVOICE' : 'NON-VAT INVOICE') : 'NON-FISCAL SLIP';
     const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
     const governedDiscount = transaction.discount && typeof transaction.discount === 'object' ? transaction.discount : null;
+    const showSeniorPwdReceiptFields = isStatutorySeniorPwdDiscount(governedDiscount);
     const businessName = String(businessSettings.pos_business_name || '').trim();
     const registeredName = String(businessSettings.pos_registered_name || '').trim();
     const shouldShowBusinessName = businessName && businessName.toLowerCase() !== DGFY_BRAND_NAME.toLowerCase();
@@ -234,6 +240,8 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                     {governedDiscount.senior_pwd_id_number && <div className="flex justify-between gap-2 text-slate-600"><span>Senior/PWD ID</span><span className="text-right">{governedDiscount.senior_pwd_id_number}</span></div>}
                     {governedDiscount.employee_name && <div className="flex justify-between gap-2 text-slate-600"><span>Employee</span><span className="text-right">{governedDiscount.employee_name}</span></div>}
                     {governedDiscount.employee_id && <div className="flex justify-between gap-2 text-slate-600"><span>Employee ID</span><span className="text-right">{governedDiscount.employee_id}</span></div>}
+                    {governedDiscount.promo_code && <div className="flex justify-between gap-2 text-slate-600"><span>Promo Code</span><span className="text-right">{governedDiscount.promo_code}</span></div>}
+                    {governedDiscount.discount_type && <div className="flex justify-between gap-2 text-slate-600"><span>Discount Type</span><span className="text-right">{String(governedDiscount.discount_type).replaceAll('_', ' ').toUpperCase()}</span></div>}
                     {governedDiscount.reason && <div className="flex justify-between gap-2 text-slate-600"><span>Reason</span><span className="text-right">{governedDiscount.reason}</span></div>}
                 </>}
                 {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
@@ -280,6 +288,12 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                         <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(restaurantServiceChargeAmount)}</span>
                     </div>
                 )}
+                {Number(transaction.delivery_fee || 0) > 0 && (
+                    <div className="flex items-start justify-between gap-2 text-slate-600">
+                        <span className="min-w-0 flex-1">Delivery Fee</span>
+                        <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.delivery_fee)}</span>
+                    </div>
+                )}
                 <div className="mt-1 flex items-start justify-between gap-2 border-t border-slate-300 pt-1 text-[12px] font-bold text-slate-950 print:text-[11px]">
                     <span className="min-w-0 flex-1">TOTAL AMOUNT DUE</span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.total_amount)}</span>
@@ -287,12 +301,16 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
             </div>
             <div className="mt-2 border-t border-dashed border-slate-300 pt-2 text-[10px] leading-snug text-slate-700 print:mt-1.5 print:pt-1.5 print:text-[9px]">
                 <p className="flex justify-between gap-2"><span>Payment Method:</span><span>{String(transaction.payment_type || '').replaceAll('_', ' ').toUpperCase()}</span></p>
-                <p className="flex justify-between gap-2"><span>Cash Received:</span><span>{money(transaction.cash_received)}</span></p>
-                <p className="flex justify-between gap-2"><span>Change:</span><span>{money(transaction.change_amount)}</span></p>
-                <div className="mt-2">
-                    <p>SC/PWD/NAAC/MOV/Solo Parent ID No.: {governedDiscount?.senior_pwd_id_number || '____________'}</p>
-                    <p>Signature: __________________________</p>
-                </div>
+                <p className="flex justify-between gap-2"><span>Payment Status:</span><span>{String(transaction.payment_status || '').replaceAll('_', ' ').toUpperCase()}</span></p>
+                {transaction.payment_reference && <p className="flex justify-between gap-2"><span>Payment Reference:</span><span className="text-right">{transaction.payment_reference}</span></p>}
+                {transaction.payment_type === 'cash' && <p className="flex justify-between gap-2"><span>Cash Received:</span><span>{money(transaction.cash_received)}</span></p>}
+                {transaction.payment_type === 'cash' && <p className="flex justify-between gap-2"><span>Change:</span><span>{money(transaction.change_amount)}</span></p>}
+                {showSeniorPwdReceiptFields && (
+                    <div className="mt-2">
+                        <p>SC/PWD/NAAC/MOV/Solo Parent ID No.: {governedDiscount?.senior_pwd_id_number || '____________'}</p>
+                        <p>Signature: __________________________</p>
+                    </div>
+                )}
             </div>
             <div className="mt-2 border-t border-dashed border-slate-300 pt-2 text-center text-[9px] leading-snug text-slate-600 print:mt-1.5 print:pt-1.5 print:text-[8px]">
                 <p className="font-bold">{isFiscal ? 'FISCAL RECEIPT' : 'NON-FISCAL RECEIPT'}</p>

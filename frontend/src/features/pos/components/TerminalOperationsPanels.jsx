@@ -5,6 +5,8 @@ import {
   FULFILLMENT_STATUS_LABELS,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
+  getFulfillmentActionLabel,
+  getIncomingOrderUtilityActions,
   getNextStatusActions
 } from './orderFulfillmentUi.js';
 
@@ -26,6 +28,15 @@ const parseDeliveryCoords = (order = {}) => {
     latitude: lat,
     longitude: lng
   };
+};
+
+const DELIVERY_JOB_STATUS_LABELS = {
+  pending_dispatch: 'Pending Dispatch',
+  assigned: 'Assigned',
+  picked_up: 'Picked Up',
+  delivered: 'Delivered',
+  failed: 'Failed',
+  cancelled: 'Cancelled'
 };
 
 function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
@@ -53,6 +64,13 @@ function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
   );
 }
 
+const formatOrderDateTime = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '-';
+  return date.toLocaleString();
+};
+
 function IncomingQueueWorkspace({
   canViewPos,
   canTransactPos,
@@ -62,8 +80,6 @@ function IncomingQueueWorkspace({
   handleIncomingOrderStatusChange,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
-  handleOpenIncomingOrderHistory,
-  incomingHistoryOpeningId,
   refreshIncomingOrders,
   locationsState,
   queueLocationScopeId,
@@ -146,7 +162,10 @@ function IncomingQueueWorkspace({
           {incomingOrders.map((order) => {
             const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
             const nextActions = getNextStatusActions(order);
+            const utilityActions = getIncomingOrderUtilityActions(order);
             const deliveryCoords = parseDeliveryCoords(order);
+            const deliveryJob = order.deliveryJob || null;
+            const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
             const mapLink = deliveryCoords
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
               : '';
@@ -160,7 +179,14 @@ function IncomingQueueWorkspace({
                 </div>
                 <div className="mt-2 space-y-1 text-xs text-slate-600">
                   <p>PIN: <span className="font-semibold text-slate-900">{order.tracking_pin || '-'}</span></p>
-                  <p>{ORDER_METHOD_LABELS[order.order_method] || order.order_method} / {PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type}</p>
+                  <p>Cashier: <span className="font-semibold text-slate-900">{cashierName}</span></p>
+                  <p>Customer: <span className="font-semibold text-slate-900">{order.customer_name || 'Guest Buyer'}</span></p>
+                  <p>Payment: <span className="font-semibold text-slate-900">{PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type || '-'}</span></p>
+                  <p>Mode: <span className="font-semibold text-slate-900">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</span></p>
+                  <p>Order Time: <span className="font-semibold text-slate-900">{formatOrderDateTime(order.created_at)}</span></p>
+                  {order.order_method === 'delivery' && (
+                    <p>Delivery: <span className="font-semibold text-slate-900">{deliveryJob?.provider || 'Manual'} · {DELIVERY_JOB_STATUS_LABELS[deliveryJob?.status] || deliveryJob?.status || 'Pending Dispatch'}</span></p>
+                  )}
                   {order.delivery_address ? <p>{order.delivery_address}</p> : null}
                   {deliveryCoords ? <p>Coords: {deliveryCoords.latitude.toFixed(6)}, {deliveryCoords.longitude.toFixed(6)}</p> : null}
                   {deliveryCoords ? (
@@ -181,30 +207,34 @@ function IncomingQueueWorkspace({
                       type="button"
                       size="sm"
                       variant={status === 'rejected' ? 'destructive' : 'outline'}
-                      disabled={Boolean(actionLoading) || !canTransactPos || locked || !shiftState.shift}
+                      disabled={Boolean(actionLoading) || !canTransactPos || locked}
                       onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
                     >
-                      {actionLoading === status ? 'Saving...' : (FULFILLMENT_STATUS_LABELS[status] || status)}
+                      {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
                     </Button>
                   ))}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
-                    onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id)}
-                  >
-                    {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Receipt'}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={locked || !canViewPos || incomingHistoryOpeningId !== null}
-                    onClick={() => handleOpenIncomingOrderHistory?.(order)}
-                  >
-                    {incomingHistoryOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open in History'}
-                  </Button>
+                  {utilityActions.includes('open_order') && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
+                      onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: false })}
+                    >
+                      {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Order'}
+                    </Button>
+                  )}
+                  {utilityActions.includes('print_order') && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
+                      onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: true })}
+                    >
+                      {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Print Order'}
+                    </Button>
+                  )}
                 </div>
                 {!canTransactPos && (
                   <p className="mt-2 text-[11px] text-slate-500">You need POS transact permission to update order statuses.</p>

@@ -124,11 +124,11 @@ export default function TerminalWorkspaceSidebar({
             icon={History}
             active={currentViewMode === 'history'}
             onClick={() => onSelectViewMode('history')}
-            disabled={locked || onboardingRestricted || !canViewPos || !navigationShiftReady}
+            disabled={locked || onboardingRestricted || !canViewPos}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Invoice lookups and audit trail' : 'Admin review available without an active shift'))))
+                : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Invoice lookups and audit trail' : 'Admin review available without an active shift')))
             }
             testId="pos-nav-history"
           />

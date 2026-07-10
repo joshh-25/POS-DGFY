@@ -50,11 +50,15 @@ const mapPosRows = (rows) => rows.map((row) => {
       reference_no: row.invoice_number,
     occurred_at: row.created_at,
     status: row.status,
-    customer_or_recipient: null,
+    customer_or_recipient: row.customer_name || null,
     payment_type: row.payment_type,
+    payment_status: row.payment_status || null,
     order_method: row.order_method,
+    fulfillment_status: row.fulfillment_status || null,
     pos_order_source: row.order_source || null,
     gross_sales: totalAmount,
+    subtotal_amount: round4(row.subtotal_amount),
+    delivery_fee: round4(row.delivery_fee),
     service_fee_amount: round4(row.service_fee_amount),
     service_fee_label_snapshot: row.service_fee_label_snapshot || null,
     service_fee_method_snapshot: row.service_fee_method_snapshot || null,
@@ -68,8 +72,11 @@ const mapPosRows = (rows) => rows.map((row) => {
       discount_amount: round4(row.discount_amount),
       discount_label_snapshot: row.discount_label_snapshot || null,
       discount_rate_snapshot: row.discount_rate_snapshot == null ? null : round4(row.discount_rate_snapshot),
+      discount_type: row.discount?.discount_type || null,
+      promo_code: row.discount?.promo_code || null,
       detail: {
         cashier: row.cashier ? { user_id: row.cashier.user_id, username: row.cashier.username } : null,
+      discount: row.discount || null,
       service_fee: {
         amount: round4(row.service_fee_amount),
         label: row.service_fee_label_snapshot || null,
@@ -146,6 +153,8 @@ export const salesRepository = {
     const DispatchOrderLine = dbStore.get('DispatchOrderLine');
     const Item = dbStore.get('Item');
     const User = dbStore.get('User');
+    const PosTransactionDiscount = dbStore.get('PosTransactionDiscount');
+    const PosTransactionDiscountLine = dbStore.get('PosTransactionDiscountLine');
 
     const page = Number.parseInt(filters.page, 10) || 1;
     const limit = Math.min(Number.parseInt(filters.limit, 10) || 20, 200);
@@ -195,6 +204,12 @@ export const salesRepository = {
             model: User,
             as: 'cashier',
             attributes: ['user_id', 'username']
+          },
+          {
+            model: PosTransactionDiscount,
+            as: 'discount',
+            required: false,
+            include: [{ model: PosTransactionDiscountLine, as: 'lines', required: false }]
           }
         ],
         order: [['created_at', 'DESC']]

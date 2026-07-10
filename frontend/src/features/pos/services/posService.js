@@ -54,6 +54,13 @@ export const fetchPosTransactionById = async (id) => {
     return response.data?.data;
 };
 
+export const voidPosTransaction = async (id, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${id}/void`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 export const createPosSetupCashier = async (payload = {}) => {
     const response = await api.post('/pos/setup/cashiers', payload);
     return response.data?.data;

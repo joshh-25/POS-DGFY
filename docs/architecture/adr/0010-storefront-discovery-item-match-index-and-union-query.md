@@ -108,6 +108,13 @@ Platform-admin Tenant Manager may update active tenants' Storefront publication 
 3. Successful platform-admin changes to either setting must refresh the landlord `storefront_discovery_index` for that tenant.
 4. These controls must not change item-level `storefront_catalog_overrides`, branch-level `storefront_location_item_overrides`, POS catalog visibility, tenant lifecycle status, or clean-handle reservation ownership.
 
+## Addendum (2026-07-10): Commercial Promo Discovery Projection
+
+1. The landlord discovery index may materialize `storefront_promos` as an additive public profile field so a Storefront can display each active commercial promotion.
+2. The projection is allowlisted to customer-facing promo display and redemption fields. Item targeting and internal allocation details remain tenant-private.
+3. The legacy `storefront_promo` field remains readable as a compatibility fallback; existing public routes and checkout contracts are unchanged.
+4. Discovery index reconciliation refreshes this projection after Settings updates. Storefront clients must suppress promos outside their configured validity dates.
+
 ## Addendum (2026-06-08): Marker Stability and Draft Branch Availability
 
 The June root-handle and branch-scoping implementation is hardened as follows:

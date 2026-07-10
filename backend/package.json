@@ -108,6 +108,7 @@
     "redis": "^4.6.13",
     "sequelize": "^6.37.8",
     "sequelize-cli": "^6.6.2",
+    "sharp": "^0.35.3",
     "uuid": "^11.1.1",
     "winston": "^3.11.0"
   },
@@ -129,6 +130,9 @@
     "minimatch": "9.0.7",
     "minimatch@3.1.5": {
       "brace-expansion": "1.1.13"
+    },
+    "nodemon": {
+      "minimatch": "3.1.5"
     },
     "path-to-regexp": "0.1.13",
     "picomatch": "2.3.2",

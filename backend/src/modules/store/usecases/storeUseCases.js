@@ -41,8 +41,7 @@ import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsu
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
-    isDateWithinStorefrontBusinessHours,
-    normalizeStorefrontBusinessHours
+    isDateWithinStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';
 import {
     buildCommercialPromoUsageUpdate,
@@ -82,14 +81,6 @@ const trackingFailureCounters = new Map();
 const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-};
-
-const normalizePositiveIntList = (value, maxItems = 200) => {
-    if (!Array.isArray(value)) return [];
-    return [...new Set(value
-        .map((entry) => parsePositiveInt(entry))
-        .filter((entry) => Number.isInteger(entry) && entry > 0))]
-        .slice(0, maxItems);
 };
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
@@ -329,6 +320,7 @@ const serializeOrderBase = (order) => ({
     service_fee_method_snapshot: order?.service_fee_method_snapshot,
     delivery_fee: order?.delivery_fee,
     total_amount: order?.total_amount,
+    discount: order?.discount || null,
     outside_radius_flag: order?.outside_radius_flag,
     scheduled_for: order?.scheduled_for,
     special_instructions: order?.special_instructions,
@@ -389,6 +381,18 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
 
 const resolveStorefrontPromoApplication = (args) => resolveCommercialPromoApplication(args);
 
+export const resolveStorefrontPaymentSnapshot = ({ paymentType, payload = {} }) => {
+    const isVerifiedQrphPayment = paymentType === 'qrph'
+        && payload.payment_webhook_confirmed === true;
+    return {
+        payment_status: isVerifiedQrphPayment ? 'paid' : 'unpaid',
+        payment_reference: isVerifiedQrphPayment ? (payload.payment_reference || null) : null,
+        payment_checkout_url: isVerifiedQrphPayment ? (payload.payment_checkout_url || null) : null,
+        payment_provider: isVerifiedQrphPayment ? 'paymongo' : null,
+        payment_session_reference: isVerifiedQrphPayment ? (payload.payment_session_reference || null) : null
+    };
+};
+
 const resolveDeliveryRadiusFlag = ({ orderMethod, location, deliveryLatitude, deliveryLongitude }) => {
     if (orderMethod !== 'delivery') return false;
     if (!location) return false;
@@ -428,7 +432,7 @@ const resolveEstimatedWaitMinutes = ({ settings = {}, location = null }) => {
     return null;
 };
 
-const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) => {
+const assertCheckoutLocationOperationalReadiness = ({ location, settings = {}, orderMethod }) => {
     if (!location) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
@@ -450,6 +454,14 @@ const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) =
             DomainErrorCode.CONFLICT,
             'Selected location is currently closed and cannot accept orders',
             { statusCode: 409 }
+        );
+    }
+
+    if (!parseBooleanSetting(settings?.pos_open_status?.value, true)) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Storefront ordering is currently closed by the POS',
+            { statusCode: 409, details: { reason_code: 'POS_ORDERING_CLOSED' } }
         );
     }
 
@@ -1997,6 +2009,10 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 lock: true
             });
             const invoiceNumber = await storeRepository.nextInvoiceNumber(INVOICE_COUNTER_KEY, { transaction });
+            const paymentSnapshot = resolveStorefrontPaymentSnapshot({
+                paymentType: normalized.payment_type,
+                payload
+            });
 
             const orderId = await storeRepository.createOnlineTransactionWithLines({
                 header: {
@@ -2009,11 +2025,7 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                     order_source: 'online_store',
                     order_method: normalized.order_method,
                     payment_type: normalized.payment_type,
-                    payment_status: payload.payment_status || 'paid',
-                    payment_reference: payload.payment_reference || null,
-                    payment_checkout_url: payload.payment_checkout_url || null,
-                    payment_provider: payload.payment_provider || null,
-                    payment_session_reference: payload.payment_session_reference || null,
+                    ...paymentSnapshot,
                     fulfillment_status: 'placed',
                     subtotal_amount: resolved.prepared.subtotalAmount,
                     vatable_sales: resolved.prepared.vatableSales,
@@ -2045,7 +2057,13 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                     accepted_by: null,
                     accepted_at: null
                 },
-                lines: resolved.prepared.preparedLines
+                lines: resolved.prepared.preparedLines,
+                discount: resolved.promoApplication.applied ? {
+                    promo_code: resolved.promoApplication.enteredPromoCode,
+                    discount_rate: resolved.promoApplication.discountRate,
+                    discount_amount: resolved.promoApplication.discountAmount,
+                    lines: resolved.promoApplication.lineAllocations
+                } : null
             }, { transaction });
 
             if (resolved.promoApplication.applied && typeof storeRepository.updateSettingByKey === 'function') {

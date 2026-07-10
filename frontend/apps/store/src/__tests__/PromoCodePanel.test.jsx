@@ -68,7 +68,7 @@ describe('PromoCodePanel', () => {
     expect(screen.getByRole('button', { name: /^use$/i })).toBeTruthy();
   });
 
-  it('does not show a fake Use action when POS has not saved a promo_code', () => {
+  it('hides display-only promos that have no saved promo_code', () => {
     render(
       <PromoCodePanel
         code=""
@@ -85,7 +85,8 @@ describe('PromoCodePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /apply a promo/i }));
 
     expect(screen.queryByRole('button', { name: /^use$/i })).toBeNull();
-    expect(screen.getByText('Promo code not set')).toBeTruthy();
+    expect(screen.queryByText('Promo code not set')).toBeNull();
+    expect(screen.queryByText('10% OFF')).toBeNull();
   });
 
   it('renders backend-driven promo feedback and applied discount copy', () => {

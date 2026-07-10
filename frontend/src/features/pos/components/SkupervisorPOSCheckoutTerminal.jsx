@@ -28,7 +28,7 @@ import {
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
-import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import { resolveAppAssetUrl, resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 import {
     notifyIminWebPosReady,
@@ -38,8 +38,10 @@ import {
 } from '../utils/iminHardwareBridge.js';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
+const OrderPreviewView = lazy(() => import('./OrderPreviewView.jsx'));
 const POSBarcodeScanner = lazy(() => import('./SkupervisorPOSBarcodeScanner.jsx'));
 const POSTransactionHistoryPanel = lazy(() => import('./SkupervisorPOSTransactionHistoryPanel.jsx'));
+const POS_ITEM_FALLBACK_IMAGE = '/dgfy-horizontal_logo-removebg-preview.png';
 const POS_ITEM_IMAGE_MAP = [
     { match: ['coffee'], src: '/pos-items/coffee.jpg' },
     { match: ['juice'], src: '/pos-items/juice.jpg' },
@@ -70,8 +72,6 @@ const VAT_TYPE_LABEL = {
     vat_exempt: 'VAT Exempt',
     zero_rated: 'Zero Rated'
 };
-const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
-const DGFY_CONVENIENCE_FEE_RATE = 0.01;
 const normalizeDiscountProfiles = (rawProfiles) => {
     let profiles = rawProfiles;
     if (typeof profiles === 'string') {
@@ -90,6 +90,10 @@ const normalizeDiscountProfiles = (rawProfiles) => {
         }))
         .filter((profile) => profile.name.length > 0);
 };
+const resolveCompanyIconFallbackUrl = (settings = {}) => (
+    resolveAssetUrl(settings?.storefront_profile_image_url || settings?.profile_image_url || '')
+    || resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE)
+);
 
 const buildMissingFieldsMessage = (error) => {
     const missingFields = error?.response?.data?.errors?.missing_fields
@@ -708,6 +712,7 @@ export default function POSCheckoutTerminal({
             const allSettings = await getAllSettings();
             setReceiptSettings({
                 pos_business_name: allSettings?.pos_business_name?.value || '',
+                storefront_profile_image_url: allSettings?.storefront_profile_image_url?.value || '',
                 pos_tin_branch: allSettings?.pos_tin_branch?.value || '',
                 pos_address: allSettings?.pos_address?.value || '',
                 pos_ptu_number: allSettings?.pos_ptu_number?.value || '',
@@ -1001,10 +1006,7 @@ export default function POSCheckoutTerminal({
         }
     }, [manualDiscountRateInput, selectedDiscountProfile]);
 
-    const serviceFeeAmount = useMemo(
-        () => round4(Math.max(0, cartSubtotal) * DGFY_CONVENIENCE_FEE_RATE),
-        [cartSubtotal]
-    );
+    const serviceFeeAmount = 0;
 
     const netItemsTotal = useMemo(
         () => round4(Math.max(0, cartSubtotal - calculatedDiscountAmount)),
@@ -1803,9 +1805,10 @@ export default function POSCheckoutTerminal({
                             const isServiceItem = isServiceCatalogItem(item);
                             const isAlwaysAvailable = item.pos_always_available === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
-                            const configuredPosImageSrc = resolveAssetUrl(item.storefront_image_url);
+                            const configuredPosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail');
                             const mappedPosImageSrc = resolveMappedPosItemImage(item);
-                            const posImageSrc = configuredPosImageSrc || mappedPosImageSrc;
+                            const fallbackPosImageSrc = resolveCompanyIconFallbackUrl(receiptSettings);
+                            const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
                             return (
                                 <div
@@ -1852,7 +1855,14 @@ export default function POSCheckoutTerminal({
                                                 src={posImageSrc}
                                                 alt={`${item.name} menu`}
                                                 className="h-full w-full object-cover object-center"
-                                                onError={() => {
+                                                onError={(event) => {
+                                                    const fallbackSrc = fallbackPosImageSrc;
+                                                    const currentSrc = String(event.currentTarget.src || '');
+                                                    const alreadyFallback = fallbackSrc && currentSrc.endsWith(fallbackSrc);
+                                                    if (fallbackSrc && !alreadyFallback) {
+                                                        event.currentTarget.src = fallbackSrc;
+                                                        return;
+                                                    }
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
                                                         next.add(item.item_id);
@@ -1981,9 +1991,9 @@ export default function POSCheckoutTerminal({
                     </label>
 
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                        <p className="font-semibold text-slate-700">{DGFY_CONVENIENCE_FEE_LABEL} (1%)</p>
+                        <p className="font-semibold text-slate-700">Online-order platform fee</p>
                         <p className="mt-1">
-                            Auto-calculated from gross item subtotal: PHP {money(serviceFeeAmount)}.
+                            This fee only applies to online storefront orders, not in-store POS checkout.
                         </p>
                     </div>
                     {normalizedFnbContext && (
@@ -2281,12 +2291,6 @@ export default function POSCheckoutTerminal({
                         <span className="text-slate-600">Net Items</span>
                         <span className="font-medium">PHP {money(netItemsTotal)}</span>
                     </div>
-                    <div className="flex justify-between">
-                        <span className="text-slate-600">
-                            {DGFY_CONVENIENCE_FEE_LABEL} (1%)
-                        </span>
-                        <span className="font-medium text-slate-900">+ PHP {money(serviceFeeAmount)}</span>
-                    </div>
                     {restaurantServiceChargeAmount > 0 && (
                         <div className="flex justify-between">
                             <span className="text-slate-600">
@@ -2383,38 +2387,10 @@ export default function POSCheckoutTerminal({
                 <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                     <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
                         <div>
-                            <h2 className="text-xl font-bold text-slate-900">Receipt Preview</h2>
-                            <p className="text-sm text-slate-600">Review the selected receipt.</p>
+                            <h2 className="text-xl font-bold text-slate-900">Order Preview</h2>
+                            <p className="text-sm text-slate-600">Review the selected order summary.</p>
                         </div>
                         <div className="flex items-center gap-2">
-                            <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
-                                Paper
-                                <select
-                                    value={receiptPaperWidth}
-                                    onChange={(event) => setReceiptPaperWidth(event.target.value)}
-                                    className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                                >
-                                    {RECEIPT_PAPER_OPTIONS.map((option) => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                </select>
-                            </label>
-                            {normalizedTerminalId && (
-                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                                    {terminalIdentityLabel}
-                                </span>
-                            )}
-                            <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${
-                                isPrinterAvailable
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                    : 'border-amber-200 bg-amber-50 text-amber-700'
-                            }`}>
-                                {deviceStatusLoading
-                                    ? 'Checking printer...'
-                                    : (isPrinterAvailable
-                                        ? `${detectedPrinterCount} printer${detectedPrinterCount === 1 ? '' : 's'} ready`
-                                        : 'Printer unavailable')}
-                            </span>
                             <Button
                                 type="button"
                                 variant="outline"
@@ -2434,18 +2410,6 @@ export default function POSCheckoutTerminal({
                             >
                                 {receiptPrinting ? 'Printing...' : 'Send to Printer'}
                             </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleOpenDrawer({
-                                    transactionId: Number(lastReceipt?.pos_transaction_id) || null,
-                                    reason: 'receipt_preview_drawer_open'
-                                })}
-                                disabled={!activeShiftId || drawerOpening}
-                            >
-                                {drawerOpening ? 'Opening...' : 'Open Drawer'}
-                            </Button>
                         </div>
                     </div>
                     {lastReceipt ? (
@@ -2455,12 +2419,9 @@ export default function POSCheckoutTerminal({
                                     {lastReceiptContract.label}
                                 </div>
                             )}
-                            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
-                                <ReceiptPrintView
+                            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading order preview...</div>}>
+                                <OrderPreviewView
                                     transaction={lastReceipt}
-                                    businessSettings={receiptSettings}
-                                    receiptContract={lastReceiptContract}
-                                    paperWidth={receiptPaperWidth}
                                 />
                             </Suspense>
                         </div>

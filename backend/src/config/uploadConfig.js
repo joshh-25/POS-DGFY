@@ -14,8 +14,8 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 export const TEMP_DIR = uploadDir;
-export const IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
-export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES = 6 * 1024 * 1024;
+export const IMAGE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES = 10 * 1024 * 1024;
 export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES = 50;
 
 // Configure storage

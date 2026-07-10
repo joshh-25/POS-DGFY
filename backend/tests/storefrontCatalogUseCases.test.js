@@ -554,24 +554,36 @@ describe('storefront catalog use cases', () => {
                 {
                     path: 'storefront-catalog/tenant/old-primary.png',
                     url: '/uploads/old-primary.png',
+                    variants: null,
+                    original_path: null,
+                    classification: null,
                     is_primary: true,
                     sort_order: 0
                 },
                 {
                     path: 'storefront-catalog/tenant/old-second.png',
                     url: '/uploads/old-second.png',
+                    variants: null,
+                    original_path: null,
+                    classification: null,
                     is_primary: false,
                     sort_order: 1
                 },
                 {
                     path: 'storefront-catalog/tenant/first.png',
                     url: '/uploads/storefront-catalog/tenant/first.png',
+                    variants: null,
+                    original_path: null,
+                    classification: null,
                     is_primary: false,
                     sort_order: 2
                 },
                 {
                     path: 'storefront-catalog/tenant/second.png',
                     url: '/uploads/storefront-catalog/tenant/second.png',
+                    variants: null,
+                    original_path: null,
+                    classification: null,
                     is_primary: false,
                     sort_order: 3
                 }
@@ -634,12 +646,18 @@ describe('storefront catalog use cases', () => {
                 {
                     path: 'storefront-catalog/tenant/legacy-primary.png',
                     url: '/uploads/legacy-primary.png',
+                    variants: null,
+                    original_path: null,
+                    classification: null,
                     is_primary: true,
                     sort_order: 0
                 },
                 {
                     path: 'storefront-catalog/tenant/new.png',
                     url: '/uploads/storefront-catalog/tenant/new.png',
+                    variants: null,
+                    original_path: null,
+                    classification: null,
                     is_primary: false,
                     sort_order: 1
                 }
@@ -704,18 +722,27 @@ describe('storefront catalog use cases', () => {
                 {
                     path: 'storefront-catalog/tenant/primary.png',
                     url: '/uploads/primary.png',
+                    variants: null,
+                    original_path: null,
+                    classification: null,
                     is_primary: true,
                     sort_order: 0
                 },
                 {
                     path: 'storefront-catalog/tenant/second.png',
                     url: '/uploads/second.png',
+                    variants: null,
+                    original_path: null,
+                    classification: null,
                     is_primary: false,
                     sort_order: 1
                 },
                 {
                     path: 'storefront-catalog/tenant/third.png',
                     url: '/uploads/storefront-catalog/tenant/third.png',
+                    variants: null,
+                    original_path: null,
+                    classification: null,
                     is_primary: false,
                     sort_order: 2
                 }
@@ -810,8 +837,8 @@ describe('storefront catalog use cases', () => {
             storefront_image_path: 'storefront-catalog/tenant/second.png',
             storefront_image_url: '/uploads/second.png',
             storefront_image_gallery: [
-                { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', is_primary: true, sort_order: 0 },
-                { path: 'storefront-catalog/tenant/first.png', url: '/uploads/first.png', is_primary: false, sort_order: 1 }
+                { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', variants: null, original_path: null, classification: null, is_primary: true, sort_order: 0 },
+                { path: 'storefront-catalog/tenant/first.png', url: '/uploads/first.png', variants: null, original_path: null, classification: null, is_primary: false, sort_order: 1 }
             ]
         }));
         expect(remove).toHaveBeenCalledWith({ path: 'storefront-catalog/tenant/third.png' });
@@ -845,7 +872,7 @@ describe('storefront catalog use cases', () => {
             storefront_image_path: 'storefront-catalog/tenant/second.png',
             storefront_image_url: '/uploads/second.png',
             storefront_image_gallery: [
-                { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', is_primary: true, sort_order: 0 }
+                { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', variants: null, original_path: null, classification: null, is_primary: true, sort_order: 0 }
             ]
         }));
         expect(remove).toHaveBeenCalledWith({ path: 'storefront-catalog/tenant/first.png' });
@@ -1000,7 +1027,7 @@ describe('storefront catalog use cases', () => {
         });
 
         const result = await useCase({
-            files: [{ path: tempPath, mimetype: 'image/png', originalname: 'SF-703.png', size: 5 * 1024 * 1024 + 1 }],
+            files: [{ path: tempPath, mimetype: 'image/png', originalname: 'SF-703.png', size: 10 * 1024 * 1024 + 1 }],
             user: editableUser
         });
 

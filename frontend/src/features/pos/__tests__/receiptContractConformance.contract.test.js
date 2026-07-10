@@ -65,8 +65,23 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(screen.queryByText(/TIN\/Branch:/i)).toBeNull();
     expect(screen.queryByText('SOLD TO:')).toBeNull();
     expect(screen.queryByText('Vatable Sales')).toBeNull();
+    expect(screen.queryByText(/SC\/PWD\/NAAC\/MOV\/Solo Parent ID No\./i)).toBeNull();
+    expect(screen.queryByText(/^Signature:/i)).toBeNull();
     expect(screen.getByText('Estimated Tax')).toBeTruthy();
     expect(screen.getByText('This document is not an official tax receipt.')).toBeTruthy();
+  });
+
+  it('renders the company icon when a storefront profile image is configured', () => {
+    renderReceipt({
+      transaction: buildTransaction(),
+      businessSettings: {
+        pos_business_name: 'Compliance Test Store',
+        storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+      }
+    });
+
+    const businessIcon = screen.getByRole('img', { name: 'Compliance Test Store icon' });
+    expect(businessIcon.getAttribute('src')).toContain('/uploads/storefront-assets/t1/profile.png');
   });
 
   it('does not infer fiscal status from an invoice number prefix', () => {
@@ -187,6 +202,52 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(text).toContain('Powered by DGFY POS');
   });
 
+  it('shows Senior/PWD receipt fields only for statutory discounts', () => {
+    renderReceipt({
+      transaction: buildTransaction({
+        discount: {
+          discount_type: 'senior',
+          customer_name: 'Juan Dela Cruz',
+          senior_pwd_id_number: 'SC-12345'
+        }
+      }),
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+
+    expect(screen.getByText('SC/PWD/NAAC/MOV/Solo Parent ID No.: SC-12345')).toBeTruthy();
+    expect(screen.getByText('Signature: __________________________')).toBeTruthy();
+  });
+
+  it('keeps iMin Senior/PWD fields hidden for non-statutory discounts and shows them for statutory discounts', () => {
+    const nonStatutoryText = formatIminReceiptText({
+      transaction: buildTransaction({
+        discount: {
+          discount_type: 'manual',
+          customer_name: 'Walk-in Customer',
+          senior_pwd_id_number: 'SHOULD-NOT-SHOW'
+        }
+      }),
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+
+    expect(nonStatutoryText).not.toContain('SC/PWD/NAAC/MOV/Solo Parent ID No.:');
+    expect(nonStatutoryText).not.toContain('Signature: __________________________');
+
+    const statutoryText = formatIminReceiptText({
+      transaction: buildTransaction({
+        discount: {
+          discount_type: 'pwd',
+          customer_name: 'Maria Santos',
+          senior_pwd_id_number: 'PWD-98765'
+        }
+      }),
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+
+    expect(statutoryText).toContain('SC/PWD/NAAC/MOV/Solo Parent ID No.: PWD-98765');
+    expect(statutoryText).toContain('Signature: __________________________');
+  });
+
   it('keeps regulator-summary rows and footer contract lines in fixed order', () => {
     const { container } = renderReceipt({
       transaction: buildTransaction({
@@ -219,5 +280,48 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       expect(position).toBeGreaterThan(cursor);
       cursor = position;
     }
+  });
+
+  it('prints authoritative online promo, delivery, and payment metadata', () => {
+    const transaction = buildTransaction({
+      payment_type: 'qrph',
+      payment_status: 'paid',
+      payment_reference: 'pay_authoritative_123',
+      subtotal_amount: 100,
+      discount_amount: 20,
+      discount_label_snapshot: 'Online Promo',
+      discount_rate_snapshot: 20,
+      service_fee_amount: 1,
+      delivery_fee: 30,
+      total_amount: 111,
+      discount: {
+        discount_type: 'promo',
+        promo_code: 'SAVE20'
+      }
+    });
+    const { container } = renderReceipt({
+      transaction,
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+    const text = container.textContent || '';
+
+    expect(text).toContain('Promo CodeSAVE20');
+    expect(text).toContain('Discount TypePROMO');
+    expect(text).toContain('Delivery Fee30.00');
+    expect(text).toContain('Payment Status:PAID');
+    expect(text).toContain('Payment Reference:pay_authoritative_123');
+    expect(text).toContain('TOTAL AMOUNT DUE111.00');
+    expect(text).not.toContain('Cash Received:');
+
+    const hardwareText = formatIminReceiptText({
+      transaction,
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+    expect(hardwareText).toContain('Promo Code: SAVE20');
+    expect(hardwareText).toContain('Discount Type: PROMO');
+    expect(hardwareText).toContain('Delivery Fee');
+    expect(hardwareText).toContain('Payment Status: PAID');
+    expect(hardwareText).toContain('Payment Reference: pay_authoritative_123');
+    expect(hardwareText).not.toContain('Cash Received');
   });
 });

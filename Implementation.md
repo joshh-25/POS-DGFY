@@ -1,3 +1,151 @@
+# Implementation — POS Refresh White Screen Fix
+
+## Overview
+Fixed a POS white-screen-on-refresh crash caused by importing a Lucide icon that does not exist in the installed `lucide-react` version.
+The invalid icon import crashed module evaluation before React mounted, leaving the app blank after refresh.
+
+## Files Changed
+
+### [MODIFY] [frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx)
+- Replaced the unsupported `ReceiptText` icon import with the supported `Receipt` icon
+- Removed the module bootstrap crash that prevented POS from mounting on refresh
+
+## Result
+- POS no longer becomes white/blank on refresh
+- The app root mounts correctly after reload
+- No browser `pageerror` remains on the refresh path
+
+---
+
+# Implementation — Online Pickup Queue Action Routing And Active Order Modal
+
+## Overview
+Fixed the online-order queue so active pickup/delivery orders no longer open receipt/history views when the operator chooses `Open Order` or `Print Order`.
+Added a reusable active-order modal backed by the live order record, updated queue button behavior, and removed the active-shift requirement from online order status updates so queue confirmations can run in admin review mode.
+
+## Files Changed
+
+### [NEW] [frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx)
+- Added a reusable active-order modal for incoming online orders
+- Displays customer details, contact data, order number, pickup time, items, quantities, totals, payment status, order status, and notes
+- Includes a `Print Order` action for the active order copy
+
+### [MODIFY] [frontend/src/features/pos/pages/TerminalPage.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/pages/TerminalPage.jsx)
+- Replaced queue `Open Order` routing from receipt preview to live order-detail loading
+- Added active-order modal state, open/close handling, and print handling
+- Kept history routing only for receipt-history actions
+
+### [MODIFY] [frontend/src/features/pos/components/orderFulfillmentUi.js](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/orderFulfillmentUi.js)
+- Updated queue utility actions so active online orders use `open_order` and `print_order`
+- Kept receipt history as a separate completed-order action
+- Improved fulfillment action labels for pickup completion (`Picked Up`) and delivery completion (`Delivered`)
+
+### [MODIFY] [frontend/src/features/pos/components/TerminalSidebarPanel.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalSidebarPanel.jsx)
+- Rewired active queue buttons to the new order modal flow
+- Renamed `View Request`/`Print Receipt` active-order actions to `Print Order`
+- Removed the active-shift disable guard from queue status actions
+
+### [MODIFY] [frontend/src/features/pos/components/TerminalOperationsPanels.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsPanels.jsx)
+- Rewired active queue buttons to the new order modal flow
+- Renamed `View Request`/`Print Receipt` active-order actions to `Print Order`
+- Removed the active-shift disable guard from queue status actions
+
+### [MODIFY] [backend/src/modules/pos/usecases/posUseCases.js](C:/xampp/htdocs/POS-DGFY/backend/src/modules/pos/usecases/posUseCases.js)
+- Removed the open-shift requirement from online order lifecycle status updates
+- Preserved transaction-ID-based status mutation and existing lifecycle validation
+
+## Result
+- `Open Order` now opens the active customer order, not receipt history
+- `Print Order` now targets the active order, not history receipt search
+- `History Receipt` remains a separate completed-order path
+- Pickup confirmations can run from the online-order queue without a shift-only blocker
+
+---
+
+# Implementation — Storefront Customer Access Mode Auto-Save
+
+## Overview
+Changed the Storefront Customer Access Mode cards so clicking a mode immediately persists `customer_access_mode` without requiring the main Storefront Save button.
+The update only saves that single setting, refreshes the runtime/effective mode state, and preserves other unsaved storefront draft fields.
+
+## Files Changed
+
+### [MODIFY] [frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx)
+- Added a dedicated auto-save handler for `customer_access_mode`
+- Switched the hidden select and mode cards to use field-level persistence through `updateSettingByKey(...)`
+- Added rollback on failure so the selected card does not stay changed when the save fails
+- Disabled repeated clicks while the auto-save is in progress and surfaced a saving state in the selected badge
+
+## Result
+- Clicking `Ghost`, `Catalog Only`, `Inquiry`, or `Transaction` now saves immediately
+- Other unsaved storefront fields remain as local draft changes until the user explicitly saves them
+- Failed mode saves revert to the previous selected card instead of leaving a false saved state
+
+---
+
+# Implementation — POS Receipt Company Icon And Item Fallback Image
+
+## Overview
+Wired the configured company icon into POS receipt settings and reused that same icon as the default item-image fallback when catalog items have no uploaded photo.
+This keeps the receipt branded and prevents empty/broken item cards in POS when product images are missing.
+
+## Files Changed
+
+### [MODIFY] [frontend/src/features/pos/components/POSCheckoutTerminal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Load `storefront_profile_image_url` into POS receipt settings
+- Reuse the company icon as the primary fallback image for POS item cards
+- Keep the existing static DGFY asset only as the last-resort fallback
+
+### [MODIFY] [frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx)
+- Load `storefront_profile_image_url` into receipt settings
+- Use the company icon as the default item image when catalog items have no uploaded picture
+- Fall back to the static DGFY asset only if no company icon is configured
+
+### [MODIFY] [frontend/src/features/pos/__tests__/receiptContractConformance.contract.test.js](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/__tests__/receiptContractConformance.contract.test.js)
+- Added coverage confirming the configured company icon renders in the receipt preview
+
+## Result
+- Receipt preview/printing can now show the configured company icon
+- POS item cards no longer default to an empty visual when an item image is missing
+- The company icon is reused consistently as the fallback branding asset
+
+---
+
+# Implementation — POS Online-Only DGFY Platform Fee
+
+## Overview
+Changed the 1% DGFY platform fee so it applies only to online storefront orders.
+In-store POS checkout no longer computes, shows, or persists this fee.
+Storefront online checkout remains unchanged and continues using its existing fee path.
+
+## Files Changed
+
+### [MODIFY] [backend/src/modules/pos/usecases/posUseCases.js](C:/xampp/htdocs/POS-DGFY/backend/src/modules/pos/usecases/posUseCases.js)
+- Gate `resolveCheckoutServiceFee(...)` by `order_source`
+- Return zero fee for normal in-store POS checkout
+- Preserve fee snapshots only for online-order payloads
+
+### [MODIFY] [frontend/src/features/pos/components/POSCheckoutTerminal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Stop precomputing the 1% DGFY fee for in-store POS cart totals
+- Remove the fee row from the current-sale totals block
+- Replace fee helper copy so the POS UI explicitly says online-order fees do not apply to in-store checkout
+- Rename terminal setup label from `DGFY Global Fee Policy` to `DGFY Online Fee Policy`
+
+### [MODIFY] [frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx)
+- Stop precomputing the 1% DGFY fee for the SKUpervisor POS checkout surface
+- Remove the fee row from totals
+- Replace the helper card text to clarify the fee is online-order only
+
+### [MODIFY] [frontend/src/features/pos/components/TerminalSidebarPanel.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalSidebarPanel.jsx)
+- Rename sidebar policy text from `DGFY Global Fee Policy` to `DGFY Online Fee Policy`
+
+## Result
+- In-store POS transactions no longer add the 1% DGFY fee
+- Online storefront orders keep their existing fee behavior
+- Receipt/history totals for new POS sales align with the new rule because the backend persisted amount is now zero for in-store checkout
+
+---
+
 # Implementation — New Online Order Notification Sound (APK)
 
 ## Overview
@@ -1497,4 +1645,678 @@ Redesign the "Add POS Item" and "Edit Item" modals inside the POS Management Pan
 
 - `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
 - `docs/Plan.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-09 — Implement global customer name validation, statutory receipt fields, admin discount PIN bypass, refined items toggles, and updated close shift flow
+
+### Error or problem
+
+The POS checkout system had several user flow bottlenecks and layout issues:
+1. Customer names were not required for promotional, employee, or manual discounts.
+2. Statutory discount fields (SC/PWD ID number and Signature lines) were printed unconditionally on all receipts.
+3. Administrators applying employee discounts were forced to enter a separate manager approval PIN and employee ID, which slowed down the checkout process for admin-level operators.
+4. Close shift operations cleared the user session and locked the terminal, forcing redundant logouts and login prompts.
+5. In the Items workspace, the toggle switches for "Always Available" and "Senior/PWD Eligible" were raw button elements lacking standard UI Switch integration and state updates for catalog overrides.
+6. The terminal sidebar displayed printer details and drawer controls in the receipt preview wrapper, which was too heavy for basic order confirmation.
+
+### Confirmed cause
+
+- Validation logic did not enforce customer names for non-statutory discounts.
+- Receipt components printed statutory elements regardless of discount type as long as any discount object was present.
+- The `checkoutPosUseCase` and `verifyPosDiscountApprovalUseCase` lacked user role checking to waive the PIN requirement.
+- Shift closure handlers automatically invoked logout/session clearing and set the terminal locked state to true.
+- The custom Switch toggles in `ItemFormModal.jsx` and `TerminalOperationsWorkspace.jsx` did not use standard Switch components, and catalog overrides did not update on saving.
+
+### Implemented solution
+
+- **Customer Name requirement**: Enforced customer name validation for all promo, employee, and manual discounts in `posDiscountPolicy.js` and `POSCheckoutTerminal.jsx`. Repositioned the Customer Name field to display globally for all discount types.
+- **Conditional Statutory Receipt Fields**: Restricted printing of ID number and signature lines in `ReceiptPrintView.jsx` and `iminHardwareBridge.js` to only Senior Citizen and PWD statutory discount types.
+- **Admin PIN Bypass**: Configured the backend use cases to recognize admin/master admin roles and bypass PIN verification for employee discounts, marking them as `self_approved = true`.
+- **Optional Employee Fields**: Modified the validation schema and input forms to make Employee ID and Employee Name optional fields, clearing them out when not specified instead of failing.
+- **Exempt History from Active Shift**: Added `'history'` to the shift-exempt view modes in `TerminalPage.jsx` and updated `TerminalWorkspaceSidebar.jsx` navigation to allow accessing history without an active shift.
+- **Refined Close Shift Flow**: Modified the shift closing handler in `TerminalPage.jsx` so closing the shift keeps the current user's session active, closes the drawer, and switches view to checkout instead of logging out the user and locking the terminal screen.
+- **Refined Items Workspace & Modals layout**: Swapped out custom toggle buttons for standard `<Switch />` components for the "Always Available" and "Senior/PWD Eligible" switches in `ItemFormModal.jsx` and `TerminalOperationsWorkspace.jsx`. Added `pos_always_available` Catalog override updating support in `ItemsPage.jsx`.
+- **Substituted Receipt Preview with Order Preview**: Replaced receipt printer controls and paper selectors inside `SkupervisorPOSCheckoutTerminal.jsx` with a dedicated, lightweight `OrderPreviewView.jsx` component that displays the items, quantities, subtotal, and tax in a clean checkout table.
+- **Removed "Open Shift" strict input disabled requirement**: Updated `TerminalSidebarPanel.jsx` to let the "Open Shift" trigger button be enabled even when float inputs/validators aren't fully populated.
+- **Updated Test Suites**: Added new test cases verifying these rules and adjusted frontend contract tests to match the restructured checkout and shift flow.
+
+### Files changed
+
+- `backend/src/modules/pos/controllers/posHandlers.js`
+- `backend/src/modules/pos/domain/posDiscountPolicy.js`
+- `backend/src/modules/pos/usecases/posUseCases.js`
+- `backend/src/validators/posValidator.js`
+- `backend/tests/posCheckout.db.integration.test.js`
+- `backend/tests/posDiscountPolicy.unit.test.js`
+- `frontend/Components/items/ItemFormModal.jsx`
+- `frontend/src/features/inventory/pages/ItemsPage.jsx`
+- `frontend/src/features/pos/__tests__/discountTypeCards.contract.test.js`
+- `frontend/src/features/pos/__tests__/posSettingsCashier.contract.test.js`
+- `frontend/src/features/pos/__tests__/receiptContractConformance.contract.test.js`
+- `frontend/src/features/pos/__tests__/terminalPairing.contract.test.js`
+- `frontend/src/features/pos/__tests__/terminalViewModeContracts.test.js`
+- `frontend/src/features/pos/components/OrderPreviewView.jsx`
+- `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `frontend/src/features/pos/components/POSTransactionHistoryPanel.jsx`
+- `frontend/src/features/pos/components/ReceiptPrintView.jsx`
+- `frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `frontend/src/features/pos/components/TerminalPageLayout.jsx`
+- `frontend/src/features/pos/components/TerminalSidebarPanel.jsx`
+- `frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx`
+- `frontend/src/features/pos/pages/TerminalPage.jsx`
+- `frontend/src/features/pos/utils/iminHardwareBridge.js`
+
+### This is the error and this is the solution
+
+- Error: Unnecessary session logging out on close shift, raw button toggles in the Items form, heavy printer status modules in receipt preview, and PIN blocks for admin users.
+- Solution: Streamline close shift without clearing sessions, integrate shadcn standard Switch components, require customer names globally, skip PIN validations for admin employee discounts, replace printer previews with lightweight order summaries, and update tests to match.
+
+---
+
+## 2026-07-09 — Redesign Order Preview Modal to wide dashboard layout
+
+### Objective
+
+Redesign the Order Preview Modal inside POS checkout history to match the dashboard-style mockup layout (Picture 1). Convert the layout from a narrow single receipt list into a wider card-divided layout with separate top header metrics, left-aligned order item summary table, and right-aligned order totals sections.
+
+### Proposed Changes
+
+- **Wider Dialog Viewport**: Change the Dialog container width to `max-w-4xl`.
+- **Top-Right Dialog Close**: Render a custom absolute-positioned `X` close button on the dialog, removing the text-based close button.
+- **Top Header Status Badge**: Implement a green receipt icon on the left, next to the title. Add a horizontal card with hashtag, calendar, and check status icons/badges for Order ID, DateTime, and transaction status.
+- **Split Columns**: Divide the modal viewport into two columns:
+  - Left column (60% width): Order Summary table listing items, quantities, unit prices, and subtotals.
+  - Right column (40% width): Order Totals breakdown and a highlighted green box for the Total Amount.
+- **Footer Buttons**: Place the Close button (`← Close` with arrow icon) on the bottom-left and the Print button on the bottom-right.
+
+### Files changed
+
+- `frontend/src/features/pos/components/OrderPreviewView.jsx`
+- `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `docs/Plan.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-09 — Compact Order Preview Modal sizing and gaps
+
+### Objective
+
+Reduce the overall size of the Order Preview dashboard modal to resolve excessive empty space, oversized padding, icons, buttons, cards, and modal width. Make it compact, clean, and screen-fit.
+
+### Proposed Changes
+
+- **Compact Modal Width**: Reduce dialog outer width from `max-w-4xl` to `max-w-3xl` for the `'order_preview'` view.
+- **Tighter Spacing & Padding**:
+  - Modal content wrapper: `p-6` -> `p-4.5`.
+  - Header: `px-6 py-5` -> `px-5 py-3.5`. Shrink icon badge to `h-9 w-9`.
+  - Footer: `px-6 py-4` -> `px-5 py-3`. Shrink button heights to `h-9` and text size.
+- **Component Shrinkage in OrderPreviewView.jsx**:
+  - Layout spacing: `space-y-5` -> `space-y-3.5`.
+  - Top details metrics card: Padding `p-4` -> `p-3`, icon sizes `h-10 w-10` -> `h-8 w-8`.
+  - Split column panels: Padding `p-5` -> `p-3.5`.
+  - Table padding: `py-3` -> `py-1.5` for rows.
+  - Totals box: Highlighted green box padding `p-3.5` -> `p-2.5`, text title size `text-sm` -> `text-xs`.
+
+### Files changed
+
+- `frontend/src/features/pos/components/OrderPreviewView.jsx`
+- `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `docs/Plan.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-09 — Force unconditionally horizontal layout inside Order Preview
+
+### Objective
+
+Force the Order Preview modal sections to lay out horizontally side-by-side on all screen viewports. Remove width-dependent media queries (`sm:`, `lg:`) from metrics grid and split panels so they do not fall back to vertical stacking inside the cashier dialog.
+
+### Proposed Changes
+
+- **Metrics Grid**: Change `grid-cols-1 sm:grid-cols-3` to unconditional `grid-cols-3`. Replace `sm:border-l sm:pl-3` with unconditional `border-l pl-3`.
+- **Split Panels Grid**: Change `grid-cols-1 lg:grid-cols-5` to unconditional `grid-cols-5`. Remove `lg:col-span-3` and `lg:col-span-2` and use `col-span-3` and `col-span-2` unconditionally.
+
+### Files changed
+
+- `frontend/src/features/pos/components/OrderPreviewView.jsx`
+- `docs/Plan.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-09 — Implement auto-adjusting dynamic height for Order/Receipt Preview modal
+
+### Objective
+
+Resolve excess empty space below the content area in the Order Preview modal by changing the modal to auto-adjust height dynamically based on its contents. Ensure sticky headers and footers are preserved and only the content scrolls when it exceeds the viewport height.
+
+### Proposed Changes
+
+- **Modal Height Classes**: Modify `POSCheckoutTerminal.jsx` DialogContent container to swap `h-[calc(100dvh-1.5rem)] sm:h-[calc(100dvh-3rem)]` for `max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)]`. This forces height to be `h-auto` while preserving max bounds.
+
+### Files changed
+
+- `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `docs/Plan.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-09 — Redesign Add POS Item Modal & Adapt Senior/PWD Eligible Toggle (Updated for Single Image Limit)
+
+### Objective
+
+Align the fields inside the "Add POS Item" modal with the horizontal side-by-side design layout shown in the reference design. Integrate the "Senior/PWD Eligible" toggle switch into the form layout neatly in its own card matching the "Always Available" toggle switch. Fix accessibility `aria-checked` attributes to pass contract tests and align the inventory list editor's label. Enforce a strict single-image upload limit per item and redesign the image upload container to match the mockup.
+
+### Proposed Changes
+
+- **Add POS Item Modal Form Layout**:
+  - Remove `sm:col-span-2` from the Item Name container wrapper so that it only spans 1 column.
+  - Remove `sm:col-span-2` from the Food Category container wrapper so that it spans 1 column and renders side-by-side with Item Name on desktop.
+  - Remove `sm:col-span-2` from the Barcode notification card wrapper so that it spans 1 column and renders side-by-side with SKU (POS Rule) on desktop.
+  - Position the "Senior/PWD Eligible" toggle switch container in the grid following SKU and Barcode (occupying the left cell of Row 5).
+  - Add `aria-checked={createForm.senior_pwd_discount_eligible}` to the create form `Switch`.
+- **Edit Item Modal Form Layout**:
+  - Remove `sm:col-span-2` from the Item Name container wrapper.
+  - Remove `sm:col-span-2` from the Food Category container wrapper.
+  - Add `aria-checked={editForm.senior_pwd_discount_eligible}` to the edit form `Switch`.
+- **Single Image Upload Zone (Create/Edit Modals)**:
+  - Restructured the left column to limit catalog/POS items to exactly 1 image.
+  - Modified the image upload target to be a clickable dashed `<label>` with instructions ("Click to upload product image", "JPG, PNG or WEBP (Max 5MB)", "Only 1 image per item...").
+  - Removed separate selection buttons and maximum limit counts ("5 image slots remaining...").
+  - Rendered preview image block with an overlay black close `X` delete button directly below the upload box.
+  - Sliced file selections to accept only the first chosen image, automatically deleting or replacing the previous selection.
+- **Inventory Item Form Modal**:
+  - Change `<Label>` text from `"Senior/PWD Discount Eligible"` to `"Senior/PWD Eligible"` in `frontend/Components/items/ItemFormModal.jsx` to satisfy the Vitest contract tests.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `frontend/Components/items/ItemFormModal.jsx`
+- `docs/Plan.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-09 — Redesign Add POS Item Modal & Adapt Senior/PWD Eligible Toggle (Updated: Removed Barcode Card)
+
+### Objective
+
+Align the fields inside the "Add POS Item" modal with the horizontal side-by-side design layout shown in the reference design. Remove the Barcode notification card entirely. Position the "Senior/PWD Eligible" toggle switch card in the grid to render side-by-side next to SKU (POS Rule). Fix accessibility `aria-checked` attributes to pass contract tests and align the inventory list editor's label. Enforce a strict single-image upload limit per item and redesign the image upload container to match the mockup.
+
+### Proposed Changes
+
+- **Add POS Item Modal Form Layout**:
+  - `[x]` Remove `sm:col-span-2` from the Item Name container wrapper so that it only spans 1 column.
+  - `[x]` Remove `sm:col-span-2` from the Food Category container wrapper so that it spans 1 column and renders side-by-side with Item Name on desktop.
+  - `[x]` **[DELETE]** The Barcode notification card wrapper entirely.
+  - `[x]` Move the "Senior/PWD Eligible" toggle switch container in the grid to be immediately after SKU (POS Rule) so that they render side-by-side (Row 4).
+  - `[x]` Add `aria-checked={createForm.senior_pwd_discount_eligible}` to the create form `Switch`.
+- **Edit Item Modal Form Layout**:
+  - `[x]` Remove `sm:col-span-2` from the Item Name container wrapper.
+  - `[x]` Remove `sm:col-span-2` from the Food Category container wrapper.
+  - `[x]` Add `aria-checked={editForm.senior_pwd_discount_eligible}` to the edit form `Switch`.
+- **Single Image Upload Zone (Create/Edit Modals)**:
+  - `[x]` Restructured the left column to limit catalog/POS items to exactly 1 image.
+  - `[x]` Modified the image upload target to be a clickable dashed `<label>` with instructions.
+  - `[x]` Removed separate selection buttons and maximum limit counts.
+  - `[x]` Rendered preview image block with an overlay black close `X` delete button directly below the upload box.
+  - `[x]` Sliced file selections to accept only the first chosen image, automatically deleting or replacing the previous selection.
+- **Inventory Item Form Modal**:
+  - `[x]` Change `<Label>` text from `"Senior/PWD Discount Eligible"` to `"Senior/PWD Eligible"` in `frontend/Components/items/ItemFormModal.jsx` to satisfy the Vitest contract tests.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `frontend/Components/items/ItemFormModal.jsx`
+- `docs/Plan.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-09 — Fix broken Edit Item image preview in POS modal and align item upload limit copy to 10 MB
+
+### Error or problem
+
+The POS `Edit Item` modal showed a broken product preview image after item image updates, and the upload guidance/error copy still incorrectly said `Max 5MB` even though the backend image upload limit had already been raised to `10 MB`.
+
+### Confirmed cause
+
+- The POS modal gallery preview in `TerminalOperationsWorkspace.jsx` rendered `editGallery[0].url` directly without normalizing stored asset paths into browser-loadable `/uploads/...` URLs.
+- Some item records can expose only `storefront_image_path` or gallery entry paths, which are not safe to render raw as `<img src>`.
+- The local POS modal constant and user-facing validation strings were still hard-coded to `5 MB`.
+
+### Implemented solution
+
+- Added `resolveStoredItemImageUrl(...)` in `TerminalOperationsWorkspace.jsx` to normalize image `url` or `path` values into valid preview URLs using the shared asset resolver.
+- Updated `normalizeStorefrontItemGallery(...)` so both primary and gallery item images use normalized preview URLs with fallback from path to `/uploads/...`.
+- Switched the POS item preview images from `object-cover` to `object-contain` to avoid unnecessary cropping in the preview box.
+- Raised the POS modal local image-size constant from `5 MB` to `10 MB`.
+- Updated the POS modal upload hint text and toast validation messages from `5 MB` to `10 MB`.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `Implementation.md`
+
+### This is the error and this is the solution
+
+- Error: the POS edit modal tried to render raw stored image paths as preview URLs and still displayed outdated `5 MB` upload copy.
+- Solution: normalize stored item image paths into valid `/uploads/...` preview URLs, use non-cropping preview fit, and align the POS modal image limit copy and validation to `10 MB`.
+
+---
+
+## 2026-07-10 — Fix destructive POS Edit Item image replacement flow causing server-error upload failures
+
+### Error or problem
+
+Replacing an item image from the POS `Edit Item` modal could show a successful image removal toast first, then fail with a generic server error during the new upload request. This left the item without its previous image even though the replacement upload did not complete.
+
+### Confirmed cause
+
+- The POS edit modal upload flow in `TerminalOperationsWorkspace.jsx` deleted the existing storefront image first.
+- After deletion, it sent the new file through the gallery upload endpoint instead of the dedicated single-image replacement endpoint.
+- If that second request failed, the old image had already been removed, which made the replacement flow destructive and unsafe.
+
+### Implemented solution
+
+- Updated the POS edit modal to use `uploadStorefrontCatalogImage(itemId, file)` for one-image replacement.
+- Removed the pre-upload `deleteStorefrontCatalogImage(itemId)` call from the replacement flow.
+- Preserved the existing success/error toast behavior while making the upload path non-destructive.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `Implementation.md`
+
+### This is the error and this is the solution
+
+- Error: the POS edit modal deleted the current image before attempting the replacement upload, then used the wrong upload path for a single-image replacement.
+- Solution: replace the image through the dedicated single-image upload endpoint and never delete the current image first.
+
+---
+
+## 2026-07-10 — Make inventory item categories inline, tenant-scoped, case-insensitive, and reusable
+
+### Error or problem
+
+The inventory Add/Edit Item flow still treated categories as a static folder dropdown. Users could not type a new category directly in the form, category reuse depended on exact casing, and duplicate records like `Shoes` and `shoes` could be created.
+
+### Confirmed cause
+
+- `ItemFormModal.jsx` exposed `product_folder` only through a fixed select list.
+- `ItemsPage.jsx` saved `product_folder` values without first resolving them against the saved folder list.
+- The backend inventory folder creation path created new folder rows directly and did not reuse an existing folder by case-insensitive name match.
+
+### Implemented solution
+
+- Replaced the Add/Edit Item category picker in `frontend/Components/items/ItemFormModal.jsx` with a typeable input plus inline suggestions and datalist autocomplete.
+- Added save-time folder resolution in `frontend/src/features/inventory/pages/ItemsPage.jsx` so item/product saves:
+  - reuse existing categories case-insensitively,
+  - auto-create a new saved category when needed,
+  - write back the canonical folder name and `folder_id`.
+- Updated folder aggregation and matching logic in `ItemsPage.jsx` to merge suggestions case-insensitively and avoid duplicate display entries by casing.
+- Updated `backend/src/modules/inventory/repositories/itemRepository.js` so folder creation trims input, rejects blank names, and reuses an existing tenant folder when the name already matches case-insensitively.
+- Updated `frontend/src/hooks/useItems.js` so `createFolder(...)` returns the created/reused folder payload after refresh, allowing the item save flow to use the persisted folder immediately.
+
+### Files changed
+
+- `frontend/Components/items/ItemFormModal.jsx`
+- `frontend/src/features/inventory/pages/ItemsPage.jsx`
+- `frontend/src/hooks/useItems.js`
+- `backend/src/modules/inventory/repositories/itemRepository.js`
+- `backend/src/modules/inventory/usecases/createFolderUseCase.js`
+- `Implementation.md`
+
+### This is the error and this is the solution
+
+- Error: category assignment was a static dropdown and could create duplicate categories with different casing instead of reusing the tenant's existing saved category.
+- Solution: make category entry inline in Add/Edit Item, autocomplete existing tenant categories, and resolve/save categories case-insensitively during item save.
+
+---
+
+## 2026-07-10 — Fix POS Add/Edit Item food category field so it is actually typeable
+
+### Error or problem
+
+The POS `Add POS Item` and `Edit Item` modals still showed `Food Category` as a locked dropdown. Users could click and see existing categories, but they could not type a new category name directly in the field.
+
+### Confirmed cause
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx` still rendered the POS food category control as a native `<select>`.
+- The save path already supported resolving and creating food category folders, but the UI control itself blocked free typing.
+
+### Implemented solution
+
+- Replaced the POS modal `Food Category` `<select>` controls in both Add and Edit Item with editable `Input` fields.
+- Added native `datalist` suggestions plus quick category chips so existing food categories still appear as suggestions without locking the field.
+- Preserved the existing POS save logic that reuses existing categories or creates a new saved category folder when needed.
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `Implementation.md`
+
+### This is the error and this is the solution
+
+- Error: the POS food category field only exposed a dropdown, so users could not type a new category.
+- Solution: convert the POS field to a plain text input with suggestions while keeping the existing save-time category creation/reuse logic.
+
+---
+
+## 2026-07-10 — Reduce POS terminal 429 risk in login/bootstrap flow
+
+### Error or problem
+
+The POS terminal could surface `429 Too Many Requests` during normal login, refresh, and terminal bootstrap flows. The resulting UI symptoms were misleading, including company lookup failures and blocked terminal startup, even when the operator had not repeatedly attempted login.
+
+### Confirmed cause
+
+- The POS login drawer in `frontend/src/features/pos/pages/TerminalPage.jsx` performed automatic email company lookup while typing and then repeated the same `/auth/lookup` request again during submit flows.
+- The backend general API limiter in `backend/src/middleware/rateLimiter.js` still counted authenticated POS bootstrap read endpoints such as settings, current user, tenant locations, catalog, and POS terminal context as generic API traffic.
+- In development, React Strict Mode and repeated bootstrap hooks amplified the problem, but the same endpoint pattern was still structurally risky for production because the production general limiter is stricter.
+
+### Implemented solution
+
+- Added cached company-token reuse in `TerminalPage.jsx` so cashier/admin/legacy POS login flows reuse the existing email-lookup result when it already resolved the same email, instead of calling `/auth/lookup` again.
+- Added a narrow authenticated POS bootstrap-read allowlist in `backend/src/middleware/rateLimiter.js` so the general limiter no longer blocks routine terminal bootstrap GET requests when the request is already authenticated and tenant-scoped.
+- Kept the dedicated auth/lookup/POS-specific limiters in place, so sensitive login and POS actions still retain route-level throttling.
+
+### Files changed
+
+- `frontend/src/features/pos/pages/TerminalPage.jsx`
+- `backend/src/middleware/rateLimiter.js`
+- `Implementation.md`
+
+### This is the error and this is the solution
+
+- Error: normal POS login/bootstrap traffic could consume generic rate-limit budget and trigger 429s with misleading company-lookup/login symptoms.
+- Solution: remove duplicate POS email-lookup requests and exempt authenticated POS bootstrap reads from the generic API limiter while preserving dedicated auth and POS throttles.
+
+---
+
+## 2026-07-10 — Restore local backend and device-bridge startup
+
+### Error or problem
+
+The local POS backend failed to start with `TypeError: minimatch is not a function`, while the device bridge failed because `@node-escpos/usb-adapter` was missing from its local installation.
+
+### Confirmed cause
+
+- The backend globally forced `minimatch` version `9.0.7`, including beneath `nodemon`, although nodemon's development watcher calls the version 3 function-style API.
+- The device bridge package and lockfile declared the USB adapter, but its ignored local `node_modules` installation was incomplete. The adapter's permissive `usb: "*"` dependency then selected USB version 3, whose exports are incompatible with the adapter.
+
+### Implemented solution
+
+- Added a scoped npm override so only `nodemon` uses `minimatch 3.1.5`; other dependency security overrides remain unchanged.
+- Restored backend and device-bridge dependencies from their existing manifests without changing application behavior.
+- Pinned the device bridge to `usb 2.18.0`, the API generation required by `@node-escpos/usb-adapter`.
+
+### Files changed
+
+- `backend/package.json`
+- `backend/package-lock.json`
+- `backend/device-bridge/package.json`
+- `backend/device-bridge/package-lock.json`
+- `Implementation.md`
+
+### This is the error and this is the solution
+
+- Error: an incompatible global `minimatch` override crashed nodemon before the API could listen, and the USB bridge could resolve an incompatible `usb` major version.
+- Solution: scope the legacy minimatch version to nodemon, pin the bridge's compatible USB API, and reinstall the locked local dependencies.
+
+---
+
+## 2026-07-10 — Add manual delivery-job foundation without changing Storefront contracts
+
+### Implemented solution
+
+- Added tenant-local `delivery_jobs` storage and a `DeliveryJob` model.
+- Delivery orders now create a single `manual` job with status `pending_dispatch` in the same database transaction as the order and lines.
+- Preserved all existing Storefront routes, checkout payloads, response shapes, and UI behavior.
+
+### Deferred deliberately
+
+- External courier dispatch, rider assignment, provider webhooks, delivery tracking URLs, event inbox/outbox processing, and inventory reservation remain separate governed phases.
+
+### Files changed
+
+- `backend/src/models/DeliveryJob.js`
+- `backend/src/models/index.js`
+- `backend/migrations/20260710000001-create-delivery-jobs.cjs`
+- `backend/src/modules/store/repositories/storeRepository.js`
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Complete POS Orders controls without changing Storefront contracts
+
+### Implemented solution
+
+- Corrected POS fulfillment labels, including `Out for Delivery`, `Appointment`, and `QR Ph`.
+- Made fulfillment action text specific to delivery, pickup, takeout, and dine-in flows.
+- Removed the unreachable incoming-queue History Receipt action and its unused navigation path; the backend only returns active fulfillment states to that queue.
+- Added a permission-gated History `Void` action with a confirmation dialog and mandatory reason. It uses the existing `POST /pos/transactions/:id/void` endpoint and refreshes history after success.
+- Included the optional `deliveryJob` association in POS transaction reads and displayed delivery provider, job status, address, contact, fee, and an assigned rider when provider data includes one.
+
+### Compatibility and deferred work
+
+- Storefront routes, payloads, responses, and UI connections were not changed.
+- Delivery job records require the existing tenant migration before delivery-job details can be read in an environment.
+- Courier dispatch, rider assignment, webhooks, tracking updates, and refunds remain separate delivery-integration work.
+
+### Files changed
+
+- `backend/src/modules/pos/repositories/posRepository.js`
+- `frontend/src/features/pos/components/orderFulfillmentUi.js`
+- `frontend/src/features/pos/components/TerminalOperationsPanels.jsx`
+- `frontend/src/features/pos/components/TerminalSidebarPanel.jsx`
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `frontend/src/features/pos/components/TerminalPageLayout.jsx`
+- `frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx`
+- `frontend/src/features/pos/components/POSTransactionHistoryPanel.jsx`
+- `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `frontend/src/features/pos/pages/TerminalPage.jsx`
+- `frontend/src/features/pos/services/posService.js`
+- `frontend/src/features/pos/__tests__/orderFulfillmentUi.test.js`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Apply delivery job schema and support local MariaDB tenants
+
+### Confirmed problem
+
+POS transaction reads failed with `Table '<tenant>.delivery_jobs' doesn't exist` because the delivery-job model was active before existing tenant schemas had received the additive table. The tenant repair registry also used the MySQL 8-only `utf8mb4_0900_ai_ci` collation, which local XAMPP MariaDB 10.4 rejects.
+
+### Implemented solution
+
+- Changed the `delivery_jobs` tenant repair DDL to the cross-compatible `utf8mb4_general_ci` collation.
+- Applied the additive tenant schema repair locally; Masu Cafe and eight other active tenant schemas received `delivery_jobs`.
+- Verified the Masu Cafe table columns, unique keys, delivery lookup indexes, and foreign keys to `pos_transactions` and `tenant_locations`.
+- Kept the committed Sequelize migration and tenant schema registry entry as the PR rollout path for new and existing tenant schemas.
+
+### Remaining local drift
+
+- One disposable QA tenant still has older unrelated POS discount schema drift whose pre-existing registry DDL uses the MySQL 8-only collation. Masu Cafe and the delivery-job rollout are healthy.
+
+### Files changed
+
+- `backend/scripts/sync-tenant-schemas.js`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Clear lint warnings, complete legacy tenant repair, and split POS operations loading
+
+### Implemented solution
+
+- Restored the three route-backed handlers to their compatibility facades' default exports, removing unused-import lint warnings without changing route behavior.
+- Removed two unused Storefront helper declarations/imports from the Store use-case module.
+- Updated the remaining discount-schema repair DDL to use `utf8mb4_general_ci`, which works on local MariaDB and MySQL 8. Existing table collations remain unchanged.
+- Lazy-loaded the POS Operations workspace and separated map/vendor bundles so terminal startup does not load optional operations and map code.
+
+### Deferred deliberately
+
+- Redis remains optional and unchanged; it is not an application failure in this local configuration.
+
+### Files changed
+
+- `backend/src/controllers/posController.js`
+- `backend/src/controllers/userController.js`
+- `backend/src/modules/store/usecases/storeUseCases.js`
+- `backend/scripts/sync-tenant-schemas.js`
+- `frontend/src/features/pos/components/TerminalPageLayout.jsx`
+- `frontend/apps/pos/vite.config.js`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Validate voids against the operator's active shift
+
+### Confirmed problem
+
+- The void action searched for an open shift using the historical transaction's terminal and location. A valid current shift on another terminal or location was rejected as closed.
+
+### Implemented solution
+
+- The POS history action now submits its current `shift_id` and terminal identity with the void request.
+- The backend requires that shift, verifies it is open and owned by the authenticated user, and no longer binds void authorization to the original transaction's terminal or location.
+- Stock reversal and fiscal void evidence remain unchanged.
+
+### Files changed
+
+- `backend/src/validators/posValidator.js`
+- `backend/src/modules/pos/usecases/posUseCases.js`
+- `backend/tests/posCheckoutFnbContracts.usecase.test.js`
+- `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Prefer an available Storefront location for checkout
+
+### Confirmed problem
+
+- Storefront retained a preferred or previously selected location even after that location was manually closed, blocking checkout although another active, open location could accept the order.
+
+### Implemented solution
+
+- Storefront now keeps a selected location only when it is both active and open.
+- Location selection now prefers an active, open branch during initial load, fallback recovery, and later location-list refreshes.
+- The manual location Open toggle remains an intentional online-order override; the business-hours schedule remains a separate time gate.
+
+### Files changed
+
+- `frontend/apps/store/src/StorefrontApp.jsx`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Enforce commercial promo expiry dates
+
+### Implemented solution
+
+- Added optional `valid_from` and `valid_until` dates to commercial promo settings.
+- Expired promos now display an `Expired` status in POS settings and are rejected by the server for both POS and Storefront checkout.
+- Existing promos without dates remain valid according to their existing active, usage-limit, and daily time-window rules.
+
+### Files changed
+
+- `backend/src/modules/shared/utils/commercialPromoPolicy.js`
+- `backend/tests/commercialPromoPolicy.unit.test.js`
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Separate promo feedback from location availability errors
+
+### Implemented solution
+
+- Promo modal feedback now contains only promo validation results.
+- Location availability failures remain in the checkout state instead of being presented as promo-code errors.
+- Display-only promo cards without a saved promo code are excluded from the usable promo list.
+
+### Files changed
+
+- `frontend/apps/store/src/StorefrontApp.jsx`
+- `frontend/apps/store/src/checkout/components/PromoCodePanel.jsx`
+- `frontend/apps/store/src/__tests__/PromoCodePanel.test.jsx`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Display all active Storefront promo codes
+
+### Confirmed problem
+
+- POS persisted multiple commercial promotions in `storefront_promos`, but the landlord discovery index and public Storefront profile exposed only the legacy single `storefront_promo` field.
+- The Storefront could therefore render only one card even when multiple active promo codes existed.
+
+### Implemented solution
+
+- Added the additive `storefront_promos` discovery-index field and migration.
+- Discovery synchronization and public profile reads now project all active, redeemable promo display fields without exposing item-targeting internals.
+- Storefront cards render the complete current promo list, suppress entries outside their validity dates, and retain legacy single-promo fallback support.
+- Promo cards flip to reveal the code and provide an explicit Copy button; copying does not apply the promo automatically.
+
+### Files changed
+
+- `backend/migrations/20260710000002-add-storefront-promos-to-discovery-index.cjs`
+- `backend/src/models/Landlord/StorefrontDiscoveryIndex.js`
+- `backend/src/services/storefrontDiscoveryIndexService.js`
+- `backend/src/modules/storefrontDiscovery/repositories/storefrontDiscoveryRepository.js`
+- `backend/src/modules/shared/utils/commercialPromoPolicy.js`
+- `frontend/apps/store/src/normalizeStorefrontPageModel.js`
+- `frontend/apps/store/src/StorefrontApp.jsx`
+- `frontend/apps/store/src/Components/storefront/sections/StorefrontPromoSection.jsx`
+- `backend/tests/commercialPromoPolicy.unit.test.js`
+- `frontend/apps/store/src/__tests__/normalizeStorefrontPageModel.test.js`
+- `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Synchronize Storefront ordering with POS shifts
+
+### Confirmed problem
+
+- An open tenant location could still reject Storefront checkout because the global `pos_open_status` setting remained `false` after a POS shift was opened.
+- The Storefront error mapper incorrectly presented this POS-ordering state as a closed location.
+
+### Implemented solution
+
+- A successful POS shift open now sets `pos_open_status` to `true`.
+- Closing the final open POS shift sets `pos_open_status` to `false`; closing one of multiple shifts keeps ordering available.
+- Storefront now identifies the POS-ordering closure separately from an inactive or closed location.
+
+### Files changed
+
+- `backend/src/modules/pos/repositories/posRepository.js`
+- `backend/src/modules/pos/usecases/posUseCases.js`
+- `frontend/apps/store/src/storefrontErrorMessages.js`
+- `frontend/apps/store/src/__tests__/storefrontErrorMessages.test.js`
+- `Implementation.md`
+
+---
+
+## 2026-07-10 — Compact responsive Open Order modal
+
+### Implemented solution
+
+- Reorganized the active-order preview into a compact horizontal desktop layout using the existing POS dialog, button, icon, typography, and color system.
+- Added a dense status strip and grouped ordered items, customer/delivery information, notes, and totals into responsive cards.
+- Kept the footer actions fixed while allowing only the modal body to scroll when content exceeds the available viewport.
+- Preserved all existing order fields, loading and error states, print behavior, and close behavior.
+
+### Files changed
+
+- `frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx`
 - `Implementation.md`

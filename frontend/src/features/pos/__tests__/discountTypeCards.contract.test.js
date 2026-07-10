@@ -30,11 +30,15 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain("discountDraft.type === 'employee'");
     expect(discountModalContent).toContain("['employee', 'manual'].includes(discountDraft.type)");
     expect(discountModalContent).toContain("discountDraft.type === 'promo'");
+    expect(discountModalContent).toContain('Customer Name');
     expect(discountModalContent).toContain('Promo Code');
     expect(discountModalContent).toContain('Approver PIN');
     expect(discountModalContent).toContain('discountDraft.approver_user_id');
+    expect(checkoutContent).toContain('signedInUserIsAdminLike');
+    expect(checkoutContent).toContain("discount_type: type");
+    expect(checkoutContent).toContain("type === 'employee' && !signedInUserIsAdminLike");
     expect(checkoutContent).toContain('verifyPosDiscountApproval');
-    expect(discountModalContent).toContain('calculateGovernedDiscount(cart, discountDraft)');
+    expect(discountModalContent).toContain('calculateGovernedDiscount(safeCart, { ...discountDraft, eligible_item_ids: safeEligibleDiscountItemIds })');
     expect(discountModalContent).toContain('handleApplyGovernedDiscount');
   });
 });

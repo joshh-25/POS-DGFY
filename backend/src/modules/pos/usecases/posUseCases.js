@@ -81,7 +81,7 @@ const CASH_EVENT_EFFECT = Object.freeze({
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
 const PERMISSION_SWITCH_LOCATION = 'pos:switch_location';
-const POS_CATALOG_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const POS_CATALOG_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
@@ -117,6 +117,10 @@ const LOCATION_SCOPE_REASON_CODES = Object.freeze({
     TERMINAL_HOME_LOCATION_REQUIRED: 'POS_TERMINAL_HOME_LOCATION_REQUIRED',
     SHIFT_LOCATION_MISMATCH: 'POS_SHIFT_LOCATION_MISMATCH'
 });
+const isAdminLikeUser = (user = {}) => {
+    const role = String(user?.role || '').trim().toLowerCase();
+    return user?.is_master_admin === true || role === 'admin';
+};
 
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -983,6 +987,11 @@ const buildShiftClosedError = () => new DomainError(
         }
     }
 );
+const POS_OPEN_STATUS_SETTING_KEY = 'pos_open_status';
+const syncStorefrontOrderingStatus = async ({ posRepository, isOpen }) => {
+    if (typeof posRepository?.updateSystemSettingValueByKey !== 'function') return;
+    await posRepository.updateSystemSettingValueByKey(POS_OPEN_STATUS_SETTING_KEY, isOpen);
+};
 
 const resolvePairingIdentityStatus = async ({ tenantId, user }) => {
     const status = await getDgfyLegacyLinkStatus({ tenantId, user });
@@ -1445,8 +1454,20 @@ export const buildListPosDiscountApproversUseCase = ({ posRepository }) => {
 };
 
 export const buildVerifyPosDiscountApprovalUseCase = ({ posRepository }) => {
-    return async ({ payload = {} } = {}) => {
+    return async ({ payload = {}, user = null } = {}) => {
         try {
+            const bypassEmployeePin = String(payload?.discount_type || '').trim().toLowerCase() === 'employee'
+                && isAdminLikeUser(user);
+            if (bypassEmployeePin) {
+                return ok({
+                    approver: {
+                        user_id: Number(user?.user_id),
+                        username: String(user?.username || '').trim(),
+                        role: String(user?.role || '').trim().toLowerCase(),
+                        bypassed_pin: true
+                    }
+                });
+            }
             const approverId = parsePositiveInt(payload.approver_user_id);
             if (!approverId) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'approver_user_id is required', { statusCode: 422 });
@@ -2537,23 +2558,30 @@ export const buildCheckoutPosUseCase = ({
                 : null;
             const governedApplication = governedResolution?.application || null;
             if (governedApplication && ['employee', 'manual'].includes(governedApplication.type)) {
-                const approverId = parsePositiveInt(governedDraft.approver_user_id);
-                if (!approverId) {
-                    throw new DomainError(
-                        DomainErrorCode.VALIDATION_FAILED,
-                        'A POS discount approver is required.',
-                        { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_REQUIRED' } }
-                    );
+                const employeeAdminBypass = governedApplication.type === 'employee' && isAdminLikeUser(user);
+                if (employeeAdminBypass) {
+                    governedApplication.manager_approval_id = Number(user?.user_id) || null;
+                    governedApplication.manager_approved_at = new Date();
+                    governedApplication.self_approved = true;
+                } else {
+                    const approverId = parsePositiveInt(governedDraft.approver_user_id);
+                    if (!approverId) {
+                        throw new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            'A POS discount approver is required.',
+                            { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_REQUIRED' } }
+                        );
+                    }
+                    const approver = await posRepository.findActiveDiscountApproverById(approverId, { transaction });
+                    const verifiedApprover = await verifyPosDiscountApprover({
+                        approver,
+                        pin: governedDraft.manager_pin,
+                        employeeUserId: governedApplication.type === 'employee' ? governedApplication.employee_id : null
+                    });
+                    governedApplication.manager_approval_id = verifiedApprover.user_id;
+                    governedApplication.manager_approved_at = new Date();
+                    governedApplication.self_approved = false;
                 }
-                const approver = await posRepository.findActiveDiscountApproverById(approverId, { transaction });
-                const verifiedApprover = await verifyPosDiscountApprover({
-                    approver,
-                    pin: governedDraft.manager_pin,
-                    employeeUserId: governedApplication.type === 'employee' ? governedApplication.employee_id : null
-                });
-                governedApplication.manager_approval_id = verifiedApprover.user_id;
-                governedApplication.manager_approved_at = new Date();
-                governedApplication.self_approved = false;
             }
             const governedCalculation = governedApplication ? calculatePosDiscount({
                 lines: preparedLines,
@@ -3034,6 +3062,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
         const reason = String(payload.reason || '').trim();
+        const activeShiftId = parsePositiveInt(payload.shift_id);
+        const activeTerminalId = sanitizeTerminalId(payload.terminal_id) || null;
         if (!normalizedTransactionId) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -3045,6 +3075,13 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'Void reason is required',
+                { statusCode: 422 }
+            ));
+        }
+        if (!activeShiftId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'An active shift is required to void a POS transaction',
                 { statusCode: 422 }
             ));
         }
@@ -3064,8 +3101,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: actorUserId,
-                terminalId: sanitizeTerminalId(existing.terminal_id) || null,
-                locationId: parsePositiveInt(existing.location_id) || null,
+                shiftId: activeShiftId,
+                terminalId: activeTerminalId,
                 transaction,
                 lock: true
             });
@@ -4395,6 +4432,7 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
             stored = await imageStorage.store({
                 itemId: normalizedItemId,
                 originalName: file.originalname,
+                reportedMime: file.mimetype,
                 tempPath: file.path
             });
 
@@ -4418,7 +4456,11 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
                 }
             }
 
-            return ok(toSerializable(data));
+            const response = toSerializable(data);
+            response.pos_image_variants = stored.image_variants || null;
+            response.pos_image_original_path = stored.original?.path || null;
+            response.pos_image_classification = stored.classification || null;
+            return ok(response);
         } catch (error) {
             if (stored && !storedCommitted) {
                 try {
@@ -4555,6 +4597,7 @@ export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageSto
                     stored = await imageStorage.store({
                         itemId: item.item_id,
                         originalName: file.originalname,
+                        reportedMime: file.mimetype,
                         tempPath: file.path
                     });
                     const updated = await posRepository.updateCatalogImage(item.item_id, {
@@ -4581,6 +4624,9 @@ export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageSto
                         surface: 'pos',
                         status: 'uploaded',
                         image_url: stored.url,
+                        image_variants: stored.image_variants || null,
+                        image_original_path: stored.original?.path || null,
+                        image_classification: stored.classification || null,
                         errors: [],
                         readiness_snapshot: readinessEnvelope?.pos_readiness || null,
                         data: toSerializable(updated)
@@ -4840,6 +4886,7 @@ export const buildOpenTerminalShiftUseCase = ({
                         }
                     });
                 }
+                await syncStorefrontOrderingStatus({ posRepository, isOpen: true });
                 const replayPayload = {
                     reused_existing: true,
                     compliance_decision: complianceDecision,
@@ -4910,6 +4957,7 @@ export const buildOpenTerminalShiftUseCase = ({
                     }
                 );
             }
+            await syncStorefrontOrderingStatus({ posRepository, isOpen: true });
             const hydratedCreated = await posRepository.getTerminalShiftById(
                 created.pos_terminal_shift_id
             );
@@ -5451,6 +5499,12 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 closed_by: normalizedUserId,
                 status: 'closed'
             });
+            if (typeof posRepository.countOpenTerminalShifts === 'function') {
+                const remainingOpenShiftCount = await posRepository.countOpenTerminalShifts();
+                if (remainingOpenShiftCount === 0) {
+                    await syncStorefrontOrderingStatus({ posRepository, isOpen: false });
+                }
+            }
 
             const replayPayload = {
                 compliance_decision: complianceDecision,
@@ -5676,14 +5730,6 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     { statusCode: 409 }
                 );
             }
-            await assertOpenShiftForPosMutation({
-                posRepository,
-                cashierId: actingUserId,
-                locationId: parsePositiveInt(existing.location_id) || null,
-                transaction,
-                lock: true
-            });
-
             const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
             if (!currentStatus) {
                 throw new DomainError(

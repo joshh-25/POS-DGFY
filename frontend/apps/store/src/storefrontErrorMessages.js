@@ -96,6 +96,9 @@ export const normalizeStorefrontErrorMessage = (error, fallback = 'Request faile
   if (normalized.includes('delivery_address is required')) {
     return 'Delivery address is required for delivery orders.';
   }
+  if (normalized.includes('storefront ordering is currently closed by the pos')) {
+    return 'Online ordering is closed because there is no active POS shift. Open a POS shift, then try again.';
+  }
   if (normalized.includes('currently closed')) {
     return 'Selected location is currently closed. Choose another location or try again later.';
   }

@@ -9,7 +9,7 @@ import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVi
 import logger from '../../../config/logger.js';
 
 const PERMISSION_EDIT_ITEMS = 'items:edit';
-const STOREFRONT_CATALOG_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const STOREFRONT_CATALOG_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const STOREFRONT_CATALOG_GALLERY_MAX_IMAGES = 5;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
@@ -75,6 +75,9 @@ const normalizeStoredGalleryEntries = (entries = []) => parseGalleryEntries(entr
   .map((entry, index) => ({
     path: entry?.path || null,
     url: entry?.url || null,
+    variants: entry?.variants && typeof entry.variants === 'object' ? entry.variants : null,
+    original_path: entry?.original_path || null,
+    classification: entry?.classification || null,
     is_primary: index === 0,
     sort_order: index
   }))
@@ -347,6 +350,7 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
       stored = await imageStorage.store({
         itemId: normalizedItemId,
         originalName: file.originalname,
+        reportedMime: file.mimetype,
         tempPath: file.path
       });
 
@@ -370,7 +374,11 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
         }
       }
 
-      return toSerializable(data);
+      const response = toSerializable(data);
+      response.storefront_image_variants = stored.image_variants || null;
+      response.storefront_image_original_path = stored.original?.path || null;
+      response.storefront_image_classification = stored.classification || null;
+      return response;
     } catch (error) {
       if (stored && !storedCommitted) {
         try {
@@ -465,12 +473,19 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
         const stored = await imageStorage.store({
           itemId: normalizedItemId,
           originalName: file.originalname,
+          reportedMime: file.mimetype,
           tempPath: file.path
         });
         storedImages.push(stored);
       }
 
-      const gallery = normalizeStoredGalleryEntries([...existingGallery, ...storedImages]);
+      const gallery = normalizeStoredGalleryEntries([...existingGallery, ...storedImages.map((stored) => ({
+        path: stored.path,
+        url: stored.url,
+        variants: stored.image_variants,
+        original_path: stored.original?.path || null,
+        classification: stored.classification || null
+      }))]);
       const primary = gallery[0] || null;
       const data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
         path: primary?.path || null,
@@ -481,7 +496,11 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
       });
       storedCommitted = true;
 
-      return toSerializable(data);
+      const response = toSerializable(data);
+      response.storefront_image_variants = primary?.variants || null;
+      response.storefront_image_original_path = primary?.original_path || null;
+      response.storefront_image_classification = primary?.classification || null;
+      return response;
     } catch (error) {
       if (!storedCommitted) {
         await Promise.all(storedImages.map(async (stored) => {
@@ -615,6 +634,7 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
           stored = await imageStorage.store({
             itemId: item.item_id,
             originalName: file.originalname,
+            reportedMime: file.mimetype,
             tempPath: file.path
           });
           const updated = await itemRepository.updateStorefrontCatalogImage(item.item_id, {
@@ -641,6 +661,9 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
             surface: 'storefront',
             status: 'uploaded',
             image_url: stored.url,
+            image_variants: stored.image_variants || null,
+            image_original_path: stored.original?.path || null,
+            image_classification: stored.classification || null,
             errors: [],
             readiness_snapshot: readinessEnvelope?.storefront_readiness || null,
             data: toSerializable(updated)

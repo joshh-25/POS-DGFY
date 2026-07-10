@@ -58,6 +58,7 @@ export default {
   updateUserRole,
   updateUserStatus,
   updateUserPermissions,
+  updatePosApprovalPin,
   getUserLocationGrants,
   updateUserLocationGrants,
   inviteUser,
