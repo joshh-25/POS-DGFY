@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: dgfy-database-foundation
-status: executing
+status: verifying
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-10T16:58:30.337Z"
+last_updated: "2026-07-10T17:20:35.504Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
-  percent: 14
+  completed_plans: 8
+  percent: 29
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 
 Phase: 02 (dgfy-database-foundation) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-10 — Phase 02 execution started
 
 Progress: [███░░░░░░░] 25%
@@ -62,6 +62,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 02 P01 | 25min | 3 tasks | 7 files |
 | Phase 02 P02 | 25min | 3 tasks | 5 files |
 | Phase 02 P03 | 12min | 4 tasks | 11 files |
+| Phase 02 P04 | 55min | 4 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,10 @@ Recent decisions affecting current work:
 - [Phase ?]: Runner: added DGFY_BUSINESS_DB_NAMES explicit target list, validated by BUSINESS_DB_NAME_PATTERN before any connection (RUN-03), for initial dgfy_business_* schema migration coverage
 - [Phase ?]: Runner: schema migration files declare meta.targetKind ('core' default / 'business') so a business foundation migration can never run against dgfy_core (or vice versa) while staying in the same migrations directory
 - [Phase ?]: dgfy_business_* tenant foundation cross-database references (dgfy_account_id, business_id, owner_dgfy_account_id, actor_dgfy_account_id) are opaque UUID columns with no foreign key, since MySQL cannot enforce FKs across separate databases
+- [Phase ?]: Runner: verify.js's migration_metadata reuses schema.js's exported buildMigrationsForKind() as the single source of truth for expected migrations per target kind
+- [Phase ?]: Runner: idempotency is derived from migration_metadata's missing_migrations per target rather than a second Umzug pending() call
+- [Phase ?]: Runner: D-23 legacy fingerprint baseline is captured once by schema migrate (never overwritten on rerun) and compared by verify — fails closed when no baseline artifact exists
+- [Phase ?]: Runner: tenant_coverage gates ok only on has_expected_schema; business_database_registry gaps are reported but never fail verification before registry rows are seeded
 
 ### Pending Todos
 
@@ -117,6 +122,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-10T16:56:10.410Z
+Last session: 2026-07-10T17:19:56.340Z
 Stopped at: Phase 2 context gathered
 Resume file: .planning/phases/02-dgfy-database-foundation/02-CONTEXT.md
