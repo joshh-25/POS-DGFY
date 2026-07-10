@@ -66,12 +66,12 @@ Plans:
   3. Developer can inspect tenant foundation tables for Staff Accounts, Assignments, Terminal identity, and tenant-local ownership metadata.
   4. Re-running schema migration and verification proves expected tables, columns, indexes, constraints, metadata records, and tenant coverage.
 
-**Plans**: 0/4 plans complete
+**Plans**: 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Runner hardening before DGFY schema migrations
+- [x] 02-01-PLAN.md — Runner hardening before DGFY schema migrations
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -163,7 +163,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Architecture and Migration Runner Contract | 4/4 | Complete    | 2026-07-10 |
-| 2. DGFY Database Foundation | 0/TBD | Not started | - |
+| 2. DGFY Database Foundation | 1/4 | In Progress|  |
 | 3. Old-to-New Migration Proof | 0/TBD | Not started | - |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 0/TBD | Not started | - |
 | 5. Compatibility and Backend-First Cutover Seam | 0/TBD | Not started | - |
