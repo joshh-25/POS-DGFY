@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
 status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-07-11T13:09:22.817Z"
+stopped_at: Completed 04-05-PLAN.md (Phase 4 complete)
+last_updated: "2026-07-11T13:25:18.267Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 04 execution started
+last_activity_desc: Completed 04-05-PLAN.md — Phase 04 complete
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 22
-  completed_plans: 20
-  percent: 43
+  completed_plans: 22
+  percent: 57
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 ## Current Position
 
-Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
-Plan: 3 of 6
-Status: Ready to execute
-Last activity: 2026-07-11 — Phase 04 execution started
+Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — COMPLETE
+Plan: 6 of 6 (04-01, 04-02, 04-03, 04-03.5, 04-04, 04-05 all complete)
+Status: Ready for Phase 5 planning
+Last activity: 2026-07-11 — Completed 04-05-PLAN.md (Wave 5: comprehensive integration/E2E tests + architecture compliance re-verification)
 
-Progress: [████░░░░░░] 43%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P03 | 30min | 8 tasks | 15 files |
 | Phase 04 P03.5 | 7min | 7 tasks | 10 files |
 | Phase 04 P04 | 8min | 9 tasks | 16 files |
+| Phase 04 P05 | 15min | 7 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -147,6 +148,9 @@ Recent decisions affecting current work:
 - [Phase 04]: Delivered a real, minimal TenantConnector (per-tenant-database Sequelize connection cache) and per-tenant-DB-backed AccountStaffAssignmentRepository in Wave 4, closing the in-memory bridging stub 04-03.5-SUMMARY.md flagged as pending Wave 4
 - [Phase 04]: tenantSessionUseCases enforce D-04/API-04 via a shared resolveTenantSession() algorithm used by both buildCreateTenantSessionUseCase and buildActivateBusinessSessionUseCase (Step 0 business-existence 404, Step 1 landlord membership 403, Step 2 tenant DB resolution 404, Step 3 tenant-local assignment 403 with owner bypass)
 - [Phase 04]: tenantContextResolver.js middleware built but left unmounted (no tenant-scoped route needs it yet in this phase); LocationRepository was NOT migrated onto the new real TenantConnector in Wave 4 — remains an in-memory Map, carried forward as a followup
+- [Phase 04]: Wave 5: all 8 new comprehensive integration/E2E test suites gated behind dedicated RUN_*_INTEGRATION env flags (no MySQL credentials reachable in this sandbox), mirroring the identical, already-accepted Wave 1-4 precedent
+- [Phase 04]: Wave 5: only API-05 and API-06 marked complete (this plan's declared frontmatter requirements); API-02/API-03 remain Pending exactly as their originating waves (04-03/04-03.5, 04-04) left them
+- [Phase 04]: Wave 5 (phase close): architecture compliance re-verified clean (0 controller-boundary/guardrail violations, 0 lint errors, no allowlist exceptions); full existing 120-test suite remains green with zero regressions after 8 new files added
 
 ### Pending Todos
 
@@ -169,6 +173,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T13:09:22.807Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-07-11T13:25:18.262Z
+Stopped at: Completed 04-05-PLAN.md (Phase 4 complete)
 Resume file: None
