@@ -41,25 +41,40 @@ const baseRepository = (overrides = {}) => ({
     update: jest.fn().mockResolvedValue(makeBusiness()),
     getMembership: jest.fn().mockResolvedValue(makeMembership()),
     listMembers: jest.fn().mockResolvedValue([makeMembership()]),
+    ...overrides
+});
+
+/**
+ * Wave 7 gap-closure (04-07-PLAN.md): staff onboarding tenant persistence
+ * mock — mirrors ./locationUseCases.test.js's `baseLocationRepository()`
+ * convention of a separate mock object for the tenant-scoped repository,
+ * distinct from `baseRepository()` (BusinessRepository, landlord-only).
+ */
+const baseStaffOnboardingRepository = (overrides = {}) => ({
     findInvitationByEmail: jest.fn().mockResolvedValue(null),
     findStaffAccountByEmail: jest.fn().mockResolvedValue(null),
     createInvitation: jest.fn().mockResolvedValue({
-        token: 'inv-token-1',
-        business_id: 'biz-1',
+        id: 1,
+        staff_account_id: null,
         email: 'staff@example.com',
-        expires_at: new Date(Date.now() + 100000)
+        status: 'pending',
+        expires_at: new Date(Date.now() + 100000),
+        accepted_at: null
     }),
     createStaffAccount: jest.fn().mockResolvedValue({
-        business_id: 'biz-1',
+        id: 10,
+        display_name: 'Staff Person',
         email: 'staff@example.com',
-        name: 'Staff Person'
+        status: 'active'
     }),
     findInvitationByToken: jest.fn().mockResolvedValue(null),
     markInvitationAccepted: jest.fn().mockResolvedValue(null),
-    createAssignment: jest.fn().mockResolvedValue({
-        business_id: 'biz-1',
-        email: 'staff@example.com',
-        token: 'inv-token-1'
+    createOrActivateAssignment: jest.fn().mockResolvedValue({
+        id: 1,
+        dgfy_account_id: 'acct-invitee',
+        staff_account_id: 10,
+        role: 'staff',
+        status: 'active'
     }),
     ...overrides
 });
@@ -375,8 +390,9 @@ describe('buildUpdateBusinessUseCase', () => {
 describe('buildOnboardStaffViaInvitationUseCase', () => {
     it('sends an invitation and returns it with a token', async () => {
         const repository = baseRepository();
+        const staffOnboardingRepository = baseStaffOnboardingRepository();
         const sendEmail = jest.fn().mockResolvedValue(undefined);
-        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, sendEmail });
+        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, staffOnboardingRepository, sendEmail });
 
         const result = await useCase({
             businessId: 'biz-1',
@@ -388,13 +404,21 @@ describe('buildOnboardStaffViaInvitationUseCase', () => {
         expect(result.isSuccess).toBe(true);
         expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'staff@example.com' }));
         expect(result.data.invitation.token).toEqual(expect.any(String));
+        // Wave 7 (04-07-PLAN.md): the token is business-scoped so accept can
+        // resolve which tenant database to look the invitation up in.
+        expect(result.data.invitation.token.startsWith('biz-1:')).toBe(true);
+        expect(staffOnboardingRepository.createInvitation).toHaveBeenCalledWith(expect.objectContaining({
+            businessId: 'biz-1',
+            email: 'staff@example.com'
+        }));
     });
 
     it('rejects a duplicate pending invitation', async () => {
-        const repository = baseRepository({
-            findInvitationByEmail: jest.fn().mockResolvedValue({ token: 'existing' })
+        const repository = baseRepository();
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
+            findInvitationByEmail: jest.fn().mockResolvedValue({ id: 1, email: 'staff@example.com', status: 'pending' })
         });
-        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, sendEmail: jest.fn() });
+        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, staffOnboardingRepository, sendEmail: jest.fn() });
 
         const result = await useCase({ businessId: 'biz-1', requestingAccountId: 'acct-1', email: 'staff@example.com' });
 
@@ -406,7 +430,8 @@ describe('buildOnboardStaffViaInvitationUseCase', () => {
         const repository = baseRepository({
             getMembership: jest.fn().mockResolvedValue(makeMembership({ role: 'member' }))
         });
-        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, sendEmail: jest.fn() });
+        const staffOnboardingRepository = baseStaffOnboardingRepository();
+        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, staffOnboardingRepository, sendEmail: jest.fn() });
 
         const result = await useCase({ businessId: 'biz-1', requestingAccountId: 'acct-2', email: 'staff@example.com' });
 
@@ -416,7 +441,8 @@ describe('buildOnboardStaffViaInvitationUseCase', () => {
 
     it('returns NOT_FOUND for a missing business', async () => {
         const repository = baseRepository({ findById: jest.fn().mockResolvedValue(null) });
-        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, sendEmail: jest.fn() });
+        const staffOnboardingRepository = baseStaffOnboardingRepository();
+        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, staffOnboardingRepository, sendEmail: jest.fn() });
 
         const result = await useCase({ businessId: 'missing', email: 'staff@example.com' });
 
@@ -428,8 +454,9 @@ describe('buildOnboardStaffViaInvitationUseCase', () => {
         const repository = baseRepository({
             findById: jest.fn().mockResolvedValue(makeBusiness({ display_name: '<script>alert(1)</script>' }))
         });
+        const staffOnboardingRepository = baseStaffOnboardingRepository();
         const sendEmail = jest.fn().mockResolvedValue(undefined);
-        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, sendEmail });
+        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, staffOnboardingRepository, sendEmail });
 
         const result = await useCase({
             businessId: 'biz-1',
@@ -447,8 +474,9 @@ describe('buildOnboardStaffViaInvitationUseCase', () => {
 
     it('rejects a malformed (non-empty but invalid) email (WR-02)', async () => {
         const repository = baseRepository();
+        const staffOnboardingRepository = baseStaffOnboardingRepository();
         const sendEmail = jest.fn();
-        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, sendEmail });
+        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, staffOnboardingRepository, sendEmail });
 
         const result = await useCase({
             businessId: 'biz-1',
@@ -459,15 +487,34 @@ describe('buildOnboardStaffViaInvitationUseCase', () => {
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('VALIDATION_FAILED');
         expect(result.error.details.field).toBe('email');
-        expect(repository.findInvitationByEmail).not.toHaveBeenCalled();
+        expect(staffOnboardingRepository.findInvitationByEmail).not.toHaveBeenCalled();
         expect(sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('returns a stable failure (never an uncaught exception) when the tenant database is unavailable', async () => {
+        const repository = baseRepository();
+        const tenantError = new Error('Tenant database is still provisioning.');
+        tenantError.name = 'TenantDatabaseUnavailableError';
+        tenantError.reason = 'provisioning';
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
+            findInvitationByEmail: jest.fn().mockRejectedValue(tenantError)
+        });
+        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, staffOnboardingRepository, sendEmail: jest.fn() });
+
+        const result = await useCase({ businessId: 'biz-1', requestingAccountId: 'acct-1', email: 'staff@example.com' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('SERVICE_UNAVAILABLE');
+        expect(result.error.statusCode).toBe(503);
+        expect(result.error.details.error_code).toBe('TENANT_DATABASE_UNAVAILABLE');
     });
 });
 
 describe('buildOnboardStaffDirectUseCase', () => {
-    it('creates a staff account immediately', async () => {
+    it('creates a staff account immediately (no assignment when no dgfyAccountId supplied)', async () => {
         const repository = baseRepository();
-        const useCase = buildOnboardStaffDirectUseCase({ repository });
+        const staffOnboardingRepository = baseStaffOnboardingRepository();
+        const useCase = buildOnboardStaffDirectUseCase({ repository, staffOnboardingRepository });
 
         const result = await useCase({
             businessId: 'biz-1',
@@ -478,30 +525,55 @@ describe('buildOnboardStaffDirectUseCase', () => {
         });
 
         expect(result.isSuccess).toBe(true);
-        expect(repository.createStaffAccount).toHaveBeenCalledWith(expect.objectContaining({
+        expect(staffOnboardingRepository.createStaffAccount).toHaveBeenCalledWith(expect.objectContaining({
             businessId: 'biz-1',
-            email: 'staff@example.com',
-            initialPassword: 'TempPass123'
+            email: 'staff@example.com'
         }));
         expect(result.data.staffAccount).toBeDefined();
+        expect(result.data.assignment).toBeUndefined();
+        expect(staffOnboardingRepository.createOrActivateAssignment).not.toHaveBeenCalled();
+    });
+
+    it('creates an active tenant assignment when a target DGFY account id is supplied (D-11)', async () => {
+        const repository = baseRepository();
+        const staffOnboardingRepository = baseStaffOnboardingRepository();
+        const useCase = buildOnboardStaffDirectUseCase({ repository, staffOnboardingRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            email: 'staff@example.com',
+            name: 'Staff Person',
+            dgfyAccountId: 'acct-invitee'
+        });
+
+        expect(result.isSuccess).toBe(true);
+        expect(staffOnboardingRepository.createOrActivateAssignment).toHaveBeenCalledWith(expect.objectContaining({
+            businessId: 'biz-1',
+            dgfyAccountId: 'acct-invitee',
+            staffAccountId: 10
+        }));
+        expect(result.data.assignment.status).toBe('active');
     });
 
     it('rejects a duplicate staff email', async () => {
-        const repository = baseRepository({
-            findStaffAccountByEmail: jest.fn().mockResolvedValue({ email: 'staff@example.com' })
+        const repository = baseRepository();
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
+            findStaffAccountByEmail: jest.fn().mockResolvedValue({ id: 1, email: 'staff@example.com' })
         });
-        const useCase = buildOnboardStaffDirectUseCase({ repository });
+        const useCase = buildOnboardStaffDirectUseCase({ repository, staffOnboardingRepository });
 
         const result = await useCase({ businessId: 'biz-1', requestingAccountId: 'acct-1', email: 'staff@example.com' });
 
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('CONFLICT');
-        expect(repository.createStaffAccount).not.toHaveBeenCalled();
+        expect(staffOnboardingRepository.createStaffAccount).not.toHaveBeenCalled();
     });
 
     it('rejects a malformed (non-empty but invalid) email (WR-02)', async () => {
         const repository = baseRepository();
-        const useCase = buildOnboardStaffDirectUseCase({ repository });
+        const staffOnboardingRepository = baseStaffOnboardingRepository();
+        const useCase = buildOnboardStaffDirectUseCase({ repository, staffOnboardingRepository });
 
         const result = await useCase({
             businessId: 'biz-1',
@@ -512,75 +584,147 @@ describe('buildOnboardStaffDirectUseCase', () => {
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('VALIDATION_FAILED');
         expect(result.error.details.field).toBe('email');
-        expect(repository.createStaffAccount).not.toHaveBeenCalled();
+        expect(staffOnboardingRepository.createStaffAccount).not.toHaveBeenCalled();
+    });
+
+    it('returns a stable failure (never an uncaught exception) when the tenant database is unreachable', async () => {
+        const repository = baseRepository();
+        const tenantError = new Error('Unable to reach the tenant database for this business.');
+        tenantError.name = 'TenantDatabaseUnavailableError';
+        tenantError.reason = 'unreachable';
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
+            findStaffAccountByEmail: jest.fn().mockRejectedValue(tenantError)
+        });
+        const useCase = buildOnboardStaffDirectUseCase({ repository, staffOnboardingRepository });
+
+        const result = await useCase({ businessId: 'biz-1', requestingAccountId: 'acct-1', email: 'staff@example.com' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('SERVICE_UNAVAILABLE');
+        expect(result.error.statusCode).toBe(503);
     });
 });
 
 describe('buildAcceptInvitationUseCase', () => {
-    it('accepts a valid invitation and creates an assignment', async () => {
-        const repository = baseRepository({
+    const businessScopedToken = 'biz-1:inv-token-1';
+
+    it('accepts a valid invitation, links/creates a staff account, and creates an assignment when a dgfyAccountId is supplied', async () => {
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
             findInvitationByToken: jest.fn().mockResolvedValue({
-                token: 'inv-token-1',
-                business_id: 'biz-1',
+                id: 1,
+                staff_account_id: null,
                 email: 'staff@example.com',
-                name: 'Staff Person',
+                status: 'pending',
                 accepted_at: null,
                 expires_at: new Date(Date.now() + 100000)
             })
         });
-        const useCase = buildAcceptInvitationUseCase({ repository });
+        const useCase = buildAcceptInvitationUseCase({ staffOnboardingRepository });
 
-        const result = await useCase({ invitationToken: 'inv-token-1' });
+        const result = await useCase({ invitationToken: businessScopedToken, dgfyAccountId: 'acct-invitee' });
 
         expect(result.isSuccess).toBe(true);
-        expect(repository.markInvitationAccepted).toHaveBeenCalledWith('inv-token-1');
-        expect(result.data.assignment).toBeDefined();
+        expect(staffOnboardingRepository.markInvitationAccepted).toHaveBeenCalledWith('biz-1', businessScopedToken);
+        expect(result.data.staffAccount).toBeDefined();
+        expect(result.data.assignment.status).toBe('active');
+    });
+
+    it('does not create an assignment when no dgfyAccountId is supplied (deferred DGFY-account linking)', async () => {
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
+            findInvitationByToken: jest.fn().mockResolvedValue({
+                id: 1,
+                staff_account_id: null,
+                email: 'staff@example.com',
+                status: 'pending',
+                accepted_at: null,
+                expires_at: new Date(Date.now() + 100000)
+            })
+        });
+        const useCase = buildAcceptInvitationUseCase({ staffOnboardingRepository });
+
+        const result = await useCase({ invitationToken: businessScopedToken });
+
+        expect(result.isSuccess).toBe(true);
+        expect(result.data.assignment).toBeUndefined();
+        expect(staffOnboardingRepository.createOrActivateAssignment).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed token with no business-id prefix', async () => {
+        const staffOnboardingRepository = baseStaffOnboardingRepository();
+        const useCase = buildAcceptInvitationUseCase({ staffOnboardingRepository });
+
+        const result = await useCase({ invitationToken: 'not-a-scoped-token' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
+        expect(staffOnboardingRepository.findInvitationByToken).not.toHaveBeenCalled();
     });
 
     it('rejects an invalid/unknown token', async () => {
-        const repository = baseRepository({ findInvitationByToken: jest.fn().mockResolvedValue(null) });
-        const useCase = buildAcceptInvitationUseCase({ repository });
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
+            findInvitationByToken: jest.fn().mockResolvedValue(null)
+        });
+        const useCase = buildAcceptInvitationUseCase({ staffOnboardingRepository });
 
-        const result = await useCase({ invitationToken: 'does-not-exist' });
+        const result = await useCase({ invitationToken: 'biz-1:does-not-exist' });
 
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
     });
 
     it('rejects an expired invitation', async () => {
-        const repository = baseRepository({
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
             findInvitationByToken: jest.fn().mockResolvedValue({
-                token: 'inv-token-1',
-                business_id: 'biz-1',
+                id: 1,
+                staff_account_id: null,
                 email: 'staff@example.com',
+                status: 'pending',
                 accepted_at: null,
                 expires_at: new Date(Date.now() - 1000)
             })
         });
-        const useCase = buildAcceptInvitationUseCase({ repository });
+        const useCase = buildAcceptInvitationUseCase({ staffOnboardingRepository });
 
-        const result = await useCase({ invitationToken: 'inv-token-1' });
+        const result = await useCase({ invitationToken: businessScopedToken });
 
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('VALIDATION_FAILED');
     });
 
-    it('rejects an already-accepted invitation', async () => {
-        const repository = baseRepository({
+    it('rejects an already-accepted invitation (replay)', async () => {
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
             findInvitationByToken: jest.fn().mockResolvedValue({
-                token: 'inv-token-1',
-                business_id: 'biz-1',
+                id: 1,
+                staff_account_id: 10,
                 email: 'staff@example.com',
+                status: 'accepted',
                 accepted_at: new Date(),
                 expires_at: new Date(Date.now() + 100000)
             })
         });
-        const useCase = buildAcceptInvitationUseCase({ repository });
+        const useCase = buildAcceptInvitationUseCase({ staffOnboardingRepository });
 
-        const result = await useCase({ invitationToken: 'inv-token-1' });
+        const result = await useCase({ invitationToken: businessScopedToken });
 
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('CONFLICT');
+        expect(staffOnboardingRepository.markInvitationAccepted).not.toHaveBeenCalled();
+    });
+
+    it('returns a stable failure (never an uncaught exception) when the tenant database is unavailable', async () => {
+        const tenantError = new Error('No tenant database is registered for this business.');
+        tenantError.name = 'TenantDatabaseUnavailableError';
+        tenantError.reason = 'missing';
+        const staffOnboardingRepository = baseStaffOnboardingRepository({
+            findInvitationByToken: jest.fn().mockRejectedValue(tenantError)
+        });
+        const useCase = buildAcceptInvitationUseCase({ staffOnboardingRepository });
+
+        const result = await useCase({ invitationToken: businessScopedToken });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
+        expect(result.error.details.error_code).toBe('NO_TENANT_DATABASE');
     });
 });
 

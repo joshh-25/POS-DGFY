@@ -67,7 +67,60 @@ const serviceUnavailableError = (message) => new DomainError(
     { statusCode: 503 }
 );
 
-const generateInvitationToken = () => crypto.randomUUID();
+const noTenantDatabaseError = () => new DomainError(
+    DomainErrorCode.RESOURCE_NOT_FOUND,
+    'No tenant database is registered for this business.',
+    { statusCode: 404, details: { error_code: 'NO_TENANT_DATABASE' } }
+);
+
+/**
+ * Wave 7 gap-closure (04-07-PLAN.md): duck-types on
+ * `error.name === 'TenantDatabaseUnavailableError'` rather than importing
+ * staffOnboardingRepository.js's class directly — mirrors
+ * ../locationUseCases.js's identical convention of not reaching into a
+ * sibling module's internals.
+ * @param {Error} error
+ */
+const isTenantDatabaseUnavailableError = (error) => Boolean(error) && error.name === 'TenantDatabaseUnavailableError';
+
+/**
+ * Maps a thrown TenantDatabaseUnavailableError to a stable
+ * ApplicationResult-ready DomainError — mirrors
+ * ../locationUseCases.js's mapTenantDatabaseError() exactly.
+ * @param {Error} error
+ */
+const mapTenantDatabaseError = (error) => {
+    if (error.reason === 'missing' || error.reason === 'not_configured') {
+        return noTenantDatabaseError();
+    }
+    return new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        error.message,
+        { statusCode: 503, details: { error_code: 'TENANT_DATABASE_UNAVAILABLE', reason: error.reason } }
+    );
+};
+
+// Wave 7 (04-07-PLAN.md): the invitation token is `${businessId}:${uuid}` —
+// a composite, opaque-to-clients token whose cleartext businessId prefix is
+// required to resolve WHICH tenant database an unauthenticated
+// `POST /invitations/:token/accept` request should look the invitation up
+// in (staff onboarding data now lives in per-business tenant databases, not
+// a single process-local Map keyed by token). The uuid suffix is still the
+// only part that matters for the persisted token_hash — this composite
+// shape does not weaken the hash-only-persistence guarantee (T-04-07-02):
+// the full raw composite token is hashed, never just the uuid part.
+const generateInvitationToken = (businessId) => `${businessId}:${crypto.randomUUID()}`;
+
+/**
+ * @param {string} rawToken
+ * @returns {string|null} the businessId prefix, or null if the token does
+ *   not have the expected `${businessId}:${uuid}` shape.
+ */
+const parseBusinessIdFromToken = (rawToken) => {
+    const separatorIndex = rawToken.indexOf(':');
+    if (separatorIndex <= 0) return null;
+    return rawToken.slice(0, separatorIndex);
+};
 
 /**
  * Translates a Sequelize unique-constraint violation (business_handle) into
@@ -274,13 +327,19 @@ export function buildUpdateBusinessUseCase({ repository }) {
  * receive a DgfyAccount or StaffAccount yet — that happens during
  * buildAcceptInvitationUseCase. Requires the requester to be the business
  * owner when requestingAccountId is supplied.
- * @param {{repository, sendEmail}} deps
+ *
+ * Wave 7 gap-closure (04-07-PLAN.md, API-02/API-04): `repository`
+ * (BusinessRepository) is used ONLY for business existence + landlord
+ * membership/owner-role access control now — invitation persistence lives
+ * in the tenant database via `staffOnboardingRepository`
+ * (StaffOnboardingRepository), closing the process-local invitation store
+ * 04-03-SUMMARY.md sanctioned as a temporary Wave 3 measure.
+ * @param {{repository, staffOnboardingRepository, sendEmail}} deps
  */
-export function buildOnboardStaffViaInvitationUseCase({ repository, sendEmail }) {
+export function buildOnboardStaffViaInvitationUseCase({ repository, staffOnboardingRepository, sendEmail }) {
     return async (input = {}) => {
         const { businessId, requestingAccountId } = input;
         const email = normalizeEmail(input.email);
-        const name = normalizeText(input.name);
 
         if (!businessId || !email) {
             return ApplicationResult.failure(validationError('businessId and email are required.'));
@@ -300,52 +359,69 @@ export function buildOnboardStaffViaInvitationUseCase({ repository, sendEmail })
             if (error) return ApplicationResult.failure(error);
         }
 
-        const existingInvitation = await repository.findInvitationByEmail(businessId, email);
-        if (existingInvitation) {
-            return ApplicationResult.failure(conflictError('An invitation is already pending for this email.'));
-        }
-        const existingStaff = await repository.findStaffAccountByEmail(businessId, email);
-        if (existingStaff) {
-            return ApplicationResult.failure(conflictError('This email is already onboarded to this business.'));
-        }
-
-        if (typeof sendEmail !== 'function') {
-            return ApplicationResult.failure(serviceUnavailableError('Staff invitation email service is unavailable.'));
-        }
-
-        const token = generateInvitationToken();
-        const expiresAt = new Date(Date.now() + INVITATION_EXPIRY_MS);
-        const invitation = await repository.createInvitation({ businessId, email, name, token, expiresAt });
-
-        const businessLabel = business.display_name || business.legal_name;
-        const businessLabelHtml = escapeHtml(businessLabel);
         try {
-            await sendEmail({
-                to: email,
-                subject: `You're invited to join ${businessLabel} on DGFY`,
-                text: `You have been invited to join ${businessLabel} on DGFY. `
-                    + `Accept your invitation using this token: ${token}`,
-                html: `<p>You have been invited to join <strong>${businessLabelHtml}</strong> on DGFY.</p>`
-                    + `<p>Accept your invitation using this token: <code>${token}</code></p>`
-            });
-        } catch (error) {
-            return ApplicationResult.failure(serviceUnavailableError('Failed to send the invitation email.'));
-        }
+            const existingInvitation = await staffOnboardingRepository.findInvitationByEmail(businessId, email);
+            if (existingInvitation) {
+                return ApplicationResult.failure(conflictError('An invitation is already pending for this email.'));
+            }
+            const existingStaff = await staffOnboardingRepository.findStaffAccountByEmail(businessId, email);
+            if (existingStaff) {
+                return ApplicationResult.failure(conflictError('This email is already onboarded to this business.'));
+            }
 
-        return ApplicationResult.success({ invitation });
+            if (typeof sendEmail !== 'function') {
+                return ApplicationResult.failure(
+                    serviceUnavailableError('Staff invitation email service is unavailable.')
+                );
+            }
+
+            const token = generateInvitationToken(businessId);
+            const expiresAt = new Date(Date.now() + INVITATION_EXPIRY_MS);
+            const invitation = await staffOnboardingRepository.createInvitation({ businessId, email, token, expiresAt });
+
+            const businessLabel = business.display_name || business.legal_name;
+            const businessLabelHtml = escapeHtml(businessLabel);
+            try {
+                await sendEmail({
+                    to: email,
+                    subject: `You're invited to join ${businessLabel} on DGFY`,
+                    text: `You have been invited to join ${businessLabel} on DGFY. `
+                        + `Accept your invitation using this token: ${token}`,
+                    html: `<p>You have been invited to join <strong>${businessLabelHtml}</strong> on DGFY.</p>`
+                        + `<p>Accept your invitation using this token: <code>${token}</code></p>`
+                });
+            } catch (error) {
+                return ApplicationResult.failure(serviceUnavailableError('Failed to send the invitation email.'));
+            }
+
+            // The raw token is only ever surfaced here (transient response +
+            // outbound email) — the persisted invitation row carries only a
+            // token_hash (T-04-07-02).
+            return ApplicationResult.success({ invitation: { ...invitation, token } });
+        } catch (tenantError) {
+            if (isTenantDatabaseUnavailableError(tenantError)) {
+                return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
+            }
+            throw tenantError;
+        }
     };
 }
 
 /**
  * Staff onboarding via direct add (D-11, sync path). Creates a StaffAccount
- * record immediately. `initialPassword` is optional metadata for the
- * owner's records only — it is NEVER used for staff login (see
- * repository.createStaffAccount()'s doc comment).
- * @param {{repository}} deps
+ * record immediately and, when `dgfyAccountId` (a target DGFY account to
+ * link) is supplied, an active tenant assignment too — staff-to-DGFY-account
+ * linking is otherwise deferred (04-07-PLAN.md's Source Audit / Deferred
+ * section: "Deferred staff-to-DGFY account linking ... are not planned").
+ * `initialPassword` is accepted for controller-body compatibility but is no
+ * longer forwarded anywhere — the real tenant staff_accounts schema has no
+ * password/credential column (see staffOnboardingRepository.js's doc
+ * comment); staff login credentials always come from their own DgfyAccount.
+ * @param {{repository, staffOnboardingRepository}} deps
  */
-export function buildOnboardStaffDirectUseCase({ repository }) {
+export function buildOnboardStaffDirectUseCase({ repository, staffOnboardingRepository }) {
     return async (input = {}) => {
-        const { businessId, requestingAccountId, initialPassword } = input;
+        const { businessId, requestingAccountId, dgfyAccountId } = input;
         const email = normalizeEmail(input.email);
         const name = normalizeText(input.name);
 
@@ -367,53 +443,108 @@ export function buildOnboardStaffDirectUseCase({ repository }) {
             if (error) return ApplicationResult.failure(error);
         }
 
-        const existingStaff = await repository.findStaffAccountByEmail(businessId, email);
-        if (existingStaff) {
-            return ApplicationResult.failure(conflictError('This email is already onboarded to this business.'));
-        }
-        const existingInvitation = await repository.findInvitationByEmail(businessId, email);
-        if (existingInvitation) {
-            return ApplicationResult.failure(conflictError('An invitation is already pending for this email.'));
-        }
+        try {
+            const existingStaff = await staffOnboardingRepository.findStaffAccountByEmail(businessId, email);
+            if (existingStaff) {
+                return ApplicationResult.failure(conflictError('This email is already onboarded to this business.'));
+            }
+            const existingInvitation = await staffOnboardingRepository.findInvitationByEmail(businessId, email);
+            if (existingInvitation) {
+                return ApplicationResult.failure(conflictError('An invitation is already pending for this email.'));
+            }
 
-        const staffAccount = await repository.createStaffAccount({ businessId, email, name, initialPassword });
-        return ApplicationResult.success({ staffAccount });
+            const staffAccount = await staffOnboardingRepository.createStaffAccount({ businessId, email, name });
+
+            let assignment = null;
+            if (dgfyAccountId) {
+                assignment = await staffOnboardingRepository.createOrActivateAssignment({
+                    businessId,
+                    dgfyAccountId,
+                    staffAccountId: staffAccount.id,
+                    role: 'staff'
+                });
+            }
+
+            const data = { staffAccount };
+            if (assignment) data.assignment = assignment;
+            return ApplicationResult.success(data);
+        } catch (tenantError) {
+            if (isTenantDatabaseUnavailableError(tenantError)) {
+                return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
+            }
+            throw tenantError;
+        }
     };
 }
 
 /**
  * Accept invitation use case. Validates the token, marks the invitation
- * accepted, and creates an assignment record. Real DgfyAccount creation for
- * the invitee is a later-wave concern (see repository doc comments).
- * @param {{repository}} deps
+ * accepted, and creates/links a StaffAccount plus (when `dgfyAccountId` is
+ * supplied — the invitee's own DGFY account) an active tenant assignment.
+ * Real DgfyAccount creation for the invitee is a later-wave concern (see
+ * staffOnboardingRepository.js's doc comments and 04-07-PLAN.md's Deferred
+ * section).
+ *
+ * Wave 7 gap-closure (04-07-PLAN.md): the invitation token's cleartext
+ * `${businessId}:${uuid}` prefix (see generateInvitationToken()'s doc
+ * comment) is parsed to resolve WHICH tenant database to look the
+ * invitation up in — required now that invitations live per-tenant rather
+ * than in one process-local Map keyed by token alone.
+ * @param {{staffOnboardingRepository}} deps
  */
-export function buildAcceptInvitationUseCase({ repository }) {
+export function buildAcceptInvitationUseCase({ staffOnboardingRepository }) {
     return async (input = {}) => {
-        const token = String(input.invitationToken || '').trim();
-        if (!token) {
+        const rawToken = String(input.invitationToken || '').trim();
+        if (!rawToken) {
             return ApplicationResult.failure(validationError('invitationToken is required.'));
         }
 
-        const invitation = await repository.findInvitationByToken(token);
-        if (!invitation) {
+        const businessId = parseBusinessIdFromToken(rawToken);
+        if (!businessId) {
             return ApplicationResult.failure(notFoundError('Invitation not found or invalid.'));
         }
-        if (invitation.accepted_at) {
-            return ApplicationResult.failure(conflictError('This invitation has already been accepted.'));
-        }
-        if (invitation.expires_at && new Date(invitation.expires_at).getTime() < Date.now()) {
-            return ApplicationResult.failure(validationError('This invitation has expired.'));
-        }
 
-        await repository.markInvitationAccepted(token);
-        const assignment = await repository.createAssignment({
-            businessId: invitation.business_id,
-            email: invitation.email,
-            name: invitation.name,
-            token
-        });
+        try {
+            const invitation = await staffOnboardingRepository.findInvitationByToken(businessId, rawToken);
+            if (!invitation) {
+                return ApplicationResult.failure(notFoundError('Invitation not found or invalid.'));
+            }
+            if (invitation.status === 'accepted') {
+                return ApplicationResult.failure(conflictError('This invitation has already been accepted.'));
+            }
+            if (invitation.expires_at && new Date(invitation.expires_at).getTime() < Date.now()) {
+                return ApplicationResult.failure(validationError('This invitation has expired.'));
+            }
 
-        return ApplicationResult.success({ assignment });
+            await staffOnboardingRepository.markInvitationAccepted(businessId, rawToken);
+
+            let staffAccount = await staffOnboardingRepository.findStaffAccountByEmail(businessId, invitation.email);
+            if (!staffAccount) {
+                staffAccount = await staffOnboardingRepository.createStaffAccount({
+                    businessId,
+                    email: invitation.email
+                });
+            }
+
+            let assignment = null;
+            if (input.dgfyAccountId) {
+                assignment = await staffOnboardingRepository.createOrActivateAssignment({
+                    businessId,
+                    dgfyAccountId: input.dgfyAccountId,
+                    staffAccountId: staffAccount.id,
+                    role: 'staff'
+                });
+            }
+
+            const data = { staffAccount };
+            if (assignment) data.assignment = assignment;
+            return ApplicationResult.success(data);
+        } catch (tenantError) {
+            if (isTenantDatabaseUnavailableError(tenantError)) {
+                return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
+            }
+            throw tenantError;
+        }
     };
 }
 

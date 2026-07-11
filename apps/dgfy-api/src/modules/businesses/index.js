@@ -21,6 +21,10 @@ export {
     buildAccountStaffAssignmentRepository
 } from './repositories/accountStaffAssignmentRepository.js';
 export {
+    StaffOnboardingRepository,
+    buildStaffOnboardingRepository
+} from './repositories/staffOnboardingRepository.js';
+export {
     buildCreateBusinessUseCase,
     buildListUserBusinessesUseCase,
     buildGetBusinessUseCase,
@@ -55,6 +59,7 @@ import { BusinessRepository } from './repositories/businessRepository.js';
 import { LocationRepository } from './repositories/locationRepository.js';
 import { BusinessDatabaseRegistryRepository } from './repositories/businessDatabaseRegistryRepository.js';
 import { AccountStaffAssignmentRepository } from './repositories/accountStaffAssignmentRepository.js';
+import { StaffOnboardingRepository } from './repositories/staffOnboardingRepository.js';
 import {
     buildCreateBusinessUseCase,
     buildListUserBusinessesUseCase,
@@ -96,59 +101,71 @@ import { TenantConnector } from '../../infra/tenantConnector.js';
  * divergent repository instance (and its own separate in-memory staff/
  * invitation stores) that a plain module-level singleton export would risk.
  *
- * `locationRepository` (Wave 3.5, D-12) is also exposed for the same
- * reason — it is a separate, tenant-scoped repository (see
- * repositories/locationRepository.js's doc comment for its in-memory
- * bridging-strategy caveat), but every location use case still needs the
- * SAME BusinessRepository instance for membership/owner-role access
- * control checks (membership lives in the landlord dgfy_core database).
+ * `locationRepository` (Wave 3.5, D-12; refactored onto the real
+ * TenantConnector in Wave 7, 04-07-PLAN.md Task 1) is also exposed for the
+ * same reason — it is a separate, tenant-scoped repository, but every
+ * location use case still needs the SAME BusinessRepository instance for
+ * membership/owner-role access control checks (membership lives in the
+ * landlord dgfy_core database).
  *
  * Wave 4 (D-14, API-04) additions: `businessDatabaseRegistryModel` is
  * OPTIONAL (unlike businessModel/businessMembershipModel) so this stays
  * backward compatible with every pre-existing caller/test that constructs
  * this module without it (businessRepository.test.js, locationRoutes.test.js,
  * etc.) — when omitted, `activateBusinessSession` gracefully returns a 503
- * ("Tenant database registry is not configured") instead of throwing.
- * `tenantConnector` defaults to a fresh TenantConnector instance (reusing
- * this service's own DB connection env vars) but can be overridden (e.g. a
- * test double, or a shared singleton from routes/index.js).
+ * ("Tenant database registry is not configured") instead of throwing, and
+ * (Wave 7) `locationRepository`/`staffOnboardingRepository` operations fail
+ * closed the same way. `tenantConnector` defaults to a fresh TenantConnector
+ * instance (reusing this service's own DB connection env vars) but can be
+ * overridden (e.g. a test double, or a shared singleton from routes/index.js).
  *
- * @param {{businessModel, businessMembershipModel, sequelize?, sendEmail?: Function, locationModel?: Object, businessDatabaseRegistryModel?: Object, tenantConnector?: Object}} deps
+ * @param {{businessModel, businessMembershipModel, sequelize?, sendEmail?: Function, businessDatabaseRegistryModel?: Object, tenantConnector?: Object}} deps
  */
 export function buildBusinessesModule({
     businessModel,
     businessMembershipModel,
     sequelize,
     sendEmail: sendEmailOverride,
-    locationModel,
     businessDatabaseRegistryModel,
     tenantConnector: tenantConnectorOverride
 } = {}) {
     const repository = new BusinessRepository({ businessModel, businessMembershipModel, sequelize });
-    const locationRepository = new LocationRepository({ locationModel });
     const businessDatabaseRegistryRepository = businessDatabaseRegistryModel
         ? new BusinessDatabaseRegistryRepository({ businessDatabaseRegistryModel })
         : null;
     const tenantConnector = tenantConnectorOverride || new TenantConnector();
+    const locationRepository = new LocationRepository({ tenantConnector, businessDatabaseRegistryRepository });
     const accountStaffAssignmentRepository = new AccountStaffAssignmentRepository({ tenantConnector });
+    const staffOnboardingRepository = new StaffOnboardingRepository({
+        tenantConnector,
+        businessDatabaseRegistryRepository,
+        accountStaffAssignmentRepository
+    });
 
     return {
         repository,
         locationRepository,
         businessDatabaseRegistryRepository,
         accountStaffAssignmentRepository,
+        staffOnboardingRepository,
         tenantConnector,
         useCases: {
             createBusiness: buildCreateBusinessUseCase({ repository, businessDatabaseRegistryRepository }),
             listUserBusinesses: buildListUserBusinessesUseCase({ repository }),
             getBusiness: buildGetBusinessUseCase({ repository }),
             updateBusiness: buildUpdateBusinessUseCase({ repository }),
+            // Wave 7 gap-closure (04-07-PLAN.md, API-02/API-04): staff
+            // onboarding tenant persistence now flows through
+            // staffOnboardingRepository; `repository` (BusinessRepository)
+            // is still used for business existence + landlord membership/
+            // owner-role access control only.
             onboardStaffViaInvitation: buildOnboardStaffViaInvitationUseCase({
                 repository,
+                staffOnboardingRepository,
                 sendEmail: sendEmailOverride || sendEmail
             }),
-            onboardStaffDirect: buildOnboardStaffDirectUseCase({ repository }),
-            acceptInvitation: buildAcceptInvitationUseCase({ repository }),
+            onboardStaffDirect: buildOnboardStaffDirectUseCase({ repository, staffOnboardingRepository }),
+            acceptInvitation: buildAcceptInvitationUseCase({ staffOnboardingRepository }),
             listBusinessMembers: buildListBusinessMembersUseCase({ repository }),
 
             // Wave 3.5 (D-12): location/branch management use cases.

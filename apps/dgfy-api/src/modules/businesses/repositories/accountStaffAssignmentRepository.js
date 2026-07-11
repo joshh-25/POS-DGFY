@@ -68,10 +68,11 @@ export class AccountStaffAssignmentRepository {
     }
 
     /**
-     * Creates a tenant-local assignment row — not exercised by any use
-     * case in this wave (staff onboarding still uses businessRepository's
-     * Wave 3 in-memory bridge), but provided for test seeding and forward
-     * compatibility with a future staff-onboarding-to-tenant-DB write path.
+     * Creates a tenant-local assignment row. Originally provided for test
+     * seeding/forward compatibility only; Wave 7 (04-07-PLAN.md) is the
+     * staff-onboarding-to-tenant-DB write path this doc comment anticipated
+     * — staffOnboardingRepository.js now calls this (via createOrActivate())
+     * for both the direct-add and invitation-accept flows.
      */
     async create(databaseName, { dgfyAccountId, staffAccountId, role = 'staff', status = 'active' }) {
         const model = this.resolveModel(databaseName);
@@ -84,6 +85,48 @@ export class AccountStaffAssignmentRepository {
             accepted_at: status === 'active' ? new Date() : null
         });
         return this.toPlain(record);
+    }
+
+    /**
+     * Finds a tenant-local assignment row for dgfyAccountId regardless of
+     * status (unlike findActiveAssignment(), which only matches
+     * status='active') — used by createOrActivate() to decide whether to
+     * insert or update, since the real migration's unique index on
+     * dgfy_account_id means there is at most one assignment row per account
+     * per tenant database.
+     * @param {string} databaseName
+     * @param {string} dgfyAccountId
+     */
+    async findByDgfyAccountId(databaseName, dgfyAccountId) {
+        if (!databaseName || !dgfyAccountId) return null;
+        const model = this.resolveModel(databaseName);
+        const record = await model.findOne({ where: { dgfy_account_id: dgfyAccountId } });
+        return record ? this.toPlain(record) : null;
+    }
+
+    /**
+     * Wave 7 (04-07-PLAN.md, D-11): idempotent "create or activate" used by
+     * staffOnboardingRepository.js for both direct-add (immediately active)
+     * and invitation-accept (activating a previously-invited assignment, or
+     * creating a fresh one) flows. Never violates the unique
+     * (dgfy_account_id) index — updates the existing row in place if one is
+     * found, regardless of its prior status.
+     * @param {string} databaseName
+     * @param {{dgfyAccountId, staffAccountId, role?}} args
+     */
+    async createOrActivate(databaseName, { dgfyAccountId, staffAccountId, role = 'staff' }) {
+        const model = this.resolveModel(databaseName);
+        const existing = await model.findOne({ where: { dgfy_account_id: dgfyAccountId } });
+        if (existing) {
+            await existing.update({
+                staff_account_id: staffAccountId,
+                role,
+                status: 'active',
+                accepted_at: existing.accepted_at || new Date()
+            });
+            return this.toPlain(existing);
+        }
+        return this.create(databaseName, { dgfyAccountId, staffAccountId, role, status: 'active' });
     }
 
     toPlain(model) {

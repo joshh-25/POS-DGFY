@@ -28,20 +28,6 @@ export class BusinessRepository {
         this.businessModel = businessModel;
         this.businessMembershipModel = businessMembershipModel;
         this.sequelize = sequelize || businessModel.sequelize;
-
-        // Staff onboarding (D-11) in-memory stores. Real dgfy_business_*
-        // tenant-scoped persistence (StaffAccount / account_staff_assignments)
-        // doesn't exist yet — that's Wave 4's tenant session/context binding
-        // infrastructure (04-04-PLAN.md). Per 04-03-PLAN.md Task 3's own note
-        // ("in landlord DB (invitations table or temporary storage)" /
-        // "tenant session aware; Wave 4 concern"), this uses the explicitly
-        // sanctioned "temporary storage" option rather than adding a new,
-        // out-of-scope dgfy_core table (which would be a Rule 4 architectural
-        // decision). Every process restart clears these — documented as a
-        // known limitation in 04-03-SUMMARY.md.
-        this.invitationStore = new Map();
-        this.staffAccountStore = new Map();
-        this.assignmentStore = [];
     }
 
     /**
@@ -211,86 +197,6 @@ export class BusinessRepository {
         if (!businessId || !role) return null;
         const model = await this.businessMembershipModel.findOne({ where: { business_id: businessId, role } });
         return model ? this.toPlainMembership(model) : null;
-    }
-
-    // --- Staff onboarding (D-11) — in-memory temporary storage; see the
-    // constructor's doc comment for why. ---
-
-    async createInvitation({ businessId, email, name, token, expiresAt }) {
-        const record = {
-            token,
-            business_id: businessId,
-            email: String(email || '').trim().toLowerCase(),
-            name: name || null,
-            expires_at: expiresAt,
-            accepted_at: null,
-            created_at: new Date()
-        };
-        this.invitationStore.set(token, record);
-        return { ...record };
-    }
-
-    async findInvitationByToken(token) {
-        const record = this.invitationStore.get(token);
-        return record ? { ...record } : null;
-    }
-
-    /**
-     * Finds a still-pending (not yet accepted) invitation for this
-     * business+email pair, used for duplicate-invite rejection.
-     */
-    async findInvitationByEmail(businessId, email) {
-        const normalized = String(email || '').trim().toLowerCase();
-        for (const record of this.invitationStore.values()) {
-            if (record.business_id === businessId && record.email === normalized && !record.accepted_at) {
-                return { ...record };
-            }
-        }
-        return null;
-    }
-
-    async markInvitationAccepted(token) {
-        const record = this.invitationStore.get(token);
-        if (!record) return null;
-        record.accepted_at = new Date();
-        this.invitationStore.set(token, record);
-        return { ...record };
-    }
-
-    async createStaffAccount({ businessId, email, name, initialPassword }) {
-        const normalizedEmail = String(email || '').trim().toLowerCase();
-        const key = `${businessId}:${normalizedEmail}`;
-        const record = {
-            business_id: businessId,
-            email: normalizedEmail,
-            name: name || null,
-            // CRITICAL (per 04-03-PLAN.md Task 3): initialPassword is
-            // optional metadata for the owner's records only — never stored
-            // as a credential here. Staff login credentials come from their
-            // own DgfyAccount, created during invitation acceptance.
-            has_initial_password: Boolean(initialPassword),
-            created_at: new Date()
-        };
-        this.staffAccountStore.set(key, record);
-        return { ...record };
-    }
-
-    async findStaffAccountByEmail(businessId, email) {
-        const normalizedEmail = String(email || '').trim().toLowerCase();
-        const record = this.staffAccountStore.get(`${businessId}:${normalizedEmail}`);
-        return record ? { ...record } : null;
-    }
-
-    async createAssignment({ businessId, email, name, token }) {
-        const record = {
-            business_id: businessId,
-            email: String(email || '').trim().toLowerCase(),
-            name: name || null,
-            token,
-            created_at: new Date()
-        };
-        this.assignmentStore.push(record);
-        return { ...record };
     }
 
     // --- Model <-> plain object translation ---

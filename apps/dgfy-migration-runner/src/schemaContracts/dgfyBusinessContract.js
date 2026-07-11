@@ -101,6 +101,36 @@ export const dgfyBusinessContract = {
       projectionOnly: false
     },
 
+    // Wave 7 gap-closure (04-07-PLAN.md, API-02/API-04): durable tenant-local
+    // staff invitation record. Only a token_hash is stored — the raw
+    // invitation token is never persisted (T-04-07-02). Additive migration
+    // 20260711143000-add-dgfy-business-staff-invitations.cjs implements this
+    // entry (kept separate from the original foundation migration, which
+    // predates this table and is intentionally left unchanged).
+    staff_invitations: {
+      columns: [
+        'id',
+        'staff_account_id',
+        'email',
+        'token_hash',
+        'status',
+        'expires_at',
+        'accepted_at',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: [
+        'unique_staff_invitations_token_hash',
+        'idx_staff_invitations_email',
+        'idx_staff_invitations_status'
+      ],
+      uniqueConstraints: ['unique_staff_invitations_token_hash'],
+      foreignKeys: [
+        { column: 'staff_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
     // D-14: role/permission basics needed for future tenant session checks.
     roles: {
       columns: ['id', 'name', 'description', 'created_at', 'updated_at'],
