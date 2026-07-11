@@ -40,6 +40,43 @@ const forbiddenError = (message) => new DomainError(
     { statusCode: 403 }
 );
 
+const noTenantDatabaseError = () => new DomainError(
+    DomainErrorCode.RESOURCE_NOT_FOUND,
+    'No tenant database is registered for this business.',
+    { statusCode: 404, details: { error_code: 'NO_TENANT_DATABASE' } }
+);
+
+/**
+ * Wave 7 gap-closure (04-07-PLAN.md): duck-types on
+ * `error.name === 'TenantDatabaseUnavailableError'` rather than importing
+ * locationRepository.js's class directly — mirrors this module's existing
+ * self-contained convention (see requireMembership()'s doc comment) of not
+ * reaching into a sibling module's internals.
+ * @param {Error} error
+ */
+const isTenantDatabaseUnavailableError = (error) => Boolean(error) && error.name === 'TenantDatabaseUnavailableError';
+
+/**
+ * Maps a thrown TenantDatabaseUnavailableError (missing/provisioning/
+ * inactive/unverified/unreachable/not_configured registry state) to a
+ * stable ApplicationResult-ready DomainError. `missing`/`not_configured`
+ * surface as 404 (mirrors tenantSessionUseCases.js's noTenantDatabaseError);
+ * every other reason (still provisioning, not active, unverified, or
+ * genuinely unreachable) surfaces as 503 SERVICE_UNAVAILABLE — the tenant
+ * database exists as a concept but is not currently usable.
+ * @param {Error} error
+ */
+const mapTenantDatabaseError = (error) => {
+    if (error.reason === 'missing' || error.reason === 'not_configured') {
+        return noTenantDatabaseError();
+    }
+    return new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        error.message,
+        { statusCode: 503, details: { error_code: 'TENANT_DATABASE_UNAVAILABLE', reason: error.reason } }
+    );
+};
+
 const normalizeText = (value) => {
     const trimmed = String(value || '').trim().replace(/\s+/g, ' ');
     return trimmed || null;
@@ -114,23 +151,30 @@ export function buildCreateLocationUseCase({ repository, businessRepository }) {
         const { error } = await guardBusinessAccess(businessRepository, businessId, requestingAccountId, { role: 'owner' });
         if (error) return ApplicationResult.failure(error);
 
-        const existingCount = (await repository.findAll(businessId)).length;
-        const location = await repository.create({
-            businessId,
-            name,
-            address_line: addressLine,
-            latitude: latitude ?? null,
-            longitude: longitude ?? null
-        });
+        try {
+            const existingCount = (await repository.findAll(businessId)).length;
+            const location = await repository.create({
+                businessId,
+                name,
+                address_line: addressLine,
+                latitude: latitude ?? null,
+                longitude: longitude ?? null
+            });
 
-        // If this was NOT the first location (already auto-primary) but the
-        // caller explicitly asked to make it primary, promote it now.
-        let finalLocation = location;
-        if (setAsPrimary && existingCount > 0) {
-            finalLocation = await repository.updatePrimary(businessId, location.id);
+            // If this was NOT the first location (already auto-primary) but the
+            // caller explicitly asked to make it primary, promote it now.
+            let finalLocation = location;
+            if (setAsPrimary && existingCount > 0) {
+                finalLocation = await repository.updatePrimary(businessId, location.id);
+            }
+
+            return ApplicationResult.success({ location: finalLocation });
+        } catch (tenantError) {
+            if (isTenantDatabaseUnavailableError(tenantError)) {
+                return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
+            }
+            throw tenantError;
         }
-
-        return ApplicationResult.success({ location: finalLocation });
     };
 }
 
@@ -147,9 +191,16 @@ export function buildListLocationsUseCase({ repository, businessRepository }) {
         const { error } = await guardBusinessAccess(businessRepository, businessId, requestingAccountId);
         if (error) return ApplicationResult.failure(error);
 
-        const all = await repository.findAll(businessId);
-        const locations = includeInactive ? all : all.filter((location) => location.is_active);
-        return ApplicationResult.success({ locations });
+        try {
+            const all = await repository.findAll(businessId);
+            const locations = includeInactive ? all : all.filter((location) => location.is_active);
+            return ApplicationResult.success({ locations });
+        } catch (tenantError) {
+            if (isTenantDatabaseUnavailableError(tenantError)) {
+                return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
+            }
+            throw tenantError;
+        }
     };
 }
 
@@ -166,12 +217,19 @@ export function buildGetLocationUseCase({ repository, businessRepository }) {
         const { error } = await guardBusinessAccess(businessRepository, businessId, requestingAccountId);
         if (error) return ApplicationResult.failure(error);
 
-        const location = await repository.findById(businessId, locationId);
-        if (!location) {
-            return ApplicationResult.failure(notFoundError());
-        }
+        try {
+            const location = await repository.findById(businessId, locationId);
+            if (!location) {
+                return ApplicationResult.failure(notFoundError());
+            }
 
-        return ApplicationResult.success({ location });
+            return ApplicationResult.success({ location });
+        } catch (tenantError) {
+            if (isTenantDatabaseUnavailableError(tenantError)) {
+                return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
+            }
+            throw tenantError;
+        }
     };
 }
 
@@ -189,45 +247,52 @@ export function buildUpdateLocationUseCase({ repository, businessRepository }) {
         const { error } = await guardBusinessAccess(businessRepository, businessId, requestingAccountId, { role: 'owner' });
         if (error) return ApplicationResult.failure(error);
 
-        const existing = await repository.findById(businessId, locationId);
-        if (!existing) {
-            return ApplicationResult.failure(notFoundError());
-        }
-
-        const patch = {};
-        const has = (key) => Object.prototype.hasOwnProperty.call(updates, key);
-
-        if (has('name')) {
-            const name = normalizeText(updates.name);
-            if (!name) return ApplicationResult.failure(validationError('name cannot be empty.'));
-            patch.name = name;
-        }
-        if (has('address_line')) {
-            const addressLine = normalizeText(updates.address_line);
-            if (!addressLine) return ApplicationResult.failure(validationError('address_line cannot be empty.'));
-            patch.address_line = addressLine;
-        }
-        if (has('latitude')) {
-            if (!isFiniteNumberOrNull(updates.latitude)) {
-                return ApplicationResult.failure(validationError('latitude must be numeric.'));
+        try {
+            const existing = await repository.findById(businessId, locationId);
+            if (!existing) {
+                return ApplicationResult.failure(notFoundError());
             }
-            patch.latitude = updates.latitude;
-        }
-        if (has('longitude')) {
-            if (!isFiniteNumberOrNull(updates.longitude)) {
-                return ApplicationResult.failure(validationError('longitude must be numeric.'));
-            }
-            patch.longitude = updates.longitude;
-        }
-        if (has('is_active')) {
-            if (typeof updates.is_active !== 'boolean') {
-                return ApplicationResult.failure(validationError('is_active must be a boolean.'));
-            }
-            patch.is_active = updates.is_active;
-        }
 
-        const updated = await repository.update(businessId, locationId, patch);
-        return ApplicationResult.success({ location: updated });
+            const patch = {};
+            const has = (key) => Object.prototype.hasOwnProperty.call(updates, key);
+
+            if (has('name')) {
+                const name = normalizeText(updates.name);
+                if (!name) return ApplicationResult.failure(validationError('name cannot be empty.'));
+                patch.name = name;
+            }
+            if (has('address_line')) {
+                const addressLine = normalizeText(updates.address_line);
+                if (!addressLine) return ApplicationResult.failure(validationError('address_line cannot be empty.'));
+                patch.address_line = addressLine;
+            }
+            if (has('latitude')) {
+                if (!isFiniteNumberOrNull(updates.latitude)) {
+                    return ApplicationResult.failure(validationError('latitude must be numeric.'));
+                }
+                patch.latitude = updates.latitude;
+            }
+            if (has('longitude')) {
+                if (!isFiniteNumberOrNull(updates.longitude)) {
+                    return ApplicationResult.failure(validationError('longitude must be numeric.'));
+                }
+                patch.longitude = updates.longitude;
+            }
+            if (has('is_active')) {
+                if (typeof updates.is_active !== 'boolean') {
+                    return ApplicationResult.failure(validationError('is_active must be a boolean.'));
+                }
+                patch.is_active = updates.is_active;
+            }
+
+            const updated = await repository.update(businessId, locationId, patch);
+            return ApplicationResult.success({ location: updated });
+        } catch (tenantError) {
+            if (isTenantDatabaseUnavailableError(tenantError)) {
+                return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
+            }
+            throw tenantError;
+        }
     };
 }
 
@@ -245,16 +310,23 @@ export function buildSetPrimaryLocationUseCase({ repository, businessRepository 
         const { error } = await guardBusinessAccess(businessRepository, businessId, requestingAccountId, { role: 'owner' });
         if (error) return ApplicationResult.failure(error);
 
-        const existing = await repository.findById(businessId, locationId);
-        if (!existing) {
-            return ApplicationResult.failure(notFoundError());
-        }
-        if (!existing.is_active) {
-            return ApplicationResult.failure(validationError('Cannot set an inactive location as primary.'));
-        }
+        try {
+            const existing = await repository.findById(businessId, locationId);
+            if (!existing) {
+                return ApplicationResult.failure(notFoundError());
+            }
+            if (!existing.is_active) {
+                return ApplicationResult.failure(validationError('Cannot set an inactive location as primary.'));
+            }
 
-        const updated = await repository.updatePrimary(businessId, locationId);
-        return ApplicationResult.success({ location: updated });
+            const updated = await repository.updatePrimary(businessId, locationId);
+            return ApplicationResult.success({ location: updated });
+        } catch (tenantError) {
+            if (isTenantDatabaseUnavailableError(tenantError)) {
+                return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
+            }
+            throw tenantError;
+        }
     };
 }
 
@@ -276,28 +348,35 @@ export function buildDeleteLocationUseCase({ repository, businessRepository }) {
         const { error } = await guardBusinessAccess(businessRepository, businessId, requestingAccountId, { role: 'owner' });
         if (error) return ApplicationResult.failure(error);
 
-        const existing = await repository.findById(businessId, locationId);
-        if (!existing) {
-            return ApplicationResult.failure(notFoundError());
-        }
-
-        const all = await repository.findAll(businessId);
-        const activeLocations = all.filter((location) => location.is_active);
-        if (existing.is_active && activeLocations.length <= 1) {
-            return ApplicationResult.failure(conflictError('Cannot delete the business\'s last remaining location.'));
-        }
-
-        const deleted = await repository.delete(businessId, locationId);
-
-        if (existing.is_primary && existing.is_active) {
-            const nextPrimaryCandidate = activeLocations
-                .filter((location) => location.id !== existing.id)
-                .sort((a, b) => a.id - b.id)[0];
-            if (nextPrimaryCandidate) {
-                await repository.updatePrimary(businessId, nextPrimaryCandidate.id);
+        try {
+            const existing = await repository.findById(businessId, locationId);
+            if (!existing) {
+                return ApplicationResult.failure(notFoundError());
             }
-        }
 
-        return ApplicationResult.success({ location: deleted });
+            const all = await repository.findAll(businessId);
+            const activeLocations = all.filter((location) => location.is_active);
+            if (existing.is_active && activeLocations.length <= 1) {
+                return ApplicationResult.failure(conflictError('Cannot delete the business\'s last remaining location.'));
+            }
+
+            const deleted = await repository.delete(businessId, locationId);
+
+            if (existing.is_primary && existing.is_active) {
+                const nextPrimaryCandidate = activeLocations
+                    .filter((location) => location.id !== existing.id)
+                    .sort((a, b) => a.id - b.id)[0];
+                if (nextPrimaryCandidate) {
+                    await repository.updatePrimary(businessId, nextPrimaryCandidate.id);
+                }
+            }
+
+            return ApplicationResult.success({ location: deleted });
+        } catch (tenantError) {
+            if (isTenantDatabaseUnavailableError(tenantError)) {
+                return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
+            }
+            throw tenantError;
+        }
     };
 }

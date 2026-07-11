@@ -166,6 +166,65 @@ describe('buildCreateLocationUseCase', () => {
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
     });
+
+    it('returns NO_TENANT_DATABASE (404) when the registry has no row for this business (Wave 7)', async () => {
+        const tenantError = new Error('No tenant database is registered for this business.');
+        tenantError.name = 'TenantDatabaseUnavailableError';
+        tenantError.reason = 'missing';
+        const repository = baseLocationRepository({ findAll: jest.fn().mockRejectedValue(tenantError) });
+        const businessRepository = baseBusinessRepository();
+        const useCase = buildCreateLocationUseCase({ repository, businessRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            name: 'Main Branch',
+            address_line: '123 Main St'
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
+        expect(result.error.statusCode).toBe(404);
+        expect(result.error.details.error_code).toBe('NO_TENANT_DATABASE');
+    });
+
+    it('returns a stable SERVICE_UNAVAILABLE (503) failure — never an uncaught exception — for a still-provisioning tenant database', async () => {
+        const tenantError = new Error('Tenant database is still provisioning.');
+        tenantError.name = 'TenantDatabaseUnavailableError';
+        tenantError.reason = 'provisioning';
+        const repository = baseLocationRepository({ findAll: jest.fn().mockRejectedValue(tenantError) });
+        const businessRepository = baseBusinessRepository();
+        const useCase = buildCreateLocationUseCase({ repository, businessRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            name: 'Main Branch',
+            address_line: '123 Main St'
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('SERVICE_UNAVAILABLE');
+        expect(result.error.statusCode).toBe(503);
+        expect(result.error.details.error_code).toBe('TENANT_DATABASE_UNAVAILABLE');
+        expect(result.error.details.reason).toBe('provisioning');
+    });
+
+    it('returns a stable SERVICE_UNAVAILABLE (503) failure for an unreachable tenant database, not an uncaught exception', async () => {
+        const tenantError = new Error('Unable to reach the tenant database for this business.');
+        tenantError.name = 'TenantDatabaseUnavailableError';
+        tenantError.reason = 'unreachable';
+        const repository = baseLocationRepository({ findAll: jest.fn().mockRejectedValue(tenantError) });
+        const businessRepository = baseBusinessRepository();
+        const useCase = buildCreateLocationUseCase({ repository, businessRepository });
+
+        await expect(useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            name: 'Main Branch',
+            address_line: '123 Main St'
+        })).resolves.toEqual(expect.objectContaining({ success: false }));
+    });
 });
 
 describe('buildListLocationsUseCase', () => {
@@ -178,6 +237,36 @@ describe('buildListLocationsUseCase', () => {
 
         expect(result.isSuccess).toBe(true);
         expect(result.data.locations).toEqual([]);
+    });
+
+    it('returns SERVICE_UNAVAILABLE (503) for an inactive (non-active status) tenant registry entry', async () => {
+        const tenantError = new Error('Tenant database is not active.');
+        tenantError.name = 'TenantDatabaseUnavailableError';
+        tenantError.reason = 'inactive';
+        const repository = baseLocationRepository({ findAll: jest.fn().mockRejectedValue(tenantError) });
+        const businessRepository = baseBusinessRepository();
+        const useCase = buildListLocationsUseCase({ repository, businessRepository });
+
+        const result = await useCase({ businessId: 'biz-1', requestingAccountId: 'acct-1' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('SERVICE_UNAVAILABLE');
+        expect(result.error.details.reason).toBe('inactive');
+    });
+
+    it('returns SERVICE_UNAVAILABLE (503) for an active-but-unverified tenant registry entry', async () => {
+        const tenantError = new Error('Tenant database has not been verified.');
+        tenantError.name = 'TenantDatabaseUnavailableError';
+        tenantError.reason = 'unverified';
+        const repository = baseLocationRepository({ findAll: jest.fn().mockRejectedValue(tenantError) });
+        const businessRepository = baseBusinessRepository();
+        const useCase = buildListLocationsUseCase({ repository, businessRepository });
+
+        const result = await useCase({ businessId: 'biz-1', requestingAccountId: 'acct-1' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('SERVICE_UNAVAILABLE');
+        expect(result.error.details.reason).toBe('unverified');
     });
 
     it('returns multiple locations', async () => {

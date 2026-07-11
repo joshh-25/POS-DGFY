@@ -1,68 +1,124 @@
+import defineLocationModel from '../../../models/Tenant/Location.js';
+
 // LocationRepository — Clean Architecture data access adapter for the
 // tenant-scoped `locations` domain (D-10, D-12), mirroring
-// ./businessRepository.js's role. Every location use case reaches location
-// data exclusively through this repository. No business logic lives here,
-// only data access + businessId-scoped storage.
+// ./accountStaffAssignmentRepository.js's role. Every location use case
+// reaches location data exclusively through this repository. No business
+// logic lives here, only data access + tenant-database resolution.
 //
-// KNOWN LIMITATION (Wave 3.5, mirrors 04-03-PLAN.md/04-03-SUMMARY.md's
-// identical staff-onboarding precedent for BusinessRepository): this
-// repository stores locations in an in-memory Map keyed by businessId
-// rather than a real dgfy_business_<stable_opaque_suffix> tenant MySQL
-// database, because:
-//   1. No TenantConnector exists in apps/dgfy-api yet — resolving a
-//      per-tenant database connection is explicitly Wave 4 scope
-//      (04-04-PLAN.md's key_links: "TenantConnector -> resolves
-//      per-tenant database; Phase 4 uses for tenant model access").
-//   2. No BusinessDatabaseRegistry model exists yet (also explicitly
-//      Wave 4 Task 2) to map a business_id to its tenant database_name.
-//   3. No business tenant-database *provisioning* flow exists anywhere in
-//      this codebase — apps/dgfy-migration-runner only migrates schema
-//      into *already-known* DGFY_BUSINESS_DB_NAMES targets; nothing
-//      dynamically creates a new dgfy_business_* database when
-//      POST /businesses creates a brand-new business.
-//   4. Auto-creating/syncing a tenant database's schema from live
-//      request-handling code (rather than a migration) would violate this
-//      project's explicit constraint (.planning/PROJECT.md Constraints:
-//      "Migrations run from a dedicated one-shot container ... long-running
-//      API containers must not be the primary migration execution
-//      surface").
-// Every Map is keyed by businessId, so cross-business data access is
-// structurally impossible (satisfies this plan's tenant-isolation
-// requirement at the application layer) even though the physical storage
-// isn't yet a separate per-tenant database. `locationModel` (the real
-// Sequelize model from ../../../models/Tenant/Location.js) is accepted as
-// an optional constructor dependency purely so Wave 4 can swap this
-// repository's internals for real tenant-connection-backed queries without
-// changing its call sites (locationUseCases.js) — it is NOT used for
-// persistence yet. See 04-03.5-SUMMARY.md for full rationale and the
-// human-verify checkpoint discussion.
+// Wave 7 gap-closure (04-07-PLAN.md, Task 1): CLOSES the in-memory Map
+// bridging stub 04-03.5-SUMMARY.md/04-SUMMARY.md flagged as pending —
+// locations now persist through a real per-tenant Sequelize connection
+// resolved via the injected TenantConnector, exactly like
+// ./accountStaffAssignmentRepository.js already does. `businessId` is
+// resolved to a `database_name` through the injected
+// BusinessDatabaseRegistryRepository on every call — the registry row must
+// be `status: 'active'` AND have `verified_at` populated (04-06-SUMMARY.md's
+// documented meaning of "active/verified": there is no separate 'verified'
+// enum value) before any tenant connection is attempted, so a
+// still-`provisioning`/`migrating`/`deprecated` or verification-pending
+// business can never receive a location write. Every failure path throws
+// TenantDatabaseUnavailableError (never an uncaught Sequelize/connection
+// exception) so callers (locationUseCases.js) can map it to a stable
+// ApplicationResult failure.
+export class TenantDatabaseUnavailableError extends Error {
+    /**
+     * @param {'missing'|'provisioning'|'inactive'|'unverified'|'unreachable'|'not_configured'} reason
+     * @param {string} [message]
+     */
+    constructor(reason, message) {
+        super(message || `Tenant database unavailable for this business (${reason}).`);
+        this.name = 'TenantDatabaseUnavailableError';
+        this.reason = reason;
+    }
+}
+
 export class LocationRepository {
     /**
-     * @param {{locationModel?: Object}} deps - `locationModel` is accepted
-     *   for forward-compatibility with Wave 4's real tenant-connection
-     *   wiring but is not queried by this bridging implementation.
+     * @param {{tenantConnector, businessDatabaseRegistryRepository?}} deps -
+     *   `businessDatabaseRegistryRepository` is OPTIONAL (mirrors
+     *   ../index.js's buildBusinessesModule() doc comment: it may be null
+     *   before a BusinessDatabaseRegistry model is wired up) so this
+     *   repository can always be constructed; every operation fails closed
+     *   with TenantDatabaseUnavailableError('not_configured', ...) when it
+     *   is omitted, instead of throwing at construction time.
      */
-    constructor({ locationModel } = {}) {
-        this.locationModel = locationModel || null;
-        // businessId -> Map(locationId -> plain location record)
-        this.store = new Map();
-        // businessId -> next auto-increment integer id (mirrors the real
-        // migration's INTEGER autoincrement primary key)
-        this.nextIdByBusiness = new Map();
-    }
-
-    getBusinessStore(businessId) {
-        if (!this.store.has(businessId)) {
-            this.store.set(businessId, new Map());
+    constructor({ tenantConnector, businessDatabaseRegistryRepository } = {}) {
+        if (!tenantConnector) {
+            throw new Error('LocationRepository requires a tenantConnector.');
         }
-        return this.store.get(businessId);
+        this.tenantConnector = tenantConnector;
+        this.businessDatabaseRegistryRepository = businessDatabaseRegistryRepository || null;
+        this.modelsByDatabase = new Map(); // databaseName -> Location model
     }
 
-    nextId(businessId) {
-        const current = this.nextIdByBusiness.get(businessId) || 0;
-        const next = current + 1;
-        this.nextIdByBusiness.set(businessId, next);
-        return next;
+    /**
+     * Resolves businessId to a tenant `database_name`, requiring the
+     * registry row to be active AND verified (04-06-SUMMARY.md: "verified"
+     * is status='active' + verified_at populated, not a distinct status).
+     * Throws TenantDatabaseUnavailableError for every non-writable state.
+     * @param {string} businessId
+     * @returns {Promise<string>}
+     */
+    async resolveDatabaseName(businessId) {
+        if (!this.businessDatabaseRegistryRepository) {
+            throw new TenantDatabaseUnavailableError(
+                'not_configured',
+                'Tenant database registry is not configured.'
+            );
+        }
+
+        const registryEntry = await this.businessDatabaseRegistryRepository.findByBusinessId(businessId);
+        if (!registryEntry || !registryEntry.database_name) {
+            throw new TenantDatabaseUnavailableError(
+                'missing',
+                'No tenant database is registered for this business.'
+            );
+        }
+        if (registryEntry.status === 'provisioning') {
+            throw new TenantDatabaseUnavailableError('provisioning', 'Tenant database is still provisioning.');
+        }
+        if (registryEntry.status !== 'active') {
+            throw new TenantDatabaseUnavailableError('inactive', 'Tenant database is not active.');
+        }
+        if (!registryEntry.verified_at) {
+            throw new TenantDatabaseUnavailableError('unverified', 'Tenant database has not been verified.');
+        }
+
+        return registryEntry.database_name;
+    }
+
+    resolveModel(databaseName) {
+        if (this.modelsByDatabase.has(databaseName)) {
+            return this.modelsByDatabase.get(databaseName);
+        }
+        const connection = this.tenantConnector.getConnection(databaseName);
+        const model = defineLocationModel(connection);
+        this.modelsByDatabase.set(databaseName, model);
+        return model;
+    }
+
+    /**
+     * Resolves businessId's active/verified tenant database, then runs
+     * `fn(Location)` against it. Any error surfaced while resolving the
+     * model or running the query (e.g. an unreachable tenant MySQL server)
+     * is normalized to TenantDatabaseUnavailableError('unreachable', ...)
+     * unless it is already one (never double-wrapped).
+     * @param {string} businessId
+     * @param {(model: Object) => Promise<any>} fn
+     */
+    async withModel(businessId, fn) {
+        const databaseName = await this.resolveDatabaseName(businessId);
+        try {
+            const model = this.resolveModel(databaseName);
+            return await fn(model);
+        } catch (error) {
+            if (error instanceof TenantDatabaseUnavailableError) throw error;
+            throw new TenantDatabaseUnavailableError(
+                'unreachable',
+                'Unable to reach the tenant database for this business.'
+            );
+        }
     }
 
     /**
@@ -74,115 +130,104 @@ export class LocationRepository {
     async create({ businessId, name, address_line, latitude = null, longitude = null }) {
         if (!businessId) throw new Error('LocationRepository.create requires businessId.');
 
-        const businessStore = this.getBusinessStore(businessId);
-        const isFirstLocation = businessStore.size === 0;
-        const now = new Date();
-
-        const record = {
-            id: this.nextId(businessId),
-            name,
-            address_line,
-            latitude,
-            longitude,
-            is_active: true,
-            is_primary: isFirstLocation,
-            created_at: now,
-            updated_at: now
-        };
-
-        businessStore.set(record.id, record);
-        return { ...record };
+        return this.withModel(businessId, async (Location) => {
+            const isFirstLocation = (await Location.count()) === 0;
+            const record = await Location.create({
+                name,
+                address_line,
+                latitude,
+                longitude,
+                is_active: true,
+                is_primary: isFirstLocation
+            });
+            return this.toPlain(record);
+        });
     }
 
     async findById(businessId, id) {
         if (!businessId || id === undefined || id === null) return null;
-        const businessStore = this.store.get(businessId);
-        if (!businessStore) return null;
-        const record = businessStore.get(Number(id));
-        return record ? { ...record } : null;
+        return this.withModel(businessId, async (Location) => {
+            const record = await Location.findByPk(Number(id));
+            return record ? this.toPlain(record) : null;
+        });
     }
 
     /**
-     * Case-insensitive lookup by name, scoped to businessId.
+     * Case-insensitive lookup by name, scoped to businessId (its own tenant
+     * database).
      */
     async findByName(businessId, name) {
         if (!businessId || !name) return null;
-        const businessStore = this.store.get(businessId);
-        if (!businessStore) return null;
-        const normalized = String(name).trim().toLowerCase();
-        for (const record of businessStore.values()) {
-            if (String(record.name).trim().toLowerCase() === normalized) {
-                return { ...record };
-            }
-        }
-        return null;
+        return this.withModel(businessId, async (Location) => {
+            const record = await Location.findOne({
+                where: Location.sequelize.where(
+                    Location.sequelize.fn('LOWER', Location.sequelize.col('name')),
+                    String(name).trim().toLowerCase()
+                )
+            });
+            return record ? this.toPlain(record) : null;
+        });
     }
 
     async findAll(businessId) {
         if (!businessId) return [];
-        const businessStore = this.store.get(businessId);
-        if (!businessStore) return [];
-        return Array.from(businessStore.values()).map((record) => ({ ...record }));
+        return this.withModel(businessId, async (Location) => {
+            const records = await Location.findAll({ order: [['id', 'ASC']] });
+            return records.map((record) => this.toPlain(record));
+        });
     }
 
     async findPrimary(businessId) {
         if (!businessId) return null;
-        const businessStore = this.store.get(businessId);
-        if (!businessStore) return null;
-        for (const record of businessStore.values()) {
-            if (record.is_primary) return { ...record };
-        }
-        return null;
+        return this.withModel(businessId, async (Location) => {
+            const record = await Location.findOne({ where: { is_primary: true } });
+            return record ? this.toPlain(record) : null;
+        });
     }
 
     /**
      * Partial update: only fields present on `updates` are written.
      */
     async update(businessId, id, updates = {}) {
-        const businessStore = this.store.get(businessId);
-        if (!businessStore) return null;
-        const record = businessStore.get(Number(id));
-        if (!record) return null;
+        return this.withModel(businessId, async (Location) => {
+            const record = await Location.findByPk(Number(id));
+            if (!record) return null;
 
-        const patch = {};
-        ['name', 'address_line', 'latitude', 'longitude', 'is_active'].forEach((key) => {
-            if (Object.prototype.hasOwnProperty.call(updates, key)) {
-                patch[key] = updates[key];
-            }
+            const patch = {};
+            ['name', 'address_line', 'latitude', 'longitude', 'is_active'].forEach((key) => {
+                if (Object.prototype.hasOwnProperty.call(updates, key)) {
+                    patch[key] = updates[key];
+                }
+            });
+
+            await record.update(patch);
+            return this.toPlain(record);
         });
-
-        const updated = { ...record, ...patch, updated_at: new Date() };
-        businessStore.set(record.id, updated);
-        return { ...updated };
     }
 
     /**
      * Sets newLocationId as the business's sole primary location, clearing
-     * is_primary on every other location for this business.
+     * is_primary on every other location for this business's tenant
+     * database.
      * @returns {Object|null} the updated (now-primary) location, or null if
-     *   newLocationId does not belong to businessId.
+     *   newLocationId does not exist in this tenant database.
      */
     async updatePrimary(businessId, newLocationId) {
-        const businessStore = this.store.get(businessId);
-        if (!businessStore) return null;
-        const target = businessStore.get(Number(newLocationId));
-        if (!target) return null;
+        return this.withModel(businessId, async (Location) => {
+            const target = await Location.findByPk(Number(newLocationId));
+            if (!target) return null;
 
-        const now = new Date();
-        for (const record of businessStore.values()) {
-            if (record.is_primary && record.id !== target.id) {
-                businessStore.set(record.id, { ...record, is_primary: false, updated_at: now });
-            }
-        }
-
-        const updated = { ...target, is_primary: true, updated_at: now };
-        businessStore.set(updated.id, updated);
-        return { ...updated };
+            await Location.update({ is_primary: false }, { where: { is_primary: true } });
+            await target.reload();
+            await target.update({ is_primary: true });
+            return this.toPlain(target);
+        });
     }
 
     /**
-     * Soft delete: sets is_active=false. Record remains in the store (and
-     * findAll()) so callers can inspect it and, if desired, restore() it.
+     * Soft delete: sets is_active=false. Record remains in the tenant table
+     * (and findAll()) so callers can inspect it and, if desired, restore()
+     * it.
      */
     async delete(businessId, id) {
         return this.update(businessId, id, { is_active: false });
@@ -194,10 +239,26 @@ export class LocationRepository {
     async restore(businessId, id) {
         return this.update(businessId, id, { is_active: true });
     }
+
+    toPlain(model) {
+        if (!model) return null;
+        const plain = typeof model.get === 'function' ? model.get({ plain: true }) : model;
+        return {
+            id: plain.id,
+            name: plain.name,
+            address_line: plain.address_line,
+            latitude: plain.latitude,
+            longitude: plain.longitude,
+            is_active: plain.is_active,
+            is_primary: plain.is_primary,
+            created_at: plain.created_at,
+            updated_at: plain.updated_at
+        };
+    }
 }
 
 /**
- * @param {{locationModel?: Object}} [deps]
+ * @param {{tenantConnector, businessDatabaseRegistryRepository?}} [deps]
  * @returns {LocationRepository}
  */
 export const buildLocationRepository = (deps) => new LocationRepository(deps);

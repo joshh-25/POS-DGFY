@@ -1,192 +1,281 @@
+import crypto from 'crypto';
+import { Sequelize } from 'sequelize';
 import { LocationRepository } from '../../../src/modules/businesses/repositories/locationRepository.js';
+import { TenantConnector } from '../../../src/infra/tenantConnector.js';
 
 /**
- * Integration tests for LocationRepository (Wave 3.5, Task 7).
+ * Wave 7 gap-closure (04-07-PLAN.md, Task 1) real-MySQL-backed
+ * LocationRepository test. Mirrors ./businessRepository.test.js's/
+ * ../../unit/... gating pattern exactly: skips cleanly (never fails) unless
+ * explicitly opted in with real MySQL admin credentials, so this suite never
+ * assumes a database is reachable in CI or a fresh sandbox.
  *
- * DEVIATION FROM THE PLAN'S LITERAL TASK 7 SPEC ("All tests use real test
- * database"): this repository's persistence is an in-memory Map keyed by
- * businessId, NOT a real dgfy_business_* MySQL database — see
- * ../../../src/modules/businesses/repositories/locationRepository.js's doc
- * comment for the full rationale (no TenantConnector/BusinessDatabaseRegistry
- * exists yet; both are explicitly Wave 4 scope; no business tenant-database
- * provisioning flow exists anywhere in this codebase; auto-provisioning
- * schema from live API code would violate this project's migration-runner-
- * only schema constraint). This suite therefore exercises the REAL
- * production repository class directly (not a mock), verifying its actual
- * behavior — including genuine, structural tenant isolation via
- * businessId-keyed storage — without requiring a MySQL server. Unlike
- * ../accounts/accountRepository.test.js and
- * ../businesses/businessRepository.test.js, this suite is NOT gated behind
- * an integration env var: it has no external dependency to gate against.
+ * CLOSES the prior in-memory-Map bridging test (04-03.5-SUMMARY.md's Known
+ * Stub) — this suite now proves the REAL production repository class
+ * against a real, disposable `dgfy_business_*` MySQL database via
+ * TenantConnector, including the fail-closed paths for missing/provisioning/
+ * inactive/unverified/unreachable tenant registry state.
  */
-describe('LocationRepository (in-memory, businessId-scoped — Wave 3.5 bridging strategy)', () => {
-    let repository;
+const RUN_INTEGRATION = process.env.RUN_LOCATION_REPOSITORY_INTEGRATION === 'true';
 
-    beforeEach(() => {
-        repository = new LocationRepository();
+const ADMIN_DB_CONFIG = {
+    host: process.env.BUSINESS_IT_DB_HOST || process.env.DB_HOST || 'localhost',
+    port: Number(process.env.BUSINESS_IT_DB_PORT || process.env.DB_PORT || 3306),
+    user: process.env.BUSINESS_IT_DB_USER || process.env.DB_USER || 'root',
+    password: process.env.BUSINESS_IT_DB_PASSWORD || process.env.DB_PASSWORD || ''
+};
+
+if (!RUN_INTEGRATION) {
+    // eslint-disable-next-line no-console
+    console.log(
+        '[locationRepository.test.js] SKIPPED — set RUN_LOCATION_REPOSITORY_INTEGRATION=true '
+        + '(with MySQL admin credentials via BUSINESS_IT_DB_HOST/PORT/USER/PASSWORD, or the '
+        + 'existing DB_HOST/PORT/USER/PASSWORD convention) to run this real MySQL-backed '
+        + 'LocationRepository test locally or in CI.'
+    );
+}
+
+const describeIfIntegration = RUN_INTEGRATION ? describe : describe.skip;
+
+function isolatedDbName(prefix) {
+    return `${prefix}_it_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
+}
+
+async function withAdminConnection(fn) {
+    const adminSequelize = new Sequelize('information_schema', ADMIN_DB_CONFIG.user, ADMIN_DB_CONFIG.password, {
+        host: ADMIN_DB_CONFIG.host,
+        port: ADMIN_DB_CONFIG.port,
+        dialect: 'mysql',
+        logging: false
+    });
+    try {
+        return await fn(adminSequelize);
+    } finally {
+        await adminSequelize.close();
+    }
+}
+
+/**
+ * Minimal registry double — a real BusinessDatabaseRegistryRepository is
+ * landlord dgfy_core-backed (its own separately-gated suite); this suite is
+ * scoped to LocationRepository's own tenant-DB behavior, so a lightweight
+ * in-memory registry double (matching the exact
+ * `{database_name, status, verified_at}` shape LocationRepository consumes)
+ * is sufficient and avoids provisioning a second real database.
+ */
+function fakeRegistry(entriesByBusinessId) {
+    return {
+        async findByBusinessId(businessId) {
+            return entriesByBusinessId[businessId] || null;
+        }
+    };
+}
+
+describeIfIntegration('LocationRepository (real MySQL, dgfy_business_*.locations via TenantConnector)', () => {
+    const businessDbName = isolatedDbName('dgfy_business');
+    let tenantConnector;
+
+    beforeAll(async () => {
+        await withAdminConnection(async (adminSequelize) => {
+            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${businessDbName}\``);
+        });
+        tenantConnector = new TenantConnector(ADMIN_DB_CONFIG);
+        const connection = tenantConnector.getConnection(businessDbName);
+        await connection.getQueryInterface().createTable('locations', {
+            id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true },
+            name: { type: Sequelize.STRING(255), allowNull: false },
+            address_line: { type: Sequelize.TEXT, allowNull: false },
+            latitude: { type: Sequelize.DECIMAL(10, 8), allowNull: true },
+            longitude: { type: Sequelize.DECIMAL(11, 8), allowNull: true },
+            is_active: { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+            is_primary: { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: false },
+            created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
+            updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') }
+        });
     });
 
-    describe('create', () => {
-        it('auto-assigns is_primary=true for the first location of a business', async () => {
-            const location = await repository.create({
-                businessId: 'biz-A',
+    afterAll(async () => {
+        if (tenantConnector) await tenantConnector.closeAll();
+        await withAdminConnection(async (adminSequelize) => {
+            await adminSequelize.query(`DROP DATABASE IF EXISTS \`${businessDbName}\``);
+        });
+    });
+
+    afterEach(async () => {
+        const connection = tenantConnector.getConnection(businessDbName);
+        await connection.query('DELETE FROM locations');
+    });
+
+    function buildRepository(registryOverrides = {}) {
+        const registry = fakeRegistry({
+            'biz-active-verified': {
+                database_name: businessDbName,
+                status: 'active',
+                verified_at: new Date()
+            },
+            ...registryOverrides
+        });
+        return new LocationRepository({ tenantConnector, businessDatabaseRegistryRepository: registry });
+    }
+
+    describe('create / findById / findAll (active + verified registry entry)', () => {
+        it('a fresh repository instance can re-read a created location from the same tenant database', async () => {
+            const repository = buildRepository();
+            const created = await repository.create({
+                businessId: 'biz-active-verified',
                 name: 'Main Branch',
                 address_line: '123 Main St'
             });
 
-            expect(location.id).toBe(1);
-            expect(location.is_primary).toBe(true);
-            expect(location.is_active).toBe(true);
+            expect(created.id).toEqual(expect.any(Number));
+            expect(created.is_primary).toBe(true);
+            expect(created.is_active).toBe(true);
+
+            // Fresh instance, same TenantConnector/registry — proves durable
+            // persistence, not in-process object identity.
+            const freshRepository = buildRepository();
+            const reRead = await freshRepository.findById('biz-active-verified', created.id);
+
+            expect(reRead).toEqual(expect.objectContaining({
+                id: created.id,
+                name: 'Main Branch',
+                address_line: '123 Main St'
+            }));
         });
 
         it('does NOT auto-assign is_primary for a second location', async () => {
-            await repository.create({ businessId: 'biz-A', name: 'Main Branch', address_line: '123 Main St' });
-            const second = await repository.create({ businessId: 'biz-A', name: 'Second Branch', address_line: '456 Second St' });
+            const repository = buildRepository();
+            await repository.create({ businessId: 'biz-active-verified', name: 'A1', address_line: 'Addr A1' });
+            const second = await repository.create({
+                businessId: 'biz-active-verified',
+                name: 'A2',
+                address_line: 'Addr A2'
+            });
 
             expect(second.is_primary).toBe(false);
         });
-
-        it('assigns independent auto-increment ids per business', async () => {
-            const a1 = await repository.create({ businessId: 'biz-A', name: 'A1', address_line: 'Addr A1' });
-            const b1 = await repository.create({ businessId: 'biz-B', name: 'B1', address_line: 'Addr B1' });
-            const a2 = await repository.create({ businessId: 'biz-A', name: 'A2', address_line: 'Addr A2' });
-
-            expect(a1.id).toBe(1);
-            expect(b1.id).toBe(1);
-            expect(a2.id).toBe(2);
-        });
     });
 
-    describe('findById / findAll', () => {
-        it('finds a location by id, scoped to its business', async () => {
-            const created = await repository.create({ businessId: 'biz-A', name: 'Main Branch', address_line: '123 Main St' });
+    describe('updatePrimary (primary-location semantics persist)', () => {
+        it('clears the previous primary and sets the new one — only one active primary at a time', async () => {
+            const repository = buildRepository();
+            const first = await repository.create({ businessId: 'biz-active-verified', name: 'A1', address_line: 'Addr A1' });
+            const second = await repository.create({ businessId: 'biz-active-verified', name: 'A2', address_line: 'Addr A2' });
 
-            const found = await repository.findById('biz-A', created.id);
+            await repository.updatePrimary('biz-active-verified', second.id);
 
-            expect(found).toEqual(created);
-        });
+            const freshRepository = buildRepository();
+            const refreshedFirst = await freshRepository.findById('biz-active-verified', first.id);
+            const refreshedSecond = await freshRepository.findById('biz-active-verified', second.id);
 
-        it('returns null for a location id that exists in a different business', async () => {
-            const created = await repository.create({ businessId: 'biz-A', name: 'Main Branch', address_line: '123 Main St' });
-
-            const found = await repository.findById('biz-B', created.id);
-
-            expect(found).toBeNull();
-        });
-
-        it('findAll returns every location for a business, including inactive ones', async () => {
-            const first = await repository.create({ businessId: 'biz-A', name: 'A1', address_line: 'Addr A1' });
-            await repository.create({ businessId: 'biz-A', name: 'A2', address_line: 'Addr A2' });
-            await repository.delete('biz-A', first.id);
-
-            const all = await repository.findAll('biz-A');
-
-            expect(all).toHaveLength(2);
-        });
-
-        it('findByName is case-insensitive and scoped to businessId', async () => {
-            await repository.create({ businessId: 'biz-A', name: 'Main Branch', address_line: '123 Main St' });
-
-            const found = await repository.findByName('biz-A', 'MAIN branch');
-            const notFoundInOtherBusiness = await repository.findByName('biz-B', 'Main Branch');
-
-            expect(found).not.toBeNull();
-            expect(notFoundInOtherBusiness).toBeNull();
-        });
-    });
-
-    describe('update', () => {
-        it('applies a partial update and bumps updated_at', async () => {
-            const created = await repository.create({ businessId: 'biz-A', name: 'Main Branch', address_line: '123 Main St' });
-
-            const updated = await repository.update('biz-A', created.id, { name: 'Renamed Branch' });
-
-            expect(updated.name).toBe('Renamed Branch');
-            expect(updated.address_line).toBe('123 Main St');
-            expect(updated.updated_at.getTime()).toBeGreaterThanOrEqual(created.updated_at.getTime());
-        });
-
-        it('returns null when updating a location in the wrong business', async () => {
-            const created = await repository.create({ businessId: 'biz-A', name: 'Main Branch', address_line: '123 Main St' });
-
-            const updated = await repository.update('biz-B', created.id, { name: 'Hacked' });
-
-            expect(updated).toBeNull();
-        });
-    });
-
-    describe('updatePrimary', () => {
-        it('clears the previous primary and sets the new one', async () => {
-            const first = await repository.create({ businessId: 'biz-A', name: 'A1', address_line: 'Addr A1' });
-            const second = await repository.create({ businessId: 'biz-A', name: 'A2', address_line: 'Addr A2' });
-
-            const updated = await repository.updatePrimary('biz-A', second.id);
-            const refreshedFirst = await repository.findById('biz-A', first.id);
-
-            expect(updated.is_primary).toBe(true);
             expect(refreshedFirst.is_primary).toBe(false);
-        });
+            expect(refreshedSecond.is_primary).toBe(true);
 
-        it('ensures exactly one primary location per business after multiple switches', async () => {
-            const first = await repository.create({ businessId: 'biz-A', name: 'A1', address_line: 'Addr A1' });
-            const second = await repository.create({ businessId: 'biz-A', name: 'A2', address_line: 'Addr A2' });
-
-            await repository.updatePrimary('biz-A', second.id);
-            await repository.updatePrimary('biz-A', first.id);
-
-            const all = await repository.findAll('biz-A');
-            const primaries = all.filter((location) => location.is_primary);
-            expect(primaries).toHaveLength(1);
-            expect(primaries[0].id).toBe(first.id);
+            const all = await freshRepository.findAll('biz-active-verified');
+            expect(all.filter((location) => location.is_primary)).toHaveLength(1);
         });
     });
 
-    describe('delete / restore (soft delete)', () => {
-        it('soft-deletes: is_active becomes false, record remains in findAll', async () => {
-            const first = await repository.create({ businessId: 'biz-A', name: 'A1', address_line: 'Addr A1' });
-            await repository.create({ businessId: 'biz-A', name: 'A2', address_line: 'Addr A2' });
+    describe('delete / restore (soft delete persists)', () => {
+        it('soft-delete persists — is_active becomes false, record remains in findAll', async () => {
+            const repository = buildRepository();
+            const first = await repository.create({ businessId: 'biz-active-verified', name: 'A1', address_line: 'Addr A1' });
+            await repository.create({ businessId: 'biz-active-verified', name: 'A2', address_line: 'Addr A2' });
 
-            const deleted = await repository.delete('biz-A', first.id);
-            const all = await repository.findAll('biz-A');
+            await repository.delete('biz-active-verified', first.id);
 
-            expect(deleted.is_active).toBe(false);
+            const freshRepository = buildRepository();
+            const all = await freshRepository.findAll('biz-active-verified');
             expect(all).toHaveLength(2);
             expect(all.find((location) => location.id === first.id).is_active).toBe(false);
         });
 
-        it('restore() reactivates a soft-deleted location', async () => {
-            const first = await repository.create({ businessId: 'biz-A', name: 'A1', address_line: 'Addr A1' });
-            await repository.delete('biz-A', first.id);
+        it('list/get exclude soft-deleted rows only when the caller filters (repository itself still returns them)', async () => {
+            const repository = buildRepository();
+            const first = await repository.create({ businessId: 'biz-active-verified', name: 'A1', address_line: 'Addr A1' });
+            await repository.delete('biz-active-verified', first.id);
 
-            const restored = await repository.restore('biz-A', first.id);
+            const freshRepository = buildRepository();
+            const stillFindable = await freshRepository.findById('biz-active-verified', first.id);
+            expect(stillFindable.is_active).toBe(false);
 
+            const restored = await freshRepository.restore('biz-active-verified', first.id);
             expect(restored.is_active).toBe(true);
         });
     });
 
-    describe('tenant isolation', () => {
-        it('locations created for Business A are never visible when querying Business B', async () => {
-            await repository.create({ businessId: 'biz-A', name: 'A Branch', address_line: 'A Addr' });
-            await repository.create({ businessId: 'biz-A', name: 'A Branch 2', address_line: 'A Addr 2' });
-            await repository.create({ businessId: 'biz-B', name: 'B Branch', address_line: 'B Addr' });
+    describe('fail-closed tenant database resolution (Wave 7 Test 4)', () => {
+        it('returns TenantDatabaseUnavailableError("missing") when no registry row exists for the business', async () => {
+            const repository = buildRepository();
 
-            const businessALocations = await repository.findAll('biz-A');
-            const businessBLocations = await repository.findAll('biz-B');
-
-            expect(businessALocations).toHaveLength(2);
-            expect(businessBLocations).toHaveLength(1);
-            expect(businessBLocations.some((location) => location.name.startsWith('A Branch'))).toBe(false);
+            await expect(repository.findAll('no-such-business')).rejects.toMatchObject({
+                name: 'TenantDatabaseUnavailableError',
+                reason: 'missing'
+            });
         });
 
-        it('findPrimary is scoped per business', async () => {
-            const aPrimary = await repository.create({ businessId: 'biz-A', name: 'A Branch', address_line: 'A Addr' });
-            const bPrimary = await repository.create({ businessId: 'biz-B', name: 'B Branch', address_line: 'B Addr' });
+        it('returns TenantDatabaseUnavailableError("provisioning") when the registry row is still provisioning', async () => {
+            const repository = buildRepository({
+                'biz-provisioning': { database_name: businessDbName, status: 'provisioning', verified_at: null }
+            });
 
-            const primaryA = await repository.findPrimary('biz-A');
-            const primaryB = await repository.findPrimary('biz-B');
+            await expect(repository.findAll('biz-provisioning')).rejects.toMatchObject({
+                name: 'TenantDatabaseUnavailableError',
+                reason: 'provisioning'
+            });
+        });
 
-            expect(primaryA.id).toBe(aPrimary.id);
-            expect(primaryB.id).toBe(bPrimary.id);
+        it('returns TenantDatabaseUnavailableError("inactive") when the registry status is not active', async () => {
+            const repository = buildRepository({
+                'biz-deprecated': { database_name: businessDbName, status: 'deprecated', verified_at: new Date() }
+            });
+
+            await expect(repository.findAll('biz-deprecated')).rejects.toMatchObject({
+                name: 'TenantDatabaseUnavailableError',
+                reason: 'inactive'
+            });
+        });
+
+        it('returns TenantDatabaseUnavailableError("unverified") when active but verified_at is not populated', async () => {
+            const repository = buildRepository({
+                'biz-unverified': { database_name: businessDbName, status: 'active', verified_at: null }
+            });
+
+            await expect(repository.findAll('biz-unverified')).rejects.toMatchObject({
+                name: 'TenantDatabaseUnavailableError',
+                reason: 'unverified'
+            });
+        });
+
+        it('returns TenantDatabaseUnavailableError("unreachable") when the tenant schema does not actually exist', async () => {
+            const repository = buildRepository({
+                'biz-unreachable': {
+                    database_name: `dgfy_business_never_created_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`,
+                    status: 'active',
+                    verified_at: new Date()
+                }
+            });
+
+            await expect(repository.findAll('biz-unreachable')).rejects.toMatchObject({
+                name: 'TenantDatabaseUnavailableError',
+                reason: 'unreachable'
+            });
+        });
+
+        it('performs no location write when the tenant database is not active/verified', async () => {
+            const repository = buildRepository({
+                'biz-provisioning-2': { database_name: businessDbName, status: 'provisioning', verified_at: null }
+            });
+
+            await expect(repository.create({
+                businessId: 'biz-provisioning-2',
+                name: 'Should Not Persist',
+                address_line: 'Nowhere'
+            })).rejects.toMatchObject({ name: 'TenantDatabaseUnavailableError' });
+
+            const freshRepository = buildRepository();
+            const found = await freshRepository.findByName('biz-active-verified', 'Should Not Persist');
+            expect(found).toBeNull();
         });
     });
 });
