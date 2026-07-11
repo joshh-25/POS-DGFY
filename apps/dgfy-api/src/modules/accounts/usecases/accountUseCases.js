@@ -57,6 +57,24 @@ const serviceUnavailableError = (message) => new DomainError(
 );
 
 /**
+ * Translates a Sequelize unique-constraint violation into the same
+ * conflictError() shape the pre-check (findByEmail/findByPhone) path
+ * already returns. Guards against the check-then-write race where two
+ * concurrent requests both pass the pre-check and only the DB-level unique
+ * index catches the second write (CR-01). Returns null (not this app's
+ * concern) when the error isn't a unique-constraint violation, so callers
+ * can re-throw anything unexpected.
+ * @param {Error} error
+ * @returns {DomainError|null}
+ */
+const mapUniqueConstraintError = (error) => {
+    if (error?.name !== 'SequelizeUniqueConstraintError') return null;
+    const path = error.errors?.[0]?.path || '';
+    const field = path.includes('phone') ? 'phone' : 'email';
+    return conflictError(field);
+};
+
+/**
  * Strips internal fields (password_hash) before returning an account to a
  * caller. Applied at every use case boundary that returns account data.
  * @param {import('../entities/accountEntity.js').AccountEntity|null} account
@@ -139,15 +157,22 @@ export function buildRegisterAccountUseCase({ repository, accountEntity = Accoun
 
         const passwordHash = await hashPassword(password);
 
-        const created = await repository.create({
-            email,
-            password_hash: passwordHash,
-            first_name: firstName,
-            last_name: lastName,
-            phone,
-            status: 'active',
-            email_verified_at: null // per D-01: accounts start unverified; login still works
-        });
+        let created;
+        try {
+            created = await repository.create({
+                email,
+                password_hash: passwordHash,
+                first_name: firstName,
+                last_name: lastName,
+                phone,
+                status: 'active',
+                email_verified_at: null // per D-01: accounts start unverified; login still works
+            });
+        } catch (error) {
+            const conflict = mapUniqueConstraintError(error);
+            if (conflict) return ApplicationResult.failure(conflict);
+            throw error;
+        }
 
         return ApplicationResult.success({
             account: sanitizeAccount(created),
@@ -288,7 +313,14 @@ export function buildUpdateAccountProfileUseCase({ repository, accountEntity = A
             patch.password_hash = await hashPassword(password);
         }
 
-        const updated = await repository.update(accountId, patch);
+        let updated;
+        try {
+            updated = await repository.update(accountId, patch);
+        } catch (error) {
+            const conflict = mapUniqueConstraintError(error);
+            if (conflict) return ApplicationResult.failure(conflict);
+            throw error;
+        }
         return ApplicationResult.success({ account: sanitizeAccount(updated) });
     };
 }

@@ -52,6 +52,26 @@ const serviceUnavailableError = (message) => new DomainError(
 const generateInvitationToken = () => crypto.randomUUID();
 
 /**
+ * Translates a Sequelize unique-constraint violation (business_handle) into
+ * the same conflictError() shape the pre-check (findByHandle) path already
+ * returns. Guards against the check-then-write race where two concurrent
+ * requests both pass the pre-check and only the DB-level unique index
+ * catches the second write (CR-01, mirrors ../../accounts/usecases/
+ * accountUseCases.js's mapUniqueConstraintError). Returns null when the
+ * error isn't a unique-constraint violation, so callers can re-throw
+ * anything unexpected.
+ * @param {Error} error
+ * @returns {DomainError|null}
+ */
+const mapUniqueConstraintError = (error) => {
+    if (error?.name !== 'SequelizeUniqueConstraintError') return null;
+    return conflictError(
+        'A business already exists with this handle.',
+        { error_code: 'DUPLICATE_BUSINESS_HANDLE', field: 'business_handle' }
+    );
+};
+
+/**
  * Shared access-control helper: resolves the requester's membership and
  * optionally enforces a specific role. Callers only enforce this when a
  * `requestingAccountId` is supplied, so this stays usable both from
@@ -103,12 +123,20 @@ export function buildCreateBusinessUseCase({ repository }) {
             ));
         }
 
-        const { business, membership } = await repository.create({
-            business_handle: businessHandle,
-            legal_name: legalName,
-            display_name: displayName,
-            creatorAccountId
-        });
+        let business;
+        let membership;
+        try {
+            ({ business, membership } = await repository.create({
+                business_handle: businessHandle,
+                legal_name: legalName,
+                display_name: displayName,
+                creatorAccountId
+            }));
+        } catch (error) {
+            const conflict = mapUniqueConstraintError(error);
+            if (conflict) return ApplicationResult.failure(conflict);
+            throw error;
+        }
 
         return ApplicationResult.success({ business, membership });
     };
@@ -197,7 +225,14 @@ export function buildUpdateBusinessUseCase({ repository }) {
             patch.status = updates.status;
         }
 
-        const updated = await repository.update(businessId, patch);
+        let updated;
+        try {
+            updated = await repository.update(businessId, patch);
+        } catch (error) {
+            const conflict = mapUniqueConstraintError(error);
+            if (conflict) return ApplicationResult.failure(conflict);
+            throw error;
+        }
         return ApplicationResult.success({ business: updated });
     };
 }
