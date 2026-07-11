@@ -142,7 +142,7 @@ Plans:
   4. Tenant session creation is rejected unless landlord membership and tenant-local assignment or authorized scope evidence both exist.
   5. Architecture and backend tests prove controllers are transport-only, use cases own business logic, repositories own Sequelize access, and persistence side effects are durable.
 
-**Plans**: 7/7 plans complete
+**Plans**: 6/9 plans complete; 3 gap-closure plans pending
 
 - [x] 04-01-PLAN.md
 - [x] 04-02-PLAN.md
@@ -150,7 +150,9 @@ Plans:
 - [x] 04-03.5-PLAN.md
 - [x] 04-04-PLAN.md
 - [x] 04-05-PLAN.md
-- [x] 04-PLAN.md
+- [ ] 04-06-PLAN.md — Gap closure: business entity layer and safe tenant registry metadata/lookup
+- [ ] 04-07-PLAN.md — Gap closure: durable tenant-backed location and staff onboarding persistence
+- [ ] 04-08-PLAN.md — Gap closure: TerminalIdentity tenant model wiring and refreshed DB-backed verification
 
 ### Phase 5: Compatibility and Backend-First Cutover Seam
 
@@ -202,7 +204,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 1. Architecture and Migration Runner Contract | 4/4 | Complete    | 2026-07-10 |
 | 2. DGFY Database Foundation | 5/5 | Complete    | 2026-07-10 |
 | 3. Old-to-New Migration Proof | 6/6 | Complete   | 2026-07-11 |
-| 4. Backend Accounts, Businesses, and Tenancy Foundation | 7/7 | Complete   | 2026-07-11 |
+| 4. Backend Accounts, Businesses, and Tenancy Foundation | 6/9 | Gaps Found | - |
 | 5. Compatibility and Backend-First Cutover Seam | 0/TBD | Not started | - |
 | 6. Release Evidence and Rehearsal Gates | 0/TBD | Not started | - |
 | 7. Cutover Runbook and Deferred Domain Split | 0/TBD | Not started | - |
