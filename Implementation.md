@@ -1,5 +1,41 @@
 # Implementation — Active Online Order Receipt Print Separation
 
+## Remediation Log — Phase 1: POS Cash Pickup Payment
+
+- **Issue:** An unpaid cash pickup could be marked as picked up through the generic online-order status endpoint.
+- **Root cause:** The lifecycle transition permitted `ready_for_pickup -> completed` without a server-side payment guard, and no dedicated collection endpoint existed.
+- **Implementation:** Added an idempotent `POST /pos/orders/:id/collect-cash` flow that locks the order and active shift, validates cash pickup eligibility, calculates change server-side, persists collection evidence, and writes an audit log. The generic status flow now rejects unpaid pickup completion.
+- **Files:** POS route/controller/use case/repository contract/model, tenant schema sync, migration, POS incoming queue UI, and focused backend test.
+- **Validation:** Pending Phase 1 focused tests, architecture checks, POS build, and rendered UI proof.
+- **Risk:** Migration must be applied to every tenant before runtime code reads the new collection fields.
+
+## Remediation Log — Phase 2: Checkout And Reconciliation
+
+- **Issue:** Nine reconciliation integration cases reported only `success: false` from POS checkout.
+- **Root cause:** The test constructed a checkout use case without production inventory commands and invoked landlord DGFY membership infrastructure against the developer's unrelated default database. Two legacy pickup fixtures also assumed unpaid cash pickup orders could complete without collection.
+- **Implementation:** The tenant reconciliation fixture now injects the real inventory command service and a test-scoped identity resolver, prints the returned checkout error on failure, uses the standard `ApplicationResult.data` envelope, and collects cash before completing cash pickup journeys.
+- **Validation:** All 14 reconciliation cases pass, including checkout, taxes, discounts, service fees, Storefront-to-POS lifecycle, inventory, reports, and Z-reading. Backend lint and architecture checks pass.
+- **Remaining risk:** Isolated tests intentionally cannot sync optional DGFY customer activity to landlord infrastructure; warnings are documented and do not affect committed transaction state.
+
+## Remediation Log — Phase 3: Inventory Integrity
+
+- **Issue:** FIFO availability differed from item stock for 49 Masu Cafe items, and a zero-location QA tenant was incorrectly reported as location-stock drift.
+- **Root cause:** Forty-eight historical Masu catalog rows were bulk-created with a `current_stock` opening balance outside the inventory movement/FIFO path. One Chicken Shawarma row has a separate 50-unit excess FIFO batch with insufficient evidence to infer a valid correction. The parity audit treated tenants with no active locations as if a location ledger existed.
+- **Implementation:** POS and Storefront stock issuance now blocks with `INVENTORY_LEDGER_RECONCILIATION_REQUIRED` instead of silently manufacturing a `LEGACY-STOCK-DRIFT` batch. Automatic repair flags now fail closed. Added a tenant-scoped, actor-attributed opening-balance reconciler that verifies current item stock, location stock, and FIFO availability under row locks before creating a FIFO batch and immutable adjustment record without changing physical stock. It reconciled 48 reviewed Masu opening balances (4,800 units total). The location parity audit now skips tenants with no active locations.
+- **Files:** `backend/src/services/stockMovementService.js`, `backend/scripts/reconcile-fifo-opening-balances.js`, `backend/scripts/audit-fifo-drift.js`, `backend/scripts/audit-location-stock-parity.js`, `backend/tests/posCheckout.db.integration.test.js`, `backend/package.json`, and `Implementation.md`.
+- **Validation:** Focused POS checkout/inventory integration tests pass. Location parity is healthy for every applicable local tenant. FIFO drift reduced from 49 rows to one audited exception, with no over-consumed batch.
+- **Remaining risk:** Masu Cafe item `MASU-004` (Chicken Shawarma) retains a 50-unit FIFO excess: item and location stock are 100 but FIFO availability is 150. It is intentionally not auto-corrected. A signed physical count and an explicit inventory-adjustment reason are required before recording the correction.
+
+## Remediation Log — Phase 4: Database Migration Safety
+
+- **Issue:** The cash-pickup collection contract was present in the landlord database but two required `pos_transactions` fields were missing from every active local tenant schema. Existing tenant-schema reporting could detect drift, but application startup did not enforce the tenant contract.
+- **Root cause:** Landlord migrations and tenant schemas use different migration mechanisms. The cash-pickup migration was not included in the runtime readiness contract, and production startup only audited the landlord schema.
+- **Implementation:** Added the pickup-cash migration and all four collection fields to the runtime schema contract. Production now always runs landlord and tenant schema preflights and refuses startup when either contract is degraded. `/health` exposes the tenant preflight result. Tenant repair remains declarative and additive through the existing schema registry; it does not use `sync({ alter: true })`.
+- **Local repair:** Applied the declared tenant schema repair to all ten active local tenant databases. A post-repair report confirms 10/10 tenants are compliant.
+- **Validation:** Runtime-schema and health tests pass (19 tests). The migration upgrade and rollback rehearsal passed against a disposable local database: all four columns were created, verified, removed, and verified absent. Backend lint and architecture/controller boundary checks pass.
+- **Deployment requirement:** Deploy the migration and tenant-schema repair before restarting production application processes. The production preflight will intentionally keep the service offline if either step is incomplete.
+- **Remaining risk:** The tenant readiness service currently calls the governed schema-sync runner from `backend/scripts`. This is safe and covered by architecture checks, but extracting the shared registry into an application module is future maintenance work, not required for this additive safety fix.
+
 ## Overview
 Separated active online-order details from receipt printing. `Open Order` remains the operational details modal, while `Print Order` opens a dedicated non-fiscal receipt layout before printing. The printed document is explicitly an active-order copy and never represents a final fiscal receipt.
 
@@ -2489,4 +2525,86 @@ POS transaction reads failed with `Table '<tenant>.delivery_jobs' doesn't exist`
 ### Files changed
 
 - `frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx`
+- `Implementation.md`
+
+---
+
+## 2026-07-11 — Combined promo From/To date-time controls
+
+### Implemented solution
+
+- Replaced separate start/end date and time controls with one `From` and one `To` date-time control.
+- Each control stores its time in 24-hour `HH:mm` format and shows an AM/PM preview after selection.
+- The editor translates each combined value into the existing `valid_from`, `valid_time_start`, `valid_until`, and `valid_time_end` settings fields, preserving the current Storefront contract.
+- Save validation rejects incomplete date-time values and a From value later than To.
+
+### Scope
+
+- Storefront promo settings only; no POS bridge, receipt, or payment contract changed.
+
+### Date persistence correction
+
+- The backend settings validator now accepts and preserves `valid_from` and `valid_until` in `storefront_promo` and `storefront_promos`.
+- The validator rejects incomplete or inverted From/To ranges, preventing the date-time editor from saving an inconsistent promo range.
+
+---
+
+## 2026-07-11 — Scheduled Storefront promo availability
+
+### Implemented solution
+
+- Active promos scheduled for a future From date or outside their configured time window remain visible but greyed out in Storefront.
+- Scheduled promo cards are non-interactive: customers cannot reveal, copy, or apply their code before the availability window begins.
+- Inactive and expired promos remain hidden. Server-side commercial promo validation remains the redemption authority.
+- Availability is calculated using the configured Storefront business-hours timezone, with `Asia/Manila` as the existing fallback.
+
+### Files changed
+
+- `frontend/apps/store/src/normalizeStorefrontPageModel.js`
+- `frontend/apps/store/src/StorefrontApp.jsx`
+- `frontend/apps/store/src/Components/storefront/sections/StorefrontPromoSection.jsx`
+- `frontend/apps/store/src/__tests__/normalizeStorefrontPageModel.test.js`
+- `Implementation.md`
+
+---
+
+## 2026-07-11 — Disable scheduled checkout promo actions
+
+### Implemented solution
+
+- The checkout promo modal now reads the existing Storefront promo availability state.
+- Scheduled promos stay greyed out with their availability message and retain a disabled `Use` button until their date/time window starts.
+- The modal never calls the apply handler for disabled promos; backend commercial promo policy remains the authoritative guard for all requests.
+
+### Files changed
+
+- `frontend/apps/store/src/checkout/components/PromoCodePanel.jsx`
+- `frontend/apps/store/src/__tests__/PromoCodePanel.test.jsx`
+- `Implementation.md`
+
+---
+
+## 2026-07-11 — Prevent iPhone Safari POS input zoom
+
+### Confirmed cause
+
+- The POS mobile input rule used an element-only selector. Tailwind's `.text-sm` utility had higher specificity, leaving terminal-login fields at a computed `14px` on an iPhone-sized viewport.
+
+### Implemented solution
+
+- Added a higher-specificity, POS-shell-only mobile rule that forces input, select, and textarea fields to a minimum computed `16px`.
+- Added `viewport-fit=cover` to the POS application viewport meta tag so POS can correctly use existing safe-area inset CSS on notched iPhones.
+- Desktop and non-POS applications are unchanged.
+
+### Files changed
+
+- `frontend/src/index.css`
+- `frontend/apps/pos/index.html`
+- `Implementation.md`
+
+### Files changed
+
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `backend/src/validators/settingsValidator.js`
+- `backend/tests/settingsValidator.storefrontPromoDates.test.js`
 - `Implementation.md`
