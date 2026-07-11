@@ -28,12 +28,11 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - ✓ Existing architecture governance already accepts phased migration through compatibility facades rather than a big-bang rewrite — `docs/architecture/adr/0003-migration-facade-strategy.md`.
 - ✓ Dedicated database migration runner container built as a one-shot deploy artifact (`apps/dgfy-migration-runner`), separate from long-running API containers, with Docker packaging verified via build+run — validated in Phase 1: Architecture and Migration Runner Contract.
 - ✓ Runner supports multiple commands from one migration image — schema migrate, data dry-run/apply, verify, status, rollback-plan — with pre-connection env/destructive-op validation and DB-backed execution metadata — validated in Phase 1: Architecture and Migration Runner Contract.
+- ✓ New `dgfy_core` landlord schema (accounts, businesses, business_memberships, business_database_registry, business_audit_logs, storefront_discovery_index) and per-tenant `dgfy_business_*` schema (locations, staff_accounts, account_staff_assignments, roles/role_permissions, terminal_identities, tenant_ownership_metadata, tenant_audit_logs) exist beside legacy `sku_*` schemas via additive, idempotent migrations, without mutating legacy schemas by default — validated in Phase 2: DGFY Database Foundation.
+- ✓ Re-running schema migration and verification proves expected tables/columns/indexes/constraints, target-scoped migration metadata, tenant coverage, idempotent reruns, and legacy `sku_*` non-mutation via a pre/post-migration `information_schema` fingerprint baseline — validated in Phase 2: DGFY Database Foundation.
 
 ### Active
 
-- [ ] Create new `dgfy_*` database foundations beside the legacy SKUpervisor/current landlord + tenant databases, without mutating legacy schemas as the default path.
-- [ ] Define and migrate the new DGFY landlord foundation for Accounts, Businesses, Branches, Tenancy registry, and migration metadata.
-- [ ] Define and migrate the tenant foundation needed for Staff Accounts, Assignments, Terminal identity, and tenant-local operational ownership.
 - [ ] Build old-to-new migration scripts that transform legacy/current data into the new DGFY schema, with dry-run, idempotency, checkpointing, and verification evidence.
 - [ ] Build backend APIs only after the database contract is stable, starting with Accounts, Businesses, and Tenancy.
 - [ ] Keep legacy `backend/*` and `frontend/apps/{store,pos}/*` running during the migration, with edits limited to approved compatibility seams.
@@ -60,6 +59,8 @@ Existing codebase concerns make this database-first approach necessary: tenant s
 
 **Phase 1 complete (2026-07-10):** The migration runner contract (`apps/dgfy-migration-runner`) is built, tested (46/46), and independently Docker-packaged, satisfying RUN-01 through RUN-05. It currently drives only a placeholder schema migration — no real `dgfy_*` landlord/tenant schema exists yet. Code review flagged 6 non-blocking warnings to prioritize before Phase 2 builds real migrations on top of this contract: most notably the destructive-op gate over-scans all migration files instead of just pending ones (will misbehave once a real destructive migration exists), and several command handlers don't mark `command_executions` rows `failed` on error. See `01-REVIEW.md` and `01-VERIFICATION.md` for full detail.
 
+**Phase 2 complete (2026-07-11):** Real `dgfy_core` and `dgfy_business_*` schemas now exist beside legacy, satisfying DBF-01 through DBF-05. Canonical branches/locations live in tenant `dgfy_business_*` schemas, not `dgfy_core` — the landlord schema only holds a `storefront_discovery_index` projection, correcting the original assumption that Branches belonged to the landlord foundation (see D-10 in `02-CONTEXT.md`). Runner hardening from Phase 1's review debt was folded into Phase 2 (pending-only destructive gate, failure-safe command audit, container-safe `/reports` default). A code-review finding (CR-01: `verify.js`'s `migration_metadata` used one shared try/catch across all business targets, risking silent evidence loss on a mid-loop failure) was caught by verification and closed via a dedicated gap-closure plan (02-05) with an independently-confirmed RED/GREEN regression test. Full runner suite: 132 tests passing, 1 intentionally gated (real-MySQL integration test, confirmed passing via human UAT against a local disposable MySQL instance — never against the production credentials in `.env`). 24/24 phase threats verified closed; see `02-SECURITY.md`.
+
 ## Constraints
 
 - **Architecture**: Follow `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`, and `docs/architecture/ARCHITECTURE_GOVERNANCE.md`; backend work must preserve `routes -> controllers -> usecases -> repositories -> models`.
@@ -78,8 +79,9 @@ Existing codebase concerns make this database-first approach necessary: tenant s
 |----------|-----------|---------|
 | Database-first refactor | Backend APIs should be built against a stable new DGFY schema, not inferred while still coupled to SKUpervisor tables. | — Pending |
 | One migration image with multiple commands | Keeps schema/data/verify/rollback tooling together while allowing deploy scripts to run each command once and explicitly. | ✓ Built in Phase 1 — `apps/dgfy-migration-runner` with 6 Commander subcommands, DB-backed metadata, JSON+summary reports (46/46 tests, Docker build/run verified) |
-| New `dgfy_*` databases beside legacy | Reduces risk to existing users and enables old-to-new migration rehearsal without mutating live legacy schemas by default. | — Pending |
-| Accounts + Businesses + Tenancy as first backend scope | Identity and tenant routing are the foundation for every later POS/Product/Storefront domain. | — Pending |
+| New `dgfy_*` databases beside legacy | Reduces risk to existing users and enables old-to-new migration rehearsal without mutating live legacy schemas by default. | ✓ Built in Phase 2 — `dgfy_core` landlord + `dgfy_business_*` tenant schemas, additive migrations, legacy `sku_*` non-mutation proven via pre/post fingerprint comparison |
+| Canonical branches/locations live in tenant schema, not landlord | Discovered during Phase 2 planning (D-10): `dgfy_core` should only hold a public discovery projection, not canonical branch data — location ownership is tenant-local. | ✓ `dgfy_core.storefront_discovery_index` is projection-only; `locations` lives in each `dgfy_business_*` schema |
+| Accounts + Businesses + Tenancy as first backend scope | Identity and tenant routing are the foundation for every later POS/Product/Storefront domain. | — Pending (database foundation now stable; backend APIs are Phase 4) |
 | No legacy edits except approved seams | Preserves current uptime while allowing narrow compatibility wiring when migration requires it. | — Pending |
 | Product/POS/payment/fiscal domains deferred | These domains are important but too large to bundle into the database and tenancy foundation. | — Pending |
 
@@ -102,4 +104,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Update Context with current state
 
 ---
-*Last updated: 2026-07-10 after Phase 1 completion*
+*Last updated: 2026-07-11 after Phase 2 completion*
