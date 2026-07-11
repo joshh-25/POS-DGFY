@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03
 current_phase_name: old-to-new-migration-proof
-status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-07-11T05:25:37.314Z"
+status: verifying
+stopped_at: Completed 03-05-PLAN.md (Phase 03 complete)
+last_updated: "2026-07-11T05:42:19.583Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 14
-  completed_plans: 13
-  percent: 29
+  completed_plans: 14
+  percent: 43
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 Phase: 03 (old-to-new-migration-proof) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-11 — Phase 03 execution started
 
 Progress: [███░░░░░░░] 25%
@@ -69,6 +69,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 03 P02 | 20min | 2 tasks | 4 files |
 | Phase 03 P03 | 45min | 3 tasks | 5 files |
 | Phase 03 P04 | 55min | 3 tasks | 4 files |
+| Phase 03 P05 | 75min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Runner: buildDryRunPlan() reclassifies mapper insert results to update via a single scoped legacy_id_map SELECT (current target state probe), avoiding per-record DB round trips
 - [Phase ?]: [Phase 03]: apply.js re-scopes legacy_id_map lookup/record key to legacy_id + '::' + target_table when a fan-out collision is detected (business_membership + account_staff_assignment share one dgfy_account_tenant_memberships source key)
 - [Phase ?]: [Phase 03]: apply's report results array is stripped to {legacy_tenant_id, entity_type, operation, status, target_table, target_database, dgfy_id} — never raw target_payload — closing the password_hash/terminal-secret/company_token report-leak threat
+- [Phase 03]: Runner: verify.js migration_metadata error path uses missing_migrations:null (unknown sentinel) instead of [] (clean sentinel); idempotency derivation treats null as ok:false, closing the Phase 02 false-clean idempotency gap
+- [Phase 03]: Runner: verify.js's new data_migration section only runs when DGFY_MIGRATION_TARGET_MANIFEST is configured (skip cleanly, ok:true, when absent) so schema-only verify runs stay unaffected; fails closed once a manifest is configured
+- [Phase 03]: Runner: verifyData.js's checkDataCounts/checkRequiredRelationships/checkMapCompleteness/checkOpenFindings are pure DB-free functions, mirroring dryRun.js's pure-plan/impure-orchestration split
 
 ### Pending Todos
 
@@ -139,6 +143,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T05:23:21.527Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-07-11T05:42:19.578Z
+Stopped at: Completed 03-05-PLAN.md (Phase 03 complete)
 Resume file: None
