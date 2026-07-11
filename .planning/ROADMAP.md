@@ -102,7 +102,7 @@ Plans:
   4. Operator can interrupt and retry migration without duplicate records, inconsistent references, or manual cleanup.
   5. Verification reports compare source and target counts, required relationships, skipped/conflict records, and unresolved data-quality issues.
 
-**Plans**: 5/5 plans complete
+**Plans**: 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -124,6 +124,10 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [x] 03-05-PLAN.md — Data verification and gated rehearsal evidence
+
+**Wave 6** *(blocked on Wave 5 completion; gap closure)*
+
+- [x] 03-06-PLAN.md — Gap closure: tenant-local verification keys and live rehearsal convergence
 
 ### Phase 4: Backend Accounts, Businesses, and Tenancy Foundation
 
@@ -189,7 +193,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 |-------|----------------|--------|-----------|
 | 1. Architecture and Migration Runner Contract | 4/4 | Complete    | 2026-07-10 |
 | 2. DGFY Database Foundation | 5/5 | Complete    | 2026-07-10 |
-| 3. Old-to-New Migration Proof | 5/5 | Complete   | 2026-07-11 |
+| 3. Old-to-New Migration Proof | 6/6 | Complete   | 2026-07-11 |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 0/TBD | Not started | - |
 | 5. Compatibility and Backend-First Cutover Seam | 0/TBD | Not started | - |
 | 6. Release Evidence and Rehearsal Gates | 0/TBD | Not started | - |

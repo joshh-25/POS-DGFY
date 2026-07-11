@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: passed
 phase: 03-old-to-new-migration-proof
 source:
   - .planning/phases/03-old-to-new-migration-proof/03-01-SUMMARY.md
@@ -7,8 +7,10 @@ source:
   - .planning/phases/03-old-to-new-migration-proof/03-03-SUMMARY.md
   - .planning/phases/03-old-to-new-migration-proof/03-04-SUMMARY.md
   - .planning/phases/03-old-to-new-migration-proof/03-05-SUMMARY.md
+  - .planning/phases/03-old-to-new-migration-proof/03-06-SUMMARY.md
 started: 2026-07-11T06:56:46Z
 updated: 2026-07-11T06:56:46Z
+resolved: 2026-07-11T07:24:51Z
 ---
 
 ## Current Test
@@ -25,21 +27,21 @@ coverage_ids: [03-01:D1, 03-01:D2, 03-01:D3, 03-01:D4, 03-02:D1, 03-02:D2, 03-02
 
 ### 2. Live MySQL dry-run/apply/retry/verify rehearsal
 expected: The gated real-MySQL `phase03Integration.test.js` creates disposable legacy landlord/tenant and `dgfy_core_it_*`/`dgfy_business_it_*` schemas, runs schema migrate, proves dry-run does not mutate targets, applies data with `--confirm-destructive`, reruns apply without duplicates, and verifies `data_migration.ok === true`.
-result: issue
-reported: "RUN_PHASE03_INTEGRATION=true PHASE03_IT_DB_HOST=127.0.0.1 PHASE03_IT_DB_PORT=3306 PHASE03_IT_DB_USER=root PHASE03_IT_DB_PASSWORD=localtest_root_pw npm --prefix apps/dgfy-migration-runner test -- phase03Integration.test.js --watchman=false reached MySQL but failed while seeding `dgfy_accounts` in beforeAll at tests/phase03Integration.test.js:138."
-severity: blocker
+result: pass
+reported: "RUN_PHASE03_INTEGRATION=true PHASE03_IT_DB_HOST=127.0.0.1 PHASE03_IT_DB_PORT=3306 PHASE03_IT_DB_USER=root PHASE03_IT_DB_PASSWORD=localtest_root_pw npm --prefix apps/dgfy-migration-runner test -- phase03Integration.test.js --watchman=false passed. The live run completed schema migrate, dry-run, apply, retry, and verify with data_migration_ok=true."
+severity: resolved
 
 ### 3. Canonical verification status
 expected: Phase 03 canonical verification status is `passed` before the phase can advance.
-result: issue
-reported: "verification.status returned status=gaps_found with next_command=/gsd:plan-phase 03 --gaps. GAP-03-01: verifyData.js builds tenant-local map-completeness keys with hardcoded `legacy_tenant` instead of manifest `legacy_tenant_db_name`."
-severity: blocker
+result: pass
+reported: "03-VERIFICATION.md status is passed after 03-06 gap closure. Tenant-local map-completeness keys now use the manifest legacy_tenant_db_name."
+severity: resolved
 
 ## Summary
 
 total: 3
-passed: 1
-issues: 2
+passed: 3
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -47,7 +49,7 @@ blocked: 0
 ## Gaps
 
 - truth: "The gated real-MySQL phase03Integration.test.js completes the full dry-run -> apply -> retry -> verify loop against disposable schemas."
-  status: failed
+  status: resolved
   reason: "Live UAT reported: phase03Integration.test.js reached MySQL but failed while seeding `dgfy_accounts` in beforeAll at tests/phase03Integration.test.js:138."
   severity: blocker
   test: 2
@@ -57,13 +59,13 @@ blocked: 0
       issue: "Disposable `dgfy_accounts` table schema is narrower than the fixture payload inserted at line 138."
     - path: "apps/dgfy-migration-runner/tests/fixtures/phase03/legacyRecords.js"
       issue: "`legacyDgfyAccountFixture()` returns the full legacy account shape, including deferred fields not present in the integration test's reduced table."
-  missing:
-    - "Align the disposable integration-table schema with the fixture payload, or seed only the exact columns created by the test."
-    - "Rerun the gated real-MySQL Phase 03 rehearsal after fixing the seed/schema mismatch."
+  resolution:
+    - "phase03Integration.test.js now seeds reduced disposable-table payloads and converts fixture dates for strict MySQL DATETIME columns."
+    - "The gated real-MySQL Phase 03 rehearsal passes with data_migration_ok=true."
   debug_session: ""
 
 - truth: "Phase 03 canonical verification status is `passed` before the phase can advance."
-  status: failed
+  status: resolved
   reason: "Verification report shows GAP-03-01: tenant-local map-completeness keys use hardcoded `legacy_tenant` instead of manifest `legacy_tenant_db_name`."
   severity: blocker
   test: 3
@@ -73,8 +75,8 @@ blocked: 0
       issue: "Tenant-local expected map keys use `legacy_tenant` instead of the manifest tenant database name."
     - path: ".planning/phases/03-old-to-new-migration-proof/03-VERIFICATION.md"
       issue: "Canonical verification status is `gaps_found`."
-  missing:
-    - "Use `target.legacy_tenant_db_name` when building tenant-local map-completeness keys."
-    - "Add a failing-then-passing regression test for a manifest tenant database such as `sku_tenant_1`."
-    - "Rerun Phase 03 verification."
+  resolution:
+    - "verifyData.js now uses `target.legacy_tenant_db_name` for tenant-local expected keys."
+    - "dataVerify.test.js covers `sku_tenant_1` map-completeness."
+    - "03-VERIFICATION.md status is passed."
   debug_session: ""

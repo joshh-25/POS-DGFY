@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03
-current_phase_name: old-to-new-migration-proof
-status: verifying
-stopped_at: Phase 03 verification found GAP-03-01
-last_updated: "2026-07-11T06:26:45Z"
+current_phase: 04
+current_phase_name: backend-accounts-businesses-and-tenancy-foundation
+status: ready_for_planning
+stopped_at: Phase 03 gap closure completed; ready for Phase 04 planning
+last_updated: "2026-07-11T07:24:51Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 03 verification found a blocking MIG-05 gap
+last_activity_desc: Phase 03 gap closure passed live MySQL rehearsal and canonical verification
 progress:
   total_phases: 7
-  completed_phases: 2
-  total_plans: 14
-  completed_plans: 14
-  percent: 29
+  completed_phases: 3
+  total_plans: 15
+  completed_plans: 15
+  percent: 43
 ---
 
 # Project State
@@ -24,22 +24,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11)
 
 **Core value:** DGFY can become a standalone multi-tenant POS and Storefront system without breaking the existing live platform during migration.
-**Current focus:** Phase 03 — old-to-new-migration-proof
+**Current focus:** Phase 04 — backend-accounts-businesses-and-tenancy-foundation
 
 ## Current Position
 
-Phase: 03 (old-to-new-migration-proof) — EXECUTING
-Plan: 5 of 5
-Status: Verification gaps found — gap closure needed
-Last activity: 2026-07-11 — Phase 03 verification found GAP-03-01
+Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — READY FOR PLANNING
+Plan: TBD
+Status: Phase 03 complete; Phase 04 planning next
+Last activity: 2026-07-11 — Phase 03 gap closure passed live MySQL rehearsal
 
-Progress: [███░░░░░░░] 29%
+Progress: [████░░░░░░] 43%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 14
+- Total plans completed: 15
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -49,6 +49,7 @@ Progress: [███░░░░░░░] 29%
 |-------|-------|-------|----------|
 | 01 | 4 | - | - |
 | 02 | 5 | - | - |
+| 03 | 6 | - | - |
 
 **Recent Trend:**
 
@@ -70,6 +71,7 @@ Progress: [███░░░░░░░] 29%
 | Phase 03 P03 | 45min | 3 tasks | 5 files |
 | Phase 03 P04 | 55min | 3 tasks | 4 files |
 | Phase 03 P05 | 75min | 3 tasks | 8 files |
+| Phase 03 P06 | 32min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -121,6 +123,8 @@ Recent decisions affecting current work:
 - [Phase 03]: Runner: verify.js migration_metadata error path uses missing_migrations:null (unknown sentinel) instead of [] (clean sentinel); idempotency derivation treats null as ok:false, closing the Phase 02 false-clean idempotency gap
 - [Phase 03]: Runner: verify.js's new data_migration section only runs when DGFY_MIGRATION_TARGET_MANIFEST is configured (skip cleanly, ok:true, when absent) so schema-only verify runs stay unaffected; fails closed once a manifest is configured
 - [Phase 03]: Runner: verifyData.js's checkDataCounts/checkRequiredRelationships/checkMapCompleteness/checkOpenFindings are pure DB-free functions, mirroring dryRun.js's pure-plan/impure-orchestration split
+- [Phase 03]: Runner: tenant-local verification map-completeness keys use the manifest legacy_tenant_db_name, matching apply's durable legacy_id_map.legacy_source contract.
+- [Phase 03]: Runner: apply resolves open dry-run findings only after successful exact legacy-key mapped writes, so stale first-pass orphans do not block clean post-apply verification.
 
 ### Pending Todos
 
@@ -130,7 +134,6 @@ None yet.
 
 - [Phase 4] Backend placement for Accounts/Businesses/Tenancy still needs an ADR impact decision before implementation planning.
 - [Phase 3] Legacy data quality and production-like rehearsal inputs need inspection before migration proof can be trusted.
-- [Phase 3] GAP-03-01: `verifyData.js` builds tenant-local map completeness keys with hardcoded `legacy_tenant` instead of the manifest `legacy_tenant_db_name`; run `$gsd-plan-phase 3 --gaps` before advancing.
 
 ## Deferred Items
 
@@ -144,6 +147,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T06:26:45Z
-Stopped at: Phase 03 verification found GAP-03-01
+Last session: 2026-07-11T07:24:51Z
+Stopped at: Phase 03 complete; ready for Phase 04 planning
 Resume file: None
