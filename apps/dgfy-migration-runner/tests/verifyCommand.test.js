@@ -104,13 +104,17 @@ jest.unstable_mockModule('../src/config/db.js', () => ({
   createSourceConnection: mockCreateSourceConnection,
   createTargetConnection: mockCreateTargetConnection,
   createMetaConnection: mockCreateMetaConnection,
-  createBusinessTargetConnection: mockCreateBusinessTargetConnection
+  createBusinessTargetConnection: mockCreateBusinessTargetConnection,
+  createLegacyTenantSourceConnection: jest.fn()
 }));
 
 jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
   META_DB_NAME: 'dgfy_migration_meta',
   COMMAND_EXECUTIONS_TABLE: 'command_executions',
   SCHEMA_MIGRATIONS_TABLE: 'schema_migrations',
+  LEGACY_ID_MAP_TABLE: 'legacy_id_map',
+  DATA_CHECKPOINTS_TABLE: 'data_checkpoints',
+  DATA_QUALITY_FINDINGS_TABLE: 'data_quality_findings',
   ensureMetadataSchema: mockEnsureMetadataSchema,
   recordCommandStart: mockRecordCommandStart,
   recordCommandComplete: mockRecordCommandComplete
