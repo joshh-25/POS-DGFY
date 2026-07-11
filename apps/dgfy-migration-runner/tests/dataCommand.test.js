@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { DestructiveOperationError } from '../src/utils/errors.js';
+import { DestructiveOperationError, EnvValidationError } from '../src/utils/errors.js';
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -20,6 +20,11 @@ function baseEnv(overrides = {}) {
     TARGET_DB_PASSWORD: 'target_pass',
     TARGET_DB_NAME: 'dgfy_landlord',
     MIGRATION_ACTOR: 'operator@dgfy.ph',
+    // Plan 03-03: runDataDryRun() now passes { requireMigrationManifest: true }
+    // to validateEnv(), so every test in this file needs a non-blank path by
+    // default. The manifest is never actually read from disk in these
+    // command-level tests — loadMigrationTargetManifest() is mocked below.
+    DGFY_MIGRATION_TARGET_MANIFEST: '/tmp/dgfy-migration-runner-tests/target-manifest.json',
     ...overrides
   };
 }
@@ -40,25 +45,56 @@ function restoreEnv() {
   Object.assign(process.env, ORIGINAL_ENV);
 }
 
+function validTarget(overrides = {}) {
+  return {
+    legacy_tenant_id: 'tenant-1',
+    legacy_tenant_db_name: 'sku_tenant_1',
+    target_business_db_name: 'dgfy_business_alpha',
+    expected_business_id: 'biz-uuid-1',
+    expected_owner_account_id: 'acct-uuid-1',
+    ...overrides
+  };
+}
+
 const mockCreateTargetConnection = jest.fn();
 const mockCreateMetaConnection = jest.fn();
 const mockEnsureMetadataSchema = jest.fn().mockResolvedValue(undefined);
 const mockRecordCommandStart = jest.fn().mockResolvedValue(1);
 const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
+const mockLoadMigrationTargetManifest = jest.fn();
+const mockRunDryRunTransformations = jest.fn();
 
 jest.unstable_mockModule('../src/config/db.js', () => ({
   createSourceConnection: jest.fn(),
   createTargetConnection: mockCreateTargetConnection,
-  createMetaConnection: mockCreateMetaConnection
+  createMetaConnection: mockCreateMetaConnection,
+  createBusinessTargetConnection: jest.fn(),
+  createLegacyTenantSourceConnection: jest.fn()
 }));
 
 jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
   META_DB_NAME: 'dgfy_migration_meta',
   COMMAND_EXECUTIONS_TABLE: 'command_executions',
   SCHEMA_MIGRATIONS_TABLE: 'schema_migrations',
+  LEGACY_ID_MAP_TABLE: 'legacy_id_map',
+  DATA_CHECKPOINTS_TABLE: 'data_checkpoints',
+  DATA_QUALITY_FINDINGS_TABLE: 'data_quality_findings',
   ensureMetadataSchema: mockEnsureMetadataSchema,
   recordCommandStart: mockRecordCommandStart,
   recordCommandComplete: mockRecordCommandComplete
+}));
+
+jest.unstable_mockModule('../src/data/targetManifest.js', () => ({
+  loadMigrationTargetManifest: mockLoadMigrationTargetManifest,
+  validateMigrationTargetManifest: jest.fn(),
+  BUSINESS_DB_NAME_PATTERN: /^dgfy_business_[a-z0-9][a-z0-9_]*$/
+}));
+
+jest.unstable_mockModule('../src/data/dryRun.js', () => ({
+  DEFAULT_RUN_SCOPE: 'data-migration',
+  runDryRunTransformations: mockRunDryRunTransformations,
+  buildDryRunPlan: jest.fn(),
+  summarizeDryRunReport: jest.fn()
 }));
 
 const { runDataDryRun, runDataApply } = await import('../src/commands/data.js');
@@ -75,6 +111,29 @@ describe('data commands', () => {
     mockEnsureMetadataSchema.mockClear();
     mockRecordCommandStart.mockClear().mockResolvedValue(1);
     mockRecordCommandComplete.mockClear();
+    mockLoadMigrationTargetManifest.mockReset().mockResolvedValue({
+      valid: true,
+      errors: [],
+      targets: [validTarget()]
+    });
+    mockRunDryRunTransformations.mockReset().mockResolvedValue({
+      run_scope: 'data-migration',
+      entries: [],
+      summary: {
+        planned_inserts: 0,
+        planned_updates: 0,
+        planned_skips: 0,
+        planned_conflicts: 0,
+        orphan_records: 0,
+        tenant_coverage_count: 1
+      },
+      tenant_coverage: [{
+        legacy_tenant_id: 'tenant-1',
+        legacy_tenant_db_name: 'sku_tenant_1',
+        target_business_db_name: 'dgfy_business_alpha',
+        entities_planned: 0
+      }]
+    });
   });
 
   afterEach(async () => {
@@ -96,10 +155,71 @@ describe('data commands', () => {
     expect(report.summary.rows_written).toBe(0);
   });
 
-  test('runDataDryRun({}) succeeds without requiring confirmDestructive', async () => {
+  test('runDataDryRun({}) succeeds without requiring confirmDestructive and returns the real dry-run report shape', async () => {
     const report = await runDataDryRun({});
 
     expect(report.command).toBe('data:dry-run');
     expect(report.mode).toBe('dry-run');
+    expect(report.run_scope).toBe('data-migration');
+    expect(report.summary).toEqual({
+      planned_inserts: 0,
+      planned_updates: 0,
+      planned_skips: 0,
+      planned_conflicts: 0,
+      orphan_records: 0,
+      tenant_coverage_count: 1
+    });
+    expect(report.tenant_coverage).toHaveLength(1);
+    expect(report.results).toEqual([]);
+    expect(mockRunDryRunTransformations).toHaveBeenCalledTimes(1);
+  });
+
+  test('runDataDryRun({}) records the report paths in command_executions on success', async () => {
+    await runDataDryRun({});
+
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({
+        exitStatus: 'success',
+        reportJsonPath: expect.stringContaining('data-dry-run'),
+        reportSummaryPath: expect.stringContaining('data-dry-run')
+      })
+    );
+  });
+
+  test('runDataDryRun({}) rejects with EnvValidationError when DGFY_MIGRATION_TARGET_MANIFEST is missing, before any DB factory call', async () => {
+    applyEnv({ DGFY_MIGRATION_TARGET_MANIFEST: '' });
+
+    await expect(runDataDryRun({})).rejects.toThrow(EnvValidationError);
+
+    expect(mockCreateTargetConnection).not.toHaveBeenCalled();
+    expect(mockCreateMetaConnection).not.toHaveBeenCalled();
+    expect(mockLoadMigrationTargetManifest).not.toHaveBeenCalled();
+  });
+
+  test('runDataDryRun({}) rejects with EnvValidationError when the manifest is invalid, before any DB factory call', async () => {
+    mockLoadMigrationTargetManifest.mockResolvedValue({
+      valid: false,
+      errors: ['Migration target manifest must not be empty'],
+      targets: null
+    });
+
+    await expect(runDataDryRun({})).rejects.toThrow(EnvValidationError);
+
+    expect(mockCreateTargetConnection).not.toHaveBeenCalled();
+    expect(mockCreateMetaConnection).not.toHaveBeenCalled();
+  });
+
+  test('runDataDryRun({}) marks the command execution failed when the dry-run planner throws', async () => {
+    mockRunDryRunTransformations.mockRejectedValue(new Error('boom'));
+
+    await expect(runDataDryRun({})).rejects.toThrow('boom');
+
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'failed', errorMessage: 'boom' })
+    );
   });
 });
