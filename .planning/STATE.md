@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
-status: ready_for_planning
+status: executing
 stopped_at: Phase 4 context gathered
-last_updated: "2026-07-11T08:22:27.614Z"
+last_updated: "2026-07-11T10:18:50.426Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 03 gap closure passed live MySQL rehearsal
+last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 15
-  completed_plans: 15
+  total_plans: 22
+  completed_plans: 16
   percent: 43
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 ## Current Position
 
-Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — READY FOR PLANNING
-Plan: TBD
-Status: Phase 03 complete; Phase 04 planning next
-Last activity: 2026-07-11 — Phase 03 gap closure passed live MySQL rehearsal
+Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-07-11 — Phase 04 execution started
 
 Progress: [████░░░░░░] 43%
 
@@ -72,6 +72,7 @@ Progress: [████░░░░░░] 43%
 | Phase 03 P04 | 55min | 3 tasks | 4 files |
 | Phase 03 P05 | 75min | 3 tasks | 8 files |
 | Phase 03 P06 | 32min | 2 tasks | 8 files |
+| Phase 04 P01 | 30min | 6 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Runner: verifyData.js's checkDataCounts/checkRequiredRelationships/checkMapCompleteness/checkOpenFindings are pure DB-free functions, mirroring dryRun.js's pure-plan/impure-orchestration split
 - [Phase 03]: Runner: tenant-local verification map-completeness keys use the manifest legacy_tenant_db_name, matching apply's durable legacy_id_map.legacy_source contract.
 - [Phase 03]: Runner: apply resolves open dry-run findings only after successful exact legacy-key mapped writes, so stale first-pass orphans do not block clean post-apply verification.
+- [Phase ?]: Created apps/dgfy-api/src/shared/contracts/{applicationResult,domainErrors}.js in Wave 1 (not originally scoped there) because Wave 2 (04-02-PLAN.md) already imports controllers from this exact location
+- [Phase ?]: ApplicationResult is class-based (success()/failure() statics, .isSuccess, .toJSON()) to match Wave 2's locked controller pseudocode, not the dgfyAuth module's plain ok()/fail() functions
+- [Phase ?]: API-01 requirement intentionally left Pending after Wave 1 — REQUIREMENTS.md wording requires the HTTP layer Wave 2 (04-02) delivers; master plan traceability table assigns API-01 to both waves
 
 ### Pending Todos
 
@@ -147,6 +151,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T08:22:27.607Z
+Last session: 2026-07-11T10:16:19.264Z
 Stopped at: Phase 4 context gathered
 Resume file: .planning/phases/04-backend-accounts-businesses-and-tenancy-foundation/04-CONTEXT.md
