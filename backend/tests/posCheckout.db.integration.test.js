@@ -10,6 +10,7 @@ import { listPosCatalogUseCase } from '../src/modules/pos/index.js';
 import { buildCheckoutPosUseCase } from '../src/modules/pos/usecases/posUseCases.js';
 import { posRepository } from '../src/modules/pos/repositories/posRepository.js';
 import { inventoryStockCommandService } from '../src/modules/inventory/index.js';
+import { reconcileFifoLedgerOpeningBalance } from '../src/services/stockMovementService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -572,7 +573,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(Number(refreshedItem.current_stock)).toBe(10);
     });
 
-    it('auto-reconciles FIFO batch drift when current_stock is higher than open batch quantities', async () => {
+    it('blocks checkout when current_stock is higher than open FIFO batch quantities', async () => {
         const cashier = await createCashier();
         const product = await createFinishedGood({
             fifo_enabled: true,
@@ -600,7 +601,9 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                 ]
         });
 
-        expect(checkoutResult.success).toBe(true);
+        expect(checkoutResult.success).toBe(false);
+        expect(checkoutResult.error.code).toBe('INVENTORY_LEDGER_RECONCILIATION_REQUIRED');
+        expect(checkoutResult.error.message).toContain('No stock was issued');
 
         const driftBatch = await models.FIFOBatch.findOne({
             where: {
@@ -608,12 +611,55 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                 po_number: 'LEGACY-STOCK-DRIFT'
             }
         });
-        expect(driftBatch).not.toBeNull();
-        expect(Number(driftBatch.quantity)).toBeCloseTo(0.8, 6);
-        expect(Number(driftBatch.quantity_consumed)).toBeCloseTo(0.8, 6);
+        expect(driftBatch).toBeNull();
 
         const refreshedItem = await models.Item.findByPk(product.item_id);
-        expect(Number(refreshedItem.current_stock)).toBeCloseTo(0, 6);
+        expect(Number(refreshedItem.current_stock)).toBeCloseTo(1, 6);
+    });
+
+    it('records a reviewed FIFO opening balance without changing item or location stock', async () => {
+        const cashier = await createCashier();
+        const product = await createFinishedGood({
+            fifo_enabled: true,
+            current_stock: 1,
+            unit_of_measure: 'L'
+        });
+        await models.ItemLocationStock.create({
+            item_id: product.item_id,
+            location_id: cashier.posTestLocationId,
+            quantity_on_hand: 1,
+            updated_by: cashier.user_id
+        });
+        await createFifoBatch(product.item_id, {
+            location_id: cashier.posTestLocationId,
+            quantity: 0.2,
+            quantity_consumed: 0
+        });
+
+        const movement = await runInTenantContext(() => reconcileFifoLedgerOpeningBalance({
+            itemId: product.item_id,
+            locationId: cashier.posTestLocationId,
+            quantity: 0.8,
+            expectedItemStock: 1,
+            expectedLocationStock: 1,
+            expectedBatchAvailable: 0.2,
+            notes: 'Test-reviewed opening balance reconciliation'
+        }, cashier.user_id));
+
+        expect(movement.movement_type).toBe('adjustment');
+        expect(Number(movement.quantity)).toBeCloseTo(0.8, 6);
+        const refreshedItem = await models.Item.findByPk(product.item_id);
+        const refreshedLocationStock = await models.ItemLocationStock.findOne({
+            where: { item_id: product.item_id, location_id: cashier.posTestLocationId }
+        });
+        const availableBatches = await models.FIFOBatch.findAll({ where: { item_id: product.item_id } });
+        const available = availableBatches.reduce((total, batch) => (
+            total + Number(batch.quantity) - Number(batch.quantity_consumed)
+        ), 0);
+
+        expect(Number(refreshedItem.current_stock)).toBeCloseTo(1, 6);
+        expect(Number(refreshedLocationStock.quantity_on_hand)).toBeCloseTo(1, 6);
+        expect(available).toBeCloseTo(1, 6);
     });
 
     it('applies fixed DGFY convenience fee correctly and ignores caller override snapshot', async () => {

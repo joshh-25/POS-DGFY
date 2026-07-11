@@ -29,6 +29,12 @@ const maxPrintedRows = Math.max(1, Math.floor(parsePositiveNumber(process.env.FI
 const shouldRepairPositiveDrift = process.argv.includes('--repair-positive-drift');
 const jsonOutputPath = parseJsonOutputArg();
 
+if (shouldRepairPositiveDrift) {
+    throw new Error(
+        'Automatic FIFO drift repair is disabled. Review each item and reconcile it through an audited inventory movement; do not create batches directly from this audit.'
+    );
+}
+
 const DRIFT_SQL = `
   SELECT *
   FROM (
