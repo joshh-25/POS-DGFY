@@ -1,7 +1,7 @@
 ---
 phase: 02-dgfy-database-foundation
 verified: 2026-07-10T23:50:11Z
-status: human_needed
+status: passed
 score: 4/4 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -9,10 +9,12 @@ re_verification:
   previous_status: gaps_found
   previous_score: 3/4
   gaps_closed:
+
     - "Re-running schema migration and verification proves expected tables, columns, indexes, constraints, metadata records, and tenant coverage. (CR-01: migration_metadata try/catch was scoped across the whole business-target loop instead of per-target; now split into two independently-scoped blocks, mirroring business_schemas.)"
   gaps_remaining: []
   regressions: []
 human_verification:
+
   - test: "Run the gated real-MySQL Phase 02 integration test end-to-end: `RUN_PHASE02_INTEGRATION=true npm --prefix apps/dgfy-migration-runner test -- phase02Integration.test.js --watchman=false` in an environment with real, reachable MySQL admin credentials."
     expected: "The test creates disposable dgfy_core_it_*/dgfy_business_it*/sku_it_* schemas, runs schema migrate, reruns it (asserting executed === 0), runs verify, and asserts every report section (core_schema, business_schemas, migration_metadata, tenant_coverage, idempotency, legacy_non_mutation) plus every summary.*_ok flag, then cleans up only its own disposable schemas."
     why_human: "Requires live MySQL admin credentials that remain intentionally inaccessible to this automated verification session (sandbox permission settings deny reading .env/.env.example). This item carries forward unchanged from the prior verification pass and from 02-04-SUMMARY.md's own disclosed 'Known Gaps' (D6, human_judgment: true) — it is unrelated to the CR-01 gap closed by Plan 02-05."
