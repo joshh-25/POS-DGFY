@@ -124,6 +124,38 @@ describe('buildCreateBusinessUseCase', () => {
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('VALIDATION_FAILED');
     });
+
+    it('translates a SequelizeUniqueConstraintError from create() into a 409 conflict (CR-01)', async () => {
+        const uniqueConstraintError = new Error('Duplicate entry');
+        uniqueConstraintError.name = 'SequelizeUniqueConstraintError';
+        const repository = baseRepository({ create: jest.fn().mockRejectedValue(uniqueConstraintError) });
+        const useCase = buildCreateBusinessUseCase({ repository });
+
+        const result = await useCase({
+            legal_name: 'Acme Inc.',
+            display_name: 'Acme Store',
+            business_handle: 'acme-store',
+            creatorAccountId: 'acct-1'
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(result.error.statusCode).toBe(409);
+        expect(result.error.details.field).toBe('business_handle');
+    });
+
+    it('re-throws an unrecognized error from create() rather than swallowing it (CR-01)', async () => {
+        const unexpectedError = new Error('connection reset');
+        const repository = baseRepository({ create: jest.fn().mockRejectedValue(unexpectedError) });
+        const useCase = buildCreateBusinessUseCase({ repository });
+
+        await expect(useCase({
+            legal_name: 'Acme Inc.',
+            display_name: 'Acme Store',
+            business_handle: 'acme-store',
+            creatorAccountId: 'acct-1'
+        })).rejects.toThrow('connection reset');
+    });
 });
 
 describe('buildListUserBusinessesUseCase', () => {
@@ -242,6 +274,36 @@ describe('buildUpdateBusinessUseCase', () => {
         expect(result.error.code).toBe('AUTHORIZATION_FAILED');
         expect(repository.update).not.toHaveBeenCalled();
     });
+
+    it('translates a SequelizeUniqueConstraintError from update() into a 409 conflict (CR-01)', async () => {
+        const uniqueConstraintError = new Error('Duplicate entry');
+        uniqueConstraintError.name = 'SequelizeUniqueConstraintError';
+        const repository = baseRepository({ update: jest.fn().mockRejectedValue(uniqueConstraintError) });
+        const useCase = buildUpdateBusinessUseCase({ repository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            updates: { display_name: 'New Name' }
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(result.error.statusCode).toBe(409);
+        expect(result.error.details.field).toBe('business_handle');
+    });
+
+    it('re-throws an unrecognized error from update() rather than swallowing it (CR-01)', async () => {
+        const unexpectedError = new Error('connection reset');
+        const repository = baseRepository({ update: jest.fn().mockRejectedValue(unexpectedError) });
+        const useCase = buildUpdateBusinessUseCase({ repository });
+
+        await expect(useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            updates: { display_name: 'New Name' }
+        })).rejects.toThrow('connection reset');
+    });
 });
 
 describe('buildOnboardStaffViaInvitationUseCase', () => {
@@ -295,6 +357,45 @@ describe('buildOnboardStaffViaInvitationUseCase', () => {
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
     });
+
+    it('HTML-escapes an injected business display_name in the invitation email HTML body (WR-01)', async () => {
+        const repository = baseRepository({
+            findById: jest.fn().mockResolvedValue(makeBusiness({ display_name: '<script>alert(1)</script>' }))
+        });
+        const sendEmail = jest.fn().mockResolvedValue(undefined);
+        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, sendEmail });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            email: 'staff@example.com'
+        });
+
+        expect(result.isSuccess).toBe(true);
+        const sentEmail = sendEmail.mock.calls[0][0];
+        expect(sentEmail.html).not.toContain('<script>alert(1)</script>');
+        expect(sentEmail.html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+        // The plain-text field is intentionally left unescaped.
+        expect(sentEmail.text).toContain('<script>alert(1)</script>');
+    });
+
+    it('rejects a malformed (non-empty but invalid) email (WR-02)', async () => {
+        const repository = baseRepository();
+        const sendEmail = jest.fn();
+        const useCase = buildOnboardStaffViaInvitationUseCase({ repository, sendEmail });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            email: 'not-an-email'
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(result.error.details.field).toBe('email');
+        expect(repository.findInvitationByEmail).not.toHaveBeenCalled();
+        expect(sendEmail).not.toHaveBeenCalled();
+    });
 });
 
 describe('buildOnboardStaffDirectUseCase', () => {
@@ -329,6 +430,22 @@ describe('buildOnboardStaffDirectUseCase', () => {
 
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('CONFLICT');
+        expect(repository.createStaffAccount).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed (non-empty but invalid) email (WR-02)', async () => {
+        const repository = baseRepository();
+        const useCase = buildOnboardStaffDirectUseCase({ repository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            email: 'not-an-email'
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(result.error.details.field).toBe('email');
         expect(repository.createStaffAccount).not.toHaveBeenCalled();
     });
 });
