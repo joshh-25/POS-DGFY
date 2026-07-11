@@ -14,7 +14,7 @@ DGFY moves from an IMS-backed foundation to standalone `dgfy_*` landlord and ten
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Architecture and Migration Runner Contract** - Operators get one explicit migration image contract before any schema or API work depends on it. (completed 2026-07-10)
-- [ ] **Phase 2: DGFY Database Foundation** - New landlord and tenant `dgfy_*` schemas exist beside legacy and can be verified repeatably.
+- [x] **Phase 2: DGFY Database Foundation** - New landlord and tenant `dgfy_*` schemas exist beside legacy and can be verified repeatably. (completed 2026-07-11)
 - [ ] **Phase 3: Old-to-New Migration Proof** - Operators can rehearse and apply legacy-to-DGFY data transformations with retry and verification evidence.
 - [ ] **Phase 4: Backend Accounts, Businesses, and Tenancy Foundation** - Backend APIs use the stable DGFY schema for the first standalone identity and tenancy scope.
 - [ ] **Phase 5: Compatibility and Backend-First Cutover Seam** - Current POS and Storefront behavior remains available through narrow, temporary compatibility seams.
@@ -102,7 +102,28 @@ Plans:
   4. Operator can interrupt and retry migration without duplicate records, inconsistent references, or manual cleanup.
   5. Verification reports compare source and target counts, required relationships, skipped/conflict records, and unresolved data-quality issues.
 
-**Plans**: TBD
+**Plans**: 0/5 plans complete
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Metadata and target manifest contract
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — Source-to-target mapping doc and mapper fixtures
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-03-PLAN.md — Dry-run transformations and report evidence
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 03-04-PLAN.md — Apply mode with ID maps, checkpoints, and retry safety
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 03-05-PLAN.md — Data verification and gated rehearsal evidence
 
 ### Phase 4: Backend Accounts, Businesses, and Tenancy Foundation
 
@@ -167,8 +188,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Architecture and Migration Runner Contract | 4/4 | Complete    | 2026-07-10 |
-| 2. DGFY Database Foundation | 5/5 | Complete   | 2026-07-10 |
-| 3. Old-to-New Migration Proof | 0/TBD | Not started | - |
+| 2. DGFY Database Foundation | 5/5 | Complete    | 2026-07-10 |
+| 3. Old-to-New Migration Proof | 0/5 | Not started | - |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 0/TBD | Not started | - |
 | 5. Compatibility and Backend-First Cutover Seam | 0/TBD | Not started | - |
 | 6. Release Evidence and Rehearsal Gates | 0/TBD | Not started | - |
