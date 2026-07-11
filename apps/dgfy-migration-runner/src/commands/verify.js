@@ -22,6 +22,8 @@ import {
   LEGACY_FINGERPRINT_ARTIFACT_NAME
 } from './schema.js';
 import { MetaSequelizeStorage } from '../metadata/storage.js';
+import { loadMigrationTargetManifest } from '../data/targetManifest.js';
+import { buildDataVerificationSections } from '../data/verifyData.js';
 
 /**
  * Normalizes queryInterface.showAllTables() results (which can return plain
@@ -263,6 +265,49 @@ async function checkLegacyNonMutation(config) {
 }
 
 /**
+ * MIG-05/T-03-05-02: data migration reconciliation section. Only runs when
+ * an explicit `DGFY_MIGRATION_TARGET_MANIFEST` is configured — schema-only
+ * verify runs (Phase 02 style, no data migration in scope) report a
+ * deliberate `skipped:true, ok:true` entry rather than failing verification
+ * outright for a scope the operator never asked this run to cover. Once a
+ * manifest is configured, though, this section fails closed: an invalid
+ * manifest or a `buildDataVerificationSections()` error both report
+ * `ok:false`, never a silent skip.
+ */
+async function buildDataMigrationSection({ config, targetSequelize, metaSequelize }) {
+  if (!config.migrationTargetManifestPath) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'DGFY_MIGRATION_TARGET_MANIFEST not configured — data migration verification skipped for this run.'
+    };
+  }
+
+  const { valid: manifestValid, errors: manifestErrors, targets } = await loadMigrationTargetManifest(
+    config.migrationTargetManifestPath
+  );
+  if (!manifestValid) {
+    return {
+      ok: false,
+      skipped: false,
+      error: manifestErrors.join('; ')
+    };
+  }
+
+  try {
+    const { data_migration: dataMigration } = await buildDataVerificationSections({
+      config,
+      targetSequelize,
+      metaSequelize,
+      targets
+    });
+    return dataMigration;
+  } catch (error) {
+    return { ok: false, skipped: false, error: error.message };
+  }
+}
+
+/**
  * Runs metadata schema and target DB connectivity checks, plus Phase 02
  * schema/metadata verification evidence (D-21/D-22): expected-schema checks
  * for `dgfy_core` and every configured `dgfy_business_*` target, and
@@ -413,6 +458,11 @@ export async function runVerify({} = {}) {
   // baseline or comparison failure surfaces as ok:false.
   const legacyNonMutation = await checkLegacyNonMutation(config);
 
+  // MIG-05: data_migration — source/target count reconciliation, legacy_id_map
+  // completeness, required relationships, and unresolved data-quality
+  // findings for every migration target manifest entry. Never throws.
+  const dataMigration = await buildDataMigrationSection({ config, targetSequelize, metaSequelize });
+
   // recordCommandStart inserts into command_executions, which lives in the
   // same metadata schema ensureMetadataSchema() just checked. When that
   // schema is missing/broken (metadataSchemaOk === false) this insert will
@@ -441,6 +491,7 @@ export async function runVerify({} = {}) {
     tenant_coverage: tenantCoverage,
     idempotency,
     legacy_non_mutation: legacyNonMutation,
+    data_migration: dataMigration,
     summary: {
       metadata_schema_ok: metadataSchemaOk,
       target_db_reachable: targetDbReachable,
@@ -450,7 +501,8 @@ export async function runVerify({} = {}) {
       migration_metadata_ok: migrationMetadata.every((result) => result.ok),
       tenant_coverage_ok: tenantCoverage.ok,
       idempotency_ok: idempotency.every((result) => result.ok),
-      legacy_non_mutation_ok: legacyNonMutation.ok
+      legacy_non_mutation_ok: legacyNonMutation.ok,
+      data_migration_ok: dataMigration.ok
     }
   };
 
