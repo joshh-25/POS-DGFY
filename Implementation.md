@@ -1,3 +1,45 @@
+# Implementation — POS Category Management
+
+## Follow-up: iMin APK Notification Policy
+
+- **Issue:** Every POS Sonner toast and iMin hardware failure could appear as a top-screen overlay or native alert inside the Android WebView, obscuring the cashier workspace.
+- **Root cause:** POS components called Sonner directly, while hardware errors were forwarded to `window.iMinBridge.showMessage()` without a centralized APK-specific presentation policy.
+- **Fix:** Direct POS feedback now uses an APK-aware facade. In browsers it preserves Sonner behavior. In the iMin WebView it suppresses the top-screen toaster and renders bounded inline terminal feedback below the header. Hardware success remains silent; hardware errors no longer invoke the native alert path.
+- **Scope:** Presentation only. Printing, drawer, checkout, receipt, inventory, payment, and backend API contracts are unchanged.
+
+## Follow-up: Admin Inline Category Creation in Add Item
+
+- **Behavior:** Admins can select an active category or enter a new name directly in Add Item. A matching category is reused case-insensitively; no default categories are generated.
+- **Integrity:** A new category is created only in the same inventory transaction as the item, so a failed item save cannot leave an orphan category. Edit Item remains selection-only.
+- **Access:** The API rejects inline category creation for non-admin users even if they bypass the POS UI.
+
+## Overview
+
+Replaced automatic POS food-category seeding with a dedicated Category Management workspace under POS Settings. Categories are tenant-private; admins can also explicitly create one while saving a new POS item.
+
+## Behavior
+
+- Admins can create, edit, activate, deactivate, and delete categories.
+- Admin Add Item can select an active category or enter a new category name; it is created only when the item save succeeds. Edit Item uses active managed categories only. No default categories are generated.
+- Existing items retain inactive categories. An inactive category cannot be selected for a new item, while existing items can still be edited without silently changing their category.
+- Deleting an assigned category requires selecting a different active category. The delete dialog always exposes a replacement selector so a stale UI count cannot hide it. The assigned items are reassigned and the source category is permanently deleted in one tenant database transaction.
+- Category activation state is stored in additive `item_folders.is_active` schema and enforced by runtime tenant-schema checks.
+
+## Validation
+
+- Focused inventory repository tests cover create, rename, deactivate, safe delete, and delete-blocked behavior.
+- POS contract test verifies inline category creation is explicit, admin-only, and never seeds default categories.
+- POS build, backend architecture checks, compliance checks, and tenant schema coverage are required before release.
+
+## Follow-up: Category Editor Modal Layering
+
+- **Issue:** Opening Add Category or Edit Category dimmed only the main workspace, leaving a visible seam at the sidebar and header boundary.
+- **Root cause:** The category editor used the shared inline `Dialog`, so its overlay remained inside the terminal workspace stacking context instead of the viewport.
+- **Fix:** The category editor and category lifecycle confirmation dialogs now use the POS standard `document.body` portal with a full-viewport `z-[9999]` backdrop. Add, Edit, Activate, Deactivate, and Delete now cover the header, sidebar, and workspace consistently.
+- **Validation:** POS category contract test passed and POS production build passed.
+
+---
+
 # Implementation — Active Online Order Receipt Print Separation
 
 ## Remediation Log — Phase 1: POS Cash Pickup Payment
