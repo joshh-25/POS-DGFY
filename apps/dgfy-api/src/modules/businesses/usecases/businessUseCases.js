@@ -108,12 +108,21 @@ async function requireMembership(repository, businessId, accountId, { role } = {
 }
 
 /**
- * Create business use case (API-02, D-10). Business creator automatically
- * becomes owner — repository.create() inserts the business and the owner
- * membership inside one transaction.
- * @param {{repository}} deps
+ * Create business use case (API-02, API-03, D-10). Business creator
+ * automatically becomes owner — repository.createWithOwnerAndRegistry()
+ * inserts the business, the owner membership, and (when
+ * businessDatabaseRegistryRepository is supplied) safe tenant registry
+ * metadata, all inside one shared landlord transaction: a registry write
+ * failure rolls back the business and membership rows too.
+ *
+ * `businessDatabaseRegistryRepository` is optional (mirrors
+ * ../index.js's buildBusinessesModule() doc comment: it may be null before a
+ * BusinessDatabaseRegistry model is wired up) — when omitted, the response
+ * simply has no `tenant_registry` key, exactly matching this use case's
+ * pre-existing (pre-04-06) response shape.
+ * @param {{repository, businessDatabaseRegistryRepository?}} deps
  */
-export function buildCreateBusinessUseCase({ repository }) {
+export function buildCreateBusinessUseCase({ repository, businessDatabaseRegistryRepository } = {}) {
     return async (input = {}) => {
         const legalName = normalizeText(input.legal_name);
         const displayName = normalizeText(input.display_name);
@@ -143,12 +152,12 @@ export function buildCreateBusinessUseCase({ repository }) {
 
         let business;
         let membership;
+        let tenantRegistry;
         try {
-            ({ business, membership } = await repository.create({
-                business_handle: businessHandle,
-                legal_name: legalName,
-                display_name: displayName,
-                creatorAccountId
+            ({ business, membership, tenantRegistry } = await repository.createWithOwnerAndRegistry({
+                payload: { business_handle: businessHandle, legal_name: legalName, display_name: displayName },
+                accountId: creatorAccountId,
+                registryRepository: businessDatabaseRegistryRepository || null
             }));
         } catch (error) {
             const conflict = mapUniqueConstraintError(error);
@@ -156,7 +165,12 @@ export function buildCreateBusinessUseCase({ repository }) {
             throw error;
         }
 
-        return ApplicationResult.success({ business, membership });
+        const data = { business, membership };
+        if (businessDatabaseRegistryRepository && tenantRegistry) {
+            data.tenant_registry = businessDatabaseRegistryRepository.toSafeMetadata(tenantRegistry);
+        }
+
+        return ApplicationResult.success(data);
     };
 }
 

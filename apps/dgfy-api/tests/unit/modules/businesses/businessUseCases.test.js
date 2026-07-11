@@ -33,6 +33,11 @@ const baseRepository = (overrides = {}) => ({
     findById: jest.fn().mockResolvedValue(makeBusiness()),
     findAccountBusinesses: jest.fn().mockResolvedValue([]),
     create: jest.fn().mockResolvedValue({ business: makeBusiness(), membership: makeMembership() }),
+    createWithOwnerAndRegistry: jest.fn().mockResolvedValue({
+        business: makeBusiness(),
+        membership: makeMembership(),
+        tenantRegistry: null
+    }),
     update: jest.fn().mockResolvedValue(makeBusiness()),
     getMembership: jest.fn().mockResolvedValue(makeMembership()),
     listMembers: jest.fn().mockResolvedValue([makeMembership()]),
@@ -72,11 +77,13 @@ describe('buildCreateBusinessUseCase', () => {
         });
 
         expect(result.isSuccess).toBe(true);
-        expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
-            business_handle: 'acme-store',
-            legal_name: 'Acme Inc.',
-            display_name: 'Acme Store',
-            creatorAccountId: 'acct-1'
+        expect(repository.createWithOwnerAndRegistry).toHaveBeenCalledWith(expect.objectContaining({
+            payload: expect.objectContaining({
+                business_handle: 'acme-store',
+                legal_name: 'Acme Inc.',
+                display_name: 'Acme Store'
+            }),
+            accountId: 'acct-1'
         }));
         expect(result.data.business).toBeDefined();
         expect(result.data.membership.role).toBe('owner');
@@ -96,7 +103,62 @@ describe('buildCreateBusinessUseCase', () => {
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('CONFLICT');
         expect(result.error.statusCode).toBe(409);
-        expect(repository.create).not.toHaveBeenCalled();
+        expect(repository.createWithOwnerAndRegistry).not.toHaveBeenCalled();
+    });
+
+    it('includes safe tenant_registry metadata in the response when a registry repository is injected (API-03)', async () => {
+        const tenantRegistry = {
+            business_id: 'biz-1',
+            database_name: 'dgfy_business_abc123',
+            stable_opaque_suffix: 'abc123',
+            status: 'provisioning',
+            verified_at: null
+        };
+        const repository = baseRepository({
+            createWithOwnerAndRegistry: jest.fn().mockResolvedValue({
+                business: makeBusiness(),
+                membership: makeMembership(),
+                tenantRegistry
+            })
+        });
+        const businessDatabaseRegistryRepository = {
+            toSafeMetadata: jest.fn((record) => ({ ...record }))
+        };
+        const useCase = buildCreateBusinessUseCase({ repository, businessDatabaseRegistryRepository });
+
+        const result = await useCase({
+            legal_name: 'Acme Inc.',
+            display_name: 'Acme Store',
+            business_handle: 'acme-store',
+            creatorAccountId: 'acct-1'
+        });
+
+        expect(result.isSuccess).toBe(true);
+        expect(repository.createWithOwnerAndRegistry).toHaveBeenCalledWith(expect.objectContaining({
+            registryRepository: businessDatabaseRegistryRepository
+        }));
+        expect(businessDatabaseRegistryRepository.toSafeMetadata).toHaveBeenCalledWith(tenantRegistry);
+        expect(result.data.tenant_registry).toEqual(expect.objectContaining({
+            database_name: 'dgfy_business_abc123',
+            status: 'provisioning'
+        }));
+        expect(result.data.tenant_registry).not.toHaveProperty('host');
+        expect(result.data.tenant_registry).not.toHaveProperty('password');
+    });
+
+    it('omits tenant_registry from the response when no registry repository is injected', async () => {
+        const repository = baseRepository();
+        const useCase = buildCreateBusinessUseCase({ repository });
+
+        const result = await useCase({
+            legal_name: 'Acme Inc.',
+            display_name: 'Acme Store',
+            business_handle: 'acme-store',
+            creatorAccountId: 'acct-1'
+        });
+
+        expect(result.isSuccess).toBe(true);
+        expect(result.data).not.toHaveProperty('tenant_registry');
     });
 
     it('rejects missing required fields', async () => {
@@ -125,10 +187,12 @@ describe('buildCreateBusinessUseCase', () => {
         expect(result.error.code).toBe('VALIDATION_FAILED');
     });
 
-    it('translates a SequelizeUniqueConstraintError from create() into a 409 conflict (CR-01)', async () => {
+    it('translates a SequelizeUniqueConstraintError from createWithOwnerAndRegistry() into a 409 conflict (CR-01)', async () => {
         const uniqueConstraintError = new Error('Duplicate entry');
         uniqueConstraintError.name = 'SequelizeUniqueConstraintError';
-        const repository = baseRepository({ create: jest.fn().mockRejectedValue(uniqueConstraintError) });
+        const repository = baseRepository({
+            createWithOwnerAndRegistry: jest.fn().mockRejectedValue(uniqueConstraintError)
+        });
         const useCase = buildCreateBusinessUseCase({ repository });
 
         const result = await useCase({
@@ -144,9 +208,11 @@ describe('buildCreateBusinessUseCase', () => {
         expect(result.error.details.field).toBe('business_handle');
     });
 
-    it('re-throws an unrecognized error from create() rather than swallowing it (CR-01)', async () => {
+    it('re-throws an unrecognized error from createWithOwnerAndRegistry() rather than swallowing it (CR-01)', async () => {
         const unexpectedError = new Error('connection reset');
-        const repository = baseRepository({ create: jest.fn().mockRejectedValue(unexpectedError) });
+        const repository = baseRepository({
+            createWithOwnerAndRegistry: jest.fn().mockRejectedValue(unexpectedError)
+        });
         const useCase = buildCreateBusinessUseCase({ repository });
 
         await expect(useCase({

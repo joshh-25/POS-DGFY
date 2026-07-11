@@ -1,11 +1,15 @@
 import { Op } from 'sequelize';
+import { createBusinessEntity, createBusinessMembershipEntity } from '../entities/businessEntity.js';
 
 // BusinessRepository — Clean Architecture data access adapter (mirrors
 // ../../accounts/repositories/accountRepository.js's role). Owns ALL
 // Sequelize queries for the businesses domain; every use case reaches the
 // Business/BusinessMembership models exclusively through this repository.
-// No business logic lives here, only data access + Model<->plain-object
-// translation.
+// No business logic lives here, only data access + Model<->entity<->plain-
+// object translation (API-05: Sequelize model rows are translated through
+// ../entities/businessEntity.js's BusinessEntity/BusinessMembershipEntity
+// helpers, preserving the exact same public response shape this repository
+// has always returned).
 export class BusinessRepository {
     /**
      * @param {{businessModel, businessMembershipModel, sequelize?}} deps -
@@ -65,6 +69,56 @@ export class BusinessRepository {
             return {
                 business: this.toPlainBusiness(businessInstance),
                 membership: this.toPlainMembership(membershipInstance)
+            };
+        });
+    }
+
+    /**
+     * D-10/API-03: like create(), but also creates (or finds) safe tenant
+     * registry metadata for the new business inside the SAME landlord
+     * transaction — the Business insert, owner BusinessMembership insert,
+     * and BusinessDatabaseRegistry insert either all commit or all roll
+     * back. `registryRepository` is optional (omit it to get create()'s
+     * exact prior behavior) so this stays usable before a
+     * BusinessDatabaseRegistryRepository is wired up.
+     *
+     * The API request path never creates the actual tenant database or
+     * runs schema migrations — only safe `provisioning` metadata is
+     * written here (registryRepository.findOrCreateForBusiness()'s own doc
+     * comment covers the operator/migration-runner handoff that later
+     * marks a registry row `active`/`verified`).
+     *
+     * @param {{payload: {business_handle, legal_name, display_name}, accountId: string, registryRepository?: Object}} args
+     */
+    async createWithOwnerAndRegistry({ payload, accountId, registryRepository }) {
+        return this.sequelize.transaction(async (transaction) => {
+            const businessInstance = await this.businessModel.create({
+                business_handle: payload.business_handle,
+                legal_name: payload.legal_name,
+                display_name: payload.display_name,
+                status: 'active'
+            }, { transaction });
+
+            const membershipInstance = await this.businessMembershipModel.create({
+                account_id: accountId,
+                business_id: businessInstance.id,
+                role: 'owner',
+                status: 'active'
+            }, { transaction });
+
+            let tenantRegistry = null;
+            if (registryRepository) {
+                tenantRegistry = await registryRepository.findOrCreateForBusiness({
+                    businessId: businessInstance.id,
+                    businessHandle: businessInstance.business_handle,
+                    transaction
+                });
+            }
+
+            return {
+                business: this.toPlainBusiness(businessInstance),
+                membership: this.toPlainMembership(membershipInstance),
+                tenantRegistry
             };
         });
     }
@@ -244,29 +298,13 @@ export class BusinessRepository {
     toPlainBusiness(model) {
         if (!model) return null;
         const plain = typeof model.get === 'function' ? model.get({ plain: true }) : model;
-        return {
-            id: plain.id,
-            business_handle: plain.business_handle,
-            legal_name: plain.legal_name,
-            display_name: plain.display_name,
-            status: plain.status,
-            created_at: plain.created_at,
-            updated_at: plain.updated_at
-        };
+        return createBusinessEntity(plain).toPlain();
     }
 
     toPlainMembership(model) {
         if (!model) return null;
         const plain = typeof model.get === 'function' ? model.get({ plain: true }) : model;
-        return {
-            id: plain.id,
-            account_id: plain.account_id,
-            business_id: plain.business_id,
-            role: plain.role,
-            status: plain.status,
-            created_at: plain.created_at,
-            updated_at: plain.updated_at
-        };
+        return createBusinessMembershipEntity(plain).toPlain();
     }
 }
 
