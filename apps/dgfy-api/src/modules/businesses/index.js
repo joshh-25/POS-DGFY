@@ -11,6 +11,7 @@
 // mirroring buildAccountsModule()'s composition contract.
 
 export { BusinessRepository, buildBusinessRepository } from './repositories/businessRepository.js';
+export { LocationRepository, buildLocationRepository } from './repositories/locationRepository.js';
 export {
     buildCreateBusinessUseCase,
     buildListUserBusinessesUseCase,
@@ -21,11 +22,21 @@ export {
     buildAcceptInvitationUseCase,
     buildListBusinessMembersUseCase
 } from './usecases/businessUseCases.js';
+export {
+    buildCreateLocationUseCase,
+    buildListLocationsUseCase,
+    buildGetLocationUseCase,
+    buildUpdateLocationUseCase,
+    buildSetPrimaryLocationUseCase,
+    buildDeleteLocationUseCase
+} from './usecases/locationUseCases.js';
 export { buildBusinessController } from './controllers/businessController.js';
+export { buildLocationController } from './controllers/locationController.js';
 export { createBusinessRoutes, createInvitationRoutes } from './routes.js';
 export { sendEmail } from './infra/sendInvitationEmail.js';
 
 import { BusinessRepository } from './repositories/businessRepository.js';
+import { LocationRepository } from './repositories/locationRepository.js';
 import {
     buildCreateBusinessUseCase,
     buildListUserBusinessesUseCase,
@@ -36,6 +47,14 @@ import {
     buildAcceptInvitationUseCase,
     buildListBusinessMembersUseCase
 } from './usecases/businessUseCases.js';
+import {
+    buildCreateLocationUseCase,
+    buildListLocationsUseCase,
+    buildGetLocationUseCase,
+    buildUpdateLocationUseCase,
+    buildSetPrimaryLocationUseCase,
+    buildDeleteLocationUseCase
+} from './usecases/locationUseCases.js';
 import { sendEmail } from './infra/sendInvitationEmail.js';
 
 /**
@@ -53,13 +72,28 @@ import { sendEmail } from './infra/sendInvitationEmail.js';
  * divergent repository instance (and its own separate in-memory staff/
  * invitation stores) that a plain module-level singleton export would risk.
  *
- * @param {{businessModel, businessMembershipModel, sequelize?, sendEmail?: Function}} deps
+ * `locationRepository` (Wave 3.5, D-12) is also exposed for the same
+ * reason — it is a separate, tenant-scoped repository (see
+ * repositories/locationRepository.js's doc comment for its in-memory
+ * bridging-strategy caveat), but every location use case still needs the
+ * SAME BusinessRepository instance for membership/owner-role access
+ * control checks (membership lives in the landlord dgfy_core database).
+ *
+ * @param {{businessModel, businessMembershipModel, sequelize?, sendEmail?: Function, locationModel?: Object}} deps
  */
-export function buildBusinessesModule({ businessModel, businessMembershipModel, sequelize, sendEmail: sendEmailOverride } = {}) {
+export function buildBusinessesModule({
+    businessModel,
+    businessMembershipModel,
+    sequelize,
+    sendEmail: sendEmailOverride,
+    locationModel
+} = {}) {
     const repository = new BusinessRepository({ businessModel, businessMembershipModel, sequelize });
+    const locationRepository = new LocationRepository({ locationModel });
 
     return {
         repository,
+        locationRepository,
         useCases: {
             createBusiness: buildCreateBusinessUseCase({ repository }),
             listUserBusinesses: buildListUserBusinessesUseCase({ repository }),
@@ -71,7 +105,21 @@ export function buildBusinessesModule({ businessModel, businessMembershipModel, 
             }),
             onboardStaffDirect: buildOnboardStaffDirectUseCase({ repository }),
             acceptInvitation: buildAcceptInvitationUseCase({ repository }),
-            listBusinessMembers: buildListBusinessMembersUseCase({ repository })
+            listBusinessMembers: buildListBusinessMembersUseCase({ repository }),
+
+            // Wave 3.5 (D-12): location/branch management use cases.
+            // businessRepository is injected for membership/owner-role
+            // access control only — location data itself lives in
+            // locationRepository.
+            createLocation: buildCreateLocationUseCase({ repository: locationRepository, businessRepository: repository }),
+            listLocations: buildListLocationsUseCase({ repository: locationRepository, businessRepository: repository }),
+            getLocation: buildGetLocationUseCase({ repository: locationRepository, businessRepository: repository }),
+            updateLocation: buildUpdateLocationUseCase({ repository: locationRepository, businessRepository: repository }),
+            setPrimaryLocation: buildSetPrimaryLocationUseCase({
+                repository: locationRepository,
+                businessRepository: repository
+            }),
+            deleteLocation: buildDeleteLocationUseCase({ repository: locationRepository, businessRepository: repository })
         }
     };
 }
