@@ -32,8 +32,10 @@ function PromoCard({
   const description = cleanPromoText(promoEntry.subtitle) || cleanPromoText(promoEntry.supportingText) || 'Limited-time offer available in this storefront.';
   const validity = cleanPromoText(promoEntry.validityText) || 'Limited time';
   const discount = parseDiscountLabel(offer);
+  const isUnavailable = cleanPromoText(promoEntry.availabilityStatus) !== 'available';
+  const availabilityMessage = cleanPromoText(promoEntry.availabilityMessage) || 'Unavailable outside the scheduled promo window.';
   const isApplied = Boolean(promoCode) && promoCode === cleanPromoText(activePromoCode).toUpperCase();
-  const canApply = Boolean(promoCode) && typeof onApplyPromo === 'function' && !isApplied;
+  const canApply = !isUnavailable && Boolean(promoCode) && typeof onApplyPromo === 'function' && !isApplied;
   const cardMinHeight = isMobileViewport ? 156 : 178;
 
   const copyCode = async (event) => {
@@ -82,8 +84,9 @@ function PromoCard({
       >
         <button
           type="button"
-          aria-label={`Show promo code for ${title}`}
+          aria-label={isUnavailable ? `${title} is unavailable` : `Show promo code for ${title}`}
           aria-pressed={isFlipped}
+          disabled={isUnavailable}
           onClick={() => setIsFlipped(true)}
           style={{
             ...faceStyle,
@@ -91,10 +94,12 @@ function PromoCard({
             padding: 0,
             border: 'none',
             textAlign: 'left',
-            cursor: 'pointer',
+            cursor: isUnavailable ? 'not-allowed' : 'pointer',
             background: '#ffffff',
             boxShadow: `inset 0 0 0 1px ${cardBorder}, 0 4px 16px rgba(0,0,0,0.08)`,
-            color: '#0f172a'
+            color: '#0f172a',
+            opacity: isUnavailable ? 0.58 : 1,
+            filter: isUnavailable ? 'grayscale(1)' : 'none'
           }}
         >
           <div style={{
@@ -121,7 +126,7 @@ function PromoCard({
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#166534', fontSize: 12, fontWeight: 700, fontFamily: bodyFontFamily }}>
               <Calendar size={14} /> {validity}
             </div>
-            {promoCode ? <span style={{ color: '#64748b', fontSize: 11, fontWeight: 800, fontFamily: bodyFontFamily }}>Tap to reveal code</span> : null}
+            {isUnavailable ? <span style={{ color: '#64748b', fontSize: 11, fontWeight: 800, fontFamily: bodyFontFamily }}>{availabilityMessage}</span> : (promoCode ? <span style={{ color: '#64748b', fontSize: 11, fontWeight: 800, fontFamily: bodyFontFamily }}>Tap to reveal code</span> : null)}
           </div>
         </button>
 

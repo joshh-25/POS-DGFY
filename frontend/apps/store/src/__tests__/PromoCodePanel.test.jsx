@@ -36,6 +36,36 @@ describe('PromoCodePanel', () => {
     expect(onApplyPromo).toHaveBeenCalledWith('SAVE20');
   });
 
+  it('disables scheduled promo use until the availability window begins', () => {
+    const onChange = vi.fn();
+    const onApplyPromo = vi.fn();
+
+    render(
+      <PromoCodePanel
+        code=""
+        onChange={onChange}
+        onApplyPromo={onApplyPromo}
+        availablePromos={[
+          {
+            title: 'Midnight Saver',
+            promo_code: 'MIDNIGHT20',
+            availabilityStatus: 'scheduled',
+            availabilityMessage: 'Available from Jul 12, 2026, 12:00 AM'
+          }
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /apply a promo/i }));
+    const useButton = screen.getByRole('button', { name: /^use$/i });
+
+    expect(useButton.disabled).toBe(true);
+    expect(screen.getByText('Available from Jul 12, 2026, 12:00 AM')).toBeTruthy();
+    fireEvent.click(useButton);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onApplyPromo).not.toHaveBeenCalled();
+  });
+
   it('renders promo code and eligibility metadata from the storefront promo contract', () => {
     render(
       <PromoCodePanel
