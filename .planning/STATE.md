@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
 status: executing
-stopped_at: Completed 04-03.5-PLAN.md
-last_updated: "2026-07-11T12:27:36.884Z"
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-07-11T13:09:22.817Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 20
   percent: 43
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 04 execution started
 
@@ -76,6 +76,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P02 | 20min | 3 tasks | 14 files |
 | Phase 04 P03 | 30min | 8 tasks | 15 files |
 | Phase 04 P03.5 | 7min | 7 tasks | 10 files |
+| Phase 04 P04 | 8min | 9 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,9 @@ Recent decisions affecting current work:
 - [Phase ?]: API-02 and API-05 intentionally left Pending after Wave 3 — API-02 spans Wave 3 (business creation/ownership/staff) and Wave 3.5 (branch registry basics); API-05 is a phase-wide Clean Architecture requirement spanning all Phase 4 waves
 - [Phase 04]: Location model columns corrected to match the real applied migration (auto-increment INTEGER id, TEXT NOT NULL address_line, no metadata column) instead of 04-03.5-PLAN.md's simplified prose — Matches the real, already-applied migration schema; mirrors the same precedent set for Business.js in 04-03
 - [Phase 04]: LocationRepository uses an in-memory Map keyed by businessId (not a real per-tenant MySQL database), pending Wave 4 TenantConnector/BusinessDatabaseRegistry — No TenantConnector or BusinessDatabaseRegistry exists yet; mirrors the identical staff-onboarding bridging pattern already approved at the 04-03 checkpoint; approved by user at the Wave 3.5 checkpoint
+- [Phase 04]: Delivered a real, minimal TenantConnector (per-tenant-database Sequelize connection cache) and per-tenant-DB-backed AccountStaffAssignmentRepository in Wave 4, closing the in-memory bridging stub 04-03.5-SUMMARY.md flagged as pending Wave 4
+- [Phase 04]: tenantSessionUseCases enforce D-04/API-04 via a shared resolveTenantSession() algorithm used by both buildCreateTenantSessionUseCase and buildActivateBusinessSessionUseCase (Step 0 business-existence 404, Step 1 landlord membership 403, Step 2 tenant DB resolution 404, Step 3 tenant-local assignment 403 with owner bypass)
+- [Phase 04]: tenantContextResolver.js middleware built but left unmounted (no tenant-scoped route needs it yet in this phase); LocationRepository was NOT migrated onto the new real TenantConnector in Wave 4 — remains an in-memory Map, carried forward as a followup
 
 ### Pending Todos
 
@@ -165,6 +169,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T12:27:36.879Z
-Stopped at: Completed 04-03.5-PLAN.md
+Last session: 2026-07-11T13:09:22.807Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
