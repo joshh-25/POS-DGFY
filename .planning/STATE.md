@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-07-11T11:01:28.205Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-07-11T11:22:28.804Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 22
-  completed_plans: 17
+  completed_plans: 18
   percent: 43
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 04 execution started
 
@@ -74,6 +74,7 @@ Progress: [████░░░░░░] 43%
 | Phase 03 P06 | 32min | 2 tasks | 8 files |
 | Phase 04 P01 | 30min | 6 tasks | 10 files |
 | Phase 04 P02 | 20min | 3 tasks | 14 files |
+| Phase 04 P03 | 30min | 8 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,10 @@ Recent decisions affecting current work:
 - [Phase ?]: Controller-naming allowlist entries moved to apps/dgfy-api/src/config/architectureGuardrailsAllowlist.js (loaded via ARCH_GUARDRAIL_ALLOWLIST_PATH) instead of backend/, after coordinator flagged the initial approach as an out-of-scope backend/ edit
 - [Phase ?]: routes/index.js (not app.js) is the real composition/mount point for new route modules, matching the existing dgfyAuth convention; config/db.js's default database corrected to dgfy_core (shared connection also used by out-of-scope dgfyAuth, but production is unaffected since DB_NAME is set explicitly in infrastructure/docker/.env)
 - [Phase ?]: API-01 marked complete (HTTP layer now live); API-05 left Pending — phase-wide Clean Architecture pattern requirement spanning accounts/businesses/tenancy, still pending Waves 3-4
+- [Phase ?]: Business/BusinessMembership models corrected to match the real dgfy_core migration schema (enum values, INTEGER membership id) rather than 04-03-PLAN.md's simplified prose
+- [Phase ?]: Staff onboarding (invitations/staff accounts/assignments) uses BusinessRepository in-memory temporary storage, explicitly sanctioned by the plan and confirmed accepted by the user at the checkpoint, pending Wave 4 tenant DB infrastructure
+- [Phase ?]: businessRepository is dependency-injected into buildAccountsModule() (not imported as a singleton) so accounts and businesses modules share one repository instance for D-05 login business-list lookup
+- [Phase ?]: API-02 and API-05 intentionally left Pending after Wave 3 — API-02 spans Wave 3 (business creation/ownership/staff) and Wave 3.5 (branch registry basics); API-05 is a phase-wide Clean Architecture requirement spanning all Phase 4 waves
 
 ### Pending Todos
 
@@ -157,6 +162,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T11:01:28.190Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-07-11T11:22:28.795Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
