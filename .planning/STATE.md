@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-07-11T11:22:28.804Z"
+stopped_at: Completed 04-03.5-PLAN.md
+last_updated: "2026-07-11T12:27:36.884Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 22
-  completed_plans: 18
+  completed_plans: 19
   percent: 43
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
-Plan: 4 of 6
+Plan: 2 of 6
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 04 execution started
 
@@ -75,6 +75,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P01 | 30min | 6 tasks | 10 files |
 | Phase 04 P02 | 20min | 3 tasks | 14 files |
 | Phase 04 P03 | 30min | 8 tasks | 15 files |
+| Phase 04 P03.5 | 7min | 7 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Staff onboarding (invitations/staff accounts/assignments) uses BusinessRepository in-memory temporary storage, explicitly sanctioned by the plan and confirmed accepted by the user at the checkpoint, pending Wave 4 tenant DB infrastructure
 - [Phase ?]: businessRepository is dependency-injected into buildAccountsModule() (not imported as a singleton) so accounts and businesses modules share one repository instance for D-05 login business-list lookup
 - [Phase ?]: API-02 and API-05 intentionally left Pending after Wave 3 — API-02 spans Wave 3 (business creation/ownership/staff) and Wave 3.5 (branch registry basics); API-05 is a phase-wide Clean Architecture requirement spanning all Phase 4 waves
+- [Phase 04]: Location model columns corrected to match the real applied migration (auto-increment INTEGER id, TEXT NOT NULL address_line, no metadata column) instead of 04-03.5-PLAN.md's simplified prose — Matches the real, already-applied migration schema; mirrors the same precedent set for Business.js in 04-03
+- [Phase 04]: LocationRepository uses an in-memory Map keyed by businessId (not a real per-tenant MySQL database), pending Wave 4 TenantConnector/BusinessDatabaseRegistry — No TenantConnector or BusinessDatabaseRegistry exists yet; mirrors the identical staff-onboarding bridging pattern already approved at the 04-03 checkpoint; approved by user at the Wave 3.5 checkpoint
 
 ### Pending Todos
 
@@ -162,6 +165,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T11:22:28.795Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-07-11T12:27:36.879Z
+Stopped at: Completed 04-03.5-PLAN.md
 Resume file: None
