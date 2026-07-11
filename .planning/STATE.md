@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 3
-current_phase_name: Old-to-New Migration Proof
+current_phase: 03
+current_phase_name: old-to-new-migration-proof
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-07-11T01:05:27.781Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-07-11T01:57:29.317Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 02 complete, transitioned to Phase 3
+last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 14
+  completed_plans: 10
   percent: 29
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11)
 
 **Core value:** DGFY can become a standalone multi-tenant POS and Storefront system without breaking the existing live platform during migration.
-**Current focus:** Phase 3 — Old-to-New Migration Proof
+**Current focus:** Phase 03 — old-to-new-migration-proof
 
 ## Current Position
 
-Phase: 3 — Old-to-New Migration Proof
-Plan: Not started
+Phase: 03 (old-to-new-migration-proof) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-11 — Phase 02 complete, transitioned to Phase 3
+Last activity: 2026-07-11 — Phase 03 execution started
 
 Progress: [███░░░░░░░] 25%
 
@@ -65,6 +65,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 02 P03 | 12min | 4 tasks | 11 files |
 | Phase 02 P04 | 55min | 4 tasks | 7 files |
 | Phase 02 P05 | 15min | 1 tasks | 2 files |
+| Phase 03 P01 | 35min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Runner: D-23 legacy fingerprint baseline is captured once by schema migrate (never overwritten on rerun) and compared by verify — fails closed when no baseline artifact exists
 - [Phase ?]: Runner: tenant_coverage gates ok only on has_expected_schema; business_database_registry gaps are reported but never fail verification before registry rows are seeded
 - [Phase ?]: Runner: verify.js migration_metadata try/catch is scoped per target (primary + each business target independently), mirroring business_schemas, closing CR-01
+- [Phase 03]: Runner: DGFY_MIGRATION_TARGET_MANIFEST is opt-in-required via validateEnv(env, { requireMigrationManifest }) rather than unconditionally required, so schema/status/rollback-plan callers and their tests are unaffected; data dry-run/apply/verify wiring (03-03/03-04/03-05) will pass the flag
+- [Phase 03]: Runner: legacy_id_map/data_checkpoints composite unique indexes are added via queryInterface.addIndex() only at first-run createTable time, backing up the lookup-before-insert helpers in metadata/dataState.js against retry duplicates
+- [Phase 03]: Runner: createLegacyTenantSourceConnection() and the target manifest validator both reject any dgfy_-prefixed legacy_tenant_db_name (not just exact dgfy_core/dgfy_business_* matches), closing the manifest-tampering path to a DGFY-owned database
 
 ### Pending Todos
 
@@ -124,6 +128,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T01:05:27.776Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-old-to-new-migration-proof/03-CONTEXT.md
+Last session: 2026-07-11T01:57:29.311Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None

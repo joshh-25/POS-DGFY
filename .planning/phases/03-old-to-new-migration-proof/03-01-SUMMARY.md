@@ -157,6 +157,16 @@ None - no external service configuration required.
 - Plans 03-03/03-04/03-05 must pass `{ requireMigrationManifest: true }` to `validateEnv()` when wiring `data dry-run`/`data apply`/`verify`, and should use `metadata/dataState.js` helpers rather than re-implementing ID-map/checkpoint/finding SQL.
 - No blockers identified for subsequent Phase 03 plans.
 
+## Self-Check: PASSED
+
+All created files and task commit hashes verified present in the working tree and git history:
+- `apps/dgfy-migration-runner/src/data/targetManifest.js` - FOUND
+- `apps/dgfy-migration-runner/src/metadata/dataState.js` - FOUND
+- `apps/dgfy-migration-runner/tests/targetManifest.test.js` - FOUND
+- `apps/dgfy-migration-runner/tests/dataState.test.js` - FOUND
+- `.planning/phases/03-old-to-new-migration-proof/03-01-SUMMARY.md` - FOUND
+- `e32a941e`, `03ae31e1`, `2ad1c063`, `8f52f3d2` - FOUND in git log
+
 ---
 *Phase: 03-old-to-new-migration-proof*
 *Completed: 2026-07-11*

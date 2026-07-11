@@ -102,12 +102,12 @@ Plans:
   4. Operator can interrupt and retry migration without duplicate records, inconsistent references, or manual cleanup.
   5. Verification reports compare source and target counts, required relationships, skipped/conflict records, and unresolved data-quality issues.
 
-**Plans**: 0/5 plans complete
+**Plans**: 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Metadata and target manifest contract
+- [x] 03-01-PLAN.md — Metadata and target manifest contract
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -189,7 +189,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 |-------|----------------|--------|-----------|
 | 1. Architecture and Migration Runner Contract | 4/4 | Complete    | 2026-07-10 |
 | 2. DGFY Database Foundation | 5/5 | Complete    | 2026-07-10 |
-| 3. Old-to-New Migration Proof | 0/5 | Not started | - |
+| 3. Old-to-New Migration Proof | 1/5 | In Progress|  |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 0/TBD | Not started | - |
 | 5. Compatibility and Backend-First Cutover Seam | 0/TBD | Not started | - |
 | 6. Release Evidence and Rehearsal Gates | 0/TBD | Not started | - |
