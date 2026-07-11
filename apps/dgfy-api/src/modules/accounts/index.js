@@ -60,7 +60,7 @@ export function buildAccountsModule({ accountModel, hashPassword, bcrypt, busine
         useCases: {
             registerAccount: buildRegisterAccountUseCase({ repository, hashPassword }),
             loginAccount: buildLoginAccountUseCase({ repository, bcrypt, businessRepository }),
-            updateAccountProfile: buildUpdateAccountProfileUseCase({ repository, hashPassword }),
+            updateAccountProfile: buildUpdateAccountProfileUseCase({ repository, hashPassword, bcrypt }),
             getAccount: buildGetAccountUseCase({ repository }),
             getAccountForAuthorization: buildGetAccountForAuthorizationUseCase({ repository })
         }

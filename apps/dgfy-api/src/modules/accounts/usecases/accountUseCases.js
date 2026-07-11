@@ -50,6 +50,18 @@ const invalidCredentialsError = () => new DomainError(
     { statusCode: 401 }
 );
 
+const currentPasswordRequiredError = () => new DomainError(
+    DomainErrorCode.VALIDATION_FAILED,
+    'current_password is required to change your email or password.',
+    { statusCode: 400, details: { field: 'current_password' } }
+);
+
+const currentPasswordInvalidError = () => new DomainError(
+    DomainErrorCode.AUTHENTICATION_FAILED,
+    'The current password you entered is incorrect.',
+    { statusCode: 401, details: { field: 'current_password' } }
+);
+
 const serviceUnavailableError = (message) => new DomainError(
     DomainErrorCode.SERVICE_UNAVAILABLE,
     message,
@@ -251,10 +263,15 @@ export function buildLoginAccountUseCase({ repository, bcrypt, businessRepositor
 
 /**
  * Profile update use case (API-01, D-03). Updates email/password/name/phone;
- * enforces email + phone uniqueness against other accounts.
- * @param {{repository, accountEntity?, hashPassword}} deps
+ * enforces email + phone uniqueness against other accounts. Changing email
+ * and/or password (the account's credentials) requires confirming the
+ * caller's current password via `updates.current_password` (WR-03) — this
+ * limits the blast radius of a stolen/leaked session token, since an
+ * attacker who only has the token (not the password) cannot silently take
+ * over the account.
+ * @param {{repository, accountEntity?, hashPassword, bcrypt}} deps
  */
-export function buildUpdateAccountProfileUseCase({ repository, accountEntity = AccountEntity, hashPassword }) {
+export function buildUpdateAccountProfileUseCase({ repository, accountEntity = AccountEntity, hashPassword, bcrypt }) {
     return async ({ accountId, updates = {} } = {}) => {
         if (!accountId) {
             return ApplicationResult.failure(validationError('accountId is required.'));
@@ -311,6 +328,22 @@ export function buildUpdateAccountProfileUseCase({ repository, accountEntity = A
                 );
             }
             patch.password_hash = await hashPassword(password);
+        }
+
+        if (has('email') || has('password')) {
+            const currentPassword = String(updates.current_password || '');
+            if (!currentPassword) {
+                return ApplicationResult.failure(currentPasswordRequiredError());
+            }
+            if (typeof bcrypt?.compare !== 'function') {
+                return ApplicationResult.failure(
+                    serviceUnavailableError('Profile update is temporarily unavailable.')
+                );
+            }
+            const currentPasswordValid = await bcrypt.compare(currentPassword, existing.password_hash);
+            if (!currentPasswordValid) {
+                return ApplicationResult.failure(currentPasswordInvalidError());
+            }
         }
 
         let updated;

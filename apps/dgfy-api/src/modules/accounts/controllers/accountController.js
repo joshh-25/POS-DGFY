@@ -34,7 +34,7 @@ export function buildAccountController(useCases) {
             // never send `undefined` for fields the client omitted.
             const body = req.body || {};
             const updates = {};
-            ['email', 'password', 'first_name', 'last_name', 'phone'].forEach((key) => {
+            ['email', 'password', 'first_name', 'last_name', 'phone', 'current_password'].forEach((key) => {
                 if (Object.prototype.hasOwnProperty.call(body, key)) {
                     updates[key] = body[key];
                 }

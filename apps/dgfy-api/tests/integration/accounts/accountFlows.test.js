@@ -271,10 +271,12 @@ describeIfIntegration('Account success flows (real MySQL): registration, login, 
         });
 
         it('updates the password and allows login again with the new password', async () => {
+            // WR-03: changing the password requires confirming the current
+            // password first.
             await request(app)
                 .patch('/accounts/me')
                 .set('Authorization', `Bearer ${token}`)
-                .send({ password: 'NewStrongPass456' });
+                .send({ password: 'NewStrongPass456', current_password: 'StrongPass123' });
 
             const response = await request(app)
                 .post('/accounts/login')
