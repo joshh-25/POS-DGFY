@@ -10546,6 +10546,7 @@ export default function StorefrontApp() {
   const handleCheckout = async () => {
     if (!selectedStore) return;
     setCheckoutError('');
+    setTrackingError('');
     setCheckoutResult(null);
     const serviceBookingLine = hasServiceCart
       ? firstServiceLine
@@ -10644,6 +10645,13 @@ export default function StorefrontApp() {
       toast.error(message);
       return;
     }
+    const finalCheckoutPayload = checkoutPayload();
+    if (!String(finalCheckoutPayload.customer_name || '').trim()) {
+      const message = 'Enter the customer name before placing the order.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
     const cartSnapshot = cart.map((line) => ({ ...line }));
     setCheckoutLoading(true);
     try {
@@ -10680,7 +10688,7 @@ export default function StorefrontApp() {
           storeSlug: selectedStore.slug,
           authToken,
           body: {
-            ...checkoutPayload(),
+            ...finalCheckoutPayload,
             idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
             payment_type: fnbPaymentType
           }

@@ -43,6 +43,15 @@ Adopt a cross-layer hardening contract in three parts:
 3. Discovery and catalog read performance improve under load with bounded cache staleness and explicit cache semantics.
 4. Additional maintenance is required for queue schema evolution and template registry updates.
 
+## Offline Checkout Experience Addendum (2026-07-10)
+
+- Offline selling is allowed only after a terminal has been authenticated online and has a scoped local catalog snapshot for that terminal, location, and user. Offline login is not supported.
+- The local snapshot is limited to catalog and receipt identity data. Reports, settings, item maintenance, account credentials, and remote payment operations remain online-only.
+- Offline checkout is limited to cash and non-governed discounts. Each queued sale creates an immediate provisional `Pending Sync` order preview and cannot be printed as a final fiscal receipt until replay succeeds.
+- The terminal reserves cached stock immediately for stock-bearing items. The server remains authoritative during replay and handles idempotency/conflicts using the existing checkout idempotency key.
+- Replay is operator-controlled: no reconnect, page-load, retry, or service-worker event may submit queued records. The terminal's `Sync All Pending Records` action is the only replay path, replays checkout and operational records together, and is limited to two presses per terminal/user local day.
+- Offline reports are read-only cached estimates keyed by terminal scope and report filters. Offline item creation is restricted to data-only drafts; uploads and final server validation happen during the manual sync. Because the item API has no idempotency contract, an uncertain item-create result must stop in manual resolution rather than retry automatically.
+
 ## Guardrails
 1. Existing family-gated behavior (`manufacturing` vs `msme`) remains source-of-truth for route visibility.
 2. Payment portal implementation remains out of scope; only non-payment order lifecycle hardening is included.

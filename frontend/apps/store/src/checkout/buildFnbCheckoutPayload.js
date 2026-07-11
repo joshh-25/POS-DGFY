@@ -21,9 +21,9 @@ export const buildFnbCheckoutPayload = ({
 }) => ({
   location_id: selectedLocationId ?? selectedStore?.location_id,
   order_method: orderMethod,
-  customer_name: customerName,
-  customer_phone: customerPhone,
-  customer_email: customerEmail,
+  customer_name: String(customerName || '').trim(),
+  customer_phone: String(customerPhone || '').trim(),
+  customer_email: String(customerEmail || '').trim(),
   promo_code: String(promoCode || '').trim().toUpperCase(),
   delivery_address: isDeliveryOrder ? String(deliveryAddress || '').trim() : '',
   delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,

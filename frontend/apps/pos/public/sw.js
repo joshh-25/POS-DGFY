@@ -102,16 +102,6 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-self.addEventListener('sync', (event) => {
-  if (event.tag !== 'pos-terminal-operation-replay') return;
-  event.waitUntil((async () => {
-    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    clients.forEach((client) => {
-      client.postMessage({ type: 'pos-terminal-replay-requested' });
-    });
-  })());
-});
-
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const requestUrl = new URL(event.request.url);

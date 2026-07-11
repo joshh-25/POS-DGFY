@@ -81,6 +81,10 @@ export default function TerminalPageLayout({
     refreshIncomingOrders,
     activeShiftId,
     checkoutBlockedReason,
+    offlineSnapshotScope = {},
+    onQueueOfflineItemDraft = async () => '',
+    onManualUniversalSync = async () => ({ allowed: false }),
+    manualSyncPolicy = {},
     refreshTerminalUser = async () => {},
     refreshTerminalMeta = async () => {},
     onPosSetupSaved = async () => {},
@@ -361,6 +365,7 @@ export default function TerminalPageLayout({
             <TerminalWorkspaceSidebar
               className={persistentSidebarBodyClassName}
               locked={locked}
+              isOnline={isOnline}
               isMsmeMode={isMsmeMode}
               terminalUser={terminalUser}
               currentViewMode={posViewMode}
@@ -513,6 +518,7 @@ export default function TerminalPageLayout({
                 showBrand={false}
                 showIdentityInSidebar
                 locked={locked}
+                isOnline={isOnline}
                 isMsmeMode={isMsmeMode}
                 terminalUser={terminalUser}
                 currentViewMode={posViewMode}
@@ -560,6 +566,11 @@ export default function TerminalPageLayout({
                 terminalId={normalizedActiveTerminalId}
                 terminalMeta={terminalMeta}
                 checkoutBlockedReason={checkoutBlockedReason}
+                onManualUniversalSync={onManualUniversalSync}
+                manualSyncPolicy={manualSyncPolicy}
+                universalPendingSyncCount={queueCount + blockedQueueCount}
+                offlineSnapshotScope={offlineSnapshotScope}
+                onQueueOfflineItemDraft={onQueueOfflineItemDraft}
                 onCheckoutCompleted={handleCheckoutCompleted}
                 viewMode={posViewMode}
                 onViewModeChange={setPosViewMode}
@@ -643,6 +654,7 @@ export default function TerminalPageLayout({
                 handleRetryQueuedOperation={handleRetryQueuedOperation}
                 handleResolveQueuedOperation={handleResolveQueuedOperation}
                 isOnline={isOnline}
+                offlineSnapshotScope={offlineSnapshotScope}
                 handleLock={handleLock}
                 setDrawerOpen={setDrawerOpen}
                 refreshTerminalUser={refreshTerminalUser}
