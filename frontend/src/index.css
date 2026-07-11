@@ -273,7 +273,7 @@ body {
 /* Catalog navigation (Sell/History/Shift/etc.) slide-in: mobile only, right -> left entrance. */
 @media (max-width: 639.98px) {
   .catalog-slide-enter {
-    animation: catalog-slide-enter 50ms ease-out;
+    animation: catalog-slide-enter 33.34ms ease-out;
   }
 }
 
