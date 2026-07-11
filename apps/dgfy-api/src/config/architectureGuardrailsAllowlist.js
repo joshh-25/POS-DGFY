@@ -13,16 +13,17 @@
 // moved; the path format inside it is unchanged.
 //
 // linked_task_id: DGFY-PHASE4-WAVE2-001
-// planned_removal_phase: n/a — 04-02-PLAN.md's locked file names
-//   (accountController.js/businessController.js) intentionally don't follow
-//   backend/'s *Handlers.js controller-naming convention; apps/dgfy-api is a
-//   separate Clean-Architecture service with its own module README
-//   documenting the routes -> controllers -> usecases -> repositories ->
-//   models layering.
+// planned_removal_phase: n/a — 04-02-PLAN.md/04-03.5-PLAN.md's locked file
+//   names (accountController.js/businessController.js/locationController.js)
+//   intentionally don't follow backend/'s *Handlers.js controller-naming
+//   convention; apps/dgfy-api is a separate Clean-Architecture service with
+//   its own module README documenting the routes -> controllers -> usecases
+//   -> repositories -> models layering.
 // planned_removal_date: n/a
 export const ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST = Object.freeze([
     '../apps/dgfy-api/src/modules/accounts/controllers/accountController.js',
-    '../apps/dgfy-api/src/modules/businesses/controllers/businessController.js'
+    '../apps/dgfy-api/src/modules/businesses/controllers/businessController.js',
+    '../apps/dgfy-api/src/modules/businesses/controllers/locationController.js'
 ]);
 
 // apps/dgfy-api has no usecase-layer legacy-service-import exceptions yet.

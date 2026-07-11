@@ -1,5 +1,6 @@
 import express from 'express';
 import { buildBusinessController } from './controllers/businessController.js';
+import { buildLocationController } from './controllers/locationController.js';
 
 /**
  * Wires Express routing for the businesses module (Interface Adapter),
@@ -23,6 +24,7 @@ export function createBusinessRoutes(useCases = {}, { authenticateAccount } = {}
 
     const router = express.Router();
     const controller = buildBusinessController(useCases);
+    const locationController = buildLocationController(useCases);
 
     router.post('/', authenticateAccount, (req, res, next) => controller.createBusiness(req, res).catch(next));
     router.get('/', authenticateAccount, (req, res, next) => controller.listUserBusinesses(req, res).catch(next));
@@ -33,6 +35,40 @@ export function createBusinessRoutes(useCases = {}, { authenticateAccount } = {}
         '/:id/staff',
         authenticateAccount,
         (req, res, next) => controller.listBusinessMembers(req, res).catch(next)
+    );
+
+    // Wave 3.5 (D-12): Location & Branch Management, exposed through the
+    // Businesses APIs (not separate top-level endpoints) — nested under
+    // the business resource, sharing the same authenticateAccount gate.
+    router.post(
+        '/:businessId/locations',
+        authenticateAccount,
+        (req, res, next) => locationController.createLocation(req, res).catch(next)
+    );
+    router.get(
+        '/:businessId/locations',
+        authenticateAccount,
+        (req, res, next) => locationController.listLocations(req, res).catch(next)
+    );
+    router.get(
+        '/:businessId/locations/:locationId',
+        authenticateAccount,
+        (req, res, next) => locationController.getLocation(req, res).catch(next)
+    );
+    router.patch(
+        '/:businessId/locations/:locationId',
+        authenticateAccount,
+        (req, res, next) => locationController.updateLocation(req, res).catch(next)
+    );
+    router.post(
+        '/:businessId/locations/:locationId/set-primary',
+        authenticateAccount,
+        (req, res, next) => locationController.setPrimary(req, res).catch(next)
+    );
+    router.delete(
+        '/:businessId/locations/:locationId',
+        authenticateAccount,
+        (req, res, next) => locationController.deleteLocation(req, res).catch(next)
     );
 
     return router;
