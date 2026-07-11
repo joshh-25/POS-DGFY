@@ -7,6 +7,18 @@ import { DataTypes, Model } from 'sequelize';
 // foundation — identity and location binding only, no checkout/payment
 // behavior in this phase). Per Phase 4 Clean Architecture: this model
 // carries NO business logic.
+//
+// Wave 8 gap-closure (04-08-PLAN.md, Task 1): CLOSES 04-VERIFICATION.md's
+// "orphaned — only referenced by the unmounted tenantContextResolver.js
+// middleware" finding. This factory function is unchanged (no schema
+// fields were touched), but it is now concretely reachable from live
+// composition through ../../infra/tenantConnector.js's
+// TenantConnector.getModels(databaseName) — a tenant model definition
+// registry that defines this model idempotently on a real per-tenant
+// Sequelize connection alongside Location/StaffAccount/StaffInvitation/
+// AccountStaffAssignment. No public terminal identity route, controller,
+// or use case is added in Phase 04 — that remains later roadmap/POS scope
+// (see 04-08-PLAN.md's Rationale).
 export default (sequelize) => {
     class TerminalIdentity extends Model {
         static associate(models = {}) {

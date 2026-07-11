@@ -119,6 +119,14 @@ import { TenantConnector } from '../../infra/tenantConnector.js';
  * instance (reusing this service's own DB connection env vars) but can be
  * overridden (e.g. a test double, or a shared singleton from routes/index.js).
  *
+ * Wave 8 gap-closure (04-08-PLAN.md, Task 1): the returned `tenantConnector`
+ * exposes `.getModels(databaseName)` — a reachable tenant model definition
+ * registry (Location/StaffAccount/StaffInvitation/AccountStaffAssignment/
+ * TerminalIdentity) defined idempotently on that tenant's real Sequelize
+ * connection. This is how `buildBusinessesModule()` makes the previously
+ * orphaned TerminalIdentity model concretely wireable without adding any
+ * public terminal identity route/controller/use case in this phase.
+ *
  * @param {{businessModel, businessMembershipModel, sequelize?, sendEmail?: Function, businessDatabaseRegistryModel?: Object, tenantConnector?: Object}} deps
  */
 export function buildBusinessesModule({

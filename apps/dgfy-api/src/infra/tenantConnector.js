@@ -1,4 +1,9 @@
 import { Sequelize } from 'sequelize';
+import defineLocationModel from '../models/Tenant/Location.js';
+import defineStaffAccountModel from '../models/Tenant/StaffAccount.js';
+import defineStaffInvitationModel from '../models/Tenant/StaffInvitation.js';
+import defineAccountStaffAssignmentModel from '../models/Tenant/AccountStaffAssignment.js';
+import defineTerminalIdentityModel from '../models/Tenant/TerminalIdentity.js';
 
 // Minimal per-tenant-database connection cache for apps/dgfy-api (Wave 4,
 // 04-04-PLAN.md's key_links: "TenantConnector -> resolves per-tenant
@@ -35,6 +40,7 @@ export class TenantConnector {
         this.password = password || process.env.DB_PASSWORD;
         this.dialect = dialect;
         this.connections = new Map(); // databaseName -> Sequelize instance
+        this.modelsByDatabase = new Map(); // databaseName -> tenant model registry
     }
 
     /**
@@ -77,11 +83,74 @@ export class TenantConnector {
     }
 
     /**
+     * Wave 8 gap-closure (04-08-PLAN.md, Task 1): the single reachable
+     * tenant model definition registry/helper this plan's acceptance
+     * criteria requires — "a tenant model definition helper/registry
+     * reachable from buildBusinessesModule() or TenantConnector that
+     * defines TerminalIdentity idempotently on a tenant Sequelize
+     * connection together with the other tenant models used by this
+     * phase." Closes 04-VERIFICATION.md's TerminalIdentity orphan finding
+     * WITHOUT adding a public terminal identity route/controller/use case
+     * (out of Phase 04 scope — see 04-08-PLAN.md's Rationale/Source Audit).
+     *
+     * Idempotent in two ways:
+     *   1. Per-databaseName result is cached (this.modelsByDatabase) — a
+     *      second call for the same databaseName returns the exact same
+     *      registry object, never re-defining anything.
+     *   2. Even on first call, if a model with the same name was already
+     *      defined on this connection by another caller (e.g.
+     *      LocationRepository/StaffOnboardingRepository/
+     *      AccountStaffAssignmentRepository independently defining their
+     *      own model on the SAME cached Sequelize connection returned by
+     *      getConnection()), this reuses that existing definition
+     *      (`connection.models[name]`) instead of calling the factory
+     *      function a second time on the same connection.
+     *
+     * Each model factory is unchanged (schema fields are NOT touched here
+     * — the plan explicitly forbids that); this method only wires them
+     * together into one reachable registry with associations applied.
+     * @param {string} databaseName
+     * @returns {{Location, StaffAccount, StaffInvitation, AccountStaffAssignment, TerminalIdentity}}
+     */
+    getModels(databaseName) {
+        if (this.modelsByDatabase.has(databaseName)) {
+            return this.modelsByDatabase.get(databaseName);
+        }
+
+        const connection = this.getConnection(databaseName);
+        const modelDefiners = {
+            Location: defineLocationModel,
+            StaffAccount: defineStaffAccountModel,
+            StaffInvitation: defineStaffInvitationModel,
+            AccountStaffAssignment: defineAccountStaffAssignmentModel,
+            TerminalIdentity: defineTerminalIdentityModel
+        };
+
+        const models = {};
+        Object.entries(modelDefiners).forEach(([name, define]) => {
+            models[name] = connection.models[name] || define(connection);
+        });
+
+        // Wire every model's associate() (Location<->TerminalIdentity,
+        // StaffAccount<->AccountStaffAssignment/StaffInvitation) now that
+        // every model in this registry is defined.
+        Object.values(models).forEach((model) => {
+            if (typeof model.associate === 'function') {
+                model.associate(models);
+            }
+        });
+
+        this.modelsByDatabase.set(databaseName, models);
+        return models;
+    }
+
+    /**
      * Closes and evicts a single cached connection (test cleanup / graceful
      * shutdown helper).
      */
     async closeConnection(databaseName) {
         const sequelize = this.connections.get(databaseName);
+        this.modelsByDatabase.delete(databaseName);
         if (!sequelize) return;
         await sequelize.close();
         this.connections.delete(databaseName);
