@@ -6,14 +6,14 @@ current_phase: 03
 current_phase_name: old-to-new-migration-proof
 status: executing
 stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-07-11T04:45:08.732Z"
+last_updated: "2026-07-11T05:01:51.250Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
   percent: 29
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 03 (old-to-new-migration-proof) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 03 execution started
 
@@ -67,6 +67,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 02 P05 | 15min | 1 tasks | 2 files |
 | Phase 03 P01 | 35min | 3 tasks | 11 files |
 | Phase 03 P02 | 20min | 2 tasks | 4 files |
+| Phase 03 P03 | 45min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 03]: tenant_ownership_metadata has no separate pure mapper — it is produced as a related_targets entry of mapLegacyTenantToBusiness() since it's a 1:1 derived write of that function's own inputs
 - [Phase ?]: [Phase 03]: added classifyOutOfScopeRecord()/isInScopeLegacyTable()/OUT_OF_SCOPE_LEGACY_TABLES to mappings.js (mirrors dgfyCoreContract.js/dgfyBusinessContract.js rejectedTables) to make ADR 0029 exclusion testable, beyond the plan's literal 8 named mapper symbols
 - [Phase ?]: [Phase 03]: business_memberships.role (owner/manager/member) and account_staff_assignments.role (owner/manager/staff) use two separate internal role-mapping tables since the two target tables have different enums for the same legacy role field
+- [Phase ?]: Runner: runDataDryRun() passes { requireMigrationManifest: true } to validateEnv() and loads/validates the migration target manifest before any DB connection factory call
+- [Phase ?]: Runner: dry-run report summary is scalar-only (tenant_coverage_count) with detailed tenant_coverage/results arrays as separate top-level report fields
+- [Phase ?]: Runner: buildDryRunPlan() reclassifies mapper insert results to update via a single scoped legacy_id_map SELECT (current target state probe), avoiding per-record DB round trips
 
 ### Pending Todos
 
@@ -132,6 +136,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T04:45:08.726Z
+Last session: 2026-07-11T05:01:19.596Z
 Stopped at: Completed 03-02-PLAN.md
 Resume file: None
