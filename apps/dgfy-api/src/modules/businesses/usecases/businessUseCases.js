@@ -11,6 +11,11 @@ import { DomainError, DomainErrorCode } from '../../../shared/contracts/domainEr
 const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const BUSINESS_HANDLE_PATTERN = /^[a-z0-9-]{3,120}$/;
 const ALLOWED_BUSINESS_STATUSES = ['pending', 'active', 'suspended', 'archived'];
+// Mirrors ../../accounts/entities/accountEntity.js's EMAIL_FORMAT_PATTERN
+// (WR-02) — kept as a local equivalent regex rather than importing the
+// accounts module's entity, preserving this module's "only the injected
+// repository abstraction" dependency boundary.
+const EMAIL_FORMAT_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const normalizeHandle = (value) => String(value || '').trim().toLowerCase();
 const normalizeText = (value) => {
@@ -18,6 +23,7 @@ const normalizeText = (value) => {
     return trimmed || null;
 };
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const isValidEmailFormat = (value) => typeof value === 'string' && EMAIL_FORMAT_PATTERN.test(value.trim());
 
 const HTML_ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 /**
@@ -266,6 +272,10 @@ export function buildOnboardStaffViaInvitationUseCase({ repository, sendEmail })
             return ApplicationResult.failure(validationError('businessId and email are required.'));
         }
 
+        if (!isValidEmailFormat(email)) {
+            return ApplicationResult.failure(validationError('Enter a valid email address.', { field: 'email' }));
+        }
+
         const business = await repository.findById(businessId);
         if (!business) {
             return ApplicationResult.failure(notFoundError());
@@ -327,6 +337,10 @@ export function buildOnboardStaffDirectUseCase({ repository }) {
 
         if (!businessId || !email) {
             return ApplicationResult.failure(validationError('businessId and email are required.'));
+        }
+
+        if (!isValidEmailFormat(email)) {
+            return ApplicationResult.failure(validationError('Enter a valid email address.', { field: 'email' }));
         }
 
         const business = await repository.findById(businessId);
