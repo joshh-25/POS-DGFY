@@ -5,6 +5,7 @@ import { assertDestructiveAllowed } from '../safety/destructiveGate.js';
 import { ensureMetadataSchema, recordCommandStart, recordCommandComplete } from '../metadata/bootstrap.js';
 import { loadMigrationTargetManifest } from '../data/targetManifest.js';
 import { runDryRunTransformations, DEFAULT_RUN_SCOPE } from '../data/dryRun.js';
+import { runApplyTransformations } from '../data/apply.js';
 import { writeJsonReport } from '../reports/reportWriter.js';
 import { writeSummaryReport } from '../reports/summaryWriter.js';
 import { EnvValidationError } from '../utils/errors.js';
@@ -104,14 +105,28 @@ export async function runDataDryRun({} = {}) {
 }
 
 /**
- * Phase 1 contract stub proving apply gating/reporting only — real data
- * writes ship in Phase 3. Always destructive (D-09) — assertDestructiveAllowed
- * is unconditional and runs before any connection factory call.
+ * Phase 03 Plan 04 (MIG-03, MIG-04, T-03-04-02): real checkpointed apply
+ * orchestration. Always destructive (D-09) — assertDestructiveAllowed is
+ * unconditional and runs before any connection factory call, and it is
+ * checked before the migration target manifest is even loaded, so a run
+ * without `--confirm-destructive` never reads the manifest file or opens
+ * any connection. Ordering preserved from the Phase 1 contract stub and
+ * mirrored from `runDataDryRun()`: validateEnv() ->
+ * assertTargetDbNameAllowed() -> assertDestructiveAllowed() -> load+validate
+ * migration target manifest -> create target/meta connections ->
+ * ensureMetadataSchema() -> recordCommandStart() -> runApplyTransformations()
+ * (which opens its own legacy source + per-tenant business connections) ->
+ * write JSON+summary reports -> recordCommandComplete().
+ *
+ * The apply report and `argsJson` never include `target_payload` or raw
+ * mapper output (threat model: "Secret leakage in reports") — only
+ * sanitized manifest target identifiers and the report-safe result rows
+ * `runApplyTransformations()` itself returns.
  *
  * @param {{ confirmDestructive?: boolean }} params
  */
 export async function runDataApply({ confirmDestructive = false } = {}) {
-  const { valid, errors, config } = validateEnv();
+  const { valid, errors, config } = validateEnv(process.env, { requireMigrationManifest: true });
   if (!valid) {
     throw new EnvValidationError(errors.join('; '));
   }
@@ -119,31 +134,50 @@ export async function runDataApply({ confirmDestructive = false } = {}) {
   assertTargetDbNameAllowed(config.targetDb.name, config.runtimeMode);
   assertDestructiveAllowed({ isDestructive: true, confirmDestructive, runtimeMode: config.runtimeMode });
 
+  const manifestResult = await loadMigrationTargetManifest(config.migrationTargetManifestPath);
+  if (!manifestResult.valid) {
+    throw new EnvValidationError(manifestResult.errors.join('; '));
+  }
+  const targets = manifestResult.targets;
+
   let metaSequelize;
   let executionId;
 
   try {
-    createTargetConnection(config);
+    const coreSequelize = createTargetConnection(config);
     metaSequelize = createMetaConnection(config);
     await ensureMetadataSchema(metaSequelize);
 
     executionId = await recordCommandStart(metaSequelize, {
       command: 'data:apply',
       mode: 'apply',
-      argsJson: JSON.stringify({ confirmDestructive }),
+      // Sanitized manifest identifiers only — never db credentials or
+      // company_token.
+      argsJson: JSON.stringify({
+        confirmDestructive,
+        legacy_tenant_ids: targets.map((target) => target.legacy_tenant_id),
+        target_business_db_names: targets.map((target) => target.target_business_db_name)
+      }),
       actor: config.actor,
       runtimeMode: config.runtimeMode
+    });
+
+    const runScope = DEFAULT_RUN_SCOPE;
+    const { summary, results } = await runApplyTransformations({
+      config,
+      metaSequelize,
+      coreSequelize,
+      targets,
+      runScope
     });
 
     const report = {
       generated_at: new Date().toISOString(),
       command: 'data:apply',
       mode: 'apply',
-      summary: {
-        rows_written: 0
-      },
-      results: [],
-      note: 'Phase 1 contract stub proving apply gating/reporting only — real data writes ship in Phase 3'
+      run_scope: runScope,
+      summary,
+      results
     };
 
     const reportJsonPath = await writeJsonReport(config.reportDir, 'data:apply', report);
