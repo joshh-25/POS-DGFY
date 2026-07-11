@@ -9,13 +9,16 @@ const { apiGet, apiPost, setBrowserSessionMock, clearClientSessionMock } = vi.ho
 
 const dgfyCookieConfig = {
   skipAuthRefresh: true,
+  skipGlobalErrorToast: true,
   skipTenantAuthHeaders: true,
   withCredentials: true
 };
 const dgfyBusinessBridgeConfig = {
+  skipGlobalErrorToast: true,
   withCredentials: true
 };
 const dgfyTenantBridgeOnlyConfig = {
+  skipGlobalErrorToast: true,
   withCredentials: true,
   headers: {
     'x-dgfy-auth-mode': 'tenant_membership'
