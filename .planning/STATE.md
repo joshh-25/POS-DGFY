@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
 status: executing
-stopped_at: Completed 04-07-PLAN.md
-last_updated: "2026-07-11T16:09:31.210Z"
+stopped_at: Completed 04-08-PLAN.md
+last_updated: "2026-07-11T16:37:46.970Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 25
-  completed_plans: 24
-  percent: 43
+  completed_plans: 25
+  percent: 57
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
-Plan: 3 of 10
+Plan: 4 of 10
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 04 execution started
 
@@ -80,6 +80,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P05 | 15min | 7 tasks | 8 files |
 | Phase 04 P06 | 30min | 2 tasks | 13 files |
 | Phase 04 P07 | 50min | 2 tasks | 20 files |
+| Phase 04 P08 | 75min | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -159,6 +160,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 04] 04-07: LocationRepository/StaffOnboardingRepository require registry status=active AND verified_at populated before opening a tenant connection (stricter than tenantSessionUseCases.js's pre-existing database_name-only check)
 - [Phase ?]: [Phase 04] 04-07: Invitation tokens are now ${businessId}:${uuid} so unauthenticated accept can resolve which tenant database to query; only the SHA-256 hash of the full composite is persisted
 - [Phase ?]: [Phase 04] 04-07: Direct-add/invitation-accept create an active tenant assignment only when an optional dgfyAccountId is supplied; staff-to-DGFY-account linking otherwise stays deferred per plan's Source Audit
+- [Phase 04]: 04-08: TenantConnector.getModels() closes TerminalIdentity orphan finding without adding a public terminal identity route
+- [Phase 04]: 04-08: tenantSessionUseCases.js now requires registry status=active AND verified_at before activation succeeds, closing an owner-bypass gap
+- [Phase 04]: 04-08: fixed a duplicate business_database_registry row bug present in every gated Phase 04 suite
 
 ### Pending Todos
 
@@ -181,6 +185,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T16:09:31.200Z
-Stopped at: Completed 04-07-PLAN.md
+Last session: 2026-07-11T16:37:46.840Z
+Stopped at: Completed 04-08-PLAN.md
 Resume file: None
