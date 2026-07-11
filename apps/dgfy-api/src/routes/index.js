@@ -6,6 +6,7 @@ import sequelize from '../config/db.js';
 import defineAccountModel from '../models/Landlord/Account.js';
 import defineBusinessModel from '../models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../models/Landlord/BusinessMembership.js';
+import defineBusinessDatabaseRegistryModel from '../models/Landlord/BusinessDatabaseRegistry.js';
 import {
     buildAccountsModule,
     createAccountRoutes,
@@ -30,9 +31,16 @@ import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } f
 // /businesses routes actually use.
 const BusinessModel = defineBusinessModel(sequelize);
 const BusinessMembershipModel = defineBusinessMembershipModel(sequelize);
+// Wave 4 (D-14, API-04): real dgfy_core-backed tenant database pointer.
+// Live-wired here (unlike locationModel, which stays unwired pending a real
+// tenant-database provisioning flow — see 04-03.5-SUMMARY.md's Known Stub)
+// because business_database_registry itself lives in the landlord database,
+// which is already connected.
+const BusinessDatabaseRegistryModel = defineBusinessDatabaseRegistryModel(sequelize);
 const { repository: businessRepository, useCases: businessUseCases } = buildBusinessesModule({
     businessModel: BusinessModel,
     businessMembershipModel: BusinessMembershipModel,
+    businessDatabaseRegistryModel: BusinessDatabaseRegistryModel,
     sequelize
 });
 
