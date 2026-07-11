@@ -20,6 +20,8 @@ const posBarcodeScannerPath = path.resolve(__dirname, '../components/POSBarcodeS
 const posHistoryPanelPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
 const terminalPageLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const terminalLockDrawerPath = path.resolve(__dirname, '../components/TerminalLockDrawer.jsx');
+const onlineOrderDetailsModalPath = path.resolve(__dirname, '../components/OnlineOrderDetailsModal.jsx');
+const onlineOrderReceiptModalPath = path.resolve(__dirname, '../components/OnlineOrderReceiptModal.jsx');
 
 describe('POS terminal view-mode contracts', () => {
   let terminalPageContent = '';
@@ -36,6 +38,8 @@ describe('POS terminal view-mode contracts', () => {
   let posHistoryPanelContent = '';
   let terminalPageLayoutContent = '';
   let terminalLockDrawerContent = '';
+  let onlineOrderDetailsModalContent = '';
+  let onlineOrderReceiptModalContent = '';
 
   beforeAll(() => {
     terminalPageContent = fs.readFileSync(terminalPagePath, 'utf8');
@@ -52,6 +56,8 @@ describe('POS terminal view-mode contracts', () => {
     posHistoryPanelContent = fs.readFileSync(posHistoryPanelPath, 'utf8');
     terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8');
     terminalLockDrawerContent = fs.readFileSync(terminalLockDrawerPath, 'utf8');
+    onlineOrderDetailsModalContent = fs.readFileSync(onlineOrderDetailsModalPath, 'utf8');
+    onlineOrderReceiptModalContent = fs.readFileSync(onlineOrderReceiptModalPath, 'utf8');
   });
 
   it('keeps explicit checkout and operations mode lists in TerminalPage', () => {
@@ -328,7 +334,16 @@ describe('POS terminal view-mode contracts', () => {
   it('opens active queue orders in TerminalPage without routing them through receipt history', () => {
     expect(terminalPageContent).toContain('const detail = await fetchPosTransactionById(normalizedId);');
     expect(terminalPageContent).toContain('<OnlineOrderDetailsModal');
+    expect(terminalPageContent).toContain('<OnlineOrderReceiptModal');
     expect(terminalPageContent).not.toContain('handleOpenIncomingOrderHistory');
+  });
+
+  it('separates active order details from the printable non-fiscal order receipt', () => {
+    expect(onlineOrderDetailsModalContent).toContain('Review the active customer order details.');
+    expect(onlineOrderDetailsModalContent).not.toContain('Print Order');
+    expect(onlineOrderReceiptModalContent).toContain('Non-Fiscal Order Receipt');
+    expect(onlineOrderReceiptModalContent).toContain('Print Receipt');
+    expect(onlineOrderReceiptModalContent).toContain('pos-online-order-receipt-print-mode');
   });
 
   it('guards incoming queue receipt action with opening lock and lifecycle guidance copy', () => {

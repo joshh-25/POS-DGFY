@@ -97,6 +97,7 @@ import { printOrderWithIminBridge } from '../utils/iminHardwareBridge.js';
 
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
 import OnlineOrderDetailsModal from '../components/OnlineOrderDetailsModal.jsx';
+import OnlineOrderReceiptModal from '../components/OnlineOrderReceiptModal.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -492,8 +493,8 @@ export default function TerminalPage() {
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
   const [incomingOrderModalOpen, setIncomingOrderModalOpen] = useState(false);
+  const [incomingOrderReceiptOpen, setIncomingOrderReceiptOpen] = useState(false);
   const [incomingOrderDetail, setIncomingOrderDetail] = useState(null);
-  const [incomingOrderModalMode, setIncomingOrderModalMode] = useState('view');
   const [incomingOrderPrintLoading, setIncomingOrderPrintLoading] = useState(false);
   const [catalogSearchPrefill, setCatalogSearchPrefill] = useState(() => {
     if (typeof window === 'undefined') return '';
@@ -3212,8 +3213,11 @@ export default function TerminalPage() {
     try {
       const detail = await fetchPosTransactionById(normalizedId);
       setIncomingOrderDetail(detail || null);
-      setIncomingOrderModalMode(printMode ? 'print' : 'view');
-      setIncomingOrderModalOpen(true);
+      if (printMode) {
+        setIncomingOrderReceiptOpen(true);
+      } else {
+        setIncomingOrderModalOpen(true);
+      }
       setMobileNavOpen(false);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to load the active online order.');
@@ -3226,7 +3230,14 @@ export default function TerminalPage() {
     setIncomingOrderModalOpen(open);
     if (!open) {
       setIncomingOrderDetail(null);
-      setIncomingOrderModalMode('view');
+      setIncomingOrderPrintLoading(false);
+    }
+  }, []);
+
+  const handleIncomingOrderReceiptOpenChange = useCallback((open) => {
+    setIncomingOrderReceiptOpen(open);
+    if (!open) {
+      setIncomingOrderDetail(null);
       setIncomingOrderPrintLoading(false);
     }
   }, []);
@@ -3248,6 +3259,7 @@ export default function TerminalPage() {
       if (result?.handled !== true && typeof window !== 'undefined' && typeof window.print === 'function') {
         window.print();
       }
+      toast.success('Non-fiscal order receipt sent to printer.');
     } catch (error) {
       toast.error(error?.message || 'Failed to print the active order.');
     } finally {
@@ -4135,7 +4147,12 @@ export default function TerminalPage() {
           onOpenChange={handleIncomingOrderModalOpenChange}
           order={incomingOrderDetail}
           loading={incomingReceiptOpeningId !== null && !incomingOrderDetail}
-          mode={incomingOrderModalMode}
+        />
+        <OnlineOrderReceiptModal
+          open={incomingOrderReceiptOpen}
+          onOpenChange={handleIncomingOrderReceiptOpenChange}
+          order={incomingOrderDetail}
+          loading={incomingReceiptOpeningId !== null && !incomingOrderDetail}
           onPrint={handlePrintIncomingOrder}
           printLoading={incomingOrderPrintLoading}
         />

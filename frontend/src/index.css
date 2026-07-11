@@ -391,6 +391,24 @@ body.pos-receipt-print-mode {
     padding-bottom: 0;
     scroll-padding-bottom: 0;
   }
+
+  body.pos-online-order-receipt-print-mode > #root {
+    visibility: hidden;
+  }
+
+  body.pos-online-order-receipt-print-mode .pos-online-order-receipt-dialog,
+  body.pos-online-order-receipt-print-mode .pos-online-order-receipt-dialog * {
+    visibility: visible;
+  }
+
+  body.pos-online-order-receipt-print-mode .pos-online-order-receipt-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    width: 80mm;
+    max-width: 80mm;
+    margin: 0 auto;
+  }
 }
 
 .wizard-core-typography {

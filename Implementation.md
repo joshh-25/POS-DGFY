@@ -1,3 +1,28 @@
+# Implementation — Active Online Order Receipt Print Separation
+
+## Overview
+Separated active online-order details from receipt printing. `Open Order` remains the operational details modal, while `Print Order` opens a dedicated non-fiscal receipt layout before printing. The printed document is explicitly an active-order copy and never represents a final fiscal receipt.
+
+## Files Changed
+
+### [NEW] [frontend/src/features/pos/components/OnlineOrderReceiptModal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/OnlineOrderReceiptModal.jsx)
+- Adds a print-scoped non-fiscal receipt containing customer, order, payment, fulfilment, line-item, total, and delivery details.
+
+### [MODIFY] [frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/OnlineOrderDetailsModal.jsx)
+- Restricts `Open Order` to active-order operational details and removes its print action.
+
+### [MODIFY] [frontend/src/features/pos/pages/TerminalPage.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/pages/TerminalPage.jsx)
+- Routes `Print Order` to the dedicated receipt modal while preserving the existing iMin/browser printer path.
+
+### [MODIFY] [frontend/src/index.css](C:/xampp/htdocs/POS-DGFY/frontend/src/index.css)
+- Limits browser print output to the non-fiscal receipt layout.
+
+## Result
+- Active orders cannot be mistaken for completed fiscal receipts.
+- Completed and paid orders continue to use History for final receipt printing.
+
+---
+
 # Implementation — Offline POS Checkout Hardening
 
 ## Overview

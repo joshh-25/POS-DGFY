@@ -5,7 +5,6 @@ import {
   MapPin,
   Package,
   Phone,
-  Printer,
   Receipt,
   Truck,
   UserRound
@@ -137,10 +136,7 @@ export default function OnlineOrderDetailsModal({
   open = false,
   onOpenChange = () => {},
   order = null,
-  loading = false,
-  mode = 'view',
-  onPrint = () => {},
-  printLoading = false
+  loading = false
 }) {
   const lines = Array.isArray(order?.lines) ? order.lines : [];
   const totalAmount = Number(order?.total_amount || 0);
@@ -164,7 +160,7 @@ export default function OnlineOrderDetailsModal({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <DialogTitle className="truncate text-lg font-black text-slate-950 sm:text-2xl">
-                  {order ? `Order #${orderNumber}` : mode === 'print' ? 'Print Order' : 'Open Order'}
+                  {order ? `Order #${orderNumber}` : 'Open Order'}
                 </DialogTitle>
                 {order && (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
@@ -174,9 +170,7 @@ export default function OnlineOrderDetailsModal({
                 )}
               </div>
               <DialogDescription className="mt-0.5 truncate text-xs text-slate-600 sm:text-sm">
-                {mode === 'print'
-                  ? 'Review the active customer order before printing the order copy.'
-                  : 'Review the active customer order details.'}
+                Review the active customer order details.
               </DialogDescription>
             </div>
           </div>
@@ -296,12 +290,8 @@ export default function OnlineOrderDetailsModal({
         </div>
 
         <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:justify-between sm:px-5">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={printLoading}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Close
-          </Button>
-          <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={onPrint} disabled={loading || !order || printLoading}>
-            <Printer className="mr-2 h-4 w-4" />
-            {printLoading ? 'Printing...' : 'Print Order'}
           </Button>
         </DialogFooter>
       </DialogContent>
