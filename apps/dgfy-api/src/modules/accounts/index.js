@@ -4,8 +4,11 @@
 //
 // Wave 1 (.planning/phases/04-backend-accounts-businesses-and-tenancy-
 // foundation/04-01-PLAN.md) wires the Entity, Repository, and Use Case
-// layers. Wave 2 (04-02-PLAN.md) adds routes/controllers on top of
-// buildAccountsModule()'s exports.
+// layers. Wave 2 (04-02-PLAN.md) adds routes/controllers/auth-middleware on
+// top of buildAccountsModule()'s exports — the caller (app.js or a test)
+// builds the accounts module, then passes its useCases into
+// createAccountRoutes()/buildAccountAuthMiddleware() to compose the full
+// HTTP layer, per Dependency Inversion.
 
 export { AccountEntity, buildAccountEntity } from './entities/accountEntity.js';
 export { AccountRepository, buildAccountRepository } from './repositories/accountRepository.js';
@@ -18,6 +21,9 @@ export {
     sanitizeAccount,
     generateAccountSessionToken
 } from './usecases/accountUseCases.js';
+export { buildAccountController } from './controllers/accountController.js';
+export { createAccountRoutes } from './routes.js';
+export { buildAccountAuthMiddleware } from './middleware/accountAuthMiddleware.js';
 
 import { AccountRepository } from './repositories/accountRepository.js';
 import {
