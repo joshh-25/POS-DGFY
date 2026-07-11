@@ -62,14 +62,36 @@ function parseBusinessDbNames(rawValue) {
 }
 
 /**
+ * Plan 03 (D-01, T-03-01-01): pure parse of DGFY_MIGRATION_TARGET_MANIFEST
+ * into a validated (but unread) file path. Never touches the filesystem —
+ * the manifest's own JSON contents are loaded/validated separately by
+ * src/data/targetManifest.js only after this env-level check passes, and
+ * only once the caller has an explicit config object in hand.
+ *
+ * @param {string|undefined} rawValue
+ * @returns {{ path: string|null, errors: string[] }}
+ */
+function parseMigrationTargetManifestPath(rawValue) {
+    if (isBlank(rawValue)) {
+        return { path: null, errors: [] };
+    }
+    return { path: String(rawValue).trim(), errors: [] };
+}
+
+/**
  * Pure validation of the runner's environment contract. Never opens a DB
  * connection, never imports a DB client — RUN-03 requires this ordering to
  * be structurally guaranteed, not just conventional.
  *
  * @param {NodeJS.ProcessEnv} env
+ * @param {{ requireMigrationManifest?: boolean }} options Plan 03 (D-01):
+ *   pass `{ requireMigrationManifest: true }` from `data dry-run`/`data
+ *   apply`/`verify` command handlers — those are the only callers for whom
+ *   DGFY_MIGRATION_TARGET_MANIFEST is mandatory. Defaults to false so
+ *   `schema`/`status`/`rollback-plan` and existing tests are unaffected.
  * @returns {{ valid: boolean, errors: string[], config: object|null }}
  */
-export function validateEnv(env = process.env) {
+export function validateEnv(env = process.env, { requireMigrationManifest = false } = {}) {
     const errors = [];
 
     const runtimeMode = env.RUNTIME_MODE || 'development';
@@ -99,6 +121,20 @@ export function validateEnv(env = process.env) {
     // here — before any connection is opened — never silently dropped.
     const { names: businessDbNames, errors: businessDbNameErrors } = parseBusinessDbNames(env.DGFY_BUSINESS_DB_NAMES);
     errors.push(...businessDbNameErrors);
+
+    // Plan 03 (D-01): explicit migration target manifest path. Structurally
+    // validated as a non-blank string only — the file itself is never read
+    // here (side-effect-free contract, RUN-03).
+    const { path: migrationTargetManifestPath, errors: manifestPathErrors } = parseMigrationTargetManifestPath(
+        env.DGFY_MIGRATION_TARGET_MANIFEST
+    );
+    errors.push(...manifestPathErrors);
+
+    if (requireMigrationManifest && migrationTargetManifestPath === null) {
+        errors.push(
+            'DGFY_MIGRATION_TARGET_MANIFEST is required for data dry-run/apply/verify usage and must not be empty (D-01)'
+        );
+    }
 
     if (errors.length > 0) {
         return { valid: false, errors, config: null };
@@ -133,7 +169,11 @@ export function validateEnv(env = process.env) {
         // Plan 03 (D-02/D-08): explicit initial-verification business target
         // list. Empty when unset — the schema command then migrates only
         // TARGET_DB_NAME (unchanged single-target behavior).
-        businessDbNames
+        businessDbNames,
+        // Plan 03 (D-01): null when unset (schema/status/rollback-plan don't
+        // require it); data dry-run/apply/verify pass
+        // { requireMigrationManifest: true } to enforce presence.
+        migrationTargetManifestPath
     };
 
     return { valid: true, errors: [], config };

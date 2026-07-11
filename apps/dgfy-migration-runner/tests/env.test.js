@@ -50,7 +50,8 @@ describe('validateEnv', () => {
             metaDb: { name: 'dgfy_migration_meta' },
             reportDir: './reports',
             actor: 'operator@dgfy.ph',
-            businessDbNames: []
+            businessDbNames: [],
+            migrationTargetManifestPath: null
         });
     });
 
@@ -182,6 +183,54 @@ describe('validateEnv', () => {
         expect(result.valid).toBe(true);
         expect(result.config.targetDb.name).toBe('dgfy_core');
         expect(result.config.businessDbNames).toEqual(['dgfy_business_alpha']);
+    });
+
+    test('DGFY_MIGRATION_TARGET_MANIFEST unset yields migrationTargetManifestPath:null without error by default (Plan 03 D-01)', () => {
+        const env = baseEnv();
+        delete env.DGFY_MIGRATION_TARGET_MANIFEST;
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(true);
+        expect(result.config.migrationTargetManifestPath).toBeNull();
+    });
+
+    test('DGFY_MIGRATION_TARGET_MANIFEST set is exposed as a trimmed string path without reading the file', () => {
+        const env = baseEnv({ DGFY_MIGRATION_TARGET_MANIFEST: '  /config/migration-targets.json  ' });
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(true);
+        expect(result.config.migrationTargetManifestPath).toBe('/config/migration-targets.json');
+    });
+
+    test('requireMigrationManifest:true rejects a missing DGFY_MIGRATION_TARGET_MANIFEST', () => {
+        const env = baseEnv();
+        delete env.DGFY_MIGRATION_TARGET_MANIFEST;
+
+        const result = validateEnv(env, { requireMigrationManifest: true });
+
+        expect(result.valid).toBe(false);
+        expect(result.config).toBeNull();
+        expect(result.errors.some((message) => message.includes('DGFY_MIGRATION_TARGET_MANIFEST'))).toBe(true);
+    });
+
+    test('requireMigrationManifest:true succeeds when DGFY_MIGRATION_TARGET_MANIFEST is set', () => {
+        const env = baseEnv({ DGFY_MIGRATION_TARGET_MANIFEST: '/config/migration-targets.json' });
+
+        const result = validateEnv(env, { requireMigrationManifest: true });
+
+        expect(result.valid).toBe(true);
+        expect(result.config.migrationTargetManifestPath).toBe('/config/migration-targets.json');
+    });
+
+    test('requireMigrationManifest defaults to false so schema/status/rollback-plan callers are unaffected', () => {
+        const env = baseEnv();
+        delete env.DGFY_MIGRATION_TARGET_MANIFEST;
+
+        const result = validateEnv(env);
+
+        expect(result.valid).toBe(true);
     });
 
     test('env.js source contains no sequelize/mysql2 import', () => {
