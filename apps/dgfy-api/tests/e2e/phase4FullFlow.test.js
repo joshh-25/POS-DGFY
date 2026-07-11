@@ -194,6 +194,18 @@ describeIfIntegration('Phase 4 full end-to-end user journeys (real MySQL landlor
             databaseName,
             status: 'active'
         });
+        // Wave 7 gap-closure (04-07-PLAN.md): location/staff-onboarding
+        // persistence requires the registry entry to be "active/verified"
+        // (status='active' AND verified_at populated — see
+        // 04-06-SUMMARY.md/locationRepository.js's doc comments), not just
+        // status='active'. tenantSessionUseCases.js's own activate-session
+        // check (Journeys 1/3/4) doesn't look at verified_at, but Journey 2's
+        // location/staff-onboarding calls now do.
+        await businessDatabaseRegistryRepository.updateStatus({
+            businessId,
+            status: 'active',
+            verifiedAt: new Date()
+        });
         return databaseName;
     }
 
@@ -267,10 +279,17 @@ describeIfIntegration('Phase 4 full end-to-end user journeys (real MySQL landlor
             expect(inviteResponse.status).toBe(202);
             const invitationToken = inviteResponse.body.data.invitation.token;
 
-            // Step 3/4: staff accepts via the token — HTTP 200, assignment record created.
+            // Step 3/4: staff accepts via the token — HTTP 200, tenant
+            // staff_accounts row created/linked. Wave 7 gap-closure
+            // (04-07-PLAN.md): no `assignment` is created here since no
+            // dgfyAccountId is supplied on accept (deferred staff-to-DGFY-
+            // account linking, per this file's own header deviation note
+            // and 04-07-PLAN.md's Source Audit) — Steps 10-13 below
+            // separately seed a real tenant-local assignment directly.
             const acceptResponse = await request(app).post(`/invitations/${invitationToken}/accept`).send({});
             expect(acceptResponse.status).toBe(200);
-            expect(acceptResponse.body.data.assignment.email).toBe('staff2@phase4test.com');
+            expect(acceptResponse.body.data.staffAccount.email).toBe('staff2@phase4test.com');
+            expect(acceptResponse.body.data.assignment).toBeUndefined();
 
             // Step 5: owner creates the first location — HTTP 201, auto-primary.
             const firstLocationResponse = await request(app)

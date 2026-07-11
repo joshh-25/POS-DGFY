@@ -6,14 +6,25 @@ import { Sequelize } from 'sequelize';
 import defineAccountModel from '../../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../../src/models/Landlord/BusinessMembership.js';
+import defineBusinessDatabaseRegistryModel from '../../../src/models/Landlord/BusinessDatabaseRegistry.js';
+import defineStaffAccountModel from '../../../src/models/Tenant/StaffAccount.js';
+import defineStaffInvitationModel from '../../../src/models/Tenant/StaffInvitation.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../../src/modules/businesses/index.js';
+import { TenantConnector } from '../../../src/infra/tenantConnector.js';
 
 /**
  * Wave 5 (04-05-PLAN.md, Task 4) — business validation, access-control, and
  * replay/idempotency integration tests. Mirrors ./businessFlows.test.js's
  * gating pattern: skips cleanly unless explicitly opted in with real MySQL
  * admin credentials.
+ *
+ * Wave 7 gap-closure (04-07-PLAN.md): staff onboarding (invitation/direct
+ * add) now persists through a real tenant database, so `createBusiness()`
+ * below provisions + marks active/verified a real per-business tenant
+ * database (mirrors ../tenancy/tenantSessionFlows.test.js's
+ * `createBusinessWithTenant()` helper) before every test in this file
+ * exercises a staff-onboarding endpoint.
  */
 const RUN_INTEGRATION = process.env.RUN_BUSINESS_VALIDATION_INTEGRATION === 'true';
 
@@ -58,7 +69,10 @@ async function withAdminConnection(fn) {
 
 describeIfIntegration('Business validation, access control, and replay (real MySQL)', () => {
     const dbName = isolatedDbName();
+    const provisionedTenantDbNames = [];
     let sequelize;
+    let tenantConnector;
+    let businessDatabaseRegistryRepository;
     let Account;
     let app;
 
@@ -77,14 +91,21 @@ describeIfIntegration('Business validation, access control, and replay (real MyS
         Account = defineAccountModel(sequelize);
         const Business = defineBusinessModel(sequelize);
         const BusinessMembership = defineBusinessMembershipModel(sequelize);
+        const BusinessDatabaseRegistry = defineBusinessDatabaseRegistryModel(sequelize);
         await sequelize.sync({ force: true });
 
-        const { repository: businessRepository, useCases: businessUseCases } = buildBusinessesModule({
+        tenantConnector = new TenantConnector(ADMIN_DB_CONFIG);
+
+        const businessesModule = buildBusinessesModule({
             businessModel: Business,
             businessMembershipModel: BusinessMembership,
+            businessDatabaseRegistryModel: BusinessDatabaseRegistry,
             sequelize,
-            sendEmail: async () => ({ sent: true, reason: 'test_double' })
+            sendEmail: async () => ({ sent: true, reason: 'test_double' }),
+            tenantConnector
         });
+        const { repository: businessRepository, useCases: businessUseCases } = businessesModule;
+        businessDatabaseRegistryRepository = businessesModule.businessDatabaseRegistryRepository;
 
         const { useCases: accountUseCases } = buildAccountsModule({
             accountModel: Account,
@@ -103,9 +124,13 @@ describeIfIntegration('Business validation, access control, and replay (real MyS
     });
 
     afterAll(async () => {
+        if (tenantConnector) await tenantConnector.closeAll();
         if (sequelize) await sequelize.close();
         await withAdminConnection(async (adminSequelize) => {
             await adminSequelize.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
+            for (const tenantDbName of provisionedTenantDbNames) {
+                await adminSequelize.query(`DROP DATABASE IF EXISTS \`${tenantDbName}\``);
+            }
         });
     });
 
@@ -124,6 +149,12 @@ describeIfIntegration('Business validation, access control, and replay (real MyS
         return { token: response.body.data.token, accountId: response.body.data.account.id, email };
     }
 
+    /**
+     * Wave 7 gap-closure (04-07-PLAN.md): provisions + marks active/verified
+     * a real, disposable per-business tenant database so staff onboarding
+     * (invitation/direct-add) persists successfully — mirrors
+     * ../tenancy/tenantSessionFlows.test.js's createBusinessWithTenant().
+     */
     async function createBusiness(token, overrides = {}) {
         const response = await request(app)
             .post('/businesses')
@@ -134,7 +165,29 @@ describeIfIntegration('Business validation, access control, and replay (real MyS
                 business_handle: `acme-${crypto.randomUUID().slice(0, 8)}`,
                 ...overrides
             });
-        return response.body.data.business.id;
+        const businessId = response.body.data.business.id;
+
+        const tenantDbName = `dgfy_business_bv_it_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
+        await withAdminConnection(async (adminSequelize) => {
+            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${tenantDbName}\``);
+        });
+        provisionedTenantDbNames.push(tenantDbName);
+        const tenantConnection = tenantConnector.getConnection(tenantDbName);
+        await defineStaffAccountModel(tenantConnection).sync({ force: true });
+        await defineStaffInvitationModel(tenantConnection).sync({ force: true });
+        await businessDatabaseRegistryRepository.create({
+            businessId,
+            stableOpaqueSuffix: tenantDbName.replace('dgfy_business_', ''),
+            databaseName: tenantDbName,
+            status: 'active'
+        });
+        await businessDatabaseRegistryRepository.updateStatus({
+            businessId,
+            status: 'active',
+            verifiedAt: new Date()
+        });
+
+        return businessId;
     }
 
     describe('Business Creation Validation', () => {

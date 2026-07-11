@@ -6,8 +6,12 @@ import { Sequelize } from 'sequelize';
 import defineAccountModel from '../../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../../src/models/Landlord/BusinessMembership.js';
+import defineBusinessDatabaseRegistryModel from '../../../src/models/Landlord/BusinessDatabaseRegistry.js';
+import defineStaffAccountModel from '../../../src/models/Tenant/StaffAccount.js';
+import defineStaffInvitationModel from '../../../src/models/Tenant/StaffInvitation.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../../src/modules/businesses/index.js';
+import { TenantConnector } from '../../../src/infra/tenantConnector.js';
 
 /**
  * HTTP-layer integration tests for the businesses module (Wave 3, Task 7).
@@ -66,7 +70,10 @@ async function withAdminConnection(fn) {
 
 describeIfIntegration('Business HTTP routes (real MySQL, create/list/get/update/staff/accept)', () => {
     const dbName = isolatedDbName();
+    const provisionedTenantDbNames = [];
     let sequelize;
+    let tenantConnector;
+    let businessDatabaseRegistryRepository;
     let Account;
     let app;
 
@@ -85,14 +92,21 @@ describeIfIntegration('Business HTTP routes (real MySQL, create/list/get/update/
         Account = defineAccountModel(sequelize);
         const Business = defineBusinessModel(sequelize);
         const BusinessMembership = defineBusinessMembershipModel(sequelize);
+        const BusinessDatabaseRegistry = defineBusinessDatabaseRegistryModel(sequelize);
         await sequelize.sync({ force: true });
 
-        const { repository: businessRepository, useCases: businessUseCases } = buildBusinessesModule({
+        tenantConnector = new TenantConnector(ADMIN_DB_CONFIG);
+
+        const businessesModule = buildBusinessesModule({
             businessModel: Business,
             businessMembershipModel: BusinessMembership,
+            businessDatabaseRegistryModel: BusinessDatabaseRegistry,
             sequelize,
-            sendEmail: async () => ({ sent: false, reason: 'test_double' })
+            sendEmail: async () => ({ sent: false, reason: 'test_double' }),
+            tenantConnector
         });
+        const { repository: businessRepository, useCases: businessUseCases } = businessesModule;
+        businessDatabaseRegistryRepository = businessesModule.businessDatabaseRegistryRepository;
 
         const { useCases: accountUseCases } = buildAccountsModule({
             accountModel: Account,
@@ -111,9 +125,13 @@ describeIfIntegration('Business HTTP routes (real MySQL, create/list/get/update/
     });
 
     afterAll(async () => {
+        if (tenantConnector) await tenantConnector.closeAll();
         if (sequelize) await sequelize.close();
         await withAdminConnection(async (adminSequelize) => {
             await adminSequelize.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
+            for (const tenantDbName of provisionedTenantDbNames) {
+                await adminSequelize.query(`DROP DATABASE IF EXISTS \`${tenantDbName}\``);
+            }
         });
     });
 
@@ -132,6 +150,31 @@ describeIfIntegration('Business HTTP routes (real MySQL, create/list/get/update/
             ...overrides
         });
         return { token: response.body.data.token, accountId: response.body.data.account.id, email };
+    }
+
+    /**
+     * Wave 7 gap-closure (04-07-PLAN.md): staff onboarding now persists
+     * through a real tenant database — provisions + marks active/verified a
+     * disposable one for `businessId`, mirroring
+     * ../tenancy/tenantSessionFlows.test.js's createBusinessWithTenant().
+     */
+    async function provisionTenantForBusiness(businessId) {
+        const tenantDbName = `dgfy_business_br_it_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
+        await withAdminConnection(async (adminSequelize) => {
+            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${tenantDbName}\``);
+        });
+        provisionedTenantDbNames.push(tenantDbName);
+        const tenantConnection = tenantConnector.getConnection(tenantDbName);
+        await defineStaffAccountModel(tenantConnection).sync({ force: true });
+        await defineStaffInvitationModel(tenantConnection).sync({ force: true });
+        await businessDatabaseRegistryRepository.create({
+            businessId,
+            stableOpaqueSuffix: tenantDbName.replace('dgfy_business_', ''),
+            databaseName: tenantDbName,
+            status: 'active'
+        });
+        await businessDatabaseRegistryRepository.updateStatus({ businessId, status: 'active', verifiedAt: new Date() });
+        return tenantDbName;
     }
 
     describe('POST /businesses', () => {
@@ -262,6 +305,7 @@ describeIfIntegration('Business HTTP routes (real MySQL, create/list/get/update/
                 .set('Authorization', `Bearer ${token}`)
                 .send({ legal_name: 'Acme Inc.', display_name: 'Acme Store', business_handle: 'staff-invite-test' });
             const businessId = createResponse.body.data.business.id;
+            await provisionTenantForBusiness(businessId);
 
             const inviteResponse = await request(app)
                 .post(`/businesses/${businessId}/staff`)
@@ -286,6 +330,7 @@ describeIfIntegration('Business HTTP routes (real MySQL, create/list/get/update/
                 .set('Authorization', `Bearer ${token}`)
                 .send({ legal_name: 'Acme Inc.', display_name: 'Acme Store', business_handle: 'staff-direct-test' });
             const businessId = createResponse.body.data.business.id;
+            await provisionTenantForBusiness(businessId);
 
             const response = await request(app)
                 .post(`/businesses/${businessId}/staff`)
@@ -322,6 +367,7 @@ describeIfIntegration('Business HTTP routes (real MySQL, create/list/get/update/
                 .set('Authorization', `Bearer ${token}`)
                 .send({ legal_name: 'Acme Inc.', display_name: 'Acme Store', business_handle: 'accept-test' });
             const businessId = createResponse.body.data.business.id;
+            await provisionTenantForBusiness(businessId);
 
             const inviteResponse = await request(app)
                 .post(`/businesses/${businessId}/staff`)
@@ -332,7 +378,11 @@ describeIfIntegration('Business HTTP routes (real MySQL, create/list/get/update/
             const response = await request(app).post(`/invitations/${invitationToken}/accept`).send({});
 
             expect(response.status).toBe(200);
-            expect(response.body.data.assignment.email).toBe('acceptme@example.com');
+            // Wave 7 gap-closure (04-07-PLAN.md): no dgfyAccountId is
+            // supplied on accept, so no assignment is created (deferred
+            // staff-to-DGFY-account linking) — only the tenant staffAccount.
+            expect(response.body.data.staffAccount.email).toBe('acceptme@example.com');
+            expect(response.body.data.assignment).toBeUndefined();
         });
 
         it('rejects an invalid token with HTTP 404', async () => {
