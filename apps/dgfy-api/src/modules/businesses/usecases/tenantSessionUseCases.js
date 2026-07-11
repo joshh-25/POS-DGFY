@@ -34,6 +34,12 @@ const validationError = (message) => new DomainError(
     { statusCode: 400 }
 );
 
+const notFoundError = (message = 'Business not found.') => new DomainError(
+    DomainErrorCode.RESOURCE_NOT_FOUND,
+    message,
+    { statusCode: 404 }
+);
+
 const noMembershipError = () => new DomainError(
     DomainErrorCode.AUTHORIZATION_FAILED,
     'You are not a member of this business.',
@@ -64,6 +70,12 @@ const serviceUnavailableError = (message) => new DomainError(
  * buildActivateBusinessSessionUseCase (mid-session switch) — per the plan's
  * own note that activation "Uses same validation as CreateTenantSession".
  *
+ * Step 0: validate the business itself exists (HTTP 404 — mirrors
+ *   ../businessUseCases.js's buildGetBusinessUseCase/buildUpdateBusinessUseCase
+ *   existence-before-authorization convention; also the only way to satisfy
+ *   the plan's explicit "non-existent business -> HTTP 404" acceptance
+ *   criterion, since a membership lookup against a nonexistent business
+ *   would otherwise indistinguishably return null, same as "not a member").
  * Step 1: validate landlord membership exists.
  * Step 2: resolve tenant database pointer via BusinessDatabaseRegistry.
  * Step 3: validate tenant-local assignment (skipped for owners — D-04/D-14's
@@ -79,6 +91,12 @@ async function resolveTenantSession(
 ) {
     if (!businessId || !accountId) {
         return ApplicationResult.failure(validationError('businessId and accountId are required.'));
+    }
+
+    // Step 0: business existence (HTTP 404).
+    const business = await businessRepository.findById(businessId);
+    if (!business) {
+        return ApplicationResult.failure(notFoundError());
     }
 
     // Step 1: landlord membership (API-04 part 1).

@@ -54,6 +54,7 @@ const makeAssignment = (overrides = {}) => ({
 });
 
 const baseBusinessRepository = (overrides = {}) => ({
+    findById: jest.fn().mockResolvedValue({ id: 'biz-1', business_handle: 'acme-store' }),
     getMembership: jest.fn().mockResolvedValue(makeOwnerMembership()),
     ...overrides
 });
@@ -116,6 +117,29 @@ describe('buildCreateTenantSessionUseCase (API-04 enforcement)', () => {
             'dgfy_business_abc123',
             'acct-staff'
         );
+    });
+
+    it('rejects with HTTP 404 when the business itself does not exist', async () => {
+        const businessRepository = baseBusinessRepository({
+            findById: jest.fn().mockResolvedValue(null)
+        });
+        const businessDatabaseRegistry = baseBusinessDatabaseRegistry();
+        const accountStaffAssignmentRepository = baseAccountStaffAssignmentRepository();
+
+        const useCase = buildCreateTenantSessionUseCase({
+            businessRepository,
+            businessDatabaseRegistry,
+            accountStaffAssignmentRepository
+        });
+
+        const result = await useCase({ businessId: 'nonexistent-biz', accountId: 'acct-owner' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(404);
+        // Rejection happens before any membership/registry/assignment lookup.
+        expect(businessRepository.getMembership).not.toHaveBeenCalled();
+        expect(businessDatabaseRegistry.findByBusinessId).not.toHaveBeenCalled();
+        expect(accountStaffAssignmentRepository.findActiveAssignment).not.toHaveBeenCalled();
     });
 
     it('rejects with NO_MEMBERSHIP (HTTP 403) when the account has no landlord membership', async () => {
