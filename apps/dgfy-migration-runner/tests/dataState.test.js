@@ -8,6 +8,7 @@ import {
     getDataCheckpoint,
     markDataCheckpoint,
     recordDataQualityFinding,
+    resolveDataQualityFindings,
     listOpenDataQualityFindings
 } from '../src/metadata/dataState.js';
 
@@ -305,6 +306,47 @@ describe('recordDataQualityFinding / listOpenDataQualityFindings', () => {
 
         expect(openFindings).toHaveLength(1);
         expect(openFindings[0].reason_code).toBe('inactive_user');
+    });
+
+    test('resolveDataQualityFindings resolves only the matching open entity/key findings', async () => {
+        const metaSequelize = buildFakeMetaSequelize();
+
+        await recordDataQualityFinding(metaSequelize, {
+            runScope: 'run-1',
+            legacyTenantId: 'tenant-1',
+            entityType: 'terminal_identity',
+            legacyTable: 'system_settings.pos_terminal_registry',
+            legacyId: 'terminal-01',
+            severity: 'orphan',
+            reasonCode: 'location_not_mapped',
+            message: 'Location not mapped yet'
+        });
+        await recordDataQualityFinding(metaSequelize, {
+            runScope: 'run-1',
+            legacyTenantId: 'tenant-1',
+            entityType: 'staff',
+            legacyTable: 'users',
+            legacyId: 7,
+            severity: 'conflict',
+            reasonCode: 'duplicate_email',
+            message: 'Different finding remains open'
+        });
+
+        await resolveDataQualityFindings(metaSequelize, {
+            runScope: 'run-1',
+            legacyTenantId: 'tenant-1',
+            entityType: 'terminal_identity',
+            legacyTable: 'system_settings.pos_terminal_registry',
+            legacyId: 'terminal-01'
+        });
+
+        const openFindings = await listOpenDataQualityFindings(metaSequelize, { runScope: 'run-1' });
+
+        expect(openFindings).toHaveLength(1);
+        expect(openFindings[0].entity_type).toBe('staff');
+        expect(metaSequelize.__tables.data_quality_findings.find(
+            (finding) => finding.entity_type === 'terminal_identity'
+        ).status).toBe('resolved');
     });
 });
 

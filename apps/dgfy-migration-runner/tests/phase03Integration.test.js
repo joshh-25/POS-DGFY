@@ -74,6 +74,81 @@ async function countRows(sequelize, tableName) {
   return Number(rows[0].count);
 }
 
+function mysqlDate(value) {
+  return value ? new Date(value) : null;
+}
+
+function legacyDgfyAccountLandlordSeed(overrides = {}) {
+  const account = legacyDgfyAccountFixture(overrides);
+  return {
+    id: account.id,
+    first_name: account.first_name,
+    last_name: account.last_name,
+    email: account.email,
+    phone: account.phone,
+    password_hash: account.password_hash,
+    is_active: account.is_active,
+    email_verified_at: mysqlDate(account.email_verified_at),
+    phone_verified_at: mysqlDate(account.phone_verified_at),
+    last_login_at: mysqlDate(account.last_login_at),
+    deleted_at: mysqlDate(account.deleted_at)
+  };
+}
+
+function legacyAcceptedMembershipSeed(overrides = {}) {
+  const membership = legacyAcceptedMembershipFixture(overrides);
+  return {
+    id: membership.id,
+    dgfy_account_id: membership.dgfy_account_id,
+    tenant_id: membership.tenant_id,
+    tenant_user_id: membership.tenant_user_id,
+    role: membership.role,
+    status: membership.status,
+    accepted_at: mysqlDate(membership.accepted_at)
+  };
+}
+
+function legacyTenantLandlordSeed(overrides = {}) {
+  const tenant = legacyTenantFixture(overrides);
+  return {
+    id: tenant.id,
+    name: tenant.name,
+    db_name: tenant.db_name,
+    company_token: tenant.company_token,
+    status: tenant.status,
+    owner_dgfy_account_id: tenant.owner_dgfy_account_id
+  };
+}
+
+function legacyTenantUserSeed(overrides = {}) {
+  const user = legacyTenantUserFixture(overrides);
+  return {
+    user_id: user.user_id,
+    username: user.username,
+    email: user.email,
+    phone_number: user.phone_number,
+    password_hash: user.password_hash,
+    role: user.role,
+    is_active: user.is_active,
+    is_master_admin: user.is_master_admin,
+    last_login: mysqlDate(user.last_login),
+    deleted_at: mysqlDate(user.deleted_at)
+  };
+}
+
+function legacyTenantLocationSeed(overrides = {}) {
+  const location = legacyTenantLocationFixture(overrides);
+  return {
+    location_id: location.location_id,
+    name: location.name,
+    address_line: location.address_line,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    is_active: location.is_active,
+    is_primary_storefront: location.is_primary_storefront
+  };
+}
+
 describeIfIntegration('Phase 03 real MySQL-backed dry-run/apply/retry/verify rehearsal', () => {
   const suffix = isolatedSuffix();
   const landlordDbName = `sku_it_landlord_${suffix}`;
@@ -135,13 +210,13 @@ describeIfIntegration('Phase 03 real MySQL-backed dry-run/apply/retry/verify reh
         accepted_at: DataTypes.DATE
       });
 
-      await qi.bulkInsert('dgfy_accounts', [legacyDgfyAccountFixture({ id: ownerAccountId })]);
-      await qi.bulkInsert('tenants', [legacyTenantFixture({
+      await qi.bulkInsert('dgfy_accounts', [legacyDgfyAccountLandlordSeed({ id: ownerAccountId })]);
+      await qi.bulkInsert('tenants', [legacyTenantLandlordSeed({
         id: legacyTenantId,
         db_name: tenantDbName,
         owner_dgfy_account_id: ownerAccountId
       })]);
-      await qi.bulkInsert('dgfy_account_tenant_memberships', [legacyAcceptedMembershipFixture({
+      await qi.bulkInsert('dgfy_account_tenant_memberships', [legacyAcceptedMembershipSeed({
         dgfy_account_id: ownerAccountId,
         tenant_id: legacyTenantId
       })]);
@@ -187,8 +262,8 @@ describeIfIntegration('Phase 03 real MySQL-backed dry-run/apply/retry/verify reh
         setting_value: DataTypes.TEXT
       });
 
-      await qi.bulkInsert('users', [legacyTenantUserFixture()]);
-      await qi.bulkInsert('tenant_locations', [legacyTenantLocationFixture()]);
+      await qi.bulkInsert('users', [legacyTenantUserSeed()]);
+      await qi.bulkInsert('tenant_locations', [legacyTenantLocationSeed()]);
       await qi.bulkInsert('system_settings', [{
         setting_key: 'pos_terminal_registry',
         setting_value: JSON.stringify([legacyPosTerminalRegistryEntryFixture()])

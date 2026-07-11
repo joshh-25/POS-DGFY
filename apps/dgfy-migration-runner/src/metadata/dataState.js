@@ -154,6 +154,42 @@ export async function recordDataQualityFinding(metaSequelize, {
 }
 
 /**
+ * Marks previously-open findings resolved once apply has successfully
+ * inserted/reconciled the exact legacy entity they referred to. This closes
+ * first-pass dry-run orphan findings for dependency-ordered entities without
+ * weakening verification's "open findings fail" contract.
+ */
+export async function resolveDataQualityFindings(metaSequelize, {
+    runScope,
+    legacyTenantId = null,
+    entityType,
+    legacyTable = null,
+    legacyId = null
+}) {
+    const where = {
+        run_scope: runScope,
+        status: 'open',
+        entity_type: entityType
+    };
+
+    if (legacyTenantId !== undefined) {
+        where.legacy_tenant_id = legacyTenantId;
+    }
+    if (legacyTable !== undefined) {
+        where.legacy_table = legacyTable;
+    }
+    if (legacyId !== undefined) {
+        where.legacy_id = toKeyString(legacyId);
+    }
+
+    await metaSequelize.getQueryInterface().bulkUpdate(
+        DATA_QUALITY_FINDINGS_TABLE,
+        { status: 'resolved' },
+        where
+    );
+}
+
+/**
  * Lists unresolved data-quality findings for a run scope — MIG-05
  * verification evidence.
  */

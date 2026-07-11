@@ -258,9 +258,10 @@ async function buildTargetDataVerification({
             }
         ]);
 
+        const legacyTenantSource = target.legacy_tenant_db_name;
         const expectedLegacyKeys = [
-            ...tenantSnapshot.users.map((user) => `legacy_tenant|users|${user.user_id}`),
-            ...tenantSnapshot.locations.map((location) => `legacy_tenant|tenant_locations|${location.location_id}`)
+            ...tenantSnapshot.users.map((user) => `${legacyTenantSource}|users|${user.user_id}`),
+            ...tenantSnapshot.locations.map((location) => `${legacyTenantSource}|tenant_locations|${location.location_id}`)
         ];
         const mapCompleteness = checkMapCompleteness({ expectedLegacyKeys, mappedLegacyKeys });
 

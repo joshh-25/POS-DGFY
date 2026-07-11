@@ -72,7 +72,8 @@ import {
     recordLegacyIdMap,
     getDataCheckpoint,
     markDataCheckpoint,
-    recordDataQualityFinding
+    recordDataQualityFinding,
+    resolveDataQualityFindings
 } from '../metadata/dataState.js';
 
 export { DEFAULT_RUN_SCOPE };
@@ -354,6 +355,17 @@ export async function applyTenantEntityBatch({
         // eslint-disable-next-line no-await-in-loop
         const writeResult = await writeMappedTargetRow({ metaSequelize, targetSequelize, runScope, entry });
         results.push({ entry, status: writeResult.status, dgfyId: writeResult.dgfyId });
+
+        if ((writeResult.status === 'inserted' || writeResult.status === 'reconciled') && entry.legacy_id_map_key) {
+            // eslint-disable-next-line no-await-in-loop
+            await resolveDataQualityFindings(metaSequelize, {
+                runScope,
+                legacyTenantId: entry.legacy_tenant_id ?? legacyTenantId,
+                entityType: entry.entity_type,
+                legacyTable: entry.legacy_id_map_key.legacy_table,
+                legacyId: entry.legacy_id_map_key.legacy_id
+            });
+        }
 
         if (!alreadyCompleted) {
             for (const finding of entry.findings || []) {

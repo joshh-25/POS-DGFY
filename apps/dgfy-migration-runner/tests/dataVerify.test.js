@@ -189,7 +189,7 @@ describe('buildDataVerificationSections orchestration (03-05 Task 2)', () => {
 
   const target = {
     legacy_tenant_id: 't1',
-    legacy_tenant_db_name: 'legacy_tenant_1',
+    legacy_tenant_db_name: 'sku_tenant_1',
     target_business_db_name: 'dgfy_business_alpha',
     expected_business_id: 'biz-1',
     expected_owner_account_id: 'acct-1'
@@ -299,8 +299,8 @@ describe('buildDataVerificationSections orchestration (03-05 Task 2)', () => {
       query: jest.fn((sql) => {
         if (typeof sql === 'string' && sql.includes('legacy_id_map')) {
           return Promise.resolve([[
-            { legacy_source: 'legacy_tenant', legacy_table: 'users', legacy_id: '1' },
-            { legacy_source: 'legacy_tenant', legacy_table: 'tenant_locations', legacy_id: '1' }
+            { legacy_source: 'sku_tenant_1', legacy_table: 'users', legacy_id: '1' },
+            { legacy_source: 'sku_tenant_1', legacy_table: 'tenant_locations', legacy_id: '1' }
           ]]);
         }
         return Promise.resolve([[]]);
@@ -323,6 +323,48 @@ describe('buildDataVerificationSections orchestration (03-05 Task 2)', () => {
 
     expect(result.data_migration.storefront_discovery_projection.row_count).toBe(2);
     expect(result.data_migration.storefront_discovery_projection.blocking).toBe(false);
+    expect(result.data_migration.ok).toBe(true);
+  });
+
+  test('uses the manifest legacy_tenant_db_name for tenant-local map-completeness keys', async () => {
+    mockCreateBusinessTargetConnection.mockReset().mockReturnValue(fakeConnection({
+      queryImpl: (sql) => {
+        if (sql.includes('FROM staff_accounts')) return Promise.resolve([[{ id: 's1' }]]);
+        if (sql.includes('FROM account_staff_assignments')) return Promise.resolve([[]]);
+        if (sql.includes('FROM locations')) return Promise.resolve([[{ id: 'loc-1' }]]);
+        if (sql.includes('FROM terminal_identities')) return Promise.resolve([[]]);
+        return Promise.resolve([[]]);
+      }
+    }));
+
+    const metaSequelize = {
+      query: jest.fn((sql) => {
+        if (typeof sql === 'string' && sql.includes('legacy_id_map')) {
+          return Promise.resolve([[
+            { legacy_source: 'sku_tenant_1', legacy_table: 'users', legacy_id: '1' },
+            { legacy_source: 'sku_tenant_1', legacy_table: 'tenant_locations', legacy_id: '1' }
+          ]]);
+        }
+        return Promise.resolve([[]]);
+      })
+    };
+    const targetSequelize = fakeConnection({
+      queryImpl: (sql) => {
+        if (sql.includes('business_memberships')) return Promise.resolve([[]]);
+        if (sql.includes('storefront_discovery_index')) return Promise.resolve([[]]);
+        return Promise.resolve([[]]);
+      }
+    });
+
+    const result = await buildDataVerificationSections({
+      config: {},
+      targetSequelize,
+      metaSequelize,
+      targets: [target]
+    });
+
+    expect(result.data_migration.targets[0].map_completeness.ok).toBe(true);
+    expect(result.data_migration.targets[0].map_completeness.missing).toEqual([]);
     expect(result.data_migration.ok).toBe(true);
   });
 });

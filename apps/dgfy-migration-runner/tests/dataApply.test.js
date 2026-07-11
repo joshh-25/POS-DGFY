@@ -375,6 +375,44 @@ describe('applyTenantEntityBatch', () => {
         expect(targetSequelize.tables.locations).toHaveLength(1);
     });
 
+    test('resolves matching open dry-run findings after a mapped row is written', async () => {
+        const metaSequelize = createFakeSqlSequelize({
+            data_quality_findings: [{
+                run_scope: DEFAULT_RUN_SCOPE,
+                legacy_tenant_id: 'tenant-uuid-1',
+                entity_type: 'terminal_identity',
+                legacy_table: 'system_settings.pos_terminal_registry',
+                legacy_id: 'terminal-01',
+                severity: 'orphan',
+                reason_code: 'location_not_mapped',
+                message: 'Location was not mapped during first dry-run',
+                status: 'open'
+            }]
+        });
+        const targetSequelize = createFakeSqlSequelize();
+        const entries = [{
+            legacy_tenant_id: 'tenant-uuid-1',
+            operation: 'insert',
+            entity_type: 'terminal_identity',
+            target_table: 'terminal_identities',
+            target_database: 'dgfy_business_alpha',
+            target_payload: { terminal_code: 'TERMINAL-01', label: 'Front Counter', location_id: 1, status: 'active' },
+            legacy_id_map_key: {
+                legacy_source: 'sku_tenant_1',
+                legacy_table: 'system_settings.pos_terminal_registry',
+                legacy_id: 'terminal-01'
+            },
+            findings: []
+        }];
+
+        await applyTenantEntityBatch({
+            metaSequelize, targetSequelize, runScope: DEFAULT_RUN_SCOPE,
+            legacyTenantId: 'tenant-uuid-1', entityType: 'terminal_identity', entries, dgfyDatabase: 'dgfy_business_alpha'
+        });
+
+        expect(metaSequelize.tables.data_quality_findings[0].status).toBe('resolved');
+    });
+
     test('when the checkpoint is already completed, verifies mapped rows and skips duplicate writes without re-marking the checkpoint', async () => {
         const metaSequelize = createFakeSqlSequelize({
             legacy_id_map: [{
@@ -405,7 +443,7 @@ describe('applyTenantEntityBatch', () => {
         expect(results[0].status).toBe('reconciled');
         expect(targetSequelize.__bulkInsert).not.toHaveBeenCalled();
         // bulkUpdate on data_checkpoints not called again — checkpoint stays as-is.
-        expect(metaSequelize.__bulkUpdate).not.toHaveBeenCalled();
+        expect(metaSequelize.__bulkUpdate.mock.calls.some(([tableName]) => tableName === 'data_checkpoints')).toBe(false);
     });
 });
 
@@ -646,7 +684,7 @@ describe('retry safety across interruption points', () => {
         expect(results[0].status).toBe('reconciled');
         expect(targetSequelize.__bulkInsert).not.toHaveBeenCalled();
         expect(targetSequelize.tables.staff_accounts).toHaveLength(1);
-        expect(metaSequelize.__bulkUpdate).not.toHaveBeenCalled();
+        expect(metaSequelize.__bulkUpdate.mock.calls.some(([tableName]) => tableName === 'data_checkpoints')).toBe(false);
     });
 });
 
