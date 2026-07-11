@@ -85,6 +85,7 @@ Kept local POS workflows accessible while offline and explicitly disabled only t
 ## Result
 - Offline available: Sell, History, Reports, Items/Add Item drafts, and Shift.
 - Online-only: Online Orders and Settings.
+- The terminal view-mode contract test verifies that Online Orders remains disabled while offline.
 
 ---
 
