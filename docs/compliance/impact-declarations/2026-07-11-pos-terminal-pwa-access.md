@@ -34,6 +34,7 @@ Major. This changes the POS terminal interface, mobile access behavior, and manu
 - Offline transactions remain locally recorded and are synchronized only by an explicit terminal action.
 - Online-only settings and Storefront operations remain unavailable when the terminal is offline.
 - POS transaction, payment, void, shift, and receipt APIs remain server-authoritative when connectivity exists.
+- Mobile quantity gestures must permit native pointer cancellation and scrolling; they must not capture a pointer beyond the control.
 - Mobile presentation changes do not alter receipt payloads, fiscal lifecycle state, tax calculation, or payment authorization.
 
 ## Verification Evidence

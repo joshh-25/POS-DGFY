@@ -1930,7 +1930,6 @@ export default function POSCheckoutTerminal({
 
     const handleQtyButtonPointerDown = (event, item) => {
         if (event.pointerType === 'mouse' && event.button !== 0) return;
-        event.currentTarget.setPointerCapture(event.pointerId);
         // Anchor point is the button itself (left edge, vertically centered), not the finger -
         // the meter must stay put even as the finger drags around.
         const buttonRect = event.currentTarget.getBoundingClientRect();
@@ -1982,11 +1981,6 @@ export default function POSCheckoutTerminal({
     const handleQtyButtonPointerUp = (event, item) => {
         const gesture = qtyMeterGestureRef.current;
         clearQtyMeterTimer();
-        try {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        } catch {
-            // Capture may already be released by the browser; safe to ignore.
-        }
 
         qtyMeterGestureRef.current = null;
         setQtyMeterState(null);
