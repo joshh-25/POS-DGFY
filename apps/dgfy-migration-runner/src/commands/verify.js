@@ -346,7 +346,10 @@ export async function runVerify({} = {}) {
       ok: false,
       expected_migrations: [],
       executed_migrations: [],
-      missing_migrations: [],
+      // Pitfall 5 (03-RESEARCH.md) / 02-VERIFICATION.md WR-01: `null` is an
+      // explicit "unknown" sentinel, never conflated with "[] == zero
+      // pending migrations" — see the `idempotency` derivation below.
+      missing_migrations: null,
       error: error.message
     });
   }
@@ -362,21 +365,38 @@ export async function runVerify({} = {}) {
         ok: false,
         expected_migrations: [],
         executed_migrations: [],
-        missing_migrations: [],
+        // Same unknown sentinel as the primary-target catch block above.
+        missing_migrations: null,
         error: error.message
       });
     }
   }
 
-  // D-22: idempotency — derived directly from migration_metadata's
+  // D-22/Pitfall 5: idempotency — derived directly from migration_metadata's
   // missing_migrations per target (the same metadata-backed pending check;
   // see checkMigrationMetadata's docstring). Zero missing migrations means a
-  // rerun of schema migrate against that target would be a pure no-op.
-  const idempotency = migrationMetadata.map((finding) => ({
-    target_database: finding.target_database,
-    ok: (finding.missing_migrations || []).length === 0,
-    pending_migrations: finding.missing_migrations || []
-  }));
+  // rerun of schema migrate against that target would be a pure no-op. A
+  // `null` missing_migrations (metadata check itself errored) is explicit
+  // "unknown" — it must never be treated as "zero pending, clean" (the
+  // false-clean sentinel bug identified in 02-VERIFICATION.md/03-RESEARCH.md
+  // Pitfall 5): idempotency is reported not-ok with pending_migrations:null
+  // and the same underlying error, so migration_metadata_ok=false and
+  // idempotency_ok=false stay consistent for that target.
+  const idempotency = migrationMetadata.map((finding) => {
+    if (finding.missing_migrations === null) {
+      return {
+        target_database: finding.target_database,
+        ok: false,
+        pending_migrations: null,
+        error: finding.error || 'migration_metadata check failed; idempotency unknown'
+      };
+    }
+    return {
+      target_database: finding.target_database,
+      ok: finding.missing_migrations.length === 0,
+      pending_migrations: finding.missing_migrations
+    };
+  });
 
   // D-08/T-02-04-03: tenant_coverage — cross-check the explicit business
   // target list against dgfy_core.business_database_registry (when
