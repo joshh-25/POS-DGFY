@@ -39,6 +39,7 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs' },
         { name: '20260629000001-add-pos-always-available-contract.cjs' },
         { name: '20260705000001-add-admin-provisioned-membership-source.cjs' },
+        { name: '20260711000001-add-pickup-cash-collection-fields.cjs' },
         { name: '20260502000001-add-services-mode-booking-tables.cjs' }
     ])),
     getQueryInterface: () => ({
@@ -116,7 +117,11 @@ const buildHealthySequelizeMock = () => ({
                     fiscal_lifecycle_state: { allowNull: false },
                     fiscal_reprint_count: { allowNull: false },
                     fiscal_void_event_hash: { allowNull: true },
-                    void_reason: { allowNull: true }
+                    void_reason: { allowNull: true },
+                    payment_collected_at: { allowNull: true },
+                    payment_collected_by: { allowNull: true },
+                    payment_collected_shift_id: { allowNull: true },
+                    payment_collected_terminal_id: { allowNull: true }
                 },
                 stock_movements: {
                     movement_id: {},
@@ -320,7 +325,40 @@ describe('runtimeSchemaAuditService', () => {
             expect.objectContaining({ table: 'users', column: 'role' }),
             expect.objectContaining({ table: 'pos_catalog_overrides', column: 'pos_visible' }),
             expect.objectContaining({ table: 'pos_transactions', column: 'service_fee_amount' }),
-            expect.objectContaining({ table: 'pos_transactions', column: 'buyer_tin' })
+            expect.objectContaining({ table: 'pos_transactions', column: 'buyer_tin' }),
+            expect.objectContaining({ table: 'pos_transactions', column: 'payment_collected_at' })
+        ]));
+    });
+
+    it('returns degraded when the cash pickup collection migration or fields are missing', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20260711000001-add-pickup-cash-collection-fields.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'pos_transactions') {
+                    delete table.payment_collected_at;
+                    delete table.payment_collected_by;
+                    delete table.payment_collected_shift_id;
+                    delete table.payment_collected_terminal_id;
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({ sequelizeInstance: mock });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.missingColumns).toEqual(expect.arrayContaining([
+            expect.objectContaining({ table: 'pos_transactions', column: 'payment_collected_at' }),
+            expect.objectContaining({ table: 'pos_transactions', column: 'payment_collected_by' }),
+            expect.objectContaining({ table: 'pos_transactions', column: 'payment_collected_shift_id' }),
+            expect.objectContaining({ table: 'pos_transactions', column: 'payment_collected_terminal_id' })
         ]));
     });
 

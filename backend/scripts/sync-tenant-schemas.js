@@ -46,6 +46,18 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         change_amount: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `change_amount` DECIMAL(14,4) NULL AFTER `cash_received`"
+        }),
+        payment_collected_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_at` DATETIME NULL AFTER `payment_status`"
+        }),
+        payment_collected_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_by` INTEGER NULL AFTER `payment_collected_at`"
+        }),
+        payment_collected_shift_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_shift_id` INTEGER NULL AFTER `payment_collected_by`"
+        }),
+        payment_collected_terminal_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_terminal_id` VARCHAR(100) NULL AFTER `payment_collected_shift_id`"
         })
     }),
     pos_terminal_shifts: Object.freeze({

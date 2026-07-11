@@ -154,6 +154,10 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: 'paid'
     },
+    payment_collected_at: { type: DataTypes.DATE, allowNull: true },
+    payment_collected_by: { type: DataTypes.INTEGER, allowNull: true },
+    payment_collected_shift_id: { type: DataTypes.INTEGER, allowNull: true },
+    payment_collected_terminal_id: { type: DataTypes.STRING(100), allowNull: true },
     payment_reference: {
         type: DataTypes.STRING(120),
         allowNull: true
