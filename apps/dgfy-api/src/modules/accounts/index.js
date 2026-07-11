@@ -9,3 +9,4 @@
 // module's exports.
 
 export { AccountEntity, buildAccountEntity } from './entities/accountEntity.js';
+export { AccountRepository, buildAccountRepository } from './repositories/accountRepository.js';
