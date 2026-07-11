@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-This phase delivers backend APIs for Accounts, Businesses, and Tenancy using the stable DGFY schema built in Phase 2 and the proven migration scripts from Phase 3. It implements the first user-facing backend scope: account registration/login, business creation/management, staff/branch administration, and tenant session binding. The APIs follow the established modular-monolith pattern (`routes -> controllers -> usecases -> repositories -> models`) and are gated by explicit landlord membership plus tenant-local assignment evidence per API-04.
+This phase delivers backend APIs for Accounts, Businesses, and Tenancy using the stable DGFY schema built in Phase 2 and the proven migration scripts from Phase 3. It implements the first user-facing backend scope: account registration/login, business creation/management, staff/branch administration, and tenant session binding. The APIs are built in `apps/dgfy-api/` following Clean Architecture + SOLID principles with explicit layers (Controllers → Use Cases → Entities → Repositories → Models), enforcing Single Responsibility, Open/Closed principle, and Dependency Inversion. All APIs are gated by explicit landlord membership plus tenant-local assignment evidence per API-04.
 
 **In scope:** Account registration/login with optional email verification; account profile management (email, password, name, phone, extensible metadata); operator account lookup; business creation/selection with automatic owner assignment; staff onboarding via email invitations or direct add; branch/location management through business APIs; tenant context resolution and mid-session business switching; comprehensive tests for success, validation, conflicts, replay rejection, logout, and durable persistence.
 
@@ -79,7 +79,7 @@ No open implementation discretion beyond the locked decisions above. All areas w
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md` — backend boundaries and architecture guardrails; requires `routes -> controllers -> usecases -> repositories -> models`; authoritative, last reviewed 2026-03-06.
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md` — ADR requirements, architecture proof, hardening contract for account/tenant/session work; authoritative, last reviewed 2026-05-21.
 - `docs/architecture/adr/0026-browser-session-cookie-authority.md` — Browser session/token/CSRF authority; defines access-token-in-memory vs. refresh-cookie model. Informs D-07 and D-08 (session lifetime and logout behavior).
-- `docs/architecture/adr/0032-standalone-dgfy-api-service.md` — Standalone DGFY API service architecture; `apps/dgfy-api` is already a bounded auth-only deployment. Phase 4 APIs may coexist with or eventually migrate to this service.
+- `docs/architecture/adr/0032-standalone-dgfy-api-service.md` — Standalone DGFY API service architecture; `apps/dgfy-api` is the canonical location for Phase 4 APIs with Clean Architecture + SOLID principles. Phase 4 builds the foundational Accounts/Businesses/Tenancy modules in `apps/dgfy-api/src/modules/`.
 
 ### Prior Phase Evidence (locked decisions this phase builds on)
 - `.planning/phases/01-architecture-and-migration-runner-contract/01-CONTEXT.md` — D-03 locked environment variable contracts (`SOURCE_DB_*`, `TARGET_DB_*`); D-10 defined destructive-operation gating via `--confirm-destructive`. Session decisions in Phase 4 should be consistent with any bearer/token patterns already established.
@@ -88,30 +88,31 @@ No open implementation discretion beyond the locked decisions above. All areas w
 - `.planning/phases/03-old-to-new-migration-proof/03-CONTEXT.md` — D-01 locked migration-target selection as explicit operator-supplied list (mirrors the pattern for business/tenant selection this phase will use).
 
 ### Database and Legacy Integration
-- `.planning/codebase/ARCHITECTURE.md` — Legacy backend structure, modular-monolith pattern, tenant resolution via `tenantHandler.js` and `TenantConnector.js`; Phase 4 uses these same patterns.
-- `.planning/codebase/CONVENTIONS.md` — Coding conventions (camelCase functions, module composition via `index.js`, error handling via `ApplicationResult` and `DomainError`, repository contracts, etc.). Phase 4 code must follow these.
+- `.planning/codebase/ARCHITECTURE.md` — Legacy backend structure, modular-monolith pattern, tenant resolution via `tenantHandler.js` and `TenantConnector.js`; Phase 4 in `apps/dgfy-api/` adapts these patterns within Clean Architecture.
+- `.planning/codebase/CONVENTIONS.md` — Coding conventions (camelCase functions, module composition via `index.js`, error handling via `ApplicationResult` and `DomainError`, repository contracts, etc.). Phase 4 code in `apps/dgfy-api/` must follow these.
 - `apps/dgfy-migration-runner/src/schemaContracts/dgfyCoreContract.js` and `dgfyBusinessContract.js` — Authoritative target-schema contracts (table/column/index/constraint shape) that Phase 4 APIs will read/write.
-- `backend/src/modules/dgfy/index.js` — Existing DGFY module structure (auth, company switching, membership, tenant-session). Phase 4 extends or replaces this with the new Accounts/Businesses APIs.
+- `backend/src/modules/dgfy/index.js` — Existing DGFY module (legacy reference). Phase 4 builds new Accounts/Businesses APIs in `apps/dgfy-api/src/modules/` from scratch using Clean Architecture.
 
 </canonical_refs>
 
 <code_context>
 ## Existing Code Insights
 
-### Reusable Assets
-- `backend/src/modules/dgfy/usecases/dgfyAuthUseCases.js` — Existing account/company/session use cases from legacy DGFY module. Phase 4 may reuse or replace portions depending on how closely they map to new requirements.
-- `backend/src/middleware/tenantHandler.js` — Tenant context resolution from headers, cookies, invite tokens. Phase 4 will reuse this pattern for binding business context to requests.
-- `backend/src/utils/TenantConnector.js` — Per-tenant Sequelize connection cache. Phase 4 APIs use this to access tenant-scoped models.
-- `backend/src/models/Landlord/*` — Existing landlord-scoped models (DgfyAccount, DgfyAccountTenantMembership, DgfyBusiness, etc.). Phase 4 will add/extend models for the new account/business/staff schema contracts.
-- `backend/src/modules/shared/contracts/applicationResult.js` and `domainErrors.js` — Established error handling pattern. Phase 4 use cases MUST return ApplicationResult envelopes and use DomainError for domain-level failures.
-- `backend/src/modules/shared/controllers/useCaseResponder.js` — Standard response formatter for use case results. Phase 4 controllers use `sendUseCaseResult` to format API responses consistently.
+### Reusable Assets (Adapted for Clean Architecture in apps/dgfy-api/)
+- `backend/src/modules/dgfy/usecases/dgfyAuthUseCases.js` — Reference pattern for use case builders. Phase 4 adapts builder pattern in `apps/dgfy-api/src/modules/*/usecases/` with explicit factory functions returning use cases.
+- `backend/src/middleware/tenantHandler.js` — Tenant context resolution pattern. Phase 4 adapts for `apps/dgfy-api/src/middleware/tenantContextResolver.js` (enhanced to bind business context).
+- `backend/src/utils/TenantConnector.js` — Per-tenant Sequelize connection cache. Phase 4 in `apps/dgfy-api/` uses this pattern for accessing tenant-scoped models.
+- `backend/src/modules/shared/contracts/applicationResult.js` and `domainErrors.js` — Error handling pattern. Phase 4 in `apps/dgfy-api/` MUST use ApplicationResult envelopes and DomainError.
+- `backend/src/modules/shared/controllers/useCaseResponder.js` — Response formatter pattern. Phase 4 controllers in `apps/dgfy-api/src/modules/*/controllers/` use `sendUseCaseResult` for consistent formatting.
 
-### Established Patterns
-- **Module composition via index.js** — Each domain module exports use-case builders and controllers through its `index.js`. Phase 4's Accounts/Businesses modules follow this pattern.
-- **Transport-only controllers** — Controllers translate HTTP request/response; business logic lives in use cases. Phase 4 controllers must not import models directly (enforced by eslint `no-restricted-imports`).
-- **Repository-owned Sequelize access** — All model queries happen through repositories. Phase 4 repositories own `create`, `findBy*`, `update`, `delete` logic.
-- **Tenant context in requests** — Middleware binds tenant context before route handlers. Phase 4 endpoints access tenanted models through the request context, not by manually resolving which database to use.
-- **Error handling via DomainError and ApplicationResult** — Use cases fail with structured errors; controllers respond with JSON via `sendUseCaseResult`. No raw promise rejections in route handlers.
+### Clean Architecture Patterns (Phase 4 in apps/dgfy-api/)
+- **Module composition via index.js** — Each domain module (Accounts, Businesses, Tenancy) exports use-case builders and controllers through its `index.js`. Dependency Inversion (D principle): index.js is the only place dependencies are wired; controllers and use cases receive dependencies via closures.
+- **Transport-only controllers** — Controllers translate HTTP request/response; business logic lives in use cases. Controllers must not import models directly (enforced by eslint `no-restricted-imports`). Single Responsibility (S principle).
+- **Explicit Entities layer** — Domain entities separate from persistence models. Entities represent core business logic; Sequelize models are persistence adapters. Use Cases operate on Entities; Repositories translate between Entities and Models.
+- **Repository-owned Sequelize access** — All model queries happen through repositories. Repositories own `create`, `findBy*`, `update`, `delete` logic. Repositories translate Models ↔ Entities. Open/Closed principle (O): repositories are closed for modification by use cases.
+- **Use Cases as business logic orchestrators** — Use cases call repositories and enforce business rules. Use cases return ApplicationResult envelopes (no exceptions leak). No HTTP concerns in use cases.
+- **Tenant context in requests** — Middleware binds tenant context before route handlers. Phase 4 endpoints access tenanted models through request context. TenantConnector resolves correct database.
+- **Error handling via DomainError and ApplicationResult** — Use cases fail with ApplicationResult (success/failure). Controllers map ApplicationResult to HTTP status codes. No raw promise rejections.
 
 ### Integration Points
 - Phase 2's schema contracts define the write-side shape (which tables/columns Phase 4 APIs can create/update).

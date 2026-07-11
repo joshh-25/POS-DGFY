@@ -5,27 +5,29 @@ type: execute
 wave: master
 depends_on: ["03-06"]
 files_modified: [
-  "backend/src/modules/accounts/index.js",
-  "backend/src/modules/accounts/routes.js",
-  "backend/src/modules/accounts/controllers/accountController.js",
-  "backend/src/modules/accounts/usecases/accountUseCases.js",
-  "backend/src/modules/accounts/repositories/accountRepository.js",
-  "backend/src/models/Landlord/Account.js",
-  "backend/src/modules/businesses/index.js",
-  "backend/src/modules/businesses/routes.js",
-  "backend/src/modules/businesses/controllers/businessController.js",
-  "backend/src/modules/businesses/usecases/businessUseCases.js",
-  "backend/src/modules/businesses/repositories/businessRepository.js",
-  "backend/src/models/Landlord/Business.js",
-  "backend/src/models/Landlord/BusinessMembership.js",
-  "backend/src/modules/businesses/controllers/tenantSessionController.js",
-  "backend/src/modules/businesses/usecases/tenantSessionUseCases.js",
-  "backend/src/models/Tenant/Location.js",
-  "backend/src/models/Tenant/StaffAccount.js",
-  "backend/src/models/Tenant/TerminalIdentity.js",
-  "backend/tests/integration/accounts/**",
-  "backend/tests/integration/businesses/**",
-  "backend/tests/integration/tenancy/**"
+  "apps/dgfy-api/src/modules/accounts/index.js",
+  "apps/dgfy-api/src/modules/accounts/routes.js",
+  "apps/dgfy-api/src/modules/accounts/controllers/accountController.js",
+  "apps/dgfy-api/src/modules/accounts/usecases/accountUseCases.js",
+  "apps/dgfy-api/src/modules/accounts/repositories/accountRepository.js",
+  "apps/dgfy-api/src/modules/accounts/entities/accountEntity.js",
+  "apps/dgfy-api/src/models/Landlord/Account.js",
+  "apps/dgfy-api/src/modules/businesses/index.js",
+  "apps/dgfy-api/src/modules/businesses/routes.js",
+  "apps/dgfy-api/src/modules/businesses/controllers/businessController.js",
+  "apps/dgfy-api/src/modules/businesses/usecases/businessUseCases.js",
+  "apps/dgfy-api/src/modules/businesses/repositories/businessRepository.js",
+  "apps/dgfy-api/src/modules/businesses/entities/businessEntity.js",
+  "apps/dgfy-api/src/models/Landlord/Business.js",
+  "apps/dgfy-api/src/models/Landlord/BusinessMembership.js",
+  "apps/dgfy-api/src/modules/businesses/controllers/tenantSessionController.js",
+  "apps/dgfy-api/src/modules/businesses/usecases/tenantSessionUseCases.js",
+  "apps/dgfy-api/src/models/Tenant/Location.js",
+  "apps/dgfy-api/src/models/Tenant/StaffAccount.js",
+  "apps/dgfy-api/src/models/Tenant/TerminalIdentity.js",
+  "apps/dgfy-api/tests/integration/accounts/**",
+  "apps/dgfy-api/tests/integration/businesses/**",
+  "apps/dgfy-api/tests/integration/tenancy/**"
 ]
 autonomous: false
 requirements: ["API-01", "API-02", "API-03", "API-04", "API-05", "API-06"]
@@ -50,21 +52,23 @@ must_haves:
     - "Tests cover success, validation, conflicts, duplicate/replay rejection, logout, and durable persistence"
   
   artifacts:
-    - "backend/src/modules/accounts/routes.js — account registration, login, profile, lookup routes"
-    - "backend/src/modules/accounts/controllers/accountController.js — transport layer for account operations"
-    - "backend/src/modules/accounts/usecases/accountUseCases.js — business logic for registration, login, profile updates"
-    - "backend/src/modules/accounts/repositories/accountRepository.js — Sequelize access for accounts, memberships"
-    - "backend/src/models/Landlord/Account.js — DGFY Account model matching dgfyCoreContract"
-    - "backend/src/modules/businesses/routes.js — business CRUD, branch, staff, activation routes"
-    - "backend/src/modules/businesses/controllers/businessController.js — transport layer for business operations"
-    - "backend/src/modules/businesses/usecases/businessUseCases.js — business creation, selection, staff management logic"
-    - "backend/src/modules/businesses/repositories/businessRepository.js — landlord business/membership access"
-    - "backend/src/modules/businesses/controllers/tenantSessionController.js — tenant session activation transport"
-    - "backend/src/modules/businesses/usecases/tenantSessionUseCases.js — tenant context resolution and binding"
-    - "backend/src/models/Landlord/Business.js, BusinessMembership.js — landlord business/membership models"
-    - "backend/src/models/Tenant/Location.js, StaffAccount.js, TerminalIdentity.js — tenant-scoped models"
-    - "backend/tests/integration/accounts/{test-suites} — comprehensive account tests"
-    - "backend/tests/integration/businesses/{test-suites} — comprehensive business and tenancy tests"
+    - "apps/dgfy-api/src/modules/accounts/routes.js — account registration, login, profile, lookup routes"
+    - "apps/dgfy-api/src/modules/accounts/controllers/accountController.js — transport layer for account operations"
+    - "apps/dgfy-api/src/modules/accounts/usecases/accountUseCases.js — business logic for registration, login, profile updates"
+    - "apps/dgfy-api/src/modules/accounts/repositories/accountRepository.js — data access adapter, Entity ↔ Model translation"
+    - "apps/dgfy-api/src/modules/accounts/entities/accountEntity.js — domain entity (business rules separate from persistence)"
+    - "apps/dgfy-api/src/models/Landlord/Account.js — Sequelize persistence model matching dgfyCoreContract"
+    - "apps/dgfy-api/src/modules/businesses/routes.js — business CRUD, branch, staff, activation routes"
+    - "apps/dgfy-api/src/modules/businesses/controllers/businessController.js — transport layer for business operations"
+    - "apps/dgfy-api/src/modules/businesses/usecases/businessUseCases.js — business creation, selection, staff management logic"
+    - "apps/dgfy-api/src/modules/businesses/repositories/businessRepository.js — landlord business/membership data access"
+    - "apps/dgfy-api/src/modules/businesses/entities/businessEntity.js — domain entity (ownership, membership rules)"
+    - "apps/dgfy-api/src/modules/businesses/controllers/tenantSessionController.js — tenant session activation transport"
+    - "apps/dgfy-api/src/modules/businesses/usecases/tenantSessionUseCases.js — tenant context resolution and binding"
+    - "apps/dgfy-api/src/models/Landlord/Business.js, BusinessMembership.js — landlord persistence models"
+    - "apps/dgfy-api/src/models/Tenant/Location.js, StaffAccount.js, TerminalIdentity.js — tenant-scoped persistence models"
+    - "apps/dgfy-api/tests/integration/accounts/{test-suites} — comprehensive account tests"
+    - "apps/dgfy-api/tests/integration/businesses/{test-suites} — comprehensive business and tenancy tests"
   
   key_links:
     - "Phase 2 Schema Contracts → Phase 4 Models: dgfyCoreContract.js defines landlord tables; Phase 4 models match exactly"
@@ -77,12 +81,12 @@ must_haves:
 
 ## Executive Summary
 
-**Phase 4: Backend Accounts, Businesses, and Tenancy Foundation** delivers the first user-facing APIs for the DGFY standalone refactor. Building on the stable schema contracts from Phase 2 and the proven migration scripts from Phase 3, Phase 4 implements:
+**Phase 4: Backend Accounts, Businesses, and Tenancy Foundation** delivers the first user-facing APIs for the DGFY standalone refactor in `apps/dgfy-api/` using **Clean Architecture + SOLID principles**. Building on the stable schema contracts from Phase 2 and the proven migration scripts from Phase 3, Phase 4 implements:
 
 - **Accounts APIs** (API-01): Registration/login, profile management, account lookup backed by DGFY schema
 - **Businesses APIs** (API-02): Business creation/selection, branch registry, staff onboarding, automatic owner assignment
 - **Tenancy APIs** (API-03, API-04): Tenant context resolution, session creation with explicit membership + assignment verification
-- **Architecture Compliance** (API-05, API-06): All APIs follow `routes → controllers → usecases → repositories → models`; comprehensive tests cover success, validation, conflicts, replay rejection, logout, and persistence
+- **Clean Architecture Layers** (API-05, API-06): All APIs follow `routes → controllers → usecases → entities → repositories → models` with explicit Entities layer (domain models separate from persistence). Single Responsibility, Dependency Inversion enforced. Comprehensive tests cover success, validation, conflicts, replay rejection, logout, and persistence
 
 **Key Decisions Locked (from 04-CONTEXT.md D-01 through D-14):**
 - Email verification optional; users can log in unverified (D-01, D-02)
@@ -143,11 +147,12 @@ Phase 3 ──→ Wave 1 ──→ Wave 2 ──→ Wave 3 ──→ Wave 3.5 �
 8. ✓ Tests for registration success, duplicate email rejection, login success/failure, profile update
 
 **Wave 1 Deliverables:**
-- backend/src/models/Landlord/Account.js
-- backend/src/modules/accounts/repositories/accountRepository.js
-- backend/src/modules/accounts/usecases/accountUseCases.js
-- backend/tests/unit/modules/accounts/accountUseCases.test.js
-- backend/tests/integration/accounts/accountRepository.test.js
+- apps/dgfy-api/src/models/Landlord/Account.js
+- apps/dgfy-api/src/modules/accounts/entities/accountEntity.js (domain entity, separate from model)
+- apps/dgfy-api/src/modules/accounts/repositories/accountRepository.js
+- apps/dgfy-api/src/modules/accounts/usecases/accountUseCases.js
+- apps/dgfy-api/tests/unit/modules/accounts/accountUseCases.test.js
+- apps/dgfy-api/tests/integration/accounts/accountRepository.test.js
 
 **Estimated Effort:** ~10-15% context (models are straightforward; use case logic is moderate complexity)
 
@@ -170,13 +175,13 @@ Phase 3 ──→ Wave 1 ──→ Wave 2 ──→ Wave 3 ──→ Wave 3.5 �
 10. ✓ Integration tests verify endpoint behavior, error responses
 
 **Wave 2 Deliverables:**
-- backend/src/modules/accounts/routes.js
-- backend/src/modules/accounts/controllers/accountController.js
-- backend/src/modules/accounts/index.js (exports)
-- backend/src/modules/businesses/routes.js (scaffold)
-- backend/src/modules/businesses/controllers/businessController.js (scaffold)
-- backend/src/modules/businesses/index.js (scaffold exports)
-- backend/tests/integration/accounts/accountRoutes.test.js
+- apps/dgfy-api/src/modules/accounts/routes.js
+- apps/dgfy-api/src/modules/accounts/controllers/accountController.js
+- apps/dgfy-api/src/modules/accounts/index.js (exports + dependency injection)
+- apps/dgfy-api/src/modules/businesses/routes.js (scaffold)
+- apps/dgfy-api/src/modules/businesses/controllers/businessController.js (scaffold)
+- apps/dgfy-api/src/modules/businesses/index.js (scaffold exports)
+- apps/dgfy-api/tests/integration/accounts/accountRoutes.test.js
 
 **Estimated Effort:** ~10-12% context (HTTP layer is transport-only; mostly glue code)
 
@@ -200,14 +205,15 @@ Phase 3 ──→ Wave 1 ──→ Wave 2 ──→ Wave 3 ──→ Wave 3.5 �
 11. ✓ Tests for create success, duplicate handle rejection, membership creation, staff onboarding both paths
 
 **Wave 3 Deliverables:**
-- backend/src/models/Landlord/Business.js
-- backend/src/models/Landlord/BusinessMembership.js
-- backend/src/modules/businesses/repositories/businessRepository.js
-- backend/src/modules/businesses/usecases/businessUseCases.js
-- backend/src/modules/businesses/controllers/businessController.js (filled in)
-- backend/src/modules/businesses/routes.js (filled in)
-- backend/tests/unit/modules/businesses/businessUseCases.test.js
-- backend/tests/integration/businesses/businessRepository.test.js
+- apps/dgfy-api/src/models/Landlord/Business.js
+- apps/dgfy-api/src/models/Landlord/BusinessMembership.js
+- apps/dgfy-api/src/modules/businesses/entities/businessEntity.js (domain entity)
+- apps/dgfy-api/src/modules/businesses/repositories/businessRepository.js
+- apps/dgfy-api/src/modules/businesses/usecases/businessUseCases.js
+- apps/dgfy-api/src/modules/businesses/controllers/businessController.js (filled in)
+- apps/dgfy-api/src/modules/businesses/routes.js (filled in)
+- apps/dgfy-api/tests/unit/modules/businesses/businessUseCases.test.js
+- apps/dgfy-api/tests/integration/businesses/businessRepository.test.js
 
 **Wave 3 Integration Points:**
 - D-10 (creator as owner): hardcoded in create business use case
@@ -233,15 +239,15 @@ Phase 3 ──→ Wave 1 ──→ Wave 2 ──→ Wave 3 ──→ Wave 3.5 �
 8. ✓ Tests for success, membership rejection, assignment rejection, context isolation
 
 **Wave 4 Deliverables:**
-- backend/src/models/Landlord/BusinessDatabaseRegistry.js
-- backend/src/models/Tenant/Location.js
-- backend/src/models/Tenant/StaffAccount.js
-- backend/src/models/Tenant/AccountStaffAssignment.js
-- backend/src/models/Tenant/TerminalIdentity.js
-- backend/src/modules/businesses/usecases/tenantSessionUseCases.js
-- backend/src/modules/businesses/controllers/tenantSessionController.js
-- backend/src/middleware/tenantContextResolver.js (updates/extends)
-- backend/tests/integration/tenancy/tenantSessionUseCases.test.js
+- apps/dgfy-api/src/models/Landlord/BusinessDatabaseRegistry.js
+- apps/dgfy-api/src/models/Tenant/Location.js
+- apps/dgfy-api/src/models/Tenant/StaffAccount.js
+- apps/dgfy-api/src/models/Tenant/AccountStaffAssignment.js
+- apps/dgfy-api/src/models/Tenant/TerminalIdentity.js
+- apps/dgfy-api/src/modules/businesses/usecases/tenantSessionUseCases.js
+- apps/dgfy-api/src/modules/businesses/controllers/tenantSessionController.js
+- apps/dgfy-api/src/middleware/tenantContextResolver.js (updates/extends)
+- apps/dgfy-api/tests/integration/tenancy/tenantSessionUseCases.test.js
 
 **Wave 4 Integration Points:**
 - D-04 (membership + assignment requirement): enforced in tenantSessionUseCase
@@ -268,14 +274,14 @@ Phase 3 ──→ Wave 1 ──→ Wave 2 ──→ Wave 3 ──→ Wave 3.5 �
 9. ✓ Coverage: >80% coverage for account, business, tenancy modules
 
 **Wave 5 Deliverables:**
-- backend/tests/integration/accounts/accountFlows.test.js (end-to-end flows)
-- backend/tests/integration/accounts/accountValidation.test.js (validation, conflicts)
-- backend/tests/integration/accounts/accountPersistence.test.js (durability, replay)
-- backend/tests/integration/businesses/businessFlows.test.js (business creation, staff onboarding)
-- backend/tests/integration/businesses/businessValidation.test.js (conflicts, duplicates)
-- backend/tests/integration/tenancy/tenantSessionFlows.test.js (activation, isolation)
-- backend/tests/integration/tenancy/tenantSessionValidation.test.js (permission checks, rejection)
-- backend/tests/e2e/phase4FullFlow.test.js (complete user journey)
+- apps/dgfy-api/tests/integration/accounts/accountFlows.test.js (end-to-end flows)
+- apps/dgfy-api/tests/integration/accounts/accountValidation.test.js (validation, conflicts)
+- apps/dgfy-api/tests/integration/accounts/accountPersistence.test.js (durability, replay)
+- apps/dgfy-api/tests/integration/businesses/businessFlows.test.js (business creation, staff onboarding)
+- apps/dgfy-api/tests/integration/businesses/businessValidation.test.js (conflicts, duplicates)
+- apps/dgfy-api/tests/integration/tenancy/tenantSessionFlows.test.js (activation, isolation)
+- apps/dgfy-api/tests/integration/tenancy/tenantSessionValidation.test.js (permission checks, rejection)
+- apps/dgfy-api/tests/e2e/phase4FullFlow.test.js (complete user journey)
 
 **Wave 5 Verification:**
 - `npm run test -- --path=backend/tests/integration/accounts backend/tests/integration/businesses backend/tests/integration/tenancy` passes
@@ -288,71 +294,83 @@ Phase 3 ──→ Wave 1 ──→ Wave 2 ──→ Wave 3 ──→ Wave 3.5 �
 
 ## Architecture Integration & Layering
 
-### Strict Boundary Enforcement (API-05)
+### Clean Architecture Boundary Enforcement (API-05, SOLID)
 
-**Phase 4 APIs MUST follow:**
+**Phase 4 APIs MUST follow Clean Architecture layers:**
 ```
 HTTP Request
     ↓
-Routes (Express route definitions)
+Routes (Express route definitions — Interface Adapters)
     ↓
-Controllers (Transport layer; parse request, call use cases, format response)
+Controllers (Transport layer; parse request, call use cases, format response — Interface Adapters)
     ↓
-Use Cases (Business logic; orchestrate repositories, validate rules, return ApplicationResult)
+Use Cases/Interactors (Business logic; orchestrate repositories, validate rules, return ApplicationResult — Application)
     ↓
-Repositories (Data access layer; all Sequelize queries happen here)
+Entities (Domain models representing business rules, separate from persistence — Enterprise Business Rules)
     ↓
-Models (Sequelize ORM; table definitions matching schema contracts)
+Repositories (Data access adapters; all Sequelize queries, Entity ↔ Model translation — Interface Adapters)
     ↓
-Database (dgfy_core landlord, dgfy_business_* tenants)
+Models (Sequelize ORM; table definitions matching schema contracts — Frameworks & Drivers)
+    ↓
+Database (dgfy_core landlord, dgfy_business_* tenants — Frameworks & Drivers)
 ```
 
+**SOLID Principles Applied:**
+- **Single Responsibility (S):** Each layer has one reason to change. Controllers handle HTTP only. Use cases handle business logic only. Repositories handle data access only.
+- **Open/Closed (O):** Repositories are closed for modification; use cases call them via stable interfaces.
+- **Liskov Substitution (L):** Entity contracts are properly substitutable across repositories.
+- **Interface Segregation (I):** Controllers depend on specific use case functions, not bloated interfaces.
+- **Dependency Inversion (D):** Use cases depend on repository abstractions (not concrete implementations). Controllers receive use cases via dependency injection. index.js is the only place dependencies are wired.
+
 **Enforcement Mechanisms:**
-1. ESLint rule: `no-restricted-imports` blocks direct model imports in controllers
-2. Allowlist (temporary): `backend/src/config/controllerModelImportAllowlist.js` — Phase 4 MUST NOT add entries
-3. Script gate: `npm run check:architecture` — verifies pattern compliance
+1. ESLint rule: `no-restricted-imports` blocks direct model imports in controllers and use cases
+2. Allowlist (temporary): `apps/dgfy-api/src/config/controllerModelImportAllowlist.js` — Phase 4 MUST NOT add entries
+3. Script gate: `npm run check:architecture` — verifies pattern compliance in apps/dgfy-api
 4. Script gate: `npm run check:controller-boundaries` — confirms controllers are transport-only
-5. Architecture review (Wave 5): verify no controller→model shortcuts
+5. Entities layer documentation: Each module README explains entity vs. model distinction
+6. Architecture review (Wave 5): verify no shortcuts (controllers don't call repositories directly; repositories don't call use cases)
 
-### Schema Contracts (Phase 2 Integration)
+### Schema Contracts (Phase 2 Integration) → Clean Architecture Mapping
 
-**Landlord Schema (dgfy_core):**
-Phase 4 models map exactly to dgfyCoreContract:
-- `accounts` → DgfyAccount model
-- `businesses` → DgfyBusiness model
-- `business_memberships` → DgfyBusinessMembership model
-- `business_database_registry` → DgfyBusinessDatabaseRegistry model
+**Landlord Schema (dgfy_core) → Models → Entities → Use Cases:**
+- `accounts` → DgfyAccount (Sequelize model) → accountEntity (domain model) → registerAccount/loginAccount use cases
+- `businesses` → DgfyBusiness (model) → businessEntity (domain model) → createBusiness/listBusinesses use cases
+- `business_memberships` → DgfyBusinessMembership (model) → membership logic in businessEntity → staff onboarding use cases
+- `business_database_registry` → DgfyBusinessDatabaseRegistry (model) → tenantSessionUseCase (resolves tenant DB)
 - `business_audit_logs` → read-only (Phase 4 logs business creation/membership changes)
 
-**Tenant Schema (dgfy_business_<suffix>):**
-Phase 4 models map exactly to dgfyBusinessContract:
-- `locations` → Location model
-- `staff_accounts` → StaffAccount model
-- `account_staff_assignments` → AccountStaffAssignment model
-- `roles` → Role model (pre-populated seeds)
+**Tenant Schema (dgfy_business_<suffix>) → Models → Use Cases:**
+- `locations` → Location (Sequelize model) → branch management use cases
+- `staff_accounts` → StaffAccount (model) → staff onboarding logic
+- `account_staff_assignments` → AccountStaffAssignment (model) → tenant session validation (D-14)
+- `roles` → Role model (pre-populated seeds, read-only)
 - `role_permissions` → RolePermission model (read-only)
-- `terminal_identities` → TerminalIdentity model
+- `terminal_identities` → TerminalIdentity (model) → tenant-scoped endpoints
 
-**Verification Approach:**
-- Wave 1: Seed test databases with schema contracts; verify models load correctly
-- Wave 5: Final verification command (see Testing Strategy)
+**Verification Approach (Clean Architecture Specific):**
+- Wave 1: Seed test databases with schema contracts; verify models load and repositories translate Sequelize models ↔ Entities correctly
+- Wave 5: Entity shape verification; repository translation tests; use case entity validation tests
+- Final verification command (see Testing Strategy): confirms entity boundaries and clean layer separation (no shortcuts)
 
-### Legacy Compatibility & Reuse
+### Pattern Reuse & Adaptation (Legacy → Clean Architecture)
 
-**Reusable from existing DGFY module:**
-- `ApplicationResult` envelope pattern from `backend/src/modules/shared/contracts/applicationResult.js`
-- `DomainError` for domain-level failures from `backend/src/modules/shared/contracts/domainErrors.js`
-- `useCaseResponder` for formatting responses from `backend/src/modules/shared/controllers/useCaseResponder.js`
-- `TenantConnector` for per-tenant Sequelize connections from `backend/src/utils/TenantConnector.js`
-- `tenantHandler` middleware for tenant context resolution from `backend/src/middleware/tenantHandler.js`
+**Reusable Patterns from backend/ (Adapted for apps/dgfy-api/Clean Architecture):**
+- `ApplicationResult` envelope pattern (backend/src/modules/shared/contracts/) → apps/dgfy-api/src/shared/contracts/applicationResult.js (same, but dependency-injected)
+- `DomainError` types (backend/src/modules/shared/contracts/) → apps/dgfy-api/src/shared/contracts/domainErrors.js (same pattern)
+- `useCaseResponder` formatter (backend/src/modules/shared/controllers/) → apps/dgfy-api/src/shared/controllers/useCaseResponder.js (same pattern)
+- `TenantConnector` pattern (backend/src/utils/) → apps/dgfy-api/src/infra/tenantConnector.js (per-tenant connection caching)
+- `tenantHandler` middleware pattern (backend/src/middleware/) → apps/dgfy-api/src/middleware/tenantContextResolver.js (enhanced for business context)
 
-**Extensions Needed:**
-- tenantHandler expanded to handle business context (not just account context)
-- New repositories follow established repository pattern (see `backend/src/modules/dgfy/repositories/` for examples)
+**New Patterns for Clean Architecture in apps/dgfy-api/:**
+- **Entity Builders:** Each module has entities/*.js defining domain models (accountEntity, businessEntity) with validation/business rules
+- **Repository Abstractions:** Repositories translate Sequelize models ↔ Entities (dependency inversion)
+- **Use Case Builders:** Factory functions in usecases/*.js return use cases with dependencies via closure
+- **Module index.js:** Single dependency wiring point (per SOLID Dependency Inversion)
+- **No circular imports:** Controllers ← UseCase ← Repository ← Model (one-way dependencies)
 
-### Phase 3 Migration Reference
+### Phase 3 Migration Reference (apps/dgfy-api/ Aware)
 
-**Phase 4 APIs read Phase 3 artifacts:**
+**Phase 4 APIs in apps/dgfy-api/ read Phase 3 artifacts:**
 - Migration metadata in `dgfy_migration_meta` database: account/business/staff mapping records
 - Legacy-to-DGFY ID mappings: used during account lookup and legacy data linking
 - Tenant coverage reports: inform which businesses have been migrated
@@ -361,6 +379,7 @@ Phase 4 models map exactly to dgfyBusinessContract:
 - Execute or trigger Phase 3 migrations (separate migration runner)
 - Rely on legacy schema structures (only reads migration metadata)
 - Perform data transformation (Phase 3 responsibility)
+- Modify backend/src/ (Phase 4 builds entirely in apps/dgfy-api/)
 
 ### Phase 5 Compatibility Handoff
 
@@ -602,83 +621,100 @@ npm run lint
 
 ### Required Artifacts (Files That Must Exist)
 
-**Landlord Models:**
-- backend/src/models/Landlord/Account.js — DgfyAccount model
-- backend/src/models/Landlord/Business.js — DgfyBusiness model
-- backend/src/models/Landlord/BusinessMembership.js — DgfyBusinessMembership model
-- backend/src/models/Landlord/BusinessDatabaseRegistry.js — DgfyBusinessDatabaseRegistry model
+**Landlord Models (apps/dgfy-api/src/models/Landlord/):**
+- Account.js — DgfyAccount Sequelize model
+- Business.js — DgfyBusiness Sequelize model
+- BusinessMembership.js — DgfyBusinessMembership Sequelize model
+- BusinessDatabaseRegistry.js — DgfyBusinessDatabaseRegistry Sequelize model
 
-**Tenant Models:**
-- backend/src/models/Tenant/Location.js — Location model
-- backend/src/models/Tenant/StaffAccount.js — StaffAccount model
-- backend/src/models/Tenant/AccountStaffAssignment.js — AccountStaffAssignment model
-- backend/src/models/Tenant/TerminalIdentity.js — TerminalIdentity model
+**Tenant Models (apps/dgfy-api/src/models/Tenant/):**
+- Location.js — Location Sequelize model
+- StaffAccount.js — StaffAccount Sequelize model
+- AccountStaffAssignment.js — AccountStaffAssignment Sequelize model
+- TerminalIdentity.js — TerminalIdentity Sequelize model
 
-**Accounts Module:**
-- backend/src/modules/accounts/routes.js — account endpoints
-- backend/src/modules/accounts/controllers/accountController.js — transport layer
-- backend/src/modules/accounts/usecases/accountUseCases.js — business logic
-- backend/src/modules/accounts/repositories/accountRepository.js — data access
-- backend/src/modules/accounts/index.js — exports (builder pattern)
+**Accounts Module (apps/dgfy-api/src/modules/accounts/):**
+- routes.js — account endpoints
+- controllers/accountController.js — transport layer (HTTP ↔ Use Cases)
+- usecases/accountUseCases.js — business logic (orchestrates repositories + entities)
+- repositories/accountRepository.js — data access adapter (Entity ↔ Model translation)
+- entities/accountEntity.js — domain entity (business rules)
+- index.js — dependency injection + exports (builder pattern)
 
-**Businesses Module:**
-- backend/src/modules/businesses/routes.js — business endpoints
-- backend/src/modules/businesses/controllers/businessController.js — transport layer
-- backend/src/modules/businesses/usecases/businessUseCases.js — business logic
-- backend/src/modules/businesses/repositories/businessRepository.js — landlord data access
-- backend/src/modules/businesses/controllers/tenantSessionController.js — tenant session transport
-- backend/src/modules/businesses/usecases/tenantSessionUseCases.js — tenant context logic
-- backend/src/modules/businesses/index.js — exports (builder pattern)
+**Businesses Module (apps/dgfy-api/src/modules/businesses/):**
+- routes.js — business endpoints
+- controllers/businessController.js — transport layer
+- usecases/businessUseCases.js — business logic
+- repositories/businessRepository.js — landlord data access
+- entities/businessEntity.js — domain entity
+- controllers/tenantSessionController.js — tenant session transport
+- usecases/tenantSessionUseCases.js — tenant context logic
+- index.js — dependency injection + exports
 
-**Tests:**
-- backend/tests/integration/accounts/accountFlows.test.js
-- backend/tests/integration/accounts/accountValidation.test.js
-- backend/tests/integration/accounts/accountPersistence.test.js
-- backend/tests/integration/businesses/businessFlows.test.js
-- backend/tests/integration/businesses/businessValidation.test.js
-- backend/tests/integration/tenancy/tenantSessionFlows.test.js
-- backend/tests/integration/tenancy/tenantSessionValidation.test.js
-- backend/tests/e2e/phase4FullFlow.test.js
+**Tests (apps/dgfy-api/tests/):**
+- integration/accounts/accountFlows.test.js
+- integration/accounts/accountValidation.test.js
+- integration/accounts/accountPersistence.test.js
+- integration/businesses/businessFlows.test.js
+- integration/businesses/businessValidation.test.js
+- integration/tenancy/tenantSessionFlows.test.js
+- integration/tenancy/tenantSessionValidation.test.js
+- e2e/phase4FullFlow.test.js
 
-### Key Links (Critical Connections)
+### Key Links (Critical Connections — Clean Architecture Boundaries)
 
-1. **Phase 2 Schema → Phase 4 Models**
-   - dgfyCoreContract.js (landlord tables) → Account, Business, BusinessMembership models
-   - dgfyBusinessContract.js (tenant tables) → Location, StaffAccount, AccountStaffAssignment models
-   - Verification: Wave 1 seeds test DB with contracts; models load and map correctly
+1. **Phase 2 Schema → Phase 4 Models → Phase 4 Entities**
+   - dgfyCoreContract.js (landlord tables) → Sequelize models (Account, Business, BusinessMembership)
+   - Sequelize models → Domain entities (accountEntity.js, businessEntity.js) via repositories
+   - dgfyBusinessContract.js (tenant tables) → Sequelize models (Location, StaffAccount, AccountStaffAssignment)
+   - Repositories translate Models ↔ Entities; use cases operate on entities
+   - Verification: Wave 1 seeds test DB with contracts; models load; repositories translate correctly
 
-2. **Decision D-10 → Business Creation**
-   - User creates business → use case automatically assigns creator as owner
-   - Membership record created with role='owner' in same request
+2. **Decision D-10 → Business Creation Use Case**
+   - Use case accepts {legal_name, display_name, business_handle, creatorAccountId}
+   - Use case validates via entity rules (business_handle uniqueness, creator exists)
+   - Repository.create() auto-creates BusinessMembership with role='owner'
+   - Repository returns created entities to use case
    - No separate ownership assignment step
 
-3. **Decision D-05 → Session Binding**
-   - Login returns unbound session + business list
-   - Single business → auto-bind in login response
-   - Multiple businesses → client must call activate-session to bind
-   - Verify in Wave 2 login controller test
+3. **Decision D-05 → Session Binding (Login Use Case)**
+   - Login use case creates unbound session entity + queries business list
+   - If single business: use case auto-binds business_id to session entity
+   - If multiple businesses: use case returns unbound session + business list
+   - Controller responds with JSON (via sendUseCaseResult)
+   - Verify in Wave 2 login controller test (entity → response translation)
 
-4. **Decision D-14 → Tenant Session Security**
-   - activate-session endpoint validates membership (account in business_memberships)
-   - activate-session endpoint validates tenant-local assignment (account_staff_assignments if staff)
-   - Rejection happens before tenant context is bound
-   - Verify in Wave 4 tenantSessionUseCase tests
+4. **Decision D-14 → Tenant Session Security (Use Case Verification)**
+   - tenantSessionUseCase validates landlord membership (repository query)
+   - tenantSessionUseCase validates tenant-local assignment (repository query)
+   - Both validations happen before entity is created
+   - Rejection returns ApplicationResult.failure; controller maps to HTTP 403
+   - Verify in Wave 4 tenantSessionUseCase tests (entity creation conditional on validation)
 
-5. **Architecture Pattern → All Modules**
-   - Routes file exports Express router with all endpoints
-   - Controllers import use cases (via index.js), not models
-   - Use cases import repositories (via index.js), not models
-   - Repositories query models directly
-   - Verify via ESLint + check:architecture script
+5. **SOLID Principles → Module Structure (apps/dgfy-api/)**
+   - **Single Responsibility (S):** Routes define HTTP. Controllers translate HTTP→UseCase. UseCases orchestrate Entities+Repositories. Repositories translate Entity↔Model. Entities hold business rules.
+   - **Open/Closed (O):** Repositories have stable interface; use cases call them without knowing implementation.
+   - **Liskov Substitution (L):** Entity contracts properly substitutable across repository implementations.
+   - **Interface Segregation (I):** Controllers call specific use case functions (registerAccount, loginAccount), not bloated service.
+   - **Dependency Inversion (D):** Use cases depend on repository abstractions (injected via index.js), not concrete implementations.
 
-6. **Phase 3 Migrations → Phase 4 ID Mapping**
+6. **Dependency Injection → index.js (One Wiring Point)**
+   - apps/dgfy-api/src/modules/accounts/index.js wires all dependencies once
+   - accountRepository imported and passed to use case builders
+   - Use case instances exported as frozen object
+   - Controllers receive use cases via function parameter (passed by router)
+   - No circular imports; no global singletons; testable via mock injection
+
+7. **Phase 3 Migrations → Phase 4 Account Lookup**
    - Phase 4 reads migration metadata (legacy account ID → DGFY account ID)
-   - Used in account lookup flow (if old system is providing legacy IDs)
+   - Used in account lookup flow if old system provides legacy IDs
    - Does not trigger Phase 3 migrations; Phase 3 runner is independent
+   - Phase 4 is database-read-only regarding migration metadata
 
-7. **Phase 5 Compatibility → Phase 4 APIs**
+8. **Phase 5 Compatibility → Phase 4 APIs (Stable Contracts)**
    - Phase 5 will translate old POS/Storefront requests to new Phase 4 endpoints
-   - Phase 4 API contracts must be stable before Phase 5 starts
+   - Phase 4 API response contracts (via ApplicationResult.toJSON) must be stable
+   - All Phase 4 errors return ApplicationResult format (predictable error codes)
    - Tenant context header convention (D-06) must match legacy convention
    - Session token format (D-07) must match backend auth
 
@@ -688,12 +724,12 @@ npm run lint
 
 Each wave is executed as a separate plan file:
 
-- **04-01-PLAN.md** — Account Foundation (models, repository, registration/login/profile use cases)
-- **04-02-PLAN.md** — Account & Business Routes/Controllers (HTTP transport layer)
-- **04-03-PLAN.md** — Business Foundation (creation, ownership, staff onboarding per D-10, D-11)
-- **04-03.5-PLAN.md** — Location & Branch Management (Location model, repository, endpoints per D-12)
-- **04-04-PLAN.md** — Tenant Session & Context Binding (activation, tenant resolution per D-04, D-14)
-- **04-05-PLAN.md** — Comprehensive Testing & Architecture Verification
+- **04-01-PLAN.md** — Account Foundation (models, entities, repository, registration/login/profile use cases in apps/dgfy-api/)
+- **04-02-PLAN.md** — Account & Business Routes/Controllers (HTTP transport layer with dependency injection in apps/dgfy-api/)
+- **04-03-PLAN.md** — Business Foundation (creation, ownership, staff onboarding per D-10, D-11; entities & repositories in apps/dgfy-api/)
+- **04-03.5-PLAN.md** — Location & Branch Management (Location model, repository, endpoints per D-12 in apps/dgfy-api/)
+- **04-04-PLAN.md** — Tenant Session & Context Binding (activation, tenant resolution per D-04, D-14; entity validation in apps/dgfy-api/)
+- **04-05-PLAN.md** — Comprehensive Testing & Architecture Verification (all tests in apps/dgfy-api/tests/; entity boundaries verified)
 
 **To Execute Phase 4:**
 1. Read this master plan (04-PLAN.md) for context and overview
