@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03
 current_phase_name: old-to-new-migration-proof
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-07-11T01:57:29.317Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-07-11T04:45:08.732Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
   percent: 29
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 03 (old-to-new-migration-proof) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 03 execution started
 
@@ -66,6 +66,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 02 P04 | 55min | 4 tasks | 7 files |
 | Phase 02 P05 | 15min | 1 tasks | 2 files |
 | Phase 03 P01 | 35min | 3 tasks | 11 files |
+| Phase 03 P02 | 20min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Runner: DGFY_MIGRATION_TARGET_MANIFEST is opt-in-required via validateEnv(env, { requireMigrationManifest }) rather than unconditionally required, so schema/status/rollback-plan callers and their tests are unaffected; data dry-run/apply/verify wiring (03-03/03-04/03-05) will pass the flag
 - [Phase 03]: Runner: legacy_id_map/data_checkpoints composite unique indexes are added via queryInterface.addIndex() only at first-run createTable time, backing up the lookup-before-insert helpers in metadata/dataState.js against retry duplicates
 - [Phase 03]: Runner: createLegacyTenantSourceConnection() and the target manifest validator both reject any dgfy_-prefixed legacy_tenant_db_name (not just exact dgfy_core/dgfy_business_* matches), closing the manifest-tampering path to a DGFY-owned database
+- [Phase ?]: [Phase 03]: tenant_ownership_metadata has no separate pure mapper — it is produced as a related_targets entry of mapLegacyTenantToBusiness() since it's a 1:1 derived write of that function's own inputs
+- [Phase ?]: [Phase 03]: added classifyOutOfScopeRecord()/isInScopeLegacyTable()/OUT_OF_SCOPE_LEGACY_TABLES to mappings.js (mirrors dgfyCoreContract.js/dgfyBusinessContract.js rejectedTables) to make ADR 0029 exclusion testable, beyond the plan's literal 8 named mapper symbols
+- [Phase ?]: [Phase 03]: business_memberships.role (owner/manager/member) and account_staff_assignments.role (owner/manager/staff) use two separate internal role-mapping tables since the two target tables have different enums for the same legacy role field
 
 ### Pending Todos
 
@@ -128,6 +132,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T01:57:29.311Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-07-11T04:45:08.726Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
