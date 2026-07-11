@@ -61,7 +61,10 @@ export function buildAccountAuthMiddleware({ getAccount }) {
 
             let decoded;
             try {
-                decoded = jwt.verify(token, process.env.JWT_SECRET);
+                // WR-05: pin the allowed algorithm explicitly (defense in
+                // depth) rather than relying on jwt.verify()'s default
+                // inference from the token header.
+                decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
             } catch (error) {
                 return sendAuthError(res, 401, 'Invalid or expired session token.');
             }

@@ -167,6 +167,16 @@ export function buildRegisterAccountUseCase({ repository, accountEntity = Accoun
             );
         }
 
+        // WR-05: generateAccountSessionToken() below calls jwt.sign() with
+        // process.env.JWT_SECRET; if unset it throws synchronously, which
+        // would otherwise propagate past this use case's ApplicationResult
+        // contract as an unstructured 500. Guard fails fast instead.
+        if (!process.env.JWT_SECRET) {
+            return ApplicationResult.failure(
+                serviceUnavailableError('Account registration is temporarily unavailable.')
+            );
+        }
+
         const passwordHash = await hashPassword(password);
 
         let created;
@@ -234,6 +244,13 @@ export function buildLoginAccountUseCase({ repository, bcrypt, businessRepositor
         const passwordValid = await bcrypt.compare(password, account.password_hash);
         if (!passwordValid) {
             return ApplicationResult.failure(invalidCredentialsError());
+        }
+
+        // WR-05: see the identical guard in buildRegisterAccountUseCase —
+        // generateAccountSessionToken() below throws synchronously if
+        // JWT_SECRET is unset.
+        if (!process.env.JWT_SECRET) {
+            return ApplicationResult.failure(serviceUnavailableError('Login is temporarily unavailable.'));
         }
 
         await repository.update(account.id, { last_login_at: new Date() });
