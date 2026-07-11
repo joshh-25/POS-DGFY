@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 03
 current_phase_name: old-to-new-migration-proof
 status: verifying
-stopped_at: Completed 03-05-PLAN.md (Phase 03 complete)
-last_updated: "2026-07-11T05:42:19.583Z"
+stopped_at: Phase 03 verification found GAP-03-01
+last_updated: "2026-07-11T06:26:45Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 03 execution started
+last_activity_desc: Phase 03 verification found a blocking MIG-05 gap
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 2
   total_plans: 14
   completed_plans: 14
-  percent: 43
+  percent: 29
 ---
 
 # Project State
@@ -30,16 +30,16 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 Phase: 03 (old-to-new-migration-proof) — EXECUTING
 Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-07-11 — Phase 03 execution started
+Status: Verification gaps found — gap closure needed
+Last activity: 2026-07-11 — Phase 03 verification found GAP-03-01
 
-Progress: [███░░░░░░░] 25%
+Progress: [███░░░░░░░] 29%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 9
+- Total plans completed: 14
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -130,6 +130,7 @@ None yet.
 
 - [Phase 4] Backend placement for Accounts/Businesses/Tenancy still needs an ADR impact decision before implementation planning.
 - [Phase 3] Legacy data quality and production-like rehearsal inputs need inspection before migration proof can be trusted.
+- [Phase 3] GAP-03-01: `verifyData.js` builds tenant-local map completeness keys with hardcoded `legacy_tenant` instead of the manifest `legacy_tenant_db_name`; run `$gsd-plan-phase 3 --gaps` before advancing.
 
 ## Deferred Items
 
@@ -143,6 +144,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T05:42:19.578Z
-Stopped at: Completed 03-05-PLAN.md (Phase 03 complete)
+Last session: 2026-07-11T06:26:45Z
+Stopped at: Phase 03 verification found GAP-03-01
 Resume file: None
