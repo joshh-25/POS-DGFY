@@ -2,6 +2,9 @@ import { jest } from '@jest/globals';
 import {
     COMMAND_EXECUTIONS_TABLE,
     SCHEMA_MIGRATIONS_TABLE,
+    LEGACY_ID_MAP_TABLE,
+    DATA_CHECKPOINTS_TABLE,
+    DATA_QUALITY_FINDINGS_TABLE,
     ensureMetadataSchema,
     recordCommandStart,
     recordCommandComplete
@@ -18,6 +21,27 @@ const EXPECTED_COMMAND_EXECUTIONS_COLUMNS = [
 // same migration filename can be tracked independently per dgfy_core /
 // dgfy_business_* target.
 const EXPECTED_SCHEMA_MIGRATIONS_COLUMNS = ['name', 'target_database', 'checksum', 'executed_at'];
+// Plan 03 (D-02/D-03/D-04, T-03-01-02): the three new data-run contract tables.
+const EXPECTED_LEGACY_ID_MAP_COLUMNS = [
+    'id', 'run_scope', 'legacy_source', 'legacy_table', 'legacy_id',
+    'dgfy_database', 'dgfy_table', 'dgfy_id', 'mapped_at'
+];
+const EXPECTED_DATA_CHECKPOINTS_COLUMNS = [
+    'id', 'run_scope', 'legacy_tenant_id', 'entity_type', 'dgfy_database',
+    'status', 'last_processed_legacy_id', 'records_processed', 'updated_at'
+];
+const EXPECTED_DATA_QUALITY_FINDINGS_COLUMNS = [
+    'id', 'run_scope', 'legacy_tenant_id', 'entity_type', 'legacy_table', 'legacy_id',
+    'severity', 'reason_code', 'message', 'remediation', 'status', 'created_at'
+];
+
+const ALL_EXISTING_TABLES = [
+    COMMAND_EXECUTIONS_TABLE,
+    SCHEMA_MIGRATIONS_TABLE,
+    LEGACY_ID_MAP_TABLE,
+    DATA_CHECKPOINTS_TABLE,
+    DATA_QUALITY_FINDINGS_TABLE
+];
 
 function describeTableFixture(columnNames) {
     return columnNames.reduce((acc, name) => {
@@ -26,7 +50,33 @@ function describeTableFixture(columnNames) {
     }, {});
 }
 
-function buildMetaSequelize({ showAllTables, createTable, describeTable, addColumn, bulkInsert, bulkUpdate, query }) {
+function columnsForTable(tableName) {
+    switch (tableName) {
+        case COMMAND_EXECUTIONS_TABLE:
+            return EXPECTED_COMMAND_EXECUTIONS_COLUMNS;
+        case SCHEMA_MIGRATIONS_TABLE:
+            return EXPECTED_SCHEMA_MIGRATIONS_COLUMNS;
+        case LEGACY_ID_MAP_TABLE:
+            return EXPECTED_LEGACY_ID_MAP_COLUMNS;
+        case DATA_CHECKPOINTS_TABLE:
+            return EXPECTED_DATA_CHECKPOINTS_COLUMNS;
+        case DATA_QUALITY_FINDINGS_TABLE:
+            return EXPECTED_DATA_QUALITY_FINDINGS_COLUMNS;
+        default:
+            return [];
+    }
+}
+
+function buildMetaSequelize({
+    showAllTables,
+    createTable,
+    describeTable,
+    addColumn,
+    addIndex = jest.fn().mockResolvedValue(),
+    bulkInsert,
+    bulkUpdate,
+    query
+}) {
     return {
         config: { host: 'localhost', port: 3306, username: 'target_user', password: 'target_pass' },
         getQueryInterface: () => ({
@@ -34,6 +84,7 @@ function buildMetaSequelize({ showAllTables, createTable, describeTable, addColu
             createTable,
             describeTable,
             addColumn,
+            addIndex,
             bulkInsert,
             bulkUpdate
         }),
@@ -46,13 +97,15 @@ function buildMetaSequelize({ showAllTables, createTable, describeTable, addColu
 }
 
 describe('ensureMetadataSchema', () => {
-    test('first run (showAllTables returns []) calls createTable for both command_executions and schema_migrations', async () => {
+    test('first run (showAllTables returns []) calls createTable for all five metadata tables', async () => {
         const createTable = jest.fn().mockResolvedValue();
+        const addIndex = jest.fn().mockResolvedValue();
         const metaSequelize = buildMetaSequelize({
             showAllTables: jest.fn().mockResolvedValue([]),
             createTable,
             describeTable: jest.fn(),
             addColumn: jest.fn(),
+            addIndex,
             bulkInsert: jest.fn(),
             bulkUpdate: jest.fn(),
             query: jest.fn()
@@ -60,23 +113,52 @@ describe('ensureMetadataSchema', () => {
 
         await ensureMetadataSchema(metaSequelize);
 
-        expect(createTable).toHaveBeenCalledTimes(2);
+        expect(createTable).toHaveBeenCalledTimes(5);
         expect(createTable).toHaveBeenCalledWith(COMMAND_EXECUTIONS_TABLE, expect.any(Object));
         expect(createTable).toHaveBeenCalledWith(SCHEMA_MIGRATIONS_TABLE, expect.any(Object));
+        expect(createTable).toHaveBeenCalledWith(LEGACY_ID_MAP_TABLE, expect.any(Object));
+        expect(createTable).toHaveBeenCalledWith(DATA_CHECKPOINTS_TABLE, expect.any(Object));
+        expect(createTable).toHaveBeenCalledWith(DATA_QUALITY_FINDINGS_TABLE, expect.any(Object));
     });
 
-    test('is an idempotent no-op when both tables exist with every expected column', async () => {
-        const createTable = jest.fn();
-        const describeTable = jest.fn((tableName) => Promise.resolve(
-            tableName === COMMAND_EXECUTIONS_TABLE
-                ? describeTableFixture(EXPECTED_COMMAND_EXECUTIONS_COLUMNS)
-                : describeTableFixture(EXPECTED_SCHEMA_MIGRATIONS_COLUMNS)
-        ));
+    test('first run adds a unique composite index for legacy_id_map and data_checkpoints only', async () => {
+        const addIndex = jest.fn().mockResolvedValue();
         const metaSequelize = buildMetaSequelize({
-            showAllTables: jest.fn().mockResolvedValue([COMMAND_EXECUTIONS_TABLE, SCHEMA_MIGRATIONS_TABLE]),
+            showAllTables: jest.fn().mockResolvedValue([]),
+            createTable: jest.fn().mockResolvedValue(),
+            describeTable: jest.fn(),
+            addColumn: jest.fn(),
+            addIndex,
+            bulkInsert: jest.fn(),
+            bulkUpdate: jest.fn(),
+            query: jest.fn()
+        });
+
+        await ensureMetadataSchema(metaSequelize);
+
+        expect(addIndex).toHaveBeenCalledTimes(2);
+        expect(addIndex).toHaveBeenCalledWith(
+            LEGACY_ID_MAP_TABLE,
+            ['run_scope', 'legacy_source', 'legacy_table', 'legacy_id'],
+            expect.objectContaining({ unique: true })
+        );
+        expect(addIndex).toHaveBeenCalledWith(
+            DATA_CHECKPOINTS_TABLE,
+            ['run_scope', 'legacy_tenant_id', 'entity_type'],
+            expect.objectContaining({ unique: true })
+        );
+    });
+
+    test('is an idempotent no-op when all five tables exist with every expected column', async () => {
+        const createTable = jest.fn();
+        const addIndex = jest.fn();
+        const describeTable = jest.fn((tableName) => Promise.resolve(describeTableFixture(columnsForTable(tableName))));
+        const metaSequelize = buildMetaSequelize({
+            showAllTables: jest.fn().mockResolvedValue(ALL_EXISTING_TABLES),
             createTable,
             describeTable,
             addColumn: jest.fn(),
+            addIndex,
             bulkInsert: jest.fn(),
             bulkUpdate: jest.fn(),
             query: jest.fn()
@@ -84,6 +166,7 @@ describe('ensureMetadataSchema', () => {
 
         await expect(ensureMetadataSchema(metaSequelize)).resolves.toBeUndefined();
         expect(createTable).not.toHaveBeenCalled();
+        expect(addIndex).not.toHaveBeenCalled();
     });
 
     test('rejects with MetadataSchemaError (never a silent addColumn) when command_executions is missing the actor column', async () => {
@@ -108,6 +191,33 @@ describe('ensureMetadataSchema', () => {
         await expect(ensureMetadataSchema(metaSequelize)).rejects.toThrow(MetadataSchemaError);
         expect(addColumn).not.toHaveBeenCalled();
         expect(createTable).not.toHaveBeenCalled();
+    });
+
+    test('rejects with MetadataSchemaError (never a silent addColumn) when an existing legacy_id_map is missing the dgfy_id column (Plan 03 D-02)', async () => {
+        const createTable = jest.fn();
+        const addColumn = jest.fn();
+        const addIndex = jest.fn();
+        const columnsMissingDgfyId = EXPECTED_LEGACY_ID_MAP_COLUMNS.filter((name) => name !== 'dgfy_id');
+        const describeTable = jest.fn((tableName) => Promise.resolve(
+            tableName === LEGACY_ID_MAP_TABLE
+                ? describeTableFixture(columnsMissingDgfyId)
+                : describeTableFixture(columnsForTable(tableName))
+        ));
+        const metaSequelize = buildMetaSequelize({
+            showAllTables: jest.fn().mockResolvedValue(ALL_EXISTING_TABLES),
+            createTable,
+            describeTable,
+            addColumn,
+            addIndex,
+            bulkInsert: jest.fn(),
+            bulkUpdate: jest.fn(),
+            query: jest.fn()
+        });
+
+        await expect(ensureMetadataSchema(metaSequelize)).rejects.toThrow(MetadataSchemaError);
+        expect(addColumn).not.toHaveBeenCalled();
+        expect(createTable).not.toHaveBeenCalled();
+        expect(addIndex).not.toHaveBeenCalled();
     });
 });
 

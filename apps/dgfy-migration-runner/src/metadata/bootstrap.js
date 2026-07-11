@@ -5,6 +5,10 @@ import { MetadataSchemaError } from '../utils/errors.js';
 export const META_DB_NAME = 'dgfy_migration_meta';
 export const COMMAND_EXECUTIONS_TABLE = 'command_executions';
 export const SCHEMA_MIGRATIONS_TABLE = 'schema_migrations';
+// Plan 03 (D-02/D-03/D-04): durable data-run contract tables.
+export const LEGACY_ID_MAP_TABLE = 'legacy_id_map';
+export const DATA_CHECKPOINTS_TABLE = 'data_checkpoints';
+export const DATA_QUALITY_FINDINGS_TABLE = 'data_quality_findings';
 
 /**
  * D-06 command execution audit columns.
@@ -44,9 +48,88 @@ const SCHEMA_MIGRATIONS_COLUMNS = {
     executed_at: { type: DataTypes.DATE, allowNull: false }
 };
 
+/**
+ * Plan 03 (D-02, T-03-01-02): durable legacy-to-DGFY ID map. Scoped by
+ * run_scope so retries can look up existing mappings instead of recomputing
+ * or risking a second row (D-04, Pitfall 3 — retry duplicates). No foreign
+ * keys to dgfy_core/dgfy_business_* tables: those live in separate MySQL
+ * databases and cannot be referenced across databases.
+ */
+const LEGACY_ID_MAP_COLUMNS = {
+    id: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, autoIncrement: true },
+    run_scope: { type: DataTypes.STRING(120), allowNull: false },
+    legacy_source: { type: DataTypes.STRING(120), allowNull: false },
+    legacy_table: { type: DataTypes.STRING(120), allowNull: false },
+    legacy_id: { type: DataTypes.STRING(120), allowNull: false },
+    dgfy_database: { type: DataTypes.STRING(128), allowNull: false },
+    dgfy_table: { type: DataTypes.STRING(120), allowNull: false },
+    dgfy_id: { type: DataTypes.STRING(120), allowNull: false },
+    mapped_at: { type: DataTypes.DATE, allowNull: false }
+};
+
+/**
+ * Plan 03 (D-03, T-03-01-02): per (run_scope, legacy_tenant_id, entity_type)
+ * checkpoint row — lets an interrupted migration resume at the exact entity
+ * type for a tenant rather than restarting the whole tenant (MIG-04).
+ */
+const DATA_CHECKPOINTS_COLUMNS = {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    run_scope: { type: DataTypes.STRING(120), allowNull: false },
+    legacy_tenant_id: { type: DataTypes.STRING(120), allowNull: false },
+    entity_type: { type: DataTypes.STRING(80), allowNull: false },
+    dgfy_database: { type: DataTypes.STRING(128), allowNull: true },
+    status: { type: DataTypes.ENUM('pending', 'in_progress', 'completed', 'failed'), allowNull: false, defaultValue: 'pending' },
+    last_processed_legacy_id: { type: DataTypes.STRING(120), allowNull: true },
+    records_processed: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') }
+};
+
+/**
+ * Plan 03 (D-04, T-03-01-02): every skipped/conflicting/orphaned record
+ * becomes a durable finding row here — never silently dropped from the
+ * migration report (MIG-02/MIG-03/MIG-05).
+ */
+const DATA_QUALITY_FINDINGS_COLUMNS = {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    run_scope: { type: DataTypes.STRING(120), allowNull: false },
+    legacy_tenant_id: { type: DataTypes.STRING(120), allowNull: true },
+    entity_type: { type: DataTypes.STRING(80), allowNull: false },
+    legacy_table: { type: DataTypes.STRING(120), allowNull: true },
+    legacy_id: { type: DataTypes.STRING(120), allowNull: true },
+    severity: { type: DataTypes.ENUM('skip', 'conflict', 'orphan'), allowNull: false },
+    reason_code: { type: DataTypes.STRING(80), allowNull: false },
+    message: { type: DataTypes.TEXT, allowNull: false },
+    remediation: { type: DataTypes.TEXT, allowNull: true },
+    status: { type: DataTypes.ENUM('open', 'resolved'), allowNull: false, defaultValue: 'open' },
+    created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') }
+};
+
 const EXPECTED_TABLE_COLUMNS = {
     [COMMAND_EXECUTIONS_TABLE]: COMMAND_EXECUTIONS_COLUMNS,
-    [SCHEMA_MIGRATIONS_TABLE]: SCHEMA_MIGRATIONS_COLUMNS
+    [SCHEMA_MIGRATIONS_TABLE]: SCHEMA_MIGRATIONS_COLUMNS,
+    [LEGACY_ID_MAP_TABLE]: LEGACY_ID_MAP_COLUMNS,
+    [DATA_CHECKPOINTS_TABLE]: DATA_CHECKPOINTS_COLUMNS,
+    [DATA_QUALITY_FINDINGS_TABLE]: DATA_QUALITY_FINDINGS_COLUMNS
+};
+
+/**
+ * Plan 03 (D-02/D-03, T-03-01-02): composite unique indexes added only at
+ * first-run createTable time (never re-added against an existing table —
+ * ensureMetadataSchema only reaches the create branch for a table that was
+ * missing). These are what actually prevent a retried apply from inserting
+ * a second legacy_id_map or data_checkpoints row for the same scope
+ * (D-04/Pitfall 3), not just the lookup-before-insert helpers in
+ * metadata/dataState.js.
+ */
+const FIRST_RUN_UNIQUE_INDEXES = {
+    [LEGACY_ID_MAP_TABLE]: {
+        name: 'uniq_legacy_id_map_scope_source_table_id',
+        fields: ['run_scope', 'legacy_source', 'legacy_table', 'legacy_id']
+    },
+    [DATA_CHECKPOINTS_TABLE]: {
+        name: 'uniq_data_checkpoints_scope_tenant_entity',
+        fields: ['run_scope', 'legacy_tenant_id', 'entity_type']
+    }
 };
 
 function isUnknownDatabaseError(error) {
@@ -99,6 +182,14 @@ export async function ensureMetadataSchema(metaSequelize) {
     for (const [tableName, expectedColumns] of Object.entries(EXPECTED_TABLE_COLUMNS)) {
         if (!normalizedExisting.has(tableName.toLowerCase())) {
             await queryInterface.createTable(tableName, expectedColumns);
+
+            const uniqueIndex = FIRST_RUN_UNIQUE_INDEXES[tableName];
+            if (uniqueIndex) {
+                await queryInterface.addIndex(tableName, uniqueIndex.fields, {
+                    unique: true,
+                    name: uniqueIndex.name
+                });
+            }
             continue;
         }
 
