@@ -1273,6 +1273,8 @@ function ItemsWorkspace({
   onStockFilterPresetApplied = () => {},
   workflowMode = '',
   locked,
+  isOnline = true,
+  onQueueOfflineItemDraft = async () => '',
   operatingLocationId = null,
   sectionId
 }) {
@@ -1930,6 +1932,24 @@ function ItemsWorkspace({
       senior_pwd_discount_eligible: createForm.senior_pwd_discount_eligible === true,
       status: 'active'
     };
+
+    if (!isOnline) {
+      if (selectedImageFiles.length > 0) {
+        toast.error('Item images require an online connection. Remove the image and save this item as an offline draft.');
+        return;
+      }
+      try {
+        await onQueueOfflineItemDraft({
+          ...payload,
+          pos_always_available: createForm.pos_always_available === true
+        });
+        closeCreate({ force: true });
+        toast.success('Offline item draft saved. Press Sync to create it when you are online.');
+      } catch (queueError) {
+        toast.error(queueError?.message || 'Failed to save the offline item draft.');
+      }
+      return;
+    }
 
     const finalizeCreatedItem = async ({ barcode = '', warningMessage = '', action = 'created' } = {}) => {
       closeCreate({ force: true });
@@ -6069,6 +6089,9 @@ export default function TerminalOperationsWorkspace({
   shiftState,
   todayDashboard,
   reportRefreshKey = 0,
+  isOnline = true,
+  offlineSnapshotScope = {},
+  onQueueOfflineItemDraft = async () => '',
   activeTerminalId = '',
   canViewPos,
   canCreateItems = false,
@@ -6114,7 +6137,6 @@ export default function TerminalOperationsWorkspace({
   handleReplayQueuedTerminalOperations = () => {},
   handleRetryQueuedOperation = () => {},
   handleResolveQueuedOperation = () => {},
-  isOnline = true,
   sectionIds = {}
 }) {
   const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'settings_profile', 'settings_pos', 'settings_storefront', 'cash_drawer', 'terminal_setup']);
@@ -6141,6 +6163,8 @@ export default function TerminalOperationsWorkspace({
           locationsState={locationsState}
           queueLocationScopeId={queueLocationScopeId}
           locked={locked}
+          isOnline={isOnline}
+          onQueueOfflineItemDraft={onQueueOfflineItemDraft}
           sectionId={sectionIds.incomingOrders}
         />
       );
@@ -6242,6 +6266,8 @@ export default function TerminalOperationsWorkspace({
           activeTerminalId={activeTerminalId}
           operatingLocationId={operatingLocationId}
           reportRefreshKey={reportRefreshKey}
+          isOnline={isOnline}
+          offlineSnapshotScope={offlineSnapshotScope}
           sectionId={sectionIds.reports}
         />
       );
@@ -6311,6 +6337,9 @@ export default function TerminalOperationsWorkspace({
     refreshIncomingOrders,
     refreshOperationalContext,
     reportRefreshKey,
+    isOnline,
+    offlineSnapshotScope,
+    onQueueOfflineItemDraft,
     sectionIds.activeShift,
     sectionIds.cashDrawer,
     sectionIds.closeShift,

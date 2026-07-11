@@ -64,6 +64,7 @@ import {
     markTerminalOperationReplaying,
     markTerminalOperationRetryScheduled
 } from '../services/terminalOperationQueueStore.js';
+import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offlinePosSnapshotStore.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { resolveAppAssetUrl, resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
@@ -633,6 +634,9 @@ export default function POSCheckoutTerminal({
     terminalMeta = null,
     onCheckoutCompleted = null,
     checkoutBlockedReason = '',
+    onManualUniversalSync = async () => ({ allowed: false }),
+    manualSyncPolicy = {},
+    universalPendingSyncCount = 0,
     complianceBlockerDetails = null,
     modalOnly = false,
     viewMode: controlledViewMode = null,
@@ -717,6 +721,16 @@ export default function POSCheckoutTerminal({
     const [receiptPreviewSource, setReceiptPreviewSource] = useState('receipt_preview');
     const [setupSnapshotModalOpen, setSetupSnapshotModalOpen] = useState(false);
     const [externalReceiptModalActive, setExternalReceiptModalActive] = useState(false);
+    const catalogSnapshotRef = useRef([]);
+    const receiptSettingsSnapshotRef = useRef({});
+
+    useEffect(() => {
+        catalogSnapshotRef.current = catalog;
+    }, [catalog]);
+
+    useEffect(() => {
+        receiptSettingsSnapshotRef.current = receiptSettings;
+    }, [receiptSettings]);
 
     const closeReceiptPreviewModal = useCallback(() => {
         setReceiptPreviewModalOpen(false);
@@ -1010,6 +1024,19 @@ export default function POSCheckoutTerminal({
         return entry;
     }, [syncQueuedCheckoutsState]);
 
+    const offlineSnapshotScope = useMemo(() => ({
+        terminalId: normalizedTerminalId,
+        locationId: selectedLocationId,
+        userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email
+    }), [normalizedTerminalId, selectedLocationId, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
+
+    const saveCatalogSnapshot = useCallback((nextCatalog, nextReceiptSettings = receiptSettingsSnapshotRef.current) => {
+        saveOfflinePosSnapshot(offlineSnapshotScope, {
+            catalog: Array.isArray(nextCatalog) ? nextCatalog : [],
+            receiptSettings: nextReceiptSettings
+        });
+    }, [offlineSnapshotScope]);
+
     const loadCatalog = useCallback(async () => {
         if (sessionLocked) {
             setCatalog([]);
@@ -1032,7 +1059,19 @@ export default function POSCheckoutTerminal({
             const data = await fetchPosCatalog(params);
             setCatalog(data || []);
             setCatalogImageErrors(new Set());
+            if (!search && !selectedFolderId) {
+                saveCatalogSnapshot(data || []);
+            }
         } catch (error) {
+            const offlineSnapshot = loadOfflinePosSnapshot(offlineSnapshotScope);
+            if (!error?.response && offlineSnapshot?.catalog?.length) {
+                setCatalog(offlineSnapshot.catalog);
+                setReceiptSettings((current) => Object.keys(current || {}).length > 0
+                    ? current
+                    : (offlineSnapshot.receipt_settings || {}));
+                setCatalogError('Offline mode: showing the last synced catalog. Stock is verified again when transactions sync.');
+                return;
+            }
             const apiMessage = error?.response?.data?.message;
             const message = error?.response?.status === 403
                 ? (apiMessage || 'You need POS view permission to load the POS catalog.')
@@ -1042,7 +1081,7 @@ export default function POSCheckoutTerminal({
         } finally {
             setCatalogLoading(false);
         }
-    }, [canViewHistory, search, selectedFolderId, selectedLocationId, sessionLocked]);
+    }, [canViewHistory, offlineSnapshotScope, saveCatalogSnapshot, search, selectedFolderId, selectedLocationId, sessionLocked]);
 
     const loadHistory = useCallback(async (page = 1) => {
         if (sessionLocked || !canViewHistory) {
@@ -1204,6 +1243,12 @@ export default function POSCheckoutTerminal({
         syncQueuedCheckoutsState
     ]);
 
+    const handleManualUniversalSync = useCallback(async () => {
+        const syncPermit = await onManualUniversalSync();
+        if (!syncPermit?.allowed) return;
+        await replayQueuedCheckouts({ toastIfEmpty: true });
+    }, [onManualUniversalSync, replayQueuedCheckouts]);
+
     const loadPosFolders = useCallback(async () => {
         if (sessionLocked) {
             setPosFolders([]);
@@ -1241,7 +1286,7 @@ export default function POSCheckoutTerminal({
         }
         try {
             const allSettings = await getAllSettings();
-            setReceiptSettings({
+            const nextReceiptSettings = {
                 pos_registered_name: allSettings?.pos_registered_name?.value || '',
                 pos_business_name: allSettings?.pos_business_name?.value || '',
                 storefront_profile_image_url: allSettings?.storefront_profile_image_url?.value || '',
@@ -1255,6 +1300,12 @@ export default function POSCheckoutTerminal({
                 pos_software_version: allSettings?.pos_software_version?.value || '',
                 pos_software_serial_number: allSettings?.pos_software_serial_number?.value || '',
                 pos_receipt_footer_message: allSettings?.pos_receipt_footer_message?.value || ''
+            };
+            setReceiptSettings(nextReceiptSettings);
+            const currentSnapshot = loadOfflinePosSnapshot(offlineSnapshotScope);
+            saveOfflinePosSnapshot(offlineSnapshotScope, {
+                catalog: currentSnapshot?.catalog || catalogSnapshotRef.current,
+                receiptSettings: nextReceiptSettings
             });
             setDiscountProfiles(normalizeDiscountProfiles(allSettings?.pos_discount_profiles?.value));
             setCommercialPromoConfig(normalizeCommercialPromoConfigs(allSettings));
@@ -1263,7 +1314,7 @@ export default function POSCheckoutTerminal({
             setDiscountProfiles([]);
             setCommercialPromoConfig([]);
         }
-    }, [sessionLocked]);
+    }, [offlineSnapshotScope, sessionLocked]);
 
     const loadDeviceStatus = useCallback(async ({ notifyOnError = false } = {}) => {
         if (sessionLocked) {
@@ -2164,6 +2215,11 @@ export default function POSCheckoutTerminal({
             setCheckoutConfirmModalOpen(true);
             return;
         }
+        const offlineCheckout = typeof navigator !== 'undefined' && navigator.onLine === false;
+        if (offlineCheckout && !isCashPayment) {
+            toast.error('Only cash transactions can be recorded offline. Reconnect before using an external payment method.');
+            return;
+        }
 
         const payload = {
             idempotency_key: createIdempotencyKey(),
@@ -2264,6 +2320,23 @@ export default function POSCheckoutTerminal({
                 return;
             }
             await enqueueCheckoutIntent(payload, source);
+            setLastReceipt(payload.offline_history_snapshot);
+            setLastReceiptContract({ document_type: 'non_fiscal_slip', document_context: 'non_fiscal', label: 'PENDING SYNC' });
+            setReceiptPreviewSource('order_preview');
+            setReceiptPreviewModalOpen(true);
+            const nextCatalog = catalog.map((item) => {
+                if (item?.pos_always_available === true || isServiceCatalogItem(item)) return item;
+                const soldQuantity = safeCart
+                    .filter((line) => Number(line.item_id) === Number(item?.item_id))
+                    .reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+                if (soldQuantity <= 0) return item;
+                return {
+                    ...item,
+                    current_stock: Math.max(0, Number(item.current_stock || 0) - soldQuantity)
+                };
+            });
+            setCatalog(nextCatalog);
+            saveCatalogSnapshot(nextCatalog);
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountRateInput('');
@@ -2283,11 +2356,11 @@ export default function POSCheckoutTerminal({
                 .filter((entry) => isCheckoutQueueEntry(entry))
                 .length;
             toast.message(
-                `You are offline. Checkout queued locally and will auto-replay when connection is restored (${nextQueueCount} queued).`
+                `Offline transaction recorded locally. It is pending sync and will auto-replay when connection is restored (${nextQueueCount} queued).`
             );
         };
 
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        if (offlineCheckout) {
             await queueCheckoutIntentLocally('offline_preflight');
             return;
         }
@@ -2562,9 +2635,12 @@ export default function POSCheckoutTerminal({
                         historyPagination={visibleHistoryPagination}
                         pendingSyncCount={queuedCheckoutPendingCount}
                         pendingSyncBlockedCount={queuedCheckoutBlockedCount}
-                        syncPendingTransactions={() => replayQueuedCheckouts({ toastIfEmpty: true })}
+                        syncPendingTransactions={handleManualUniversalSync}
                         syncingPendingTransactions={replayingQueuedCheckouts}
-                        syncDisabled={sessionLocked || Boolean(checkoutBlockedReason) || (typeof navigator !== 'undefined' && navigator.onLine === false)}
+                        syncDisabled={sessionLocked || Boolean(checkoutBlockedReason) || manualSyncPolicy?.remaining <= 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)}
+                        syncRemaining={manualSyncPolicy?.remaining}
+                        syncResetAt={manualSyncPolicy?.resetAt}
+                        universalPendingSyncCount={universalPendingSyncCount}
                     />
                 </Suspense>
                 </div>
@@ -4002,6 +4078,11 @@ export default function POSCheckoutTerminal({
                         </button>
                     </DialogHeader>
                     <div className="pos-receipt-print-content min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 print:overflow-visible print:p-0">
+                        {lastReceiptPendingSync && (
+                            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 print:hidden">
+                                Pending sync: this is a provisional offline order record, not a final fiscal receipt.
+                            </div>
+                        )}
                         {lastReceipt ? (
                             receiptPreviewSource === 'order_preview' ? (
                                 <div className="space-y-3 print:space-y-0">

@@ -1,3 +1,148 @@
+# Implementation — Offline POS Checkout Hardening
+
+## Overview
+Extended the existing durable POS checkout queue so an already-unlocked terminal can continue recording cash sales without internet, display a provisional receipt immediately, and restore its last synced catalog after a refresh. Reports, settings, and item maintenance remain online-only.
+
+## Files Changed
+
+### [NEW] [frontend/src/features/pos/services/offlinePosSnapshotStore.js](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/services/offlinePosSnapshotStore.js)
+- Stores a terminal/location/user-scoped catalog and receipt-identity snapshot in local storage.
+- Explicitly excludes credentials, reports, and settings data.
+
+### [MODIFY] [frontend/src/features/pos/components/POSCheckoutTerminal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Restores the last synced catalog when the catalog API is unavailable.
+- Limits offline checkout to cash, preserves governed-discount verification online, reserves cached stock locally, and opens a `Pending Sync` provisional order preview immediately after queueing.
+- Prevents final receipt printing while the transaction is pending replay.
+
+### [MODIFY] [frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx)
+### [MODIFY] [frontend/src/features/pos/pages/TerminalPage.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/pages/TerminalPage.jsx)
+- Makes Reports, Settings, and Item maintenance unavailable offline while keeping Sell and local History available.
+
+### [MODIFY] [docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md](C:/xampp/htdocs/POS-DGFY/docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md)
+- Documents the offline scope, provisional receipt rule, cash-only restriction, and server-authoritative replay contract.
+
+## Result
+- Offline-capable flow: sell from the cached catalog, record a local cash transaction, view its provisional receipt, then automatically replay it when online.
+- Online-only flow: reports, settings, item create/edit, external payment, governed discounts, final fiscal printing, and terminal login.
+
+---
+
+# Implementation — Manual POS Sync Policy
+
+## Overview
+Disabled automatic queue replay and replaced the History-only transaction sync with a universal manual POS sync. Operators can press `Sync All Pending Records` twice per local day for the same terminal and user; each press sends checkout, shift, cash drawer, and queued order-status records together.
+
+## Files Changed
+
+### [NEW] [frontend/src/features/pos/services/manualPosSyncPolicyStore.js](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/services/manualPosSyncPolicyStore.js)
+- Persists the terminal/user-scoped local daily sync counter and next local-midnight reset.
+
+### [MODIFY] [frontend/src/features/pos/pages/TerminalPage.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/pages/TerminalPage.jsx)
+### [MODIFY] [frontend/src/features/pos/components/POSCheckoutTerminal.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+### [MODIFY] [frontend/src/features/pos/components/POSTransactionHistoryPanel.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSTransactionHistoryPanel.jsx)
+- Removes connectivity and retry-triggered replay.
+- Routes the manual button through the terminal-wide sync coordinator before replaying checkout records.
+
+### [MODIFY] [frontend/apps/pos/public/sw.js](C:/xampp/htdocs/POS-DGFY/frontend/apps/pos/public/sw.js)
+- Removes service-worker background replay messaging.
+
+## Result
+- Queue records remain pending until an operator explicitly presses Sync.
+- The Sync action is universal, rate-limited to two daily attempts, and disabled until local midnight after the limit is reached.
+
+---
+
+# Implementation — Offline Reports And Item Drafts
+
+## Overview
+Allowed cached report viewing and data-only item drafts while offline. Reports are read-only estimates from the last successful online response. Offline item drafts remain local until the operator presses Sync; images are intentionally excluded because uploads require a live connection.
+
+## Files Changed
+
+### [MODIFY] [frontend/src/features/pos/components/PosReportsAnalyticsWorkspace.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/PosReportsAnalyticsWorkspace.jsx)
+- Caches successful report responses by terminal scope and active filters.
+- Shows the matching cache as an explicitly offline estimate when the report API is unavailable.
+
+### [MODIFY] [frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx)
+- Lets authorized operators save a data-only Add Item form as an offline draft.
+- Blocks image-bearing drafts until online and labels the save as pending manual Sync.
+
+### [MODIFY] [frontend/src/features/pos/pages/TerminalPage.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/pages/TerminalPage.jsx)
+- Adds `item_create` to the existing manual universal queue replay.
+- Treats uncertain item-create results as manual resolution required, preventing automatic duplicate item creation.
+
+## Result
+- Offline reports require a prior online snapshot for the selected filters and are not authoritative.
+- Offline item drafts have no server item ID, no uploaded image, and no final SKU/category validation until manual Sync.
+
+---
+
+# Implementation — Offline Navigation Availability
+
+## Overview
+Kept local POS workflows accessible while offline and explicitly disabled only the remote-only Online Orders queue and Settings area.
+
+## Result
+- Offline available: Sell, History, Reports, Items/Add Item drafts, and Shift.
+- Online-only: Online Orders and Settings.
+- The terminal view-mode contract test verifies that Online Orders remains disabled while offline.
+
+---
+
+# Implementation — PWA iPhone Responsive QA
+
+## Overview
+Added a dedicated iPhone-only Playwright test folder. It contains responsive verification only and does not change shared desktop, tablet, or production layout code.
+
+## Files Changed
+
+### [NEW] [frontend/tests/e2e/pwa-iphone-responsive/pos-pwa-iphone.spec.js](C:/xampp/htdocs/POS-DGFY/frontend/tests/e2e/pwa-iphone-responsive/pos-pwa-iphone.spec.js)
+- Checks the POS PWA shell and horizontal overflow at 375px, 390px, and 430px widths.
+
+### [NEW] [frontend/tests/e2e/pwa-iphone-responsive/README.md](C:/xampp/htdocs/POS-DGFY/frontend/tests/e2e/pwa-iphone-responsive/README.md)
+- Documents the iPhone-only QA boundary.
+
+---
+
+# Implementation — iPhone Input Zoom Prevention
+
+## Overview
+Prevented iOS Safari from automatically zooming the POS login and terminal inputs on focus. The fix uses the Safari threshold of `16px` on mobile only and preserves user-controlled browser zoom.
+
+## Files Changed
+
+### [MODIFY] [frontend/src/index.css](C:/xampp/htdocs/POS-DGFY/frontend/src/index.css)
+### [MODIFY] [frontend/src/features/pos/components/TerminalLockDrawer.jsx](C:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalLockDrawer.jsx)
+- Applies the mobile-only input rule to the terminal shell and login drawer.
+
+---
+
+# Implementation — Storefront Checkout Customer Payload Guard
+
+## Overview
+Added a final Storefront checkout validation guard so a stale customer step cannot submit an empty `customer_name` to the backend. Customer contact fields are normalized before payload construction and stale tracking errors are cleared when a fresh checkout begins.
+
+## Files Changed
+
+### [MODIFY] [frontend/apps/store/src/StorefrontApp.jsx](C:/xampp/htdocs/POS-DGFY/frontend/apps/store/src/StorefrontApp.jsx)
+### [MODIFY] [frontend/apps/store/src/checkout/buildFnbCheckoutPayload.js](C:/xampp/htdocs/POS-DGFY/frontend/apps/store/src/checkout/buildFnbCheckoutPayload.js)
+### [MODIFY] [frontend/apps/store/src/__tests__/buildFnbCheckoutPayload.test.js](C:/xampp/htdocs/POS-DGFY/frontend/apps/store/src/__tests__/buildFnbCheckoutPayload.test.js)
+- Blocks an empty final checkout payload, trims customer contact values, clears stale tracking feedback, and tests the normalization contract.
+
+---
+
+# Implementation — iPhone Automatic Text Enlargement Prevention
+
+## Overview
+Disabled iOS automatic text-size adjustment on phone-width PWA layouts while keeping user-controlled pinch zoom enabled.
+
+## Files Changed
+
+### [MODIFY] [frontend/src/index.css](C:/xampp/htdocs/POS-DGFY/frontend/src/index.css)
+- Adds mobile-only `-webkit-text-size-adjust: 100%`, standards-based `text-size-adjust: 100%`, and a universal `16px` rule for PWA text inputs, textareas, and selects.
+
+---
+
 # Implementation — POS Refresh White Screen Fix
 
 ## Overview

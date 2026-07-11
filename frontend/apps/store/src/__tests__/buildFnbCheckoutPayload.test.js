@@ -29,4 +29,17 @@ describe('buildFnbCheckoutPayload', () => {
 
     expect(payload.promo_code).toBe('SAVE20');
   });
+
+  it('normalizes customer contact values before checkout submission', () => {
+    const payload = buildFnbCheckoutPayload({
+      customerName: '  Bob Harris  ',
+      customerPhone: '  +639171234567  ',
+      customerEmail: '  bob@example.com  ',
+      cart: []
+    });
+
+    expect(payload.customer_name).toBe('Bob Harris');
+    expect(payload.customer_phone).toBe('+639171234567');
+    expect(payload.customer_email).toBe('bob@example.com');
+  });
 });

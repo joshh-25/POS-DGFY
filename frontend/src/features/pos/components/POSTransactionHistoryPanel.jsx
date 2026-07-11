@@ -89,11 +89,13 @@ export default function POSTransactionHistoryPanel({
     loadHistory,
     historyPage,
     historyPagination,
-    pendingSyncCount = 0,
     pendingSyncBlockedCount = 0,
     syncPendingTransactions = () => {},
     syncingPendingTransactions = false,
-    syncDisabled = false
+    syncDisabled = false,
+    syncRemaining = 0,
+    syncResetAt = '',
+    universalPendingSyncCount = 0
 }) {
     const [expandedRowId, setExpandedRowId] = useState(null);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
@@ -164,17 +166,20 @@ export default function POSTransactionHistoryPanel({
                         <Button
                             type="button"
                             onClick={syncPendingTransactions}
-                            disabled={syncDisabled || syncingPendingTransactions || pendingSyncCount <= 0}
+                            disabled={syncDisabled || syncingPendingTransactions || universalPendingSyncCount <= 0}
                             className="h-11 rounded-xl bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             <RefreshCcw className="mr-2 h-4 w-4" />
-                            {syncingPendingTransactions ? 'Syncing...' : 'Sync Pending Transactions'}
+                            {syncingPendingTransactions ? 'Syncing...' : 'Sync All Pending Records'}
                         </Button>
                         <p className="text-right text-[12px] font-medium text-[#64748B]">
-                            {pendingSyncCount > 0
-                                ? `${pendingSyncCount} offline transaction${pendingSyncCount === 1 ? '' : 's'} waiting to sync`
-                                : 'All offline transactions are synced'}
+                            {universalPendingSyncCount > 0
+                                ? `${universalPendingSyncCount} pending POS record${universalPendingSyncCount === 1 ? '' : 's'} waiting to sync`
+                                : 'All pending POS records are synced'}
                             {pendingSyncBlockedCount > 0 ? ` • ${pendingSyncBlockedCount} need retry` : ''}
+                            {syncRemaining <= 0 && syncResetAt
+                                ? ` • Daily limit reached until ${new Date(syncResetAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                                : ` • ${syncRemaining} manual sync${syncRemaining === 1 ? '' : 's'} left today`}
                         </p>
                     </div>
                 </div>

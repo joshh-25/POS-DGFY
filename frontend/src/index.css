@@ -257,6 +257,18 @@ body {
   border-color: var(--pos-shell-border);
 }
 
+/* iOS Safari zooms focused controls below 16px. Keep this scoped to POS mobile surfaces. */
+@media (max-width: 639.98px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  :is(input, textarea, select) {
+    font-size: 16px;
+  }
+}
+
 /* Catalog navigation (Sell/History/Shift/etc.) slide-in: mobile only, right -> left entrance. */
 @media (max-width: 639.98px) {
   .catalog-slide-enter {
