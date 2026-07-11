@@ -138,7 +138,7 @@ Disabled iOS automatic text-size adjustment on phone-width PWA layouts while kee
 ## Files Changed
 
 ### [MODIFY] [frontend/src/index.css](C:/xampp/htdocs/POS-DGFY/frontend/src/index.css)
-- Adds mobile-only `-webkit-text-size-adjust: 100%` and standards-based `text-size-adjust: 100%`.
+- Adds mobile-only `-webkit-text-size-adjust: 100%`, standards-based `text-size-adjust: 100%`, and a universal `16px` rule for PWA text inputs, textareas, and selects.
 
 ---
 
