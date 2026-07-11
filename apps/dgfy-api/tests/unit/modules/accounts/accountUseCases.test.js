@@ -138,6 +138,61 @@ describe('buildRegisterAccountUseCase', () => {
         expect(result.error.code).toBe('VALIDATION_FAILED');
         expect(repository.findByEmail).not.toHaveBeenCalled();
     });
+
+    it('translates a SequelizeUniqueConstraintError from create() into a 409 conflict (CR-01)', async () => {
+        const repository = baseRepository();
+        const uniqueConstraintError = new Error('Duplicate entry');
+        uniqueConstraintError.name = 'SequelizeUniqueConstraintError';
+        uniqueConstraintError.errors = [{ path: 'email' }];
+        repository.create = jest.fn().mockRejectedValue(uniqueConstraintError);
+        const useCase = buildRegisterAccountUseCase({
+            repository,
+            accountEntity: mockAccountEntity(),
+            hashPassword: jest.fn().mockResolvedValue('hashed-password')
+        });
+
+        const result = await useCase({ email: 'jane@example.com', password: 'password123' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(result.error.statusCode).toBe(409);
+    });
+
+    it('re-throws an unrecognized error from create() rather than swallowing it (CR-01)', async () => {
+        const repository = baseRepository();
+        const unexpectedError = new Error('connection reset');
+        repository.create = jest.fn().mockRejectedValue(unexpectedError);
+        const useCase = buildRegisterAccountUseCase({
+            repository,
+            accountEntity: mockAccountEntity(),
+            hashPassword: jest.fn().mockResolvedValue('hashed-password')
+        });
+
+        await expect(useCase({ email: 'jane@example.com', password: 'password123' }))
+            .rejects.toThrow('connection reset');
+    });
+
+    it('returns 503 when JWT_SECRET is unset, before any repository write (WR-05)', async () => {
+        const originalSecret = process.env.JWT_SECRET;
+        delete process.env.JWT_SECRET;
+        try {
+            const repository = baseRepository();
+            const useCase = buildRegisterAccountUseCase({
+                repository,
+                accountEntity: mockAccountEntity(),
+                hashPassword: jest.fn().mockResolvedValue('hashed-password')
+            });
+
+            const result = await useCase({ email: 'jane@example.com', password: 'password123' });
+
+            expect(result.isSuccess).toBe(false);
+            expect(result.error.code).toBe('SERVICE_UNAVAILABLE');
+            expect(result.error.statusCode).toBe(503);
+            expect(repository.create).not.toHaveBeenCalled();
+        } finally {
+            process.env.JWT_SECRET = originalSecret;
+        }
+    });
 });
 
 describe('buildLoginAccountUseCase', () => {
@@ -186,6 +241,30 @@ describe('buildLoginAccountUseCase', () => {
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('AUTHENTICATION_FAILED');
         expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
+
+    it('returns 503 when JWT_SECRET is unset, after credentials are verified (WR-05)', async () => {
+        const originalSecret = process.env.JWT_SECRET;
+        delete process.env.JWT_SECRET;
+        try {
+            const account = makeAccount();
+            const repository = {
+                findByEmail: jest.fn().mockResolvedValue(account),
+                update: jest.fn(),
+                findById: jest.fn()
+            };
+            const bcrypt = { compare: jest.fn().mockResolvedValue(true) };
+            const useCase = buildLoginAccountUseCase({ repository, bcrypt });
+
+            const result = await useCase({ email: 'jane@example.com', password: 'password123' });
+
+            expect(result.isSuccess).toBe(false);
+            expect(result.error.code).toBe('SERVICE_UNAVAILABLE');
+            expect(result.error.statusCode).toBe(503);
+            expect(repository.update).not.toHaveBeenCalled();
+        } finally {
+            process.env.JWT_SECRET = originalSecret;
+        }
     });
 });
 
@@ -269,6 +348,119 @@ describe('buildUpdateAccountProfileUseCase', () => {
 
         expect(result.isSuccess).toBe(false);
         expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
+    });
+
+    it('translates a SequelizeUniqueConstraintError from update() into a 409 conflict (CR-01)', async () => {
+        const account = makeAccount();
+        const uniqueConstraintError = new Error('Duplicate entry');
+        uniqueConstraintError.name = 'SequelizeUniqueConstraintError';
+        uniqueConstraintError.errors = [{ path: 'phone' }];
+        const repository = {
+            findById: jest.fn().mockResolvedValue(account),
+            findByEmail: jest.fn().mockResolvedValue(null),
+            findByPhone: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockRejectedValue(uniqueConstraintError)
+        };
+        // Uses a phone-only update so it does not need current_password
+        // (that gate only triggers on email/password changes).
+        const useCase = buildUpdateAccountProfileUseCase({ repository, accountEntity: mockAccountEntity() });
+
+        const result = await useCase({ accountId: account.id, updates: { phone: '+639998887777' } });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(result.error.statusCode).toBe(409);
+        expect(result.error.details.field).toBe('phone');
+    });
+
+    it('re-throws an unrecognized error from update() rather than swallowing it (CR-01)', async () => {
+        const account = makeAccount();
+        const unexpectedError = new Error('connection reset');
+        const repository = {
+            findById: jest.fn().mockResolvedValue(account),
+            findByEmail: jest.fn().mockResolvedValue(null),
+            findByPhone: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockRejectedValue(unexpectedError)
+        };
+        const useCase = buildUpdateAccountProfileUseCase({ repository, accountEntity: mockAccountEntity() });
+
+        await expect(useCase({ accountId: account.id, updates: { phone: '+639998887777' } }))
+            .rejects.toThrow('connection reset');
+    });
+
+    it('rejects an email change without current_password (WR-03)', async () => {
+        const account = makeAccount();
+        const repository = {
+            findById: jest.fn().mockResolvedValue(account),
+            findByEmail: jest.fn().mockResolvedValue(null),
+            findByPhone: jest.fn().mockResolvedValue(null),
+            update: jest.fn()
+        };
+        const bcrypt = { compare: jest.fn() };
+        const useCase = buildUpdateAccountProfileUseCase({ repository, accountEntity: mockAccountEntity(), bcrypt });
+
+        const result = await useCase({ accountId: account.id, updates: { email: 'new@example.com' } });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(result.error.statusCode).toBe(400);
+        expect(result.error.details.field).toBe('current_password');
+        expect(bcrypt.compare).not.toHaveBeenCalled();
+        expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a password change with an incorrect current_password (WR-03)', async () => {
+        const account = makeAccount();
+        const repository = {
+            findById: jest.fn().mockResolvedValue(account),
+            findByEmail: jest.fn().mockResolvedValue(null),
+            findByPhone: jest.fn().mockResolvedValue(null),
+            update: jest.fn()
+        };
+        const bcrypt = { compare: jest.fn().mockResolvedValue(false) };
+        const useCase = buildUpdateAccountProfileUseCase({
+            repository,
+            accountEntity: mockAccountEntity(),
+            hashPassword: jest.fn().mockResolvedValue('new-hash'),
+            bcrypt
+        });
+
+        const result = await useCase({
+            accountId: account.id,
+            updates: { password: 'newStrongPass123', current_password: 'wrong-password' }
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('AUTHENTICATION_FAILED');
+        expect(result.error.statusCode).toBe(401);
+        expect(bcrypt.compare).toHaveBeenCalledWith('wrong-password', account.password_hash);
+        expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('allows a password change with the correct current_password (WR-03)', async () => {
+        const account = makeAccount();
+        const repository = {
+            findById: jest.fn().mockResolvedValue(account),
+            findByEmail: jest.fn().mockResolvedValue(null),
+            findByPhone: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockResolvedValue({ ...account, password_hash: 'new-hash' })
+        };
+        const bcrypt = { compare: jest.fn().mockResolvedValue(true) };
+        const useCase = buildUpdateAccountProfileUseCase({
+            repository,
+            accountEntity: mockAccountEntity(),
+            hashPassword: jest.fn().mockResolvedValue('new-hash'),
+            bcrypt
+        });
+
+        const result = await useCase({
+            accountId: account.id,
+            updates: { password: 'newStrongPass123', current_password: 'correct-password' }
+        });
+
+        expect(result.isSuccess).toBe(true);
+        expect(bcrypt.compare).toHaveBeenCalledWith('correct-password', account.password_hash);
+        expect(repository.update).toHaveBeenCalledWith(account.id, expect.objectContaining({ password_hash: 'new-hash' }));
     });
 });
 
