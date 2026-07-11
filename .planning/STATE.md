@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
 status: executing
-stopped_at: Completed 04-06-PLAN.md
-last_updated: "2026-07-11T15:18:58.302Z"
+stopped_at: Completed 04-07-PLAN.md
+last_updated: "2026-07-11T16:09:31.210Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 24
   percent: 43
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 04 execution started
 
@@ -79,6 +79,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P04 | 8min | 9 tasks | 16 files |
 | Phase 04 P05 | 15min | 7 tasks | 8 files |
 | Phase 04 P06 | 30min | 2 tasks | 13 files |
+| Phase 04 P07 | 50min | 2 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -155,6 +156,9 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-06: BusinessRepository.createWithOwnerAndRegistry() added as a new method (create() kept unchanged) so pre-existing callers/tests keep working unmodified — Avoids breaking the gated real-MySQL businessRepository.test.js and any other direct create() caller
 - [Phase 04]: 04-06: tenant registry stable_opaque_suffix is sha256(businessId:businessHandle).slice(0,20), deterministic and idempotent, never derived from legal_name/display_name — Satisfies T-04-06-03: tenant database names must never be caller-supplied or derived from raw display/legal names
 - [Phase 04]: 04-06: registry 'active/verified' status uses the existing status enum (provisioning/active/migrating/deprecated) plus the existing verified_at column, not a new 'verified' enum value — Matches the real applied migration schema exactly; no new migration was needed
+- [Phase ?]: [Phase 04] 04-07: LocationRepository/StaffOnboardingRepository require registry status=active AND verified_at populated before opening a tenant connection (stricter than tenantSessionUseCases.js's pre-existing database_name-only check)
+- [Phase ?]: [Phase 04] 04-07: Invitation tokens are now ${businessId}:${uuid} so unauthenticated accept can resolve which tenant database to query; only the SHA-256 hash of the full composite is persisted
+- [Phase ?]: [Phase 04] 04-07: Direct-add/invitation-accept create an active tenant assignment only when an optional dgfyAccountId is supplied; staff-to-DGFY-account linking otherwise stays deferred per plan's Source Audit
 
 ### Pending Todos
 
@@ -177,6 +181,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T15:18:58.284Z
-Stopped at: Completed 04-06-PLAN.md
+Last session: 2026-07-11T16:09:31.200Z
+Stopped at: Completed 04-07-PLAN.md
 Resume file: None
