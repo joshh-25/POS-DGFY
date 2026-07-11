@@ -19,6 +19,18 @@ const normalizeText = (value) => {
 };
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
+const HTML_ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+/**
+ * Escapes HTML-significant characters before interpolating user-supplied
+ * text into an email's HTML body (WR-01). business.display_name/legal_name
+ * are only normalized for whitespace, never restricted to safe characters,
+ * so this guards against HTML injection in invitation emails (e.g. a
+ * spoofed link/branding rendered in the invitee's email client).
+ * @param {string} value
+ * @returns {string}
+ */
+const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => HTML_ESCAPE_MAP[char]);
+
 const validationError = (message, details = null) => new DomainError(
     DomainErrorCode.VALIDATION_FAILED,
     message,
@@ -282,13 +294,14 @@ export function buildOnboardStaffViaInvitationUseCase({ repository, sendEmail })
         const invitation = await repository.createInvitation({ businessId, email, name, token, expiresAt });
 
         const businessLabel = business.display_name || business.legal_name;
+        const businessLabelHtml = escapeHtml(businessLabel);
         try {
             await sendEmail({
                 to: email,
                 subject: `You're invited to join ${businessLabel} on DGFY`,
                 text: `You have been invited to join ${businessLabel} on DGFY. `
                     + `Accept your invitation using this token: ${token}`,
-                html: `<p>You have been invited to join <strong>${businessLabel}</strong> on DGFY.</p>`
+                html: `<p>You have been invited to join <strong>${businessLabelHtml}</strong> on DGFY.</p>`
                     + `<p>Accept your invitation using this token: <code>${token}</code></p>`
             });
         } catch (error) {
