@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-07-11T10:18:50.426Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-07-11T11:01:28.205Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 22
-  completed_plans: 16
+  completed_plans: 17
   percent: 43
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 04 execution started
 
@@ -73,6 +73,7 @@ Progress: [████░░░░░░] 43%
 | Phase 03 P05 | 75min | 3 tasks | 8 files |
 | Phase 03 P06 | 32min | 2 tasks | 8 files |
 | Phase 04 P01 | 30min | 6 tasks | 10 files |
+| Phase 04 P02 | 20min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,11 @@ Recent decisions affecting current work:
 - [Phase ?]: Created apps/dgfy-api/src/shared/contracts/{applicationResult,domainErrors}.js in Wave 1 (not originally scoped there) because Wave 2 (04-02-PLAN.md) already imports controllers from this exact location
 - [Phase ?]: ApplicationResult is class-based (success()/failure() statics, .isSuccess, .toJSON()) to match Wave 2's locked controller pseudocode, not the dgfyAuth module's plain ok()/fail() functions
 - [Phase ?]: API-01 requirement intentionally left Pending after Wave 1 — REQUIREMENTS.md wording requires the HTTP layer Wave 2 (04-02) delivers; master plan traceability table assigns API-01 to both waves
+- [Phase ?]: sendUseCaseResult() resolves failure HTTP status from ApplicationResult.statusCode (DomainError-derived), not a controller-side error-code map
+- [Phase ?]: GET /accounts/:id admin access resolved via env-driven ACCOUNT_ADMIN_EMAILS allowlist (no role column exists on dgfy_core.accounts) — approved by user as-is
+- [Phase ?]: Controller-naming allowlist entries moved to apps/dgfy-api/src/config/architectureGuardrailsAllowlist.js (loaded via ARCH_GUARDRAIL_ALLOWLIST_PATH) instead of backend/, after coordinator flagged the initial approach as an out-of-scope backend/ edit
+- [Phase ?]: routes/index.js (not app.js) is the real composition/mount point for new route modules, matching the existing dgfyAuth convention; config/db.js's default database corrected to dgfy_core (shared connection also used by out-of-scope dgfyAuth, but production is unaffected since DB_NAME is set explicitly in infrastructure/docker/.env)
+- [Phase ?]: API-01 marked complete (HTTP layer now live); API-05 left Pending — phase-wide Clean Architecture pattern requirement spanning accounts/businesses/tenancy, still pending Waves 3-4
 
 ### Pending Todos
 
@@ -151,6 +157,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T10:16:19.264Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-backend-accounts-businesses-and-tenancy-foundation/04-CONTEXT.md
+Last session: 2026-07-11T11:01:28.190Z
+Stopped at: Completed 04-02-PLAN.md
+Resume file: None

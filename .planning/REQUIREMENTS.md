@@ -57,7 +57,7 @@ Requirements for the initial database-first refactor milestone. Each maps to roa
 
 ### Backend Foundation
 
-- [ ] **API-01**: Backend exposes Accounts APIs for DGFY account registration/login basics, profile/session lifecycle, and account lookup against the new DGFY schema.
+- [x] **API-01**: Backend exposes Accounts APIs for DGFY account registration/login basics, profile/session lifecycle, and account lookup against the new DGFY schema.
 - [ ] **API-02**: Backend exposes Businesses APIs for business creation, business selection, branch registry basics, and owner/manager scope using the new DGFY schema.
 - [ ] **API-03**: Backend exposes Tenancy APIs for tenant registry lookup, tenant provisioning metadata, tenant context selection, and tenant session creation.
 - [ ] **API-04**: Tenant session creation requires explicit landlord membership plus tenant-local assignment or authorized scope evidence before tenant-local access is granted.
@@ -123,7 +123,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MIG-03 | Phase 3 | Complete |
 | MIG-04 | Phase 3 | Complete |
 | MIG-05 | Phase 3 | Complete |
-| API-01 | Phase 4 | Pending |
+| API-01 | Phase 4 | Complete |
 | API-02 | Phase 4 | Pending |
 | API-03 | Phase 4 | Pending |
 | API-04 | Phase 4 | Pending |
