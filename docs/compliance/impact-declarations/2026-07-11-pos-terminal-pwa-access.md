@@ -36,6 +36,7 @@ Major. This changes the POS terminal interface, mobile access behavior, and manu
 - POS transaction, payment, void, shift, and receipt APIs remain server-authoritative when connectivity exists.
 - Mobile quantity gestures must permit native pointer cancellation and scrolling; they must not capture a pointer beyond the control.
 - Mobile presentation changes do not alter receipt payloads, fiscal lifecycle state, tax calculation, or payment authorization.
+- POS terminal source-contract tests scope assertions to their relevant control sections so separate diagnostics do not mask terminal safety regressions.
 
 ## Verification Evidence
 

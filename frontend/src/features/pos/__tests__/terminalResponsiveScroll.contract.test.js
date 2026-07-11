@@ -28,20 +28,21 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain('min-h-[100dvh]');
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
     expect(terminalLayoutContent).toContain("const shellLayoutClassName = IS_DGFY_POS_SURFACE");
-    expect(terminalLayoutContent).toContain("? 'lg:grid lg:grid-cols-[244px_minmax(0,1fr)]'");
-    expect(terminalLayoutContent).toContain(": 'xl:grid xl:grid-cols-[244px_minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain("? `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`");
+    expect(terminalLayoutContent).toContain(": `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`");
   });
 
   it('keeps the workspace pane scrollable inside the fixed shell', () => {
-    expect(terminalLayoutContent).toContain('flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y');
-    expect(terminalLayoutContent).toContain('xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y');
+    expect(terminalLayoutContent).toContain('dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y');
+    expect(terminalLayoutContent).toContain("? 'xl:flex xl:flex-col xl:overflow-hidden'");
+    expect(terminalLayoutContent).toContain(": 'xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y'");
     expect(terminalLayoutContent).toContain('grid grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]');
-    expect(terminalLayoutContent).toContain('<div key="checkout-workspace" className="h-full min-h-0 max-sm:animate-pos-slide-in">');
+    expect(terminalLayoutContent).toContain('<div key="checkout-workspace" className="min-h-0 catalog-slide-enter xl:h-full">');
   });
 
   it('keeps checkout split into catalog and current-sale panes', () => {
-    expect(posCheckoutContent).toContain("const shellClassName = 'h-full min-h-0 space-y-5';");
-    expect(posCheckoutContent).toContain("const checkoutGridClassName = 'grid h-full min-h-0 grid-cols-1 gap-4 pb-24 md:grid-cols-[minmax(0,1fr)_325px] md:overflow-hidden md:pb-0 2xl:gap-6';");
+    expect(posCheckoutContent).toContain("const shellClassName = 'h-auto min-h-0 space-y-5 xl:h-full';");
+    expect(posCheckoutContent).toContain("const checkoutGridClassName = 'grid min-h-0 grid-cols-1 gap-4 pb-24 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 xl:h-full xl:overflow-hidden 2xl:gap-6';");
     expect(posCheckoutContent).toContain('aria-label="POS catalog contents"');
     expect(posCheckoutContent).toContain('aria-label="Current sale contents"');
     expect(posCheckoutContent).toContain("const checkoutPaneClassName = 'h-full max-h-full';");
@@ -49,9 +50,9 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('keeps responsive catalog cards and paginated catalog slices', () => {
     expect(posCheckoutContent).toContain('auto-rows-[7rem]');
-    expect(posCheckoutContent).toContain('md:auto-rows-[11rem]');
+    expect(posCheckoutContent).toContain('md:grid-cols-3 md:auto-rows-[11rem]');
     expect(posCheckoutContent).toContain('const CATALOG_PAGE_SIZE = 12;');
-    expect(posCheckoutContent).toContain('return catalog.slice(pageStart, pageStart + catalogPageSize);');
+    expect(posCheckoutContent).toContain('return safeCatalog.slice(pageStart, pageStart + catalogPageSize);');
     expect(posCheckoutContent).toContain('Page {catalogPage} of {totalCatalogPages}');
     expect(posCheckoutContent).not.toContain('ResizeObserver');
     expect(posCheckoutContent).not.toContain('scrollIntoView({ block: \'start\', behavior: \'auto\' })');
@@ -75,8 +76,8 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('keeps history filters and table scrolling inside the history panel', () => {
     expect(posHistoryContent).toContain('grid grid-cols-2 gap-4 xl:grid-cols-4');
-    expect(posHistoryContent).toContain('overflow-hidden border-t border-slate-200');
-    expect(posHistoryContent).toContain('dgfy-pos-scrollbar-hidden overflow-x-auto');
+    expect(posHistoryContent).toContain('min-h-0 flex-1 overflow-hidden border-t border-slate-200');
+    expect(posHistoryContent).toContain('dgfy-pos-scrollbar-hidden h-full overflow-auto');
     expect(posHistoryContent).toContain('aria-label="POS transaction history table"');
   });
 
