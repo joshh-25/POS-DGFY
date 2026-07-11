@@ -51,8 +51,8 @@ Requirements for the initial database-first refactor milestone. Each maps to roa
 
 - [x] **MIG-01**: Source-to-target mapping documentation defines how legacy/current account, tenant, staff, branch/location, and terminal-like records map into DGFY-owned schemas.
 - [x] **MIG-02**: Data migration dry-run reports planned inserts, updates, skips, conflicts, orphan records, and tenant coverage without mutating `dgfy_*` data.
-- [ ] **MIG-03**: Data migration apply mode writes transformed data into `dgfy_*` schemas using durable checkpoints and deterministic legacy-to-DGFY ID maps.
-- [ ] **MIG-04**: Data migration can be interrupted and safely retried without duplicate records, inconsistent references, or manual cleanup.
+- [x] **MIG-03**: Data migration apply mode writes transformed data into `dgfy_*` schemas using durable checkpoints and deterministic legacy-to-DGFY ID maps.
+- [x] **MIG-04**: Data migration can be interrupted and safely retried without duplicate records, inconsistent references, or manual cleanup.
 - [ ] **MIG-05**: Data verification reports compare source and target counts, required relationships, skipped/conflict records, and unresolved data-quality issues.
 
 ### Backend Foundation
@@ -120,8 +120,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DBF-05 | Phase 2 | Complete |
 | MIG-01 | Phase 3 | Complete |
 | MIG-02 | Phase 3 | Complete |
-| MIG-03 | Phase 3 | Pending |
-| MIG-04 | Phase 3 | Pending |
+| MIG-03 | Phase 3 | Complete |
+| MIG-04 | Phase 3 | Complete |
 | MIG-05 | Phase 3 | Pending |
 | API-01 | Phase 4 | Pending |
 | API-02 | Phase 4 | Pending |

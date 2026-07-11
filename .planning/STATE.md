@@ -6,14 +6,14 @@ current_phase: 03
 current_phase_name: old-to-new-migration-proof
 status: executing
 stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-07-11T05:01:51.250Z"
+last_updated: "2026-07-11T05:25:37.314Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
   percent: 29
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 03 (old-to-new-migration-proof) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 03 execution started
 
@@ -68,6 +68,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 03 P01 | 35min | 3 tasks | 11 files |
 | Phase 03 P02 | 20min | 2 tasks | 4 files |
 | Phase 03 P03 | 45min | 3 tasks | 5 files |
+| Phase 03 P04 | 55min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Runner: runDataDryRun() passes { requireMigrationManifest: true } to validateEnv() and loads/validates the migration target manifest before any DB connection factory call
 - [Phase ?]: Runner: dry-run report summary is scalar-only (tenant_coverage_count) with detailed tenant_coverage/results arrays as separate top-level report fields
 - [Phase ?]: Runner: buildDryRunPlan() reclassifies mapper insert results to update via a single scoped legacy_id_map SELECT (current target state probe), avoiding per-record DB round trips
+- [Phase ?]: [Phase 03]: apply.js re-scopes legacy_id_map lookup/record key to legacy_id + '::' + target_table when a fan-out collision is detected (business_membership + account_staff_assignment share one dgfy_account_tenant_memberships source key)
+- [Phase ?]: [Phase 03]: apply's report results array is stripped to {legacy_tenant_id, entity_type, operation, status, target_table, target_database, dgfy_id} — never raw target_payload — closing the password_hash/terminal-secret/company_token report-leak threat
 
 ### Pending Todos
 
@@ -136,6 +139,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T05:01:19.596Z
+Last session: 2026-07-11T05:23:21.527Z
 Stopped at: Completed 03-02-PLAN.md
 Resume file: None

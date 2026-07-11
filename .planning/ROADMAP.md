@@ -102,7 +102,7 @@ Plans:
   4. Operator can interrupt and retry migration without duplicate records, inconsistent references, or manual cleanup.
   5. Verification reports compare source and target counts, required relationships, skipped/conflict records, and unresolved data-quality issues.
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -119,7 +119,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 03-04-PLAN.md — Apply mode with ID maps, checkpoints, and retry safety
+- [x] 03-04-PLAN.md — Apply mode with ID maps, checkpoints, and retry safety
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -189,7 +189,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 |-------|----------------|--------|-----------|
 | 1. Architecture and Migration Runner Contract | 4/4 | Complete    | 2026-07-10 |
 | 2. DGFY Database Foundation | 5/5 | Complete    | 2026-07-10 |
-| 3. Old-to-New Migration Proof | 3/5 | In Progress|  |
+| 3. Old-to-New Migration Proof | 4/5 | In Progress|  |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 0/TBD | Not started | - |
 | 5. Compatibility and Backend-First Cutover Seam | 0/TBD | Not started | - |
 | 6. Release Evidence and Rehearsal Gates | 0/TBD | Not started | - |
