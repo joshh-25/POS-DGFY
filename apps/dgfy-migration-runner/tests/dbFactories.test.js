@@ -6,9 +6,11 @@ import {
     createSourceConnection,
     createTargetConnection,
     createMetaConnection,
-    createBusinessTargetConnection
+    createBusinessTargetConnection,
+    createLegacyTenantSourceConnection
 } from '../src/config/db.js';
 import { computeFileChecksum } from '../src/metadata/checksum.js';
+import { TargetGuardError } from '../src/utils/errors.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,11 +25,12 @@ const fixtureConfig = {
 };
 
 describe('DB connection factories', () => {
-    test('createSourceConnection, createTargetConnection, createMetaConnection, createBusinessTargetConnection are exported functions', () => {
+    test('createSourceConnection, createTargetConnection, createMetaConnection, createBusinessTargetConnection, createLegacyTenantSourceConnection are exported functions', () => {
         expect(typeof createSourceConnection).toBe('function');
         expect(typeof createTargetConnection).toBe('function');
         expect(typeof createMetaConnection).toBe('function');
         expect(typeof createBusinessTargetConnection).toBe('function');
+        expect(typeof createLegacyTenantSourceConnection).toBe('function');
     });
 
     test('each factory returns a Sequelize instance without throwing or opening a socket', () => {
@@ -35,11 +38,13 @@ describe('DB connection factories', () => {
         const target = createTargetConnection(fixtureConfig);
         const meta = createMetaConnection(fixtureConfig);
         const business = createBusinessTargetConnection(fixtureConfig, 'dgfy_business_alpha');
+        const legacyTenant = createLegacyTenantSourceConnection(fixtureConfig, 'sku_tenant_1');
 
         expect(source).toBeInstanceOf(Sequelize);
         expect(target).toBeInstanceOf(Sequelize);
         expect(meta).toBeInstanceOf(Sequelize);
         expect(business).toBeInstanceOf(Sequelize);
+        expect(legacyTenant).toBeInstanceOf(Sequelize);
     });
 
     test('createBusinessTargetConnection uses targetDb credentials but the given business database name', () => {
@@ -48,6 +53,25 @@ describe('DB connection factories', () => {
         expect(business.config.database).toBe('dgfy_business_alpha');
         expect(business.config.host).toBe(fixtureConfig.targetDb.host);
         expect(business.config.username).toBe(fixtureConfig.targetDb.user);
+    });
+
+    test('createLegacyTenantSourceConnection uses sourceDb credentials but the given legacy tenant database name', () => {
+        const legacyTenant = createLegacyTenantSourceConnection(fixtureConfig, 'sku_tenant_1');
+
+        expect(legacyTenant.config.database).toBe('sku_tenant_1');
+        expect(legacyTenant.config.host).toBe(fixtureConfig.sourceDb.host);
+        expect(legacyTenant.config.username).toBe(fixtureConfig.sourceDb.user);
+    });
+
+    test('createLegacyTenantSourceConnection rejects a blank database name', () => {
+        expect(() => createLegacyTenantSourceConnection(fixtureConfig, '')).toThrow(TargetGuardError);
+        expect(() => createLegacyTenantSourceConnection(fixtureConfig, '   ')).toThrow(TargetGuardError);
+        expect(() => createLegacyTenantSourceConnection(fixtureConfig, undefined)).toThrow(TargetGuardError);
+    });
+
+    test('createLegacyTenantSourceConnection rejects a dgfy_*-named database (D-01: never redirect a legacy read onto a DGFY target)', () => {
+        expect(() => createLegacyTenantSourceConnection(fixtureConfig, 'dgfy_business_alpha')).toThrow(TargetGuardError);
+        expect(() => createLegacyTenantSourceConnection(fixtureConfig, 'dgfy_core')).toThrow(TargetGuardError);
     });
 
     test('db.js source has zero top-level (module-scope) new Sequelize( calls', () => {
@@ -74,7 +98,17 @@ describe('DB connection factories', () => {
         expect(topLevelCalls).toEqual([]);
 
         const totalOccurrences = (codeLines.join('\n').match(/new Sequelize\(/g) || []).length;
-        expect(totalOccurrences).toBe(4);
+        expect(totalOccurrences).toBe(5);
+    });
+
+    test('db.js source does not read process.env directly', () => {
+        const source = readFileSync(join(__dirname, '..', 'src', 'config', 'db.js'), 'utf8');
+        const withoutComments = source
+            .split('\n')
+            .filter((line) => !line.trim().startsWith('*') && !line.trim().startsWith('//'))
+            .join('\n');
+
+        expect(withoutComments.includes('process.env')).toBe(false);
     });
 });
 
