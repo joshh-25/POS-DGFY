@@ -2,6 +2,7 @@ import express from 'express';
 import { buildBusinessController } from './controllers/businessController.js';
 import { buildLocationController } from './controllers/locationController.js';
 import { buildTenantSessionController } from './controllers/tenantSessionController.js';
+import { buildTenantRegistryController } from './controllers/tenantRegistryController.js';
 
 /**
  * Wires Express routing for the businesses module (Interface Adapter),
@@ -27,6 +28,7 @@ export function createBusinessRoutes(useCases = {}, { authenticateAccount } = {}
     const controller = buildBusinessController(useCases);
     const locationController = buildLocationController(useCases);
     const tenantSessionController = buildTenantSessionController(useCases);
+    const tenantRegistryController = buildTenantRegistryController(useCases);
 
     router.post('/', authenticateAccount, (req, res, next) => controller.createBusiness(req, res).catch(next));
     router.get('/', authenticateAccount, (req, res, next) => controller.listUserBusinesses(req, res).catch(next));
@@ -81,6 +83,16 @@ export function createBusinessRoutes(useCases = {}, { authenticateAccount } = {}
         '/:id/activate-session',
         authenticateAccount,
         (req, res, next) => tenantSessionController.activateSession(req, res).catch(next)
+    );
+
+    // Wave 6 gap-closure (API-03, D-13/D-14): safe tenant registry metadata
+    // lookup under the existing Businesses APIs (not a separate tenancy
+    // route module) — read-only, no session-activation side effect,
+    // independent from POST /:id/activate-session above.
+    router.get(
+        '/:id/tenant-registry',
+        authenticateAccount,
+        (req, res, next) => tenantRegistryController.getTenantRegistry(req, res).catch(next)
     );
 
     return router;

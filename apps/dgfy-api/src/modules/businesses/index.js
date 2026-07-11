@@ -42,9 +42,11 @@ export {
     buildCreateTenantSessionUseCase,
     buildActivateBusinessSessionUseCase
 } from './usecases/tenantSessionUseCases.js';
+export { buildGetTenantRegistryUseCase } from './usecases/tenantRegistryUseCases.js';
 export { buildBusinessController } from './controllers/businessController.js';
 export { buildLocationController } from './controllers/locationController.js';
 export { buildTenantSessionController } from './controllers/tenantSessionController.js';
+export { buildTenantRegistryController } from './controllers/tenantRegistryController.js';
 export { createBusinessRoutes, createInvitationRoutes } from './routes.js';
 export { sendEmail } from './infra/sendInvitationEmail.js';
 export { TenantConnector, buildTenantConnector } from '../../infra/tenantConnector.js';
@@ -75,6 +77,7 @@ import {
     buildCreateTenantSessionUseCase,
     buildActivateBusinessSessionUseCase
 } from './usecases/tenantSessionUseCases.js';
+import { buildGetTenantRegistryUseCase } from './usecases/tenantRegistryUseCases.js';
 import { sendEmail } from './infra/sendInvitationEmail.js';
 import { TenantConnector } from '../../infra/tenantConnector.js';
 
@@ -136,7 +139,7 @@ export function buildBusinessesModule({
         accountStaffAssignmentRepository,
         tenantConnector,
         useCases: {
-            createBusiness: buildCreateBusinessUseCase({ repository }),
+            createBusiness: buildCreateBusinessUseCase({ repository, businessDatabaseRegistryRepository }),
             listUserBusinesses: buildListUserBusinessesUseCase({ repository }),
             getBusiness: buildGetBusinessUseCase({ repository }),
             updateBusiness: buildUpdateBusinessUseCase({ repository }),
@@ -174,6 +177,16 @@ export function buildBusinessesModule({
                 businessRepository: repository,
                 businessDatabaseRegistry: businessDatabaseRegistryRepository,
                 accountStaffAssignmentRepository
+            }),
+
+            // Wave 6 gap-closure (API-03, D-14): safe tenant registry
+            // metadata lookup under the existing Businesses APIs — read-only,
+            // no tenant session activation side effect. businessDatabaseRegistryRepository
+            // may be null (see doc comment above); the use case itself
+            // handles that gracefully (503).
+            getTenantRegistry: buildGetTenantRegistryUseCase({
+                businessRepository: repository,
+                businessDatabaseRegistryRepository
             })
         }
     };
