@@ -1918,7 +1918,7 @@ export default function POSCheckoutTerminal({
     const QTY_METER_LONG_PRESS_MS = 300;
     const QTY_METER_MOVE_CANCEL_PX = 10;
     const QTY_METER_MAX_DRAG_PX = 96;
-    const QTY_METER_MIN_QTY = 1;
+    const QTY_METER_MIN_QTY = 0;
     const QTY_METER_MAX_QTY = 20;
 
     const clearQtyMeterTimer = () => {
@@ -1995,6 +1995,8 @@ export default function POSCheckoutTerminal({
 
         const cardElement = event.currentTarget.closest('[data-pos-catalog-card]');
         if (gesture.activated) {
+            // Dragged back down to 0 = cancel the bulk-add; nothing to add, nothing to fly.
+            if (gesture.quantity <= 0) return;
             adjustCartQuantity(item, gesture.quantity);
         } else {
             // Released before the long-press threshold with no cancelling movement = a tap.
@@ -4285,7 +4287,7 @@ export default function POSCheckoutTerminal({
                     <div className="qty-meter__track">
                         <div
                             className="qty-meter__fill"
-                            style={{ height: `${((qtyMeterState.quantity - 1) / 19) * 100}%` }}
+                            style={{ height: `${((qtyMeterState.quantity - QTY_METER_MIN_QTY) / (QTY_METER_MAX_QTY - QTY_METER_MIN_QTY)) * 100}%` }}
                         />
                     </div>
                 </div>
