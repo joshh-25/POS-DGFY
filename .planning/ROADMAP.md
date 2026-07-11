@@ -143,16 +143,42 @@ Plans:
   5. Architecture and backend tests prove controllers are transport-only, use cases own business logic, repositories own Sequelize access, and persistence side effects are durable.
 
 **Plans**: 6/9 plans complete; 3 gap-closure plans pending
+**Wave 1**
 
 - [x] 04-01-PLAN.md
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [x] 04-02-PLAN.md
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [x] 04-03-PLAN.md
 - [x] 04-03.5-PLAN.md
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [x] 04-04-PLAN.md
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [x] 04-05-PLAN.md
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 04-06-PLAN.md — Gap closure: business entity layer and safe tenant registry metadata/lookup
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 04-07-PLAN.md — Gap closure: durable tenant-backed location and staff onboarding persistence
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
 - [ ] 04-08-PLAN.md — Gap closure: TerminalIdentity tenant model wiring and refreshed DB-backed verification
+
+**Cross-cutting constraints:**
+
+- All use cases return ApplicationResult; DomainError for validation/business failures
 
 ### Phase 5: Compatibility and Backend-First Cutover Seam
 
