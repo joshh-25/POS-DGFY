@@ -6,6 +6,7 @@ import { playOrderAlertWithIminBridge } from '../utils/iminHardwareBridge.js';
 
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
+import IminTerminalFeedback from './IminTerminalFeedback.jsx';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
@@ -442,6 +443,8 @@ export default function TerminalPageLayout({
           </div>
         </div>
       </div>
+
+      <IminTerminalFeedback />
 
       <div
         ref={workspacePaneRef}

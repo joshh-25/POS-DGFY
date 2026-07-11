@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { toast } from 'sonner';
+import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { scanPosBarcode } from '../services/posService';
 
 export default function POSBarcodeScanner({

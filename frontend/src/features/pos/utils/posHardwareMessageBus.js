@@ -1,3 +1,5 @@
+import { emitIminPosFeedback, isIminWrapperRuntime } from '@/src/utils/iminRuntimeFeedback.js';
+
 const POS_SURFACE = String(import.meta.env?.VITE_APP_SURFACE || '').trim().toLowerCase();
 const POS_HARDWARE_MESSAGE_EVENT = 'pos:hardware-message';
 
@@ -15,25 +17,6 @@ const normalizeDetails = (details) => {
 };
 
 export const POS_HARDWARE_MESSAGE_EVENT_NAME = POS_HARDWARE_MESSAGE_EVENT;
-
-const shouldOpenNativeIminMessage = (payload) => {
-  if (!payload) return false;
-  return ['warning', 'error'].includes(String(payload.tone || '').trim().toLowerCase());
-};
-
-const showNativeIminMessage = (payload, windowObj) => {
-  if (!windowObj) return false;
-  const bridge = windowObj.iMinBridge;
-  if (!bridge || typeof bridge.showMessage !== 'function') return false;
-  if (!shouldOpenNativeIminMessage(payload)) return false;
-
-  try {
-    bridge.showMessage(payload.title, payload.message);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 export const emitPosHardwareMessage = (
   {
@@ -60,9 +43,17 @@ export const emitPosHardwareMessage = (
     timestamp: new Date().toISOString()
   };
 
-  const nativeShown = showNativeIminMessage(payload, windowObj);
-
-  if (POS_HARDWARE_MESSAGE_MODAL_ENABLED && !nativeShown) {
+  if (isIminWrapperRuntime(windowObj)) {
+    // Routine native print and drawer success stays silent on hardware terminals.
+    if (['warning', 'error'].includes(payload.tone)) {
+      emitIminPosFeedback({
+        tone: payload.tone,
+        message: payload.title,
+        description: payload.message,
+        source: payload.source
+      }, windowObj);
+    }
+  } else if (POS_HARDWARE_MESSAGE_MODAL_ENABLED) {
     windowObj.dispatchEvent(new CustomEvent(POS_HARDWARE_MESSAGE_EVENT, { detail: payload }));
   }
 

@@ -1,6 +1,11 @@
 import { Toaster as Sonner } from 'sonner'
+import { isIminWrapperRuntime } from '../../src/utils/iminRuntimeFeedback.js'
 
 const Toaster = ({ ...props }) => {
+  const isIminPosRuntime = String(import.meta.env?.VITE_APP_SURFACE || '').trim().toLowerCase() === 'pos'
+    && isIminWrapperRuntime();
+  if (isIminPosRuntime) return null;
+
   return (
     <Sonner
       theme="light"
@@ -22,4 +27,3 @@ const Toaster = ({ ...props }) => {
 }
 
 export { Toaster }
-

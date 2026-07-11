@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { usePermission } from '@/hooks/usePermission';
 import { CalendarCheck, CheckCircle2, Clock, UserCheck, XCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { isFnbWorkflowMode, isHospitalityWorkflowMode, isServicesWorkflowMode } from '../../settings/workflowMode.js';
 import { listServiceBookings, updateServiceBookingStatus } from '../../services/api/servicesApi.js';

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
+import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { BedDouble, CreditCard, RefreshCw } from 'lucide-react';
 import {
     addHospitalityFolioLine,
