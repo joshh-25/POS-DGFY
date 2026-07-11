@@ -7,16 +7,22 @@ import defineAccountModel from '../../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../../src/models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../../../src/models/Landlord/BusinessDatabaseRegistry.js';
-import defineAccountStaffAssignmentModel from '../../../src/models/Tenant/AccountStaffAssignment.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../../src/modules/businesses/index.js';
 import { TenantConnector } from '../../../src/infra/tenantConnector.js';
+import { provisionAndActivateTenantDatabase } from '../../helpers/tenantSchemaProvisioning.js';
 
 /**
  * Wave 5 (04-05-PLAN.md, Task 5) — tenant session validation, edge-case, and
  * replay/idempotency integration tests, enforcing D-04/API-04. Mirrors
  * ./tenantSessionFlows.test.js's gating pattern and real landlord + tenant
  * database wiring.
+ *
+ * Wave 8 gap-closure (04-08-PLAN.md, Task 2): `createBusinessWithTenant()`
+ * now runs the accepted operator/migration-runner handoff via
+ * ../../helpers/tenantSchemaProvisioning.js's provisionAndActivateTenantDatabase()
+ * instead of creating a duplicate registry row + ad hoc
+ * `model.sync({force:true})`.
  */
 const RUN_INTEGRATION = process.env.RUN_TENANT_SESSION_VALIDATION_INTEGRATION === 'true';
 
@@ -70,18 +76,6 @@ describeIfIntegration('Tenant session validation & edge cases (real MySQL landlo
     let businessDatabaseRegistryRepository;
     let accountStaffAssignmentRepository;
     let app;
-
-    async function provisionTenantDatabase() {
-        const databaseName = isolatedDbName('dgfy_business');
-        await withAdminConnection(async (adminSequelize) => {
-            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\``);
-        });
-        const connection = tenantConnector.getConnection(databaseName);
-        const model = defineAccountStaffAssignmentModel(connection);
-        await model.sync({ force: true });
-        provisionedTenantDbNames.push(databaseName);
-        return databaseName;
-    }
 
     beforeAll(async () => {
         await withAdminConnection(async (adminSequelize) => {
@@ -158,6 +152,15 @@ describeIfIntegration('Tenant session validation & edge cases (real MySQL landlo
         return { token: response.body.data.token, accountId: response.body.data.account.id, email };
     }
 
+    /**
+     * Wave 8 gap-closure (04-08-PLAN.md, Task 2): the tenant registry row
+     * already exists (status: 'provisioning') from POST /businesses's own
+     * findOrCreateForBusiness() call. This runs the accepted operator/
+     * migration-runner handoff (real schema migration + contract
+     * verification, then updateStatus) — see
+     * ../../helpers/tenantSchemaProvisioning.js — instead of creating a
+     * second, duplicate registry row.
+     */
     async function createBusinessWithTenant(ownerToken, handle) {
         const createResponse = await request(app)
             .post('/businesses')
@@ -165,18 +168,44 @@ describeIfIntegration('Tenant session validation & edge cases (real MySQL landlo
             .send({ legal_name: 'Acme Inc.', display_name: 'Acme Store', business_handle: handle });
         const businessId = createResponse.body.data.business.id;
 
-        const databaseName = await provisionTenantDatabase();
-        await businessDatabaseRegistryRepository.create({
+        const databaseName = await provisionAndActivateTenantDatabase({
+            businessDatabaseRegistryRepository,
+            tenantConnector,
+            withAdminConnection,
             businessId,
-            stableOpaqueSuffix: databaseName.replace('dgfy_business_it_', ''),
-            databaseName,
-            status: 'active'
+            provisionedTenantDbNames
         });
 
         return { businessId, databaseName };
     }
 
-    async function createBusinessWithoutTenant(ownerToken, handle) {
+    /**
+     * Wave 8 gap-closure (04-08-PLAN.md, Task 2): POST /businesses ALWAYS
+     * auto-creates a `provisioning` registry row (via
+     * findOrCreateForBusiness() — see 04-06-SUMMARY.md), so a genuinely
+     * "no database registry entry at all" business can no longer be
+     * produced through the public HTTP endpoint. This seeds the business
+     * directly through businessRepository.create() (the pre-registry
+     * method, deliberately NOT createWithOwnerAndRegistry()) to reproduce
+     * that specific edge case.
+     */
+    async function createBusinessWithoutTenant(accountId, handle) {
+        const { business } = await businessRepository.create({
+            business_handle: handle,
+            legal_name: 'Acme Inc.',
+            display_name: 'Acme Store',
+            creatorAccountId: accountId
+        });
+        return business.id;
+    }
+
+    /**
+     * Creates a business via HTTP but deliberately does NOT run the
+     * operator/migration-runner handoff — the registry row auto-created by
+     * POST /businesses stays `provisioning` (Wave 8 gap-closure,
+     * 04-08-PLAN.md, Task 2).
+     */
+    async function createBusinessStillProvisioning(ownerToken, handle) {
         const createResponse = await request(app)
             .post('/businesses')
             .set('Authorization', `Bearer ${ownerToken}`)
@@ -258,8 +287,8 @@ describeIfIntegration('Tenant session validation & edge cases (real MySQL landlo
         });
 
         it('returns HTTP 404 (NO_TENANT_DATABASE) when the business has no database registry entry', async () => {
-            const { token } = await registerAndGetToken();
-            const businessId = await createBusinessWithoutTenant(token, 'no-registry-edge');
+            const { token, accountId } = await registerAndGetToken();
+            const businessId = await createBusinessWithoutTenant(accountId, 'no-registry-edge');
 
             const response = await request(app)
                 .post(`/businesses/${businessId}/activate-session`)
@@ -272,6 +301,17 @@ describeIfIntegration('Tenant session validation & edge cases (real MySQL landlo
         it('rejects an unauthenticated activation request with HTTP 401', async () => {
             const response = await request(app).post(`/businesses/${crypto.randomUUID()}/activate-session`);
             expect(response.status).toBe(401);
+        });
+
+        it('Wave 8 (04-08-PLAN.md, Task 2): returns HTTP 503 for an owner when the registry entry exists but is still provisioning (no operator/migration-runner handoff yet)', async () => {
+            const { token } = await registerAndGetToken();
+            const businessId = await createBusinessStillProvisioning(token, 'still-provisioning-edge');
+
+            const response = await request(app)
+                .post(`/businesses/${businessId}/activate-session`)
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.status).toBe(503);
         });
     });
 

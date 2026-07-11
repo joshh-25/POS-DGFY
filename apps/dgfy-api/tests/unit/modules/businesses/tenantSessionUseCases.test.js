@@ -25,12 +25,18 @@ const makeStaffMembership = (overrides = {}) => ({
     ...overrides
 });
 
+// Wave 8 gap-closure (04-08-PLAN.md, Task 2): resolveTenantSession() now
+// requires status='active' AND verified_at populated before Step 3 is even
+// reached — verified_at defaults to a real Date so these WR-04
+// connection-failure tests still exercise the intended Step 3 failure path
+// (findActiveAssignment throwing), not the earlier Step 2 registry gate.
 const makeRegistryEntry = (overrides = {}) => ({
     id: 1,
     business_id: 'biz-1',
     stable_opaque_suffix: 'abc123',
     database_name: 'dgfy_business_abc123',
     status: 'active',
+    verified_at: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides
 });
 

@@ -7,10 +7,10 @@ import defineAccountModel from '../../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../../src/models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../../../src/models/Landlord/BusinessDatabaseRegistry.js';
-import defineAccountStaffAssignmentModel from '../../../src/models/Tenant/AccountStaffAssignment.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../../src/modules/businesses/index.js';
 import { TenantConnector } from '../../../src/infra/tenantConnector.js';
+import { provisionAndActivateTenantDatabase } from '../../helpers/tenantSchemaProvisioning.js';
 
 /**
  * HTTP-layer integration tests for the tenant session activation endpoint
@@ -24,13 +24,19 @@ import { TenantConnector } from '../../../src/infra/tenantConnector.js';
  * connect to), this suite exercises REAL landlord (dgfy_core-shaped) AND
  * REAL per-tenant (dgfy_business_*-shaped) MySQL databases — closing the
  * "in-memory bridging" stub 04-03.5-SUMMARY.md flagged as pending this wave.
- * Each business created in this suite gets its own freshly-provisioned,
- * disposable tenant database (via provisionTenantDatabase()) with the real
- * AccountStaffAssignment model synced into it, and a real
- * business_database_registry row pointing at it — this test does NOT use
- * apps/dgfy-migration-runner's migration files (same precedent as
- * ../businesses/businessRepository.test.js: targets the real Sequelize
- * models directly).
+ *
+ * Wave 8 gap-closure (04-08-PLAN.md, Task 2 cascading fix): `resolveTenantSession()`
+ * (../../../src/modules/businesses/usecases/tenantSessionUseCases.js) now
+ * requires the registry entry to be status='active' AND verified_at
+ * populated before activation succeeds (closing the owner-bypass gap where
+ * an owner could activate a session against a still-`provisioning` tenant
+ * database). `createBusinessWithTenant()` below was updated to run the
+ * real operator/migration-runner handoff via
+ * ../../helpers/tenantSchemaProvisioning.js's provisionAndActivateTenantDatabase()
+ * (real schema migration + contract verification, then updateStatus to
+ * active/verified) instead of a duplicate registry row with no verified_at
+ * — otherwise every "HTTP 200" assertion in this suite would now fail with
+ * 503 once real MySQL credentials are supplied.
  */
 const RUN_INTEGRATION = process.env.RUN_TENANT_SESSION_ROUTES_INTEGRATION === 'true';
 
@@ -84,18 +90,6 @@ describeIfIntegration('Tenant session HTTP routes (real MySQL landlord + tenant 
     let businessDatabaseRegistryRepository;
     let accountStaffAssignmentRepository;
     let app;
-
-    async function provisionTenantDatabase() {
-        const databaseName = isolatedDbName('dgfy_business');
-        await withAdminConnection(async (adminSequelize) => {
-            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\``);
-        });
-        const connection = tenantConnector.getConnection(databaseName);
-        const model = defineAccountStaffAssignmentModel(connection);
-        await model.sync({ force: true });
-        provisionedTenantDbNames.push(databaseName);
-        return databaseName;
-    }
 
     beforeAll(async () => {
         await withAdminConnection(async (adminSequelize) => {
@@ -173,9 +167,11 @@ describeIfIntegration('Tenant session HTTP routes (real MySQL landlord + tenant 
     }
 
     /**
-     * Creates a business (owner auto-assigned), provisions a fresh tenant
-     * database for it, and registers the business_database_registry pointer
-     * — the full real end-to-end wiring the activate-session endpoint reads.
+     * Creates a business (owner auto-assigned, registry auto-created as
+     * `provisioning`), then runs the accepted operator/migration-runner
+     * handoff against that exact registry row — the full real end-to-end
+     * wiring the activate-session endpoint reads (Wave 8 gap-closure,
+     * 04-08-PLAN.md, Task 2).
      */
     async function createBusinessWithTenant(ownerToken, handle) {
         const createResponse = await request(app)
@@ -184,12 +180,12 @@ describeIfIntegration('Tenant session HTTP routes (real MySQL landlord + tenant 
             .send({ legal_name: 'Acme Inc.', display_name: 'Acme Store', business_handle: handle });
         const businessId = createResponse.body.data.business.id;
 
-        const databaseName = await provisionTenantDatabase();
-        await businessDatabaseRegistryRepository.create({
+        const databaseName = await provisionAndActivateTenantDatabase({
+            businessDatabaseRegistryRepository,
+            tenantConnector,
+            withAdminConnection,
             businessId,
-            stableOpaqueSuffix: databaseName.replace('dgfy_business_it_', ''),
-            databaseName,
-            status: 'active'
+            provisionedTenantDbNames
         });
 
         return { businessId, databaseName };

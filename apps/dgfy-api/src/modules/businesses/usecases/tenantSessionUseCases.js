@@ -105,7 +105,18 @@ async function resolveTenantSession(
         return ApplicationResult.failure(noMembershipError());
     }
 
-    // Step 2: resolve tenant database pointer.
+    // Step 2: resolve tenant database pointer. Wave 8 gap-closure
+    // (04-08-PLAN.md, Task 2): requires status='active' AND verified_at
+    // populated — not just a non-null database_name — mirroring
+    // ../repositories/locationRepository.js's/../repositories/
+    // staffOnboardingRepository.js's identical, already-established
+    // "active/verified" gate (04-06-SUMMARY.md's documented meaning).
+    // FIX (found during 04-08 Task 2): without this stricter check, an
+    // OWNER (who bypasses Step 3's tenant-assignment lookup entirely) could
+    // activate a session pointing at a still-`provisioning` — or never
+    // actually created — tenant database and receive HTTP 200, since no
+    // connection to the tenant database was ever attempted on the owner
+    // path. A still-`provisioning` business must fail closed here instead.
     if (!businessDatabaseRegistry) {
         return ApplicationResult.failure(
             serviceUnavailableError('Tenant database registry is not configured.')
@@ -114,6 +125,11 @@ async function resolveTenantSession(
     const registryEntry = await businessDatabaseRegistry.findByBusinessId(businessId);
     if (!registryEntry || !registryEntry.database_name) {
         return ApplicationResult.failure(noTenantDatabaseError());
+    }
+    if (registryEntry.status !== 'active' || !registryEntry.verified_at) {
+        return ApplicationResult.failure(
+            serviceUnavailableError('Tenant database is not active/verified yet.')
+        );
     }
 
     // Step 3: tenant-local assignment (API-04 part 2) — business owners

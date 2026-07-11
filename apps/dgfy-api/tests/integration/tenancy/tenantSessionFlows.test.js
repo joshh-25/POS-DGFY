@@ -7,11 +7,10 @@ import defineAccountModel from '../../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../../src/models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../../../src/models/Landlord/BusinessDatabaseRegistry.js';
-import defineAccountStaffAssignmentModel from '../../../src/models/Tenant/AccountStaffAssignment.js';
-import defineTerminalIdentityModel from '../../../src/models/Tenant/TerminalIdentity.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../../src/modules/businesses/index.js';
 import { TenantConnector } from '../../../src/infra/tenantConnector.js';
+import { provisionAndActivateTenantDatabase } from '../../helpers/tenantSchemaProvisioning.js';
 
 /**
  * Wave 5 (04-05-PLAN.md, Task 5) — comprehensive tenant session success-flow
@@ -22,6 +21,15 @@ import { TenantConnector } from '../../../src/infra/tenantConnector.js';
  * Mirrors ../businesses/tenantSessionRoutes.test.js's gating pattern and
  * real landlord + real per-tenant-database wiring: skips cleanly unless
  * explicitly opted in with real MySQL admin credentials.
+ *
+ * Wave 8 gap-closure (04-08-PLAN.md, Task 2): `createBusinessWithTenant()`
+ * now runs the accepted operator/migration-runner handoff via
+ * ../../helpers/tenantSchemaProvisioning.js's provisionAndActivateTenantDatabase()
+ * (real schema migration + dgfyBusinessContract verification, then
+ * updateStatus to active/verified) instead of a duplicate registry row +
+ * ad hoc `model.sync({force:true})`. The terminal-identity model is now
+ * resolved through Task 1's TenantConnector.getModels() registry — proving
+ * that wiring end-to-end against a real per-tenant database.
  */
 const RUN_INTEGRATION = process.env.RUN_TENANT_SESSION_FLOWS_INTEGRATION === 'true';
 
@@ -76,18 +84,17 @@ describeIfIntegration('Tenant session success flows (real MySQL landlord + tenan
     let accountStaffAssignmentRepository;
     let app;
 
-    async function provisionTenantDatabase() {
-        const databaseName = isolatedDbName('dgfy_business');
-        await withAdminConnection(async (adminSequelize) => {
-            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\``);
-        });
-        const connection = tenantConnector.getConnection(databaseName);
-        const assignmentModel = defineAccountStaffAssignmentModel(connection);
-        const terminalModel = defineTerminalIdentityModel(connection);
-        await assignmentModel.sync({ force: true });
-        await terminalModel.sync({ force: true });
-        provisionedTenantDbNames.push(databaseName);
-        return { databaseName, terminalModel };
+    /**
+     * Wave 8 gap-closure (04-08-PLAN.md, Task 2): resolves the
+     * `terminalModel` through Task 1's TenantConnector.getModels() tenant
+     * model definition registry — not a standalone
+     * `defineTerminalIdentityModel(connection)` call — proving that
+     * registry is genuinely reachable and usable against a real per-tenant
+     * database, not just definable in isolation.
+     * @param {string} databaseName
+     */
+    function resolveTerminalModel(databaseName) {
+        return tenantConnector.getModels(databaseName).TerminalIdentity;
     }
 
     beforeAll(async () => {
@@ -165,6 +172,15 @@ describeIfIntegration('Tenant session success flows (real MySQL landlord + tenan
         return { token: response.body.data.token, accountId: response.body.data.account.id, email };
     }
 
+    /**
+     * Wave 8 gap-closure (04-08-PLAN.md, Task 2): the tenant registry row
+     * already exists (status: 'provisioning') from POST /businesses's own
+     * findOrCreateForBusiness() call. This runs the accepted operator/
+     * migration-runner handoff (real schema migration + contract
+     * verification, then updateStatus) — see
+     * ../../helpers/tenantSchemaProvisioning.js — instead of creating a
+     * second, duplicate registry row.
+     */
     async function createBusinessWithTenant(ownerToken, handle) {
         const createResponse = await request(app)
             .post('/businesses')
@@ -172,16 +188,43 @@ describeIfIntegration('Tenant session success flows (real MySQL landlord + tenan
             .send({ legal_name: 'Acme Inc.', display_name: 'Acme Store', business_handle: handle });
         const businessId = createResponse.body.data.business.id;
 
-        const { databaseName, terminalModel } = await provisionTenantDatabase();
-        await businessDatabaseRegistryRepository.create({
+        const databaseName = await provisionAndActivateTenantDatabase({
+            businessDatabaseRegistryRepository,
+            tenantConnector,
+            withAdminConnection,
             businessId,
-            stableOpaqueSuffix: databaseName.replace('dgfy_business_it_', ''),
-            databaseName,
-            status: 'active'
+            provisionedTenantDbNames
         });
+        const terminalModel = resolveTerminalModel(databaseName);
 
         return { businessId, databaseName, terminalModel };
     }
+
+    /**
+     * Creates a business via HTTP but deliberately does NOT run the
+     * operator/migration-runner handoff — the registry row stays
+     * `provisioning` (Wave 8 gap-closure, 04-08-PLAN.md, Task 2).
+     */
+    async function createBusinessStillProvisioning(ownerToken, handle) {
+        const createResponse = await request(app)
+            .post('/businesses')
+            .set('Authorization', `Bearer ${ownerToken}`)
+            .send({ legal_name: 'Acme Inc.', display_name: 'Acme Store', business_handle: handle });
+        return createResponse.body.data.business.id;
+    }
+
+    describe('Wave 8 (04-08-PLAN.md, Task 2): Pre-Handoff Fail-Closed Behavior', () => {
+        it('an owner CANNOT activate a session while the tenant database is still provisioning (HTTP 503) — closes the owner-bypass gap', async () => {
+            const { token } = await registerAndGetToken();
+            const businessId = await createBusinessStillProvisioning(token, 'pre-handoff-owner');
+
+            const response = await request(app)
+                .post(`/businesses/${businessId}/activate-session`)
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.status).toBe(503);
+        });
+    });
 
     describe('Tenant Session Creation (D-04 Enforcement)', () => {
         it('an owner (no assignment requirement) activates a session with HTTP 200 + context', async () => {

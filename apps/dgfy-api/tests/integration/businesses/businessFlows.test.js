@@ -7,11 +7,10 @@ import defineAccountModel from '../../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../../src/models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../../../src/models/Landlord/BusinessDatabaseRegistry.js';
-import defineStaffAccountModel from '../../../src/models/Tenant/StaffAccount.js';
-import defineStaffInvitationModel from '../../../src/models/Tenant/StaffInvitation.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../../src/modules/businesses/index.js';
 import { TenantConnector } from '../../../src/infra/tenantConnector.js';
+import { provisionAndActivateTenantDatabase } from '../../helpers/tenantSchemaProvisioning.js';
 
 /**
  * Wave 5 (04-05-PLAN.md, Task 4) — comprehensive business success-flow
@@ -24,6 +23,15 @@ import { TenantConnector } from '../../../src/infra/tenantConnector.js';
  * through a real tenant database, so `createBusiness()` below provisions +
  * marks active/verified a real per-business tenant database (mirrors
  * ../tenancy/tenantSessionFlows.test.js's createBusinessWithTenant()).
+ *
+ * Wave 8 gap-closure (04-08-PLAN.md, Task 2): `provisionTenantForBusiness()`
+ * now uses ../../helpers/tenantSchemaProvisioning.js's
+ * provisionAndActivateTenantDatabase() — the accepted operator/migration-
+ * runner handoff test double — instead of an ad hoc
+ * `model.sync({force:true})` against a SECOND, duplicate registry row.
+ * POST /businesses only ever returns `provisioning` registry metadata; the
+ * handoff (real migration application + verification, then updateStatus())
+ * is what marks a business's tenant database active/verified.
  */
 const RUN_INTEGRATION = process.env.RUN_BUSINESS_FLOWS_INTEGRATION === 'true';
 
@@ -149,27 +157,20 @@ describeIfIntegration('Business success flows (real MySQL): creation, switching,
     }
 
     /**
-     * Wave 7 gap-closure (04-07-PLAN.md): provisions + marks active/verified
-     * a real, disposable per-business tenant database so staff onboarding
-     * (invitation/direct-add) persists successfully.
+     * Wave 8 gap-closure (04-08-PLAN.md, Task 2): runs the accepted
+     * operator/migration-runner handoff (real schema migration + contract
+     * verification, then updateStatus) against the tenant database
+     * `database_name` POST /businesses already registered as `provisioning`
+     * — see ../../helpers/tenantSchemaProvisioning.js.
      */
     async function provisionTenantForBusiness(businessId) {
-        const tenantDbName = `dgfy_business_bf_it_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
-        await withAdminConnection(async (adminSequelize) => {
-            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${tenantDbName}\``);
-        });
-        provisionedTenantDbNames.push(tenantDbName);
-        const tenantConnection = tenantConnector.getConnection(tenantDbName);
-        await defineStaffAccountModel(tenantConnection).sync({ force: true });
-        await defineStaffInvitationModel(tenantConnection).sync({ force: true });
-        await businessDatabaseRegistryRepository.create({
+        return provisionAndActivateTenantDatabase({
+            businessDatabaseRegistryRepository,
+            tenantConnector,
+            withAdminConnection,
             businessId,
-            stableOpaqueSuffix: tenantDbName.replace('dgfy_business_', ''),
-            databaseName: tenantDbName,
-            status: 'active'
+            provisionedTenantDbNames
         });
-        await businessDatabaseRegistryRepository.updateStatus({ businessId, status: 'active', verifiedAt: new Date() });
-        return tenantDbName;
     }
 
     async function createBusiness(token, overrides = {}) {
@@ -197,6 +198,25 @@ describeIfIntegration('Business success flows (real MySQL): creation, switching,
             expect(response.status).toBe(201);
             expect(response.body.data.membership.role).toBe('owner');
             expect(response.body.data.membership.account_id).toBe(accountId);
+        });
+
+        it('Wave 8 (04-08-PLAN.md, Task 2): returns safe provisioning registry metadata — the request path does not itself create/apply the tenant schema', async () => {
+            const { token } = await registerAndGetToken();
+
+            const response = await request(app)
+                .post('/businesses')
+                .set('Authorization', `Bearer ${token}`)
+                .send({ legal_name: 'Acme Inc.', display_name: 'Acme Store', business_handle: `provisioning-${crypto.randomUUID().slice(0, 8)}` });
+
+            expect(response.status).toBe(201);
+            expect(response.body.data.tenant_registry).toMatchObject({
+                status: 'provisioning',
+                verified_at: null
+            });
+            expect(response.body.data.tenant_registry.database_name).toEqual(expect.stringMatching(/^dgfy_business_/));
+            // Never leaks a DB host/user/password/DSN (T-04-06-02).
+            expect(response.body.data.tenant_registry).not.toHaveProperty('host');
+            expect(response.body.data.tenant_registry).not.toHaveProperty('password');
         });
 
         it('re-reads the business and verifies all fields persisted', async () => {
@@ -255,6 +275,25 @@ describeIfIntegration('Business success flows (real MySQL): creation, switching,
 
             expect(loginResponse.body.data.businesses).toHaveLength(2);
             expect(loginResponse.body.data.active_business_id).toBeUndefined();
+        });
+    });
+
+    describe('Wave 8 (04-08-PLAN.md, Task 2): Pre-Handoff Fail-Closed Behavior', () => {
+        it('staff direct-add before the operator/migration-runner handoff fails closed with HTTP 503 and creates no tenant-local row', async () => {
+            const { token } = await registerAndGetToken();
+            const businessId = await createBusiness(token);
+            // Deliberately NOT calling provisionTenantForBusiness(businessId) —
+            // the registry row exists (status: 'provisioning') but no real
+            // dgfy_business_* schema has been created/applied yet.
+
+            const response = await request(app)
+                .post(`/businesses/${businessId}/staff`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ mode: 'direct', email: 'too-early@example.com', name: 'Too Early' });
+
+            expect(response.status).toBe(503);
+            expect(response.body.error.details.error_code).toBe('TENANT_DATABASE_UNAVAILABLE');
+            expect(response.body.error.details.reason).toBe('provisioning');
         });
     });
 

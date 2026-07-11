@@ -7,10 +7,10 @@ import defineAccountModel from '../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../src/models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../../src/models/Landlord/BusinessDatabaseRegistry.js';
-import defineAccountStaffAssignmentModel from '../../src/models/Tenant/AccountStaffAssignment.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../src/modules/businesses/index.js';
 import { TenantConnector } from '../../src/infra/tenantConnector.js';
+import { provisionAndActivateTenantDatabase } from '../helpers/tenantSchemaProvisioning.js';
 
 /**
  * Wave 5 (04-05-PLAN.md, Task 6) — Phase 4 full end-to-end user journeys,
@@ -97,18 +97,6 @@ describeIfIntegration('Phase 4 full end-to-end user journeys (real MySQL landlor
     let accountStaffAssignmentRepository;
     let app;
 
-    async function provisionTenantDatabase() {
-        const databaseName = isolatedDbName('dgfy_business');
-        await withAdminConnection(async (adminSequelize) => {
-            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\``);
-        });
-        const connection = tenantConnector.getConnection(databaseName);
-        const model = defineAccountStaffAssignmentModel(connection);
-        await model.sync({ force: true });
-        provisionedTenantDbNames.push(databaseName);
-        return databaseName;
-    }
-
     beforeAll(async () => {
         await withAdminConnection(async (adminSequelize) => {
             await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${landlordDbName}\``);
@@ -186,27 +174,27 @@ describeIfIntegration('Phase 4 full end-to-end user journeys (real MySQL landlor
         return { token: response.body.data.token, accountId: response.body.data.account.id, email };
     }
 
+    /**
+     * Wave 8 gap-closure (04-08-PLAN.md, Task 2): a business created via
+     * POST /businesses already has a `provisioning` registry row (real
+     * `database_name`, no schema yet). This runs the accepted operator/
+     * migration-runner handoff — real schema migration application +
+     * dgfyBusinessContract verification, then updateStatus to
+     * active/verified — against that EXACT database_name instead of
+     * creating a second, duplicate registry row pointing at an
+     * independently-generated name. tenantSessionUseCases.js (Journeys
+     * 1/3/4) and locationRepository.js/staffOnboardingRepository.js
+     * (Journey 2) both now require status='active' AND verified_at
+     * populated (04-06-SUMMARY.md's documented "active/verified" meaning).
+     */
     async function provisionTenantForBusiness(businessId) {
-        const databaseName = await provisionTenantDatabase();
-        await businessDatabaseRegistryRepository.create({
+        return provisionAndActivateTenantDatabase({
+            businessDatabaseRegistryRepository,
+            tenantConnector,
+            withAdminConnection,
             businessId,
-            stableOpaqueSuffix: databaseName.replace('dgfy_business_it_', ''),
-            databaseName,
-            status: 'active'
+            provisionedTenantDbNames
         });
-        // Wave 7 gap-closure (04-07-PLAN.md): location/staff-onboarding
-        // persistence requires the registry entry to be "active/verified"
-        // (status='active' AND verified_at populated — see
-        // 04-06-SUMMARY.md/locationRepository.js's doc comments), not just
-        // status='active'. tenantSessionUseCases.js's own activate-session
-        // check (Journeys 1/3/4) doesn't look at verified_at, but Journey 2's
-        // location/staff-onboarding calls now do.
-        await businessDatabaseRegistryRepository.updateStatus({
-            businessId,
-            status: 'active',
-            verifiedAt: new Date()
-        });
-        return databaseName;
     }
 
     describe('Journey 1: Business Owner Registration to Tenant Session', () => {
@@ -236,6 +224,24 @@ describeIfIntegration('Phase 4 full end-to-end user journeys (real MySQL landlor
             expect(createBusinessResponse.status).toBe(201);
             expect(createBusinessResponse.body.data.membership.role).toBe('owner');
             const businessId = createBusinessResponse.body.data.business.id;
+
+            // Wave 8 gap-closure (04-08-PLAN.md, Task 2): create-business
+            // returns safe `provisioning` registry metadata only — it does
+            // NOT itself create/apply the tenant schema.
+            expect(createBusinessResponse.body.data.tenant_registry).toMatchObject({
+                status: 'provisioning',
+                verified_at: null
+            });
+
+            // Wave 8 (04-08-PLAN.md, Task 2): activating a session BEFORE
+            // the operator/migration-runner handoff fails closed (503) —
+            // even for the owner, who otherwise bypasses the tenant
+            // assignment check.
+            const preHandoffActivate = await request(app)
+                .post(`/businesses/${businessId}/activate-session`)
+                .set('Authorization', `Bearer ${token}`);
+            expect(preHandoffActivate.status).toBe(503);
+
             const databaseName = await provisionTenantForBusiness(businessId);
 
             // Step 4: login again — session auto-bound (single business, D-05).
@@ -269,6 +275,25 @@ describeIfIntegration('Phase 4 full end-to-end user journeys (real MySQL landlor
                 .set('Authorization', `Bearer ${ownerToken}`)
                 .send({ legal_name: 'Journey2 Legal', display_name: 'Journey2 Store', business_handle: 'test-business-2' });
             const businessId = createBusinessResponse.body.data.business.id;
+
+            // Wave 8 gap-closure (04-08-PLAN.md, Task 2): location creation
+            // and staff invitation BOTH fail closed (503) before the
+            // operator/migration-runner handoff — no tenant-local row is
+            // ever written for either attempt.
+            const preHandoffLocation = await request(app)
+                .post(`/businesses/${businessId}/locations`)
+                .set('Authorization', `Bearer ${ownerToken}`)
+                .send({ name: 'Too Early Branch', address_line: '1 Too Early St' });
+            expect(preHandoffLocation.status).toBe(503);
+            expect(preHandoffLocation.body.error.details.error_code).toBe('TENANT_DATABASE_UNAVAILABLE');
+
+            const preHandoffInvite = await request(app)
+                .post(`/businesses/${businessId}/staff`)
+                .set('Authorization', `Bearer ${ownerToken}`)
+                .send({ email: 'too-early2@phase4test.com', name: 'Too Early' });
+            expect(preHandoffInvite.status).toBe(503);
+            expect(preHandoffInvite.body.error.details.error_code).toBe('TENANT_DATABASE_UNAVAILABLE');
+
             const databaseName = await provisionTenantForBusiness(businessId);
 
             // Step 2: owner sends an invitation — HTTP 202.

@@ -7,11 +7,10 @@ import defineAccountModel from '../../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../../src/models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../../../src/models/Landlord/BusinessDatabaseRegistry.js';
-import defineStaffAccountModel from '../../../src/models/Tenant/StaffAccount.js';
-import defineStaffInvitationModel from '../../../src/models/Tenant/StaffInvitation.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../../src/modules/businesses/index.js';
 import { TenantConnector } from '../../../src/infra/tenantConnector.js';
+import { provisionAndActivateTenantDatabase } from '../../helpers/tenantSchemaProvisioning.js';
 
 /**
  * Wave 5 (04-05-PLAN.md, Task 4) — business validation, access-control, and
@@ -25,6 +24,11 @@ import { TenantConnector } from '../../../src/infra/tenantConnector.js';
  * database (mirrors ../tenancy/tenantSessionFlows.test.js's
  * `createBusinessWithTenant()` helper) before every test in this file
  * exercises a staff-onboarding endpoint.
+ *
+ * Wave 8 gap-closure (04-08-PLAN.md, Task 2): `createBusiness()` now runs
+ * the accepted operator/migration-runner handoff via
+ * ../../helpers/tenantSchemaProvisioning.js's provisionAndActivateTenantDatabase()
+ * instead of creating a duplicate registry row.
  */
 const RUN_INTEGRATION = process.env.RUN_BUSINESS_VALIDATION_INTEGRATION === 'true';
 
@@ -150,10 +154,10 @@ describeIfIntegration('Business validation, access control, and replay (real MyS
     }
 
     /**
-     * Wave 7 gap-closure (04-07-PLAN.md): provisions + marks active/verified
-     * a real, disposable per-business tenant database so staff onboarding
-     * (invitation/direct-add) persists successfully — mirrors
-     * ../tenancy/tenantSessionFlows.test.js's createBusinessWithTenant().
+     * Wave 8 gap-closure (04-08-PLAN.md, Task 2): creates a business via HTTP
+     * (registry row auto-created as `provisioning`), then runs the accepted
+     * operator/migration-runner handoff — see
+     * ../../helpers/tenantSchemaProvisioning.js.
      */
     async function createBusiness(token, overrides = {}) {
         const response = await request(app)
@@ -167,27 +171,33 @@ describeIfIntegration('Business validation, access control, and replay (real MyS
             });
         const businessId = response.body.data.business.id;
 
-        const tenantDbName = `dgfy_business_bv_it_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
-        await withAdminConnection(async (adminSequelize) => {
-            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${tenantDbName}\``);
-        });
-        provisionedTenantDbNames.push(tenantDbName);
-        const tenantConnection = tenantConnector.getConnection(tenantDbName);
-        await defineStaffAccountModel(tenantConnection).sync({ force: true });
-        await defineStaffInvitationModel(tenantConnection).sync({ force: true });
-        await businessDatabaseRegistryRepository.create({
+        await provisionAndActivateTenantDatabase({
+            businessDatabaseRegistryRepository,
+            tenantConnector,
+            withAdminConnection,
             businessId,
-            stableOpaqueSuffix: tenantDbName.replace('dgfy_business_', ''),
-            databaseName: tenantDbName,
-            status: 'active'
-        });
-        await businessDatabaseRegistryRepository.updateStatus({
-            businessId,
-            status: 'active',
-            verifiedAt: new Date()
+            provisionedTenantDbNames
         });
 
         return businessId;
+    }
+
+    /**
+     * Creates a business via HTTP but deliberately does NOT run the
+     * operator/migration-runner handoff — the registry row stays
+     * `provisioning` (Wave 8 gap-closure, 04-08-PLAN.md, Task 2).
+     */
+    async function createBusinessStillProvisioning(token, overrides = {}) {
+        const response = await request(app)
+            .post('/businesses')
+            .set('Authorization', `Bearer ${token}`)
+            .send({
+                legal_name: 'Acme Inc.',
+                display_name: 'Acme Store',
+                business_handle: `acme-provisioning-${crypto.randomUUID().slice(0, 8)}`,
+                ...overrides
+            });
+        return response.body.data.business.id;
     }
 
     describe('Business Creation Validation', () => {
@@ -276,6 +286,20 @@ describeIfIntegration('Business validation, access control, and replay (real MyS
                 .send({ email: 'nope@example.com', name: 'Nope' });
 
             expect(response.status).toBe(403);
+        });
+
+        it('Wave 8 (04-08-PLAN.md, Task 2): rejects invitation-based onboarding with HTTP 503 while the tenant database is still provisioning', async () => {
+            const { token } = await registerAndGetToken();
+            const businessId = await createBusinessStillProvisioning(token);
+
+            const response = await request(app)
+                .post(`/businesses/${businessId}/staff`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ email: 'pre-handoff@example.com', name: 'Pre Handoff' });
+
+            expect(response.status).toBe(503);
+            expect(response.body.error.details.error_code).toBe('TENANT_DATABASE_UNAVAILABLE');
+            expect(response.body.error.details.reason).toBe('provisioning');
         });
     });
 

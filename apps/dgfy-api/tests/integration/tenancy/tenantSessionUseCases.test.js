@@ -35,12 +35,22 @@ const makeStaffMembership = (overrides = {}) => ({
     ...overrides
 });
 
+// Wave 8 gap-closure (04-08-PLAN.md, Task 2): resolveTenantSession() now
+// requires status='active' AND verified_at populated (04-06-SUMMARY.md's
+// documented "active/verified" meaning), mirroring locationRepository.js's/
+// staffOnboardingRepository.js's identical gate — closing the owner-bypass
+// gap where an owner could activate a session against a still-`provisioning`
+// tenant database. verified_at defaults to a real Date so every
+// pre-existing "success" fixture stays active/verified by default;
+// individual tests below override status/verified_at to exercise the
+// still-provisioning/unverified rejection paths.
 const makeRegistryEntry = (overrides = {}) => ({
     id: 1,
     business_id: 'biz-1',
     stable_opaque_suffix: 'abc123',
     database_name: 'dgfy_business_abc123',
     status: 'active',
+    verified_at: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides
 });
 
@@ -204,6 +214,49 @@ describe('buildCreateTenantSessionUseCase (API-04 enforcement)', () => {
         expect(result.error.details.error_code).toBe('NO_TENANT_DATABASE');
         // Assignment lookup never happens without a resolved tenant database.
         expect(accountStaffAssignmentRepository.findActiveAssignment).not.toHaveBeenCalled();
+    });
+
+    it('Wave 8 (04-08-PLAN.md, Task 2): rejects with HTTP 503 for an OWNER when the registry entry is still provisioning (no verified_at)', async () => {
+        const businessRepository = baseBusinessRepository({
+            getMembership: jest.fn().mockResolvedValue(makeOwnerMembership())
+        });
+        const businessDatabaseRegistry = baseBusinessDatabaseRegistry({
+            findByBusinessId: jest.fn().mockResolvedValue(makeRegistryEntry({ status: 'provisioning', verified_at: null }))
+        });
+        const accountStaffAssignmentRepository = baseAccountStaffAssignmentRepository();
+
+        const useCase = buildCreateTenantSessionUseCase({
+            businessRepository,
+            businessDatabaseRegistry,
+            accountStaffAssignmentRepository
+        });
+
+        const result = await useCase({ businessId: 'biz-1', accountId: 'acct-owner' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(503);
+        // Owner bypass never even reaches the assignment lookup.
+        expect(accountStaffAssignmentRepository.findActiveAssignment).not.toHaveBeenCalled();
+    });
+
+    it('Wave 8 (04-08-PLAN.md, Task 2): rejects with HTTP 503 when status is active but verified_at is not yet populated', async () => {
+        const businessRepository = baseBusinessRepository({
+            getMembership: jest.fn().mockResolvedValue(makeOwnerMembership())
+        });
+        const businessDatabaseRegistry = baseBusinessDatabaseRegistry({
+            findByBusinessId: jest.fn().mockResolvedValue(makeRegistryEntry({ status: 'active', verified_at: null }))
+        });
+
+        const useCase = buildCreateTenantSessionUseCase({
+            businessRepository,
+            businessDatabaseRegistry,
+            accountStaffAssignmentRepository: baseAccountStaffAssignmentRepository()
+        });
+
+        const result = await useCase({ businessId: 'biz-1', accountId: 'acct-owner' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(503);
     });
 
     it('rejects with NO_TENANT_ASSIGNMENT (HTTP 403) for a staff member with membership but no assignment', async () => {
