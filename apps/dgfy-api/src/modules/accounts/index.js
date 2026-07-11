@@ -41,16 +41,25 @@ import {
  * the caller — Wave 2's routes/index.js or app.js — per Dependency
  * Inversion. This is the single place those concrete pieces are composed.
  *
- * @param {{accountModel, hashPassword: Function, bcrypt: {compare: Function}}} deps
+ * `businessRepository` (Wave 3, 04-03-PLAN.md Task 8) is an OPTIONAL,
+ * already-constructed BusinessRepository instance — not imported directly
+ * from ../businesses/repositories/businessRepository.js — so the accounts
+ * module never depends on the businesses module's internals (Dependency
+ * Inversion), and so the caller (routes/index.js) can share the SAME
+ * repository instance the /businesses routes use, rather than this module
+ * constructing its own divergent one. When omitted, loginAccount's
+ * `businesses` stays `[]` (Wave 1's original behavior).
+ *
+ * @param {{accountModel, hashPassword: Function, bcrypt: {compare: Function}, businessRepository?: Object}} deps
  */
-export function buildAccountsModule({ accountModel, hashPassword, bcrypt }) {
+export function buildAccountsModule({ accountModel, hashPassword, bcrypt, businessRepository }) {
     const repository = new AccountRepository(accountModel);
 
     return {
         repository,
         useCases: {
             registerAccount: buildRegisterAccountUseCase({ repository, hashPassword }),
-            loginAccount: buildLoginAccountUseCase({ repository, bcrypt }),
+            loginAccount: buildLoginAccountUseCase({ repository, bcrypt, businessRepository }),
             updateAccountProfile: buildUpdateAccountProfileUseCase({ repository, hashPassword }),
             getAccount: buildGetAccountUseCase({ repository }),
             getAccountForAuthorization: buildGetAccountForAuthorizationUseCase({ repository })

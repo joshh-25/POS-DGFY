@@ -159,13 +159,16 @@ export function buildRegisterAccountUseCase({ repository, accountEntity = Accoun
 
 /**
  * Login use case (API-01). Validates credentials and returns a session
- * token plus the account's business list. Wave 1 has no membership concept
- * yet, so `businesses` is always an empty array here — Wave 3 populates it
- * once BusinessMembership exists (per D-05: auto-bind single business,
- * explicit selection for multiple).
- * @param {{repository, bcrypt}} deps
+ * token plus the account's business list (D-05). When a businessRepository
+ * is injected (Wave 3, 04-03-PLAN.md Task 8), the real membership list is
+ * fetched: 0 businesses -> unbound session with an empty list; exactly 1 ->
+ * auto-bind (active_business_id set); 2+ -> unbound session with the full
+ * list for the client to choose from. When businessRepository is omitted
+ * (e.g. an older caller), businesses stays [] — the original Wave 1
+ * behavior, preserved for backward compatibility.
+ * @param {{repository, bcrypt, businessRepository?}} deps
  */
-export function buildLoginAccountUseCase({ repository, bcrypt }) {
+export function buildLoginAccountUseCase({ repository, bcrypt, businessRepository }) {
     return async (input = {}) => {
         const email = normalizeEmail(input.email);
         const password = String(input.password || '');
@@ -199,12 +202,25 @@ export function buildLoginAccountUseCase({ repository, bcrypt }) {
         await repository.update(account.id, { last_login_at: new Date() });
         const refreshed = (await repository.findById(account.id)) || account;
 
-        return ApplicationResult.success({
+        const businesses = typeof businessRepository?.findAccountBusinesses === 'function'
+            ? await businessRepository.findAccountBusinesses(refreshed.id)
+            : [];
+
+        const response = {
             account: sanitizeAccount(refreshed),
             token: generateAccountSessionToken(refreshed),
             expiresIn: SESSION_TOKEN_EXPIRY_SECONDS,
-            businesses: [] // Wave 3 populates real memberships (D-05)
-        });
+            businesses
+        };
+
+        // D-05: auto-bind when the account belongs to exactly one business;
+        // otherwise leave the session unbound (0 -> nothing to bind, 2+ ->
+        // client must choose).
+        if (businesses.length === 1) {
+            response.active_business_id = businesses[0].id;
+        }
+
+        return ApplicationResult.success(response);
     };
 }
 
