@@ -13,6 +13,14 @@
 export { BusinessRepository, buildBusinessRepository } from './repositories/businessRepository.js';
 export { LocationRepository, buildLocationRepository } from './repositories/locationRepository.js';
 export {
+    BusinessDatabaseRegistryRepository,
+    buildBusinessDatabaseRegistryRepository
+} from './repositories/businessDatabaseRegistryRepository.js';
+export {
+    AccountStaffAssignmentRepository,
+    buildAccountStaffAssignmentRepository
+} from './repositories/accountStaffAssignmentRepository.js';
+export {
     buildCreateBusinessUseCase,
     buildListUserBusinessesUseCase,
     buildGetBusinessUseCase,
@@ -30,13 +38,21 @@ export {
     buildSetPrimaryLocationUseCase,
     buildDeleteLocationUseCase
 } from './usecases/locationUseCases.js';
+export {
+    buildCreateTenantSessionUseCase,
+    buildActivateBusinessSessionUseCase
+} from './usecases/tenantSessionUseCases.js';
 export { buildBusinessController } from './controllers/businessController.js';
 export { buildLocationController } from './controllers/locationController.js';
+export { buildTenantSessionController } from './controllers/tenantSessionController.js';
 export { createBusinessRoutes, createInvitationRoutes } from './routes.js';
 export { sendEmail } from './infra/sendInvitationEmail.js';
+export { TenantConnector, buildTenantConnector } from '../../infra/tenantConnector.js';
 
 import { BusinessRepository } from './repositories/businessRepository.js';
 import { LocationRepository } from './repositories/locationRepository.js';
+import { BusinessDatabaseRegistryRepository } from './repositories/businessDatabaseRegistryRepository.js';
+import { AccountStaffAssignmentRepository } from './repositories/accountStaffAssignmentRepository.js';
 import {
     buildCreateBusinessUseCase,
     buildListUserBusinessesUseCase,
@@ -55,7 +71,12 @@ import {
     buildSetPrimaryLocationUseCase,
     buildDeleteLocationUseCase
 } from './usecases/locationUseCases.js';
+import {
+    buildCreateTenantSessionUseCase,
+    buildActivateBusinessSessionUseCase
+} from './usecases/tenantSessionUseCases.js';
 import { sendEmail } from './infra/sendInvitationEmail.js';
+import { TenantConnector } from '../../infra/tenantConnector.js';
 
 /**
  * Builds the fully wired businesses module: one BusinessRepository instance
@@ -79,21 +100,41 @@ import { sendEmail } from './infra/sendInvitationEmail.js';
  * SAME BusinessRepository instance for membership/owner-role access
  * control checks (membership lives in the landlord dgfy_core database).
  *
- * @param {{businessModel, businessMembershipModel, sequelize?, sendEmail?: Function, locationModel?: Object}} deps
+ * Wave 4 (D-14, API-04) additions: `businessDatabaseRegistryModel` is
+ * OPTIONAL (unlike businessModel/businessMembershipModel) so this stays
+ * backward compatible with every pre-existing caller/test that constructs
+ * this module without it (businessRepository.test.js, locationRoutes.test.js,
+ * etc.) — when omitted, `activateBusinessSession` gracefully returns a 503
+ * ("Tenant database registry is not configured") instead of throwing.
+ * `tenantConnector` defaults to a fresh TenantConnector instance (reusing
+ * this service's own DB connection env vars) but can be overridden (e.g. a
+ * test double, or a shared singleton from routes/index.js).
+ *
+ * @param {{businessModel, businessMembershipModel, sequelize?, sendEmail?: Function, locationModel?: Object, businessDatabaseRegistryModel?: Object, tenantConnector?: Object}} deps
  */
 export function buildBusinessesModule({
     businessModel,
     businessMembershipModel,
     sequelize,
     sendEmail: sendEmailOverride,
-    locationModel
+    locationModel,
+    businessDatabaseRegistryModel,
+    tenantConnector: tenantConnectorOverride
 } = {}) {
     const repository = new BusinessRepository({ businessModel, businessMembershipModel, sequelize });
     const locationRepository = new LocationRepository({ locationModel });
+    const businessDatabaseRegistryRepository = businessDatabaseRegistryModel
+        ? new BusinessDatabaseRegistryRepository({ businessDatabaseRegistryModel })
+        : null;
+    const tenantConnector = tenantConnectorOverride || new TenantConnector();
+    const accountStaffAssignmentRepository = new AccountStaffAssignmentRepository({ tenantConnector });
 
     return {
         repository,
         locationRepository,
+        businessDatabaseRegistryRepository,
+        accountStaffAssignmentRepository,
+        tenantConnector,
         useCases: {
             createBusiness: buildCreateBusinessUseCase({ repository }),
             listUserBusinesses: buildListUserBusinessesUseCase({ repository }),
@@ -119,7 +160,21 @@ export function buildBusinessesModule({
                 repository: locationRepository,
                 businessRepository: repository
             }),
-            deleteLocation: buildDeleteLocationUseCase({ repository: locationRepository, businessRepository: repository })
+            deleteLocation: buildDeleteLocationUseCase({ repository: locationRepository, businessRepository: repository }),
+
+            // Wave 4 (D-14, API-04): tenant session creation/activation.
+            // businessDatabaseRegistry may be null (see doc comment above);
+            // the use case itself handles that gracefully (503).
+            createTenantSession: buildCreateTenantSessionUseCase({
+                businessRepository: repository,
+                businessDatabaseRegistry: businessDatabaseRegistryRepository,
+                accountStaffAssignmentRepository
+            }),
+            activateBusinessSession: buildActivateBusinessSessionUseCase({
+                businessRepository: repository,
+                businessDatabaseRegistry: businessDatabaseRegistryRepository,
+                accountStaffAssignmentRepository
+            })
         }
     };
 }

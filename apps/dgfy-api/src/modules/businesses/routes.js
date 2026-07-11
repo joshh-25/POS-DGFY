@@ -1,6 +1,7 @@
 import express from 'express';
 import { buildBusinessController } from './controllers/businessController.js';
 import { buildLocationController } from './controllers/locationController.js';
+import { buildTenantSessionController } from './controllers/tenantSessionController.js';
 
 /**
  * Wires Express routing for the businesses module (Interface Adapter),
@@ -25,6 +26,7 @@ export function createBusinessRoutes(useCases = {}, { authenticateAccount } = {}
     const router = express.Router();
     const controller = buildBusinessController(useCases);
     const locationController = buildLocationController(useCases);
+    const tenantSessionController = buildTenantSessionController(useCases);
 
     router.post('/', authenticateAccount, (req, res, next) => controller.createBusiness(req, res).catch(next));
     router.get('/', authenticateAccount, (req, res, next) => controller.listUserBusinesses(req, res).catch(next));
@@ -69,6 +71,16 @@ export function createBusinessRoutes(useCases = {}, { authenticateAccount } = {}
         '/:businessId/locations/:locationId',
         authenticateAccount,
         (req, res, next) => locationController.deleteLocation(req, res).catch(next)
+    );
+
+    // Wave 4 (D-14, API-04): mid-session business/tenant activation —
+    // switches active tenant context without re-login, using the same
+    // session token. Membership + tenant-local assignment enforcement
+    // happens inside tenantSessionUseCases.js.
+    router.post(
+        '/:id/activate-session',
+        authenticateAccount,
+        (req, res, next) => tenantSessionController.activateSession(req, res).catch(next)
     );
 
     return router;
