@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
 status: executing
-stopped_at: Completed 04-05-PLAN.md (Phase 4 complete)
+stopped_at: Phase 4 verification found gaps (12/15 must-haves) — see 04-VERIFICATION.md
 last_updated: "2026-07-11T13:25:18.267Z"
 last_activity: 2026-07-11
-last_activity_desc: Completed 04-05-PLAN.md — Phase 04 complete
+last_activity_desc: Phase 04 goal-backward verification found gaps — not yet complete
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 3
   total_plans: 22
   completed_plans: 22
-  percent: 57
+  percent: 43
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 ## Current Position
 
-Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — COMPLETE
-Plan: 6 of 6 (04-01, 04-02, 04-03, 04-03.5, 04-04, 04-05 all complete)
-Status: Ready for Phase 5 planning
-Last activity: 2026-07-11 — Completed 04-05-PLAN.md (Wave 5: comprehensive integration/E2E tests + architecture compliance re-verification)
+Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — GAPS FOUND
+Plan: 6 of 6 executed (04-01, 04-02, 04-03, 04-03.5, 04-04, 04-05 all ran), but goal-backward verification found 3 gaps (12/15 must-haves)
+Status: Blocked — run /gsd-plan-phase 04 --gaps to plan gap-closure work
+Last activity: 2026-07-11 — Verification (04-VERIFICATION.md): staff onboarding and location persistence remain in-memory (not durable), no tenant-DB provisioning flow, businesses/entities/businessEntity.js missing
 
-Progress: [██████░░░░] 57%
+Progress: [████░░░░░░] 43%
 
 ## Performance Metrics
 
@@ -174,5 +174,5 @@ Items acknowledged and carried forward from milestone scope control:
 ## Session Continuity
 
 Last session: 2026-07-11T13:25:18.262Z
-Stopped at: Completed 04-05-PLAN.md (Phase 4 complete)
+Stopped at: Phase 4 verification found gaps — see 04-VERIFICATION.md, run /gsd-plan-phase 04 --gaps
 Resume file: None

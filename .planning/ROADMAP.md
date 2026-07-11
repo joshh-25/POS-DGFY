@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Architecture and Migration Runner Contract** - Operators get one explicit migration image contract before any schema or API work depends on it. (completed 2026-07-10)
 - [x] **Phase 2: DGFY Database Foundation** - New landlord and tenant `dgfy_*` schemas exist beside legacy and can be verified repeatably. (completed 2026-07-11)
 - [x] **Phase 3: Old-to-New Migration Proof** - Operators can rehearse and apply legacy-to-DGFY data transformations with retry and verification evidence. (completed 2026-07-11)
-- [x] **Phase 4: Backend Accounts, Businesses, and Tenancy Foundation** - Backend APIs use the stable DGFY schema for the first standalone identity and tenancy scope. (completed 2026-07-11)
+- [ ] **Phase 4: Backend Accounts, Businesses, and Tenancy Foundation** - Backend APIs use the stable DGFY schema for the first standalone identity and tenancy scope. (gaps found 2026-07-11 — see 04-VERIFICATION.md)
 - [ ] **Phase 5: Compatibility and Backend-First Cutover Seam** - Current POS and Storefront behavior remains available through narrow, temporary compatibility seams.
 - [ ] **Phase 6: Release Evidence and Rehearsal Gates** - Release evidence proves architecture, migration, tenant drift, and compatibility checks before cutover planning.
 - [ ] **Phase 7: Cutover Runbook and Deferred Domain Split** - Production cutover remains gated by a rehearsal-backed runbook and later domain plans stay out of v1.
