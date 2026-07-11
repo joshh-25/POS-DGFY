@@ -176,8 +176,9 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps incoming queue and protected sidebar items permission-aware', () => {
-    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || onboardingRestricted || !canViewPos || !navigationShiftReady}");
+    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !navigationShiftReady}");
     expect(terminalWorkspaceSidebarContent).toContain('POS view permission required');
+    expect(terminalWorkspaceSidebarContent).toContain('Available online only');
   });
 
   it('does not render the cashier scroll-zone badge', () => {
