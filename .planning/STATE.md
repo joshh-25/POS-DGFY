@@ -4,15 +4,15 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
-status: executing
-stopped_at: Phase 4 verification found gaps (12/15 must-haves) — see 04-VERIFICATION.md
-last_updated: "2026-07-11T13:25:18.267Z"
+status: ready_to_execute
+stopped_at: Phase 4 gap-closure plans created and verified — execute 04-06 next
+last_updated: "2026-07-11T14:40:00.000Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 04 goal-backward verification found gaps — not yet complete
+last_activity_desc: Phase 04 gap-closure plans 04-06 through 04-08 created, checker-verified, and ready to execute
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 22
+  total_plans: 25
   completed_plans: 22
   percent: 43
 ---
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 ## Current Position
 
-Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — GAPS FOUND
-Plan: 6 of 6 executed (04-01, 04-02, 04-03, 04-03.5, 04-04, 04-05 all ran), but goal-backward verification found 3 gaps (12/15 must-haves)
-Status: Blocked — run /gsd-plan-phase 04 --gaps to plan gap-closure work
-Last activity: 2026-07-11 — Verification (04-VERIFICATION.md): staff onboarding and location persistence remain in-memory (not durable), no tenant-DB provisioning flow, businesses/entities/businessEntity.js missing
+Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — GAP CLOSURE PLANNED
+Plan: 6 of 9 executed (04-01, 04-02, 04-03, 04-03.5, 04-04, 04-05 all ran); 04-06 through 04-08 are pending gap-closure execution
+Status: Ready to execute — run /gsd-execute-phase 04 to start 04-06
+Last activity: 2026-07-11 — Gap-closure planning created checker-verified plans for business entity/tenant registry metadata, durable tenant-backed location/staff persistence, TerminalIdentity wiring, and DB-backed verification refresh
 
 Progress: [████░░░░░░] 43%
 
