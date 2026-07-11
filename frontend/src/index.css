@@ -257,15 +257,16 @@ body {
   border-color: var(--pos-shell-border);
 }
 
-/* iOS Safari zooms focused controls below 16px. Keep this scoped to POS mobile surfaces. */
+/* iOS Safari zooms focused controls below 16px. Tailwind text-size utilities
+   must not override this inside the standalone POS terminal. */
 @media (max-width: 639.98px) {
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
 
-  :is(input, textarea, select) {
-    font-size: 16px;
+  .dgfy-pos-shell :is(input, textarea, select) {
+    font-size: 16px !important;
   }
 }
 

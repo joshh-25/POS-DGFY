@@ -282,6 +282,13 @@ export const updateOnlineOrderStatus = async (posTransactionId, payload = {}) =>
     return response.data?.data;
 };
 
+export const collectCashPickupOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/collect-cash`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 const unsupportedFiscalEndpointError = (operation) => {
     const error = new Error(`${operation} is not available in the current backend runtime.`);
     error.code = 'POS_FISCAL_ENDPOINT_UNAVAILABLE';
@@ -390,6 +397,7 @@ export default {
     fetchPosReportsProfitLoss,
     exportPosReportCsv,
     fetchIncomingOnlineOrders,
+    collectCashPickupOrder,
     updateOnlineOrderStatus,
     fetchFiscalTerminalRegistrations,
     saveFiscalTerminalRegistration,

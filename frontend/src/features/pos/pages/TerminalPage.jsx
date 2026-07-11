@@ -12,6 +12,7 @@ import {
   openTerminalShift,
   switchTerminalShiftLocation,
   recordCashDrawerEvent,
+  collectCashPickupOrder,
   updateOnlineOrderStatus
 } from '../services/posService';
 import {
@@ -488,6 +489,9 @@ export default function TerminalPage() {
     errorMessage: ''
   });
   const [incomingOrderActionState, setIncomingOrderActionState] = useState({});
+  const [cashCollectionOrder, setCashCollectionOrder] = useState(null);
+  const [cashReceivedInput, setCashReceivedInput] = useState('');
+  const [cashCollectionSaving, setCashCollectionSaving] = useState(false);
   const [receiptRequestId, setReceiptRequestId] = useState(null);
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
@@ -3200,6 +3204,32 @@ export default function TerminalPage() {
     }
   };
 
+  const handleOpenCashCollection = (order) => {
+    setCashCollectionOrder(order || null);
+    setCashReceivedInput(order?.total_amount == null ? '' : String(order.total_amount));
+  };
+
+  const handleCollectPickupCash = async () => {
+    const orderId = Number.parseInt(cashCollectionOrder?.pos_transaction_id, 10);
+    const cashReceived = Number(cashReceivedInput);
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    if (!Number.isInteger(orderId) || orderId <= 0 || !Number.isFinite(cashReceived) || cashReceived <= 0 || !terminalId) {
+      toast.error('Enter a valid cash amount and use an active terminal.');
+      return;
+    }
+    setCashCollectionSaving(true);
+    try {
+      await collectCashPickupOrder(orderId, { terminal_id: terminalId, cash_received: cashReceived, idempotency_key: createIdempotencyKey('pos-pickup-cash') });
+      toast.success('Cash payment collected. You can now mark the order as picked up.');
+      setCashCollectionOrder(null);
+      await refreshIncomingOrders({ silent: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to collect cash for pickup order.');
+    } finally {
+      setCashCollectionSaving(false);
+    }
+  };
+
   const handleOpenIncomingOrderReceipt = async (posTransactionId, { printMode = false } = {}) => {
     const normalizedId = Number.parseInt(posTransactionId, 10);
     if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
@@ -3522,6 +3552,28 @@ export default function TerminalPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
       <>
+        <Dialog open={Boolean(cashCollectionOrder)} onOpenChange={(open) => { if (!open && !cashCollectionSaving) setCashCollectionOrder(null); }}>
+          <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-black text-slate-950">Collect Cash</DialogTitle>
+              <DialogDescription className="text-sm leading-6 text-slate-600">Record payment before releasing this pickup order. Change is calculated by the POS.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+                <p className="font-semibold">Order total: PHP {Number(cashCollectionOrder?.total_amount || 0).toFixed(2)}</p>
+                <p>Change: PHP {Math.max(0, Number(cashReceivedInput || 0) - Number(cashCollectionOrder?.total_amount || 0)).toFixed(2)}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pickup-cash-received">Amount received</Label>
+                <Input id="pickup-cash-received" inputMode="decimal" type="number" min="0" step="0.01" value={cashReceivedInput} onChange={(event) => setCashReceivedInput(event.target.value)} disabled={cashCollectionSaving} />
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setCashCollectionOrder(null)} disabled={cashCollectionSaving}>Cancel</Button>
+              <Button type="button" onClick={handleCollectPickupCash} disabled={cashCollectionSaving}>{cashCollectionSaving ? 'Collecting...' : 'Collect Cash'}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <Dialog open={terminalUnlockModalOpen} onOpenChange={(open) => {
           if (submitting) return;
           if (open === false && (terminalUnlockRequired || terminalUnlockMode === 'relock' || cashierResumeUnlock || adminReauthUnlock)) {
@@ -4222,6 +4274,7 @@ export default function TerminalPage() {
           setQueueLocationScopeId={setQueueLocationScopeId}
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+          handleOpenCashCollection={handleOpenCashCollection}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}

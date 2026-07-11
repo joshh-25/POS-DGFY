@@ -282,6 +282,37 @@ const normalizePositiveIntegerList = (raw, maxItems = 200) => {
 
 const createStorefrontPromoId = () => `promo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const PROMO_TIME_24_HOUR_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const formatPromoTime12Hour = (value) => {
+  const normalized = String(value || '').trim();
+  if (!PROMO_TIME_24_HOUR_PATTERN.test(normalized)) return '';
+  const [hours, minutes] = normalized.split(':').map(Number);
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${suffix}`;
+};
+const PROMO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const PROMO_DATE_TIME_PATTERN = /^(\d{4}-\d{2}-\d{2})T(([01]\d|2[0-3]):[0-5]\d)$/;
+const buildPromoDateTimeValue = (date, time) => {
+  const normalizedDate = String(date || '').trim();
+  const normalizedTime = String(time || '').trim();
+  return PROMO_DATE_PATTERN.test(normalizedDate) && PROMO_TIME_24_HOUR_PATTERN.test(normalizedTime)
+    ? `${normalizedDate}T${normalizedTime}`
+    : '';
+};
+const parsePromoDateTimeValue = (value) => {
+  const match = String(value || '').trim().match(PROMO_DATE_TIME_PATTERN);
+  return match ? { date: match[1], time: match[2] } : { date: '', time: '' };
+};
+const formatPromoDateTime12Hour = (value) => {
+  const { date, time } = parsePromoDateTimeValue(value);
+  const timeDisplay = formatPromoTime12Hour(time);
+  if (!date || !timeDisplay) return '';
+  const [year, month, day] = date.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric'
+  }).format(new Date(year, month - 1, day)) + `, ${timeDisplay}`;
+};
 const createBlankStorefrontPromo = () => ({
   id: createStorefrontPromoId(),
   title: '',
@@ -301,6 +332,7 @@ const createBlankStorefrontPromo = () => ({
 });
 const normalizeStorefrontPromoConfig = (raw = {}) => {
   const promo = isPlainObject(raw) ? raw : {};
+  const normalizeDateOnly = (value) => String(value || '').trim().slice(0, 10);
   return {
     id: String(promo.id || promo.promo_id || createStorefrontPromoId()).trim(),
     title: String(promo.title || ''),
@@ -313,8 +345,8 @@ const normalizeStorefrontPromoConfig = (raw = {}) => {
     used_count: promo.used_count == null || promo.used_count === '' ? 0 : Number(promo.used_count),
     valid_time_start: String(promo.valid_time_start || ''),
     valid_time_end: String(promo.valid_time_end || ''),
-    valid_from: String(promo.valid_from || ''),
-    valid_until: String(promo.valid_until || ''),
+    valid_from: normalizeDateOnly(promo.valid_from),
+    valid_until: normalizeDateOnly(promo.valid_until),
     target_item_ids: normalizePositiveIntegerList(promo.target_item_ids),
     active: promo.active === true
   };
@@ -3534,8 +3566,8 @@ function SettingsWorkspace({
         storefrontPromoUsedCount: selectedStorefrontPromo.used_count == null ? '0' : String(selectedStorefrontPromo.used_count),
         storefrontPromoValidTimeStart: String(selectedStorefrontPromo.valid_time_start || ''),
         storefrontPromoValidTimeEnd: String(selectedStorefrontPromo.valid_time_end || ''),
-        storefrontPromoValidFrom: String(selectedStorefrontPromo.valid_from || ''),
-        storefrontPromoValidUntil: String(selectedStorefrontPromo.valid_until || ''),
+        storefrontPromoValidFrom: String(selectedStorefrontPromo.valid_from || '').slice(0, 10),
+        storefrontPromoValidUntil: String(selectedStorefrontPromo.valid_until || '').slice(0, 10),
         storefrontPromoTargetItemIds: normalizePositiveIntegerList(selectedStorefrontPromo.target_item_ids),
         storefrontPromoActive: selectedStorefrontPromo.active === true,
         storefrontFollowEnabled: settingsPayload?.storefront_follow_enabled?.value === true,
@@ -4055,6 +4087,26 @@ function SettingsWorkspace({
       const seenPromoCodes = new Set();
       for (const promo of storefrontPromos) {
         const promoCode = String(promo.promo_code || '').trim().toUpperCase();
+        const invalidTime = [promo.valid_time_start, promo.valid_time_end]
+          .find((value) => String(value || '').trim() && !PROMO_TIME_24_HOUR_PATTERN.test(String(value).trim()));
+        if (invalidTime) {
+          toast.error('Promo times must use the 24-hour HH:mm format, for example 14:30.');
+          return;
+        }
+        const from = buildPromoDateTimeValue(promo.valid_from, promo.valid_time_start);
+        const to = buildPromoDateTimeValue(promo.valid_until, promo.valid_time_end);
+        if ((promo.valid_from || promo.valid_time_start) && !from) {
+          toast.error('Promo From must include both a date and a 24-hour time.');
+          return;
+        }
+        if ((promo.valid_until || promo.valid_time_end) && !to) {
+          toast.error('Promo To must include both a date and a 24-hour time.');
+          return;
+        }
+        if (from && to && from > to) {
+          toast.error('Promo From must be earlier than Promo To.');
+          return;
+        }
         if (!promoCode) continue;
         if (seenPromoCodes.has(promoCode)) {
           toast.error(`Duplicate promo code: ${promoCode}`);
@@ -5762,20 +5814,28 @@ function SettingsWorkspace({
                 <Input value={storefrontForm.storefrontPromoUsedCount} readOnly placeholder="0" />
               </div>
               <div className="space-y-1">
-                <Label className="text-[12px] font-semibold text-slate-600">Start Time</Label>
-                <Input type="time" value={storefrontForm.storefrontPromoValidTimeStart} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeStart: event.target.value }))} />
+                <Label className="text-[12px] font-semibold text-slate-600">From</Label>
+                <Input
+                  type="datetime-local"
+                  value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidFrom, storefrontForm.storefrontPromoValidTimeStart)}
+                  onChange={(event) => {
+                    const { date, time } = parsePromoDateTimeValue(event.target.value);
+                    setStorefrontForm((current) => ({ ...current, storefrontPromoValidFrom: date, storefrontPromoValidTimeStart: time }));
+                  }}
+                />
+                <p className="text-[11px] text-slate-500">{formatPromoDateTime12Hour(buildPromoDateTimeValue(storefrontForm.storefrontPromoValidFrom, storefrontForm.storefrontPromoValidTimeStart)) || 'Select date and 24-hour time.'}</p>
               </div>
               <div className="space-y-1">
-                <Label className="text-[12px] font-semibold text-slate-600">End Time</Label>
-                <Input type="time" value={storefrontForm.storefrontPromoValidTimeEnd} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeEnd: event.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[12px] font-semibold text-slate-600">Start Date</Label>
-                <Input type="date" value={storefrontForm.storefrontPromoValidFrom} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidFrom: event.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[12px] font-semibold text-slate-600">End Date</Label>
-                <Input type="date" value={storefrontForm.storefrontPromoValidUntil} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidUntil: event.target.value }))} />
+                <Label className="text-[12px] font-semibold text-slate-600">To</Label>
+                <Input
+                  type="datetime-local"
+                  value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidUntil, storefrontForm.storefrontPromoValidTimeEnd)}
+                  onChange={(event) => {
+                    const { date, time } = parsePromoDateTimeValue(event.target.value);
+                    setStorefrontForm((current) => ({ ...current, storefrontPromoValidUntil: date, storefrontPromoValidTimeEnd: time }));
+                  }}
+                />
+                <p className="text-[11px] text-slate-500">{formatPromoDateTime12Hour(buildPromoDateTimeValue(storefrontForm.storefrontPromoValidUntil, storefrontForm.storefrontPromoValidTimeEnd)) || 'Select date and 24-hour time.'}</p>
               </div>
               <div className="space-y-2 md:col-span-2">
                 <div className="space-y-1">
@@ -6120,6 +6180,7 @@ export default function TerminalOperationsWorkspace({
   incomingOrdersState = { loading: false, orders: [] },
   incomingOrderActionState = {},
   handleIncomingOrderStatusChange = () => {},
+  handleOpenCashCollection = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
   refreshIncomingOrders = () => {},
@@ -6153,6 +6214,7 @@ export default function TerminalOperationsWorkspace({
           incomingOrdersState={incomingOrdersState}
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+          handleOpenCashCollection={handleOpenCashCollection}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}
@@ -6305,6 +6367,7 @@ export default function TerminalOperationsWorkspace({
     closeShiftForm,
     handleCloseShift,
     handleIncomingOrderStatusChange,
+    handleOpenCashCollection,
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
     handleOpenShift,
