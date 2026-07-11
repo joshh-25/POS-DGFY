@@ -120,10 +120,23 @@ async function resolveTenantSession(
     // bypass this requirement (explicit "authorized scope" exception).
     let activeAssignment = null;
     if (membership.role !== 'owner') {
-        activeAssignment = await accountStaffAssignmentRepository.findActiveAssignment(
-            registryEntry.database_name,
-            accountId
-        );
+        // findActiveAssignment() is the point where a live connection to the
+        // tenant database is actually attempted (WR-04). No tenant-database
+        // *provisioning* flow exists yet, so a business_database_registry row
+        // can point at a database_name that was never created — surfacing as
+        // a connection error (e.g. ER_BAD_DB_ERROR/ECONNREFUSED) here rather
+        // than a missing row. Caught and mapped to SERVICE_UNAVAILABLE so it
+        // never propagates as an unhandled rejection.
+        try {
+            activeAssignment = await accountStaffAssignmentRepository.findActiveAssignment(
+                registryEntry.database_name,
+                accountId
+            );
+        } catch (error) {
+            return ApplicationResult.failure(
+                serviceUnavailableError('Unable to reach the tenant database for this business.')
+            );
+        }
         if (!activeAssignment) {
             return ApplicationResult.failure(noTenantAssignmentError());
         }
