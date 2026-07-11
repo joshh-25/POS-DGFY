@@ -36,6 +36,10 @@ export const createItemSchema = Joi.object({
     'number.integer': 'Folder ID must be an integer',
     'number.positive': 'Folder ID must be a positive number'
   }),
+  create_category_name: Joi.string().trim().replace(/\s+/g, ' ').min(1).max(100).allow(null, '').messages({
+    'string.min': 'Category name must be at least 1 character',
+    'string.max': 'Category name must not exceed 100 characters'
+  }),
   description: Joi.string().allow(null, '').messages({
     'string.base': 'Description must be a string'
   }),
@@ -476,8 +480,22 @@ const updateStorefrontCatalogOverrideSchema = Joi.object({
   location_availability: storefrontLocationAvailabilitySchema.optional()
 }).or('storefront_visible', 'location_availability');
 
+const folderNameSchema = Joi.string().trim().replace(/\s+/g, ' ').min(1).max(100);
+
+const createFolderSchema = Joi.object({
+  name: folderNameSchema.required(),
+  description: Joi.string().trim().max(1000).allow('', null).default('')
+});
+
 const updateFolderSchema = Joi.object({
-  show_in_pos_filter: Joi.boolean().required()
+  name: folderNameSchema.optional(),
+  description: Joi.string().trim().max(1000).allow('', null).optional(),
+  is_active: Joi.boolean().optional(),
+  show_in_pos_filter: Joi.boolean().optional()
+}).min(1);
+
+const deleteFolderSchema = Joi.object({
+  replacement_folder_id: Joi.number().integer().positive().optional()
 });
 
 const replaceItemSuppliersSchema = Joi.object({
@@ -611,7 +629,9 @@ export const validateFolderIdParam = validateSchema(folderIdParamSchema, 'params
 export const validateItemIdParam = validateSchema(itemIdParamSchema, 'params', 'validatedParams');
 export const validateStorefrontCatalogOverridesQuery = validateSchema(storefrontCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validateUpdateStorefrontCatalogOverride = validateSchema(updateStorefrontCatalogOverrideSchema, 'body', 'validatedData');
+export const validateCreateFolder = validateSchema(createFolderSchema, 'body', 'validatedData');
 export const validateUpdateFolder = validateSchema(updateFolderSchema, 'body', 'validatedData');
+export const validateDeleteFolder = validateSchema(deleteFolderSchema, 'body', 'validatedData');
 export const validateReplaceItemSuppliers = validateSchema(replaceItemSuppliersSchema, 'body', 'validatedData');
 export const validateBarcodeResolveQuery = validateSchema(barcodeResolveQuerySchema, 'query', 'validatedQuery');
 export const validateAttachBarcode = validateSchema(barcodeAttachSchema, 'body', 'validatedData');

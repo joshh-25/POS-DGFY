@@ -1,7 +1,7 @@
 import { validateItemAgainstModeTaxonomy } from '../../shared/constants/modeItemTaxonomy.js';
 
 export const buildCreateItemUseCase = ({ itemRepository, resolveWorkflowMode }) => {
-    return async ({ itemData, userId }) => {
+    return async ({ itemData, userId, canManageCategories = false }) => {
         const workflowMode = await resolveWorkflowMode();
         const validation = validateItemAgainstModeTaxonomy({
             workflowMode,
@@ -11,6 +11,6 @@ export const buildCreateItemUseCase = ({ itemRepository, resolveWorkflowMode }) 
         const dataToCreate = validation.preset && !itemData.mode_item_preset
             ? { ...itemData, mode_item_preset: validation.preset.key }
             : itemData;
-        return itemRepository.createItem(dataToCreate, userId);
+        return itemRepository.createItem(dataToCreate, userId, { canManageCategories });
     };
 };

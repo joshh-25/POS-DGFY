@@ -40,6 +40,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260629000001-add-pos-always-available-contract.cjs' },
         { name: '20260705000001-add-admin-provisioned-membership-source.cjs' },
         { name: '20260711000001-add-pickup-cash-collection-fields.cjs' },
+        { name: '20260711000002-add-item-folder-active-contract.cjs' },
+        { name: '20260711000003-repair-pickup-cash-collection-columns.cjs' },
         { name: '20260502000001-add-services-mode-booking-tables.cjs' }
     ])),
     getQueryInterface: () => ({
@@ -81,7 +83,8 @@ const buildHealthySequelizeMock = () => ({
                 item_folders: {
                     folder_id: {},
                     name: {},
-                    show_in_pos_filter: {}
+                    show_in_pos_filter: {},
+                    is_active: {}
                 },
                 pos_catalog_overrides: {
                     pos_catalog_override_id: {},
@@ -322,6 +325,7 @@ describe('runtimeSchemaAuditService', () => {
         expect(result.missingColumns).toEqual(expect.arrayContaining([
             expect.objectContaining({ table: 'items', column: 'vat_type' }),
             expect.objectContaining({ table: 'item_folders', column: 'show_in_pos_filter' }),
+            expect.objectContaining({ table: 'item_folders', column: 'is_active' }),
             expect.objectContaining({ table: 'users', column: 'role' }),
             expect.objectContaining({ table: 'pos_catalog_overrides', column: 'pos_visible' }),
             expect.objectContaining({ table: 'pos_transactions', column: 'service_fee_amount' }),

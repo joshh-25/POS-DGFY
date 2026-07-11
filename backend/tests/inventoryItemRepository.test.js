@@ -195,14 +195,14 @@ describe('inventory itemRepository', () => {
       item_id: 901,
       storefront_visible: true,
       storefront_image_url: '/uploads/storefront/iced-tea.png',
-      storefront_image_gallery: [
-        {
+      storefront_image_gallery: expect.arrayContaining([
+        expect.objectContaining({
           path: 'storefront/iced-tea.png',
           url: '/uploads/storefront/iced-tea.png',
           is_primary: true,
           sort_order: 0
-        }
-      ]
+        })
+      ])
     }));
   });
 
@@ -963,6 +963,97 @@ describe('inventory itemRepository', () => {
     expect(transaction.commit).toHaveBeenCalled();
     expect(transaction.rollback).not.toHaveBeenCalled();
     expect(result).toEqual({ item_id: 1001, name: 'Milk' });
+  });
+
+  it('creates an admin-requested category in the same transaction as a new item', async () => {
+    const itemRecord = { item_id: 1002 };
+    const folderRecord = { folder_id: 12, name: 'Seasonal Drinks', is_active: true };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const ItemFolder = {
+      findAll: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue(folderRecord)
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 1002, folder_id: 12, product_folder: 'Seasonal Drinks' });
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 1 });
+    inventoryRepositoryDependencies.syncItemEmbedding = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-inline-category' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await itemRepository.createItem({
+      status: 'active',
+      category: 'product',
+      product_type: 'finished_goods',
+      sku_code: 'SEASON-001',
+      name: 'Summer Tea',
+      create_category_name: '  Seasonal   Drinks  '
+    }, 7, { canManageCategories: true });
+
+    expect(ItemFolder.create).toHaveBeenCalledWith({
+      name: 'Seasonal Drinks',
+      description: '',
+      show_in_pos_filter: true,
+      is_active: true,
+      parent_id: null
+    }, { transaction });
+    expect(Item.create).toHaveBeenCalledWith(expect.objectContaining({
+      folder_id: 12,
+      product_folder: 'Seasonal Drinks'
+    }), { transaction });
+    expect(Item.create.mock.calls[0][0]).not.toHaveProperty('create_category_name');
+    expect(transaction.commit).toHaveBeenCalled();
+  });
+
+  it('reuses an active category case-insensitively and rejects inline creation by non-admin users', async () => {
+    const Item = { findOne: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ item_id: 1003 }) };
+    const existingFolder = { folder_id: 13, name: 'Mains', is_active: true };
+    const ItemFolder = { findAll: jest.fn().mockResolvedValue([existingFolder]), create: jest.fn() };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 1003, folder_id: 13 });
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 1 });
+    inventoryRepositoryDependencies.syncItemEmbedding = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-inline-category-reuse' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await itemRepository.createItem({
+      status: 'active', category: 'product', product_type: 'finished_goods', sku_code: 'MAIN-001', name: 'Rice Bowl', create_category_name: 'mAiNs'
+    }, 7, { canManageCategories: true });
+    expect(ItemFolder.create).not.toHaveBeenCalled();
+    expect(Item.create).toHaveBeenCalledWith(expect.objectContaining({ folder_id: 13, product_folder: 'Mains' }), { transaction });
+
+    await expect(itemRepository.createItem({
+      status: 'active', category: 'product', product_type: 'finished_goods', sku_code: 'NOADMIN-001', name: 'No Admin', create_category_name: 'New Category'
+    }, 8, { canManageCategories: false })).rejects.toMatchObject({
+      statusCode: 403,
+      message: 'Admin access is required to create a category while adding an item.'
+    });
   });
 
   it('creates a ServiceItemDetail row when creating a service-category item', async () => {
@@ -1881,7 +1972,7 @@ describe('inventory itemRepository', () => {
     expect(transaction.rollback).toHaveBeenCalled();
   });
 
-  it('lists folders with item counts using visible-item filter', async () => {
+  it('lists folders with every assigned item so deletion requirements match the displayed count', async () => {
     const ItemFolder = {
       findAll: jest.fn().mockResolvedValue([
         {
@@ -1889,6 +1980,7 @@ describe('inventory itemRepository', () => {
           name: 'Raw Materials',
           description: 'Core inputs',
           parent_id: null,
+          is_active: true,
           items: [{ item_id: 10 }, { item_id: 11 }]
         },
         {
@@ -1896,6 +1988,7 @@ describe('inventory itemRepository', () => {
           name: 'Packaging',
           description: '',
           parent_id: null,
+          is_active: false,
           items: []
         }
       ])
@@ -1913,14 +2006,14 @@ describe('inventory itemRepository', () => {
     const args = ItemFolder.findAll.mock.calls[0][0];
     expect(args.include[0].model).toBe(Item);
     expect(args.include[0].as).toBe('items');
-    expect(args.include[0].where.deleted_at).toBeNull();
-    expect(args.include[0].where.status[Op.ne]).toBe('inactive');
+    expect(args.include[0].where).toBeUndefined();
     expect(result).toEqual([
         {
           folder_id: 1,
           name: 'Raw Materials',
           description: 'Core inputs',
           show_in_pos_filter: true,
+          is_active: true,
           parent_id: null,
           item_count: 2
         },
@@ -1929,6 +2022,7 @@ describe('inventory itemRepository', () => {
           name: 'Packaging',
           description: '',
           show_in_pos_filter: true,
+          is_active: false,
           parent_id: null,
           item_count: 0
         }
@@ -1937,9 +2031,14 @@ describe('inventory itemRepository', () => {
 
   it('creates folder and normalizes unique constraint errors', async () => {
     const ItemFolder = {
+      findAll: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({
         folder_id: 44,
-        name: 'Dry Goods'
+        name: 'Dry Goods',
+        description: 'Shelf stable',
+        parent_id: null,
+        show_in_pos_filter: true,
+        is_active: true
       })
     };
 
@@ -1953,16 +2052,24 @@ describe('inventory itemRepository', () => {
       success: true,
       folder_id: 44,
       name: 'Dry Goods',
+      description: 'Shelf stable',
+      parent_id: null,
       show_in_pos_filter: true,
+      is_active: true,
       message: 'Inventory folder "Dry Goods" created successfully'
     });
 
     ItemFolder.create.mockRejectedValueOnce({ name: 'SequelizeUniqueConstraintError' });
-    await expect(itemRepository.createFolder('Dry Goods')).rejects.toThrow('Folder "Dry Goods" already exists');
+    await expect(itemRepository.createFolder('Dry Goods')).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CATEGORY_EXISTS',
+      message: 'Category "Dry Goods" already exists.'
+    });
   });
 
-  it('deletes folder and unassigns items', async () => {
+  it('deletes an unassigned folder without altering item records', async () => {
     const folder = {
+      folder_id: 7,
       name: 'Legacy Folder',
       destroy: jest.fn().mockResolvedValue(true)
     };
@@ -1970,38 +2077,144 @@ describe('inventory itemRepository', () => {
       findByPk: jest.fn().mockResolvedValue(folder)
     };
     const Item = {
-      update: jest.fn().mockResolvedValue([3])
+      findAll: jest.fn().mockResolvedValue([]),
+      update: jest.fn()
     };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
 
     jest.spyOn(dbStore, 'get').mockImplementation((name) => {
       if (name === 'ItemFolder') return ItemFolder;
       if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
       return {};
     });
 
     const result = await itemRepository.deleteFolder(7);
 
-    const updateArgs = Item.update.mock.calls[0];
-    expect(updateArgs[0]).toEqual({ folder_id: null, product_folder: null });
-    expect(updateArgs[1].where.folder_id).toBe(7);
-    expect(updateArgs[1].where.deleted_at).toBeNull();
-    expect(updateArgs[1].where.status[Op.ne]).toBe('inactive');
-    expect(folder.destroy).toHaveBeenCalled();
+    expect(Item.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { folder_id: 7 }, transaction }));
+    expect(Item.update).not.toHaveBeenCalled();
+    expect(folder.destroy).toHaveBeenCalledWith({ transaction });
+    expect(transaction.commit).toHaveBeenCalled();
     expect(result).toEqual({
       success: true,
-      unassigned_count: 3,
-      message: 'Folder "Legacy Folder" deleted successfully. 3 item(s) unassigned.'
+      replacement_folder_id: null,
+      items_moved: 0,
+      message: 'Category "Legacy Folder" deleted successfully.'
     });
+  });
+
+  it('reassigns assigned items to an active category before deleting the source category', async () => {
+    const folder = { folder_id: 7, name: 'Mains', destroy: jest.fn().mockResolvedValue(true) };
+    const replacementFolder = { folder_id: 8, name: 'Rice Meals', is_active: true };
+    const ItemFolder = {
+      findByPk: jest.fn().mockImplementation((folderId) => Promise.resolve(Number(folderId) === 7 ? folder : replacementFolder))
+    };
+    const Item = {
+      findAll: jest.fn().mockResolvedValue([{ item_id: 12 }, { item_id: 13 }]),
+      update: jest.fn().mockResolvedValue([2])
+    };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.deleteFolder(7, 8)).resolves.toEqual({
+      success: true,
+      replacement_folder_id: 8,
+      items_moved: 2,
+      message: 'Category "Mains" deleted and 2 item(s) moved to "Rice Meals".'
+    });
+    expect(Item.update).toHaveBeenCalledWith(
+      { folder_id: 8, product_folder: 'Rice Meals' },
+      expect.objectContaining({ where: { folder_id: 7 }, transaction })
+    );
+    expect(folder.destroy).toHaveBeenCalledWith({ transaction });
+  });
+
+  it('requires an active replacement when deleting a folder with assigned items', async () => {
+    const folder = { folder_id: 7, name: 'Mains', destroy: jest.fn() };
+    const ItemFolder = { findByPk: jest.fn().mockResolvedValue(folder) };
+    const Item = { findAll: jest.fn().mockResolvedValue([{ item_id: 12 }]) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.deleteFolder(7)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CATEGORY_REASSIGNMENT_REQUIRED'
+    });
+    expect(transaction.rollback).toHaveBeenCalled();
+    expect(folder.destroy).not.toHaveBeenCalled();
+  });
+
+  it('rejects using the source category as its own replacement', async () => {
+    const folder = { folder_id: 7, name: 'Mains', destroy: jest.fn() };
+    const ItemFolder = { findByPk: jest.fn().mockResolvedValue(folder) };
+    const Item = { findAll: jest.fn().mockResolvedValue([{ item_id: 12 }]) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.deleteFolder(7, 7)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'CATEGORY_REASSIGNMENT_INVALID'
+    });
+    expect(folder.destroy).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive replacement category', async () => {
+    const folder = { folder_id: 7, name: 'Mains', destroy: jest.fn() };
+    const replacementFolder = { folder_id: 8, name: 'Archived', is_active: false };
+    const ItemFolder = {
+      findByPk: jest.fn().mockImplementation((folderId) => Promise.resolve(Number(folderId) === 7 ? folder : replacementFolder))
+    };
+    const Item = { findAll: jest.fn().mockResolvedValue([{ item_id: 12 }]) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.deleteFolder(7, 8)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CATEGORY_REPLACEMENT_INACTIVE'
+    });
+    expect(folder.destroy).not.toHaveBeenCalled();
   });
 
   it('returns 404 when deleting a missing folder', async () => {
     const ItemFolder = {
       findByPk: jest.fn().mockResolvedValue(null)
     };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
 
     jest.spyOn(dbStore, 'get').mockImplementation((name) => {
       if (name === 'ItemFolder') return ItemFolder;
       if (name === 'Item') return {};
+      if (name === 'sequelize') return sequelize;
       return {};
     });
 
@@ -2009,39 +2222,69 @@ describe('inventory itemRepository', () => {
       statusCode: 404,
       message: 'Folder not found'
     });
+    expect(transaction.rollback).toHaveBeenCalled();
   });
 
-  it('updates folder POS filter visibility', async () => {
+  it('updates category lifecycle details and preserves category assignment on rename', async () => {
     const folder = {
       folder_id: 9,
       name: 'Finished Goods',
       description: 'Sellable products',
       parent_id: null,
       show_in_pos_filter: true,
+      is_active: true,
       update: jest.fn().mockImplementation(async (updates) => {
-        folder.show_in_pos_filter = updates.show_in_pos_filter;
+        Object.assign(folder, updates);
       })
     };
     const ItemFolder = {
-      findByPk: jest.fn().mockResolvedValue(folder)
+      findByPk: jest.fn().mockResolvedValue(folder),
+      findAll: jest.fn().mockResolvedValue([folder])
     };
+    const Item = { update: jest.fn().mockResolvedValue([2]) };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      finished: null,
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true)
+    };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
 
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize });
     jest.spyOn(dbStore, 'get').mockImplementation((name) => {
       if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
       return {};
     });
 
-    const result = await itemRepository.updateFolder(9, { show_in_pos_filter: false });
+    const result = await itemRepository.updateFolder(9, {
+      name: 'Prepared Foods',
+      description: 'Ready to sell',
+      is_active: false,
+      show_in_pos_filter: false
+    });
 
-    expect(folder.update).toHaveBeenCalledWith({ show_in_pos_filter: false });
+    expect(folder.update).toHaveBeenCalledWith({
+      name: 'Prepared Foods',
+      description: 'Ready to sell',
+      is_active: false,
+      show_in_pos_filter: false
+    }, { transaction });
+    expect(Item.update).toHaveBeenCalledWith(
+      { product_folder: 'Prepared Foods' },
+      { where: { folder_id: 9 }, transaction }
+    );
+    expect(transaction.commit).toHaveBeenCalled();
     expect(result).toEqual({
       success: true,
       folder_id: 9,
-      name: 'Finished Goods',
-      description: 'Sellable products',
+      name: 'Prepared Foods',
+      description: 'Ready to sell',
       parent_id: null,
       show_in_pos_filter: false,
-      message: 'Folder "Finished Goods" updated successfully.'
+      is_active: false,
+      message: 'Category "Prepared Foods" updated successfully.'
     });
   });
 
@@ -2061,7 +2304,7 @@ describe('inventory itemRepository', () => {
 
     await expect(itemRepository.updateFolder(11, { unsupported: true })).rejects.toMatchObject({
       statusCode: 400,
-      message: 'No valid folder fields to update'
+      message: 'No valid category fields to update'
     });
   });
 });

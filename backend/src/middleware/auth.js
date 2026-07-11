@@ -365,6 +365,30 @@ export const checkPermission = (requiredPermission) => {
   };
 };
 
+/**
+ * Category lifecycle is a tenant administration concern, not a general
+ * inventory-edit permission. Keep the role check on the API boundary so the
+ * POS UI cannot be bypassed by a direct request.
+ */
+export const requireTenantAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required'
+    });
+  }
+
+  const role = String(req.user.role || '').trim().toLowerCase();
+  if (req.user.is_master_admin || role === 'admin') {
+    return next();
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: 'Admin access is required to manage categories.'
+  });
+};
+
 const isPosPermission = (permission) => String(permission || '').startsWith('pos:');
 
 const filterCapabilityDisabledPermissions = async (req, permissions = []) => {

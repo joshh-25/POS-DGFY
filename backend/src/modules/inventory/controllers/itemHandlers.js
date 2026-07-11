@@ -159,8 +159,10 @@ export const createItem = async (req, res, next) => {
   try {
     const itemData = req.validatedData;
     const userId = req.user.user_id;
+    const role = String(req.user?.role || '').trim().toLowerCase();
+    const canManageCategories = req.user?.is_master_admin === true || role === 'admin';
     const result = await runInventoryUseCase(
-      () => createItemUseCase({ itemData, userId }),
+      () => createItemUseCase({ itemData, userId, canManageCategories }),
       'Failed to create item'
     );
     await trackProductUsageFromResult({
@@ -190,7 +192,9 @@ export const createItem = async (req, res, next) => {
             sku_code: item.sku_code,
             name: item.name,
             category: item.category,
-            status: item.status
+            status: item.status,
+            folder_id: item.folder_id ?? null,
+            product_folder: item.product_folder ?? null
           },
           message,
           timestamp: timestamp()
@@ -868,7 +872,7 @@ export const getFolders = async (req, res, next) => {
 
 export const createFolder = async (req, res, next) => {
   try {
-    const { name, description } = req.body || {};
+    const { name, description } = req.validatedData || req.body || {};
     const result = await runInventoryUseCase(
       () => createFolderUseCase({ name, description }),
       'Failed to create folder'
@@ -902,9 +906,10 @@ export const createFolder = async (req, res, next) => {
 
 export const deleteFolder = async (req, res, next) => {
   try {
-    const { folder_id } = req.params;
+    const folder_id = req.validatedParams?.folder_id || req.params.folder_id;
+    const replacementFolderId = req.validatedData?.replacement_folder_id;
     const result = await runInventoryUseCase(
-      () => deleteFolderUseCase({ folderId: folder_id }),
+      () => deleteFolderUseCase({ folderId: folder_id, replacementFolderId }),
       'Failed to delete folder'
     );
     await trackProductUsageFromResult({
@@ -916,6 +921,7 @@ export const deleteFolder = async (req, res, next) => {
       result,
       successMetadataResolver: (data) => ({
         folder_id,
+        replacement_folder_id: data?.replacement_folder_id ?? null,
         deleted_items_moved: data?.items_moved ?? null
       })
     });
@@ -951,6 +957,7 @@ export const updateFolder = async (req, res, next) => {
       result,
       successMetadataResolver: (data) => ({
         folder_id,
+        is_active: data?.is_active ?? null,
         show_in_pos_filter: data?.show_in_pos_filter ?? null
       })
     });
