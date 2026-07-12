@@ -13,6 +13,11 @@ import {
     buildAccountAuthMiddleware
 } from '../modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../modules/businesses/index.js';
+import { buildProductsModule, createProductRoutes } from '../modules/products/index.js';
+import { buildInventoryModule, createInventoryRoutes } from '../modules/inventory/index.js';
+import { buildComplianceModule, createComplianceRoutes } from '../modules/compliance/index.js';
+import { buildShiftsModule, createShiftRoutes } from '../modules/shifts/index.js';
+import { buildBookingModule, createBookingRoutes } from '../modules/booking/index.js';
 
 // Composition root for the accounts + businesses modules (Wave 2/3,
 // 04-02-PLAN.md / 04-03-PLAN.md): builds the Account/Business/
@@ -37,7 +42,12 @@ const BusinessMembershipModel = defineBusinessMembershipModel(sequelize);
 // because business_database_registry itself lives in the landlord database,
 // which is already connected.
 const BusinessDatabaseRegistryModel = defineBusinessDatabaseRegistryModel(sequelize);
-const { repository: businessRepository, useCases: businessUseCases } = buildBusinessesModule({
+const {
+    repository: businessRepository,
+    useCases: businessUseCases,
+    tenantConnector,
+    businessDatabaseRegistryRepository
+} = buildBusinessesModule({
     businessModel: BusinessModel,
     businessMembershipModel: BusinessMembershipModel,
     businessDatabaseRegistryModel: BusinessDatabaseRegistryModel,
@@ -53,6 +63,54 @@ const { useCases: accountUseCases } = buildAccountsModule({
 });
 const authenticateAccount = buildAccountAuthMiddleware({ getAccount: accountUseCases.getAccount });
 
+// Phase 8 (08-08-PLAN.md, Wave 5): compose the 5 commerce modules built in
+// isolation across waves 3-4, reusing the SAME tenantConnector/
+// businessDatabaseRegistryRepository/businessRepository instances the
+// businesses module above already constructed — never a second, divergent
+// set (08-PATTERNS.md's Composition root pattern; T-08-08-02). Built in
+// dependency order: products -> inventory -> compliance -> shifts (receives
+// compliance's assertComplianceGate, injected but NOT invoked this phase —
+// Phase 9 wires the real shift-open call site) -> booking (receives
+// products' productRepository + inventory's reserved effectContracts).
+const {
+    repository: productRepository,
+    useCases: productUseCases
+} = buildProductsModule({
+    tenantConnector,
+    businessDatabaseRegistryRepository,
+    businessRepository
+});
+
+const { useCases: inventoryUseCases, effectContracts: inventoryEffectContracts } = buildInventoryModule({
+    tenantConnector,
+    businessDatabaseRegistryRepository,
+    businessRepository
+});
+
+const { useCases: complianceUseCases, assertComplianceGate } = buildComplianceModule({
+    tenantConnector,
+    businessDatabaseRegistryRepository,
+    businessRepository
+});
+
+const { useCases: shiftUseCases } = buildShiftsModule({
+    tenantConnector,
+    businessDatabaseRegistryRepository,
+    businessRepository,
+    // FSC-02: made available for injection only — Phase 9 wires the real
+    // shift-open call site. Do NOT invoke this gate from shift-open here.
+    assertComplianceGate,
+    staleThresholdMinutes: process.env.SHIFT_STALE_THRESHOLD_MINUTES
+});
+
+const { useCases: bookingUseCases } = buildBookingModule({
+    tenantConnector,
+    businessDatabaseRegistryRepository,
+    businessRepository,
+    productRepository,
+    inventoryEffectContracts
+});
+
 const router = Router();
 
 router.use('/', healthRoutes);
@@ -60,5 +118,10 @@ router.use('/dgfy', dgfyAuthRoutes);
 router.use('/accounts', createAccountRoutes(accountUseCases, { authenticateAccount }));
 router.use('/businesses', createBusinessRoutes(businessUseCases, { authenticateAccount }));
 router.use('/invitations', createInvitationRoutes(businessUseCases));
+router.use('/products', createProductRoutes(productUseCases, { authenticateAccount }));
+router.use('/inventory', createInventoryRoutes(inventoryUseCases, { authenticateAccount }));
+router.use('/compliance', createComplianceRoutes(complianceUseCases, { authenticateAccount }));
+router.use('/shifts', createShiftRoutes(shiftUseCases, { authenticateAccount }));
+router.use('/bookings', createBookingRoutes(bookingUseCases, { authenticateAccount }));
 
 export default router;
