@@ -25,7 +25,12 @@ export const ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST = Object.freeze([
     '../apps/dgfy-api/src/modules/businesses/controllers/businessController.js',
     '../apps/dgfy-api/src/modules/businesses/controllers/locationController.js',
     '../apps/dgfy-api/src/modules/businesses/controllers/tenantSessionController.js',
-    '../apps/dgfy-api/src/modules/businesses/controllers/tenantRegistryController.js'
+    '../apps/dgfy-api/src/modules/businesses/controllers/tenantRegistryController.js',
+    // Phase 8 (08-03-PLAN.md): products module controllers follow the same
+    // locked apps/dgfy-api Clean-Architecture naming (*Controller.js, not
+    // backend/'s *Handlers.js convention) as the entries above.
+    '../apps/dgfy-api/src/modules/products/controllers/productController.js',
+    '../apps/dgfy-api/src/modules/products/controllers/productFolderController.js'
 ]);
 
 // apps/dgfy-api has no usecase-layer legacy-service-import exceptions yet.
