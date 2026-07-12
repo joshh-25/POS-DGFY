@@ -6,8 +6,11 @@ import { Sequelize } from 'sequelize';
 import defineAccountModel from '../../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../../src/models/Landlord/BusinessMembership.js';
+import defineBusinessDatabaseRegistryModel from '../../../src/models/Landlord/BusinessDatabaseRegistry.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../../src/modules/businesses/index.js';
+import { TenantConnector } from '../../../src/infra/tenantConnector.js';
+import { provisionAndActivateTenantDatabase } from '../../helpers/tenantSchemaProvisioning.js';
 
 /**
  * HTTP-layer integration tests for the location/branch endpoints (Wave 3.5,
@@ -16,15 +19,19 @@ import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } f
  * credentials, so this suite never assumes a database is reachable in CI or
  * a fresh sandbox.
  *
- * The landlord side (account registration, business creation, membership)
- * needs a real MySQL connection to exercise realistically — this suite
- * still requires one for that reason. Location data itself, however, is
- * served by the real (non-mocked) in-memory LocationRepository — see its
- * doc comment for why (no TenantConnector/BusinessDatabaseRegistry exists
- * yet; both are explicitly Wave 4 scope). Businesses created in this suite
- * therefore do not have their own dgfy_business_* database; their locations
- * live in the shared process's businessId-keyed Map, which still gives
- * genuine tenant isolation at the application layer (verified below).
+ * UPDATED (Phase 04 UAT gap closure): this file originally predated Wave 4's
+ * real TenantConnector/BusinessDatabaseRegistry infrastructure and assumed
+ * location data lived in LocationRepository's in-memory Map with no tenant
+ * activation required. That assumption stopped being true once Wave 4/06/07
+ * wired locationRepository.js onto a real per-tenant database gated on an
+ * active/verified registry entry — every location call here was returning
+ * 404 NO_TENANT_DATABASE against real MySQL. createBusiness() below now
+ * mirrors ../businessValidation.test.js's pattern: create via HTTP, then run
+ * the operator/migration-runner handoff test double (see
+ * ../../helpers/tenantSchemaProvisioning.js) so the business has a real,
+ * active/verified dgfy_business_* database before any location endpoint is
+ * exercised — matching how a location would actually become reachable in
+ * production per the current (post-04-09) activation flow.
  */
 const RUN_INTEGRATION = process.env.RUN_LOCATION_ROUTES_INTEGRATION === 'true';
 
@@ -67,9 +74,12 @@ async function withAdminConnection(fn) {
     }
 }
 
-describeIfIntegration('Location HTTP routes (real MySQL landlord + in-memory tenant-scoped LocationRepository)', () => {
+describeIfIntegration('Location HTTP routes (real MySQL landlord + real per-tenant database)', () => {
     const dbName = isolatedDbName();
+    const provisionedTenantDbNames = [];
     let sequelize;
+    let tenantConnector;
+    let businessDatabaseRegistryRepository;
     let Account;
     let app;
 
@@ -88,14 +98,21 @@ describeIfIntegration('Location HTTP routes (real MySQL landlord + in-memory ten
         Account = defineAccountModel(sequelize);
         const Business = defineBusinessModel(sequelize);
         const BusinessMembership = defineBusinessMembershipModel(sequelize);
+        const BusinessDatabaseRegistry = defineBusinessDatabaseRegistryModel(sequelize);
         await sequelize.sync({ force: true });
 
-        const { repository: businessRepository, useCases: businessUseCases } = buildBusinessesModule({
+        tenantConnector = new TenantConnector(ADMIN_DB_CONFIG);
+
+        const businessesModule = buildBusinessesModule({
             businessModel: Business,
             businessMembershipModel: BusinessMembership,
+            businessDatabaseRegistryModel: BusinessDatabaseRegistry,
             sequelize,
-            sendEmail: async () => ({ sent: false, reason: 'test_double' })
+            sendEmail: async () => ({ sent: false, reason: 'test_double' }),
+            tenantConnector
         });
+        const { repository: businessRepository, useCases: businessUseCases } = businessesModule;
+        businessDatabaseRegistryRepository = businessesModule.businessDatabaseRegistryRepository;
 
         const { useCases: accountUseCases } = buildAccountsModule({
             accountModel: Account,
@@ -114,9 +131,13 @@ describeIfIntegration('Location HTTP routes (real MySQL landlord + in-memory ten
     });
 
     afterAll(async () => {
+        if (tenantConnector) await tenantConnector.closeAll();
         if (sequelize) await sequelize.close();
         await withAdminConnection(async (adminSequelize) => {
             await adminSequelize.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
+            for (const tenantDbName of provisionedTenantDbNames) {
+                await adminSequelize.query(`DROP DATABASE IF EXISTS \`${tenantDbName}\``);
+            }
         });
     });
 
@@ -140,6 +161,14 @@ describeIfIntegration('Location HTTP routes (real MySQL landlord + in-memory ten
         return { token: response.body.data.token, accountId: response.body.data.account.id, email };
     }
 
+    /**
+     * Creates a business via HTTP (registry row auto-created as
+     * `provisioning`), then runs the accepted operator/migration-runner
+     * handoff — see ../../helpers/tenantSchemaProvisioning.js — so the
+     * business has a real, active/verified tenant database before any
+     * location endpoint is exercised. Mirrors ../businessValidation.test.js's
+     * createBusiness().
+     */
     async function createBusiness(token, overrides = {}) {
         const response = await request(app)
             .post('/businesses')
@@ -150,7 +179,17 @@ describeIfIntegration('Location HTTP routes (real MySQL landlord + in-memory ten
                 business_handle: `acme-${crypto.randomUUID().slice(0, 8)}`,
                 ...overrides
             });
-        return response.body.data.business.id;
+        const businessId = response.body.data.business.id;
+
+        await provisionAndActivateTenantDatabase({
+            businessDatabaseRegistryRepository,
+            tenantConnector,
+            withAdminConnection,
+            businessId,
+            provisionedTenantDbNames
+        });
+
+        return businessId;
     }
 
     describe('POST /businesses/:businessId/locations', () => {
