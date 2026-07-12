@@ -166,6 +166,9 @@ jobs:
       - name: Enforce modular architecture guardrails
         run: npm run check:architecture-guardrails
 
+      - name: Run architecture-guardrails regression suite
+        run: npm run test:architecture-guardrails-compat
+
       - name: Enforce controller architecture boundaries
         run: npm run check:controller-boundaries
 
