@@ -151,3 +151,12 @@ None - no external service configuration required. This script requires no new d
 ---
 *Phase: 06-release-evidence-and-rehearsal-gates*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+- FOUND: scripts/dgfy-seam-smoke.js
+- FOUND: scripts/dgfy-seam-smoke.test.js
+- FOUND: .planning/phases/06-release-evidence-and-rehearsal-gates/06-02-SUMMARY.md
+- FOUND: 2c34abec (feat: seam-smoke runner)
+- FOUND: 5faaf658 (test: seam-smoke coverage)
+- FOUND: 07cfa41d (docs: plan summary)
