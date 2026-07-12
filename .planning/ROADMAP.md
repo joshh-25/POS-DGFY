@@ -281,7 +281,7 @@ Plans:
   4. Staff can open a shift with a declared starting cash float (one open shift per cashier+terminal enforced at the database level), close it with a computed Expected-vs-Actual cash Difference, and every cash-drawer event — including a no-sale drawer pop — is logged.
   5. A tenant/branch carries a compliance-mode state reflecting whether required fiscal paperwork is present and verified, checked through one shared policy-engine gate port rather than duplicated per surface (wired into Checkout, Shift, and receipt issuance in Phase 9).
 
-**Plans**: 4/8 plans executed
+**Plans**: 5/8 plans executed
 
 Plans:
 **Wave 1**
@@ -296,7 +296,7 @@ Plans:
 
 - [x] 08-03-PLAN.md — products module: Product CRUD (Food/Service/Retail, inventory_mode), flat folders, mark-bookable config (PRD-01, PRD-02, PRD-03, PRD-05, BOK-01)
 - [x] 08-04-PLAN.md — inventory module: sole-writer append-only ledger (restock/loss/adjustment) + reserved sale/booking effect contracts (PRD-04)
-- [ ] 08-05-PLAN.md — shifts module: open/close/reconcile + one-open-shift 409 mapping + append-only cash-drawer log + stale-flag (SFT-01, SFT-02, SFT-03)
+- [x] 08-05-PLAN.md — shifts module: open/close/reconcile + one-open-shift 409 mapping + append-only cash-drawer log + stale-flag (SFT-01, SFT-02, SFT-03)
 - [ ] 08-06-PLAN.md — compliance module: tenant state machine + shared gate port with the D-05 deviation (compliant_active allows fiscal AND non_fiscal) (FSC-01, FSC-02)
 
 **Wave 4** *(blocked on 08-03 + 08-04)*
@@ -363,7 +363,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete    | 2026-07-12 |
 | 6. Release Evidence and Rehearsal Gates | 3/3 | Complete    | 2026-07-12 |
 | 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |
-| 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 4/8 | In Progress|  |
+| 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 5/8 | In Progress|  |
 | 9. POS Checkout & Payment | 0/TBD | Not started | - |
 | 10. Storefront Discovery & Online Ordering | 0/TBD | Not started | - |
 | 11. Order Fulfillment & Delivery Coordination | 0/TBD | Not started | - |
