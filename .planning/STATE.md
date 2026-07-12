@@ -5,15 +5,15 @@ milestone_name: Commerce Domain — Product, Checkout & Fulfillment
 current_phase: 08
 current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
-stopped_at: Phase 8 context gathered
-last_updated: "2026-07-12T13:06:56.145Z"
+stopped_at: Completed 08-04-PLAN.md
+last_updated: "2026-07-12T13:25:25.510Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 43
-  completed_plans: 35
+  completed_plans: 36
   percent: 55
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 ## Current Position
 
 Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 08 execution started
 
@@ -94,6 +94,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overa
 | Phase 08 P01 | 20min | 2 tasks | 3 files |
 | Phase 08 P02 | 15min | 2 tasks | 9 files |
 | Phase 08 P03 | 30min | 2 tasks | 13 files |
+| Phase 08 P04 | 22min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,8 @@ Recent decisions affecting current work:
 - [Phase 08]: P02: reworded model doc comments to avoid literal 'backend/src/models' substring so the plan's automated grep prohibition check passes while still documenting legacy provenance by name.
 - [Phase 08]: P03: productRepository/productFolderRepository resolve models via tenantConnector.getModels() (not direct model-factory import), since Product/ProductFolder are 08-02's registered Tenant models.
 - [Phase 08]: P03: products module mounts top-level at /products (not nested under /businesses/:businessId); businessId read from req.body/req.query in controllers.
+- [Phase 08]: P04: inventory manual movements gate on any active business membership (staff-or-owner), not owner-only.
+- [Phase 08]: P04: recordMovementWithStockSync() applies restock/loss/adjustment stock_count deltas transactionally with a JS negative-stock precheck + optimistic-concurrency guard.
 
 ### Pending Todos
 
@@ -137,6 +140,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T13:05:55.519Z
-Stopped at: Phase 8 context gathered
+Last session: 2026-07-12T13:25:25.503Z
+Stopped at: Completed 08-04-PLAN.md
 Resume file: .planning/phases/08-commerce-foundation-product-catalog-booking-shift-cash-drawe/08-CONTEXT.md
