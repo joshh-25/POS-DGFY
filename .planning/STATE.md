@@ -4,9 +4,9 @@ milestone: v2.0
 milestone_name: Commerce Domain — Product, Checkout & Fulfillment
 current_phase: 8
 current_phase_name: Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating
-status: planning
+status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-07-12T11:24:14.036Z"
+last_updated: "2026-07-12T12:30:34.446Z"
 last_activity: 2026-07-12
 last_activity_desc: ROADMAP.md created for v2.0 Commerce Domain (Phases 8-11), 28/28 v2 requirements mapped, REQUIREMENTS.md traceability updated
 progress:
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 
 Phase: 8 of 11 (Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating) — first phase of the v2.0 Commerce Domain milestone
 Plan: — (not yet planned; run `/gsd-plan-phase 8`)
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-07-12 — ROADMAP.md created for v2.0 Commerce Domain (Phases 8-11), 28/28 v2 requirements mapped, REQUIREMENTS.md traceability updated
 
 Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overall roadmap 6/11 phases complete, Phase 7 paused independently)
