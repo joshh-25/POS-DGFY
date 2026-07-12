@@ -4,6 +4,14 @@ import defineStaffAccountModel from '../models/Tenant/StaffAccount.js';
 import defineStaffInvitationModel from '../models/Tenant/StaffInvitation.js';
 import defineAccountStaffAssignmentModel from '../models/Tenant/AccountStaffAssignment.js';
 import defineTerminalIdentityModel from '../models/Tenant/TerminalIdentity.js';
+import defineProductModel from '../models/Tenant/Product.js';
+import defineProductFolderModel from '../models/Tenant/ProductFolder.js';
+import defineInventoryMovementModel from '../models/Tenant/InventoryMovement.js';
+import defineBookingModel from '../models/Tenant/Booking.js';
+import defineBookingCapacityModel from '../models/Tenant/BookingCapacity.js';
+import defineShiftModel from '../models/Tenant/Shift.js';
+import defineCashDrawerEventModel from '../models/Tenant/CashDrawerEvent.js';
+import defineComplianceModeStateModel from '../models/Tenant/ComplianceModeState.js';
 
 // Minimal per-tenant-database connection cache for apps/dgfy-api (Wave 4,
 // 04-04-PLAN.md's key_links: "TenantConnector -> resolves per-tenant
@@ -110,7 +118,7 @@ export class TenantConnector {
      * — the plan explicitly forbids that); this method only wires them
      * together into one reachable registry with associations applied.
      * @param {string} databaseName
-     * @returns {{Location, StaffAccount, StaffInvitation, AccountStaffAssignment, TerminalIdentity}}
+     * @returns {{Location, StaffAccount, StaffInvitation, AccountStaffAssignment, TerminalIdentity, Product, ProductFolder, InventoryMovement, Booking, BookingCapacity, Shift, CashDrawerEvent, ComplianceModeState}}
      */
     getModels(databaseName) {
         if (this.modelsByDatabase.has(databaseName)) {
@@ -123,7 +131,19 @@ export class TenantConnector {
             StaffAccount: defineStaffAccountModel,
             StaffInvitation: defineStaffInvitationModel,
             AccountStaffAssignment: defineAccountStaffAssignmentModel,
-            TerminalIdentity: defineTerminalIdentityModel
+            TerminalIdentity: defineTerminalIdentityModel,
+            // Phase 8 (08-02): commerce-foundation Tenant models — see
+            // apps/dgfy-api/src/models/Tenant/{Product,ProductFolder,
+            // InventoryMovement,Booking,BookingCapacity,Shift,
+            // CashDrawerEvent,ComplianceModeState}.js.
+            Product: defineProductModel,
+            ProductFolder: defineProductFolderModel,
+            InventoryMovement: defineInventoryMovementModel,
+            Booking: defineBookingModel,
+            BookingCapacity: defineBookingCapacityModel,
+            Shift: defineShiftModel,
+            CashDrawerEvent: defineCashDrawerEventModel,
+            ComplianceModeState: defineComplianceModeStateModel
         };
 
         const models = {};
