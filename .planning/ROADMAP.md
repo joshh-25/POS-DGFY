@@ -199,7 +199,17 @@ Plans:
   3. Compatibility adapters, when needed, translate at API boundaries and do not define canonical DGFY domain contracts.
   4. Developer can identify the temporary compatibility inventory and the condition that removes each seam.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Compatibility-seam manifest (JSON source of truth) + CI validator (schema/completeness/reconciliation/path-safety) + inventory generator
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 05-02-PLAN.md — SC3 guardrail extension (compat-import ban + entities/ scan + eslint) + CI/husky acceptance gate + governance ADR 0035
+- [ ] 05-03-PLAN.md — DB-continuity reference seam (non-destructive verify-continuity command) + first manifest entry + inventory regeneration
 
 ### Phase 6: Release Evidence and Rehearsal Gates
 
@@ -238,6 +248,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 2. DGFY Database Foundation | 5/5 | Complete    | 2026-07-10 |
 | 3. Old-to-New Migration Proof | 6/6 | Complete   | 2026-07-11 |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 11/11 | Complete    | 2026-07-11 |
-| 5. Compatibility and Backend-First Cutover Seam | 0/TBD | Not started | - |
+| 5. Compatibility and Backend-First Cutover Seam | 0/3 | Not started | - |
 | 6. Release Evidence and Rehearsal Gates | 0/TBD | Not started | - |
 | 7. Cutover Runbook and Deferred Domain Split | 0/TBD | Not started | - |
