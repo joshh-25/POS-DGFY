@@ -2,150 +2,221 @@
 phase: 04-backend-accounts-businesses-and-tenancy-foundation
 reviewed: 2026-07-12T00:00:00Z
 depth: standard
-files_reviewed: 38
+files_reviewed: 7
 files_reviewed_list:
-  - apps/dgfy-api/src/config/architectureGuardrailsAllowlist.js
-  - apps/dgfy-api/src/infra/tenantConnector.js
-  - apps/dgfy-api/src/models/Tenant/StaffInvitation.js
-  - apps/dgfy-api/src/models/Tenant/TerminalIdentity.js
-  - apps/dgfy-api/src/modules/businesses/controllers/tenantRegistryController.js
-  - apps/dgfy-api/src/modules/businesses/entities/businessEntity.js
-  - apps/dgfy-api/src/modules/businesses/index.js
-  - apps/dgfy-api/src/modules/businesses/repositories/accountStaffAssignmentRepository.js
-  - apps/dgfy-api/src/modules/businesses/repositories/businessDatabaseRegistryRepository.js
-  - apps/dgfy-api/src/modules/businesses/repositories/businessRepository.js
-  - apps/dgfy-api/src/modules/businesses/repositories/locationRepository.js
-  - apps/dgfy-api/src/modules/businesses/repositories/staffOnboardingRepository.js
-  - apps/dgfy-api/src/modules/businesses/routes.js
-  - apps/dgfy-api/src/modules/businesses/usecases/businessUseCases.js
-  - apps/dgfy-api/src/modules/businesses/usecases/locationUseCases.js
-  - apps/dgfy-api/src/modules/businesses/usecases/tenantRegistryUseCases.js
-  - apps/dgfy-api/src/modules/businesses/usecases/tenantSessionUseCases.js
+  - apps/dgfy-migration-runner/src/schema/applyBusinessSchema.js
+  - apps/dgfy-migration-runner/src/commands/activateTenant.js
+  - apps/dgfy-migration-runner/tests/activateTenant.test.js
+  - apps/dgfy-migration-runner/src/cli.js
+  - apps/dgfy-migration-runner/tests/cliContract.test.js
   - apps/dgfy-api/tests/e2e/phase4FullFlow.test.js
   - apps/dgfy-api/tests/helpers/tenantSchemaProvisioning.js
-  - apps/dgfy-api/tests/integration/businesses/businessFlows.test.js
-  - apps/dgfy-api/tests/integration/businesses/businessRoutes.test.js
-  - apps/dgfy-api/tests/integration/businesses/businessValidation.test.js
-  - apps/dgfy-api/tests/integration/businesses/locationRepository.test.js
-  - apps/dgfy-api/tests/integration/businesses/staffOnboardingRepository.test.js
-  - apps/dgfy-api/tests/integration/businesses/tenantRegistryRoutes.test.js
-  - apps/dgfy-api/tests/integration/tenancy/tenantSessionFlows.test.js
-  - apps/dgfy-api/tests/integration/tenancy/tenantSessionRoutes.test.js
-  - apps/dgfy-api/tests/integration/tenancy/tenantSessionUseCases.test.js
-  - apps/dgfy-api/tests/integration/tenancy/tenantSessionValidation.test.js
-  - apps/dgfy-api/tests/unit/infra/tenantConnector.test.js
-  - apps/dgfy-api/tests/unit/modules/businesses/businessEntity.test.js
-  - apps/dgfy-api/tests/unit/modules/businesses/businessUseCases.test.js
-  - apps/dgfy-api/tests/unit/modules/businesses/locationUseCases.test.js
-  - apps/dgfy-api/tests/unit/modules/businesses/tenantSessionUseCases.test.js
-  - apps/dgfy-migration-runner/src/migrations/schema/20260711143000-add-dgfy-business-staff-invitations.cjs
-  - apps/dgfy-migration-runner/src/schemaContracts/dgfyBusinessContract.js
-  - apps/dgfy-migration-runner/tests/dgfyBusinessSchema.test.js
-  - apps/dgfy-migration-runner/tests/phase04StaffInvitationsSchema.test.js
 findings:
   critical: 0
-  warning: 4
-  info: 1
-  total: 5
+  warning: 5
+  info: 4
+  total: 9
 status: issues_found
 ---
 
-# Phase 04: Code Review Report (Gap-Closure Waves 04-06/04-07/04-08)
+# Phase 04: Code Review Report (Scoped — Plan 04-09 Gap Closure)
 
 **Reviewed:** 2026-07-12T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 38
+**Files Reviewed:** 7
 **Status:** issues_found
 
 ## Summary
 
-This review's scope is narrowed to the three gap-closure plans executed this run: 04-06 (tenant registry read-only lookup), 04-07 (durable staff invitation/onboarding persistence + `staff_invitations` migration), and 04-08 (TerminalIdentity wiring gap-closure + owner-bypass provisioning fail-closed fix). Plans 04-01 through 04-05 were reviewed in a separate prior cycle (see `04-REVIEW.iter2.md`/`04-REVIEW.iter3.md`/`04-REVIEW-FIX.md` in this directory) and are out of scope here; this file overwrites the prior full-phase `04-REVIEW.md` and is now the authoritative review state for the gap-closure work.
+This is a scoped re-review of exactly the 7 files plan 04-09 added/modified to ship the
+`activate-tenant` operator CLI (production analog of the existing dgfy-api test helper
+`provisionAndActivateTenantDatabase`). Phases 04-01 through 04-08 were reviewed previously
+(see `04-REVIEW.iter2.md`/`04-REVIEW.iter3.md`/`04-REVIEW-FIX.md`/`04-REVIEW-FIX.iter3.md` in
+this directory) and are out of scope here; this file overwrites the prior gap-closure review
+and is now the authoritative review state for plan 04-09.
 
-The gap-closure work itself is generally solid: the Wave 8 owner-bypass fix in `tenantSessionUseCases.js` (requiring `status==='active' && verified_at` before an owner can activate a session) is a real, well-targeted fix with test coverage (`tenantSessionFlows.test.js`'s "Pre-Handoff Fail-Closed Behavior" describe block), the token-hash-only invitation persistence (T-04-07-02) is correctly implemented end-to-end (model, migration, repository), and the new `TenantConnector.getModels()` registry closes the TerminalIdentity orphan finding with real test evidence (association wiring, idempotency, reachability from `buildBusinessesModule()`).
+The plan's own STRIDE threat-model requirements (T-04-09-01 through T-04-09-SC) all hold under
+inspection:
+- `assertTargetDbNameAllowed()` (generic `dgfy_` pattern) AND an explicit
+  `BUSINESS_DB_NAME_PATTERN` check both run, in that order, before any connection is opened
+  (`activateTenant.js:39-44`) — `dgfy_core` and arbitrary non-`dgfy_` names are both rejected
+  pre-connection, confirmed by `activateTenant.test.js`'s two guard-rejection unit tests.
+- The registry row is only ever `SELECT`ed and `UPDATE`d, keyed on the unique `database_name`
+  column, never `INSERT`ed (`activateTenant.js:64-75`, `:132-135`).
+- The `UPDATE` only runs after `applyAndVerifyBusinessSchema()` resolves successfully
+  (`activateTenant.js:119-135`); any verification failure (missing table) throws before the
+  registry is ever touched, confirmed by `activateTenant.test.js`'s missing-table and
+  missing-row unit tests.
+- The report/summary payloads built in `activateTenant.js` (`:90-99`, `:137-148`) contain only
+  `database_name`, `business_id`, `migrations_executed`, `verified_tables`, and boolean flags —
+  no host/user/password/DSN, confirmed by inspecting `reportWriter.js`/`summaryWriter.js`,
+  which serialize exactly that object with no additional fields.
+- Every SQL statement against `business_database_registry` is parameterized
+  (`replacements: [...]`); the one string-interpolated statement
+  (`` CREATE DATABASE IF NOT EXISTS `${databaseName}` ``, `activateTenant.js:116`) is only
+  reachable after both name guards have already run unconditionally at the top of the
+  function, on every code path (idempotent and non-idempotent).
+- The idempotency branch (`status === 'active' && verified_at`) does not just re-read the
+  registry — it re-opens a tenant connection and re-runs `applyAndVerifyBusinessSchema()`
+  before reporting `already_active: true`, so a broken/drifted schema on an already-"active"
+  row would still throw rather than silently succeed.
 
-However, four issues were found that should be addressed: (1) invitations never transition out of `status: 'pending'` on expiry/revocation, permanently blocking re-invitation of an email address after the 7-day expiry window; (2) the new `TenantConnector.getModels()` idempotent-registry guarantee is not honored by the sibling repositories that independently define the same tenant models on the same connection, which — demonstrated by this review's own trace of `tenantSessionFlows.test.js`'s actual call order — causes model redefinition/association loss whenever call order varies; (3) the additive migration's `down()` includes a MySQL-incompatible `DROP TYPE` statement that is dead code (always throws, silently swallowed); and (4) the staff invitation creation path has no protection against a concurrent-request race that can create two pending invitations for the same email (mirrors a race the sibling `business_handle` path already guards against via `CR-01`, but this path does not).
+No BLOCKER-level defect was found against those specific requirements. However, standard-depth
+review surfaced several real gaps in the surrounding logic and test coverage — most notably
+that the command's fail-closed posture only checks for a *missing* registry row, not for the
+row being in an unexpected *status* (the `business_database_registry.status` ENUM defines
+`migrating` and `deprecated` states that this command would silently overwrite back to
+`active` if ever reached), and that the actual mutating behavior (the real
+apply→verify→UPDATE happy path and the idempotent re-verify path) has zero coverage in the
+always-run (skip-safe) unit suite — both are only exercised by the DB-backed integration block
+that is skipped unless `RUN_ACTIVATE_TENANT_INTEGRATION=true` is explicitly set.
 
 ## Warnings
 
-### WR-01: Invitations never expire in the database — expired invitations permanently block re-invitation of the same email
+### WR-01: `activate-tenant` never validates the registry row's current status before reactivating it
 
-**File:** `apps/dgfy-api/src/modules/businesses/usecases/businessUseCases.js:362-370`
-**Issue:** `buildOnboardStaffViaInvitationUseCase` rejects a new invitation with `CONFLICT` whenever `staffOnboardingRepository.findInvitationByEmail(businessId, email)` returns a row, and that lookup matches on `status: 'pending'` only (`apps/dgfy-api/src/modules/businesses/repositories/staffOnboardingRepository.js:162-169`). Nothing in this codebase ever transitions an invitation's status away from `'pending'` on expiry — `buildAcceptInvitationUseCase` only *checks* `expires_at` at accept-time (`businessUseCases.js:515-517`) and returns a validation error, but never calls an update to mark the row `'expired'`. The `'expired'`/`'revoked'` enum values exist on the model/migration/schema contract (`StaffInvitation.js:58`, the `20260711143000-...` migration, `dgfyBusinessContract.js:117`) but no code path ever sets them.
-
-Net effect: once an invitation email is sent and the invitee doesn't accept within 7 days (`INVITATION_EXPIRY_MS`), the business owner can never send a new invitation to that same email address again — every future `POST /businesses/:id/staff` (invitation flow) call for that email will return `409 CONFLICT: "An invitation is already pending for this email."` forever, with no operator-facing way to clear it short of a direct DB write. This is not covered by any test in `businessUseCases.test.js` or `staffOnboardingRepository.test.js`.
-
-**Fix:** Either (a) have `findInvitationByEmail` exclude rows whose `expires_at` has passed (treat them as not-blocking), or (b) lazily transition an expired `'pending'` row to `'expired'` the moment it's read (in `findInvitationByEmail`/`findInvitationByToken`), e.g.:
+**File:** `apps/dgfy-migration-runner/src/commands/activateTenant.js:70-135`
+**Issue:** The only guard against acting on an "unexpected" row is `if (!registryRow)` (fail
+closed on a missing row). Any row that DOES exist but is not `status === 'active' &&
+verified_at` (the idempotent fast-path condition) falls through to the full
+apply+verify+UPDATE path, which unconditionally sets `status = 'active'` at the end
+(`activateTenant.js:132-135`). `business_database_registry.status` is an ENUM of
+`'provisioning' | 'active' | 'migrating' | 'deprecated'`
+(`apps/dgfy-api/src/models/Landlord/BusinessDatabaseRegistry.js:49-53`). Nothing today
+prevents a future/administrative transition of a row to `'deprecated'` (e.g. an offboarded or
+compliance-suspended business) — but if that ever happens, running
+`activate-tenant --database-name <that name>` would silently resurrect it to `active`/verified
+with no warning or override requirement, since the command treats "row exists" and "row is in
+a legitimate pre-activation state" as the same thing.
+**Fix:** Require an explicit precondition on `registryRow.status` before proceeding past the
+idempotent check, e.g.:
 ```js
-async findInvitationByEmail(businessId, email) {
-    return this.withModels(businessId, async ({ StaffInvitation }) => {
-        const record = await StaffInvitation.findOne({
-            where: {
-                email: String(email || '').trim().toLowerCase(),
-                status: 'pending',
-                expires_at: { [Op.gt]: new Date() }
-            }
-        });
-        return record ? this.toPlainInvitation(record) : null;
-    });
+if (registryRow.status !== 'provisioning') {
+  throw new TargetGuardError(
+    `activate-tenant refuses to activate database_name "${databaseName}" — registry status is ` +
+    `"${registryRow.status}", expected "provisioning" (or already-active/verified for a no-op).`
+  );
 }
 ```
 
-### WR-02: `TenantConnector.getModels()`'s idempotent-registry guarantee is not honored by sibling repositories, risking model redefinition / association loss
+### WR-02: No concurrency guard between the registry SELECT and the activating UPDATE
 
-**File:** `apps/dgfy-api/src/infra/tenantConnector.js:115-145`; `apps/dgfy-api/src/modules/businesses/repositories/locationRepository.js:91-99`; `apps/dgfy-api/src/modules/businesses/repositories/accountStaffAssignmentRepository.js:43-51`; `apps/dgfy-api/src/modules/businesses/repositories/staffOnboardingRepository.js:91-102`
-**Issue:** `TenantConnector.getModels()` was added in Wave 8 specifically to be a single, idempotent tenant model registry — it checks `connection.models[name] || define(connection)` before defining a model (`tenantConnector.js:131`), so it never clobbers a model another caller already defined on that connection. But `LocationRepository.resolveModel()`, `AccountStaffAssignmentRepository.resolveModel()`, and `StaffOnboardingRepository.resolveModels()` do the opposite: they unconditionally call `defineLocationModel(connection)` / `defineAccountStaffAssignmentModel(connection)` / `defineStaffAccountModel(connection)`+`defineStaffInvitationModel(connection)` every time their own per-repository cache misses, with no check of `connection.models[name]` first.
+**File:** `apps/dgfy-migration-runner/src/commands/activateTenant.js:64-135`
+**Issue:** Two concurrent `activate-tenant` invocations for the same `database_name` would
+both `SELECT` the same `provisioning` row, both see the idempotency condition as false, and
+both proceed to run `CREATE DATABASE IF NOT EXISTS` + Umzug migrations + verification +
+`UPDATE` against the same tenant database with no locking (no transaction, no `SELECT ... FOR
+UPDATE`, no advisory lock). Umzug's own storage-based pending-check is not atomic across
+processes, so this can race DDL execution (e.g. duplicate/partial migration attempts) against
+the same schema.
+**Fix:** Wrap the SELECT and the eventual status transition in a single transaction with
+`SELECT ... FOR UPDATE`, or take a named MySQL advisory lock (`GET_LOCK(databaseName, ...)`)
+around the whole apply+verify+update sequence.
 
-Since each `defineXModel()` factory declares a brand-new `class X extends Model {}` on every call (see `StaffInvitation.js:17`, `TerminalIdentity.js:23`, etc.) and then calls `.init()` against the same shared Sequelize connection (all of these repositories share one `TenantConnector` instance via `buildBusinessesModule()`), calling `getModels()` and then having one of these sibling repositories independently resolve its own model on the *same* `databaseName` results in two different JS classes being registered under the same Sequelize model name on one connection — the second registration silently overwrites/duplicates the first, dropping whichever associations `getModels()`'s own `associate()` pass had wired.
+### WR-03: Registry mutation happens before audit/report bookkeeping, so a post-mutation failure is reported as "failed" even though activation already succeeded
 
-This ordering is not hypothetical — it is the exact order this review traced through `apps/dgfy-api/tests/integration/tenancy/tenantSessionFlows.test.js`: `createBusinessWithTenant()` calls `resolveTerminalModel(databaseName)` (→ `tenantConnector.getModels(databaseName)`, which defines `AccountStaffAssignment` via the idempotent path and wires its associations) *before* the "staff with membership + assignment" and "Staff Assignment Verification" tests call `accountStaffAssignmentRepository.create(databaseName, ...)` / `.findActiveAssignment(...)`, which independently redefines `AccountStaffAssignment` on the same connection via `AccountStaffAssignmentRepository.resolveModel()`. The existing unit test (`tenantConnector.test.js:65-80`, "reuses an already-defined model on the same connection instead of redefining it") only proves the *reverse* order (a sibling repository defines first, then `getModels()` reuses it) — the order that actually occurs in the traced integration test is untested and unguarded.
+**File:** `apps/dgfy-migration-runner/src/commands/activateTenant.js:132-160`
+**Issue:** The `UPDATE business_database_registry ... SET status = 'active' ...` at
+lines 132-135 durably commits before `writeJsonReport`, `writeSummaryReport`, and
+`recordCommandComplete` run (lines 150-157). If any of those three calls throws (disk full,
+meta-DB hiccup, etc.), execution falls into the `catch` block (line 160), which records
+`exitStatus: 'failed'` and rethrows — `cli.js`'s `main().catch` then prints `fatal: ...` and
+exits with code 1. An operator watching the CLI would reasonably conclude activation failed
+and re-run/escalate, when the tenant database has, in fact, already been flipped to
+`active`/`verified`.
+**Fix:** Record command completion (success) immediately after the UPDATE commits, and treat
+report/summary writing as best-effort logging that doesn't flip the recorded outcome to
+`failed` for an already-successful activation (or reorder so report generation happens before
+the mutating UPDATE, with the UPDATE itself as the last, idempotent step).
 
-Currently this is latent (no production code path issues an `include`/eager-load against the tenant models that would surface missing associations), but it means `getModels()`'s doc comment claim — "a second call ... never re-defining anything" / "reuses that existing definition" — is only true in one direction, and any future caller relying on `TenantConnector.getModels()`'s associations being stable after other repositories have touched the same connection will hit silent, hard-to-debug data-shape drift.
+### WR-04: The core mutating behavior (happy path + idempotent re-verify path) has no coverage in the always-run test suite
 
-**Fix:** Make every sibling repository resolve tenant models through `TenantConnector.getModels()` (or reuse `connection.models[name] || define(connection)`'s same idempotent check) instead of calling `defineXModel(connection)` unconditionally, e.g.:
-```js
-// AccountStaffAssignmentRepository.resolveModel()
-resolveModel(databaseName) {
-    if (this.modelsByDatabase.has(databaseName)) return this.modelsByDatabase.get(databaseName);
-    const connection = this.tenantConnector.getConnection(databaseName);
-    const model = connection.models.AccountStaffAssignment || defineAccountStaffAssignmentModel(connection);
-    this.modelsByDatabase.set(databaseName, model);
-    return model;
-}
-```
+**File:** `apps/dgfy-migration-runner/tests/activateTenant.test.js:108-271` (skip-safe blocks) vs. `:277-411` (integration-gated block)
+**Issue:** The skip-safe (always-run) unit tests in this file only cover: (1) the missing-table
+verification error in `applyAndVerifyBusinessSchema` in isolation, (2) the two guard-rejection
+cases, and (3) the missing-registry-row fail-closed case. The actual "resolve provisioning row
+→ CREATE DATABASE → apply+verify → UPDATE to active/verified" happy path, and the idempotent
+"already active/verified → re-verify → report `already_active: true` without a second UPDATE"
+path — the two behaviors this command exists to provide, and the specific idempotency
+guarantee this phase's own threat model calls out — are ONLY exercised inside
+`describeIfIntegration(...)` (lines 277-411), gated behind `RUN_ACTIVATE_TENANT_INTEGRATION=true`
+(line 30), which is not set in ordinary CI/local runs (the file even logs a SKIPPED notice at
+lines 39-47 when unset). A regression in the UPDATE's `WHERE database_name = ?` clause, in the
+idempotency condition, or in the "never re-UPDATE when already active" behavior would not be
+caught by the default test run.
+**Fix:** Add a mocked-DB unit test (in the skip-safe section, following the existing
+`jest.unstable_mockModule` pattern already used in this file) that: seeds a `provisioning` row
+via a mocked `coreSequelize.query`, asserts the exact `UPDATE ... SET status = ?, verified_at =
+?, updated_at = ? WHERE database_name = ?` call and its replacements, and a second test that
+seeds an `active`/verified row and asserts `applyAndVerifyBusinessSchema` is called (re-verify)
+but the mocked `query` never receives a second `UPDATE`.
 
-### WR-03: Additive migration's `down()` issues a MySQL-incompatible `DROP TYPE` statement (dead code, silently swallowed)
+### WR-05: Report-building/write/record sequence is duplicated near-verbatim between the idempotent and non-idempotent branches
 
-**File:** `apps/dgfy-migration-runner/src/migrations/schema/20260711143000-add-dgfy-business-staff-invitations.cjs:107-113`
-**Issue:**
-```js
-async down(queryInterface) {
-  await queryInterface.dropTable('staff_invitations');
-  if (queryInterface.sequelize && queryInterface.sequelize.getDialect() === 'mysql') {
-    await queryInterface.sequelize.query('DROP TYPE IF EXISTS enum_staff_invitations_status').catch(() => {});
-  }
-}
-```
-`DROP TYPE` is PostgreSQL syntax for named enum types — MySQL has no equivalent statement (MySQL `ENUM` is an inline column type, not a named, droppable type), so this query always throws a syntax error inside the `dialect === 'mysql'` branch, and the error is unconditionally swallowed by `.catch(() => {})`. The statement never does anything useful and gives a false impression of enum cleanup on rollback for the dialect this migration explicitly targets (`meta.targetKind: 'business'` databases are always MySQL in this codebase).
-**Fix:** Remove the dead `DROP TYPE` call entirely — `dropTable('staff_invitations')` alone is sufficient for MySQL (the ENUM type is dropped along with the column/table, there is no separate named type to clean up):
-```js
-async down(queryInterface) {
-  await queryInterface.dropTable('staff_invitations');
-}
-```
-
-### WR-04: Concurrent duplicate-invitation race — no unique constraint or DB-level conflict handling on `(business, email, pending)`
-
-**File:** `apps/dgfy-api/src/modules/businesses/usecases/businessUseCases.js:362-370`; `apps/dgfy-migration-runner/src/migrations/schema/20260711143000-add-dgfy-business-staff-invitations.cjs:99-101`
-**Issue:** `buildOnboardStaffViaInvitationUseCase` guards against a duplicate pending invitation with a check-then-write: `findInvitationByEmail()` then, if null, `createInvitation()`. The `staff_invitations` table's `email` index (`idx_staff_invitations_email`) is non-unique — only `token_hash` is uniquely constrained. Two concurrent `POST /businesses/:id/staff` (invitation flow) requests for the same email can both pass the pre-check and both insert a `pending` row, since nothing at the DB layer rejects the second insert. This is the exact same class of race the business-creation path already explicitly guards against (see `mapUniqueConstraintError`/`CR-01` in the same file, applied to `business_handle`), but no equivalent guard exists for invitations.
-**Fix:** Either add a partial/application-level uniqueness guard (e.g. a unique index on `(email, status)` filtered to `status='pending'` if the dialect supports it, or a second DB round-trip inside a transaction with `SELECT ... FOR UPDATE`), or at minimum document this as an accepted, low-severity race (duplicate pending invitations are not a security issue, just noise) rather than leaving it silently inconsistent with the `business_handle` path's stricter handling.
+**File:** `apps/dgfy-migration-runner/src/commands/activateTenant.js:80-159`
+**Issue:** Lines 81-110 (idempotent branch) and lines 118-159 (main branch) both: create/reuse
+a tenant connection, call `applyAndVerifyBusinessSchema`, build a near-identical report object,
+call `writeJsonReport`, call `writeSummaryReport`, and call `recordCommandComplete`. The only
+differences are the `already_active` flag and whether the registry `UPDATE` runs. This
+duplication means a future change to the report shape or the write/record sequence (e.g. WR-03's
+fix) has to be made twice, and the two copies can silently drift.
+**Fix:** Extract a shared `finishActivation({ config, executionId, metaSequelize, databaseName,
+registryRow, migrationsExecuted, verifiedTables, alreadyActive })` helper that builds the report,
+writes it, and records completion once, called from both branches.
 
 ## Info
 
-### IN-01: `BusinessDatabaseRegistryRepository.create()` still permits duplicate registry rows per business (acknowledged, unresolved elsewhere)
+### IN-01: `cli.js`'s `buildProgram()` JSDoc is stale — says "six" subcommands, omits `activate-tenant`
 
-**File:** `apps/dgfy-api/src/modules/businesses/repositories/businessDatabaseRegistryRepository.js:73-81`; `apps/dgfy-api/tests/helpers/tenantSchemaProvisioning.js:26-38`
-**Issue:** `create()` inserts a `business_database_registry` row with no application-level check that a row for `business_id` doesn't already exist (only `findOrCreateForBusiness()`, used by the actual production request path, guards against this). The underlying table's only unique constraint is on `database_name`, not `business_id` (this is called out explicitly in this wave's own new test helper doc comment as "a genuine latent bug that would misroute production/test HTTP flows once real MySQL exists"). `create()` itself is not called from any use case in this diff, so the risk is currently confined to test misuse, but the method remains a foot-gun for any future caller.
-**Fix:** No action required for this review's scope (the underlying schema/migration for `business_database_registry` predates this wave and is out of scope), but consider tracking this as a follow-up: either add a real unique constraint on `business_id` in a future migration, or have `create()` itself call `findByBusinessId()` first and reject/no-op on an existing row.
+**File:** `apps/dgfy-migration-runner/src/cli.js:16-21`
+**Issue:** The comment reads "Builds the Commander program wiring all six RUN-02 subcommands to
+their run*() handlers" and doesn't mention `activate-tenant` at all, even though the function
+now wires seven (schema:migrate, data:dry-run, data:apply, verify, status, rollback-plan,
+activate-tenant) and the import list at line 11 already includes `runActivateTenant`.
+**Fix:** Update the comment to reflect the current command count and mention `activate-tenant`.
+
+### IN-02: Test title/assertion count mismatch in `cliContract.test.js`
+
+**File:** `apps/dgfy-migration-runner/tests/cliContract.test.js:11-17`
+**Issue:** The test is titled `'--help stdout lists all seven commands'` but the array it
+iterates only has six entries (`['schema', 'data', 'verify', 'status', 'rollback-plan',
+'activate-tenant']`, line 14). The title appears to be counting total leaf subcommands (schema
+migrate + data dry-run + data apply + verify + status + rollback-plan + activate-tenant = 7)
+while the assertion only checks top-level program/command names (6), which is confusing and
+gives a false impression that a 7th distinct string is being verified.
+**Fix:** Either rename the test to "...lists all six top-level commands" or add explicit
+assertions for the `data`/`schema` subcommand names too (`dry-run`, `apply`, `migrate`) to
+genuinely cover "seven."
+
+### IN-03: Duplicated "tolerant `showAllTables()` extraction + missing-table diff" logic between production code and the test helper
+
+**File:** `apps/dgfy-migration-runner/src/schema/applyBusinessSchema.js:65-78` vs. `apps/dgfy-api/tests/helpers/tenantSchemaProvisioning.js:78-94`
+**Issue:** Both files independently reimplement the identical logic for normalizing
+`showAllTables()` results (string vs. `{tableName}`/`{table_name}` shapes) and computing the
+missing-tables diff against `dgfyBusinessContract.tables`. The duplication is intentional today
+per both files' own comments (the test helper is documented as a "fast, IN-PROCESS CI stand-in"
+for the shipped command), but nothing structurally enforces the two copies stay in sync — a
+future change to the table-name extraction logic in one file (e.g. to handle a new
+dialect/driver quirk) could silently diverge from the other, undermining the test helper's
+claim to prove "the exact same real-migration + real-verification behavior."
+**Fix:** Consider extracting the table-normalization + diff logic into one small shared utility
+importable by both packages (or accept the duplication explicitly and add a cross-file
+consistency test that fails if the two implementations diverge).
+
+### IN-04: Sequelize connections opened by `runActivateTenant` are never closed
+
+**File:** `apps/dgfy-migration-runner/src/commands/activateTenant.js:46-47, 81, 118`
+**Issue:** `coreSequelize`, `metaSequelize`, and (on either branch) `tenantSequelize` are opened
+via the `create*Connection` factories but never `.close()`d on the success path or the error
+path. This mirrors the pre-existing pattern in the (out-of-scope) `schema.js`/`status.js`/
+`verify.js` command modules, so it's not a regression specific to this change, but it does apply
+to the new code path too: pooled MySQL connections with idle timers
+(`config/db.js`'s `poolForRuntimeMode`) can keep the Node process alive for up to the pool's
+`idle` window after the command logically "completes," and the leak would compound if this
+function is ever invoked in-process (e.g. a future long-running operator tool, or repeated
+calls within the same process) rather than as a fresh one-shot CLI invocation.
+**Fix:** Add a `finally` block that closes all opened Sequelize instances, or route this
+through a shared connection-lifecycle helper used consistently by all command modules.
 
 ---
 
