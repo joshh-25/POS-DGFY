@@ -182,4 +182,17 @@ describe('CR-02/FSC-02: compliant_active POS gate enforces the full evidence-der
         expect(decision.decision).toBe(COMPLIANCE_DECISION.ALLOW);
         expect(decision.reason_code).toBe(COMPLIANCE_REASON_CODE.ALLOWED);
     });
+
+    test('partial evidence bundle: only rmo_filing_readiness + fiscal_terminal_registration supplied, all five other evidence-derived signals omitted -> REQUIRES_SETUP (NOT ALLOW)', () => {
+        const decision = buildCompliantActiveDecision({
+            evidenceOverrides: {
+                rmo_filing_readiness: { ready: true, complete: 1, total: 1, missing: 0, items: [] },
+                fiscal_terminal_registration: { ready: true, verified_count: 1, total_count: 1 }
+            }
+        });
+        expect(decision.decision).toBe(COMPLIANCE_DECISION.REQUIRES_SETUP);
+        expect(decision.decision).not.toBe(COMPLIANCE_DECISION.ALLOW);
+        expect(decision.checklist.ready_for_compliant_activation).toBe(false);
+        expect(decision.reason_code).toBe(COMPLIANCE_REASON_CODE.COMPLIANT_MODE_FAIL_CLOSED);
+    });
 });
