@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 04
-current_phase_name: backend-accounts-businesses-and-tenancy-foundation
+current_phase: 5
+current_phase_name: Compatibility and Backend-First Cutover Seam
 status: executing
 stopped_at: Completed 04-09-PLAN.md
-last_updated: "2026-07-12T01:01:04.878Z"
+last_updated: "2026-07-12T02:45:49.361Z"
 last_activity: 2026-07-12
-last_activity_desc: Phase 04 execution started
+last_activity_desc: Phase 04 complete, transitioned to Phase 5
 progress:
   total_phases: 7
   completed_phases: 4
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11)
 
 **Core value:** DGFY can become a standalone multi-tenant POS and Storefront system without breaking the existing live platform during migration.
-**Current focus:** Phase 04 — backend-accounts-businesses-and-tenancy-foundation
+**Current focus:** Phase 5 — Compatibility and Backend-First Cutover Seam
 
 ## Current Position
 
-Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
-Plan: 2 of 11
+Phase: 5 — Compatibility and Backend-First Cutover Seam
+Plan: Not started
 Status: Ready to execute
-Last activity: 2026-07-12 — Phase 04 execution started
+Last activity: 2026-07-12 — Phase 04 complete, transitioned to Phase 5
 
 Progress: [████░░░░░░] 43%
 
@@ -39,7 +39,7 @@ Progress: [████░░░░░░] 43%
 
 **Velocity:**
 
-- Total plans completed: 15
+- Total plans completed: 26
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -50,6 +50,7 @@ Progress: [████░░░░░░] 43%
 | 01 | 4 | - | - |
 | 02 | 5 | - | - |
 | 03 | 6 | - | - |
+| 04 | 11 | - | - |
 
 **Recent Trend:**
 
@@ -173,8 +174,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 4] Backend placement for Accounts/Businesses/Tenancy still needs an ADR impact decision before implementation planning.
-- [Phase 3] Legacy data quality and production-like rehearsal inputs need inspection before migration proof can be trusted.
+- [Phase 4] `business_database_registry.business_id` has no unique constraint — a duplicate-row bug was found and fixed at every production-reachable call site (`findOrCreateForBusiness()`), but the underlying schema gap remains as defense-in-depth debt; also left unfixed in one test helper (`businessRoutes.test.js`), tracked in `deferred-items.md`. Non-blocking (no exploitable production path confirmed by security audit), worth closing before more registry write paths are added.
 
 ## Deferred Items
 
@@ -188,6 +188,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T01:01:04.864Z
-Stopped at: Completed 04-09-PLAN.md
+Last session: 2026-07-12T04:45:00Z
+Stopped at: Phase 04 complete (UAT passed, 04-SECURITY.md 35/36 threats closed), ready to plan Phase 5
 Resume file: None

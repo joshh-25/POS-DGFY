@@ -237,7 +237,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 1. Architecture and Migration Runner Contract | 4/4 | Complete    | 2026-07-10 |
 | 2. DGFY Database Foundation | 5/5 | Complete    | 2026-07-10 |
 | 3. Old-to-New Migration Proof | 6/6 | Complete   | 2026-07-11 |
-| 4. Backend Accounts, Businesses, and Tenancy Foundation | 11/11 | Complete   | 2026-07-11 |
+| 4. Backend Accounts, Businesses, and Tenancy Foundation | 11/11 | Complete    | 2026-07-11 |
 | 5. Compatibility and Backend-First Cutover Seam | 0/TBD | Not started | - |
 | 6. Release Evidence and Rehearsal Gates | 0/TBD | Not started | - |
 | 7. Cutover Runbook and Deferred Domain Split | 0/TBD | Not started | - |

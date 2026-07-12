@@ -58,8 +58,8 @@ Requirements for the initial database-first refactor milestone. Each maps to roa
 ### Backend Foundation
 
 - [x] **API-01**: Backend exposes Accounts APIs for DGFY account registration/login basics, profile/session lifecycle, and account lookup against the new DGFY schema.
-- [ ] **API-02**: Backend exposes Businesses APIs for business creation, business selection, branch registry basics, and owner/manager scope using the new DGFY schema. (operator activation mechanism (activate-tenant) built in 04-09; end-to-end DB-backed proof outstanding (API-06 real-MySQL run))
-- [ ] **API-03**: Backend exposes Tenancy APIs for tenant registry lookup, tenant provisioning metadata, tenant context selection, and tenant session creation. (operator activation mechanism (activate-tenant) built in 04-09; end-to-end DB-backed proof outstanding (API-06 real-MySQL run))
+- [x] **API-02**: Backend exposes Businesses APIs for business creation, business selection, branch registry basics, and owner/manager scope using the new DGFY schema. (operator activation mechanism (activate-tenant) built in 04-09; end-to-end DB-backed proof confirmed via human UAT against real MySQL, see 04-UAT.md)
+- [x] **API-03**: Backend exposes Tenancy APIs for tenant registry lookup, tenant provisioning metadata, tenant context selection, and tenant session creation. (operator activation mechanism (activate-tenant) built in 04-09; end-to-end DB-backed proof confirmed via human UAT against real MySQL, see 04-UAT.md)
 - [x] **API-04**: Tenant session creation requires explicit landlord membership plus tenant-local assignment or authorized scope evidence before tenant-local access is granted.
 - [x] **API-05**: Backend modules follow `routes -> controllers -> usecases -> repositories -> models`; controllers stay transport-only and repositories own Sequelize access.
 - [x] **API-06**: Account, business, tenancy, and session flows include tests for success, validation failure, duplicate/conflict paths, replay/reuse rejection where applicable, logout/session cleanup, and durable persistence side effects.
@@ -124,8 +124,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MIG-04 | Phase 3 | Complete |
 | MIG-05 | Phase 3 | Complete |
 | API-01 | Phase 4 | Complete |
-| API-02 | Phase 4 | Pending (operator activation mechanism (activate-tenant) built in 04-09; end-to-end DB-backed proof outstanding (API-06 real-MySQL run)) |
-| API-03 | Phase 4 | Pending (operator activation mechanism (activate-tenant) built in 04-09; end-to-end DB-backed proof outstanding (API-06 real-MySQL run)) |
+| API-02 | Phase 4 | Complete (human UAT confirmed against real MySQL — 04-UAT.md) |
+| API-03 | Phase 4 | Complete (human UAT confirmed against real MySQL — 04-UAT.md) |
 | API-04 | Phase 4 | Complete |
 | API-05 | Phase 4 | Complete |
 | API-06 | Phase 4 | Complete |
