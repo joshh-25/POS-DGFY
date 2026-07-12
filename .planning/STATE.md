@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 06
 current_phase_name: release-evidence-and-rehearsal-gates
-status: executing
+status: verifying
 stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-07-12T06:18:11.817Z"
+last_updated: "2026-07-12T06:28:34.368Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 06 execution started
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 32
-  completed_plans: 31
-  percent: 71
+  completed_plans: 32
+  percent: 86
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 Phase: 06 (release-evidence-and-rehearsal-gates) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-12 — Phase 06 execution started
 
 Progress: [████░░░░░░] 43%
@@ -89,6 +89,7 @@ Progress: [████░░░░░░] 43%
 | Phase 05 P03 | 25min | 3 tasks | 5 files |
 | Phase 06 P01 | 10min | 3 tasks | 6 files |
 | Phase 06 P02 | 10min | 2 tasks | 2 files |
+| Phase 06 P03 | 12min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -186,6 +187,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 06-01: zero active/verified tenants short-circuits release-evidence to a no_targets:true, ok:true report without prompting
 - [Phase ?]: 06-02: SEAM_REQUIRED_ENV for db-continuity-legacy-backup includes all four SOURCE_DB_* creds plus RUN_CONTINUITY_INTEGRATION (pinned to exact string 'true'), so the seam-smoke runner fails closed on a merely-present-but-false flag, not just a missing one
 - [Phase ?]: 06-02: TEST_PATH_RUNNERS stays a small explicit prefix->function array (not a generic package.json-walk resolver), matching the plan's documented extension-point-only-for-active-owners approach
+- [Phase ?]: 06-03: migration.verification/tenant.drift gates derive ok from the runner's written report content (summary.ok), not the child exit code alone — closing threat T-06-03-01
+- [Phase ?]: 06-03: report files are located via a filename glob matching the runner's {timestamp}-{command}.json naming, since writeJsonReport never writes a fixed filename
+- [Phase ?]: 06-03: self-validation against verify-release-verdict.js runs as a separate final check after dgfy_release_evidence.json is written, gating the overall exit code alongside aggregated results
 
 ### Pending Todos
 
@@ -207,6 +211,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T06:18:11.811Z
+Last session: 2026-07-12T06:26:26.246Z
 Stopped at: Completed 06-02-PLAN.md
 Resume file: None

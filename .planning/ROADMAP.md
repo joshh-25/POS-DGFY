@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Old-to-New Migration Proof** - Operators can rehearse and apply legacy-to-DGFY data transformations with retry and verification evidence. (completed 2026-07-11)
 - [x] **Phase 4: Backend Accounts, Businesses, and Tenancy Foundation** - Backend APIs use the stable DGFY schema for the first standalone identity and tenancy scope. (gaps found 2026-07-11 — see 04-VERIFICATION.md) (completed 2026-07-11) (activation handoff added in 04-09 (activate-tenant CLI); SC2/SC3 reachable once the DB-backed activation run is executed against real MySQL)
 - [x] **Phase 5: Compatibility and Backend-First Cutover Seam** - Current POS and Storefront behavior remains available through narrow, temporary compatibility seams. (completed 2026-07-12)
-- [ ] **Phase 6: Release Evidence and Rehearsal Gates** - Release evidence proves architecture, migration, tenant drift, and compatibility checks before cutover planning.
+- [x] **Phase 6: Release Evidence and Rehearsal Gates** - Release evidence proves architecture, migration, tenant drift, and compatibility checks before cutover planning. (completed 2026-07-12)
 - [ ] **Phase 7: Cutover Runbook and Deferred Domain Split** - Production cutover remains gated by a rehearsal-backed runbook and later domain plans stay out of v1.
 
 ## Phase Details
@@ -222,7 +222,7 @@ Plans:
   2. Migration verification and tenant drift checks produce reviewable reports for all targeted `dgfy_*` schemas.
   3. Targeted smoke or contract checks prove any touched compatibility seams still preserve current behavior.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -232,7 +232,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-03-PLAN.md — On-demand DGFY release-evidence orchestrator gate: architecture-checks gate + verdict aggregation into release_verdict-contract artifact + npm wiring (SC1, D-01, D-05)
+- [x] 06-03-PLAN.md — On-demand DGFY release-evidence orchestrator gate: architecture-checks gate + verdict aggregation into release_verdict-contract artifact + npm wiring (SC1, D-01, D-05)
 
 ### Phase 7: Cutover Runbook and Deferred Domain Split
 
@@ -259,5 +259,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. Old-to-New Migration Proof | 6/6 | Complete   | 2026-07-11 |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 11/11 | Complete    | 2026-07-11 |
 | 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete    | 2026-07-12 |
-| 6. Release Evidence and Rehearsal Gates | 2/3 | In Progress|  |
+| 6. Release Evidence and Rehearsal Gates | 3/3 | Complete   | 2026-07-12 |
 | 7. Cutover Runbook and Deferred Domain Split | 0/TBD | Not started | - |
