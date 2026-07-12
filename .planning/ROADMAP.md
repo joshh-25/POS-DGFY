@@ -311,6 +311,10 @@ Plans:
 
 - [x] 08-09-PLAN.md — compliance gap closure: DB-enforceable one-row-per-branch invariant (generated-column unique index) + atomic findOrCreate write path with 409 mapping (CR-01), and full evidence-derived checklist enforcement in the compliant_active POS gate (CR-02), D-05 preserved (FSC-01, FSC-02)
 
+**Wave 7** *(gap closure — FSC-02 re-verification: fail-open/fail-closed default inconsistency in evaluateComplianceChecklist, from 08-VERIFICATION.md)*
+
+- [ ] 08-10-PLAN.md — compliance gap closure: make all seven evidence-derived readiness signals fail closed uniformly (five `!== false` defaults → `=== true`) + partial-evidence regression test proving a compliant_active POS bundle with omitted signals yields REQUIRES_SETUP not ALLOW, D-05 preserved (FSC-02)
+
 ### Phase 9: POS Checkout & Payment
 
 **Goal**: Staff can run a complete, trustworthy point-of-sale checkout — building an Availment, applying discounts (including the statutory Senior Citizen/PWD discount), selecting a payment method, and producing a receipt — gated by an open shift and the shared compliance policy engine, with totals and cash change always computed server-side.
