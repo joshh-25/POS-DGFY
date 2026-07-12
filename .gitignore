@@ -5,6 +5,7 @@ node_modules/
 
 # Testing
 /coverage
+/apps/dgfy-api/coverage/
 
 # Production
 /build
@@ -95,3 +96,6 @@ local-dev/
 
 # Built Android release artifacts (scripts/build-android-beta-release.sh)
 /releases/android/
+
+# Migration runner report output (apps/dgfy-migration-runner local invocations)
+/tmp/dgfy-migration-reports/
