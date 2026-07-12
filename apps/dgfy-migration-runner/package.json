@@ -10,6 +10,7 @@
     "lint": "echo 'lint: deferred — no eslint devDependency/config shipped for this package yet (see WR-07, phase 01 code review)' && exit 0"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.5.2",
     "commander": "^15.0.0",
     "dotenv": "^16.6.1",
     "mysql2": "^3.6.5",

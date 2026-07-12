@@ -104,7 +104,7 @@ async function checkTableAgainstContract({ queryInterface, dbQuery, databaseName
  * getQueryInterface() and query()), plus scans for any explicitly
  * out-of-scope `rejectedTables` (D-15/ADR 0029) that should never appear.
  */
-async function checkContractSchema({ connection, databaseName, contract }) {
+export async function checkContractSchema({ connection, databaseName, contract }) {
   const queryInterface = connection.getQueryInterface();
   const dbQuery = async (sql, replacements) => {
     const [rows] = await connection.query(sql, { replacements });
@@ -156,7 +156,7 @@ function failedSchemaResult(databaseName, error) {
  * "idempotency/pending" proof the report's `idempotency` section reads
  * (D-22): zero missing means a rerun would be a pure no-op.
  */
-async function checkMigrationMetadata(metaSequelize, kind, targetDatabase) {
+export async function checkMigrationMetadata(metaSequelize, kind, targetDatabase) {
   const expectedMigrations = buildMigrationsForKind(kind, {}).map((migration) => migration.name);
   const storage = new MetaSequelizeStorage({ sequelize: metaSequelize, targetDatabase });
   const executedMigrations = await storage.executed();
