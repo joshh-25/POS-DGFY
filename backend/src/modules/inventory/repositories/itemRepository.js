@@ -1073,8 +1073,9 @@ export const itemRepository = {
 
         return formattedItem;
     },
-    async createItem(itemData, userId = null) {
+    async createItem(itemData, userId = null, { canManageCategories = false } = {}) {
         const Item = dbStore.get('Item');
+        const ItemFolder = dbStore.get('ItemFolder');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         const transaction = await sequelize.transaction();
 
@@ -1084,6 +1085,79 @@ export const itemRepository = {
                 itemData.sku_code = String(itemData.sku_code || '').trim();
             }
             const normalizedSku = normalizeSkuKey(itemData?.sku_code);
+            const requestedCategoryName = String(itemData?.create_category_name || '').trim().replace(/\s+/g, ' ');
+            const hasFolderId = Object.prototype.hasOwnProperty.call(itemData || {}, 'folder_id') && itemData.folder_id != null;
+
+            if (requestedCategoryName && hasFolderId) {
+                const error = new Error('Select an existing category or enter a new category name, not both.');
+                error.statusCode = 422;
+                throw error;
+            }
+
+            if (requestedCategoryName) {
+                if (!canManageCategories) {
+                    const error = new Error('Admin access is required to create a category while adding an item.');
+                    error.statusCode = 403;
+                    throw error;
+                }
+
+                const existingFolders = await ItemFolder.findAll({
+                    where: { parent_id: null },
+                    attributes: ['folder_id', 'name', 'is_active'],
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                const normalizedRequestedCategoryName = requestedCategoryName.toLowerCase();
+                let folder = existingFolders.find((candidate) => (
+                    String(candidate?.name || '').trim().replace(/\s+/g, ' ').toLowerCase() === normalizedRequestedCategoryName
+                ));
+
+                if (folder && folder.is_active === false) {
+                    const error = new Error(`Category "${folder.name}" is inactive. Activate it in Category Management before using it.`);
+                    error.statusCode = 422;
+                    throw error;
+                }
+
+                if (!folder) {
+                    try {
+                        folder = await ItemFolder.create({
+                            name: requestedCategoryName,
+                            description: '',
+                            show_in_pos_filter: true,
+                            is_active: true,
+                            parent_id: null
+                        }, { transaction });
+                    } catch (error) {
+                        if (error?.name !== 'SequelizeUniqueConstraintError') throw error;
+
+                        folder = await ItemFolder.findOne({
+                            where: { parent_id: null, name: requestedCategoryName, is_active: true },
+                            transaction,
+                            lock: transaction.LOCK.UPDATE
+                        });
+                        if (!folder) throw error;
+                    }
+                }
+
+                itemData.folder_id = folder.folder_id;
+                itemData.product_folder = folder.name;
+            } else if (hasFolderId) {
+                const folderId = Number(itemData.folder_id);
+                const folder = Number.isInteger(folderId) && folderId > 0
+                    ? await ItemFolder.findOne({
+                        where: { folder_id: folderId, is_active: true },
+                        transaction,
+                        lock: transaction.LOCK.UPDATE
+                    })
+                    : null;
+                if (!folder) {
+                    const error = new Error('Select an active category managed by an administrator.');
+                    error.statusCode = 422;
+                    throw error;
+                }
+                itemData.folder_id = folder.folder_id;
+                itemData.product_folder = folder.name;
+            }
             assertMsmePricingRequirements({
                 workflowMode,
                 status: itemData?.status,
@@ -1123,6 +1197,9 @@ export const itemRepository = {
                 regulatory_compliance,
                 ...dbFields
             } = itemData;
+
+            // This is a command field, not an Item column.
+            delete dbFields.create_category_name;
 
             if (itemData.status === 'draft') {
                 dbFields.wizard_metadata = {
@@ -1216,6 +1293,7 @@ export const itemRepository = {
     },
     async updateItem(itemId, itemData, userId = null) {
         const Item = dbStore.get('Item');
+        const ItemFolder = dbStore.get('ItemFolder');
         const ItemLocationStock = dbStore.get('ItemLocationStock');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         const transaction = await sequelize.transaction();
@@ -1224,6 +1302,23 @@ export const itemRepository = {
             const workflowMode = await getCurrentWorkflowMode();
             if (Object.prototype.hasOwnProperty.call(itemData || {}, 'sku_code')) {
                 itemData.sku_code = String(itemData.sku_code || '').trim();
+            }
+            if (Object.prototype.hasOwnProperty.call(itemData || {}, 'folder_id') && itemData.folder_id != null) {
+                const folderId = Number(itemData.folder_id);
+                const folder = Number.isInteger(folderId) && folderId > 0
+                    ? await ItemFolder.findOne({
+                        where: { folder_id: folderId, is_active: true },
+                        transaction,
+                        lock: transaction.LOCK.UPDATE
+                    })
+                    : null;
+                if (!folder) {
+                    const error = new Error('Select an active category managed by an administrator.');
+                    error.statusCode = 422;
+                    throw error;
+                }
+                itemData.folder_id = folder.folder_id;
+                itemData.product_folder = folder.name;
             }
             const item = await findVisibleItemById(Item, itemId, {
                 transaction,
@@ -2806,11 +2901,7 @@ export const itemRepository = {
                         model: Item,
                         as: 'items',
                         attributes: ['item_id'],
-                        required: false,
-                        where: buildVisibleWhere(
-                            {},
-                            { statusField: 'status', excludeInactiveStatus: true }
-                        )
+                        required: false
                     }
                 ]
             });
@@ -2820,6 +2911,7 @@ export const itemRepository = {
                 name: folder.name,
                 description: folder.description,
                 show_in_pos_filter: folder.show_in_pos_filter !== false,
+                is_active: folder.is_active !== false,
                 parent_id: folder.parent_id,
                 item_count: folder.items?.length || 0
             }));
@@ -2841,7 +2933,7 @@ export const itemRepository = {
 
         try {
             const existingFolders = await ItemFolder.findAll({
-                attributes: ['folder_id', 'name', 'description', 'show_in_pos_filter', 'parent_id']
+                attributes: ['folder_id', 'name', 'description', 'show_in_pos_filter', 'is_active', 'parent_id']
             });
             const normalizedLookup = normalizedName.toLowerCase();
             const existingFolder = existingFolders.find((folder) => (
@@ -2850,21 +2942,17 @@ export const itemRepository = {
             ));
 
             if (existingFolder) {
-                return {
-                    success: true,
-                    folder_id: existingFolder.folder_id,
-                    name: existingFolder.name,
-                    description: existingFolder.description || '',
-                    parent_id: existingFolder.parent_id,
-                    show_in_pos_filter: existingFolder.show_in_pos_filter !== false,
-                    message: `Inventory folder "${existingFolder.name}" already exists`
-                };
+                const error = new Error(`Category "${existingFolder.name}" already exists.`);
+                error.statusCode = 409;
+                error.code = 'CATEGORY_EXISTS';
+                throw error;
             }
 
             const folder = await ItemFolder.create({
                 name: normalizedName,
                 description: normalizedDescription,
                 show_in_pos_filter: true,
+                is_active: true,
                 parent_id
             });
 
@@ -2875,76 +2963,185 @@ export const itemRepository = {
                 description: folder.description || '',
                 parent_id: folder.parent_id,
                 show_in_pos_filter: folder.show_in_pos_filter !== false,
+                is_active: folder.is_active !== false,
                 message: `Inventory folder "${folder.name}" created successfully`
             };
         } catch (error) {
             if (error.name === 'SequelizeUniqueConstraintError') {
-                throw new Error(`Folder "${normalizedName}" already exists`, { cause: error });
+                const conflict = new Error(`Category "${normalizedName}" already exists.`, { cause: error });
+                conflict.statusCode = 409;
+                conflict.code = 'CATEGORY_EXISTS';
+                throw conflict;
             }
             logger.error('Error creating inventory folder:', error);
             throw error;
         }
     },
     async updateFolder(folderId, payload = {}) {
-        const ItemFolder = dbStore.get('ItemFolder');
-        const folder = await ItemFolder.findByPk(folderId);
-        if (!folder) {
-            const error = new Error('Folder not found');
-            error.statusCode = 404;
-            throw error;
-        }
-
-        const updates = {};
-        if (Object.prototype.hasOwnProperty.call(payload, 'show_in_pos_filter')) {
-            updates.show_in_pos_filter = payload.show_in_pos_filter !== false;
-        }
-
-        if (Object.keys(updates).length === 0) {
-            const error = new Error('No valid folder fields to update');
+        const supportedFields = ['name', 'description', 'is_active', 'show_in_pos_filter'];
+        if (!supportedFields.some((field) => Object.prototype.hasOwnProperty.call(payload, field))) {
+            const error = new Error('No valid category fields to update');
             error.statusCode = 400;
             throw error;
         }
 
-        await folder.update(updates);
-
-        return {
-            success: true,
-            folder_id: folder.folder_id,
-            name: folder.name,
-            description: folder.description,
-            parent_id: folder.parent_id,
-            show_in_pos_filter: folder.show_in_pos_filter !== false,
-            message: `Folder "${folder.name}" updated successfully.`
-        };
-    },
-    async deleteFolder(folderId) {
         const ItemFolder = dbStore.get('ItemFolder');
         const Item = dbStore.get('Item');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const transaction = await sequelize.transaction();
 
-        const folder = await ItemFolder.findByPk(folderId);
-        if (!folder) {
-            const error = new Error('Folder not found');
-            error.statusCode = 404;
+        try {
+            const folder = await ItemFolder.findByPk(folderId, {
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!folder) {
+                const error = new Error('Folder not found');
+                error.statusCode = 404;
+                throw error;
+            }
+
+            const previousName = folder.name;
+            const updates = {};
+            if (Object.prototype.hasOwnProperty.call(payload, 'name')) {
+                const normalizedName = String(payload.name || '').trim();
+                const existingFolders = await ItemFolder.findAll({
+                    where: { parent_id: folder.parent_id || null },
+                    attributes: ['folder_id', 'name'],
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                const duplicate = existingFolders.find((candidate) => (
+                    Number(candidate.folder_id) !== Number(folder.folder_id)
+                    && String(candidate.name || '').trim().toLowerCase() === normalizedName.toLowerCase()
+                ));
+                if (duplicate) {
+                    const error = new Error(`Category "${duplicate.name}" already exists.`);
+                    error.statusCode = 409;
+                    throw error;
+                }
+                updates.name = normalizedName;
+            }
+            if (Object.prototype.hasOwnProperty.call(payload, 'description')) {
+                updates.description = String(payload.description || '').trim();
+            }
+            if (Object.prototype.hasOwnProperty.call(payload, 'is_active')) {
+                updates.is_active = payload.is_active === true;
+            }
+            if (Object.prototype.hasOwnProperty.call(payload, 'show_in_pos_filter')) {
+                updates.show_in_pos_filter = payload.show_in_pos_filter !== false;
+            }
+
+            await folder.update(updates, { transaction });
+            if (updates.name && updates.name !== previousName) {
+                await Item.update(
+                    { product_folder: updates.name },
+                    { where: { folder_id: folder.folder_id }, transaction }
+                );
+            }
+
+            await transaction.commit();
+            return {
+                success: true,
+                folder_id: folder.folder_id,
+                name: folder.name,
+                description: folder.description || '',
+                parent_id: folder.parent_id,
+                show_in_pos_filter: folder.show_in_pos_filter !== false,
+                is_active: folder.is_active !== false,
+                message: `Category "${folder.name}" updated successfully.`
+            };
+        } catch (error) {
+            if (!transaction.finished) await transaction.rollback();
             throw error;
         }
+    },
+    async deleteFolder(folderId, replacementFolderId = null) {
+        const ItemFolder = dbStore.get('ItemFolder');
+        const Item = dbStore.get('Item');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const transaction = await sequelize.transaction();
 
-        const [unassignedCount] = await Item.update(
-            { folder_id: null, product_folder: null },
-            {
-                where: buildVisibleWhere(
-                    { folder_id: folderId },
-                    { statusField: 'status', excludeInactiveStatus: true }
-                )
+        try {
+            const folder = await ItemFolder.findByPk(folderId, {
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!folder) {
+                const error = new Error('Folder not found');
+                error.statusCode = 404;
+                throw error;
             }
-        );
 
-        await folder.destroy();
+            // Lock assigned items before moving them so a concurrent item edit cannot leave an orphaned category reference.
+            const assignedItems = await Item.findAll({
+                where: { folder_id: folder.folder_id || folderId },
+                attributes: ['item_id'],
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            const assignedItemCount = assignedItems.length;
+            let replacementFolder = null;
 
-        return {
-            success: true,
-            unassigned_count: unassignedCount,
-            message: `Folder "${folder.name}" deleted successfully. ${unassignedCount} item(s) unassigned.`
-        };
+            if (assignedItemCount > 0) {
+                const replacementId = Number(replacementFolderId);
+                if (!Number.isInteger(replacementId) || replacementId <= 0) {
+                    const error = new Error(`Category "${folder.name}" is assigned to ${assignedItemCount} item(s). Choose an active replacement category before deleting it.`);
+                    error.statusCode = 409;
+                    error.code = 'CATEGORY_REASSIGNMENT_REQUIRED';
+                    throw error;
+                }
+                if (replacementId === Number(folder.folder_id || folderId)) {
+                    const error = new Error('Choose a different category to receive the assigned items.');
+                    error.statusCode = 400;
+                    error.code = 'CATEGORY_REASSIGNMENT_INVALID';
+                    throw error;
+                }
+
+                replacementFolder = await ItemFolder.findByPk(replacementId, {
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                if (!replacementFolder) {
+                    const error = new Error('The replacement category was not found.');
+                    error.statusCode = 404;
+                    error.code = 'CATEGORY_REPLACEMENT_NOT_FOUND';
+                    throw error;
+                }
+                if (replacementFolder.is_active === false) {
+                    const error = new Error('The replacement category must be active.');
+                    error.statusCode = 409;
+                    error.code = 'CATEGORY_REPLACEMENT_INACTIVE';
+                    throw error;
+                }
+
+                await Item.update(
+                    {
+                        folder_id: replacementFolder.folder_id,
+                        product_folder: replacementFolder.name
+                    },
+                    {
+                        where: { folder_id: folder.folder_id || folderId },
+                        transaction
+                    }
+                );
+            }
+
+            await folder.destroy({ transaction });
+            await transaction.commit();
+
+            return {
+                success: true,
+                replacement_folder_id: replacementFolder?.folder_id || null,
+                items_moved: assignedItemCount,
+                message: assignedItemCount > 0
+                    ? `Category "${folder.name}" deleted and ${assignedItemCount} item(s) moved to "${replacementFolder.name}".`
+                    : `Category "${folder.name}" deleted successfully.`
+            };
+        } catch (error) {
+            if (!transaction.finished) await transaction.rollback();
+            throw error;
+        }
     }
 };
 

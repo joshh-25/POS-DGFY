@@ -23,11 +23,11 @@ describe('POS terminal identity helpers', () => {
     ], '', { registryMode: 'warn' })).toBe('KIOSK-01');
   });
 
-  it('prefers a password-ready active terminal when the default terminal is not unlock-ready', () => {
+  it('prefers the configured active default terminal without relying on deprecated password metadata', () => {
     expect(resolvePreferredTerminalId([
       { terminal_id: 'COUNTER-01', is_active: true, is_default: true, has_password: false },
       { terminal_id: 'COUNTER-02', is_active: true, is_default: false, has_password: true }
-    ], '', { registryMode: 'warn' })).toBe('COUNTER-02');
+    ], '', { registryMode: 'warn' })).toBe('COUNTER-01');
   });
 
   it('preserves an unregistered operator entry in warn-mode login', () => {

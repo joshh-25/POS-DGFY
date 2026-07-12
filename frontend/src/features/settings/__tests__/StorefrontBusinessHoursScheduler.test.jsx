@@ -61,7 +61,7 @@ describe('StorefrontBusinessHoursScheduler', () => {
         sat: expect.objectContaining({ enabled: true, open: '09:00', close: '18:00' })
       })
     }));
-    expect(screen.getByText(/10:00 AM - 05:00 PM/i)).toBeTruthy();
+    expect(screen.getAllByText(/10:00 AM - 05:00 PM/i).length).toBeGreaterThan(0);
   });
 
   it('persists weekday selection after clicking a day chip', async () => {

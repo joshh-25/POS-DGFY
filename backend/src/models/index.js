@@ -367,6 +367,7 @@ User.hasMany(DispatchOrder, { foreignKey: 'created_by', as: 'createdDispatchOrde
 
 // POS associations
 PosTransaction.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
+PosTransaction.belongsTo(User, { foreignKey: 'payment_collected_by', as: 'paymentCollectedByUser' });
 PosTransaction.belongsTo(User, { foreignKey: 'voided_by', as: 'voidedByUser' });
 PosTransaction.belongsTo(User, { foreignKey: 'accepted_by', as: 'acceptedByUser' });
 PosTransaction.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });

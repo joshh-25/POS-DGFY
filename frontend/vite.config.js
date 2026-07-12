@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { configDefaults } from 'vitest/config'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -103,5 +104,9 @@ export default defineConfig({
         },
       },
     },
+  },
+  test: {
+    // Playwright owns browser E2E specs; Vitest must run only unit and component tests.
+    exclude: [...configDefaults.exclude, 'tests/e2e/**'],
   },
 })

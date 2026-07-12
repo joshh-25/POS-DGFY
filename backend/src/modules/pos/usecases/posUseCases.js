@@ -96,7 +96,8 @@ const POS_OPERATION_KEYS = Object.freeze({
     SHIFT_SWITCH: 'terminal.shift_switch_location',
     CASH_EVENT: 'terminal.cash_event',
     SHIFT_CLOSE: 'terminal.shift_close',
-    ORDER_STATUS_UPDATE: 'terminal.order_status_update'
+    ORDER_STATUS_UPDATE: 'terminal.order_status_update',
+    PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection'
 });
 const TERMINAL_POLICY_MODES = new Set(['warn', 'enforce']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -328,7 +329,8 @@ const persistOperationReplay = async ({
     requestHash,
     replayStatus,
     responsePayload,
-    createdBy
+    createdBy,
+    transaction = null
 }) => {
     if (!idempotencyKey) return null;
 
@@ -339,7 +341,7 @@ const persistOperationReplay = async ({
         replay_status: replayStatus,
         response_payload: responsePayload || {},
         created_by: createdBy || null
-    });
+    }, transaction ? { transaction } : {});
 };
 
 const buildBusinessDateRange = (dateInput) => {
@@ -5651,6 +5653,151 @@ export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
     };
 };
 
+export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
+    return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const terminalId = sanitizeTerminalId(payload?.terminal_id);
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const cashReceived = round4(payload?.cash_received);
+        if (!orderId || !cashierId || !terminalId || !idempotencyKey || cashReceived <= 0) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Valid order, terminal, idempotency key, and cash received are required.',
+                { statusCode: 422 }
+            ));
+        }
+
+        const requestHash = hashPayload({
+            pos_transaction_id: orderId,
+            terminal_id: terminalId,
+            cash_received: cashReceived
+        });
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.PICKUP_CASH_COLLECTION,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            // Recheck after opening the transaction so a concurrent request that
+            // waited for the first collection can return its durable replay.
+            const lockedReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.PICKUP_CASH_COLLECTION,
+                idempotencyKey,
+                requestHash
+            });
+            if (lockedReplay) {
+                await transaction.rollback();
+                transaction = null;
+                return ok(lockedReplay);
+            }
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online pickup order not found.', { statusCode: 404 });
+            }
+            if (order.order_method !== 'pickup') {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Cash collection is available only for pickup orders.', { statusCode: 409 });
+            }
+            if (String(order.payment_type || '').trim().toLowerCase() !== 'cash') {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Cash collection is available only for cash pickup orders.', { statusCode: 409 });
+            }
+            if (String(order.payment_status || '').trim().toLowerCase() !== 'unpaid') {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'This pickup order has already been paid or cannot accept cash collection.', { statusCode: 409 });
+            }
+            if (String(order.fulfillment_status || '').trim() !== 'ready_for_pickup') {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Cash can be collected only when the pickup order is ready.', { statusCode: 409 });
+            }
+
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId,
+                terminalId,
+                locationId: order.location_id || null,
+                transaction,
+                lock: true
+            });
+            const totalAmount = round4(order.total_amount);
+            if (cashReceived < totalAmount) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Cash received must cover the pickup order total.',
+                    { statusCode: 422, details: { total_amount: totalAmount, cash_received: cashReceived } }
+                );
+            }
+            const collectedAt = new Date();
+            const changeAmount = round4(cashReceived - totalAmount);
+            const updated = await posRepository.updateOrderById(orderId, {
+                payment_status: 'paid',
+                cash_received: cashReceived,
+                change_amount: changeAmount,
+                payment_collected_at: collectedAt,
+                payment_collected_by: cashierId,
+                payment_collected_shift_id: activeShift.pos_terminal_shift_id,
+                payment_collected_terminal_id: terminalId
+            }, { transaction, lock: true });
+
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'pos_transaction',
+                entity_id: orderId,
+                action: 'UPDATE',
+                changes: {
+                    event: 'pickup_cash_collected',
+                    payment_type: 'cash',
+                    payment_status: 'paid',
+                    cash_received: cashReceived,
+                    change_amount: changeAmount,
+                    shift_id: activeShift.pos_terminal_shift_id,
+                    terminal_id: terminalId,
+                    collected_at: collectedAt.toISOString()
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            const responsePayload = {
+                order: toSerializable(updated),
+                collection: {
+                    cash_received: cashReceived,
+                    change_amount: changeAmount,
+                    collected_at: collectedAt.toISOString(),
+                    collected_by: cashierId,
+                    shift_id: activeShift.pos_terminal_shift_id,
+                    terminal_id: terminalId
+                },
+                idempotency: {
+                    key: idempotencyKey,
+                    request_fingerprint: requestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.PICKUP_CASH_COLLECTION,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: cashierId,
+                transaction
+            });
+            await transaction.commit();
+            return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            return fail(mapPosUseCaseError(error, 'Failed to collect cash for pickup order'));
+        }
+    };
+};
+
 export const buildUpdateOnlineOrderStatusUseCase = ({
     posRepository,
     inventoryCommandService,
@@ -5744,6 +5891,18 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 nextStatus: targetStatus,
                 orderMethod: existing.order_method
             });
+            if (
+                currentStatus === 'ready_for_pickup'
+                && targetStatus === 'completed'
+                && existing.order_method === 'pickup'
+                && String(existing.payment_status || '').trim().toLowerCase() !== 'paid'
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Cash pickup orders must be paid before they are marked as picked up.',
+                    { statusCode: 409, details: { reason_code: 'PICKUP_PAYMENT_REQUIRED' } }
+                );
+            }
             const mutationTimestamp = new Date();
 
             if (

@@ -7,6 +7,12 @@ node_modules/
 /coverage
 /apps/dgfy-api/coverage/
 
+# Playwright local artifacts and secrets
+/frontend/playwright-report/
+/frontend/test-results/
+/frontend/playwright/.auth/
+/frontend/.env.e2e
+
 # Production
 /build
 /dist

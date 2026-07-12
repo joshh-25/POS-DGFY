@@ -254,6 +254,144 @@ export const createStockMovement = async (movementData, userId, transaction = nu
   });
 };
 
+const INVENTORY_RECONCILIATION_TOLERANCE = 0.0001;
+
+const toFiniteNumber = (value, label) => {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) {
+    const error = new Error(`${label} must be a number`);
+    error.statusCode = 422;
+    throw error;
+  }
+  return parsed;
+};
+
+/**
+ * Records a reviewed historical FIFO opening balance without changing physical stock.
+ * Normal inventory adjustments must continue to use createStockMovement.
+ */
+export const reconcileFifoLedgerOpeningBalance = async ({
+  itemId,
+  locationId,
+  quantity,
+  expectedItemStock,
+  expectedLocationStock,
+  expectedBatchAvailable,
+  notes,
+  referenceId = 'FIFO-LEDGER-RECONCILIATION'
+} = {}, userId, transaction = null) => {
+  const execute = async (managedTransaction) => {
+    const Item = dbStore.get('Item');
+    const FIFOBatch = dbStore.get('FIFOBatch');
+    const StockMovement = dbStore.get('StockMovement');
+    const ItemLocationStock = dbStore.get('ItemLocationStock');
+    const reconciliationQuantity = toQuantity(quantity);
+    const normalizedLocationId = parsePositiveInt(locationId);
+    if (!normalizedLocationId) {
+      const error = new Error('location_id is required for FIFO ledger reconciliation');
+      error.statusCode = 422;
+      throw error;
+    }
+
+    const options = { transaction: managedTransaction, lock: managedTransaction.LOCK.UPDATE };
+    const item = await findVisibleItemById(Item, itemId, options);
+    if (!item) {
+      const error = new Error('Item not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!item.fifo_enabled) {
+      const error = new Error('FIFO ledger reconciliation requires a FIFO-enabled item');
+      error.statusCode = 422;
+      throw error;
+    }
+
+    const locationStock = await ItemLocationStock.findOne({
+      where: { item_id: item.item_id, location_id: normalizedLocationId },
+      ...options
+    });
+    if (!locationStock) {
+      const error = new Error('FIFO ledger reconciliation requires an existing location stock record');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const actualItemStock = Number.parseFloat(item.current_stock || 0);
+    const actualLocationStock = Number.parseFloat(locationStock.quantity_on_hand || 0);
+    const expectedItem = toFiniteNumber(expectedItemStock, 'expected_item_stock');
+    const expectedLocation = toFiniteNumber(expectedLocationStock, 'expected_location_stock');
+    if (
+      Math.abs(actualItemStock - expectedItem) > INVENTORY_RECONCILIATION_TOLERANCE
+      || Math.abs(actualLocationStock - expectedLocation) > INVENTORY_RECONCILIATION_TOLERANCE
+    ) {
+      const error = new Error('Inventory changed since the reconciliation review. Re-run the audit before applying a ledger reconciliation.');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const batches = await FIFOBatch.findAll({
+      where: { item_id: item.item_id, location_id: normalizedLocationId },
+      order: [['received_date', 'ASC'], ['batch_id', 'ASC']],
+      ...options
+    });
+    const actualBatchAvailable = batches.reduce((total, batch) => (
+      total + Math.max(0, Number.parseFloat(batch.quantity || 0) - Number.parseFloat(batch.quantity_consumed || 0))
+    ), 0);
+    const expectedAvailable = toFiniteNumber(expectedBatchAvailable, 'expected_batch_available');
+    if (Math.abs(actualBatchAvailable - expectedAvailable) > INVENTORY_RECONCILIATION_TOLERANCE) {
+      const error = new Error('FIFO batches changed since the reconciliation review. Re-run the audit before applying a ledger reconciliation.');
+      error.statusCode = 409;
+      throw error;
+    }
+    if (Math.abs((actualLocationStock - actualBatchAvailable) - reconciliationQuantity) > INVENTORY_RECONCILIATION_TOLERANCE) {
+      const error = new Error('Reconciliation quantity must exactly match the reviewed location/FIFO variance');
+      error.statusCode = 422;
+      throw error;
+    }
+
+    const batch = await FIFOBatch.create({
+      item_id: item.item_id,
+      location_id: normalizedLocationId,
+      quantity: reconciliationQuantity,
+      quantity_consumed: 0,
+      cost_per_unit: item.cost_per_unit || 0,
+      received_date: new Date(),
+      expiry_date: null,
+      po_number: referenceId,
+      notes: 'Reviewed historical FIFO opening balance reconciliation'
+    }, options);
+    const movement = await StockMovement.create({
+      item_id: item.item_id,
+      location_id: normalizedLocationId,
+      movement_type: 'adjustment',
+      quantity: reconciliationQuantity,
+      reference_type: 'MANUAL',
+      reference_id: referenceId,
+      user_responsible: userId || null,
+      notes: notes || 'Reviewed historical FIFO opening balance reconciliation; physical stock was not changed.',
+      batch_id: batch.batch_id,
+      weighted_average_cost: item.cost_per_unit || 0,
+      timestamp: new Date()
+    }, options);
+    invalidateItemCostMetricsCache({ itemIds: [item.item_id], locationIds: [normalizedLocationId] });
+    return movement;
+  };
+
+  if (transaction) return execute(transaction);
+  return executeWithRetry(async () => {
+    const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+    const managedTransaction = await sequelize.transaction();
+    try {
+      const result = await execute(managedTransaction);
+      await managedTransaction.commit();
+      return result;
+    } catch (error) {
+      if (!managedTransaction.finished) await managedTransaction.rollback();
+      throw error;
+    }
+  });
+};
+
 /**
  * Internal implementation detailing the lock and movement logic
  * (Moved from original createStockMovement)
@@ -558,31 +696,13 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
           const stockDrift = Math.max(0, currentLocationStock - totalAvailableFromBatches);
           const hasLegacyDrift = stockDrift > 0.0001;
           if (hasLegacyDrift) {
-            const legacyBatch = await FIFOBatch.create({
-              item_id: item.item_id,
-              location_id: resolvedLocationId,
-              quantity: stockDrift,
-              cost_per_unit: item.cost_per_unit || 0,
-              received_date: new Date(),
-              expiry_date: null,
-              po_number: 'LEGACY-STOCK-DRIFT',
-              notes: 'Auto-created from stock/FIFO drift reconciliation'
-            }, options);
-
-            const consume = Math.min(remaining, stockDrift);
-            await legacyBatch.update({ quantity_consumed: consume }, options);
-
-            if (createdBatchId === null) {
-              createdBatchId = legacyBatch.batch_id;
-            }
-
-            batchTransactionsData.push({
-              batch_id: legacyBatch.batch_id,
-              quantity_consumed: consume,
-              remaining_after: stockDrift - consume,
-              cost_per_unit: legacyBatch.cost_per_unit
-            });
-            remaining -= consume;
+            const error = new Error(
+              `Inventory ledger reconciliation is required for "${item.name}"${resolvedLocationId ? ` at location ${resolvedLocationId}` : ''}. `
+              + `Recorded stock exceeds available FIFO batches by ${stockDrift.toFixed(4)} ${item.unit_of_measure}. No stock was issued.`
+            );
+            error.statusCode = 409;
+            error.code = 'INVENTORY_LEDGER_RECONCILIATION_REQUIRED';
+            throw error;
           }
 
           if (remaining > 0.000001) {

@@ -37,6 +37,7 @@ import {
     closeTerminalShiftUseCase,
     getTerminalTodayDashboardUseCase,
     listIncomingOnlineOrdersUseCase,
+    collectCashPickupOrderUseCase,
     updateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase,
     printPosReceiptUseCase,
@@ -757,6 +758,32 @@ export const updateOnlineOrderStatus = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Online order status updated successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const collectCashPickupOrder = async (req, res, next) => {
+    try {
+        const result = await collectCashPickupOrderUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cash payment collected for pickup order.',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

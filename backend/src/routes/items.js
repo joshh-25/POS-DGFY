@@ -17,10 +17,12 @@ import {
   validateBarcodeLabelQuery,
   validateStorefrontCatalogOverridesQuery,
   validateUpdateStorefrontCatalogOverride,
+  validateCreateFolder,
   validateUpdateFolder,
+  validateDeleteFolder,
   validateReplaceItemSuppliers
 } from '../validators/itemValidator.js';
-import { authenticate, checkPermission } from '../middleware/auth.js';
+import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
   storefrontCatalogBulkImageUpload,
@@ -71,9 +73,9 @@ router.post('/:item_id/barcodes/:barcode_id/primary', checkPermission(PERMISSION
 
 // Folder management - must be before :item_id
 router.get('/folders', itemController.getFolders);
-router.post('/folders', checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS), itemController.createFolder);
-router.patch('/folders/:folder_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFolderIdParam, validateUpdateFolder, itemController.updateFolder);
-router.delete('/folders/:folder_id', checkPermission(PERMISSIONS.INVENTORY.actions.DELETE_ITEMS), itemController.deleteFolder);
+router.post('/folders', requireTenantAdmin, validateCreateFolder, itemController.createFolder);
+router.patch('/folders/:folder_id', requireTenantAdmin, validateFolderIdParam, validateUpdateFolder, itemController.updateFolder);
+router.delete('/folders/:folder_id', requireTenantAdmin, validateFolderIdParam, validateDeleteFolder, itemController.deleteFolder);
 
 // Read-only operations - all authenticated users
 router.get('/', itemController.getItems);

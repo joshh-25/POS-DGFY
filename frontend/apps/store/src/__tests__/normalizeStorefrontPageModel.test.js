@@ -61,6 +61,28 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.supporting.promo.items).toHaveLength(2);
   });
 
+  it('keeps scheduled promos visible but unavailable while hiding expired and inactive promos', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        storefront_promos: [
+          { active: true, promo_code: 'MIDNIGHT', title: 'Midnight sale', discount_percent: 20, valid_from: '2026-07-12', valid_time_start: '00:00', valid_until: '2026-07-13', valid_time_end: '02:00' },
+          { active: true, promo_code: 'EXPIRED', title: 'Old sale', discount_percent: 20, valid_until: '2026-07-10' },
+          { active: false, promo_code: 'OFF', title: 'Disabled sale', discount_percent: 20 }
+        ]
+      },
+      catalog: [],
+      now: new Date('2026-07-11T15:00:00.000Z')
+    });
+
+    expect(model.supporting.promo.items).toEqual([
+      expect.objectContaining({
+        promo_code: 'MIDNIGHT',
+        availability_status: 'scheduled',
+        availability_message: 'Available from Jul 12, 2026, 12:00 AM'
+      })
+    ]);
+  });
+
   it('preserves external, backend-local, and path-only storefront gallery images', () => {
     const model = normalizeStorefrontPageModel({
       selectedStore: {

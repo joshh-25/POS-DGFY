@@ -168,7 +168,9 @@ describe('itemHandlers transport contracts', () => {
         sku_code: 'RM-011',
         name: 'Sugar',
         category: 'raw_material',
-        status: 'draft'
+        status: 'draft',
+        folder_id: null,
+        product_folder: null
       },
       message: 'Item draft saved successfully',
       timestamp: expect.any(String)

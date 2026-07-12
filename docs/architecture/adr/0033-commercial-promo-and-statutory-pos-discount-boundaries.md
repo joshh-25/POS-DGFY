@@ -55,6 +55,11 @@ item targets, time window, and usage limit.
     finalization is persisted as `paid` with provider metadata. Public checkout
     payment selections without verified collection remain `unpaid`; submitted
     client payment status, provider, and reference values are not authoritative.
+12. Cash pickup collection is a POS-only, idempotent payment action. It is allowed
+    only for an unpaid cash pickup order at `ready_for_pickup` with an active
+    cashier shift. The server calculates change and persists collection time,
+    cashier, shift, terminal, and an audit record in the same transaction. A
+    pickup order cannot transition to `completed` until payment is `paid`.
 
 ## Boundary Consequences
 
@@ -65,6 +70,9 @@ The POS use case orchestrates checkout, rule/employee resolution, individual app
 verification, and transactional promo consumption. The POS repository owns rule,
 user, setting, and audit writes. The POS domain calculator owns allocation math
 without database access.
+
+Cash pickup collection extends the POS/payment boundary without changing any
+Storefront route, payload, response, or online-payment webhook contract.
 
 No architecture allowlist or exception is introduced.
 
@@ -95,6 +103,8 @@ both Storefront and POS without affecting completed transactions.
    report/receipt consumption.
 8. Storefront payment tests proving unverified client metadata cannot create a
    paid order and webhook-confirmed QR Ph retains verified provider evidence.
+9. Cash pickup tests for collection success, insufficient cash, closed shift,
+   wrong method/order state, duplicate replay, and unpaid completion rejection.
 
 ## Authoritative Sources
 

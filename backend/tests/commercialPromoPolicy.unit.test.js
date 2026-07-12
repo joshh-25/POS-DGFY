@@ -29,6 +29,44 @@ describe('commercial promo authoritative allocations', () => {
         })).toThrow('Promo code has expired.');
     });
 
+    test('rejects a scheduled promo before its From date and time window', () => {
+        const settings = {
+            storefront_promos: {
+                value: [{
+                    active: true,
+                    promo_code: 'MIDNIGHT20',
+                    discount_percent: 20,
+                    valid_from: '2026-07-12',
+                    valid_time_start: '00:00',
+                    valid_until: '2026-07-13',
+                    valid_time_end: '02:00'
+                }]
+            }
+        };
+        const prepared = {
+            subtotalAmount: 100,
+            preparedLines: [{ item_id: 1, quantity: 1, sale_price: 100, line_subtotal: 100 }]
+        };
+
+        expect(() => resolveCommercialPromoApplication({
+            settings,
+            promoCode: 'MIDNIGHT20',
+            prepared,
+            now: new Date('2026-07-11T15:00:00.000Z')
+        })).toThrow('Promo code is not active yet.');
+
+        expect(() => resolveCommercialPromoApplication({
+            settings: {
+                storefront_promos: {
+                    value: [{ ...settings.storefront_promos.value[0], valid_from: '2026-07-11', valid_time_start: '23:30', valid_time_end: '23:59' }]
+                }
+            },
+            promoCode: 'MIDNIGHT20',
+            prepared,
+            now: new Date('2026-07-11T15:00:00.000Z')
+        })).toThrow('Promo code is outside its valid time window.');
+    });
+
     test('allocates only eligible lines and reconciles rounding to the header discount', () => {
         const result = resolveCommercialPromoApplication({
             settings: {

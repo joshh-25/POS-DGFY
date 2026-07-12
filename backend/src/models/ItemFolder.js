@@ -21,6 +21,11 @@ const ItemFolder = sequelize.define('ItemFolder', {
         allowNull: false,
         defaultValue: true
     },
+    is_active: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    },
     parent_id: {
         type: DataTypes.INTEGER,
         allowNull: true,

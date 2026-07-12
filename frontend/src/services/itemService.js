@@ -145,7 +145,7 @@ export const updateFolder = async (folderId, payload) => {
   return response.data.data;
 };
 
-export const deleteFolder = async (folderId) => {
-  const response = await api.delete(`/items/folders/${folderId}`);
+export const deleteFolder = async (folderId, payload = {}) => {
+  const response = await api.delete(`/items/folders/${folderId}`, { data: payload });
   return response.data;
 };

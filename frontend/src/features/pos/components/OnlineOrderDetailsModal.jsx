@@ -5,7 +5,6 @@ import {
   MapPin,
   Package,
   Phone,
-  Printer,
   Receipt,
   Truck,
   UserRound
@@ -105,30 +104,30 @@ const MetricCard = ({ icon: Icon, label, value, tone = 'blue' }) => {
     violet: 'bg-violet-50 text-violet-600'
   };
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
-      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${tones[tone] || tones.blue}`}>
+    <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
+      <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${tones[tone] || tones.blue}`}>
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
-        <p className="truncate text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-500">{label}</p>
-        <p className="mt-0.5 truncate text-sm font-black text-slate-950">{value}</p>
+        <p className="truncate text-[9px] font-extrabold uppercase tracking-[0.08em] text-slate-500">{label}</p>
+        <p className="mt-0.5 truncate text-xs sm:text-[13px] font-black text-slate-950">{value}</p>
       </div>
     </div>
   );
 };
 
 const SectionTitle = ({ icon: Icon, children }) => (
-  <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
-    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600">
-      <Icon className="h-4 w-4" />
+  <div className="flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-blue-50 text-blue-600">
+      <Icon className="h-3.5 w-3.5" />
     </span>
-    <h3 className="text-xs font-black uppercase tracking-wide text-slate-950">{children}</h3>
+    <h3 className="text-[11px] font-black uppercase tracking-wide text-slate-950">{children}</h3>
   </div>
 );
 
 const DetailRow = ({ label, value, valueClassName = '' }) => (
-  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-1.5 text-xs sm:text-sm">
-    <dt className="text-slate-600">{label}</dt>
+  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 py-1 text-[11px] sm:text-xs">
+    <dt className="text-slate-500">{label}</dt>
     <dd className={`max-w-[15rem] text-right font-semibold text-slate-900 ${valueClassName}`}>{value ?? '-'}</dd>
   </div>
 );
@@ -137,10 +136,7 @@ export default function OnlineOrderDetailsModal({
   open = false,
   onOpenChange = () => {},
   order = null,
-  loading = false,
-  mode = 'view',
-  onPrint = () => {},
-  printLoading = false
+  loading = false
 }) {
   const lines = Array.isArray(order?.lines) ? order.lines : [];
   const totalAmount = Number(order?.total_amount || 0);
@@ -155,44 +151,42 @@ export default function OnlineOrderDetailsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col overflow-hidden border border-slate-200 bg-slate-50 p-0 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] xl:max-w-[1480px]">
-        <DialogHeader className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 sm:px-5 sm:py-4">
-          <div className="flex min-w-0 items-center gap-3 pr-8">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600 sm:h-12 sm:w-12">
-              <Receipt className="h-5 w-5 sm:h-6 sm:w-6" />
+      <DialogContent className="flex h-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1rem)] max-w-none flex-col overflow-hidden border border-slate-200 bg-slate-50 p-0 shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:w-full sm:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
+        <DialogHeader className="shrink-0 border-b border-slate-200 bg-white px-4 py-2.5 sm:px-5 sm:py-3.5">
+          <div className="flex min-w-0 items-center gap-2.5 pr-8">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 sm:h-10 sm:w-10">
+              <Receipt className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
             </span>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <DialogTitle className="truncate text-lg font-black text-slate-950 sm:text-2xl">
-                  {order ? `Order #${orderNumber}` : mode === 'print' ? 'Print Order' : 'Open Order'}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <DialogTitle className="truncate text-base font-black text-slate-950 sm:text-xl">
+                  {order ? `Order #${orderNumber}` : 'Open Order'}
                 </DialogTitle>
                 {order && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
-                    <Truck className="h-3.5 w-3.5" />
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                    <Truck className="h-3 w-3" />
                     {orderMethod}
                   </span>
                 )}
               </div>
-              <DialogDescription className="mt-0.5 truncate text-xs text-slate-600 sm:text-sm">
-                {mode === 'print'
-                  ? 'Review the active customer order before printing the order copy.'
-                  : 'Review the active customer order details.'}
+              <DialogDescription className="mt-0.5 truncate text-[11px] text-slate-500 sm:text-xs">
+                Review the active customer order details.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3 sm:px-4 sm:py-3.5">
           {loading ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-600">
+            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-center text-xs text-slate-600">
               Loading active order details...
             </div>
           ) : !order ? (
-            <div className="rounded-xl border border-dashed border-rose-300 bg-rose-50 p-6 text-center text-sm font-semibold text-rose-700">
+            <div className="rounded-lg border border-dashed border-rose-300 bg-rose-50 p-5 text-center text-xs font-semibold text-rose-700">
               Failed to load the active order details.
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard icon={Calendar} label="Scheduled Date/Time" value={formatDateTime(pickupSchedule)} />
                 <MetricCard icon={Receipt} label="Payment Status" value={paymentStatus} tone="emerald" />
@@ -200,57 +194,66 @@ export default function OnlineOrderDetailsModal({
                 <MetricCard icon={Package} label="Order Status" value={orderStatus} tone="violet" />
               </div>
 
-              <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.9fr)_minmax(280px,0.78fr)]">
-                <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+              <div className="grid items-start gap-2.5 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.9fr)_minmax(280px,0.78fr)]">
+                <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3">
                   <SectionTitle icon={Package}>Ordered Items</SectionTitle>
                   <div className="mt-2 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-100 text-xs sm:text-sm">
+                    <table className="min-w-full divide-y divide-slate-100 text-[11px] sm:text-xs">
                       <thead>
-                        <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-slate-500 sm:text-xs">
-                          <th className="py-2 pr-3">Item</th>
-                          <th className="px-2 py-2 text-right">Qty</th>
-                          <th className="px-2 py-2 text-right">Unit Price</th>
-                          <th className="py-2 pl-2 text-right">Total</th>
+                        <tr className="text-left text-[9px] font-bold uppercase tracking-wide text-slate-500 sm:text-[10px]">
+                          <th className="py-1.5 pr-2">Item</th>
+                          <th className="px-2 py-1.5 text-right">Qty</th>
+                          <th className="px-2 py-1.5 text-right">Unit Price</th>
+                          <th className="py-1.5 pl-2 text-right">Total</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {lines.map((line, index) => (
                           <tr key={line?.line_id || `${line?.item_id || 'item'}-${index}`}>
-                            <td className="py-3 pr-3 font-semibold text-slate-900">{resolveLineName(line)}</td>
-                            <td className="px-2 py-3 text-right tabular-nums text-slate-700">{formatQuantity(resolveQuantity(line))}</td>
-                            <td className="whitespace-nowrap px-2 py-3 text-right tabular-nums text-slate-700">PHP {money(resolveUnitPrice(line))}</td>
-                            <td className="whitespace-nowrap py-3 pl-2 text-right font-black tabular-nums text-slate-950">PHP {money(resolveLineSubtotal(line))}</td>
+                            <td className="py-2 pr-2 font-semibold text-slate-900">{resolveLineName(line)}</td>
+                            <td className="px-2 py-2 text-right tabular-nums text-slate-700">{formatQuantity(resolveQuantity(line))}</td>
+                            <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-slate-700">PHP {money(resolveUnitPrice(line))}</td>
+                            <td className="whitespace-nowrap py-2 pl-2 text-right font-black tabular-nums text-slate-950">PHP {money(resolveLineSubtotal(line))}</td>
                           </tr>
                         ))}
                         {lines.length === 0 && (
-                          <tr><td colSpan={4} className="py-6 text-center text-sm text-slate-500">No ordered items found.</td></tr>
+                          <tr><td colSpan={4} className="py-4 text-center text-xs text-slate-500">No ordered items found.</td></tr>
                         )}
                       </tbody>
                     </table>
                   </div>
                 </section>
 
-                <div className="grid min-w-0 gap-3">
-                  <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                <div className="grid min-w-0 gap-2.5">
+                  <section className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3">
                     <SectionTitle icon={UserRound}>Customer Information</SectionTitle>
-                    <div className="mt-2 grid gap-2 text-xs sm:text-sm">
+                    <div className="mt-2 grid gap-1.5 text-[11px] sm:text-xs">
                       <div className="flex min-w-0 items-start gap-2">
-                        <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                        <div className="min-w-0"><p className="text-slate-500">Name</p><p className="break-words font-bold text-slate-950">{order.customer_name || '-'}</p></div>
+                        <UserRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-medium text-slate-500">Name</p>
+                          <p className="break-words font-bold text-slate-950">{order.customer_name || '-'}</p>
+                        </div>
                       </div>
                       <div className="flex min-w-0 items-start gap-2">
-                        <Phone className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                        <div className="min-w-0"><p className="text-slate-500">Phone</p><p className="break-words font-semibold text-slate-900">{order.customer_phone || '-'}</p></div>
+                        <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-medium text-slate-500">Phone</p>
+                          <p className="break-words font-semibold text-slate-900">{order.customer_phone || '-'}</p>
+                        </div>
                       </div>
                       <div className="flex min-w-0 items-start gap-2">
-                        <Mail className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                        <div className="min-w-0"><p className="text-slate-500">Email</p><p className="break-all font-semibold text-slate-900">{order.customer_email || '-'}</p></div>
+                        <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-medium text-slate-500">Email</p>
+                          <p className="break-all font-semibold text-slate-900">{order.customer_email || '-'}</p>
+                        </div>
                       </div>
                     </div>
                   </section>
 
                   {order.order_method === 'delivery' && (
-                    <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                    <section className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3">
                       <SectionTitle icon={Truck}>Delivery Information</SectionTitle>
                       <dl className="mt-1 divide-y divide-slate-100">
                         <DetailRow label="Provider" value={deliveryJob?.provider || 'Manual'} />
@@ -263,13 +266,13 @@ export default function OnlineOrderDetailsModal({
                     </section>
                   )}
 
-                  <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                  <section className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3">
                     <SectionTitle icon={MapPin}>Customer Request / Notes</SectionTitle>
-                    <p className="mt-2 text-xs leading-5 text-slate-700 sm:text-sm">{resolveCustomerNotes(order)}</p>
+                    <p className="mt-1.5 text-[11px] leading-relaxed text-slate-700 sm:text-xs">{resolveCustomerNotes(order)}</p>
                   </section>
                 </div>
 
-                <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 xl:sticky xl:top-0">
+                <section className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3 xl:sticky xl:top-0">
                   <SectionTitle icon={Receipt}>Order Summary</SectionTitle>
                   <dl className="mt-1 divide-y divide-slate-100">
                     <DetailRow label="Order Number" value={orderNumber} />
@@ -285,9 +288,9 @@ export default function OnlineOrderDetailsModal({
                     <DetailRow label="DGFY Convenience Fee" value={`PHP ${money(order.service_fee_amount)}`} />
                     <DetailRow label="Delivery Fee" value={`PHP ${money(order.delivery_fee)}`} />
                   </dl>
-                  <div className="mt-3 flex items-end justify-between gap-3 border-t-2 border-slate-100 pt-3">
-                    <span className="text-sm font-black text-slate-950">Total Amount</span>
-                    <span className="text-xl font-black tabular-nums text-[#1A4E8D] sm:text-2xl">PHP {money(totalAmount)}</span>
+                  <div className="mt-2.5 flex items-end justify-between gap-2.5 border-t border-slate-200 pt-2">
+                    <span className="text-xs font-black text-slate-950">Total Amount</span>
+                    <span className="text-lg font-black tabular-nums text-[#1A4E8D] sm:text-xl">PHP {money(totalAmount)}</span>
                   </div>
                 </section>
               </div>
@@ -295,13 +298,9 @@ export default function OnlineOrderDetailsModal({
           )}
         </div>
 
-        <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:justify-between sm:px-5">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={printLoading}>
+        <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-2 sm:justify-between sm:px-5">
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} className="h-8 text-xs">
             Close
-          </Button>
-          <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={onPrint} disabled={loading || !order || printLoading}>
-            <Printer className="mr-2 h-4 w-4" />
-            {printLoading ? 'Printing...' : 'Print Order'}
           </Button>
         </DialogFooter>
       </DialogContent>

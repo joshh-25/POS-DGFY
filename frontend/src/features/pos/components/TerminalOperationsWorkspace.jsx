@@ -64,6 +64,7 @@ import { Switch } from '@/components/ui/switch';
 import { useCreateItem, useDeleteItem, useUpdateItem } from '@/hooks/useItems.js';
 import {
   createFolder,
+  deleteFolder,
   generateItemBarcode,
   getFolders,
   getItems,
@@ -98,7 +99,7 @@ import {
   fetchTerminalTodayDashboard
 } from '../services/posService.js';
 import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
-import { toast } from 'sonner';
+import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const MapPinPicker = lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
 
@@ -282,6 +283,37 @@ const normalizePositiveIntegerList = (raw, maxItems = 200) => {
 
 const createStorefrontPromoId = () => `promo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const PROMO_TIME_24_HOUR_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const formatPromoTime12Hour = (value) => {
+  const normalized = String(value || '').trim();
+  if (!PROMO_TIME_24_HOUR_PATTERN.test(normalized)) return '';
+  const [hours, minutes] = normalized.split(':').map(Number);
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${suffix}`;
+};
+const PROMO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const PROMO_DATE_TIME_PATTERN = /^(\d{4}-\d{2}-\d{2})T(([01]\d|2[0-3]):[0-5]\d)$/;
+const buildPromoDateTimeValue = (date, time) => {
+  const normalizedDate = String(date || '').trim();
+  const normalizedTime = String(time || '').trim();
+  return PROMO_DATE_PATTERN.test(normalizedDate) && PROMO_TIME_24_HOUR_PATTERN.test(normalizedTime)
+    ? `${normalizedDate}T${normalizedTime}`
+    : '';
+};
+const parsePromoDateTimeValue = (value) => {
+  const match = String(value || '').trim().match(PROMO_DATE_TIME_PATTERN);
+  return match ? { date: match[1], time: match[2] } : { date: '', time: '' };
+};
+const formatPromoDateTime12Hour = (value) => {
+  const { date, time } = parsePromoDateTimeValue(value);
+  const timeDisplay = formatPromoTime12Hour(time);
+  if (!date || !timeDisplay) return '';
+  const [year, month, day] = date.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric'
+  }).format(new Date(year, month - 1, day)) + `, ${timeDisplay}`;
+};
 const createBlankStorefrontPromo = () => ({
   id: createStorefrontPromoId(),
   title: '',
@@ -301,6 +333,7 @@ const createBlankStorefrontPromo = () => ({
 });
 const normalizeStorefrontPromoConfig = (raw = {}) => {
   const promo = isPlainObject(raw) ? raw : {};
+  const normalizeDateOnly = (value) => String(value || '').trim().slice(0, 10);
   return {
     id: String(promo.id || promo.promo_id || createStorefrontPromoId()).trim(),
     title: String(promo.title || ''),
@@ -313,8 +346,8 @@ const normalizeStorefrontPromoConfig = (raw = {}) => {
     used_count: promo.used_count == null || promo.used_count === '' ? 0 : Number(promo.used_count),
     valid_time_start: String(promo.valid_time_start || ''),
     valid_time_end: String(promo.valid_time_end || ''),
-    valid_from: String(promo.valid_from || ''),
-    valid_until: String(promo.valid_until || ''),
+    valid_from: normalizeDateOnly(promo.valid_from),
+    valid_until: normalizeDateOnly(promo.valid_until),
     target_item_ids: normalizePositiveIntegerList(promo.target_item_ids),
     active: promo.active === true
   };
@@ -1191,25 +1224,6 @@ function ShiftControlsWorkspace({
   );
 }
 
-const POS_FOOD_CATEGORY_LABELS = Object.freeze([
-  'Add Ons',
-  'Appetizers',
-  'Burgers And Sandwiches',
-  'Espresso Based Beverages',
-  'Frappe',
-  'Fruit Shakes',
-  'Mains',
-  'Mocktails',
-  'Non Espresso Based Beverages',
-  'Pasta',
-  'Rice Bowls',
-  'Rice Meals',
-  'Space Bar Exclusive',
-  'Waffle'
-]);
-
-const DEFAULT_POS_FOOD_CATEGORY = 'Mains';
-
 const normalizeFolderNameKey = (value = '') => (
   String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()
 );
@@ -1241,7 +1255,7 @@ const createEmptyPosItemForm = () => ({
   senior_pwd_discount_eligible: false,
   description: '',
   sku_code: '',
-  pos_category: DEFAULT_POS_FOOD_CATEGORY
+  pos_category: ''
 });
 
 const resolveSellablePosItemPreset = (workflowMode = '') => {
@@ -1269,6 +1283,7 @@ function ItemsWorkspace({
   canCreateItems = false,
   canEditItems = false,
   canDeleteItems = false,
+  canManageCategories = false,
   stockFilterPreset = '',
   onStockFilterPresetApplied = () => {},
   workflowMode = '',
@@ -1296,7 +1311,7 @@ function ItemsWorkspace({
     pos_always_available: false,
     senior_pwd_discount_eligible: false,
     description: '',
-    pos_category: DEFAULT_POS_FOOD_CATEGORY
+    pos_category: ''
   });
   const [savedMessage, setSavedMessage] = useState({ name: '', barcode: '', action: 'updated' });
   const [deletedItemName, setDeletedItemName] = useState('');
@@ -1307,6 +1322,7 @@ function ItemsWorkspace({
   const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
+  const [createCategoryInput, setCreateCategoryInput] = useState('');
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
@@ -1385,65 +1401,35 @@ function ItemsWorkspace({
         ...folder,
         folder_id: Number(folder?.folder_id),
         name: String(folder?.name || '').trim(),
+        is_active: folder?.is_active !== false,
         show_in_pos_filter: folder?.show_in_pos_filter !== false
       }))
       .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
   ), []);
 
-  const loadPosFolders = useCallback(async ({ seedFoodCategories = false } = {}) => {
+  const loadPosFolders = useCallback(async () => {
     if (!canViewPos) {
       setPosFolders([]);
       return [];
     }
 
     try {
-      let folders = normalizePosFolders(await getFolders());
-
-      if (seedFoodCategories && canCreateItems) {
-        const byName = new Map(folders.map((folder) => [normalizeFolderNameKey(folder.name), folder]));
-        let changed = false;
-
-        for (const label of POS_FOOD_CATEGORY_LABELS) {
-          const key = normalizeFolderNameKey(label);
-          const existing = byName.get(key);
-          if (existing) {
-            if (existing.show_in_pos_filter === false) {
-              await updateFolder(existing.folder_id, { show_in_pos_filter: true });
-              changed = true;
-            }
-            continue;
-          }
-
-          await createFolder({
-            name: label,
-            description: 'POS food category'
-          });
-          changed = true;
-        }
-
-        if (changed) {
-          folders = normalizePosFolders(await getFolders());
-        }
-      }
-
+      const folders = normalizePosFolders(await getFolders());
       setPosFolders(folders);
       return folders;
     } catch (folderError) {
       setPosFolders([]);
-      if (seedFoodCategories) {
-        toast.error(folderError?.response?.data?.message || folderError?.message || 'Failed to prepare POS food categories.');
-      }
       return [];
     }
-  }, [canCreateItems, canViewPos, normalizePosFolders]);
+  }, [canViewPos, normalizePosFolders]);
 
   useEffect(() => {
     loadItems();
   }, [loadItems]);
 
   useEffect(() => {
-    loadPosFolders({ seedFoodCategories: canCreateItems });
-  }, [canCreateItems, loadPosFolders]);
+    loadPosFolders();
+  }, [loadPosFolders]);
 
   useEffect(() => {
     if (!showCreateModal || !canCreateItems) return;
@@ -1487,25 +1473,13 @@ function ItemsWorkspace({
 
   const foodCategoryOptions = useMemo(() => {
     const byName = new Map();
-    POS_FOOD_CATEGORY_LABELS.forEach((label) => {
-      const name = String(label || '').trim();
-      byName.set(normalizeFolderNameKey(name), createFoodCategoryOption({ name }));
-    });
     posFolders
-      .filter((folder) => folder?.show_in_pos_filter !== false)
+      .filter((folder) => folder?.is_active !== false && folder?.show_in_pos_filter !== false)
       .forEach((folder) => {
         byName.set(normalizeFolderNameKey(folder.name), createFoodCategoryOption(folder));
       });
-    sortedItems.forEach((item) => {
-      const folderName = String(item?.folder?.name || item?.product_folder || '').trim();
-      if (!folderName) return;
-      byName.set(normalizeFolderNameKey(folderName), createFoodCategoryOption({
-        folder_id: item?.folder_id,
-        name: folderName
-      }));
-    });
     return Array.from(byName.values()).filter((option) => option.name);
-  }, [posFolders, sortedItems]);
+  }, [posFolders]);
 
   const categoryOptions = useMemo(() => ['all', ...foodCategoryOptions.map((option) => option.value)], [foodCategoryOptions]);
 
@@ -1514,61 +1488,10 @@ function ItemsWorkspace({
     foodCategoryOptions.forEach((option) => labels.set(option.value, option.label));
     return labels;
   }, [foodCategoryOptions]);
-  const createFoodCategorySuggestions = useMemo(() => {
-    const query = String(createForm.pos_category || '').trim().toLowerCase();
-    return foodCategoryOptions
-      .map((option) => String(option?.name || '').trim())
-      .filter(Boolean)
-      .filter((name, index, values) => values.findIndex((value) => normalizeFolderNameKey(value) === normalizeFolderNameKey(name)) === index)
-      .filter((name) => query.length === 0 || normalizeFolderNameKey(name).includes(query))
-      .slice(0, 8);
-  }, [createForm.pos_category, foodCategoryOptions]);
-  const editFoodCategorySuggestions = useMemo(() => {
-    const query = String(editForm.pos_category || '').trim().toLowerCase();
-    return foodCategoryOptions
-      .map((option) => String(option?.name || '').trim())
-      .filter(Boolean)
-      .filter((name, index, values) => values.findIndex((value) => normalizeFolderNameKey(value) === normalizeFolderNameKey(name)) === index)
-      .filter((name) => query.length === 0 || normalizeFolderNameKey(name).includes(query))
-      .slice(0, 8);
-  }, [editForm.pos_category, foodCategoryOptions]);
-
   const resolveFoodCategorySelection = useCallback((selection = '') => {
     const normalizedSelection = String(selection || '').trim();
-    const selectionName = normalizedSelection.startsWith('name:')
-      ? normalizedSelection.slice('name:'.length)
-      : normalizedSelection;
-    const selectedOption = foodCategoryOptions.find((option) => option.value === normalizedSelection)
-      || foodCategoryOptions.find((option) => normalizeFolderNameKey(option.name) === normalizeFolderNameKey(selectionName))
-      || createFoodCategoryOption({ name: selectionName || DEFAULT_POS_FOOD_CATEGORY });
-    return selectedOption;
+    return foodCategoryOptions.find((option) => option.value === normalizedSelection) || null;
   }, [foodCategoryOptions]);
-
-  const ensureFoodCategoryFolder = useCallback(async (selection = '') => {
-    const selectedOption = resolveFoodCategorySelection(selection);
-    if (selectedOption.folder_id) return selectedOption;
-
-    const label = String(selectedOption.name || DEFAULT_POS_FOOD_CATEGORY).trim();
-    const key = normalizeFolderNameKey(label);
-    const existing = posFolders.find((folder) => normalizeFolderNameKey(folder.name) === key);
-    if (existing) {
-      return createFoodCategoryOption(existing);
-    }
-
-    if (!canCreateItems) {
-      return selectedOption;
-    }
-
-    const created = await createFolder({
-      name: label,
-      description: 'POS food category'
-    });
-    await loadPosFolders();
-    return createFoodCategoryOption({
-      folder_id: created?.folder_id,
-      name: created?.name || label
-    });
-  }, [canCreateItems, loadPosFolders, posFolders, resolveFoodCategorySelection]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = String(searchQuery || '').trim().toLowerCase();
@@ -1626,7 +1549,9 @@ function ItemsWorkspace({
       pos_always_available: item?.pos_always_available === true,
       senior_pwd_discount_eligible: item?.senior_pwd_discount_eligible === true,
       description: String(item?.description || ''),
-      pos_category: String(item?.folder?.name || item?.product_folder || DEFAULT_POS_FOOD_CATEGORY)
+      pos_category: item?.folder_id
+        ? createFolderFilterValue({ folder_id: item.folder_id, name: item?.folder?.name || item?.product_folder })
+        : ''
     });
   };
 
@@ -1642,12 +1567,13 @@ function ItemsWorkspace({
       pos_always_available: false,
       senior_pwd_discount_eligible: false,
       description: '',
-      pos_category: DEFAULT_POS_FOOD_CATEGORY
+      pos_category: ''
     });
   };
 
   const openCreate = () => {
     setCreateForm(createEmptyPosItemForm());
+    setCreateCategoryInput('');
     setSelectedImageFiles([]);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
@@ -1657,6 +1583,7 @@ function ItemsWorkspace({
     if ((creatingItem || postCreateSaving) && !force) return;
     setShowCreateModal(false);
     setCreateForm(createEmptyPosItemForm());
+    setCreateCategoryInput('');
     setSelectedImageFiles([]);
     if (force) setPendingCreateRecovery(null);
   };
@@ -1703,13 +1630,20 @@ function ItemsWorkspace({
     try {
       setPersistingEditAssets(true);
       const resolvedStock = category === 'product' || category === 'supplies' ? stock : 0;
-      const foodCategory = await ensureFoodCategoryFolder(editForm.pos_category);
+      const foodCategory = resolveFoodCategorySelection(editForm.pos_category);
+      const currentFolderId = Number(activeEditItem.folder_id || 0);
+      if (!foodCategory && !currentFolderId) {
+        toast.error('Select an active category managed by an administrator.');
+        return;
+      }
+      const categoryPayload = foodCategory
+        ? { product_folder: foodCategory.name, folder_id: foodCategory.folder_id }
+        : {};
       await updateItem(activeEditItem.item_id, {
         name,
         category,
         description,
-        product_folder: foodCategory.name,
-        folder_id: foodCategory.folder_id || null,
+        ...categoryPayload,
         current_stock: resolvedStock,
         location_id: Number.isInteger(Number(operatingLocationId)) && Number(operatingLocationId) > 0
           ? Number(operatingLocationId)
@@ -1881,7 +1815,9 @@ function ItemsWorkspace({
     const cost = parseMoneyValue(createForm.cost_per_unit);
     const stock = Number(String(createForm.current_stock || '0').trim());
     const skuCode = String(createForm.sku_code || '').trim();
-    const foodCategory = resolveFoodCategorySelection(createForm.pos_category);
+    const typedCategoryName = String(createCategoryInput || '').trim().replace(/\s+/g, ' ');
+    const foodCategory = resolveFoodCategorySelection(createForm.pos_category)
+      || foodCategoryOptions.find((option) => normalizeFolderNameKey(option.name) === normalizeFolderNameKey(typedCategoryName));
 
     if (!name) {
       toast.error('Item name is required.');
@@ -1908,6 +1844,15 @@ function ItemsWorkspace({
       return;
     }
 
+    if (!foodCategory?.folder_id && !typedCategoryName) {
+      toast.error('Select an active category or enter a new category name.');
+      return;
+    }
+    if (!foodCategory?.folder_id && !canManageCategories) {
+      toast.error('Admin access is required to create a new category.');
+      return;
+    }
+
     const resolvedStock = category === 'product' || category === 'supplies' ? stock : 0;
     const payload = {
       sku_code: skuCode,
@@ -1915,7 +1860,9 @@ function ItemsWorkspace({
       category,
       product_type: category === 'product' ? (posItemPreset.product_type || 'finished_goods') : null,
       mode_item_preset: category === 'product' ? posItemPreset.key : undefined,
-      product_folder: foodCategory.name,
+      ...(foodCategory?.folder_id
+        ? { product_folder: foodCategory.name, folder_id: foodCategory.folder_id }
+        : { create_category_name: typedCategoryName }),
       description,
       current_stock: resolvedStock,
       location_id: Number.isInteger(Number(operatingLocationId)) && Number(operatingLocationId) > 0
@@ -1953,7 +1900,7 @@ function ItemsWorkspace({
 
     const finalizeCreatedItem = async ({ barcode = '', warningMessage = '', action = 'created' } = {}) => {
       closeCreate({ force: true });
-      await loadItems();
+      await Promise.all([loadItems(), loadPosFolders()]);
       setSavedMessage({ name, barcode, action });
       if (warningMessage) {
         toast.warning(warningMessage);
@@ -1979,22 +1926,16 @@ function ItemsWorkspace({
         return;
       }
 
-      const resolvedFoodCategory = await ensureFoodCategoryFolder(createForm.pos_category);
-      payload.product_folder = resolvedFoodCategory.name;
-      if (resolvedFoodCategory.folder_id) {
-        payload.folder_id = resolvedFoodCategory.folder_id;
-      }
-
       const createdItem = await createItem(payload);
       const itemId = Number(createdItem?.item_id || createdItem?.id || 0);
       if (!Number.isInteger(itemId) || itemId <= 0) {
         throw new Error('Item was created but no valid item ID was returned.');
       }
 
-      if (resolvedFoodCategory.folder_id && Number(createdItem?.folder_id || 0) !== resolvedFoodCategory.folder_id) {
+      if (foodCategory?.folder_id && Number(createdItem?.folder_id || 0) !== foodCategory.folder_id) {
         await updateItem(itemId, {
-          product_folder: resolvedFoodCategory.name,
-          folder_id: resolvedFoodCategory.folder_id
+          product_folder: foodCategory.name,
+          folder_id: foodCategory.folder_id
         });
       }
 
@@ -2512,34 +2453,46 @@ function ItemsWorkspace({
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Food Category <span className="text-rose-500">*</span>
                       </label>
-                      <Input
-                        list="pos-items-create-food-category-options"
-                        value={createForm.pos_category}
-                        onChange={(event) => setCreateForm((current) => ({ ...current, pos_category: event.target.value }))}
-                        className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
-                        disabled={creatingItem || postCreateSaving}
-                        placeholder="Type or select a food category"
-                        autoComplete="off"
-                      />
-                      <datalist id="pos-items-create-food-category-options">
-                        {createFoodCategorySuggestions.map((categoryName) => (
-                          <option key={categoryName} value={categoryName} />
-                        ))}
-                      </datalist>
-                      {createFoodCategorySuggestions.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {createFoodCategorySuggestions.map((categoryName) => (
-                            <button
-                              key={categoryName}
-                              type="button"
-                              onClick={() => setCreateForm((current) => ({ ...current, pos_category: categoryName }))}
-                              className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
-                              disabled={creatingItem || postCreateSaving}
-                            >
-                              {categoryName}
-                            </button>
-                          ))}
-                        </div>
+                      {canManageCategories ? (
+                        <>
+                          <Input
+                            list="pos-items-create-category-options"
+                            value={createCategoryInput}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              const matchedCategory = foodCategoryOptions.find((option) => (
+                                normalizeFolderNameKey(option.name) === normalizeFolderNameKey(nextValue)
+                              ));
+                              setCreateCategoryInput(nextValue);
+                              setCreateForm((current) => ({
+                                ...current,
+                                pos_category: matchedCategory?.value || ''
+                              }));
+                            }}
+                            className="h-11 rounded-xl border-slate-200 text-xs font-medium focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                            disabled={creatingItem || postCreateSaving}
+                            placeholder="Select or create a category"
+                          />
+                          <datalist id="pos-items-create-category-options">
+                            {foodCategoryOptions.map((option) => <option key={option.value} value={option.name} />)}
+                          </datalist>
+                          <p className="text-[11px] text-slate-500">Select an existing category, or enter a new name to create it when this item is saved.</p>
+                        </>
+                      ) : (
+                        <>
+                          <select
+                            value={createForm.pos_category}
+                            onChange={(event) => setCreateForm((current) => ({ ...current, pos_category: event.target.value }))}
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
+                            disabled={creatingItem || postCreateSaving}
+                          >
+                            <option value="">Select an active category</option>
+                            {foodCategoryOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <p className="text-[11px] text-slate-500">Only an administrator can create categories.</p>
+                        </>
                       )}
                     </div>
 
@@ -2808,35 +2761,21 @@ function ItemsWorkspace({
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Food Category <span className="text-rose-500">*</span>
                       </label>
-                      <Input
-                        list="pos-items-edit-food-category-options"
+                      <select
                         value={editForm.pos_category}
                         onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
-                        className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
                         disabled={savingItem || persistingEditAssets}
-                        placeholder="Type or select a food category"
-                        autoComplete="off"
-                      />
-                      <datalist id="pos-items-edit-food-category-options">
-                        {editFoodCategorySuggestions.map((categoryName) => (
-                          <option key={categoryName} value={categoryName} />
+                      >
+                        {!editForm.pos_category && <option value="">Select an active category</option>}
+                        {editForm.pos_category && !foodCategoryOptions.some((option) => option.value === editForm.pos_category) && (
+                          <option value={editForm.pos_category} disabled>Current category is inactive</option>
+                        )}
+                        {foodCategoryOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
-                      </datalist>
-                      {editFoodCategorySuggestions.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {editFoodCategorySuggestions.map((categoryName) => (
-                            <button
-                              key={categoryName}
-                              type="button"
-                              onClick={() => setEditForm((current) => ({ ...current, pos_category: categoryName }))}
-                              className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
-                              disabled={savingItem || persistingEditAssets}
-                            >
-                              {categoryName}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      </select>
+                      <p className="text-[11px] text-slate-500">Inactive categories remain on existing items but cannot be selected again.</p>
                     </div>
 
                     <div className="space-y-1.5">
@@ -3106,6 +3045,285 @@ function ItemsWorkspace({
   );
 }
 
+function CategoryManagementWorkspace() {
+  const [folders, setFolders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [editor, setEditor] = useState(null);
+  const [form, setForm] = useState({ name: '', description: '' });
+  const [pendingAction, setPendingAction] = useState(null);
+
+  const loadFolders = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    setError('');
+    try {
+      const response = await getFolders();
+      setFolders(
+        (Array.isArray(response) ? response : [])
+          .map((folder) => ({
+            ...folder,
+            folder_id: Number(folder?.folder_id),
+            name: String(folder?.name || '').trim(),
+            description: String(folder?.description || '').trim(),
+            item_count: Number(folder?.item_count || 0),
+            is_active: folder?.is_active !== false
+          }))
+          .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
+      );
+    } catch (loadError) {
+      setFolders([]);
+      setError(loadError?.response?.data?.message || 'Failed to load categories.');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFolders();
+  }, [loadFolders]);
+
+  const filteredFolders = useMemo(() => {
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+    return [...folders]
+      .filter((folder) => !normalizedQuery || `${folder.name} ${folder.description}`.toLowerCase().includes(normalizedQuery))
+      .sort((left, right) => {
+        if (left.is_active !== right.is_active) return left.is_active ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      });
+  }, [folders, query]);
+
+  const summary = useMemo(() => ({
+    total: folders.length,
+    active: folders.filter((folder) => folder.is_active).length,
+    assignedItems: folders.reduce((total, folder) => total + folder.item_count, 0)
+  }), [folders]);
+
+  const replacementFolders = useMemo(() => folders
+    .filter((folder) => folder.is_active && Number(folder.folder_id) !== Number(pendingAction?.folder?.folder_id))
+    .sort((left, right) => left.name.localeCompare(right.name)), [folders, pendingAction?.folder?.folder_id]);
+
+  const openCreate = () => {
+    setEditor({ mode: 'create', folder: null });
+    setForm({ name: '', description: '' });
+  };
+
+  const openEdit = (folder) => {
+    setEditor({ mode: 'edit', folder });
+    setForm({ name: folder.name, description: folder.description || '' });
+  };
+
+  const saveFolder = async () => {
+    const name = String(form.name || '').trim();
+    const description = String(form.description || '').trim();
+    if (!name) {
+      toast.error('Category name is required.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (editor?.mode === 'edit' && editor.folder?.folder_id) {
+        await updateFolder(editor.folder.folder_id, { name, description });
+        toast.success('Category updated.');
+      } else {
+        await createFolder({ name, description });
+        toast.success('Category created.');
+      }
+      setEditor(null);
+      await loadFolders({ silent: true });
+    } catch (saveError) {
+      toast.error(saveError?.response?.data?.message || 'Unable to save this category.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmLifecycleAction = async () => {
+    const folder = pendingAction?.folder;
+    if (!folder?.folder_id) return;
+    const replacementFolderId = Number(pendingAction?.replacementFolderId);
+
+    setBusy(true);
+    try {
+      if (pendingAction.type === 'delete') {
+        const result = await deleteFolder(folder.folder_id, Number.isInteger(replacementFolderId) ? { replacement_folder_id: replacementFolderId } : {});
+        toast.success(result?.data?.message || 'Category deleted.');
+      } else {
+        await updateFolder(folder.folder_id, { is_active: pendingAction.type === 'activate' });
+        toast.success(pendingAction.type === 'activate' ? 'Category activated.' : 'Category deactivated.');
+      }
+      setPendingAction(null);
+      await loadFolders({ silent: true });
+    } catch (actionError) {
+      toast.error(actionError?.response?.data?.message || 'Unable to update this category.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-[#1A4E8D]">
+              <Tags className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-[#0F172A]">Category Management</p>
+              <p className="mt-1 text-sm text-slate-600">Create and control the categories available when POS items are added or edited.</p>
+            </div>
+          </div>
+          <p className="mt-4 max-w-3xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Deactivating a category preserves existing item and historical records. Deleting an assigned category requires moving its items to another active category.</p>
+        </div>
+        <Button type="button" onClick={openCreate} className="h-11 rounded-xl bg-[#1A4E8D] px-5 text-white hover:bg-[#143F73]">
+          <Plus className="mr-2 h-4 w-4" />
+          Add Category
+        </Button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          ['Total categories', summary.total, 'border-slate-200 bg-white text-[#0F172A]'],
+          ['Active for item selection', summary.active, 'border-emerald-200 bg-emerald-50 text-emerald-800'],
+          ['Assigned POS items', summary.assignedItems, 'border-blue-200 bg-blue-50 text-[#1A4E8D]']
+        ].map(([label, value, className]) => (
+          <div key={label} className={`rounded-xl border p-4 ${className}`}>
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] opacity-70">{label}</p>
+            <p className="mt-1 text-2xl font-black">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 rounded-xl border-slate-200 pl-9" placeholder="Search categories" />
+          </div>
+          <Button type="button" variant="outline" onClick={() => loadFolders()} disabled={loading || busy} className="h-10 rounded-xl">
+            <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+
+        {error ? (
+          <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
+        ) : loading ? (
+          <div className="p-8 text-center text-sm text-slate-500">Loading categories...</div>
+        ) : filteredFolders.length === 0 ? (
+          <div className="p-10 text-center">
+            <Tags className="mx-auto h-8 w-8 text-slate-300" />
+            <p className="mt-3 font-bold text-slate-800">No categories found</p>
+            <p className="mt-1 text-sm text-slate-500">Create a category before adding POS items.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {filteredFolders.map((folder) => (
+              <div key={folder.folder_id} className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-extrabold text-[#0F172A]">{folder.name}</p>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${folder.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{folder.is_active ? 'Active' : 'Inactive'}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">{folder.description || 'No description provided.'}</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-500">{folder.item_count} assigned item{folder.item_count === 1 ? '' : 's'}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                  <Button type="button" variant="outline" onClick={() => openEdit(folder)} disabled={busy} className="h-9 rounded-lg"><Pencil className="mr-1.5 h-3.5 w-3.5" />Edit</Button>
+                  <Button type="button" variant="outline" onClick={() => setPendingAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={busy} className="h-9 rounded-lg">{folder.is_active ? 'Deactivate' : 'Activate'}</Button>
+                  <Button type="button" variant="outline" onClick={() => setPendingAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={busy} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : 'Delete category'} className="h-9 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed"><Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {editor && typeof document !== 'undefined' && createPortal((
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pos-category-editor-title"
+          onClick={() => { if (!busy) setEditor(null); }}
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 id="pos-category-editor-title" className="text-lg font-black text-[#0F172A]">{editor.mode === 'edit' ? 'Edit Category' : 'Add Category'}</h2>
+              <p className="mt-1 text-sm text-slate-500">Categories are tenant-private and available to POS item forms only while active.</p>
+            </div>
+            <div className="space-y-4 px-5 py-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="pos-category-name">Category name</Label>
+                <Input id="pos-category-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} disabled={busy} maxLength={100} autoFocus />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pos-category-description">Description <span className="font-normal text-slate-400">(optional)</span></Label>
+                <textarea id="pos-category-description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} disabled={busy} maxLength={1000} className="min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              </div>
+            </div>
+            <div className="flex flex-col-reverse gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setEditor(null)} disabled={busy}>Cancel</Button>
+              <Button type="button" onClick={saveFolder} disabled={busy} className="bg-[#1A4E8D] text-white hover:bg-[#143F73]">{busy ? 'Saving...' : 'Save Category'}</Button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
+
+      {pendingAction && typeof document !== 'undefined' && createPortal((
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pos-category-action-title"
+          onClick={() => { if (!busy) setPendingAction(null); }}
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 id="pos-category-action-title" className="text-lg font-black text-[#0F172A]">{pendingAction.type === 'delete' ? 'Delete Category' : (pendingAction.type === 'activate' ? 'Activate Category' : 'Deactivate Category')}</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                {pendingAction.type === 'delete'
+                  ? (pendingAction.folder?.item_count > 0
+                    ? `Delete ${pendingAction.folder?.name || 'this category'}? Its ${pendingAction.folder.item_count} assigned item(s) must move to another active category first.`
+                    : `Delete ${pendingAction.folder?.name || 'this category'} permanently? Select a replacement below if any assigned items need to move.`)
+                  : (pendingAction.type === 'activate'
+                    ? `Make ${pendingAction.folder?.name || 'this category'} available again for new POS items?`
+                    : `Remove ${pendingAction.folder?.name || 'this category'} from new item selection while retaining existing item assignments?`)}
+              </p>
+            </div>
+            {pendingAction.type === 'delete' ? (
+              <div className="space-y-2 px-5 py-4">
+                <Label htmlFor="pos-category-replacement">Move assigned items to <span className="font-normal text-slate-400">(required only when items are assigned)</span></Label>
+                {replacementFolders.length > 0 ? (
+                  <select
+                    id="pos-category-replacement"
+                    value={pendingAction.replacementFolderId || ''}
+                    onChange={(event) => setPendingAction((current) => ({ ...current, replacementFolderId: event.target.value }))}
+                    disabled={busy}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Select an active category</option>
+                    {replacementFolders.map((folder) => <option key={folder.folder_id} value={folder.folder_id}>{folder.name}</option>)}
+                  </select>
+                ) : (
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-900">No active replacement category is available. You can delete this category only when it has no assigned items.</p>
+                )}
+              </div>
+            ) : null}
+            <div className="flex flex-col-reverse gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setPendingAction(null)} disabled={busy}>Cancel</Button>
+              <Button type="button" onClick={confirmLifecycleAction} disabled={busy} className={pendingAction.type === 'activate' ? 'bg-[#1A4E8D] text-white hover:bg-[#143F73]' : 'bg-rose-600 text-white hover:bg-rose-700'}>{busy ? 'Working...' : (pendingAction.type === 'delete' ? 'Delete Category' : (pendingAction.type === 'activate' ? 'Activate Category' : 'Deactivate Category'))}</Button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
+    </div>
+  );
+}
+
 function SettingsWorkspace({
   terminalUser,
   terminalMeta,
@@ -3128,6 +3346,8 @@ function SettingsWorkspace({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const canManageCashiers = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('users:manage');
+  const canManageCategories = terminalUser?.is_master_admin === true
+    || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -3326,7 +3546,8 @@ function SettingsWorkspace({
   const SETTINGS_TABS = [
     { id: 'profile', label: 'Profile Setting', icon: UserRound },
     { id: 'pos_setup', label: 'POS Setup', icon: Settings2 },
-    { id: 'storefront', label: 'Storefront', icon: Store }
+    { id: 'storefront', label: 'Storefront', icon: Store },
+    ...(canManageCategories ? [{ id: 'categories', label: 'Categories', icon: Tags }] : [])
   ];
   const resolveTabIndex = (tabId) => {
     const index = SETTINGS_TABS.findIndex((tab) => tab.id === tabId);
@@ -3534,8 +3755,8 @@ function SettingsWorkspace({
         storefrontPromoUsedCount: selectedStorefrontPromo.used_count == null ? '0' : String(selectedStorefrontPromo.used_count),
         storefrontPromoValidTimeStart: String(selectedStorefrontPromo.valid_time_start || ''),
         storefrontPromoValidTimeEnd: String(selectedStorefrontPromo.valid_time_end || ''),
-        storefrontPromoValidFrom: String(selectedStorefrontPromo.valid_from || ''),
-        storefrontPromoValidUntil: String(selectedStorefrontPromo.valid_until || ''),
+        storefrontPromoValidFrom: String(selectedStorefrontPromo.valid_from || '').slice(0, 10),
+        storefrontPromoValidUntil: String(selectedStorefrontPromo.valid_until || '').slice(0, 10),
         storefrontPromoTargetItemIds: normalizePositiveIntegerList(selectedStorefrontPromo.target_item_ids),
         storefrontPromoActive: selectedStorefrontPromo.active === true,
         storefrontFollowEnabled: settingsPayload?.storefront_follow_enabled?.value === true,
@@ -4055,6 +4276,26 @@ function SettingsWorkspace({
       const seenPromoCodes = new Set();
       for (const promo of storefrontPromos) {
         const promoCode = String(promo.promo_code || '').trim().toUpperCase();
+        const invalidTime = [promo.valid_time_start, promo.valid_time_end]
+          .find((value) => String(value || '').trim() && !PROMO_TIME_24_HOUR_PATTERN.test(String(value).trim()));
+        if (invalidTime) {
+          toast.error('Promo times must use the 24-hour HH:mm format, for example 14:30.');
+          return;
+        }
+        const from = buildPromoDateTimeValue(promo.valid_from, promo.valid_time_start);
+        const to = buildPromoDateTimeValue(promo.valid_until, promo.valid_time_end);
+        if ((promo.valid_from || promo.valid_time_start) && !from) {
+          toast.error('Promo From must include both a date and a 24-hour time.');
+          return;
+        }
+        if ((promo.valid_until || promo.valid_time_end) && !to) {
+          toast.error('Promo To must include both a date and a 24-hour time.');
+          return;
+        }
+        if (from && to && from > to) {
+          toast.error('Promo From must be earlier than Promo To.');
+          return;
+        }
         if (!promoCode) continue;
         if (seenPromoCodes.has(promoCode)) {
           toast.error(`Duplicate promo code: ${promoCode}`);
@@ -5766,20 +6007,28 @@ function SettingsWorkspace({
                 <Input value={storefrontForm.storefrontPromoUsedCount} readOnly placeholder="0" />
               </div>
               <div className="space-y-1">
-                <Label className="text-[12px] font-semibold text-slate-600">Start Time</Label>
-                <Input type="time" value={storefrontForm.storefrontPromoValidTimeStart} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeStart: event.target.value }))} />
+                <Label className="text-[12px] font-semibold text-slate-600">From</Label>
+                <Input
+                  type="datetime-local"
+                  value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidFrom, storefrontForm.storefrontPromoValidTimeStart)}
+                  onChange={(event) => {
+                    const { date, time } = parsePromoDateTimeValue(event.target.value);
+                    setStorefrontForm((current) => ({ ...current, storefrontPromoValidFrom: date, storefrontPromoValidTimeStart: time }));
+                  }}
+                />
+                <p className="text-[11px] text-slate-500">{formatPromoDateTime12Hour(buildPromoDateTimeValue(storefrontForm.storefrontPromoValidFrom, storefrontForm.storefrontPromoValidTimeStart)) || 'Select date and 24-hour time.'}</p>
               </div>
               <div className="space-y-1">
-                <Label className="text-[12px] font-semibold text-slate-600">End Time</Label>
-                <Input type="time" value={storefrontForm.storefrontPromoValidTimeEnd} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidTimeEnd: event.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[12px] font-semibold text-slate-600">Start Date</Label>
-                <Input type="date" value={storefrontForm.storefrontPromoValidFrom} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidFrom: event.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[12px] font-semibold text-slate-600">End Date</Label>
-                <Input type="date" value={storefrontForm.storefrontPromoValidUntil} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidUntil: event.target.value }))} />
+                <Label className="text-[12px] font-semibold text-slate-600">To</Label>
+                <Input
+                  type="datetime-local"
+                  value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidUntil, storefrontForm.storefrontPromoValidTimeEnd)}
+                  onChange={(event) => {
+                    const { date, time } = parsePromoDateTimeValue(event.target.value);
+                    setStorefrontForm((current) => ({ ...current, storefrontPromoValidUntil: date, storefrontPromoValidTimeEnd: time }));
+                  }}
+                />
+                <p className="text-[11px] text-slate-500">{formatPromoDateTime12Hour(buildPromoDateTimeValue(storefrontForm.storefrontPromoValidUntil, storefrontForm.storefrontPromoValidTimeEnd)) || 'Select date and 24-hour time.'}</p>
               </div>
               <div className="space-y-2 md:col-span-2">
                 <div className="space-y-1">
@@ -5956,13 +6205,14 @@ function SettingsWorkspace({
     }
     if (renderedTab === 'profile') return renderProfilePane();
     if (renderedTab === 'storefront') return renderStorefrontPane();
+    if (renderedTab === 'categories' && canManageCategories) return <CategoryManagementWorkspace />;
     return renderPosSetupPane();
   };
 
   return (
     <div id={sectionId} className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
-        <div className="hidden gap-2 sm:grid md:grid-cols-3">
+        <div className={`hidden gap-2 sm:grid ${canManageCategories ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
           {SETTINGS_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -6124,6 +6374,7 @@ export default function TerminalOperationsWorkspace({
   incomingOrdersState = { loading: false, orders: [] },
   incomingOrderActionState = {},
   handleIncomingOrderStatusChange = () => {},
+  handleOpenCashCollection = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
   refreshIncomingOrders = () => {},
@@ -6157,6 +6408,7 @@ export default function TerminalOperationsWorkspace({
           incomingOrdersState={incomingOrdersState}
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+          handleOpenCashCollection={handleOpenCashCollection}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}
@@ -6278,6 +6530,7 @@ export default function TerminalOperationsWorkspace({
           canCreateItems={canCreateItems}
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
+          canManageCategories={terminalUser?.is_master_admin === true || String(terminalUser?.role || '').trim().toLowerCase() === 'admin'}
           stockFilterPreset={itemsStockFilterPreset}
           onStockFilterPresetApplied={onItemsStockFilterPresetApplied}
           workflowMode={workflowMode}
@@ -6309,6 +6562,7 @@ export default function TerminalOperationsWorkspace({
     closeShiftForm,
     handleCloseShift,
     handleIncomingOrderStatusChange,
+    handleOpenCashCollection,
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
     handleOpenShift,

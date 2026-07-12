@@ -86,6 +86,7 @@ export const buildHealthResponse = async ({
     getTenantPoolStatsFn,
     getRateLimiterStoreModeFn,
     runtimeSchemaAuditState = {},
+    tenantSchemaPreflightState = {},
     schemaIndexAuditState = {},
     billingFunnelAuditState = {},
     environment = process.env.NODE_ENV || 'development',
@@ -120,6 +121,13 @@ export const buildHealthResponse = async ({
                 available: false
             },
             runtimeSchema: getRuntimeSchemaHealthService(runtimeSchemaAuditState),
+            tenantSchema: {
+                status: tenantSchemaPreflightState.status || 'unknown',
+                message: tenantSchemaPreflightState.message || 'Tenant schema preflight has not run yet.',
+                required: tenantSchemaPreflightState.required === true,
+                last_checked_at: tenantSchemaPreflightState.last_checked_at || null,
+                failed_tenant_count: tenantSchemaPreflightState.failed_tenant_count || 0
+            },
             schemaIndexes: getSchemaIndexHealthService(schemaIndexAuditState),
             billingFunnelTelemetry: getBillingFunnelTelemetryHealthService(billingFunnelAuditState),
             observability: {
@@ -245,6 +253,9 @@ export const buildHealthResponse = async ({
     }
 
     applyRuntimeSchemaHealthStatus(health, runtimeSchemaAuditState);
+    if (tenantSchemaPreflightState.required === true && tenantSchemaPreflightState.status === 'degraded') {
+        health.success = false;
+    }
     applySchemaIndexHealthStatus(health, schemaIndexAuditState);
     applyBillingFunnelTelemetryHealthStatus(health, billingFunnelAuditState);
 
