@@ -266,6 +266,9 @@ jobs:
         working-directory: .
         run: npm run check:architecture:dgfy-api
 
+      - name: Run lint
+        run: npm run lint
+
       - name: Run tests
         run: npm test
         env:
