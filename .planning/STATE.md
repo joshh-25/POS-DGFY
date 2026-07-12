@@ -6,14 +6,14 @@ current_phase: 08
 current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
 stopped_at: Completed 08-05-PLAN.md
-last_updated: "2026-07-12T13:37:39.077Z"
+last_updated: "2026-07-12T13:55:34.731Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 43
-  completed_plans: 37
+  completed_plans: 38
   percent: 55
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 ## Current Position
 
 Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 08 execution started
 
@@ -96,6 +96,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overa
 | Phase 08 P03 | 30min | 2 tasks | 13 files |
 | Phase 08 P04 | 22min | 2 tasks | 10 files |
 | Phase 08 P05 | 25min | 2 tasks | 10 files |
+| Phase 08 P06 | 35min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,8 @@ Recent decisions affecting current work:
 - [Phase 08]: P04: recordMovementWithStockSync() applies restock/loss/adjustment stock_count deltas transactionally with a JS negative-stock precheck + optimistic-concurrency guard.
 - [Phase 08]: P05: reconciliation math computed in shiftUseCases (not shiftRepository) so computeExpectedCash is unit-testable without mocking Sequelize transactions — keeps repository a pure persistence adapter; matches plan task wording
 - [Phase 08]: P05: staleThresholdMinutes (D-11) resolved once at buildShiftsModule's composition boundary (override > SHIFT_STALE_THRESHOLD_MINUTES env var > 60min default), never inline in usecase/entity layers
+- [Phase 08]: P06: ported the entire compliancePolicyEngine.js (including evaluateComplianceChecklist) rather than only the outer branches, since compliant_active's checklist-completeness path depends on it -- a faithful D-03 full-depth port requires the whole file.
+- [Phase 08]: P06: reviewComplianceState gates on business-owner membership (not a dedicated tenant_master_admin/platform_admin role, which does not exist yet in this system) while still requiring and recording a valid verifierActorType input.
 
 ### Pending Todos
 
@@ -143,6 +146,7 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T13:37:39.071Z
+Last session: 2026-07-12T13:53:16.571Z
 Stopped at: Completed 08-05-PLAN.md
 Resume file: 
+None
