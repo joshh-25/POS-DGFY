@@ -3,7 +3,7 @@ status: testing
 phase: 04-backend-accounts-businesses-and-tenancy-foundation
 source: [04-VERIFICATION.md]
 started: 2026-07-12T01:22:43Z
-updated: 2026-07-12T02:45:00Z
+updated: 2026-07-12T03:20:00Z
 ---
 
 ## Current Test
@@ -13,7 +13,7 @@ name: Run the phase's other previously-gated integration/E2E suites (business/st
 expected: |
   All suites pass using the shared `tenantSchemaProvisioning.js` in-process stand-in (whose doc comment
   now correctly cites the shipped `activate-tenant` CLI).
-awaiting: user re-run of tests/e2e/phase4FullFlow.test.js (Journeys 1 & 4) after fixes c9d35949/05d1ebde, then the remaining suites in the full command
+awaiting: user re-run of the 5 remaining suites after fix 34108f0e; locationRoutes.test.js needs a scoping decision (see Gaps) before it can pass
 
 ## Tests
 
@@ -34,11 +34,11 @@ expected: |
   All suites pass using the shared `tenantSchemaProvisioning.js` in-process stand-in (whose doc comment
   now correctly cites the shipped `activate-tenant` CLI).
 result: issue
-reported: "User ran tests/e2e/phase4FullFlow.test.js (one of this test's six suites) against real MySQL: Journey 1 failed (tenant_registry.verified_at missing from response) and Journey 4 failed (SequelizeForeignKeyConstraintError creating an account_staff_assignments row). Journeys 2, 3, and 5 passed."
+reported: "Round 1: tests/e2e/phase4FullFlow.test.js Journeys 1 & 4 failed (see resolved gaps below) — user confirmed both fixed on re-run (5/5 journeys pass). Round 2: ran the other 5 suites (businessFlows, businessValidation, locationRoutes, tenantSessionFlows, tenantSessionValidation) — all 5 failed near-totally (61 of 66 tests), almost every failure at the file's own afterEach, plus locationRoutes.test.js additionally failing its very first assertion (Expected 201, Received 404)."
 severity: blocker
-root_cause: "Two independent, pre-existing bugs — neither related to 04-09 — surfaced because this appears to be the first time this suite has ever run against real MySQL. (1) Journey 1: BusinessDatabaseRegistry's verified_at column has allowNull:true but no defaultValue; MySQL has no RETURNING clause, so a freshly-created instance leaves the attribute undefined (not null), and JSON.stringify silently drops undefined keys from the API response. (2) Journey 4: hardcodes staffAccountId:1 when seeding a tenant-local assignment, but unlike Journey 2 (which creates a real staff_accounts row via the invitation-accept flow first, so id 1 genuinely exists), Journey 4 never onboards any staff account — its tenant database's staff_accounts table is empty, so id 1 is a dangling FK reference (staff_account_id is a real same-database FK, unlike the opaque cross-database dgfy_account_id)."
-fix_applied: "(1) Added defaultValue:null to BusinessDatabaseRegistry.js's verified_at column (apps/dgfy-api/src/models/Landlord/BusinessDatabaseRegistry.js), committed c9d35949. (2) Journey 4 now seeds a real staff_accounts row directly via the tenant StaffAccount model and uses its real id instead of the unseeded literal (apps/dgfy-api/tests/e2e/phase4FullFlow.test.js), committed 05d1ebde. Both fixes verified against the dgfy-api default suite (163 passed / 190 skipped, unchanged) and confirmed the DB-backed file still skips cleanly without MySQL."
-status: awaiting user re-run of tests/e2e/phase4FullFlow.test.js to confirm both fixes, then the remaining 5 suites in this test's full command
+root_cause: "Round 1 (resolved): (1) Journey 1 — BusinessDatabaseRegistry.verified_at had no defaultValue, so JSON.stringify dropped the undefined attribute from the response. (2) Journey 4 — hardcoded staffAccountId:1 with no staff_accounts row ever seeded in that journey's tenant database, an FK violation. Round 2 (partially resolved): (3) ALL FIVE files share an afterEach calling Account.destroy({truncate:true, force:true}) — MySQL/InnoDB unconditionally refuses to TRUNCATE a table referenced by a live FK constraint (business_memberships.account_id -> accounts.id) regardless of row count, so this always threw, even on the very first test. (4) locationRoutes.test.js ADDITIONALLY never wires a businessDatabaseRegistryModel into buildBusinessesModule() — no registry row is ever created for its businesses, and the current (Wave 4+) locationUseCases.js fails closed with 404 NO_TENANT_DATABASE whenever no registry row exists. This file predates that gate (Wave 3.5) and was never updated to match — every one of its ~15 tests needs the same registry+tenant-activation wiring already used elsewhere."
+fix_applied: "(1) c9d35949, (2) 05d1ebde — both confirmed passing by user. (3) Removed the doomed afterEach truncation from all 5 files (34108f0e for 4 files, 83b7bdf5 for locationRoutes.test.js), matching phase4FullFlow.test.js's proven strategy of per-test-unique literals + a single afterAll DROP DATABASE (verified none of the existing literals collide within a run). (4) NOT yet fixed — flagged for the user: rewiring locationRoutes.test.js's ~15 tests to provision+activate a real tenant per business is a substantially larger change than the other fixes in this session, and needs a scoping decision before proceeding."
+status: awaiting user re-run of businessFlows/businessValidation/tenantSessionFlows/tenantSessionValidation (expected to pass) and a decision on locationRoutes.test.js's larger rewiring need
 
 ## Summary
 
@@ -61,7 +61,7 @@ blocked: 0
 
 - truth: "POST /businesses response's tenant_registry.verified_at is present as null for a freshly provisioning business (Test 2, Journey 1)."
   status: resolved
-  reason: "BusinessDatabaseRegistry model's verified_at column lacked defaultValue:null, so a freshly created Sequelize instance carried the attribute as undefined (dropped by JSON.stringify) instead of null. Added the explicit default. Awaiting user re-run to confirm."
+  reason: "BusinessDatabaseRegistry model's verified_at column lacked defaultValue:null, so a freshly created Sequelize instance carried the attribute as undefined (dropped by JSON.stringify) instead of null. Added the explicit default. Confirmed by user: phase4FullFlow.test.js now passes 5/5 journeys."
   severity: blocker
   test: 2
   artifacts: [apps/dgfy-api/src/models/Landlord/BusinessDatabaseRegistry.js]
@@ -69,8 +69,24 @@ blocked: 0
 
 - truth: "Journey 4's tenant-local staff assignment seed succeeds against a real, existing staff_accounts row (Test 2, Journey 4)."
   status: resolved
-  reason: "Journey 4 hardcoded staffAccountId:1 without ever creating a staff_accounts row in its own tenant database (unlike Journey 2, which does via the invitation-accept flow). Fixed by seeding a real staff_accounts row and using its actual id. Awaiting user re-run to confirm."
+  reason: "Journey 4 hardcoded staffAccountId:1 without ever creating a staff_accounts row in its own tenant database (unlike Journey 2, which does via the invitation-accept flow). Fixed by seeding a real staff_accounts row and using its actual id. Confirmed by user: phase4FullFlow.test.js now passes 5/5 journeys."
   severity: blocker
   test: 2
   artifacts: [apps/dgfy-api/tests/e2e/phase4FullFlow.test.js]
   missing: []
+
+- truth: "businessFlows.test.js, businessValidation.test.js, locationRoutes.test.js, tenantSessionFlows.test.js, and tenantSessionValidation.test.js each run to completion against real MySQL without failing at their own cleanup step (Test 2, suites 1-5)."
+  status: resolved
+  reason: "All five files' afterEach called Account.destroy({truncate:true, force:true}), which issues a raw TRUNCATE. MySQL/InnoDB unconditionally refuses to TRUNCATE a table referenced by a live FK constraint (business_memberships.account_id -> accounts.id) regardless of row count, so every test in every one of these files failed at this exact line — apparently never caught because this appears to be the first time any of these files ran against a fully-migrated real MySQL schema. Removed the afterEach entirely (each file already uses per-test-unique business_handle/email literals plus an afterAll DROP DATABASE, matching phase4FullFlow.test.js's already-proven strategy). Awaiting user re-run to confirm."
+  severity: blocker
+  test: 2
+  artifacts: [apps/dgfy-api/tests/integration/businesses/businessFlows.test.js, apps/dgfy-api/tests/integration/businesses/businessValidation.test.js, apps/dgfy-api/tests/integration/businesses/locationRoutes.test.js, apps/dgfy-api/tests/integration/tenancy/tenantSessionFlows.test.js, apps/dgfy-api/tests/integration/tenancy/tenantSessionValidation.test.js]
+  missing: []
+
+- truth: "locationRoutes.test.js's location-creation tests succeed against a real, activated tenant database (Test 2, suite 3)."
+  status: open
+  reason: "This file's buildBusinessesModule() call never wires a businessDatabaseRegistryModel, so no business_database_registry row is ever created for any business it creates. The current (Wave 4+) locationUseCases.js fails closed with 404 NO_TENANT_DATABASE whenever no registry row exists for the business — this file predates that gate (Wave 3.5, when location creation was unconditional) and was never updated. Fixing this properly means rewiring the file's setup to provision+activate a real tenant per business (mirroring businessValidation.test.js/tenantSessionFlows.test.js's existing pattern) across all ~15 of its test cases — a substantially larger change than anything else fixed in this session. Flagged for a scoping decision rather than fixed unilaterally."
+  severity: blocker
+  test: 2
+  artifacts: [apps/dgfy-api/tests/integration/businesses/locationRoutes.test.js]
+  missing: ["businessDatabaseRegistryModel wiring + tenant provisioning/activation in this file's beforeAll and/or per-test setup"]
