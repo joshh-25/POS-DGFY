@@ -33,9 +33,14 @@ export const ARCHITECTURE_USECASE_SERVICE_IMPORT_ALLOWLIST = Object.freeze([]);
 
 // CMP-03 (Phase 5, 05-02-PLAN.md): the canonical domain layer (entities and
 // usecases) must never import compatibility/continuity code. Empty by
-// default — no domain-layer compat imports are allowed in this phase. Any
-// future entry here still needs the `../apps/dgfy-api/...` prefix
-// convention documented in the file header above.
+// default — no domain-layer compat imports are allowed in this phase.
+//
+// PATH CONVENTION DIFFERS from the two arrays above: this one is read by
+// apps/dgfy-api/scripts/check-compat-boundary.js (a standalone checker that
+// lives inside apps/dgfy-api itself, forked out of the backend guardrail so
+// backend/ stays untouched — see file header). That script computes
+// relativePath relative to apps/dgfy-api's own root, so entries here use a
+// plain `src/modules/...` path with NO `../apps/dgfy-api/` prefix.
 export const ARCHITECTURE_COMPAT_IMPORT_ALLOWLIST = Object.freeze([]);
 
 export default Object.freeze({

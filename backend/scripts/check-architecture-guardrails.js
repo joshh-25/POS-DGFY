@@ -8,9 +8,6 @@ const backendRoot = path.resolve(__dirname, '..');
 
 const MODEL_IMPORT_PATTERN = /from\s+['"][^'"]*\/models(?:\/[^'"]*)?['"]/g;
 const LEGACY_SERVICE_IMPORT_PATTERN = /from\s+['"][^'"]*\/services(?:\/[^'"]*)?['"]/g;
-// CMP-03: the canonical domain layer (entities/usecases) must never import
-// compatibility/continuity code (Phase 5, 05-02-PLAN.md, D-05a/D-05b).
-const COMPAT_IMPORT_PATTERN = /from\s+['"][^'"]*\/(continuity|compat)(?:\/[^'"]*)?['"]/g;
 const CONTROLLER_FILE_SUFFIX = 'Handlers.js';
 
 const REQUIRED_MODULE_FILES = ['index.js', 'README.md'];
@@ -54,8 +51,7 @@ const readBoundaryAllowlist = async () => {
     if (!fs.existsSync(allowlistPath)) {
         return {
             controllerNaming: new Set(),
-            usecaseLegacyServiceImports: new Set(),
-            compatImport: new Set()
+            usecaseLegacyServiceImports: new Set()
         };
     }
 
@@ -63,16 +59,14 @@ const readBoundaryAllowlist = async () => {
     const loadedModule = await import(allowlistUrl);
     const controllerNamingRaw = loadedModule.ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST || [];
     const usecaseServiceRaw = loadedModule.ARCHITECTURE_USECASE_SERVICE_IMPORT_ALLOWLIST || [];
-    const compatImportRaw = loadedModule.ARCHITECTURE_COMPAT_IMPORT_ALLOWLIST || [];
 
-    if (!Array.isArray(controllerNamingRaw) || !Array.isArray(usecaseServiceRaw) || !Array.isArray(compatImportRaw)) {
+    if (!Array.isArray(controllerNamingRaw) || !Array.isArray(usecaseServiceRaw)) {
         throw new Error(`Invalid architecture guardrail boundary allowlist at ${allowlistPath}. Expected array exports.`);
     }
 
     return {
         controllerNaming: new Set(controllerNamingRaw.map((entry) => toPosixPath(entry))),
-        usecaseLegacyServiceImports: new Set(usecaseServiceRaw.map((entry) => toPosixPath(entry))),
-        compatImport: new Set(compatImportRaw.map((entry) => toPosixPath(entry)))
+        usecaseLegacyServiceImports: new Set(usecaseServiceRaw.map((entry) => toPosixPath(entry)))
     };
 };
 
@@ -112,8 +106,7 @@ const collectViolations = (modulesRoot, allowlist, boundaryAllowlist) => {
         moduleStructure: [],
         controllerNaming: [],
         usecaseLayerLeak: [],
-        modelImportBoundary: [],
-        domainCompatLeak: []
+        modelImportBoundary: []
     };
 
     const allModuleFiles = [];
@@ -160,22 +153,9 @@ const collectViolations = (modulesRoot, allowlist, boundaryAllowlist) => {
             if (hasPattern(MODEL_IMPORT_PATTERN, source)) {
                 violations.usecaseLayerLeak.push(`${file.relativePath} imports models directly`);
             }
-            if (hasPattern(LEGACY_SERVICE_IMPORT_PATTERN, source) && !boundaryAllowlist.usecaseLegacyServiceImports.has(file.relativePath)) {
+            if (hasPattern(LEGACY_SERVICE_IMPORT_PATTERN, source)) {
+                if (boundaryAllowlist.usecaseLegacyServiceImports.has(file.relativePath)) return;
                 violations.usecaseLayerLeak.push(`${file.relativePath} imports legacy services directly`);
-            }
-            if (hasPattern(COMPAT_IMPORT_PATTERN, source) && !boundaryAllowlist.compatImport.has(file.relativePath)) {
-                violations.domainCompatLeak.push(`${file.relativePath} imports compatibility/continuity code`);
-            }
-        });
-
-        // RESEARCH Pitfall 3: entities/ was previously unscanned, allowing a
-        // compat/continuity import to enter the domain layer undetected.
-        const entitiesDirectory = path.join(moduleAbsolutePath, 'entities');
-        const entitiesFiles = collectCodeFiles(entitiesDirectory);
-        entitiesFiles.forEach((file) => {
-            const source = fs.readFileSync(file.absolutePath, 'utf8');
-            if (hasPattern(COMPAT_IMPORT_PATTERN, source) && !boundaryAllowlist.compatImport.has(file.relativePath)) {
-                violations.domainCompatLeak.push(`${file.relativePath} imports compatibility/continuity code`);
             }
         });
     });

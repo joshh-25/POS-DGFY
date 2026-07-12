@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest --config jest.config.cjs --runInBand",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "check:compat-boundary": "node scripts/check-compat-boundary.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
