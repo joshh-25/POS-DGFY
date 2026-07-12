@@ -79,6 +79,12 @@ Requirements in scope: **PRD-01 through PRD-05, BOK-01 through BOK-03, SFT-01 th
 
 - **D-12:** **One open shift per cashier+terminal, DB-level enforced** (SFT-01, already locked by requirements) — via the MySQL `GENERATED ALWAYS AS (...) STORED` + `UNIQUE INDEX` pattern documented in `STACK.md`, following the exact precedent in `backend/migrations/20260703000002-enforce-one-open-shift-per-terminal.cjs`.
 
+### Resolved During Planning (research/pattern-mapper open questions)
+
+- **D-13: Cashier identity in the one-open-shift key is the tenant-local `staff_accounts.id` (INTEGER), not the landlord `dgfy_account_id` (UUID).** (Resolves RESEARCH OQ-2 / assumption A3.) The tenant-scoped `shifts` table's `GENERATED ALWAYS AS (...) STORED` unique key (D-12) concatenates `terminal_id` (FK `terminal_identities.id`, INTEGER) with `cashier_account_id` = `staff_accounts.id` (INTEGER, tenant-local). Keeps the shift FK inside the same tenant DB (`dgfy_business_*`), consistent with how `terminal_id` already resolves. Do NOT put a cross-DB landlord UUID in the generated column.
+
+- **D-14: Product folders are flat — no nesting.** (Resolves RESEARCH OQ-1.) Even though the legacy `backend/src/models/ItemFolder.js` actually carries a `parent_id` self-referencing FK (contradicting CONTEXT's earlier "flat" premise), the *decision* stands: the new tenant-local `product_folders` table is business-scoped and flat, with NO `parent_id` column and no nesting logic. Port the field shape (business scoping, per-tenant-unique name) but drop `parent_id`. Nesting is a future enhancement, not Phase 8 scope.
+
 ### Claude's Discretion
 
 - Exact new command/endpoint names for compliance state transitions, inventory manual-movement recording, booking cancel, and shift open/close/pay-events — planner's call, following the existing `routes → controllers → usecases → repositories → models` module shape from `modules/accounts`/`modules/businesses`.
