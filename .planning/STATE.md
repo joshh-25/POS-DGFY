@@ -5,16 +5,16 @@ milestone_name: Commerce Domain — Product, Checkout & Fulfillment
 current_phase: 08
 current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
-stopped_at: Completed 08-09-PLAN.md and re-verified — CR-01/FSC-01 closed, CR-02/FSC-02 still failing (checklist fail-open bug); see 08-VERIFICATION.md, gap-closure plan needed
-last_updated: "2026-07-12T16:04:26.866Z"
-last_activity: 2026-07-12
-last_activity_desc: Phase 08 execution started
+stopped_at: Completed 08-10-PLAN.md and re-verified — FSC-02 closed (checklist fail-open bug fixed); code review + re-verification independently found a NEW gap, FSC-01 (revoke/reject review outcome never demotes compliance_mode_state), plus two Critical warnings (CR-02 booking-cancel race, CR-03 shift-close race); see 08-VERIFICATION.md, gap-closure plan needed
+last_updated: "2026-07-13T00:35:00.000Z"
+last_activity: 2026-07-13
+last_activity_desc: Phase 08 — 08-10 gap-closure executed (FSC-02 closed); re-verification found new gap FSC-01
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 45
-  completed_plans: 41
-  percent: 55
+  completed_plans: 42
+  percent: 56
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 
 ## Current Position
 
-Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — EXECUTING
-Plan: 1 of 10
-Status: Executing Phase 08
-Last activity: 2026-07-12 — Phase 08 execution started
+Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — GAPS FOUND
+Plan: 10 of 10 (all plans executed; phase verification found new gap FSC-01 — see 08-VERIFICATION.md)
+Status: Awaiting gap-closure plan (/gsd-plan-phase 08 --gaps)
+Last activity: 2026-07-13 — 08-10 gap-closure executed (FSC-02 closed), re-verification found new gap FSC-01
 
 Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overall roadmap 6/11 phases complete, Phase 7 paused independently)
 
@@ -142,6 +142,8 @@ None yet.
 
 - [Phase 4] `business_database_registry.business_id` has no unique constraint — a duplicate-row bug was found and fixed at every production-reachable call site (`findOrCreateForBusiness()`), but the underlying schema gap remains as defense-in-depth debt; also left unfixed in one test helper (`businessRoutes.test.js`), tracked in `deferred-items.md`. Non-blocking (no exploitable production path confirmed by security audit), worth closing before more registry write paths are added.
 - [Roadmap v2.0] Open design decisions flagged by research, to resolve during phase planning: (1) whether `ComplianceModeState` is Landlord- or Tenant-scoped (resolve before/during Phase 8 planning — currently assumed Tenant-scoped); (2) fulfillment status shape, two-field event-sourced vs. single-field state machine (resolve during Phase 11 planning); (3) PayMongo storefront payment flow design needs phase-specific research when Phase 10 is planned.
+- [Phase 8] FSC-01 gap (blocking, needs gap-closure plan): `buildReviewComplianceStateUseCase` (complianceUseCases.js:274-329) never demotes `compliance_mode_state.state` when a review outcome is `rejected`/`revoked` — only verification metadata is patched. `evaluateComplianceDecision()` branches solely on `state`, never `verification_status`, and `complianceGate.js` never forwards `verification_status` into the decision context at all. Net effect: a `compliant_active` business whose fiscal paperwork is later revoked keeps `ALLOW` for Fiscal POS_CHECKOUT indefinitely. HTTP-reachable today via `POST /compliance/review`. Independently confirmed by 08-REVIEW.md (CR-01) and 08-VERIFICATION.md's third pass. Recommended: a focused gap-closure plan analogous to 08-09/08-10.
+- [Phase 8] CR-02/CR-03 (Critical, non-blocking for Phase 8's literal must-haves but flagged before Phase 9 builds on these modules): `bookingRepository.cancelBooking()` and `shiftRepository.closeShift()` both read their guard row without a transaction lock (`lock: transaction.LOCK.UPDATE`), unlike `complianceModeStateRepository`'s equivalent read-then-write path. Concurrent cancel/close calls for the same booking/shift can double-release capacity or double-write the cash-drawer ledger with a lost-update on reconciliation figures. See 08-REVIEW.md and 08-VERIFICATION.md Anti-Patterns for fixes (row lock or guarded atomic UPDATE, mirroring Pattern D).
 
 ## Deferred Items
 
@@ -155,7 +157,7 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T15:17:35.173Z
-Stopped at: Completed 08-09-PLAN.md — CR-01/CR-02 gap-closure, Phase 08 fully closed
+Last session: 2026-07-13T00:35:00.000Z
+Stopped at: Completed 08-10-PLAN.md (FSC-02 closed) and re-verified — new gap FSC-01 found (compliance state not demoted on revoke/reject); gap-closure plan needed before Phase 8 can be marked complete
 Resume file: 
 None
