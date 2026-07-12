@@ -80,8 +80,8 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 
 ### Product Catalog
 
-- [ ] **PRD-01**: Business owner can create a Product in Food, Service, or Retail category — category lives on the Product, not the Store, and a Store can mix categories freely.
-- [ ] **PRD-02**: Business owner can choose Basic Inventory (vendor-set stock count) or non-stock per Product; whether a given sale line decrements stock is decided per sale line (`stock_effect_type`), not fixed on the Product.
+- [x] **PRD-01**: Business owner can create a Product in Food, Service, or Retail category — category lives on the Product, not the Store, and a Store can mix categories freely.
+- [x] **PRD-02**: Business owner can choose Basic Inventory (vendor-set stock count) or non-stock per Product; whether a given sale line decrements stock is decided per sale line (`stock_effect_type`), not fixed on the Product.
 - [ ] **PRD-03**: Business owner can group Products into folders (e.g., menu categories) for organization.
 - [x] **PRD-04**: Every stock-count change (sale, restock, loss, adjustment) is recorded as an append-only Inventory Movement row, never mutated after insert.
 - [x] **PRD-05**: New Product and Inventory Movement tables live in `dgfy_business_*` as genuinely new schema — never reusing or foreign-keying into the legacy IMS-shared `items`/`PosTransactionLine` tables.
@@ -104,12 +104,12 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 ### Shift And Cash Drawer
 
 - [x] **SFT-01**: Staff can open a shift with a declared starting cash float; the system enforces one open shift per cashier+terminal at a time (DB-level constraint).
-- [ ] **SFT-02**: Staff can close a shift; the system computes Expected cash (from sales/refunds/pay-ins/pay-outs) against a cashier-entered Actual count, with a signed Difference.
+- [x] **SFT-02**: Staff can close a shift; the system computes Expected cash (from sales/refunds/pay-ins/pay-outs) against a cashier-entered Actual count, with a signed Difference.
 - [x] **SFT-03**: Every cash-drawer event, including a no-sale drawer pop, is logged.
 
 ### Fiscal And Compliance
 
-- [ ] **FSC-01**: A tenant/branch has a compliance-mode state reflecting whether required fiscal paperwork is present and verified.
+- [x] **FSC-01**: A tenant/branch has a compliance-mode state reflecting whether required fiscal paperwork is present and verified.
 - [ ] **FSC-02**: Checkout, shift opening, and receipt issuance are all gated through one shared compliance policy-engine check, not duplicated per surface.
 - [ ] **FSC-03**: Senior Citizen / PWD discounts are computed server-side per BIR rules (VAT-exclusive base, 20% discount, MEMC group-meal rule) and produce the correct separate receipt lines.
 
@@ -215,8 +215,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CMP-03 | Phase 5 | Complete |
 | CMP-04 | Phase 6 | Complete |
 | CMP-05 | Phase 7 | Pending |
-| PRD-01 | Phase 8 | Pending |
-| PRD-02 | Phase 8 | Pending |
+| PRD-01 | Phase 8 | Complete |
+| PRD-02 | Phase 8 | Complete |
 | PRD-03 | Phase 8 | Pending |
 | PRD-04 | Phase 8 | Complete |
 | PRD-05 | Phase 8 | Complete |
@@ -224,9 +224,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BOK-02 | Phase 8 | Pending |
 | BOK-03 | Phase 8 | Pending |
 | SFT-01 | Phase 8 | Complete |
-| SFT-02 | Phase 8 | Pending |
+| SFT-02 | Phase 8 | Complete |
 | SFT-03 | Phase 8 | Complete |
-| FSC-01 | Phase 8 | Pending |
+| FSC-01 | Phase 8 | Complete |
 | FSC-02 | Phase 8 | Pending |
 | CHK-01 | Phase 9 | Pending |
 | CHK-02 | Phase 9 | Pending |
