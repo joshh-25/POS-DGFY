@@ -245,7 +245,12 @@ Plans:
   2. Backup/restore proof, abort thresholds, and reopen-on-legacy steps are documented before any production cutover is scheduled.
   3. Product, POS checkout, payment, fiscal, and frontend migration scope is explicitly deferred into post-foundation planning instead of entering v1 implementation.
 
-**Plans**: TBD
+**Plans**: 0/1+ plans complete (SC2/SC3 plans not yet planned)
+
+Plans:
+**Wave 1**
+
+- [ ] 07-01-PLAN.md — Production-volume migration rehearsal: run the guinea-pig clone loop (auto-provision/seed/manifest/migrate/verify, one human-action checkpoint for release-evidence's TTY tenant picker) until N consecutive clean attempts, then write the committed rehearsal runbook (SC1)
 
 ## Progress
 
@@ -260,4 +265,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 11/11 | Complete    | 2026-07-11 |
 | 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete    | 2026-07-12 |
 | 6. Release Evidence and Rehearsal Gates | 3/3 | Complete    | 2026-07-12 |
-| 7. Cutover Runbook and Deferred Domain Split | 0/TBD | Not started | - |
+| 7. Cutover Runbook and Deferred Domain Split | 0/1+ | Not started | - |
