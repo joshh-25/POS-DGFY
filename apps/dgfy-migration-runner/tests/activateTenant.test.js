@@ -95,81 +95,25 @@ async function withAdminConnection(fn) {
 }
 
 // ---------------------------------------------------------------------------
-// Skip-safe (always-run) unit tests — never open a real MySQL connection.
-// ---------------------------------------------------------------------------
-
-// NOTE: this describe block is intentionally declared FIRST (before any
-// other describe in this file registers a jest.unstable_mockModule() stub
-// for '../src/schema/applyBusinessSchema.js') — unstable_mockModule
-// registrations for a given specifier persist across jest.resetModules()
-// calls within the same test file (see schemaCommand.test.js's identical
-// caution), so a later describe's stub for that exact specifier would
-// otherwise silently leak into this block's real-module import.
-describe('applyAndVerifyBusinessSchema — missing-table verification error (skip-safe unit)', () => {
-  beforeEach(() => {
-    jest.resetModules();
-  });
-
-  afterEach(() => {
-    jest.resetModules();
-  });
-
-  test('throws listing missing tables when the tenant connection is missing a dgfyBusinessContract table', async () => {
-    jest.unstable_mockModule('../src/commands/schema.js', () => ({
-      buildMigrationsForKind: jest.fn(() => [])
-    }));
-    jest.unstable_mockModule('../src/metadata/storage.js', () => ({
-      MetaSequelizeStorage: jest.fn().mockImplementation(() => ({
-        logMigration: jest.fn().mockResolvedValue(undefined),
-        unlogMigration: jest.fn().mockResolvedValue(undefined),
-        executed: jest.fn().mockResolvedValue([])
-      }))
-    }));
-    jest.unstable_mockModule('../src/safety/destructiveGate.js', () => ({
-      assertDestructiveAllowed: jest.fn(() => true)
-    }));
-
-    const { applyAndVerifyBusinessSchema } = await import('../src/schema/applyBusinessSchema.js');
-
-    // Fake queryInterface whose showAllTables() omits most required tables
-    // (only locations/staff_accounts exist) — simulating an incomplete
-    // tenant schema.
-    const fakeQueryInterface = {
-      showAllTables: jest.fn().mockResolvedValue(['locations', 'staff_accounts'])
-    };
-    const fakeTenantSequelize = { getQueryInterface: () => fakeQueryInterface };
-    const fakeMetaSequelize = {};
-
-    await expect(applyAndVerifyBusinessSchema({
-      tenantSequelize: fakeTenantSequelize,
-      metaSequelize: fakeMetaSequelize,
-      databaseName: 'dgfy_business_faketest',
-      confirmDestructive: false,
-      runtimeMode: 'development'
-    })).rejects.toThrow(/missing tables/i);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // DB-backed gated tests — RUN_ACTIVATE_TENANT_INTEGRATION=true with real MySQL.
 //
-// NOTE: this block is intentionally declared here — immediately after the
-// missing-table-verification block above and BEFORE any describe block below
-// registers a jest.unstable_mockModule() stub for '../src/config/db.js' or
-// '../src/schema/applyBusinessSchema.js'. Empirically verified (Jest 29 ESM):
-// jest.unstable_mockModule() registrations persist across jest.resetModules()
-// calls within the same test file — resetModules() clears the evaluated
-// module cache but does NOT undo a prior mock registration for that
-// specifier. If this block ran after "guard rejection" / "missing registry
-// row fails closed" (both of which mock '../src/config/db.js'), its dynamic
-// import of activateTenant.js would silently inherit their last-registered
-// fake connection (whose query() always resolves to an empty result set)
-// instead of the real Sequelize-backed factories — causing every assertion
-// here to fail against a mock, never against real MySQL, regardless of what
-// is actually in the database. This is the same hazard the block above
-// already guards against for '../src/schema/applyBusinessSchema.js'; this
-// comment extends that same protection to this block for both specifiers it
-// needs real (db.js and schema/applyBusinessSchema.js).
+// NOTE: this block is intentionally declared FIRST IN THE FILE — before
+// EVERY other describe block below, each of which registers a
+// jest.unstable_mockModule() stub for one or more of the four specifiers
+// this block's dynamic import of activateTenant.js needs REAL:
+// '../src/config/db.js' (guard rejection / missing registry row blocks),
+// '../src/commands/schema.js', '../src/metadata/storage.js', and
+// '../src/safety/destructiveGate.js' (missing-table verification block).
+// Empirically verified (Jest 29 ESM): jest.unstable_mockModule()
+// registrations persist across jest.resetModules() calls within the same
+// test file — resetModules() clears the evaluated module cache but does
+// NOT undo a prior mock registration for that specifier. An earlier version
+// of this reordering placed this block only after the missing-table
+// verification block (which mocks buildMigrationsForKind to always return
+// an empty array) — that silently zeroed out every migration this block
+// tried to apply, producing a "missing tables" failure for ALL contract
+// tables regardless of what the real database actually needed. Do not move
+// this block below any describe that mocks the four specifiers above.
 // ---------------------------------------------------------------------------
 
 describeIfIntegration('runActivateTenant — real MySQL provisioning->active/verified transition', () => {
@@ -306,6 +250,67 @@ describeIfIntegration('runActivateTenant — real MySQL provisioning->active/ver
     });
     expect(Number(rows[0].total ?? rows[0].TOTAL)).toBe(1);
   }, 60000);
+});
+
+// ---------------------------------------------------------------------------
+// Skip-safe (always-run) unit tests — never open a real MySQL connection.
+// ---------------------------------------------------------------------------
+
+// NOTE: this describe block is intentionally declared before the "guard
+// rejection" / "missing registry row" blocks below (before any describe in
+// this file registers a jest.unstable_mockModule() stub for
+// '../src/schema/applyBusinessSchema.js') — unstable_mockModule
+// registrations for a given specifier persist across jest.resetModules()
+// calls within the same test file (see schemaCommand.test.js's identical
+// caution), so a later describe's stub for that exact specifier would
+// otherwise silently leak into this block's real-module import. This block
+// itself mocks '../src/commands/schema.js', '../src/metadata/storage.js',
+// and '../src/safety/destructiveGate.js' — which is exactly why the
+// DB-backed describeIfIntegration block above is declared even earlier,
+// before this one.
+describe('applyAndVerifyBusinessSchema — missing-table verification error (skip-safe unit)', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  afterEach(() => {
+    jest.resetModules();
+  });
+
+  test('throws listing missing tables when the tenant connection is missing a dgfyBusinessContract table', async () => {
+    jest.unstable_mockModule('../src/commands/schema.js', () => ({
+      buildMigrationsForKind: jest.fn(() => [])
+    }));
+    jest.unstable_mockModule('../src/metadata/storage.js', () => ({
+      MetaSequelizeStorage: jest.fn().mockImplementation(() => ({
+        logMigration: jest.fn().mockResolvedValue(undefined),
+        unlogMigration: jest.fn().mockResolvedValue(undefined),
+        executed: jest.fn().mockResolvedValue([])
+      }))
+    }));
+    jest.unstable_mockModule('../src/safety/destructiveGate.js', () => ({
+      assertDestructiveAllowed: jest.fn(() => true)
+    }));
+
+    const { applyAndVerifyBusinessSchema } = await import('../src/schema/applyBusinessSchema.js');
+
+    // Fake queryInterface whose showAllTables() omits most required tables
+    // (only locations/staff_accounts exist) — simulating an incomplete
+    // tenant schema.
+    const fakeQueryInterface = {
+      showAllTables: jest.fn().mockResolvedValue(['locations', 'staff_accounts'])
+    };
+    const fakeTenantSequelize = { getQueryInterface: () => fakeQueryInterface };
+    const fakeMetaSequelize = {};
+
+    await expect(applyAndVerifyBusinessSchema({
+      tenantSequelize: fakeTenantSequelize,
+      metaSequelize: fakeMetaSequelize,
+      databaseName: 'dgfy_business_faketest',
+      confirmDestructive: false,
+      runtimeMode: 'development'
+    })).rejects.toThrow(/missing tables/i);
+  });
 });
 
 describe('runActivateTenant — guard rejection (skip-safe unit)', () => {
