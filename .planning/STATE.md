@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Commerce Domain — Product, Checkout & Fulfillment
-current_phase: 8
-current_phase_name: Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating
+current_phase: 08
+current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-07-12T12:30:34.446Z"
+last_updated: "2026-07-12T12:45:25.961Z"
 last_activity: 2026-07-12
-last_activity_desc: ROADMAP.md created for v2.0 Commerce Domain (Phases 8-11), 28/28 v2 requirements mapped, REQUIREMENTS.md traceability updated
+last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 11
   completed_phases: 6
-  total_plans: 35
-  completed_plans: 32
+  total_plans: 43
+  completed_plans: 33
   percent: 55
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-12)
 
 **Core value:** DGFY can become a standalone multi-tenant POS and Storefront system without breaking the existing live platform during migration.
-**Current focus:** Phase 08 — commerce-foundation (Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating)
+**Current focus:** Phase 08 — commerce-foundation-product-catalog-booking-shift-cash-drawe
 
 ## Current Position
 
-Phase: 8 of 11 (Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating) — first phase of the v2.0 Commerce Domain milestone
-Plan: — (not yet planned; run `/gsd-plan-phase 8`)
+Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-07-12 — ROADMAP.md created for v2.0 Commerce Domain (Phases 8-11), 28/28 v2 requirements mapped, REQUIREMENTS.md traceability updated
+Last activity: 2026-07-12 — Phase 08 execution started
 
 Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overall roadmap 6/11 phases complete, Phase 7 paused independently)
 
@@ -91,6 +91,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overa
 | Phase 06 P01 | 10min | 3 tasks | 6 files |
 | Phase 06 P02 | 10min | 2 tasks | 2 files |
 | Phase 06 P03 | 12min | 2 tasks | 3 files |
+| Phase 08 P01 | 20min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,8 @@ Recent decisions affecting current work:
 - [Roadmap v2.0]: Phase numbering continues from v1.0's last phase — v2.0 starts at Phase 8 (not renumbered); Phase 7 (paused cutover rehearsal) stays independent and does not block v2.0.
 - [Roadmap v2.0]: Phases derived dependency-driven from research: Product Catalog is the root dependency (nothing else has a `product_id`); Shift & Cash Drawer and Fiscal/Compliance build in parallel with Product Catalog (no Product dependency) but must land before/be ready by Checkout; Booking requires Product Catalog; POS Checkout depends on Product+Shift+Compliance; Storefront Ordering is deliberately its own phase (first Landlord<->Tenant cross-database write, real integration risk — not bundled with unrelated work); Order Fulfillment depends on Storefront Ordering + Checkout.
 - [Roadmap v2.0]: Compressed research's 7 suggested phase groupings to 4 phases (8-11) per "coarse" granularity — Phase 8 bundles Product Catalog + Booking + Shift & Cash Drawer + compliance-mode state/gate-port (FSC-01/FSC-02); FSC-03 (SC/PWD discount math) placed in Phase 9 (Checkout) since it's checkout-domain discount computation, not compliance-state-machine scope.
+- [Phase 08]: P01: INTEGER (not BIGINT) autoincrement PKs on all 8 new commerce tables including append-only ledgers, matching existing tenant-table convention.
+- [Phase 08]: P01: actor_staff_account_id on inventory_movements/cash_drawer_events FKs staff_accounts.id (SET NULL), matching the tenant_audit_logs referential-integrity precedent.
 
 ### Pending Todos
 
@@ -129,6 +132,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T11:24:14.024Z
+Last session: 2026-07-12T12:45:05.802Z
 Stopped at: Phase 8 context gathered
 Resume file: .planning/phases/08-commerce-foundation-product-catalog-booking-shift-cash-drawe/08-CONTEXT.md
