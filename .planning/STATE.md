@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 5
-current_phase_name: Compatibility and Backend-First Cutover Seam
+current_phase: 05
+current_phase_name: compatibility-and-backend-first-cutover-seam
 status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-07-12T03:19:33.687Z"
+last_updated: "2026-07-12T04:11:27.754Z"
 last_activity: 2026-07-12
-last_activity_desc: Phase 04 complete, transitioned to Phase 5
+last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 26
-  completed_plans: 26
+  total_plans: 29
+  completed_plans: 27
   percent: 57
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11)
 
 **Core value:** DGFY can become a standalone multi-tenant POS and Storefront system without breaking the existing live platform during migration.
-**Current focus:** Phase 5 — Compatibility and Backend-First Cutover Seam
+**Current focus:** Phase 05 — compatibility-and-backend-first-cutover-seam
 
 ## Current Position
 
-Phase: 5 — Compatibility and Backend-First Cutover Seam
-Plan: Not started
+Phase: 05 (compatibility-and-backend-first-cutover-seam) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-12 — Phase 04 complete, transitioned to Phase 5
+Last activity: 2026-07-12 — Phase 05 execution started
 
 Progress: [████░░░░░░] 43%
 
@@ -83,6 +83,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P07 | 50min | 2 tasks | 20 files |
 | Phase 04 P08 | 75min | 2 tasks | 16 files |
 | Phase 04 P09 | 35min | 3 tasks | 9 files |
+| Phase 05 P01 | 20min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -167,6 +168,9 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-08: fixed a duplicate business_database_registry row bug present in every gated Phase 04 suite
 - [Phase ?]: 04-09: activate-tenant CLI activates registry via a direct UPDATE keyed on database_name from the runner's own connection, never dgfy-api's updateStatus() (respects runner<->dgfy-api package boundary)
 - [Phase ?]: 04-09: No MySQL reachable in executor environment — REQUIREMENTS.md API-02/API-03 reconciled to Pending (not Complete) pending a human-run real-MySQL activation proof
+- [Phase 05]: 05-01: COMPAT_SEAMS_REPO_ROOT env override added (mirrors plan-mandated COMPAT_SEAMS_MANIFEST_PATH) so code-marker scan and tests[] path-safety resolution root are test-isolatable
+- [Phase 05]: 05-01: @compat-seam id= marker token built from joined string-array parts in check-compat-seams.js and its test file, never a literal substring, so a full-repo run never self-matches its own source
+- [Phase 05]: 05-01: orphan-entry reconciliation (active/accepted seam with no code marker) only runs in default full-tree mode, skipped under --staged
 
 ### Pending Todos
 
@@ -188,6 +192,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T03:19:33.680Z
+Last session: 2026-07-12T04:09:17.616Z
 Stopped at: Phase 5 context gathered
 Resume file: .planning/phases/05-compatibility-and-backend-first-cutover-seam/05-CONTEXT.md
