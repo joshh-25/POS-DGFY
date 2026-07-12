@@ -1,3 +1,3 @@
 export const buildDeleteFolderUseCase = ({ itemRepository }) => {
-    return async ({ folderId }) => itemRepository.deleteFolder(folderId);
+    return async ({ folderId, replacementFolderId }) => itemRepository.deleteFolder(folderId, replacementFolderId);
 };

@@ -41,6 +41,7 @@ import { auditBillingFunnelIntegrity } from './services/engagementIntegrityAudit
 import { buildHealthResponse } from './services/healthService.js';
 import { metricsEnabled, renderPrometheusMetrics } from './services/metricsService.js';
 import { auditRuntimeSchemaReadiness } from './services/runtimeSchemaAuditService.js';
+import { auditTenantSchemaReadiness } from './services/tenantSchemaReadinessService.js';
 import {
   startStorefrontDiscoveryIndexReconciliationScheduler,
   stopStorefrontDiscoveryIndexReconciliationScheduler
@@ -73,10 +74,12 @@ const httpRequestTimeoutMs = parsePositiveInt(process.env.HTTP_REQUEST_TIMEOUT_M
 const schemaIndexAuditEnabled = process.env.SCHEMA_INDEX_AUDIT_ENABLED !== undefined
   ? process.env.SCHEMA_INDEX_AUDIT_ENABLED === 'true'
   : process.env.NODE_ENV === 'production';
-const runtimeSchemaAuditEnabled = process.env.RUNTIME_SCHEMA_AUDIT_ENABLED !== undefined
+const productionSchemaPreflight = process.env.NODE_ENV === 'production';
+const runtimeSchemaAuditEnabled = productionSchemaPreflight || (process.env.RUNTIME_SCHEMA_AUDIT_ENABLED !== undefined
   ? process.env.RUNTIME_SCHEMA_AUDIT_ENABLED === 'true'
-  : true;
-const runtimeSchemaPreflightRequired = process.env.RUNTIME_SCHEMA_PREFLIGHT_REQUIRED !== 'false';
+  : true);
+const runtimeSchemaPreflightRequired = productionSchemaPreflight || process.env.RUNTIME_SCHEMA_PREFLIGHT_REQUIRED !== 'false';
+const tenantSchemaPreflightRequired = productionSchemaPreflight || process.env.TENANT_SCHEMA_PREFLIGHT_REQUIRED === 'true';
 
 const schemaIndexAuditIntervalMinutes = parsePositiveInt(process.env.SCHEMA_INDEX_AUDIT_INTERVAL_MINUTES, 360);
 const runtimeSchemaAuditIntervalMinutes = parsePositiveInt(process.env.RUNTIME_SCHEMA_AUDIT_INTERVAL_MINUTES, 30);
@@ -101,6 +104,13 @@ let runtimeSchemaAuditState = {
   missing_migrations: [],
   missing_columns: [],
   warnings: []
+};
+let tenantSchemaPreflightState = {
+  required: tenantSchemaPreflightRequired,
+  status: 'unknown',
+  message: 'Tenant schema preflight has not run yet.',
+  last_checked_at: null,
+  failed_tenant_count: 0
 };
 let schemaIndexAuditState = {
   enabled: schemaIndexAuditEnabled,
@@ -422,6 +432,20 @@ const runRuntimeSchemaAudit = async () => {
   }
 };
 
+const runTenantSchemaPreflight = async () => {
+  const result = await auditTenantSchemaReadiness();
+  tenantSchemaPreflightState = {
+    required: tenantSchemaPreflightRequired,
+    status: result.status,
+    message: result.status === 'healthy'
+      ? 'Tenant schema readiness checks passed.'
+      : 'Tenant schema readiness checks failed.',
+    last_checked_at: result.checkedAt,
+    failed_tenant_count: result.failedTenantCount
+  };
+  return result;
+};
+
 const scheduleRuntimeSchemaAudit = () => {
   if (!runtimeSchemaAuditEnabled) {
     runtimeSchemaAuditState = {
@@ -621,6 +645,7 @@ const handleHealthCheck = async (req, res) => {
     getTenantPoolStatsFn: () => tenantConnector.getPoolStats(),
     getRateLimiterStoreModeFn: getRateLimiterStoreMode,
     runtimeSchemaAuditState,
+    tenantSchemaPreflightState,
     schemaIndexAuditState,
     billingFunnelAuditState,
     environment: process.env.NODE_ENV || 'development'
@@ -785,7 +810,18 @@ const startServer = async () => {
         process.exit(1);
       }
     } else if (runtimeSchemaPreflightRequired) {
-      logger.warn('Runtime schema preflight is required but RUNTIME_SCHEMA_AUDIT_ENABLED=false. Continuing without preflight gate.');
+      logger.error('Runtime schema preflight is required but disabled. Refusing to start.');
+      process.exit(1);
+    }
+
+    // Tenant databases do not share the landlord migration table. Production must
+    // verify the declared tenant schema contract before accepting POS traffic.
+    if (tenantSchemaPreflightRequired) {
+      const tenantSchemaResult = await runTenantSchemaPreflight();
+      if (tenantSchemaResult.status !== 'healthy') {
+        logger.error('Tenant schema preflight failed. Apply tenant schema repairs and retry startup.');
+        process.exit(1);
+      }
     }
 
     // In development mode, only sync schema when explicitly enabled.

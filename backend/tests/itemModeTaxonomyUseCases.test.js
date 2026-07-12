@@ -69,7 +69,8 @@ describe('inventory item mode taxonomy use cases', () => {
 
         expect(itemRepository.createItem).toHaveBeenCalledWith(
             expect.objectContaining({ mode_item_preset: 'menu_item' }),
-            1
+            1,
+            { canManageCategories: false }
         );
     });
 

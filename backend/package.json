@@ -45,6 +45,7 @@
     "audit:billing-funnel": "node scripts/audit-billing-funnel.js",
     "audit:fifo-drift": "node scripts/audit-fifo-drift.js",
     "audit:fifo-drift:repair": "node scripts/audit-fifo-drift.js --repair-positive-drift",
+    "reconcile:fifo-opening-balances": "node scripts/reconcile-fifo-opening-balances.js",
     "audit:location-stock-parity": "node scripts/audit-location-stock-parity.js",
     "audit:location-stock-parity:allow-missing": "node scripts/audit-location-stock-parity.js --allow-missing-tables",
     "audit:location-stock-parity:repair": "node scripts/audit-location-stock-parity.js --repair-current-stock --allow-missing-tables",

@@ -37,7 +37,80 @@ const normalizeLinkMap = (value) => (
   parseOptionalObject(value) || {}
 );
 
-const normalizeStorefrontPromos = ({ promos, legacyPromo } = {}) => {
+const formatPromoTime = (value) => {
+  const match = trimText(value).match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return '';
+  const hours = Number(match[1]);
+  return `${hours % 12 || 12}:${match[2]} ${hours >= 12 ? 'PM' : 'AM'}`;
+};
+
+const getZonedPromoClock = (now, timeZone) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(now).map((part) => [part.type, part.value]));
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    minutes: (Number(parts.hour) * 60) + Number(parts.minute)
+  };
+};
+
+const toMinutes = (value) => {
+  const match = trimText(value).match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  return match ? (Number(match[1]) * 60) + Number(match[2]) : null;
+};
+
+const formatPromoDateTime = (date, time) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return formatPromoTime(time);
+  const [year, month, day] = date.split('-').map(Number);
+  const formattedDate = new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric'
+  }).format(new Date(year, month - 1, day));
+  return time ? `${formattedDate}, ${formatPromoTime(time)}` : formattedDate;
+};
+
+export const getStorefrontPromoAvailability = ({
+  validFrom = '',
+  validUntil = '',
+  validTimeStart = '',
+  validTimeEnd = '',
+  now = new Date(),
+  timeZone = 'Asia/Manila'
+} = {}) => {
+  const { date: currentDate, minutes: currentMinutes } = getZonedPromoClock(now, timeZone);
+  if (validUntil && currentDate > validUntil) return { status: 'expired', message: '' };
+  if (validFrom && currentDate < validFrom) {
+    return {
+      status: 'scheduled',
+      message: `Available from ${formatPromoDateTime(validFrom, validTimeStart)}`
+    };
+  }
+
+  const startMinutes = toMinutes(validTimeStart);
+  const endMinutes = toMinutes(validTimeEnd);
+  if (startMinutes == null || endMinutes == null || startMinutes === endMinutes) {
+    return { status: 'available', message: '' };
+  }
+  const isWithinWindow = startMinutes < endMinutes
+    ? currentMinutes >= startMinutes && currentMinutes <= endMinutes
+    : currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+  if (isWithinWindow) return { status: 'available', message: '' };
+
+  const startsToday = startMinutes < endMinutes ? currentMinutes < startMinutes : true;
+  return {
+    status: 'scheduled',
+    message: startsToday
+      ? `Available today at ${formatPromoTime(validTimeStart)}`
+      : `Available tomorrow at ${formatPromoTime(validTimeStart)}`
+  };
+};
+
+const normalizeStorefrontPromos = ({ promos, legacyPromo, now = new Date(), timeZone = 'Asia/Manila' } = {}) => {
   const seenCodes = new Set();
   const normalize = (entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
@@ -45,7 +118,20 @@ const normalizeStorefrontPromos = ({ promos, legacyPromo } = {}) => {
     const title = trimText(entry.title);
     const badge = trimText(entry.badge);
     const discountPercent = Number(entry.discount_percent ?? entry.discountPercent);
+    const validFrom = trimText(entry.valid_from || entry.validFrom);
+    const validUntil = trimText(entry.valid_until || entry.validUntil);
     if (entry.active !== true || (!promoCode && !title && !badge)) return null;
+    const validTimeStart = trimText(entry.valid_time_start || entry.validTimeStart);
+    const validTimeEnd = trimText(entry.valid_time_end || entry.validTimeEnd);
+    const availability = getStorefrontPromoAvailability({
+      validFrom,
+      validUntil,
+      validTimeStart,
+      validTimeEnd,
+      now,
+      timeZone
+    });
+    if (availability.status === 'expired') return null;
     if (promoCode && seenCodes.has(promoCode)) return null;
     if (promoCode) seenCodes.add(promoCode);
     return {
@@ -56,8 +142,12 @@ const normalizeStorefrontPromos = ({ promos, legacyPromo } = {}) => {
       subtitle: trimText(entry.subtitle),
       validity_text: trimText(entry.validity_text || entry.validityText),
       discount_percent: Number.isFinite(discountPercent) ? discountPercent : null,
-      valid_from: trimText(entry.valid_from || entry.validFrom),
-      valid_until: trimText(entry.valid_until || entry.validUntil),
+      valid_time_start: validTimeStart,
+      valid_time_end: validTimeEnd,
+      valid_from: validFrom,
+      valid_until: validUntil,
+      availability_status: availability.status,
+      availability_message: availability.message,
       active: true
     };
   };
@@ -191,7 +281,8 @@ const normalizeStorefrontDeliveryPartners = (value) => {
 
 export const normalizeStorefrontPageModel = ({
   selectedStore = null,
-  catalog = []
+  catalog = [],
+  now = new Date()
 } = {}) => {
   const modeAdapter = getStorefrontModeAdapter(selectedStore);
   const servicesViewModel = getServicesStorefrontViewModel(catalog);
@@ -202,9 +293,12 @@ export const normalizeStorefrontPageModel = ({
   const isHospitalityMode = modeAdapter.isHospitalityMode === true;
   const socialLinks = normalizeLinkMap(selectedStore?.storefront_social_links);
   const legacyPromo = normalizeLinkMap(selectedStore?.storefront_promo);
+  const promoTimeZone = String(normalizeStorefrontBusinessHours(selectedStore?.storefront_hours)?.timezone || 'Asia/Manila').trim() || 'Asia/Manila';
   const promos = normalizeStorefrontPromos({
     promos: selectedStore?.storefront_promos,
-    legacyPromo
+    legacyPromo,
+    now,
+    timeZone: promoTimeZone
   });
   const promo = promos.length > 0
     ? { active: true, items: promos }

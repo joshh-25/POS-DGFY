@@ -7,11 +7,14 @@ import { Op, Sequelize } from 'sequelize';
 import dbStore from '../src/utils/dbStore.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 import {
-  checkoutPosUseCase,
   getDailyZReadingUseCase,
   getTerminalTodayDashboardUseCase,
+  collectCashPickupOrderUseCase,
   updateOnlineOrderStatusUseCase
 } from '../src/modules/pos/index.js';
+import { posRepository } from '../src/modules/pos/repositories/posRepository.js';
+import { buildCheckoutPosUseCase } from '../src/modules/pos/usecases/posUseCases.js';
+import { inventoryStockCommandService } from '../src/modules/inventory/index.js';
 import { listSalesTransactionsUseCase } from '../src/modules/sales/index.js';
 import { updateSettingsUseCase } from '../src/modules/settings/index.js';
 import { itemRepository } from '../src/modules/inventory/repositories/itemRepository.js';
@@ -112,6 +115,14 @@ const runMigrationsForDb = (dbName) => {
 };
 
 const money4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+const checkoutPosUseCase = buildCheckoutPosUseCase({
+  posRepository,
+  inventoryCommandService: inventoryStockCommandService,
+  // Identity is covered by dedicated landlord/auth tests. This tenant-schema
+  // integration suite must exercise checkout reconciliation without querying
+  // the developer's unrelated landlord database.
+  resolveIdentityStatus: async () => ({ identity_mode: 'test_legacy_grace' })
+});
 
 describe('POS reconciliation integration (checkout vs Z-reading vs unified sales)', () => {
   const dbName = createIsolatedDbName();
@@ -233,6 +244,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     fulfillmentStatus = 'placed',
     orderMethod = 'delivery',
     paymentType = 'cash',
+    paymentStatus = 'paid',
     totalAmount = 120
   }) => {
     const suffix = crypto.randomUUID().slice(0, 8);
@@ -249,6 +261,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       order_method: orderMethod,
       fulfillment_status: fulfillmentStatus,
       payment_type: paymentType,
+      payment_status: paymentStatus,
       subtotal_amount: subtotal,
       vatable_sales: money4(subtotal / 1.12),
       vat_amount: money4(subtotal - (subtotal / 1.12)),
@@ -528,7 +541,9 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       })
     }));
 
-    expect(checkoutResult.success).toBe(true);
+    if (!checkoutResult.success) {
+      throw new Error(`POS checkout failed: ${checkoutResult.error?.message || 'unknown'} ${JSON.stringify(checkoutResult.error?.details || {})}`);
+    }
     const tx = checkoutResult.data.transaction;
     const txTotal = money4(tx.total_amount);
     const txVatable = money4(tx.vatable_sales);
@@ -706,7 +721,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     );
 
     expect(allowedWithoutModeChoice.success).toBe(true);
-    expect(allowedWithoutModeChoice.value.receipt_contract.document_type).toBe('non_fiscal_slip');
+    expect(allowedWithoutModeChoice.data.receipt_contract.document_type).toBe('non_fiscal_slip');
 
     const allowed = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
@@ -1078,7 +1093,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       fulfillmentStatus: 'ready_for_pickup',
       totalAmount: 80
     }));
-    await createOpenTerminalShift({
+    const pickupShift = await createOpenTerminalShift({
       cashierId: cashier.user_id,
       locationId: location.location_id
     });
@@ -1228,6 +1243,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       locationId: location.location_id,
       fulfillmentStatus: 'placed',
       orderMethod: 'pickup',
+      paymentStatus: 'unpaid',
       totalAmount: 240
     }));
     const trackingPin = createPublicTrackingPin();
@@ -1253,7 +1269,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(trackedPlaced.data.status).toBe('placed');
     expect(trackedPlaced.data.order.customer_phone).toBeUndefined();
 
-    await createOpenTerminalShift({
+    const pickupShift = await createOpenTerminalShift({
       cashierId: cashier.user_id,
       locationId: location.location_id
     });
@@ -1275,6 +1291,16 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       user: { user_id: cashier.user_id }
     }));
     expect(thirdHop.success).toBe(true);
+    const cashCollection = await runInStoreTenantContext(() => collectCashPickupOrderUseCase({
+      posTransactionId: orderId,
+      payload: {
+        terminal_id: pickupShift.terminal_id,
+        cash_received: expectedTotal,
+        idempotency_key: `pickup-cash-${crypto.randomUUID()}`
+      },
+      user: { user_id: cashier.user_id }
+    }));
+    expect(cashCollection.success).toBe(true);
     const completion = await runInStoreTenantContext(() => updateOnlineOrderStatusUseCase({
       posTransactionId: orderId,
       payload: { fulfillment_status: 'completed' },
@@ -1431,7 +1457,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(trackedPlaced.data.status).toBe('placed');
     expect(trackedPlaced.data.order.customer_phone).toBeUndefined();
 
-    await createOpenTerminalShift({
+    const pickupShift = await createOpenTerminalShift({
       cashierId: cashier.user_id,
       locationId: location.location_id
     });
@@ -1455,6 +1481,18 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       user: { user_id: cashier.user_id }
     }));
     expect(ready.success).toBe(true);
+
+    const cashCollection = await runInStoreTenantContext(() => collectCashPickupOrderUseCase({
+      posTransactionId: orderId,
+      payload: {
+        terminal_id: pickupShift.terminal_id,
+        cash_received: expectedTotal,
+        idempotency_key: `pickup-cash-${crypto.randomUUID()}`
+      },
+      user: { user_id: cashier.user_id }
+    }));
+    expect(cashCollection.success).toBe(true);
+    expect(cashCollection.data.order.payment_status).toBe('paid');
 
     const complete = await runInStoreTenantContext(() => updateOnlineOrderStatusUseCase({
       posTransactionId: orderId,

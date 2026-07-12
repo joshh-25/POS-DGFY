@@ -32,6 +32,12 @@ const jsonOutputPath = parseJsonOutputArg();
 const shouldRepairCurrentStock = hasArg('--repair-current-stock');
 const allowMissingTables = hasArg('--allow-missing-tables');
 
+if (shouldRepairCurrentStock) {
+    throw new Error(
+        'Automatic location-stock repair is disabled. Review each item and reconcile it through an audited inventory movement; do not overwrite item stock from this audit.'
+    );
+}
+
 const DRIFT_SQL = `
   SELECT *
   FROM (
@@ -76,6 +82,14 @@ const hasRequiredTables = async (tenantSequelize) => {
     return ['items', 'item_location_stocks', 'tenant_locations'].every((tableName) => tables.has(tableName));
 };
 
+const countActiveLocations = async (tenantSequelize) => {
+    const rows = await tenantSequelize.query(
+        'SELECT COUNT(*) AS active_location_count FROM tenant_locations WHERE is_active = 1',
+        { type: QueryTypes.SELECT }
+    );
+    return Number(rows[0]?.active_location_count || 0);
+};
+
 const repairCurrentStockFromLocationLedger = async (tenantSequelize) => {
     const [result] = await tenantSequelize.query(
         `
@@ -110,6 +124,22 @@ const auditTenantLocationParity = async (tenant) => {
             dbName: tenant.db_name,
             status: allowMissingTables ? 'skipped' : 'degraded',
             missingTables: true,
+            driftRows: [],
+            orphanRows: [],
+            maxDriftAbs: 0,
+            repairedCount: 0
+        };
+    }
+
+    const activeLocationCount = await countActiveLocations(tenantSequelize);
+    if (activeLocationCount === 0) {
+        return {
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            dbName: tenant.db_name,
+            status: 'skipped',
+            missingTables: false,
+            noActiveLocations: true,
             driftRows: [],
             orphanRows: [],
             maxDriftAbs: 0,
@@ -174,7 +204,7 @@ const loadTargetTenants = async () => {
 
 const printTenantResult = (result) => {
     console.log(
-        `[LocationParityAudit] tenant=${result.tenantName} db=${result.dbName} status=${result.status} drift_rows=${result.driftRows.length} orphan_rows=${result.orphanRows.length} max_abs_drift=${result.maxDriftAbs.toFixed(6)} missing_tables=${result.missingTables === true} repaired=${result.repairedCount || 0}`
+        `[LocationParityAudit] tenant=${result.tenantName} db=${result.dbName} status=${result.status} drift_rows=${result.driftRows.length} orphan_rows=${result.orphanRows.length} max_abs_drift=${result.maxDriftAbs.toFixed(6)} missing_tables=${result.missingTables === true} no_active_locations=${result.noActiveLocations === true} repaired=${result.repairedCount || 0}`
     );
 
     if (result.driftRows.length > 0) {

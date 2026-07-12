@@ -43,6 +43,7 @@ import {
     buildCloseTerminalShiftUseCase,
     buildGetTerminalTodayDashboardUseCase,
     buildListIncomingOnlineOrdersUseCase,
+    buildCollectCashPickupOrderUseCase,
     buildUpdateOnlineOrderStatusUseCase,
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
@@ -108,6 +109,7 @@ export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ 
 export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
 export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUseCase({ posRepository });
 export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
+export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService

@@ -23,6 +23,6 @@ describe('POS Customer Access Mode card selector contract', () => {
     expect(workspaceContent).toContain('CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[platformMaxCustomerAccessMode]');
     expect(workspaceContent).toContain('customerAccessMode: option.value');
     expect(workspaceContent).toContain('id="pos-customer-access-mode"');
-    expect(workspaceContent).toContain('customerAccessMode: normalizeCustomerAccessMode(event.target.value)');
+    expect(workspaceContent).toContain('void handleCustomerAccessModeChange(event.target.value)');
   });
 });

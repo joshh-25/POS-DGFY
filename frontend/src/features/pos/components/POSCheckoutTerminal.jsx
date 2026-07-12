@@ -39,7 +39,7 @@ import {
     DialogTitle
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { toast } from 'sonner';
+import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
     fetchPosCatalog,
     createPosCheckout,
@@ -1930,7 +1930,6 @@ export default function POSCheckoutTerminal({
 
     const handleQtyButtonPointerDown = (event, item) => {
         if (event.pointerType === 'mouse' && event.button !== 0) return;
-        event.currentTarget.setPointerCapture(event.pointerId);
         // Anchor point is the button itself (left edge, vertically centered), not the finger -
         // the meter must stay put even as the finger drags around.
         const buttonRect = event.currentTarget.getBoundingClientRect();
@@ -1982,11 +1981,6 @@ export default function POSCheckoutTerminal({
     const handleQtyButtonPointerUp = (event, item) => {
         const gesture = qtyMeterGestureRef.current;
         clearQtyMeterTimer();
-        try {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        } catch {
-            // Capture may already be released by the browser; safe to ignore.
-        }
 
         qtyMeterGestureRef.current = null;
         setQtyMeterState(null);
@@ -4047,7 +4041,7 @@ export default function POSCheckoutTerminal({
                     closeReceiptPreviewModal();
                 }
             }}>
-                <DialogContent className={`pos-receipt-print-dialog flex h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-slate-200 p-0 shadow-2xl shadow-slate-950/25 sm:h-[calc(100dvh-3rem)] sm:w-full print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none ${
+                <DialogContent className={`pos-receipt-print-dialog flex h-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-slate-200 p-0 shadow-2xl shadow-slate-950/25 sm:max-h-[calc(100dvh-3rem)] sm:w-full print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none ${
                     receiptPreviewSource === 'order_preview' ? 'max-w-3xl bg-white' : 'max-w-xl bg-slate-50'
                 }`}>
                     <DialogHeader className="relative border-b border-slate-200 bg-white px-5 py-3.5 print:hidden">
@@ -4073,10 +4067,10 @@ export default function POSCheckoutTerminal({
                         <button
                             type="button"
                             onClick={closeReceiptPreviewModal}
-                            className="absolute right-5 top-1/2 -translate-y-1/2 rounded-xl border border-slate-200 p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#1A4E8D] focus:ring-offset-2"
+                            className="absolute right-5 top-1/2 -translate-y-1/2 rounded-xl border border-slate-300 bg-slate-50 p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1A4E8D] focus:ring-offset-2 transition-colors"
                             aria-label="Close receipt preview"
                         >
-                            <X className="h-4 w-4" />
+                            <X className="h-5 w-5" />
                         </button>
                     </DialogHeader>
                     <div className="pos-receipt-print-content min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 print:overflow-visible print:p-0">
@@ -4119,9 +4113,9 @@ export default function POSCheckoutTerminal({
                         )}
                     </div>
                     <DialogFooter className={`flex flex-wrap items-center border-t border-slate-200 bg-white px-5 py-3 print:hidden ${
-                        receiptPreviewSource === 'order_preview' ? 'justify-between' : 'justify-between gap-3'
+                        receiptPreviewSource === 'order_preview' ? 'justify-end' : 'justify-between gap-3'
                     }`}>
-                        {receiptPreviewSource !== 'order_preview' ? (
+                        {receiptPreviewSource !== 'order_preview' && (
                             <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
                                 Paper
                                 <select
@@ -4134,29 +4128,8 @@ export default function POSCheckoutTerminal({
                                     ))}
                                 </select>
                             </label>
-                        ) : (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={closeReceiptPreviewModal}
-                                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-[#334155] hover:bg-slate-50"
-                            >
-                                <ArrowLeft className="h-4 w-4" />
-                                Close
-                            </Button>
                         )}
                         <div className="flex items-center gap-2">
-                            {receiptPreviewSource !== 'order_preview' && (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={closeReceiptPreviewModal}
-                                    className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-[#334155] hover:bg-slate-50"
-                                >
-                                    <ArrowLeft className="h-4 w-4" />
-                                    Close
-                                </Button>
-                            )}
                             <Button
                                 type="button"
                                 disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}

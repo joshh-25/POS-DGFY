@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { toast } from 'sonner';
 import { createErrorToastDeduper } from '../../utils/errorToastDedupe.js';
+import { posToast } from '../../utils/iminRuntimeFeedback.js';
 
 const DEFAULT_ERROR_MESSAGE = 'Server error. Please try again.';
 
 export const setupGlobalApiErrorListeners = ({
   windowObj,
-  toastApi = toast,
+  toastApi = posToast,
   deduper = createErrorToastDeduper()
 } = {}) => {
   const targetWindow = windowObj || (typeof window !== 'undefined' ? window : null);
@@ -51,7 +51,7 @@ export default function GlobalApiErrorListener() {
 
   useEffect(() => {
     return setupGlobalApiErrorListeners({
-      toastApi: toast,
+      toastApi: posToast,
       deduper: deduperRef.current
     });
   }, []);

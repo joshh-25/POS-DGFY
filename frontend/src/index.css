@@ -257,15 +257,16 @@ body {
   border-color: var(--pos-shell-border);
 }
 
-/* iOS Safari zooms focused controls below 16px. Keep this scoped to POS mobile surfaces. */
+/* iOS Safari zooms focused controls below 16px. Tailwind text-size utilities
+   must not override this inside the standalone POS terminal. */
 @media (max-width: 639.98px) {
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
 
-  :is(input, textarea, select) {
-    font-size: 16px;
+  .dgfy-pos-shell :is(input, textarea, select) {
+    font-size: 16px !important;
   }
 }
 
@@ -390,6 +391,24 @@ body.pos-receipt-print-mode {
   .pos-receipt-print-content {
     padding-bottom: 0;
     scroll-padding-bottom: 0;
+  }
+
+  body.pos-online-order-receipt-print-mode > #root {
+    visibility: hidden;
+  }
+
+  body.pos-online-order-receipt-print-mode .pos-online-order-receipt-dialog,
+  body.pos-online-order-receipt-print-mode .pos-online-order-receipt-dialog * {
+    visibility: visible;
+  }
+
+  body.pos-online-order-receipt-print-mode .pos-online-order-receipt-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    width: 80mm;
+    max-width: 80mm;
+    margin: 0 auto;
   }
 }
 

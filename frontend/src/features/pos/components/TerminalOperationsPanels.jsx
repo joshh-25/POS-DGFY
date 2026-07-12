@@ -78,6 +78,7 @@ function IncomingQueueWorkspace({
   incomingOrdersState,
   incomingOrderActionState,
   handleIncomingOrderStatusChange,
+  handleOpenCashCollection,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
   refreshIncomingOrders,
@@ -163,6 +164,12 @@ function IncomingQueueWorkspace({
             const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
             const nextActions = getNextStatusActions(order);
             const utilityActions = getIncomingOrderUtilityActions(order);
+            const canCollectCash = (
+              order.order_method === 'pickup'
+              && order.payment_type === 'cash'
+              && order.payment_status === 'unpaid'
+              && order.fulfillment_status === 'ready_for_pickup'
+            );
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
             const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
@@ -182,6 +189,8 @@ function IncomingQueueWorkspace({
                   <p>Cashier: <span className="font-semibold text-slate-900">{cashierName}</span></p>
                   <p>Customer: <span className="font-semibold text-slate-900">{order.customer_name || 'Guest Buyer'}</span></p>
                   <p>Payment: <span className="font-semibold text-slate-900">{PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type || '-'}</span></p>
+                  <p>Payment Status: <span className="font-semibold text-slate-900">{String(order.payment_status || 'unpaid').replaceAll('_', ' ')}</span></p>
+                  {order.payment_collected_at ? <p>Collected by: <span className="font-semibold text-slate-900">{order.paymentCollectedByUser?.username || 'Cashier'} · {formatOrderDateTime(order.payment_collected_at)}</span></p> : null}
                   <p>Mode: <span className="font-semibold text-slate-900">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</span></p>
                   <p>Order Time: <span className="font-semibold text-slate-900">{formatOrderDateTime(order.created_at)}</span></p>
                   {order.order_method === 'delivery' && (
@@ -201,6 +210,16 @@ function IncomingQueueWorkspace({
                   ) : null}
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
+                  {canCollectCash && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                      onClick={() => handleOpenCashCollection?.(order)}
+                    >
+                      Collect Cash
+                    </Button>
+                  )}
                   {nextActions.map((status) => (
                     <Button
                       key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}

@@ -560,6 +560,12 @@ const buildTransactionInclude = () => ([
     },
     {
         model: dbStore.get('User'),
+        as: 'paymentCollectedByUser',
+        required: false,
+        attributes: ['user_id', 'username', 'email']
+    },
+    {
+        model: dbStore.get('User'),
         as: 'voidedByUser',
         attributes: ['user_id', 'username']
     },

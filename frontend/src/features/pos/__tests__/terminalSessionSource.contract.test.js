@@ -22,7 +22,7 @@ describe('TerminalPage session contract', () => {
 
   it('resolves terminal login tenant from email before trusting the current browser company token', () => {
     expect(terminalPageSource).toContain('const currentCompanyToken = String(getCompanyToken() || \'\').trim();');
-    expect(terminalPageSource).toContain('lookupCompanyToken(email, currentCompanyToken)');
+    expect(terminalPageSource).toContain('lookupCompanyToken(normalizedIdentifier, currentCompanyToken)');
     expect(terminalPageSource).toContain('normalizeLookupTenantOptions');
     expect(terminalPageSource).toContain('POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS');
     expect(terminalPageSource).toContain('tenants.some((tenant) => tenant?.company_token === normalizedPreferred)');
@@ -57,7 +57,7 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('if (isCompanyTokenResolutionError(error)) {');
     expect(terminalPageSource).not.toContain('Legacy POS access used. Link this account to DGFY before June 17, 2027.');
     expect(terminalPageSource).toContain('loginWithCredentials(');
-    expect(terminalPageSource).toContain('lookupCompanyToken(email, currentCompanyToken)');
+    expect(terminalPageSource).toContain('resolveCompanyTokenForEmailIdentifier(email, currentCompanyToken)');
   });
 
   it('redirects DGFY accounts without accessible businesses back to the customer dashboard instead of leaving them in POS', () => {

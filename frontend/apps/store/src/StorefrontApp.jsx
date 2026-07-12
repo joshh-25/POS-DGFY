@@ -6438,7 +6438,18 @@ export default function StorefrontApp() {
       const subtitle = String(entry.subtitle || '').trim();
       const badge = String(entry.badge || '').trim();
       const promoCode = String(entry.promo_code || entry.promoCode || '').trim().toUpperCase();
-      const validityText = String(entry.validity_text || entry.validityText || '').trim();
+      const formatPromoTime = (value) => {
+        const match = String(value || '').trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+        if (!match) return '';
+        const hours = Number(match[1]);
+        return `${hours % 12 || 12}:${match[2]} ${hours >= 12 ? 'PM' : 'AM'}`;
+      };
+      const validTimeStart = String(entry.valid_time_start || entry.validTimeStart || '').trim();
+      const validTimeEnd = String(entry.valid_time_end || entry.validTimeEnd || '').trim();
+      const timeWindowText = [formatPromoTime(validTimeStart), formatPromoTime(validTimeEnd)].filter(Boolean).join(' - ');
+      const validityText = String(entry.validity_text || entry.validityText || '').trim() || timeWindowText;
+      const availabilityStatus = String(entry.availability_status || entry.availabilityStatus || 'available').trim();
+      const availabilityMessage = String(entry.availability_message || entry.availabilityMessage || '').trim();
       const headline = String(entry.headline || entry.primary_text || '').trim();
       const supportingText = String(entry.supporting_text || entry.secondary_text || '').trim();
       const discountPercent = Number(entry.discount_percent ?? entry.discountPercent);
@@ -6455,23 +6466,18 @@ export default function StorefrontApp() {
         supportingText,
         discountLabel: Number.isFinite(discountPercent) && discountPercent > 0 ? `${discountPercent}% OFF` : '',
         validFrom,
-        validUntil
+        validUntil,
+        availabilityStatus,
+        availabilityMessage
       };
     };
-
-    const manilaDate = (() => {
-      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit'
-      }).formatToParts(new Date()).map((part) => [part.type, part.value]));
-      return `${parts.year}-${parts.month}-${parts.day}`;
-    })();
 
     let promoItems = [];
     if (rawPromo?.active === true) {
       const rawItems = Array.isArray(rawPromo.items) ? rawPromo.items : [];
       promoItems = rawItems
         .map(normalizePromoEntry)
-        .filter((entry) => entry && (!entry.validFrom || entry.validFrom <= manilaDate) && (!entry.validUntil || entry.validUntil >= manilaDate));
+        .filter(Boolean);
       if (promoItems.length === 0) {
         const normalizedSingle = normalizePromoEntry(rawPromo);
         if (normalizedSingle) promoItems = [normalizedSingle];
@@ -9562,7 +9568,8 @@ export default function StorefrontApp() {
       }];
     });
     setCheckoutTab(isFnbMode ? 'cart' : 'review');
-    setIsCheckoutOpen(true);
+    // Restore the draft first; reopening the drawer here can render before its cart view hydrates.
+    setIsCheckoutOpen(false);
     playCartAddedSound();
     toast.success(`${item?.variantName || item?.name || 'Item'} added successfully!`);
     if (stockWarning) {
@@ -9587,7 +9594,8 @@ export default function StorefrontApp() {
   };
   const openServiceBookingPanel = (nextTab = 'review') => {
     setCheckoutTab(nextTab);
-    setIsCheckoutOpen(true);
+    // Keep the restored cart available without reopening an unhydrated drawer on refresh.
+    setIsCheckoutOpen(false);
   };
   const openTrackPanel = () => {
     if (canOpenTrackingDrawer) {
@@ -9901,16 +9909,28 @@ export default function StorefrontApp() {
 
   const requestQuote = useCallback(async ({ promoCodeOverride = promoCodeDraft, successMessage = '' } = {}) => {
     if (!selectedStore) return null;
-    const data = await requestJson('/api/v1/store/cart/quote', {
-      method: 'POST',
-      storeSlug: selectedStore.slug,
-      authToken: readStoreAuthToken(),
-      body: checkoutPayload(promoCodeOverride)
-    });
-    setQuoteResult(data);
-    setQuoteNeedsRefresh(false);
-    toast.success(data?.promo_feedback?.message || successMessage || 'Quote updated.');
-    return data;
+    try {
+      const data = await requestJson('/api/v1/store/cart/quote', {
+        method: 'POST',
+        storeSlug: selectedStore.slug,
+        authToken: readStoreAuthToken(),
+        body: checkoutPayload(promoCodeOverride)
+      });
+      setQuoteResult(data);
+      setQuoteNeedsRefresh(false);
+      toast.success(data?.promo_feedback?.message || successMessage || 'Quote updated.');
+      return data;
+    } catch (error) {
+      const message = String(error?.message || '');
+      if (promoCodeOverride && /promo code .*?(outside its valid time window|expired|not active)/i.test(message)) {
+        setPromoCodeDraft('');
+        setQuoteResult(null);
+        setQuoteNeedsRefresh(true);
+        toast.error('Promo code expired or is not active yet. It was removed from your order.');
+        return { promo_removed: true };
+      }
+      throw error;
+    }
   }, [checkoutPayload, promoCodeDraft, selectedStore]);
 
   const handlePinMyLocation = () => {

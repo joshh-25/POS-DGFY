@@ -225,6 +225,38 @@ describe('healthService', () => {
         });
     });
 
+    it('reports a required degraded tenant schema preflight as unhealthy', async () => {
+        const { health, statusCode } = await buildHealthResponse({
+            testConnectionFn: async () => true,
+            isRedisConnectedFn: () => true,
+            getTenantPoolStatsFn: () => ({
+                total: 1,
+                pending: 0,
+                capacity: 20,
+                utilizationPercent: 5
+            }),
+            getRateLimiterStoreModeFn: () => 'memory',
+            tenantSchemaPreflightState: {
+                required: true,
+                status: 'degraded',
+                message: 'Tenant schema readiness checks failed.',
+                last_checked_at: '2026-07-11T00:00:00.000Z',
+                failed_tenant_count: 2
+            },
+            environment: 'test'
+        });
+
+        expect(statusCode).toBe(503);
+        expect(health.success).toBe(false);
+        expect(health.services.tenantSchema).toEqual({
+            status: 'degraded',
+            message: 'Tenant schema readiness checks failed.',
+            required: true,
+            last_checked_at: '2026-07-11T00:00:00.000Z',
+            failed_tenant_count: 2
+        });
+    });
+
     it('returns 200 when database is healthy and schema index status is healthy', async () => {
         process.env = {
             ...originalEnv,

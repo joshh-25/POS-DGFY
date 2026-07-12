@@ -9,6 +9,7 @@ describe('auth middleware module export contract', () => {
             'checkStorefrontBrandingEditPermission',
             'requirePremium',
             'requireMasterAdmin',
+            'requireTenantAdmin',
             'authenticateAdmin',
             'invalidateUserAuthCache'
         ];

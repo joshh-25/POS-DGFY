@@ -27,6 +27,7 @@ const REQUIRED_METHODS = [
     'createShiftLocationTransition',
     'getTerminalShiftById',
     'createCashDrawerEvent',
+    'createAuditLog',
     'listCashDrawerEventsByShiftId',
     'getShiftCashSalesTotal',
     'closeTerminalShift',

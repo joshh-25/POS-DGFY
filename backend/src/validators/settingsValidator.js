@@ -189,6 +189,10 @@ const storefrontSocialLinksSchema = Joi.object({
   facebook: Joi.string().trim().max(255).allow('', null).optional(),
   instagram: Joi.string().trim().max(255).allow('', null).optional()
 }).optional();
+const storefrontPromoDateSchema = Joi.date().iso().raw().allow('', null).optional().messages({
+  'date.format': 'Promo dates must use YYYY-MM-DD format',
+  'date.base': 'Promo dates must use YYYY-MM-DD format'
+});
 const storefrontPromoSchema = Joi.object({
   id: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9._-]*$/).allow('', null).optional(),
   title: Joi.string().trim().max(100).allow('', null).optional(),
@@ -206,15 +210,38 @@ const storefrontPromoSchema = Joi.object({
   valid_time_end: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).allow('', null).optional().messages({
     'string.pattern.base': 'Promo end time must use HH:mm format'
   }),
+  valid_from: storefrontPromoDateSchema,
+  valid_until: storefrontPromoDateSchema,
   active: Joi.boolean().default(false)
 }).custom((value, helpers) => {
   if (!value || typeof value !== 'object') return value;
   const hasStart = String(value.valid_time_start || '').trim().length > 0;
   const hasEnd = String(value.valid_time_end || '').trim().length > 0;
+  const hasValidFrom = String(value.valid_from || '').trim().length > 0;
+  const hasValidUntil = String(value.valid_until || '').trim().length > 0;
   if (hasStart !== hasEnd) {
     return helpers.error('any.invalid', {
       message: 'Promo valid time range requires both start and end times'
     });
+  }
+  if (hasValidFrom !== hasValidUntil) {
+    return helpers.error('any.invalid', {
+      message: 'Promo validity range requires both From and To dates'
+    });
+  }
+  if (hasValidFrom && hasValidUntil) {
+    const from = String(value.valid_from).trim();
+    const until = String(value.valid_until).trim();
+    if (from > until) {
+      return helpers.error('any.invalid', {
+        message: 'Promo From date must be on or before the To date'
+      });
+    }
+    if (from === until && hasStart && hasEnd && String(value.valid_time_start) > String(value.valid_time_end)) {
+      return helpers.error('any.invalid', {
+        message: 'Promo From time must be earlier than the To time on the same date'
+      });
+    }
   }
   const usageLimit = value.usage_limit == null || value.usage_limit === '' ? null : Number(value.usage_limit);
   const usedCount = value.used_count == null || value.used_count === '' ? null : Number(value.used_count);

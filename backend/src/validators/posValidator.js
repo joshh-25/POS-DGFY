@@ -370,6 +370,11 @@ const updateOnlineOrderStatusSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     fulfillment_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required()
 });
+const collectCashPickupOrderSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    terminal_id: Joi.string().trim().max(100).required(),
+    cash_received: Joi.number().positive().precision(4).required()
+});
 
 const devicePrintReceiptSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
@@ -519,6 +524,7 @@ export const validateSwitchTerminalShiftLocation = validateSchema(switchTerminal
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
+export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
 export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema, 'body', 'validatedData');
 export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');

@@ -6,6 +6,12 @@ node_modules/
 # Testing
 /coverage
 
+# Playwright local artifacts and secrets
+/frontend/playwright-report/
+/frontend/test-results/
+/frontend/playwright/.auth/
+/frontend/.env.e2e
+
 # Production
 /build
 /dist

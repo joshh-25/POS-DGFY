@@ -6,6 +6,7 @@ import { playOrderAlertWithIminBridge } from '../utils/iminHardwareBridge.js';
 
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
+import IminTerminalFeedback from './IminTerminalFeedback.jsx';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
@@ -76,6 +77,7 @@ export default function TerminalPageLayout({
     setQueueLocationScopeId,
     incomingOrderActionState,
     handleIncomingOrderStatusChange,
+    handleOpenCashCollection,
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
     refreshIncomingOrders,
@@ -442,6 +444,8 @@ export default function TerminalPageLayout({
         </div>
       </div>
 
+      <IminTerminalFeedback />
+
       <div
         ref={workspacePaneRef}
         className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y ${workspaceDesktopOverflowClassName} ${lockedSurfaceClassName}`}
@@ -643,6 +647,7 @@ export default function TerminalPageLayout({
                 onlineOrderSoundEnabled={onlineOrderSoundEnabled}
                 incomingOrderActionState={incomingOrderActionState}
                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+                handleOpenCashCollection={handleOpenCashCollection}
                 handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
                 incomingReceiptOpeningId={incomingReceiptOpeningId}
                 refreshIncomingOrders={refreshIncomingOrders}

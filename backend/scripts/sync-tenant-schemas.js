@@ -40,12 +40,29 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
             sql: "ALTER TABLE `items` ADD COLUMN `senior_pwd_discount_eligible` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Admin-controlled eligibility for statutory Senior Citizen/PWD discounts'"
         })
     }),
+    item_folders: Object.freeze({
+        is_active: Object.freeze({
+            sql: "ALTER TABLE `item_folders` ADD COLUMN `is_active` TINYINT(1) NOT NULL DEFAULT 1 AFTER `show_in_pos_filter`"
+        })
+    }),
     pos_transactions: Object.freeze({
         cash_received: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `cash_received` DECIMAL(14,4) NULL AFTER `payment_type`"
         }),
         change_amount: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `change_amount` DECIMAL(14,4) NULL AFTER `cash_received`"
+        }),
+        payment_collected_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_at` DATETIME NULL AFTER `payment_status`"
+        }),
+        payment_collected_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_by` INTEGER NULL AFTER `payment_collected_at`"
+        }),
+        payment_collected_shift_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_shift_id` INTEGER NULL AFTER `payment_collected_by`"
+        }),
+        payment_collected_terminal_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_terminal_id` VARCHAR(100) NULL AFTER `payment_collected_shift_id`"
         })
     }),
     pos_terminal_shifts: Object.freeze({

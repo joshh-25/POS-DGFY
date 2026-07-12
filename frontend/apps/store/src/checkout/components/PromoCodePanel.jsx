@@ -152,11 +152,14 @@ export function PromoCodePanel({
                   const promoDiscountLabel = String(promo.discountLabel || '').trim();
                   const promoEligibleItemsText = String(promo.eligibleItemsText || '').trim();
                   const promoEligibleCategoriesText = String(promo.eligibleCategoriesText || '').trim();
+                  const availabilityStatus = String(promo.availabilityStatus || promo.availability_status || 'available').trim();
+                  const availabilityMessage = String(promo.availabilityMessage || promo.availability_message || '').trim();
+                  const isUnavailable = availabilityStatus !== 'available';
                   const isApplied = hasCode && promoCodeName && normalizedCode === promoCodeName;
-                  const canApplyPromo = promoCodeName.length > 0;
+                  const canApplyPromo = promoCodeName.length > 0 && !isUnavailable;
                   return (
-                    <div key={idx} style={{ border: `1px solid ${isApplied ? accentColor : '#e2e8f0'}`, borderRadius: 16, padding: 14, display: 'flex', gap: 12, alignItems: 'flex-start', background: isApplied ? `${accentColor}10` : '#ffffff' }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 20, background: isApplied ? accentColor : '#f1f5f9', color: isApplied ? '#fff' : '#64748b', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <div key={idx} style={{ border: `1px solid ${isApplied && !isUnavailable ? accentColor : '#e2e8f0'}`, borderRadius: 16, padding: 14, display: 'flex', gap: 12, alignItems: 'flex-start', background: isApplied && !isUnavailable ? `${accentColor}10` : '#ffffff', opacity: isUnavailable ? 0.58 : 1, filter: isUnavailable ? 'grayscale(1)' : 'none' }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 20, background: isApplied && !isUnavailable ? accentColor : '#f1f5f9', color: isApplied && !isUnavailable ? '#fff' : '#64748b', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                         <Tag size={18} />
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -180,6 +183,11 @@ export function PromoCodePanel({
                         {promo.validityText ? (
                           <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{promo.validityText}</div>
                         ) : null}
+                        {isUnavailable ? (
+                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>
+                            {availabilityMessage || 'Unavailable outside the scheduled promo window.'}
+                          </div>
+                        ) : null}
                         {promoEligibleItemsText ? (
                           <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.45 }}>
                             <span style={{ fontWeight: 800, color: '#0f172a' }}>Eligible items:</span> {promoEligibleItemsText}
@@ -191,15 +199,16 @@ export function PromoCodePanel({
                           </div>
                         ) : null}
                       </div>
-                      {isApplied ? (
+                      {isApplied && !isUnavailable ? (
                         <div style={{ color: accentColor, display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800 }}>
                           <CheckCircle2 size={16} /> Applied
                         </div>
-                      ) : canApplyPromo ? (
+                      ) : promoCodeName ? (
                         <button
                           type="button"
                           onClick={() => handleApply(promoCodeName)}
-                          style={{ minHeight: 32, padding: '0 14px', borderRadius: 16, border: `1px solid ${accentColor}`, background: 'transparent', color: accentColor, fontWeight: 800, fontSize: 12, cursor: 'pointer' }}
+                          disabled={!canApplyPromo}
+                          style={{ minHeight: 32, padding: '0 14px', borderRadius: 16, border: `1px solid ${canApplyPromo ? accentColor : '#cbd5e1'}`, background: 'transparent', color: canApplyPromo ? accentColor : '#94a3b8', fontWeight: 800, fontSize: 12, cursor: canApplyPromo ? 'pointer' : 'not-allowed' }}
                         >
                           Use
                         </button>
