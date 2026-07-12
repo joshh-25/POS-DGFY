@@ -110,7 +110,7 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 ### Fiscal And Compliance
 
 - [x] **FSC-01**: A tenant/branch has a compliance-mode state reflecting whether required fiscal paperwork is present and verified.
-- [x] **FSC-02**: Checkout, shift opening, and receipt issuance are all gated through one shared compliance policy-engine check, not duplicated per surface.
+- [ ] **FSC-02**: Checkout, shift opening, and receipt issuance are all gated through one shared compliance policy-engine check, not duplicated per surface. (gaps found 2026-07-12 — compliant_active gate fails open on 5 of 7 evidence signals when omitted, see 08-VERIFICATION.md)
 - [ ] **FSC-03**: Senior Citizen / PWD discounts are computed server-side per BIR rules (VAT-exclusive base, 20% discount, MEMC group-meal rule) and produce the correct separate receipt lines.
 
 ### Storefront Discovery And Online Ordering
@@ -227,7 +227,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SFT-02 | Phase 8 | Complete |
 | SFT-03 | Phase 8 | Complete |
 | FSC-01 | Phase 8 | Complete |
-| FSC-02 | Phase 8 | Complete |
+| FSC-02 | Phase 8 | Gaps found |
 | CHK-01 | Phase 9 | Pending |
 | CHK-02 | Phase 9 | Pending |
 | CHK-03 | Phase 9 | Pending |

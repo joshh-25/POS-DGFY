@@ -5,7 +5,7 @@ milestone_name: Commerce Domain — Product, Checkout & Fulfillment
 current_phase: 08
 current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
-stopped_at: Completed 08-09-PLAN.md — CR-01/CR-02 gap-closure, Phase 08 fully closed
+stopped_at: Completed 08-09-PLAN.md and re-verified — CR-01/FSC-01 closed, CR-02/FSC-02 still failing (checklist fail-open bug); see 08-VERIFICATION.md, gap-closure plan needed
 last_updated: "2026-07-12T15:17:35.200Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 08 execution started
