@@ -7,6 +7,7 @@ import defineAccountModel from '../../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../../src/models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../../../src/models/Landlord/BusinessDatabaseRegistry.js';
+import defineStaffAccountModel from '../../../src/models/Tenant/StaffAccount.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../../src/modules/businesses/index.js';
 import { TenantConnector } from '../../../src/infra/tenantConnector.js';
@@ -265,9 +266,14 @@ describeIfIntegration('Tenant session validation & edge cases (real MySQL landlo
 
             const { token: staffToken, accountId: staffAccountId } = await registerAndGetToken();
             await businessRepository.createMembership({ accountId: staffAccountId, businessId, role: 'member' });
+            const staffAccountModel = defineStaffAccountModel(tenantConnector.getConnection(databaseName));
+            const seededStaffAccount = await staffAccountModel.create({
+                display_name: 'Both Met Staff',
+                email: 'both-met-staff@tenantsessionvalidation.test'
+            });
             await accountStaffAssignmentRepository.create(databaseName, {
                 dgfyAccountId: staffAccountId,
-                staffAccountId: 1,
+                staffAccountId: seededStaffAccount.id,
                 role: 'staff',
                 status: 'active'
             });
