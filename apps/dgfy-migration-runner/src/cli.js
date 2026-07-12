@@ -6,6 +6,7 @@ import { dirname, join } from 'path';
 import { runSchemaMigrate } from './commands/schema.js';
 import { runDataDryRun, runDataApply } from './commands/data.js';
 import { runVerify } from './commands/verify.js';
+import { runVerifyContinuity } from './commands/verifyContinuity.js';
 import { runStatus } from './commands/status.js';
 import { runRollbackPlan } from './commands/rollbackPlan.js';
 import { runActivateTenant } from './commands/activateTenant.js';
@@ -66,6 +67,15 @@ export function buildProgram() {
     .description('Run metadata schema and target DB connectivity checks')
     .action(async () => {
       await runVerify({});
+    });
+
+  program
+    .command('verify-continuity')
+    .description(
+      'Non-destructively verify legacy backup (SOURCE_DB) domain tables remain intact (compat reference seam, CMP-01)'
+    )
+    .action(async () => {
+      await runVerifyContinuity({});
     });
 
   program

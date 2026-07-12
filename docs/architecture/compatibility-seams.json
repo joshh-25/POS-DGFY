@@ -1,4 +1,14 @@
 {
   "version": 1,
-  "seams": []
+  "seams": [
+    {
+      "id": "db-continuity-legacy-backup",
+      "type": "db-level",
+      "status": "active",
+      "rationale": "Non-destructively verifies the legacy backup's (SOURCE_DB) domain tables remain intact during/after the database-first cutover, proving CMP-01 while dgfy-api and dgfy-migration-runner run beside legacy.",
+      "tests": ["apps/dgfy-migration-runner/tests/verifyContinuity.test.js"],
+      "rollback": "Seam is read-only; disabling it has no data effect. Revert by removing the command and its manifest entry.",
+      "removal_criteria": "Legacy backup decommissioned (future milestone, CUT-02)."
+    }
+  ]
 }
