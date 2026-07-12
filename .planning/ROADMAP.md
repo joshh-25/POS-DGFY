@@ -222,7 +222,17 @@ Plans:
   2. Migration verification and tenant drift checks produce reviewable reports for all targeted `dgfy_*` schemas.
   3. Targeted smoke or contract checks prove any touched compatibility seams still preserve current behavior.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — Interactive tenant release-evidence runner command: registry discovery + inquirer checkbox selection + per-tenant drift/migration-verification reports (SC2, D-02/D-03)
+- [ ] 06-02-PLAN.md — Generic manifest-driven compatibility-seam smoke runner: active-entry iteration + integration-env fail-closed dispatch + per-seam report (SC3, D-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-03-PLAN.md — On-demand DGFY release-evidence orchestrator gate: architecture-checks gate + verdict aggregation into release_verdict-contract artifact + npm wiring (SC1, D-01, D-05)
 
 ### Phase 7: Cutover Runbook and Deferred Domain Split
 
@@ -249,5 +259,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. Old-to-New Migration Proof | 6/6 | Complete   | 2026-07-11 |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 11/11 | Complete    | 2026-07-11 |
 | 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete    | 2026-07-12 |
-| 6. Release Evidence and Rehearsal Gates | 0/TBD | Not started | - |
+| 6. Release Evidence and Rehearsal Gates | 0/3 | Not started | - |
 | 7. Cutover Runbook and Deferred Domain Split | 0/TBD | Not started | - |
