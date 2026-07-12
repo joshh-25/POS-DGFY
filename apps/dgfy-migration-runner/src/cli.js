@@ -8,6 +8,7 @@ import { runDataDryRun, runDataApply } from './commands/data.js';
 import { runVerify } from './commands/verify.js';
 import { runStatus } from './commands/status.js';
 import { runRollbackPlan } from './commands/rollbackPlan.js';
+import { runActivateTenant } from './commands/activateTenant.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,7 +24,10 @@ export function buildProgram() {
 
   program
     .name('dgfy-migration-runner')
-    .description('DGFY database-first migration runner: schema, data, verify, status, rollback-plan commands')
+    .description(
+      'DGFY database-first migration runner: schema, data, verify, status, rollback-plan, ' +
+      'activate-tenant commands'
+    )
     .version('1.0.0');
 
   const schemaCmd = new Command('schema').description('Schema migration commands');
@@ -76,6 +80,24 @@ export function buildProgram() {
     .description('Generate a rollback-plan report artifact (does not execute any rollback)')
     .action(async () => {
       await runRollbackPlan({});
+    });
+
+  program
+    .command('activate-tenant')
+    .description(
+      'Apply + verify the tenant schema for a provisioned dgfy_business_* database_name, then mark its ' +
+      'business_database_registry row active/verified (operator activation handoff)'
+    )
+    .requiredOption(
+      '--database-name <name>',
+      'The dgfy_business_* tenant database_name to activate (must already have a provisioning registry row from POST /businesses)'
+    )
+    .option('--confirm-destructive', 'Required only when a pending business migration is destructive (per D-09/D-17)')
+    .action(async (options) => {
+      await runActivateTenant({
+        databaseName: options.databaseName,
+        confirmDestructive: Boolean(options.confirmDestructive)
+      });
     });
 
   return program;
