@@ -50,6 +50,20 @@ const forbiddenError = (message) => new DomainError(
     { statusCode: 403 }
 );
 
+/**
+ * CR-01/FSC-01 (T-08-09-03): maps a race-loser DuplicateComplianceModeStateError
+ * (thrown by complianceModeStateRepository.js's upsertState() when the DB
+ * unique index rejects a concurrent duplicate row) to a clean 409 CONFLICT,
+ * mirroring complianceGate.js's requiresSetupError CONFLICT/409 shape —
+ * instead of letting it fall through to a misleading
+ * TenantDatabaseUnavailableError('unreachable') 503.
+ */
+const duplicateComplianceStateError = () => new DomainError(
+    DomainErrorCode.CONFLICT,
+    'A compliance-mode-state row already exists for this business/branch. Retry the request.',
+    { statusCode: 409, details: { error_code: 'DUPLICATE_COMPLIANCE_MODE_STATE' } }
+);
+
 const noTenantDatabaseError = () => new DomainError(
     DomainErrorCode.RESOURCE_NOT_FOUND,
     'No tenant database is registered for this business.',
@@ -66,6 +80,15 @@ const isTenantDatabaseUnavailableError = (error) => Boolean(error) && error.name
 
 /** @param {Error} error */
 const isComplianceStateNotFoundError = (error) => Boolean(error) && error.name === 'ComplianceStateNotFoundError';
+
+/**
+ * Duck-types on `error.name === 'DuplicateComplianceModeStateError'` rather
+ * than importing complianceModeStateRepository.js's class directly — mirrors
+ * this file's isTenantDatabaseUnavailableError()/isComplianceStateNotFoundError()
+ * self-contained convention (CR-01/FSC-01).
+ * @param {Error} error
+ */
+const isDuplicateComplianceModeStateError = (error) => Boolean(error) && error.name === 'DuplicateComplianceModeStateError';
 
 /**
  * Maps a thrown TenantDatabaseUnavailableError to a stable
@@ -212,6 +235,9 @@ export function buildSubmitComplianceEvidenceUseCase({ repository, businessRepos
             const compliance = createComplianceEntity(withResetVerification);
             return ApplicationResult.success({ compliance: compliance.toPlain() });
         } catch (tenantError) {
+            if (isDuplicateComplianceModeStateError(tenantError)) {
+                return ApplicationResult.failure(duplicateComplianceStateError());
+            }
             if (isTenantDatabaseUnavailableError(tenantError)) {
                 return ApplicationResult.failure(mapTenantDatabaseError(tenantError));
             }
@@ -286,6 +312,9 @@ export function buildReviewComplianceStateUseCase({ repository, businessReposito
             const compliance = createComplianceEntity(finalRow);
             return ApplicationResult.success({ compliance: compliance.toPlain() });
         } catch (repoError) {
+            if (isDuplicateComplianceModeStateError(repoError)) {
+                return ApplicationResult.failure(duplicateComplianceStateError());
+            }
             if (isTenantDatabaseUnavailableError(repoError)) {
                 return ApplicationResult.failure(mapTenantDatabaseError(repoError));
             }

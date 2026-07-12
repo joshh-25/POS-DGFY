@@ -39,6 +39,36 @@ export class ComplianceStateNotFoundError extends Error {
     }
 }
 
+/**
+ * Thrown by upsertState() when the DB-enforced one-row-per-
+ * (business_id, branch_scope_key) unique index (CR-01/FSC-01,
+ * unique_compliance_mode_state_business_branch_scope — see 08-09-PLAN.md's
+ * gap-closure migration) rejects a concurrent race-loser write. Usecases
+ * duck-type on `error.name === 'DuplicateComplianceModeStateError'` and map
+ * it to a clean 409, mirroring shiftRepository.js's DuplicateOpenShiftError
+ * — never surfaced as a misleading TenantDatabaseUnavailableError 503.
+ */
+export class DuplicateComplianceModeStateError extends Error {
+    constructor(message) {
+        super(message || 'A compliance-mode-state row already exists for this business/branch.');
+        this.name = 'DuplicateComplianceModeStateError';
+    }
+}
+
+/**
+ * Duck-types a MySQL/Sequelize unique-constraint violation, tolerating both
+ * Sequelize's wrapped error shape and a raw mysql2 driver error — copied in
+ * spirit from shiftRepository.js's isUniqueConstraintViolation().
+ * @param {Error} error
+ */
+const isUniqueConstraintViolation = (error) => {
+    if (!error) return false;
+    if (error.name === 'SequelizeUniqueConstraintError') return true;
+    if (error.original && (error.original.code === 'ER_DUP_ENTRY' || error.original.errno === 1062)) return true;
+    if (error.parent && (error.parent.code === 'ER_DUP_ENTRY' || error.parent.errno === 1062)) return true;
+    return false;
+};
+
 export class ComplianceModeStateRepository {
     /**
      * @param {{tenantConnector, businessDatabaseRegistryRepository?}} deps -
@@ -106,7 +136,10 @@ export class ComplianceModeStateRepository {
      * `fn(ComplianceModeState)` against it. Any error surfaced while
      * resolving the model or running the query is normalized to
      * TenantDatabaseUnavailableError('unreachable', ...) unless it is
-     * already one or a ComplianceStateNotFoundError (never double-wrapped).
+     * already one, a ComplianceStateNotFoundError, or a
+     * DuplicateComplianceModeStateError (never double-wrapped — CR-01/FSC-01
+     * requires the race-loser conflict to surface as a clean 409, not a
+     * misleading 503).
      * @param {string} businessId
      * @param {(model: Object) => Promise<any>} fn
      */
@@ -116,7 +149,11 @@ export class ComplianceModeStateRepository {
             const model = this.resolveModel(databaseName);
             return await fn(model);
         } catch (error) {
-            if (error instanceof TenantDatabaseUnavailableError || error instanceof ComplianceStateNotFoundError) {
+            if (
+                error instanceof TenantDatabaseUnavailableError
+                || error instanceof ComplianceStateNotFoundError
+                || error instanceof DuplicateComplianceModeStateError
+            ) {
                 throw error;
             }
             throw new TenantDatabaseUnavailableError(
@@ -148,6 +185,20 @@ export class ComplianceModeStateRepository {
      * `updates` on an existing row. Never touches verification_status/
      * verified_by_actor_type/verified_at — those are recordVerification()'s
      * exclusive concern (D-04's manual review path).
+     *
+     * CR-01/FSC-01: the first-write path is atomic via
+     * Sequelize's findOrCreate() rather than a plain findOne()-then-create()
+     * (a TOCTOU race) — findOrCreate() relies on the DB unique index
+     * (unique_compliance_mode_state_business_branch_scope, now enforceable
+     * for NULL branches per 08-09-PLAN.md's gap-closure migration) to
+     * serialize concurrent first writes for the same business/branch. A
+     * race-loser that still manages to violate the unique index (e.g. a
+     * concurrent write racing the SELECT-then-INSERT window findOrCreate()
+     * itself performs under the hood) is duck-typed via
+     * isUniqueConstraintViolation() and rethrown as
+     * DuplicateComplianceModeStateError — never surfaced as a misleading
+     * TenantDatabaseUnavailableError('unreachable') 503. branch_scope_key is
+     * DB-generated and is NEVER written here.
      * @param {string} businessId
      * @param {number|null} branchId
      * @param {{state?, compliance_profile?, active_policy_pack_version?}} [updates]
@@ -156,23 +207,28 @@ export class ComplianceModeStateRepository {
         if (!businessId) throw new Error('ComplianceModeStateRepository.upsertState requires businessId.');
 
         return this.withModel(businessId, async (ComplianceModeState) => {
-            let record = await ComplianceModeState.findOne({
-                where: { business_id: businessId, branch_id: branchId }
-            });
-
-            if (!record) {
-                record = await ComplianceModeState.create({
-                    business_id: businessId,
-                    branch_id: branchId,
-                    state: updates.state || 'non_compliant_active',
-                    compliance_profile: Object.prototype.hasOwnProperty.call(updates, 'compliance_profile')
-                        ? updates.compliance_profile
-                        : null,
-                    active_policy_pack_version: Object.prototype.hasOwnProperty.call(updates, 'active_policy_pack_version')
-                        ? updates.active_policy_pack_version
-                        : null
+            let record;
+            try {
+                const [resolvedRecord] = await ComplianceModeState.findOrCreate({
+                    where: { business_id: businessId, branch_id: branchId },
+                    defaults: {
+                        business_id: businessId,
+                        branch_id: branchId,
+                        state: updates.state || 'non_compliant_active',
+                        compliance_profile: Object.prototype.hasOwnProperty.call(updates, 'compliance_profile')
+                            ? updates.compliance_profile
+                            : null,
+                        active_policy_pack_version: Object.prototype.hasOwnProperty.call(updates, 'active_policy_pack_version')
+                            ? updates.active_policy_pack_version
+                            : null
+                    }
                 });
-                return this.toPlain(record);
+                record = resolvedRecord;
+            } catch (findOrCreateError) {
+                if (isUniqueConstraintViolation(findOrCreateError)) {
+                    throw new DuplicateComplianceModeStateError();
+                }
+                throw findOrCreateError;
             }
 
             const patch = {};
@@ -181,7 +237,15 @@ export class ComplianceModeStateRepository {
                     patch[key] = updates[key];
                 }
             });
-            await record.update(patch);
+
+            try {
+                await record.update(patch);
+            } catch (updateError) {
+                if (isUniqueConstraintViolation(updateError)) {
+                    throw new DuplicateComplianceModeStateError();
+                }
+                throw updateError;
+            }
             return this.toPlain(record);
         });
     }
@@ -191,6 +255,13 @@ export class ComplianceModeStateRepository {
      * existing row. Throws ComplianceStateNotFoundError if no row exists yet
      * (evidence must be submitted — via upsertState() — before it can be
      * reviewed).
+     *
+     * CR-01/FSC-01 hardening: the read-modify-write is wrapped in a
+     * sequelize.transaction() with a row lock (`lock: transaction.LOCK.UPDATE`)
+     * so a concurrent recordVerification()/upsertState() call for the same
+     * business/branch cannot interleave between the read and the write —
+     * mirrors shiftRepository.js's openShift()/closeShift() pattern of
+     * resolving `sequelize` from the resolved model.
      * @param {string} businessId
      * @param {number|null} branchId
      * @param {{verification_status, verified_by_actor_type, verified_at}} input
@@ -199,13 +270,22 @@ export class ComplianceModeStateRepository {
         if (!businessId) throw new Error('ComplianceModeStateRepository.recordVerification requires businessId.');
 
         return this.withModel(businessId, async (ComplianceModeState) => {
-            const record = await ComplianceModeState.findOne({
-                where: { business_id: businessId, branch_id: branchId }
-            });
-            if (!record) throw new ComplianceStateNotFoundError();
+            const sequelize = ComplianceModeState.sequelize;
 
-            await record.update({ verification_status, verified_by_actor_type, verified_at });
-            return this.toPlain(record);
+            return sequelize.transaction(async (transaction) => {
+                const record = await ComplianceModeState.findOne({
+                    where: { business_id: businessId, branch_id: branchId },
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                if (!record) throw new ComplianceStateNotFoundError();
+
+                await record.update(
+                    { verification_status, verified_by_actor_type, verified_at },
+                    { transaction }
+                );
+                return this.toPlain(record);
+            });
         });
     }
 
