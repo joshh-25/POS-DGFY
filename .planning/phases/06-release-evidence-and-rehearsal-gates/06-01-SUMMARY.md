@@ -161,3 +161,7 @@ None for this plan directly — `release-evidence` is operator-run on demand aga
 ---
 *Phase: 06-release-evidence-and-rehearsal-gates*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk; all task commit hashes (`b341224d`, `106c4321`, `1ece7b4b`) and the summary commit (`33c7aa6b`) verified present in git history.
