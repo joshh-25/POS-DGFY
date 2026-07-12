@@ -143,3 +143,12 @@ None - no external service configuration required. `SHIFT_STALE_THRESHOLD_MINUTE
 ---
 *Phase: 08-commerce-foundation-product-catalog-booking-shift-cash-drawe*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+- FOUND: `apps/dgfy-api/src/routes/index.js`
+- FOUND: `apps/dgfy-api/tests/integration/commerce/commerceModulesMount.test.js`
+- FOUND: `.planning/phases/08-commerce-foundation-product-catalog-booking-shift-cash-drawe/08-08-SUMMARY.md`
+- FOUND commit: `ada7aac9` (Task 1)
+- FOUND commit: `6b048fe9` (Task 2)
+- FOUND commit: `07e66cb0` (SUMMARY.md)
