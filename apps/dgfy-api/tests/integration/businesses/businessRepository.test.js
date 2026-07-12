@@ -104,11 +104,16 @@ describeIfIntegration('BusinessRepository (real MySQL, dgfy_core.businesses/busi
         ownerAccountId = account.id;
     });
 
-    afterEach(async () => {
-        await BusinessMembership.destroy({ truncate: true, force: true });
-        await Business.destroy({ truncate: true, force: true });
-        await Account.destroy({ truncate: true, force: true });
-    });
+    // Deliberately NO afterEach truncation: MySQL/InnoDB refuses to TRUNCATE
+    // a table referenced by a live FK constraint regardless of row count —
+    // truncating in child-to-parent order (BusinessMembership, then
+    // Business, then Account, as this used to do) does not help, because
+    // the FK constraint itself still exists on the now-empty child table,
+    // and business_memberships.account_id/business_id reference accounts/
+    // businesses either way. Every business_handle literal below is already
+    // unique per test case (mirrors phase4FullFlow.test.js's approach), and
+    // afterAll drops the whole per-file landlord database, so no cross-test
+    // truncation is needed.
 
     describe('create', () => {
         it('inserts a business and auto-assigns the creator as owner in one transaction (D-10)', async () => {

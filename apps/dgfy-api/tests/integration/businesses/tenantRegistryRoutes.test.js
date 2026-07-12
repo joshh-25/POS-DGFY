@@ -120,9 +120,14 @@ describeIfIntegration('Tenant registry lookup HTTP route (real MySQL, GET /busin
         });
     });
 
-    afterEach(async () => {
-        await Account.destroy({ truncate: true, force: true });
-    });
+    // Deliberately NO afterEach truncation: MySQL/InnoDB refuses to TRUNCATE
+    // a table referenced by a live FK constraint (business_memberships.
+    // account_id -> accounts.id) regardless of row count, so this always
+    // threw on the very first call once real migrations created the FK.
+    // Every business_handle/email literal below is already unique per test
+    // case within this file (mirrors phase4FullFlow.test.js's approach),
+    // and afterAll drops the whole per-file landlord database, so no
+    // cross-test truncation is needed.
 
     async function registerAndGetToken(overrides = {}) {
         const email = overrides.email || `owner-${crypto.randomUUID()}@example.com`;
