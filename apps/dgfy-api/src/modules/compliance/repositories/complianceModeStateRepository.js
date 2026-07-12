@@ -1,0 +1,237 @@
+// ComplianceModeStateRepository — Clean Architecture data access adapter for
+// the tenant-scoped `compliance_mode_state` domain (D-01, FSC-01). Mirrors
+// ../../shifts/repositories/shiftRepository.js's
+// TenantDatabaseUnavailableError/resolveDatabaseName/withModel scaffold and
+// its "resolve the model via tenantConnector.getModels(databaseName)"
+// convention (never a direct model-factory import).
+//
+// A business/branch pair carries at most one compliance_mode_state row
+// (models/Tenant/ComplianceModeState.js's unique index on
+// (business_id, branch_id) — branch_id may be null, meaning
+// business-wide/no-branch scope). getForBusinessBranch() returns null when
+// no row exists yet (a business hasn't submitted any compliance evidence);
+// upsertState() creates the row on first write (defaulting state to
+// non_compliant_active, D-02) or patches an existing row; recordVerification()
+// is a narrower patch limited to the D-04 manual review fields
+// (verification_status/verified_by_actor_type/verified_at).
+export class TenantDatabaseUnavailableError extends Error {
+    /**
+     * @param {'missing'|'provisioning'|'inactive'|'unverified'|'unreachable'|'not_configured'} reason
+     * @param {string} [message]
+     */
+    constructor(reason, message) {
+        super(message || `Tenant database unavailable for this business (${reason}).`);
+        this.name = 'TenantDatabaseUnavailableError';
+        this.reason = reason;
+    }
+}
+
+/**
+ * Thrown by recordVerification() when no compliance_mode_state row exists
+ * yet for this business/branch (evidence must be submitted — creating the
+ * row — before it can be reviewed). Usecases duck-type on
+ * `error.name === 'ComplianceStateNotFoundError'` and map it to a 404.
+ */
+export class ComplianceStateNotFoundError extends Error {
+    constructor(message) {
+        super(message || 'No compliance-mode state exists for this business/branch yet.');
+        this.name = 'ComplianceStateNotFoundError';
+    }
+}
+
+export class ComplianceModeStateRepository {
+    /**
+     * @param {{tenantConnector, businessDatabaseRegistryRepository?}} deps -
+     *   `businessDatabaseRegistryRepository` is OPTIONAL (mirrors
+     *   shiftRepository.js's doc comment) so this repository can always be
+     *   constructed; every operation fails closed with
+     *   TenantDatabaseUnavailableError('not_configured', ...) when it is
+     *   omitted, instead of throwing at construction time.
+     */
+    constructor({ tenantConnector, businessDatabaseRegistryRepository } = {}) {
+        if (!tenantConnector) {
+            throw new Error('ComplianceModeStateRepository requires a tenantConnector.');
+        }
+        this.tenantConnector = tenantConnector;
+        this.businessDatabaseRegistryRepository = businessDatabaseRegistryRepository || null;
+    }
+
+    /**
+     * Resolves businessId to a tenant `database_name`, requiring the
+     * registry row to be active AND verified (mirrors shiftRepository.js /
+     * locationRepository.js). Throws TenantDatabaseUnavailableError for
+     * every non-writable state.
+     * @param {string} businessId
+     * @returns {Promise<string>}
+     */
+    async resolveDatabaseName(businessId) {
+        if (!this.businessDatabaseRegistryRepository) {
+            throw new TenantDatabaseUnavailableError(
+                'not_configured',
+                'Tenant database registry is not configured.'
+            );
+        }
+
+        const registryEntry = await this.businessDatabaseRegistryRepository.findByBusinessId(businessId);
+        if (!registryEntry || !registryEntry.database_name) {
+            throw new TenantDatabaseUnavailableError(
+                'missing',
+                'No tenant database is registered for this business.'
+            );
+        }
+        if (registryEntry.status === 'provisioning') {
+            throw new TenantDatabaseUnavailableError('provisioning', 'Tenant database is still provisioning.');
+        }
+        if (registryEntry.status !== 'active') {
+            throw new TenantDatabaseUnavailableError('inactive', 'Tenant database is not active.');
+        }
+        if (!registryEntry.verified_at) {
+            throw new TenantDatabaseUnavailableError('unverified', 'Tenant database has not been verified.');
+        }
+
+        return registryEntry.database_name;
+    }
+
+    /**
+     * Resolves the ComplianceModeState model via
+     * TenantConnector.getModels(databaseName) — never a direct model-factory
+     * import — mirroring shiftRepository.js's resolveModel().
+     */
+    resolveModel(databaseName) {
+        return this.tenantConnector.getModels(databaseName).ComplianceModeState;
+    }
+
+    /**
+     * Resolves businessId's active/verified tenant database, then runs
+     * `fn(ComplianceModeState)` against it. Any error surfaced while
+     * resolving the model or running the query is normalized to
+     * TenantDatabaseUnavailableError('unreachable', ...) unless it is
+     * already one or a ComplianceStateNotFoundError (never double-wrapped).
+     * @param {string} businessId
+     * @param {(model: Object) => Promise<any>} fn
+     */
+    async withModel(businessId, fn) {
+        const databaseName = await this.resolveDatabaseName(businessId);
+        try {
+            const model = this.resolveModel(databaseName);
+            return await fn(model);
+        } catch (error) {
+            if (error instanceof TenantDatabaseUnavailableError || error instanceof ComplianceStateNotFoundError) {
+                throw error;
+            }
+            throw new TenantDatabaseUnavailableError(
+                'unreachable',
+                'Unable to reach the tenant database for this business.'
+            );
+        }
+    }
+
+    /**
+     * @param {string} businessId
+     * @param {number|null} [branchId]
+     * @returns {Promise<Object|null>} the compliance_mode_state row, or null
+     *   if this business/branch has never submitted evidence.
+     */
+    async getForBusinessBranch(businessId, branchId = null) {
+        if (!businessId) return null;
+        return this.withModel(businessId, async (ComplianceModeState) => {
+            const record = await ComplianceModeState.findOne({
+                where: { business_id: businessId, branch_id: branchId }
+            });
+            return record ? this.toPlain(record) : null;
+        });
+    }
+
+    /**
+     * Creates the compliance_mode_state row on first write (state defaults
+     * to non_compliant_active, D-02) or patches only the fields present on
+     * `updates` on an existing row. Never touches verification_status/
+     * verified_by_actor_type/verified_at — those are recordVerification()'s
+     * exclusive concern (D-04's manual review path).
+     * @param {string} businessId
+     * @param {number|null} branchId
+     * @param {{state?, compliance_profile?, active_policy_pack_version?}} [updates]
+     */
+    async upsertState(businessId, branchId = null, updates = {}) {
+        if (!businessId) throw new Error('ComplianceModeStateRepository.upsertState requires businessId.');
+
+        return this.withModel(businessId, async (ComplianceModeState) => {
+            let record = await ComplianceModeState.findOne({
+                where: { business_id: businessId, branch_id: branchId }
+            });
+
+            if (!record) {
+                record = await ComplianceModeState.create({
+                    business_id: businessId,
+                    branch_id: branchId,
+                    state: updates.state || 'non_compliant_active',
+                    compliance_profile: Object.prototype.hasOwnProperty.call(updates, 'compliance_profile')
+                        ? updates.compliance_profile
+                        : null,
+                    active_policy_pack_version: Object.prototype.hasOwnProperty.call(updates, 'active_policy_pack_version')
+                        ? updates.active_policy_pack_version
+                        : null
+                });
+                return this.toPlain(record);
+            }
+
+            const patch = {};
+            ['state', 'compliance_profile', 'active_policy_pack_version'].forEach((key) => {
+                if (Object.prototype.hasOwnProperty.call(updates, key)) {
+                    patch[key] = updates[key];
+                }
+            });
+            await record.update(patch);
+            return this.toPlain(record);
+        });
+    }
+
+    /**
+     * D-04 manual review path: patches ONLY the verification fields on an
+     * existing row. Throws ComplianceStateNotFoundError if no row exists yet
+     * (evidence must be submitted — via upsertState() — before it can be
+     * reviewed).
+     * @param {string} businessId
+     * @param {number|null} branchId
+     * @param {{verification_status, verified_by_actor_type, verified_at}} input
+     */
+    async recordVerification(businessId, branchId = null, { verification_status, verified_by_actor_type, verified_at }) {
+        if (!businessId) throw new Error('ComplianceModeStateRepository.recordVerification requires businessId.');
+
+        return this.withModel(businessId, async (ComplianceModeState) => {
+            const record = await ComplianceModeState.findOne({
+                where: { business_id: businessId, branch_id: branchId }
+            });
+            if (!record) throw new ComplianceStateNotFoundError();
+
+            await record.update({ verification_status, verified_by_actor_type, verified_at });
+            return this.toPlain(record);
+        });
+    }
+
+    toPlain(model) {
+        if (!model) return null;
+        const plain = typeof model.get === 'function' ? model.get({ plain: true }) : model;
+        return {
+            id: plain.id,
+            business_id: plain.business_id,
+            branch_id: plain.branch_id,
+            state: plain.state,
+            compliance_profile: plain.compliance_profile,
+            active_policy_pack_version: plain.active_policy_pack_version,
+            verification_status: plain.verification_status,
+            verified_by_actor_type: plain.verified_by_actor_type,
+            verified_at: plain.verified_at,
+            created_at: plain.created_at,
+            updated_at: plain.updated_at
+        };
+    }
+}
+
+/**
+ * @param {{tenantConnector, businessDatabaseRegistryRepository?}} [deps]
+ * @returns {ComplianceModeStateRepository}
+ */
+export const buildComplianceModeStateRepository = (deps) => new ComplianceModeStateRepository(deps);
+
+export default ComplianceModeStateRepository;

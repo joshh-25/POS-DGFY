@@ -13,16 +13,26 @@ Legacy's `compliancePolicyEngine.js` forces a `compliant_active` business into F
 - `policy/constants.js` — verbatim port of the 8 frozen enum objects from legacy's `complianceConstants.js` (D-02/D-03), plus `DOCUMENT_CONTEXTS`/`POS_OPERATIONS` hoisted from the engine file so every consumer shares one source of truth for the D-05 `requestedDocumentContext` vocabulary.
 - `policy/policyPacks.js` — verbatim port of the versioned BIR/NPC/BSP policy-pack structure (D-03: full depth, not narrowed to BIR-only).
 - `policy/policyEngine.js` — the ported `evaluateComplianceDecision` (D-05 deviation) plus its full checklist/receipt-contract/preflight support, unchanged from legacy except for the one deletion above. Pure functions only — no I/O, no model imports.
-- `repositories/complianceModeStateRepository.js`, `entities/complianceEntity.js`, `usecases/complianceUseCases.js`, `usecases/complianceGate.js`, `controllers/complianceController.js`, `routes.js` — built in Task 2 (state machine persistence, manual review/transition path, and the `assertComplianceGate` port).
+- `repositories/complianceModeStateRepository.js` — tenant-scoped data access adapter (mirrors `shiftRepository.js`'s `TenantDatabaseUnavailableError`/`resolveDatabaseName`/`withModel` scaffold), exposing `getForBusinessBranch`/`upsertState`/`recordVerification`.
+- `entities/complianceEntity.js` — `ComplianceEntity` with the `allowsFiscalChoice()` domain helper (D-05) and the stable public `toPlain()` response shape.
+- `usecases/complianceUseCases.js` — `getComplianceState` (any member), `submitComplianceEvidence` (staff-or-owner), `reviewComplianceState` (D-04 manual review/transition path).
+- `usecases/complianceGate.js` — `buildAssertComplianceGate({ repository })`, the FSC-02 hand-off contract. Loads the tenant's compliance_mode_state row, calls the ported `evaluateComplianceDecision`, and maps ALLOW -> return the decision / DENY -> throw a 403 / REQUIRES_SETUP -> throw a 409.
+- `controllers/complianceController.js`, `routes.js` — transport-only controller + `createComplianceRoutes(useCases, { authenticateAccount })` route factory (mirrors `accounts/routes.js`).
+- `index.js`'s `buildComplianceModule({ tenantConnector, businessDatabaseRegistryRepository, businessRepository })` returns `{ repository, useCases, assertComplianceGate }` — the bound gate function 08-08's composition root and Phase 9 will inject elsewhere (e.g. `buildShiftsModule({ assertComplianceGate })`).
 
-## Endpoints (Task 2, mounted under `/compliance` in 08-08)
+## D-04 manual review — why "owner" gates `reviewComplianceState`
 
-- `GET /compliance/state` — read the tenant/branch compliance-mode state (membership required)
-- `POST /compliance/evidence` — submit compliance evidence (staff/owner)
-- `POST /compliance/review` — review and transition state (verifier actor type required — manual path, D-04)
+Legacy's `COMPLIANCE_VERIFIER_ACTOR_TYPE` distinguishes `tenant_master_admin` from `platform_admin`, but neither role exists yet in this system's Accounts/Businesses APIs (landlord `business_memberships` only has `owner`/`member`). `reviewComplianceState` therefore requires the caller to be an active business owner (the closest available authority in the current role model) AND to explicitly supply a valid `verifierActorType`, which is recorded verbatim on the row (`verified_by_actor_type`) exactly as legacy's enum intends. A future phase can tighten the access-control check alone without changing `verifierActorType`'s shape.
+
+## Endpoints (mounted under `/compliance` in 08-08)
+
+- `GET /compliance/state?businessId=...&branchId=...` — read the tenant/branch compliance-mode state (membership required)
+- `POST /compliance/evidence` — submit compliance evidence, `{ businessId, branchId?, complianceProfile, activePolicyPackVersion? }` (staff-or-owner); always resets `verification_status` to `pending_review`
+- `POST /compliance/review` — review and transition state, `{ businessId, branchId?, verifierActorType, verificationStatus, newState? }` (owner + valid `verifierActorType` required — manual path, D-04; `newState` is required and reviewer-chosen when `verificationStatus === 'verified'`, never computed automatically)
 
 ## Prohibitions honored
 
 - No `backend/` writes — `compliancePolicyEngine.js`/`policyPacks.js`/`complianceConstants.js` are read-only pattern-porting sources.
 - No `DOCUMENT_CONTEXT_NOT_ALLOWED`-equivalent deny branch for `compliant_active` in `policy/policyEngine.js` (D-05).
-- No automatic compliance-mode state transition logic (D-04 — manual review/transition only, automation explicitly deferred).
+- No automatic compliance-mode state transition logic (D-04 — manual review/transition only, automation explicitly deferred); `reviewComplianceState` always requires an explicit human-supplied `newState` when verifying.
+- `assertComplianceGate` is exposed but not called from any real call site this phase (Phase 9's scope, FSC-02).

@@ -38,7 +38,11 @@ export const ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST = Object.freeze([
     // Phase 8 (08-05-PLAN.md): shifts module controller follows the same
     // locked apps/dgfy-api Clean-Architecture naming (*Controller.js, not
     // backend/'s *Handlers.js convention) as the entries above.
-    '../apps/dgfy-api/src/modules/shifts/controllers/shiftController.js'
+    '../apps/dgfy-api/src/modules/shifts/controllers/shiftController.js',
+    // Phase 8 (08-06-PLAN.md): compliance module controller follows the same
+    // locked apps/dgfy-api Clean-Architecture naming (*Controller.js, not
+    // backend/'s *Handlers.js convention) as the entries above.
+    '../apps/dgfy-api/src/modules/compliance/controllers/complianceController.js'
 ]);
 
 // apps/dgfy-api has no usecase-layer legacy-service-import exceptions yet.
