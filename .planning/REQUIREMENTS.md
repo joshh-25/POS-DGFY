@@ -89,8 +89,8 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 ### Booking
 
 - [x] **BOK-01**: Business owner can mark a Service Product as bookable, with a slot duration and branch-level concurrent capacity.
-- [ ] **BOK-02**: Consumer or staff can create a Booking against a bookable Service Product; the system blocks a Booking once branch-level capacity for that slot is reached — no individual staff calendar required.
-- [ ] **BOK-03**: A fulfilled Booking links to the Availment that completes it.
+- [x] **BOK-02**: Consumer or staff can create a Booking against a bookable Service Product; the system blocks a Booking once branch-level capacity for that slot is reached — no individual staff calendar required.
+- [x] **BOK-03**: A fulfilled Booking links to the Availment that completes it.
 
 ### POS Checkout And Payment
 
@@ -221,8 +221,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PRD-04 | Phase 8 | Complete |
 | PRD-05 | Phase 8 | Complete |
 | BOK-01 | Phase 8 | Complete |
-| BOK-02 | Phase 8 | Pending |
-| BOK-03 | Phase 8 | Pending |
+| BOK-02 | Phase 8 | Complete |
+| BOK-03 | Phase 8 | Complete |
 | SFT-01 | Phase 8 | Complete |
 | SFT-02 | Phase 8 | Complete |
 | SFT-03 | Phase 8 | Complete |

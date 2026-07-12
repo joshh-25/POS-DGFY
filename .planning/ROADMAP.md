@@ -281,7 +281,7 @@ Plans:
   4. Staff can open a shift with a declared starting cash float (one open shift per cashier+terminal enforced at the database level), close it with a computed Expected-vs-Actual cash Difference, and every cash-drawer event — including a no-sale drawer pop — is logged.
   5. A tenant/branch carries a compliance-mode state reflecting whether required fiscal paperwork is present and verified, checked through one shared policy-engine gate port rather than duplicated per surface (wired into Checkout, Shift, and receipt issuance in Phase 9).
 
-**Plans**: 6/8 plans executed
+**Plans**: 7/8 plans executed
 
 Plans:
 **Wave 1**
@@ -301,7 +301,7 @@ Plans:
 
 **Wave 4** *(blocked on 08-03 + 08-04)*
 
-- [ ] 08-07-PLAN.md — booking module: create/cancel with atomic branch-capacity guard, dual-auth cancel, reserved availment link (BOK-02, BOK-03)
+- [x] 08-07-PLAN.md — booking module: create/cancel with atomic branch-capacity guard, dual-auth cancel, reserved availment link (BOK-02, BOK-03)
 
 **Wave 5** *(blocked on all module plans)*
 
@@ -363,7 +363,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete    | 2026-07-12 |
 | 6. Release Evidence and Rehearsal Gates | 3/3 | Complete    | 2026-07-12 |
 | 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |
-| 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 6/8 | In Progress|  |
+| 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 7/8 | In Progress|  |
 | 9. POS Checkout & Payment | 0/TBD | Not started | - |
 | 10. Storefront Discovery & Online Ordering | 0/TBD | Not started | - |
 | 11. Order Fulfillment & Delivery Coordination | 0/TBD | Not started | - |
