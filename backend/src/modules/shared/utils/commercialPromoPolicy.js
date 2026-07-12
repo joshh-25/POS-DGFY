@@ -6,6 +6,9 @@ export const STOREFRONT_PROMOS_SETTING_KEY = 'storefront_promos';
 const DEFAULT_PROMO_TIMEZONE = 'Asia/Manila';
 const PROMO_TIME_24H_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const PROMO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const PROMO_CHANNELS = new Set(['storefront', 'pos']);
+const PROMO_FULFILLMENT_METHODS = new Set(['delivery', 'pickup']);
+const PROMO_ORDER_TIMINGS = new Set(['asap', 'scheduled']);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toPositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -13,6 +16,11 @@ const toPositiveInt = (value) => {
 };
 
 export const normalizePromoCode = (value) => String(value || '').trim().toUpperCase().slice(0, 40);
+
+const normalizePromoEligibilityMap = (rawValue, allowedValues) => {
+    const source = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue) ? rawValue : null;
+    return Object.fromEntries([...allowedValues].map((value) => [value, source ? source[value] !== false : true]));
+};
 
 const extractSettingValue = (setting) => (
     setting && typeof setting === 'object' && Object.prototype.hasOwnProperty.call(setting, 'value')
@@ -41,7 +49,10 @@ export const parseCommercialPromoConfig = (rawValue, meta = {}) => {
         validTimeStart: PROMO_TIME_24H_PATTERN.test(String(value.valid_time_start || '').trim()) ? String(value.valid_time_start).trim() : '',
         validTimeEnd: PROMO_TIME_24H_PATTERN.test(String(value.valid_time_end || '').trim()) ? String(value.valid_time_end).trim() : '',
         validFrom: PROMO_DATE_PATTERN.test(String(value.valid_from || '').trim()) ? String(value.valid_from).trim() : '',
-        validUntil: PROMO_DATE_PATTERN.test(String(value.valid_until || '').trim()) ? String(value.valid_until).trim() : ''
+        validUntil: PROMO_DATE_PATTERN.test(String(value.valid_until || '').trim()) ? String(value.valid_until).trim() : '',
+        channels: normalizePromoEligibilityMap(value.channels, PROMO_CHANNELS),
+        fulfillmentMethods: normalizePromoEligibilityMap(value.fulfillment_methods, PROMO_FULFILLMENT_METHODS),
+        orderTimings: normalizePromoEligibilityMap(value.order_timing, PROMO_ORDER_TIMINGS)
     };
 };
 
@@ -93,6 +104,9 @@ export const parsePublicCommercialPromos = (rawValue) => {
             valid_time_end: config.validTimeEnd,
             valid_from: config.validFrom,
             valid_until: config.validUntil,
+            channels: config.channels,
+            fulfillment_methods: config.fulfillmentMethods,
+            order_timing: config.orderTimings,
             active: true
         }));
 };
@@ -148,7 +162,15 @@ const promoError = (message, reasonCode, details = {}) => {
     });
 };
 
-export const resolveCommercialPromoApplication = ({ settings = {}, promoCode, prepared = {}, now = new Date() }) => {
+export const resolveCommercialPromoApplication = ({
+    settings = {},
+    promoCode,
+    prepared = {},
+    channel = 'storefront',
+    orderMethod = '',
+    scheduledFor = null,
+    now = new Date()
+}) => {
     const enteredPromoCode = normalizePromoCode(promoCode);
     const configs = parseCommercialPromoConfigs(settings);
     const config = configs.find((entry) => entry.promoCode === enteredPromoCode)
@@ -163,16 +185,31 @@ export const resolveCommercialPromoApplication = ({ settings = {}, promoCode, pr
     if (config.usageLimit != null && config.usedCount >= config.usageLimit) {
         promoError('Promo code has reached its usage limit.', 'PROMO_USAGE_LIMIT_REACHED', { usage_limit: config.usageLimit, used_count: config.usedCount });
     }
+    const normalizedChannel = String(channel || '').trim().toLowerCase();
+    if (!PROMO_CHANNELS.has(normalizedChannel) || config.channels[normalizedChannel] !== true) {
+        promoError('Promo code is not available for this sales channel.', 'PROMO_CHANNEL_NOT_ELIGIBLE', { channel: normalizedChannel || null });
+    }
+    if (normalizedChannel === 'storefront') {
+        const normalizedOrderMethod = String(orderMethod || '').trim().toLowerCase();
+        if (normalizedOrderMethod && (!PROMO_FULFILLMENT_METHODS.has(normalizedOrderMethod) || config.fulfillmentMethods[normalizedOrderMethod] !== true)) {
+            promoError('Promo code is not available for this fulfillment method.', 'PROMO_FULFILLMENT_METHOD_NOT_ELIGIBLE', { order_method: normalizedOrderMethod || null });
+        }
+        const timing = scheduledFor ? 'scheduled' : 'asap';
+        if (config.orderTimings[timing] !== true) {
+            promoError('Promo code is not available for this order schedule.', 'PROMO_ORDER_TIMING_NOT_ELIGIBLE', { order_timing: timing });
+        }
+    }
     const hours = normalizeStorefrontBusinessHours(settings?.storefront_hours?.value);
     const timezone = String(hours?.timezone || DEFAULT_PROMO_TIMEZONE).trim() || DEFAULT_PROMO_TIMEZONE;
-    const currentDate = zonedDate(now, timezone);
+    const eligibilityTime = scheduledFor instanceof Date && Number.isFinite(scheduledFor.getTime()) ? scheduledFor : now;
+    const currentDate = zonedDate(eligibilityTime, timezone);
     if (config.validUntil && currentDate > config.validUntil) {
         promoError('Promo code has expired.', 'PROMO_EXPIRED', { valid_until: config.validUntil });
     }
     if (config.validFrom && currentDate < config.validFrom) {
         promoError('Promo code is not active yet.', 'PROMO_NOT_STARTED', { valid_from: config.validFrom });
     }
-    if (config.validTimeStart && config.validTimeEnd && !isActiveTime({ now, start: config.validTimeStart, end: config.validTimeEnd, timezone })) {
+    if (config.validTimeStart && config.validTimeEnd && !isActiveTime({ now: eligibilityTime, start: config.validTimeStart, end: config.validTimeEnd, timezone })) {
         promoError('Promo code is outside its valid time window.', 'PROMO_TIME_RANGE_BLOCKED');
     }
     const targets = new Set(config.targetItemIds);

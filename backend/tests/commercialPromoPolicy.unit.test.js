@@ -103,4 +103,51 @@ describe('commercial promo authoritative allocations', () => {
         ]);
         expect(result.lineAllocations.reduce((sum, line) => sum + line.discount_amount, 0)).toBeCloseTo(result.discountAmount, 4);
     });
+
+    test('uses the scheduled fulfillment time and selected fulfillment method for storefront promo eligibility', () => {
+        const settings = {
+            storefront_promos: {
+                value: [{
+                    active: true,
+                    promo_code: 'PICKUPLUNCH',
+                    discount_percent: 20,
+                    fulfillment_methods: { delivery: false, pickup: true },
+                    order_timing: { asap: true, scheduled: true },
+                    valid_time_start: '10:00',
+                    valid_time_end: '14:00'
+                }]
+            }
+        };
+        const prepared = {
+            subtotalAmount: 100,
+            preparedLines: [{ item_id: 1, quantity: 1, sale_price: 100, line_subtotal: 100 }]
+        };
+
+        expect(() => resolveCommercialPromoApplication({
+            settings,
+            promoCode: 'PICKUPLUNCH',
+            prepared,
+            channel: 'storefront',
+            orderMethod: 'delivery',
+            scheduledFor: new Date('2026-07-12T11:00:00+08:00')
+        })).toThrow('Promo code is not available for this fulfillment method.');
+
+        expect(() => resolveCommercialPromoApplication({
+            settings,
+            promoCode: 'PICKUPLUNCH',
+            prepared,
+            channel: 'storefront',
+            orderMethod: 'pickup',
+            scheduledFor: new Date('2026-07-12T15:00:00+08:00')
+        })).toThrow('Promo code is outside its valid time window.');
+
+        expect(resolveCommercialPromoApplication({
+            settings,
+            promoCode: 'PICKUPLUNCH',
+            prepared,
+            channel: 'storefront',
+            orderMethod: 'pickup',
+            scheduledFor: new Date('2026-07-12T11:00:00+08:00')
+        })).toEqual(expect.objectContaining({ applied: true, discountAmount: 20 }));
+    });
 });

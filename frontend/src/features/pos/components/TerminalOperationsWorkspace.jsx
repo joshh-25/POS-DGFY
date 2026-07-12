@@ -329,8 +329,15 @@ const createBlankStorefrontPromo = () => ({
   valid_from: '',
   valid_until: '',
   target_item_ids: [],
+  channels: { storefront: true, pos: true },
+  fulfillment_methods: { delivery: true, pickup: true },
+  order_timing: { asap: true, scheduled: true },
   active: false
 });
+const normalizePromoEligibilityMap = (value, keys) => {
+  const source = isPlainObject(value) ? value : {};
+  return Object.fromEntries(keys.map((key) => [key, source[key] !== false]));
+};
 const normalizeStorefrontPromoConfig = (raw = {}) => {
   const promo = isPlainObject(raw) ? raw : {};
   const normalizeDateOnly = (value) => String(value || '').trim().slice(0, 10);
@@ -349,6 +356,9 @@ const normalizeStorefrontPromoConfig = (raw = {}) => {
     valid_from: normalizeDateOnly(promo.valid_from),
     valid_until: normalizeDateOnly(promo.valid_until),
     target_item_ids: normalizePositiveIntegerList(promo.target_item_ids),
+    channels: normalizePromoEligibilityMap(promo.channels, ['storefront', 'pos']),
+    fulfillment_methods: normalizePromoEligibilityMap(promo.fulfillment_methods, ['delivery', 'pickup']),
+    order_timing: normalizePromoEligibilityMap(promo.order_timing, ['asap', 'scheduled']),
     active: promo.active === true
   };
 };
@@ -1540,6 +1550,11 @@ function ItemsWorkspace({
   );
 
   const openEdit = (item) => {
+    const savedFolderId = Number(item?.folder_id || 0);
+    const savedFolderName = String(item?.folder?.name || item?.product_folder || '').trim();
+    const matchedActiveCategory = savedFolderId > 0
+      ? foodCategoryOptions.find((option) => Number(option?.folder_id) === savedFolderId)
+      : foodCategoryOptions.find((option) => normalizeFolderNameKey(option?.name) === normalizeFolderNameKey(savedFolderName));
     setEditingItemId(item?.item_id || null);
     setEditForm({
       name: String(item?.name || ''),
@@ -1549,9 +1564,10 @@ function ItemsWorkspace({
       pos_always_available: item?.pos_always_available === true,
       senior_pwd_discount_eligible: item?.senior_pwd_discount_eligible === true,
       description: String(item?.description || ''),
-      pos_category: item?.folder_id
-        ? createFolderFilterValue({ folder_id: item.folder_id, name: item?.folder?.name || item?.product_folder })
-        : ''
+      // Item lists do not always hydrate the nested folder name. Resolve by saved ID first.
+      pos_category: matchedActiveCategory?.value || (savedFolderId
+        ? createFolderFilterValue({ folder_id: savedFolderId, name: item?.folder?.name || item?.product_folder })
+        : '')
     });
   };
 
@@ -3442,6 +3458,9 @@ function SettingsWorkspace({
     storefrontPromoValidFrom: '',
     storefrontPromoValidUntil: '',
     storefrontPromoTargetItemIds: [],
+    storefrontPromoChannels: { storefront: true, pos: true },
+    storefrontPromoFulfillmentMethods: { delivery: true, pickup: true },
+    storefrontPromoOrderTiming: { asap: true, scheduled: true },
     storefrontPromoActive: false,
     storefrontPromoId: '',
     storefrontPromoEditingId: '',
@@ -3509,6 +3528,9 @@ function SettingsWorkspace({
       valid_from: storefrontForm.storefrontPromoValidFrom,
       valid_until: storefrontForm.storefrontPromoValidUntil,
       target_item_ids: storefrontForm.storefrontPromoTargetItemIds,
+      channels: storefrontForm.storefrontPromoChannels,
+      fulfillment_methods: storefrontForm.storefrontPromoFulfillmentMethods,
+      order_timing: storefrontForm.storefrontPromoOrderTiming,
       active: storefrontForm.storefrontPromoActive
     });
     const editingId = String(storefrontForm.storefrontPromoEditingId || currentPromo.id || '').trim();
@@ -3758,6 +3780,9 @@ function SettingsWorkspace({
         storefrontPromoValidFrom: String(selectedStorefrontPromo.valid_from || '').slice(0, 10),
         storefrontPromoValidUntil: String(selectedStorefrontPromo.valid_until || '').slice(0, 10),
         storefrontPromoTargetItemIds: normalizePositiveIntegerList(selectedStorefrontPromo.target_item_ids),
+        storefrontPromoChannels: normalizePromoEligibilityMap(selectedStorefrontPromo.channels, ['storefront', 'pos']),
+        storefrontPromoFulfillmentMethods: normalizePromoEligibilityMap(selectedStorefrontPromo.fulfillment_methods, ['delivery', 'pickup']),
+        storefrontPromoOrderTiming: normalizePromoEligibilityMap(selectedStorefrontPromo.order_timing, ['asap', 'scheduled']),
         storefrontPromoActive: selectedStorefrontPromo.active === true,
         storefrontFollowEnabled: settingsPayload?.storefront_follow_enabled?.value === true,
         storefrontShareEnabled: settingsPayload?.storefront_share_enabled?.value === true
@@ -4169,6 +4194,9 @@ function SettingsWorkspace({
     valid_from: String(form.storefrontPromoValidFrom || '').trim(),
     valid_until: String(form.storefrontPromoValidUntil || '').trim(),
     target_item_ids: normalizePositiveIntegerList(form.storefrontPromoTargetItemIds),
+    channels: normalizePromoEligibilityMap(form.storefrontPromoChannels, ['storefront', 'pos']),
+    fulfillment_methods: normalizePromoEligibilityMap(form.storefrontPromoFulfillmentMethods, ['delivery', 'pickup']),
+    order_timing: normalizePromoEligibilityMap(form.storefrontPromoOrderTiming, ['asap', 'scheduled']),
     active: form.storefrontPromoActive === true
   }), [storefrontForm]);
 
@@ -4201,6 +4229,9 @@ function SettingsWorkspace({
     storefrontPromoValidFrom: String(promo?.valid_from || ''),
     storefrontPromoValidUntil: String(promo?.valid_until || ''),
     storefrontPromoTargetItemIds: normalizePositiveIntegerList(promo?.target_item_ids),
+    storefrontPromoChannels: normalizePromoEligibilityMap(promo?.channels, ['storefront', 'pos']),
+    storefrontPromoFulfillmentMethods: normalizePromoEligibilityMap(promo?.fulfillment_methods, ['delivery', 'pickup']),
+    storefrontPromoOrderTiming: normalizePromoEligibilityMap(promo?.order_timing, ['asap', 'scheduled']),
     storefrontPromoActive: promo?.active === true
   }), []);
 
@@ -5971,6 +6002,44 @@ function SettingsWorkspace({
                   </Button>
                 ) : null}
                 <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoActive === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoActive: event.target.checked }))} />
+              </div>
+            </div>
+            <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+              <div className="space-y-2">
+                <p className="text-[12px] font-semibold text-slate-700">Sales Channel</p>
+                {[
+                  ['storefront', 'Storefront'],
+                  ['pos', 'POS Counter']
+                ].map(([key, label]) => (
+                  <label key={`promo-channel-${key}`} className="flex items-center gap-2 text-[12px] text-slate-700">
+                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoChannels?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoChannels: { ...current.storefrontPromoChannels, [key]: event.target.checked } }))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <p className="text-[12px] font-semibold text-slate-700">Storefront Fulfillment</p>
+                {[
+                  ['delivery', 'Delivery'],
+                  ['pickup', 'Pickup']
+                ].map(([key, label]) => (
+                  <label key={`promo-fulfillment-${key}`} className="flex items-center gap-2 text-[12px] text-slate-700">
+                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoFulfillmentMethods?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoFulfillmentMethods: { ...current.storefrontPromoFulfillmentMethods, [key]: event.target.checked } }))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <p className="text-[12px] font-semibold text-slate-700">Order Timing</p>
+                {[
+                  ['asap', 'ASAP'],
+                  ['scheduled', 'Scheduled']
+                ].map(([key, label]) => (
+                  <label key={`promo-timing-${key}`} className="flex items-center gap-2 text-[12px] text-slate-700">
+                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoOrderTiming?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoOrderTiming: { ...current.storefrontPromoOrderTiming, [key]: event.target.checked } }))} />
+                    {label}
+                  </label>
+                ))}
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-2">

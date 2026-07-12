@@ -27,9 +27,15 @@ describe('POS terminal responsive scroll contracts', () => {
   it('keeps the terminal shell viewport-safe without restoring hard xl screen locks', () => {
     expect(terminalLayoutContent).toContain('min-h-[100dvh]');
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
+    expect(terminalLayoutContent).toContain('sticky top-0 z-40 shrink-0 border-b border-pos');
     expect(terminalLayoutContent).toContain("const shellLayoutClassName = IS_DGFY_POS_SURFACE");
     expect(terminalLayoutContent).toContain("? `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`");
     expect(terminalLayoutContent).toContain(": `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`");
+  });
+
+  it('keeps the mobile navigation control available in the persistent header', () => {
+    expect(terminalLayoutContent).toContain("aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}");
+    expect(terminalLayoutContent).toContain('setMobileNavOpen(true);');
   });
 
   it('keeps the workspace pane scrollable inside the fixed shell', () => {

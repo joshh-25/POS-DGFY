@@ -2179,7 +2179,13 @@ export const buildCheckoutPosUseCase = ({
                     promo_code: String(payload.governed_discount.promo_code || '').trim().toUpperCase() || null,
                     eligible_item_ids: [...new Set((payload.governed_discount.eligible_item_ids || [])
                         .map((itemId) => parsePositiveInt(itemId))
-                        .filter(Boolean))]
+                        .filter(Boolean))],
+                    eligible_items: (payload.governed_discount.eligible_items || [])
+                        .map((entry) => ({
+                            item_id: parsePositiveInt(entry?.item_id),
+                            eligible_quantity: round4(entry?.eligible_quantity)
+                        }))
+                        .filter((entry) => entry.item_id && entry.eligible_quantity > 0)
                 }
                 : null,
             lines: lines
@@ -2554,6 +2560,7 @@ export const buildCheckoutPosUseCase = ({
                     preparedLines,
                     subtotalAmount,
                     settings: discountSettings,
+                    orderMethod: normalizedOrderMethod,
                     findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
                     findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction })
                 })
