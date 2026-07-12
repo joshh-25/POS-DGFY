@@ -1,7 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
-const { buildVerdictPayload, isBoundaryChanged } = require('./gate-release-dgfy-evidence');
+const { buildVerdictPayload, isBoundaryChanged, readLatestReport } = require('./gate-release-dgfy-evidence');
 
 /**
  * 06-03: proves the orchestrator's pure, DB-free logic directly against the
@@ -101,6 +104,43 @@ test('isBoundaryChanged: true when only one of several changed files matches a b
     isBoundaryChanged(['frontend/src/App.jsx', 'backend/src/modules/tenancy/service.js', 'README.md']),
     true
   );
+});
+
+/**
+ * CR-01 regression: reportWriter.js's `buildReportFileName` sanitizes the
+ * command name with `.replace(/[^a-z0-9-]+/gi, '-')`, which rewrites every
+ * underscore to a hyphen (`migration_verification` -> `migration-verification`,
+ * `tenant_drift` -> `tenant-drift`). The real files on disk therefore end in
+ * the HYPHENATED suffix, never the underscore variant. This test writes a
+ * file using that exact real-world naming convention and asserts
+ * `readLatestReport` finds it when queried with the hyphenated suffix —
+ * this must fail against the old (buggy) underscore lookup and pass against
+ * the CR-01 fix.
+ */
+test('readLatestReport: finds a report written with the real sanitized (hyphenated) filename convention', () => {
+  const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-release-dgfy-evidence-test-'));
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const migrationVerificationFile = path.join(evidenceDir, `${timestamp}-migration-verification.json`);
+    const tenantDriftFile = path.join(evidenceDir, `${timestamp}-tenant-drift.json`);
+    fs.writeFileSync(migrationVerificationFile, JSON.stringify({ summary: { ok: true, target_count: 3 } }));
+    fs.writeFileSync(tenantDriftFile, JSON.stringify({ summary: { ok: true, target_count: 3 } }));
+
+    const migrationVerificationReport = readLatestReport(evidenceDir, 'migration-verification');
+    const tenantDriftReport = readLatestReport(evidenceDir, 'tenant-drift');
+
+    assert.ok(migrationVerificationReport, 'readLatestReport must find the real -migration-verification.json file');
+    assert.equal(migrationVerificationReport.summary.ok, true);
+    assert.ok(tenantDriftReport, 'readLatestReport must find the real -tenant-drift.json file');
+    assert.equal(tenantDriftReport.summary.ok, true);
+
+    // The bug this regresses against: the old underscore lookup never
+    // matches these real (hyphenated) filenames.
+    assert.equal(readLatestReport(evidenceDir, 'migration_verification'), null);
+    assert.equal(readLatestReport(evidenceDir, 'tenant_drift'), null);
+  } finally {
+    fs.rmSync(evidenceDir, { recursive: true, force: true });
+  }
 });
 
 test('requiring this module does not execute the real gate (no spawnSync side effects)', () => {

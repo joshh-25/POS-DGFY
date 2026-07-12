@@ -174,8 +174,8 @@ function main() {
 
   const releaseEvidenceReport = readLatestReport(evidenceDir, 'release-evidence');
   const noTargets = Boolean(releaseEvidenceReport && releaseEvidenceReport.no_targets);
-  const migrationVerificationReport = readLatestReport(evidenceDir, 'migration_verification');
-  const tenantDriftReport = readLatestReport(evidenceDir, 'tenant_drift');
+  const migrationVerificationReport = readLatestReport(evidenceDir, 'migration-verification');
+  const tenantDriftReport = readLatestReport(evidenceDir, 'tenant-drift');
 
   function addEvidenceGate(name, report) {
     if (!migrationCommandOk) {
@@ -264,4 +264,5 @@ if (require.main === module) main();
 module.exports = {
   buildVerdictPayload,
   isBoundaryChanged,
+  readLatestReport,
 };
