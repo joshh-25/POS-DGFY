@@ -3,7 +3,7 @@ status: testing
 phase: 04-backend-accounts-businesses-and-tenancy-foundation
 source: [04-VERIFICATION.md]
 started: 2026-07-12T01:22:43Z
-updated: 2026-07-12T03:20:00Z
+updated: 2026-07-12T03:45:00Z
 ---
 
 ## Current Test
@@ -13,7 +13,7 @@ name: Run the phase's other previously-gated integration/E2E suites (business/st
 expected: |
   All suites pass using the shared `tenantSchemaProvisioning.js` in-process stand-in (whose doc comment
   now correctly cites the shipped `activate-tenant` CLI).
-awaiting: user re-run of the 5 remaining suites after fix 34108f0e; locationRoutes.test.js needs a scoping decision (see Gaps) before it can pass
+awaiting: user re-run of all 5 suites (businessFlows, businessValidation, locationRoutes, tenantSessionFlows, tenantSessionValidation) after fixes 34108f0e/83b7bdf5/bf10bdcf; also 4 more files outside Test 2's original list that shared the same truncate/FK bug (businessRoutes, businessRepository, tenantRegistryRoutes, tenantSessionRoutes — fixed in 1a5f4543, not part of Test 2's pass/fail but worth a spot-check)
 
 ## Tests
 
@@ -37,8 +37,8 @@ result: issue
 reported: "Round 1: tests/e2e/phase4FullFlow.test.js Journeys 1 & 4 failed (see resolved gaps below) — user confirmed both fixed on re-run (5/5 journeys pass). Round 2: ran the other 5 suites (businessFlows, businessValidation, locationRoutes, tenantSessionFlows, tenantSessionValidation) — all 5 failed near-totally (61 of 66 tests), almost every failure at the file's own afterEach, plus locationRoutes.test.js additionally failing its very first assertion (Expected 201, Received 404)."
 severity: blocker
 root_cause: "Round 1 (resolved): (1) Journey 1 — BusinessDatabaseRegistry.verified_at had no defaultValue, so JSON.stringify dropped the undefined attribute from the response. (2) Journey 4 — hardcoded staffAccountId:1 with no staff_accounts row ever seeded in that journey's tenant database, an FK violation. Round 2 (partially resolved): (3) ALL FIVE files share an afterEach calling Account.destroy({truncate:true, force:true}) — MySQL/InnoDB unconditionally refuses to TRUNCATE a table referenced by a live FK constraint (business_memberships.account_id -> accounts.id) regardless of row count, so this always threw, even on the very first test. (4) locationRoutes.test.js ADDITIONALLY never wires a businessDatabaseRegistryModel into buildBusinessesModule() — no registry row is ever created for its businesses, and the current (Wave 4+) locationUseCases.js fails closed with 404 NO_TENANT_DATABASE whenever no registry row exists. This file predates that gate (Wave 3.5) and was never updated to match — every one of its ~15 tests needs the same registry+tenant-activation wiring already used elsewhere."
-fix_applied: "(1) c9d35949, (2) 05d1ebde — both confirmed passing by user. (3) Removed the doomed afterEach truncation from all 5 files (34108f0e for 4 files, 83b7bdf5 for locationRoutes.test.js), matching phase4FullFlow.test.js's proven strategy of per-test-unique literals + a single afterAll DROP DATABASE (verified none of the existing literals collide within a run). (4) NOT yet fixed — flagged for the user: rewiring locationRoutes.test.js's ~15 tests to provision+activate a real tenant per business is a substantially larger change than the other fixes in this session, and needs a scoping decision before proceeding."
-status: awaiting user re-run of businessFlows/businessValidation/tenantSessionFlows/tenantSessionValidation (expected to pass) and a decision on locationRoutes.test.js's larger rewiring need
+fix_applied: "(1) c9d35949, (2) 05d1ebde — both confirmed passing by user. (3) Removed the doomed afterEach truncation from all 5 files (34108f0e for 4 files, 83b7bdf5 for locationRoutes.test.js), matching phase4FullFlow.test.js's proven strategy of per-test-unique literals + a single afterAll DROP DATABASE (verified none of the existing literals collide within a run). User also asked for the same fix in 4 more files outside this test's original list that shared the identical bug (businessRoutes.test.js, businessRepository.test.js, tenantRegistryRoutes.test.js, tenantSessionRoutes.test.js) — done in 1a5f4543. (4) locationRoutes.test.js rewired per user's decision ('fix it now'): createBusiness() now runs provisionAndActivateTenantDatabase() after HTTP creation, mirroring businessValidation.test.js's proven pattern — committed bf10bdcf. All ~15 tests route through this one helper so no test bodies needed changes. Could not be verified against real MySQL in this sandbox (no DB access)."
+status: awaiting user re-run of all 5 suites in this test's command; the 4 extra files (businessRoutes/businessRepository/tenantRegistryRoutes/tenantSessionRoutes) are outside this test's scope but share commit 1a5f4543's fix and are worth a spot-check too
 
 ## Summary
 
@@ -84,9 +84,17 @@ blocked: 0
   missing: []
 
 - truth: "locationRoutes.test.js's location-creation tests succeed against a real, activated tenant database (Test 2, suite 3)."
-  status: open
-  reason: "This file's buildBusinessesModule() call never wires a businessDatabaseRegistryModel, so no business_database_registry row is ever created for any business it creates. The current (Wave 4+) locationUseCases.js fails closed with 404 NO_TENANT_DATABASE whenever no registry row exists for the business — this file predates that gate (Wave 3.5, when location creation was unconditional) and was never updated. Fixing this properly means rewiring the file's setup to provision+activate a real tenant per business (mirroring businessValidation.test.js/tenantSessionFlows.test.js's existing pattern) across all ~15 of its test cases — a substantially larger change than anything else fixed in this session. Flagged for a scoping decision rather than fixed unilaterally."
+  status: resolved
+  reason: "This file's buildBusinessesModule() call never wired a businessDatabaseRegistryModel, so no business_database_registry row was ever created for any business it creates, and the current (Wave 4+) locationUseCases.js fails closed with 404 NO_TENANT_DATABASE whenever no registry row exists. This file predated that gate (Wave 3.5, when location creation was unconditional) and was never updated. User chose 'fix it now': createBusiness() rewired to run provisionAndActivateTenantDatabase() after HTTP creation, mirroring businessValidation.test.js's proven pattern (bf10bdcf). All ~15 tests route through this one helper, so no test bodies changed. Not verifiable against real MySQL in this sandbox (no DB access) — awaiting user re-run."
   severity: blocker
   test: 2
   artifacts: [apps/dgfy-api/tests/integration/businesses/locationRoutes.test.js]
-  missing: ["businessDatabaseRegistryModel wiring + tenant provisioning/activation in this file's beforeAll and/or per-test setup"]
+  missing: []
+
+- truth: "businessRoutes.test.js, businessRepository.test.js, tenantRegistryRoutes.test.js, and tenantSessionRoutes.test.js (outside this test's original suite list, but sharing the identical bug) also run to completion against real MySQL without failing at cleanup."
+  status: resolved
+  reason: "Same TRUNCATE-vs-FK-constraint issue as the 5 in-scope files, found by checking every other dgfy-api integration file that both truncates accounts and defines/syncs BusinessMembership in its own per-file Sequelize instance. businessRepository.test.js additionally tried truncating child-to-parent (BusinessMembership, then Business, then Account) — confirmed this does not help, since the restriction is based on the FK constraint's existence, not on whether the referencing table has rows. Removed all four afterEach truncations (1a5f4543); the 5 accountXxx.test.js files were checked and excluded (they never sync BusinessMembership, so no FK exists in their isolated per-file database). Not part of Test 2's pass/fail criteria but worth a spot-check by the user."
+  severity: blocker
+  test: 2
+  artifacts: [apps/dgfy-api/tests/integration/businesses/businessRoutes.test.js, apps/dgfy-api/tests/integration/businesses/businessRepository.test.js, apps/dgfy-api/tests/integration/businesses/tenantRegistryRoutes.test.js, apps/dgfy-api/tests/integration/tenancy/tenantSessionRoutes.test.js]
+  missing: []
