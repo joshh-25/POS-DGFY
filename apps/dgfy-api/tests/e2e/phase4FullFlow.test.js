@@ -1,4 +1,9 @@
 import crypto from 'crypto';
+import { execFileSync } from 'child_process';
+import { promises as fsPromises } from 'fs';
+import os from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import request from 'supertest';
 import express from 'express';
 import bcrypt from 'bcryptjs';
@@ -11,6 +16,15 @@ import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } 
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../src/modules/businesses/index.js';
 import { TenantConnector } from '../../src/infra/tenantConnector.js';
 import { provisionAndActivateTenantDatabase } from '../helpers/tenantSchemaProvisioning.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// 04-09 gap closure: path to the shipped migration-runner CLI, invoked via
+// child_process (never imported in-process) so Journey 5 respects the
+// runner<->dgfy-api package boundary while proving the real operator
+// activation mechanism.
+const migrationRunnerRoot = path.resolve(__dirname, '../../../dgfy-migration-runner');
+const MIGRATION_RUNNER_CLI_PATH = path.join(migrationRunnerRoot, 'src', 'cli.js');
 
 /**
  * Wave 5 (04-05-PLAN.md, Task 6) — Phase 4 full end-to-end user journeys,
@@ -520,5 +534,100 @@ describeIfIntegration('Phase 4 full end-to-end user journeys (real MySQL landlor
 
             expect(userAId).not.toBe(userBId);
         });
+    });
+
+    describe('Journey 5: Gap Closure (04-09) — operator activation via the shipped activate-tenant CLI', () => {
+        /**
+         * 04-09 gap closure (API-02/API-03): unlike every journey above,
+         * which uses provisionTenantForBusiness() (the in-process
+         * provisionAndActivateTenantDatabase test-helper stand-in), this
+         * journey drives the operator handoff through the SHIPPED
+         * migration-runner `activate-tenant` CLI as a real subprocess — the
+         * direct proof that the previously-unreachable SC2/SC3 flow becomes
+         * reachable through the real, production mechanism, not just a test
+         * fixture.
+         */
+        it('spawns the real activate-tenant CLI and turns a pre-handoff 503 tenant write into a post-handoff 201', async () => {
+            const { token } = await registerAndGetToken({ email: 'owner5@phase4test.com', first_name: 'Journey5Owner' });
+
+            const createResponse = await request(app)
+                .post('/businesses')
+                .set('Authorization', `Bearer ${token}`)
+                .send({ legal_name: 'Journey5 Legal', display_name: 'Journey5 Store', business_handle: 'test-business-5' });
+            expect(createResponse.status).toBe(201);
+            const businessId = createResponse.body.data.business.id;
+            expect(createResponse.body.data.tenant_registry.status).toBe('provisioning');
+
+            // Pre-handoff: a tenant-scoped write fails closed (503) — no
+            // activate-tenant run has happened yet for this business.
+            const preHandoffLocation = await request(app)
+                .post(`/businesses/${businessId}/locations`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ name: 'Too Early Branch', address_line: '1 Too Early St' });
+            expect(preHandoffLocation.status).toBe(503);
+
+            const registryEntry = await businessDatabaseRegistryRepository.findByBusinessId(businessId);
+            expect(registryEntry).toBeTruthy();
+            const { database_name: databaseName } = registryEntry;
+            provisionedTenantDbNames.push(databaseName);
+
+            // Invoke the SHIPPED migration-runner CLI as a real subprocess —
+            // never imported in-process — against the SAME disposable MySQL
+            // instance this suite already owns.
+            const cliReportDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'dgfy-migration-runner-e2e-cli-'));
+            const cliEnv = {
+                ...process.env,
+                RUNTIME_MODE: 'development',
+                SOURCE_DB_HOST: ADMIN_DB_CONFIG.host,
+                SOURCE_DB_PORT: String(ADMIN_DB_CONFIG.port),
+                SOURCE_DB_USER: ADMIN_DB_CONFIG.user,
+                SOURCE_DB_PASSWORD: ADMIN_DB_CONFIG.password,
+                SOURCE_DB_NAME: landlordDbName,
+                TARGET_DB_HOST: ADMIN_DB_CONFIG.host,
+                TARGET_DB_PORT: String(ADMIN_DB_CONFIG.port),
+                TARGET_DB_USER: ADMIN_DB_CONFIG.user,
+                TARGET_DB_PASSWORD: ADMIN_DB_CONFIG.password,
+                TARGET_DB_NAME: landlordDbName,
+                MIGRATION_ACTOR: 'phase4-e2e-activate-tenant-cli',
+                REPORT_DIR: cliReportDir
+            };
+
+            let cliError = null;
+            try {
+                execFileSync(
+                    'node',
+                    [MIGRATION_RUNNER_CLI_PATH, 'activate-tenant', '--database-name', databaseName],
+                    { env: cliEnv, encoding: 'utf8' }
+                );
+            } catch (error) {
+                cliError = error;
+            } finally {
+                await fsPromises.rm(cliReportDir, { recursive: true, force: true });
+            }
+            if (cliError) {
+                // eslint-disable-next-line no-console
+                console.error(
+                    '[phase4FullFlow.test.js] activate-tenant CLI subprocess failed:',
+                    cliError.stdout,
+                    cliError.stderr
+                );
+            }
+            expect(cliError).toBeNull();
+
+            // Post-handoff: the exact same write now succeeds (2xx, not 503)
+            // — the observable proof that the real mechanism reaches the
+            // previously-unreachable SC2/SC3 flow.
+            const postHandoffLocation = await request(app)
+                .post(`/businesses/${businessId}/locations`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ name: 'Real Branch', address_line: '123 Real St' });
+            expect(postHandoffLocation.status).toBe(201);
+
+            const activateSession = await request(app)
+                .post(`/businesses/${businessId}/activate-session`)
+                .set('Authorization', `Bearer ${token}`);
+            expect(activateSession.status).toBe(200);
+            expect(activateSession.body.data.tenant_database).toBe(databaseName);
+        }, 60000);
     });
 });

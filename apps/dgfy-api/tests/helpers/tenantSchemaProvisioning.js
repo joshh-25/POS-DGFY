@@ -14,14 +14,19 @@ import { Sequelize } from 'sequelize';
  * applies + verifies the tenant schema for that exact `database_name`, then
  * flips the registry to `active`/`verified`.
  *
- * Every DB-backed gated suite in this phase needs a test-setup stand-in for
- * that human/CI-operator handoff. This helper is that stand-in, used by
- * businessFlows.test.js, businessValidation.test.js, tenantSessionFlows.
- * test.js, tenantSessionValidation.test.js, and phase4FullFlow.test.js
- * (04-08-PLAN.md's Task 2 `<files>` list) so the exact same real-migration +
- * real-verification behavior is exercised consistently across all five
- * suites, instead of five independently-drifting copies of ad hoc
- * `model.sync({force:true})` calls.
+ * 04-09 gap closure: that operator/migration-runner handoff now SHIPS as a
+ * real, production CLI command — `activate-tenant --database-name=<name>`
+ * in apps/dgfy-migration-runner (src/commands/activateTenant.js). This
+ * helper is a fast, IN-PROCESS CI stand-in for that shipped command (used
+ * by businessFlows.test.js, businessValidation.test.js,
+ * tenantSessionFlows.test.js, tenantSessionValidation.test.js, and four of
+ * phase4FullFlow.test.js's five journeys) so the exact same real-migration +
+ * real-verification behavior is exercised consistently across those suites
+ * without spawning a subprocess for every gated test — it is NOT a stand-in
+ * for an unbuilt mechanism. phase4FullFlow.test.js's Journey 5 additionally
+ * proves the real subprocess path by spawning the shipped `activate-tenant`
+ * CLI directly via `child_process`, closing the loop from test fixture to
+ * production command.
  *
  * IMPORTANT correctness fix this helper embodies (found during Task 2,
  * see 04-08-SUMMARY.md's Deviations): every pre-existing gated suite in this

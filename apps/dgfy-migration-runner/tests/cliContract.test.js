@@ -8,10 +8,10 @@ const __dirname = dirname(__filename);
 const CLI_PATH = join(__dirname, '..', 'src', 'cli.js');
 
 describe('CLI --help output (real child-process invocation)', () => {
-  test('--help stdout lists all six commands', () => {
+  test('--help stdout lists all seven commands', () => {
     const stdout = execFileSync('node', [CLI_PATH, '--help'], { encoding: 'utf8' });
 
-    ['schema', 'data', 'verify', 'status', 'rollback-plan'].forEach((command) => {
+    ['schema', 'data', 'verify', 'status', 'rollback-plan', 'activate-tenant'].forEach((command) => {
       expect(stdout).toContain(command);
     });
   });
@@ -37,6 +37,7 @@ describe('CLI dispatch to command handlers (mocked)', () => {
   const mockRunVerify = jest.fn().mockResolvedValue({});
   const mockRunStatus = jest.fn().mockResolvedValue({});
   const mockRunRollbackPlan = jest.fn().mockResolvedValue({});
+  const mockRunActivateTenant = jest.fn().mockResolvedValue({});
 
   beforeEach(() => {
     jest.resetModules();
@@ -46,6 +47,7 @@ describe('CLI dispatch to command handlers (mocked)', () => {
     mockRunVerify.mockClear();
     mockRunStatus.mockClear();
     mockRunRollbackPlan.mockClear();
+    mockRunActivateTenant.mockClear();
 
     jest.unstable_mockModule('../src/commands/schema.js', () => ({
       runSchemaMigrate: mockRunSchemaMigrate
@@ -62,6 +64,9 @@ describe('CLI dispatch to command handlers (mocked)', () => {
     }));
     jest.unstable_mockModule('../src/commands/rollbackPlan.js', () => ({
       runRollbackPlan: mockRunRollbackPlan
+    }));
+    jest.unstable_mockModule('../src/commands/activateTenant.js', () => ({
+      runActivateTenant: mockRunActivateTenant
     }));
   });
 
@@ -84,5 +89,31 @@ describe('CLI dispatch to command handlers (mocked)', () => {
     await program.parseAsync(['node', 'cli.js', 'data', 'apply', '--confirm-destructive']);
 
     expect(mockRunDataApply).toHaveBeenCalledWith({ confirmDestructive: true });
+  });
+
+  test("argv ['activate-tenant','--database-name','dgfy_business_test'] calls runActivateTenant with { databaseName: 'dgfy_business_test', confirmDestructive: false }", async () => {
+    const { buildProgram } = await import('../src/cli.js');
+    const program = buildProgram();
+
+    await program.parseAsync(['node', 'cli.js', 'activate-tenant', '--database-name', 'dgfy_business_test']);
+
+    expect(mockRunActivateTenant).toHaveBeenCalledWith({
+      databaseName: 'dgfy_business_test',
+      confirmDestructive: false
+    });
+  });
+
+  test("argv ['activate-tenant','--database-name','dgfy_business_test','--confirm-destructive'] calls runActivateTenant with confirmDestructive: true", async () => {
+    const { buildProgram } = await import('../src/cli.js');
+    const program = buildProgram();
+
+    await program.parseAsync([
+      'node', 'cli.js', 'activate-tenant', '--database-name', 'dgfy_business_test', '--confirm-destructive'
+    ]);
+
+    expect(mockRunActivateTenant).toHaveBeenCalledWith({
+      databaseName: 'dgfy_business_test',
+      confirmDestructive: true
+    });
   });
 });
