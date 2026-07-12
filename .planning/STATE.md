@@ -5,15 +5,15 @@ milestone_name: Commerce Domain — Product, Checkout & Fulfillment
 current_phase: 08
 current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
-stopped_at: Completed 08-08-PLAN.md — Phase 08 complete
-last_updated: "2026-07-12T14:52:52.419Z"
+stopped_at: Completed 08-09-PLAN.md — CR-01/CR-02 gap-closure, Phase 08 fully closed
+last_updated: "2026-07-12T15:17:35.200Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 11
   completed_phases: 7
-  total_plans: 43
-  completed_plans: 40
+  total_plans: 44
+  completed_plans: 41
   percent: 64
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 ## Current Position
 
 Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — EXECUTING
-Plan: 8 of 8
+Plan: 2 of 9
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 08 execution started
 
@@ -99,6 +99,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overa
 | Phase 08 P06 | 35min | 2 tasks | 13 files |
 | Phase 08 P07 | 22min | 2 tasks | 9 files |
 | Phase 08 P08 | 12min | 2 tasks | 2 files |
+| Phase 08 P09 | 22min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,8 @@ Recent decisions affecting current work:
 - [Phase 08]: P07: booking-capacity atomic guard uses Model.update() with sequelize.literal() and a WHERE slots_remaining >= 1 guard inside sequelize.transaction() (Pattern D), matching 08-04's Model.update()-based counter-guard convention rather than raw SQL
 - [Phase Phase 08]: P08: composition root reuses businesses module's tenantConnector/businessDatabaseRegistryRepository (newly destructured) rather than each new commerce module defaulting to its own TenantConnector instance.
 - [Phase Phase 08]: P08: staleThresholdMinutes passed straight from process.env.SHIFT_STALE_THRESHOLD_MINUTES into buildShiftsModule(); the module's own resolveStaleThresholdMinutes() owns the override/env/default fallback chain.
+- [Phase 08]: P09: used a STORED generated column (branch_scope_key = COALESCE(branch_id, 0)) instead of a branch_id=0 sentinel to make compliance_mode_state uniqueness enforceable for NULL branches, since a literal sentinel would violate branch_id's FK into locations.id
+- [Phase 08]: P09: reused checklist.activation_blockers[0]'s already-assembled reason code in the new compliant_active full-checklist gate guard rather than duplicating a per-signal mapping table, since profile/settings/artifacts/peripherals are already proven complete by the four checks above it
 
 ### Pending Todos
 
@@ -152,7 +155,7 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T14:15:43.707Z
-Stopped at: Completed 08-08-PLAN.md — Phase 08 complete
+Last session: 2026-07-12T15:17:35.173Z
+Stopped at: Completed 08-09-PLAN.md — CR-01/CR-02 gap-closure, Phase 08 fully closed
 Resume file: 
 None
