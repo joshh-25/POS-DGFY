@@ -104,6 +104,7 @@ Existing codebase concerns make this database-first approach necessary: tenant s
 - **Migration runner**: Migrations run from a dedicated one-shot container with explicit commands; long-running API containers must not be the primary migration execution surface.
 - **Idempotency**: Schema and data migration scripts need dry-run, checkpoint/re-run behavior, verification output, and operator-safe failure modes.
 - **Legacy impact**: No legacy edits except approved seams; no broad cleanup of `backend/*` or old frontend surfaces during database/backend foundation phases.
+- **v2.0 Commerce Domain zero-touch (Phases 8-11)**: No writes/edits/migrations to any file under `backend/` — not even an approved-seam exception. All Commerce Domain code is new module code inside `apps/dgfy-api`. Reading legacy `backend/` files as pattern-porting reference (already cited throughout Phase 8's `08-CONTEXT.md` canonical refs) is expected and fine; writing to `backend/` is not, for any reason, in these phases.
 - **Scope**: First backend scope is Accounts, Businesses, and Tenancy only; Product/POS/payment/fiscal domains wait for later phases.
 - **Deployment**: Production cutover requires rehearsal evidence, realistic data volume checks, and pre-decided abort thresholds.
 - **Security**: Account, tenant, migration, and authentication work must satisfy the hardening contract in `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.

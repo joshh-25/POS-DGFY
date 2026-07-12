@@ -22,6 +22,8 @@ Requirements in scope: **PRD-01 through PRD-05, BOK-01 through BOK-03, SFT-01 th
 - Order Fulfillment — Phase 11.
 - New frontend apps — deferred milestone-wide.
 
+**Hard constraint — zero `backend/` writes (user-confirmed, applies to all of Phases 8-11, no exceptions):** No file under `backend/` may be edited, migrated, or otherwise written to by this phase or any later v2.0 phase — not even under the general "approved compatibility seam" allowance that governs earlier phases. This is stricter than PROJECT.md's general legacy-impact policy; see PROJECT.md Constraints. Every legacy `backend/` file cited in this document's canonical refs (e.g. `compliancePolicyEngine.js`, `StockMovement.js`, `ItemFolder.js`, migration files) is a **read-only pattern-porting reference** — the target is new module code under `apps/dgfy-api`, never a modification to the source being read.
+
 </domain>
 
 <decisions>
