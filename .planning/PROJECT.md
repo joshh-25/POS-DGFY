@@ -32,12 +32,13 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - ✓ Re-running schema migration and verification proves expected tables/columns/indexes/constraints, target-scoped migration metadata, tenant coverage, idempotent reruns, and legacy `sku_*` non-mutation via a pre/post-migration `information_schema` fingerprint baseline — validated in Phase 2: DGFY Database Foundation.
 - ✓ Old-to-new migration scripts transform legacy/current data into the new DGFY schema with dry-run, idempotency, checkpointing, and verification evidence — validated in Phase 3: Old-to-New Migration Proof.
 - ✓ Backend Accounts, Businesses, and Tenancy APIs are built against the stable DGFY schema contract, with an operator-invokable tenant activation mechanism (`activate-tenant` CLI) and D-04 session/membership enforcement — validated in Phase 4: Backend Accounts, Businesses, and Tenancy Foundation (11/11 plans, human UAT confirmed against real MySQL, 35/36 STRIDE threats closed).
+- ✓ Legacy code touches are limited to approved, manifest-governed compatibility seams with a mechanical CI acceptance gate (schema + completeness + code↔manifest reconciliation) and an ESLint compat-import ban backing the guardrail scan — validated in Phase 5: Compatibility and Backend-First Cutover Seam (CMP-01/02/03).
 
 ### Active
 
-- [ ] Keep legacy `backend/*` and `frontend/apps/{store,pos}/*` running during the migration, with edits limited to approved compatibility seams.
 - [ ] Preserve current POS/Storefront behavior until replacement paths have parity evidence and rollback options.
-- [ ] Document and enforce database-first cutover gates before any frontend migration begins.
+- [ ] Release evidence (architecture checks, migration verification, tenant drift checks, targeted smoke/contract checks) before cutover — CMP-04, Phase 6.
+- [ ] Cutover rehearsal, data-volume evidence, backup/restore proof, and abort thresholds before production cutover is scheduled — CMP-05, Phase 7.
 
 ### Out of Scope
 
@@ -64,6 +65,8 @@ Existing codebase concerns make this database-first approach necessary: tenant s
 **Phase 3 complete (2026-07-11):** Old-to-new migration scripts (dry-run, apply, verify) satisfy MIG-01 through MIG-05, proving legacy-to-DGFY data transformation with durable checkpoints, deterministic ID maps, and idempotent retry.
 
 **Phase 4 complete (2026-07-12):** Backend Accounts, Businesses, and Tenancy APIs are live against the new DGFY schema, satisfying API-01 through API-06 across 11 execution waves. Key structural outcome: the database foundation alone wasn't enough — a real, production-reachable mechanism to move a tenant's `business_database_registry` row from `provisioning` to `active/verified` didn't exist until Wave 9 (`04-09`), which shipped an operator-invokable `activate-tenant` CLI command; without it every business would have returned 404/503 for location creation, staff onboarding, and tenant session activation forever. Human UAT (real MySQL) confirmed all previously-gated integration/E2E suites pass after 3 rounds of fixes (missing `verified_at` default, missing FK-seed staff accounts in two journeys plus two integration suites, and a systemic `TRUNCATE`-vs-live-FK-constraint bug across 9 test files) — see `04-UAT.md`. Security audit closed 35/36 STRIDE threats (`04-SECURITY.md`); the one open item (a duplicate `business_database_registry` row bug affecting only a test helper, not a production-reachable path) is tracked as non-blocking technical debt. A real elevation-of-privilege bug (owner could activate a session against a still-provisioning tenant database) was found and fixed during Wave 8.
+
+**Phase 5 complete (2026-07-12):** Compatibility-seam governance satisfies CMP-01 through CMP-03 across 3 plans (2 waves): a JSON manifest as source of truth, a zero-dependency CI validator (schema + completeness + code↔manifest reconciliation), a deterministic manifest→markdown inventory doc, an extended architecture guardrail (compat-import ban + `entities/` scan) mirrored by an ESLint rule, and one concrete reference seam — a read-only DB-level domain-continuity command in the migration runner, registered as the manifest's first real entry. Code review caught a foundational gap before sign-off: none of the phase's own new test suites (the migration-runner package's 26 tests, the validator's own 12-test suite, the guardrail's 3-test compat scan) were actually wired into CI — the governance logic was solid but mechanically unenforced. All 3 Critical + 3 Warning findings were fixed (real CI jobs added, `verifyContinuity.js` no longer masks probe errors on close-failure) and independently re-verified by the phase verifier reading the actual `ci.yml`/`package.json` diffs, not just the fix report. CMP-04 (release evidence) and CMP-05 (cutover rehearsal) are correctly deferred to Phases 6 and 7.
 
 ## Constraints
 
@@ -108,4 +111,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Update Context with current state
 
 ---
-*Last updated: 2026-07-12 after Phase 4 completion*
+*Last updated: 2026-07-12 after Phase 5 completion*
