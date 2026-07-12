@@ -1,8 +1,8 @@
 ---
 phase: 08-commerce-foundation-product-catalog-booking-shift-cash-drawe
-reviewed: 2026-07-12T14:23:08Z
+reviewed: 2026-07-12T15:25:51Z
 depth: standard
-files_reviewed: 65
+files_reviewed: 67
 files_reviewed_list:
   - apps/dgfy-api/src/config/architectureGuardrailsAllowlist.js
   - apps/dgfy-api/src/infra/tenantConnector.js
@@ -62,226 +62,168 @@ files_reviewed_list:
   - apps/dgfy-api/tests/integration/booking/bookingCapacity.test.js
   - apps/dgfy-api/tests/integration/commerce/commerceModulesMount.test.js
   - apps/dgfy-api/tests/unit/modules/booking/bookingUseCases.test.js
+  - apps/dgfy-api/tests/unit/modules/compliance/complianceChecklistGating.test.js
   - apps/dgfy-api/tests/unit/modules/compliance/complianceGate.test.js
+  - apps/dgfy-api/tests/unit/modules/compliance/complianceModeStateRepository.test.js
   - apps/dgfy-api/tests/unit/modules/inventory/inventoryMovementUseCases.test.js
   - apps/dgfy-api/tests/unit/modules/products/productUseCases.test.js
   - apps/dgfy-api/tests/unit/modules/shifts/shiftUseCases.test.js
   - apps/dgfy-migration-runner/src/migrations/schema/20260712100000-create-commerce-foundation.cjs
+  - apps/dgfy-migration-runner/src/migrations/schema/20260712140000-harden-compliance-mode-state-uniqueness.cjs
   - apps/dgfy-migration-runner/src/schemaContracts/dgfyBusinessContract.js
   - apps/dgfy-migration-runner/tests/dgfyBusinessSchema.test.js
 findings:
   critical: 2
-  warning: 6
-  info: 3
-  total: 11
+  warning: 4
+  info: 2
+  total: 8
 status: issues_found
 ---
 
 # Phase 08: Code Review Report
 
-**Reviewed:** 2026-07-12T14:23:08Z
+**Reviewed:** 2026-07-12T15:25:51Z
 **Depth:** standard
-**Files Reviewed:** 65
+**Files Reviewed:** 67
 **Status:** issues_found
 
 ## Summary
 
-This phase adds 8 new Sequelize Tenant models, a 700+ line migration, and 5 Clean-Architecture modules (products, inventory, shifts, compliance, booking). The layering discipline (routes -> controllers -> usecases -> repositories -> models) is followed consistently and the atomic-guarded-UPDATE pattern used for booking capacity (`BookingCapacity.update` with `Op.gte`/`sequelize.literal`) is implemented correctly and is proven under concurrency by both a unit test and a real-MySQL integration test.
+This is a fresh, full-scope pass over the entire Phase 08 commerce-foundation surface (products, inventory, compliance, shifts, booking, the composition root, the 08-01 + 08-09 migrations, and the schema contract), superseding the earlier 08-01..08-08 review. The overall architecture is clean and consistently mirrored across modules (routes -> controllers -> usecases -> repositories -> models, tenant-DB resolution via `TenantConnector`, `ApplicationResult`/`DomainError` envelopes). The 08-09 gap-closure work (CR-01/FSC-01 unique-index hardening, CR-02/FSC-02 checklist gating) is well-tested for the scenarios its own test files exercise.
 
-However, two BLOCKER-level defects were found:
+Two BLOCKER-level issues were found. The more serious one is in the CR-02/FSC-02 gap-closure itself: `evaluateComplianceChecklist()`'s evidence-derived readiness signals use two different default policies — 5 of the 7 signals silently default to "ready" when the caller omits them, directly contradicting the explicit code-comment guarantee ("the gate never silently assumes completeness for any of the seven signals") and the whole point of the 08-09 hardening. The second is a cross-module API-contract inconsistency: `products`/`compliance` controllers read `businessId` (camelCase) from the request body/query, while `inventory`/`shifts`/`booking` controllers read `business_id` (snake_case) — a client following one module's convention will silently fail on the other four endpoints.
 
-1. `ComplianceModeStateRepository.upsertState()` uses an unguarded find-then-create/update sequence (a classic TOCTOU race) to maintain what is documented as a one-row-per-business/branch invariant — and for the very common `branch_id IS NULL` case, the DB-level unique index the code relies on as a backstop cannot actually enforce that invariant at all, because MySQL treats every `NULL` in a unique index as distinct. Concurrent evidence submissions can silently create duplicate `compliance_mode_state` rows.
-2. `policy/policyEngine.js`'s `compliant_active` POS-operation gate never actually consults most of the evidence-derived checklist signals (`documentary_readiness`, RMO filing, encryption prerequisites, fiscal terminal registration, audit-log append-only enforcement, payment-handoff policy) that `evaluateComplianceChecklist` computes — it only gates on `profile_complete`/`settings_complete`/`artifacts_complete`/`peripherals_complete`. This directly contradicts `complianceGate.js`'s own header comment, which claims the gate "correctly falls through ... rather than the gate silently assuming completeness" for exactly these signals.
-
-Several WARNING-level issues (a fail-open authorization helper reused across 5 use-case modules, a systemic error-swallowing pattern that turns FK/validation errors into misleading 503s, and inconsistent tenant-scoping on a few repository lookups) and a handful of INFO items round out the findings below.
+Several WARNING-level issues stem from a repeated `withModel(s)` pattern that converts ANY unexpected error (including genuine application bugs) into a generic `TenantDatabaseUnavailableError('unreachable')` 503, and one repository (`ProductFolderRepository`) that — unlike its sibling repositories in the very same phase — does not duck-type its DB unique-constraint violation into a clean 409, so it inherits the misleading 503 under concurrent duplicate-name creation.
 
 ## Critical Issues
 
-### CR-01: Compliance evidence upsert has a TOCTOU race, and the DB unique index cannot back it for `branch_id IS NULL`
+### CR-01: Compliance checklist's evidence-derived readiness signals fail OPEN for 5 of 7 signals, contradicting the CR-02/FSC-02 gap-closure's own guarantee
 
-**File:** `apps/dgfy-api/src/modules/compliance/repositories/complianceModeStateRepository.js:155-187`
-**Also affects:** `apps/dgfy-api/src/models/Tenant/ComplianceModeState.js:94-96`, `apps/dgfy-migration-runner/src/migrations/schema/20260712100000-create-commerce-foundation.cjs:435-438`
+**File:** `apps/dgfy-api/src/modules/compliance/policy/policyEngine.js:383-398`
+**Issue:**
+`evaluateComplianceChecklist()` computes seven evidence-derived readiness signals that `evaluateComplianceDecision()`'s `compliant_active` POS-operation branch now consults via `checklist.ready_for_compliant_activation` (added by the 08-09 CR-02/FSC-02 gap-closure, see the comment block at `policyEngine.js:1003-1022` and `complianceGate.js:28-41`, which explicitly claims: *"the gate never silently assumes completeness for any of the seven signals"*).
 
-**Issue:** `upsertState()` (and, to a lesser extent, `recordVerification()`) is a plain `findOne()` followed by a conditional `create()`/`update()` — not wrapped in a transaction, and not protected by any atomic guarded-write pattern. Two concurrent `submitComplianceEvidence` calls for the same `(business_id, branch_id)` pair can both execute `findOne()` before either `create()` runs, and both will then insert a row.
-
-This is exactly the race class the rest of this phase deliberately avoids elsewhere — `bookingRepository.createBooking()` uses a single guarded `UPDATE ... WHERE slots_remaining >= 1` inside a transaction, and `shiftRepository.openShift()` relies on a DB-enforced unique index plus explicit duck-typed conflict handling (`DuplicateOpenShiftError`). `complianceModeStateRepository.js`'s own header comment claims the `(business_id, branch_id)` unique index (`unique_compliance_mode_state_business_branch`) is the row's invariant, but:
-
-- For the very common `branch_id: null` case (business-wide compliance state, "no branch scope" per the model's own comment), MySQL's InnoDB unique index does **not** treat two `NULL` values in an indexed column as equal — every `NULL` is distinct for uniqueness purposes. So concurrent `create()` calls for the same business with `branch_id = null` will **both succeed**, silently producing two `compliance_mode_state` rows for the same business.
-- For a non-null `branch_id`, the second concurrent `create()` would hit the unique index and throw a raw `SequelizeUniqueConstraintError` — but nothing in `upsertState()` duck-types or maps that error (contrast with `shiftRepository.js`'s `isUniqueConstraintViolation()` helper), so it propagates up through `withModel()`'s generic catch and gets relabeled as `TenantDatabaseUnavailableError('unreachable', ...)` — a misleading 503, not a clean 409.
-
-Once duplicate rows exist for a business, `getForBusinessBranch()`/`assertComplianceGate()` (both plain `findOne()`) will non-deterministically return whichever row MySQL returns first, so the FSC-02 compliance gate (used to decide whether fiscal operations are permitted) can flip between different states across requests.
-
-**Fix:** Make the write atomic. Options, in order of preference:
-1. Give `compliance_mode_state` a deterministic key that MySQL uniqueness *can* enforce (e.g. use `branch_id: 0` as the "no branch" sentinel instead of `NULL`, matching the pattern already used correctly for `booking_capacity`/`shifts`' composite unique indexes, both of which are all NOT NULL columns), **and**
-2. Wrap the read-then-write in a transaction with `SELECT ... FOR UPDATE`, or use `findOrCreate()` (which Sequelize will safely retry on a unique-constraint race, as `bookingRepository.js` already relies on for `booking_capacity`), **and**
-3. Duck-type the unique-constraint violation (mirroring `shiftRepository.js`'s `isUniqueConstraintViolation`) and map it to a clean `DomainErrorCode.CONFLICT` (409) rather than letting it fall through to `TenantDatabaseUnavailableError('unreachable')`.
+The seven signals do NOT share one default policy:
 
 ```js
-// complianceModeStateRepository.js — sketch
-async upsertState(businessId, branchId = null, updates = {}) {
-    return this.withModel(businessId, async (ComplianceModeState) => {
-        const [record] = await ComplianceModeState.findOrCreate({
-            where: { business_id: businessId, branch_id: branchId },
-            defaults: {
-                business_id: businessId,
-                branch_id: branchId,
-                state: updates.state || 'non_compliant_active',
-                compliance_profile: updates.compliance_profile ?? null,
-                active_policy_pack_version: updates.active_policy_pack_version ?? null
-            }
-        });
-        // ... then patch `record` with any remaining fields from `updates`
-    });
-}
+const fiscalAccumulatorStreamReady = evidence?.fiscal_accumulator_stream_ready !== false;   // undefined -> TRUE
+const auditLogAppendOnlyEnforced = evidence?.audit_log_append_only_enforced !== false;       // undefined -> TRUE
+const paymentHandoffPolicyReady = evidence?.payment_handoff_policy_ready !== false;          // undefined -> TRUE
+...
+const submissionArtifactsReady = evidence?.submission_artifacts?.ready !== false;            // undefined -> TRUE
+const encryptionPolicyPrerequisitesReady = evidence?.encryption_policy_prerequisites_ready !== false; // undefined -> TRUE
+...
+const rmoFilingReadinessReady = rmoFilingReadiness.ready === true;            // undefined -> FALSE
+...
+const fiscalTerminalRegistrationReady = fiscalTerminalRegistration.ready === true;            // undefined -> FALSE
 ```
-(This still requires fixing the `branch_id IS NULL` uniqueness gap at the schema level — a sentinel value or a MySQL 8 functional unique index on `COALESCE(branch_id, 0)` — for `findOrCreate`'s retry-on-conflict behavior to actually have something to conflict against.)
 
-### CR-02: `compliant_active` POS-operation gate ignores most of its own computed checklist signals — contradicts the gate's documented guarantee
+Five signals use the `!== false` idiom, which treats an *omitted* field (`undefined`) as satisfied. Only two signals (`rmo_filing_readiness`, `fiscal_terminal_registration`) use `=== true`, which correctly treats an omitted field as unsatisfied.
 
-**File:** `apps/dgfy-api/src/modules/compliance/policy/policyEngine.js:383-399, 945-1012`
-**Also affects:** `apps/dgfy-api/src/modules/compliance/usecases/complianceGate.js:24-29`
+Concretely: a `compliant_active` business with fully-complete profile/settings/artifacts/peripherals, and an `evidence` object that supplies ONLY `{ rmo_filing_readiness: { ready: true }, fiscal_terminal_registration: { ready: true } }` (i.e. the caller never asserts anything about the fiscal accumulator stream, audit-log append-only enforcement, payment-handoff policy, submission-artifact readiness, or encryption prerequisites) will still receive `ready_for_compliant_activation: true` and an `ALLOW` decision — even though five of the seven controls were never actually verified. This is exactly the "silently assumes completeness" failure mode the 08-09 gap-closure's own comments claim to have eliminated; it only closed the gap for 2 of the 7 signals.
 
-**Issue:** `evaluateComplianceChecklist()` computes seven distinct evidence-derived readiness signals (`fiscalAccumulatorStreamReady`, `auditLogAppendOnlyEnforced`, `paymentHandoffPolicyReady`, `encryptionPolicyPrerequisitesReady`, `submissionArtifactsReady`/documentary readiness, `rmoFilingReadinessReady`, `fiscalTerminalRegistrationReady`) and folds them into `activation_blockers` and `ready_for_compliant_activation` (lines 526-707). But `evaluateComplianceDecision()`'s `compliant_active` branch for POS/receipt operations (lines 947-1012) only checks four of the checklist's fields:
+The existing regression test (`complianceChecklistGating.test.js`'s "empty-evidence guard") only exercises `evidence: {}` (i.e. every field omitted at once), which happens to still fail because the two fail-closed signals (`rmo_filing_readiness`, `fiscal_terminal_registration`) drag the aggregate to `false`. It does not cover the partial-evidence case above, so this gap is untested and will not regress-fail if hit in Phase 9.
 
+Given this gate is the single shared FSC-02 hand-off contract that Phase 9's checkout/shift-open/receipt-render call sites are documented to rely on for fiscal-document eligibility, a caller that forgets to populate one of the five fail-open fields (very plausible — they look optional) silently grants fiscal-document issuance without the underlying control being verified.
+
+**Fix:** Make all seven signals fail closed consistently, e.g.:
 ```js
-if (!checklist.profile_complete || !checklist.settings_complete) { ... REQUIRES_SETUP ... }
-if (!checklist.artifacts_complete) { ... REQUIRES_SETUP ... }
-if (!checklist.peripherals_complete) { ... DENY ... }
-return buildDecision({ ... decision: COMPLIANCE_DECISION.ALLOW ... });
+const fiscalAccumulatorStreamReady = evidence?.fiscal_accumulator_stream_ready === true;
+const auditLogAppendOnlyEnforced = evidence?.audit_log_append_only_enforced === true;
+const paymentHandoffPolicyReady = evidence?.payment_handoff_policy_ready === true;
+const submissionArtifactsReady = evidence?.submission_artifacts?.ready === true;
+const encryptionPolicyPrerequisitesReady = evidence?.encryption_policy_prerequisites_ready === true;
 ```
+and add a test that supplies a *partial* evidence bundle (only the two currently-fail-closed fields set to `true`, everything else omitted) asserting the decision is `REQUIRES_SETUP`, not `ALLOW`.
 
-None of the seven evidence-derived signals above — including RMO 24-2023 filing readiness and fiscal terminal registration, both of which have dedicated `COMPLIANCE_REASON_CODE` entries specifically for blocking activation — are consulted before returning `ALLOW` for a checkout/receipt-render/terminal operation. A `compliant_active` business with a stale/never-verified fiscal terminal registration or incomplete RMO filing evidence will still get `ALLOW` for `POS_CHECKOUT`.
+### CR-02: `businessId` request-field naming is inconsistent across Phase 8 modules — `products`/`compliance` use camelCase, `inventory`/`shifts`/`booking` use snake_case
 
-This directly contradicts `complianceGate.js`'s own header comment (lines 24-29): *"assertComplianceGate accepts artifacts/peripherals/settings/evidence as optional pass-through inputs (defaulting to empty) so a compliant_active business with no submitted checklist evidence correctly falls through evaluateComplianceChecklist's 'incomplete' paths (REQUIRES_SETUP) rather than the gate silently assuming completeness."* That guarantee does not hold for 5 of the 7 evidence-derived checklist fields, both because most of them default to `ready = true` when `evidence` is `{}` (`evidence?.x !== false` is `true` for `undefined`), and because the decision branch never reads them regardless.
+**File:** `apps/dgfy-api/src/modules/products/controllers/productController.js:24,39,57,69`, `apps/dgfy-api/src/modules/products/controllers/productFolderController.js:15,28`, `apps/dgfy-api/src/modules/compliance/controllers/complianceController.js:18` (and the `req.body` destructure at lines 27, 41-46) — **vs.** `apps/dgfy-api/src/modules/inventory/controllers/inventoryMovementController.js:21,45`, `apps/dgfy-api/src/modules/shifts/controllers/shiftController.js:23,37,53,65`, `apps/dgfy-api/src/modules/booking/controllers/bookingController.js:23,39,50`
+**Issue:** Every commerce module in this phase mounts top-level (not nested under `/businesses/:businessId`) and therefore must read `businessId` out of the request body (writes) or query string (reads). Two modules read the camelCase key:
+```js
+// productController.js:24
+businessId: body.businessId,
+// complianceController.js:18
+businessId: req.query.businessId,
+```
+The other three read the snake_case key:
+```js
+// inventoryMovementController.js:21
+businessId: body.business_id,
+// shiftController.js:23
+businessId: body.business_id,
+// bookingController.js:23
+businessId: body.business_id,
+```
+Every other field in every one of these controllers is consistently snake_case on the wire (`product_id`, `slot_start`, `opening_float_amount`, `terminal_id`, etc. — matching the DB column naming), so this isn't "the whole module uses camelCase," it's specifically the `businessId`/`business_id` key that silently diverges per module. A client (or a shared API SDK/fetch wrapper) built against one module's convention will send the wrong key to the other four modules' endpoints, and every one of those requests will fail validation with `"businessId is required."` (400) because `body.businessId`/`body.business_id` resolves to `undefined` on the mismatched module. No test in this phase's suite (including `commerceModulesMount.test.js`, which never authenticates or sends a body) would have caught this.
 
-Since `assertComplianceGate` is explicitly documented as "Phase 9's hand-off contract" and "the ONLY place a gated usecase in this codebase should call the policy engine," this gap will ship forward unnoticed unless corrected now — Phase 9 will reasonably assume the gate already enforces the full checklist because the code comment says so.
-
-**Fix:** Either (a) add the missing evidence-derived checks to the `compliant_active` POS-operation branch of `evaluateComplianceDecision` (mirroring the `activation_blockers` logic, mapping each to its own `REQUIRES_SETUP`/`DENY` + reason code), or (b) if this is intentionally deferred to a later phase, correct `complianceGate.js`'s header comment so it does not assert a guarantee the code doesn't provide, and add an explicit `// TODO(Phase 9): ...` note plus a regression test asserting the current (narrower) gating behavior so the gap can't silently regress further.
+**Fix:** Standardize on one convention (the codebase's dominant convention elsewhere is snake_case on the wire, matching DB columns) and update `productController.js`/`productFolderController.js`/`complianceController.js` to read `body.business_id` / `req.query.business_id`, or explicitly document/support both keys during a migration window.
 
 ## Warnings
 
-### WR-01: `guardBusinessAccess` fails open (skips the membership/role check entirely) when `requestingAccountId` is falsy
+### WR-01: `withModel(s)` in every repository masks unexpected application errors as a misleading `TenantDatabaseUnavailableError('unreachable')` 503
 
-**File:** `apps/dgfy-api/src/modules/products/usecases/productUseCases.js:103-113`
-**Also affects:** `apps/dgfy-api/src/modules/products/usecases/productFolderUseCases.js:83-93`, `apps/dgfy-api/src/modules/inventory/usecases/inventoryMovementUseCases.js:109-119`, `apps/dgfy-api/src/modules/shifts/usecases/shiftUseCases.js:114-124`, `apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js:109-119`
+**File:** `apps/dgfy-api/src/modules/booking/repositories/bookingRepository.js:132-146`, `apps/dgfy-api/src/modules/products/repositories/productRepository.js:96-108`, `apps/dgfy-api/src/modules/products/repositories/productFolderRepository.js:74-86`, `apps/dgfy-api/src/modules/inventory/repositories/inventoryMovementRepository.js:136-148`, `apps/dgfy-api/src/modules/shifts/repositories/cashDrawerEventRepository.js:103-115`, `apps/dgfy-api/src/modules/shifts/repositories/shiftRepository.js:164-183`, `apps/dgfy-api/src/modules/compliance/repositories/complianceModeStateRepository.js:146-164`
+**Issue:** Every repository's `withModel`/`withModels` helper wraps the caller-supplied `fn(model)` in a `try/catch` that rethrows any error not already one of the repository's own named error classes as `TenantDatabaseUnavailableError('unreachable', 'Unable to reach the tenant database for this business.')`. This swallows the true error (its message, stack, and class) for any genuine bug reachable inside the query — a Sequelize validation error, an unexpected `TypeError` from a bad input (e.g. a non-numeric `productId`/`branchId` passed through from `bookingUseCases.js`'s weak `isFiniteId` check, which only verifies the value is not `undefined`/`null`/`''`, not that it's actually numeric), a foreign-key violation, etc. The client sees a 503 "tenant database unavailable," which is both factually wrong (the database is reachable — the query failed) and actively misleading for on-call debugging, since it points responders at infrastructure instead of the actual code path that threw.
 
-**Issue:** The shared `guardBusinessAccess` helper (independently duplicated across 5 use-case modules per this codebase's "self-contained module" convention) only checks membership/role `if (requestingAccountId)`:
+**Fix:** Narrow the catch to only convert genuinely connection/availability-shaped errors (e.g. `SequelizeConnectionError`, `ECONNREFUSED`, timeout errors) into `TenantDatabaseUnavailableError('unreachable', ...)`, and let everything else propagate so it surfaces as an unhandled 500 with its real stack trace (consistent with how usecases already `throw repoError;` for anything they don't recognize).
 
+### WR-02: `ProductFolderRepository.create()` does not duck-type its unique-name violation, unlike every sibling repository added in this same phase
+
+**File:** `apps/dgfy-api/src/modules/products/repositories/productFolderRepository.js:93-106`
+**Issue:** `product_folders` has a DB-enforced unique index (`unique_product_folders_business_name` on `(business_id, name)`, see `20260712100000-create-commerce-foundation.cjs:120-123`). `productFolderUseCases.js`'s `buildCreateProductFolderUseCase` performs a `findByName()` pre-check before calling `repository.create()`, but that pre-check is a classic TOCTOU race: two concurrent requests for the same folder name can both pass the pre-check, then both attempt the INSERT. The loser's INSERT throws a raw `SequelizeUniqueConstraintError`, which `ProductFolderRepository.create()` does not catch — it falls straight into `withModel()`'s generic catch-all (see WR-01) and comes back as a `TenantDatabaseUnavailableError('unreachable')` 503, not the intended `409 CONFLICT`.
+
+This is a real regression relative to the pattern this exact phase establishes elsewhere: `shiftRepository.js` (`isUniqueConstraintViolation` -> `DuplicateOpenShiftError` -> 409), `bookingRepository.js` (guarded UPDATE -> `BookingCapacityFullError` -> 409), and `complianceModeStateRepository.js` (`isUniqueConstraintViolation` -> `DuplicateComplianceModeStateError` -> 409) all explicitly guard against exactly this race and map it to a clean 409. `ProductFolderRepository` is the one repository in this phase that still lets a concurrent-duplicate race surface as a misleading 503.
+
+**Fix:** Copy `shiftRepository.js`'s `isUniqueConstraintViolation()` helper into `productFolderRepository.js`, catch it around the `ProductFolder.create()` call, and rethrow a dedicated `DuplicateProductFolderNameError` that `productFolderUseCases.js` maps to the existing `conflictError(...)` 409 path.
+
+### WR-03: Non-atomic two-step writes in `complianceUseCases.js` can leave `compliance_mode_state` in a partially-updated, inconsistent state on a mid-sequence failure
+
+**File:** `apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js:213-247` (`buildSubmitComplianceEvidenceUseCase`), `apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js:301-313` (`buildReviewComplianceStateUseCase`)
+**Issue:** Both use cases perform two sequential, independently-transacted repository calls with no shared transaction or compensating rollback:
 ```js
-async function guardBusinessAccess(businessRepository, businessId, requestingAccountId, { role } = {}) {
-    const business = await businessRepository.findById(businessId);
-    if (!business) return { error: businessNotFoundError() };
-    if (requestingAccountId) {
-        const { error } = await requireMembership(businessRepository, businessId, requestingAccountId, { role });
-        if (error) return { error };
-    }
-    return {};
-}
+// buildSubmitComplianceEvidenceUseCase
+await repository.upsertState(businessId, branchId, updates);
+const withResetVerification = await repository.recordVerification(businessId, branchId, { ... pending_review ... });
 ```
-
-When `requestingAccountId` is falsy (undefined/null/empty string), the function returns `{}` — i.e. **access granted, no error** — regardless of role requirements. Every HTTP controller in this phase currently always supplies `req.account.id` (guaranteed non-empty by the upstream `authenticateAccount` middleware), so this isn't reachable via the public API today. But it is a fail-open design: any future direct caller of these use cases (an internal script, a Phase 9 checkout/availment flow invoking `createProduct`/`recordRestock`/`openShift` programmatically without first resolving an account id) silently bypasses all authorization instead of being rejected. A fail-closed default (require `requestingAccountId` and deny when absent, with an explicit "system caller" escape hatch if one is truly needed) is the safer contract for an authorization helper.
-
-**Fix:**
 ```js
-async function guardBusinessAccess(businessRepository, businessId, requestingAccountId, { role } = {}) {
-    const business = await businessRepository.findById(businessId);
-    if (!business) return { error: businessNotFoundError() };
-    if (!requestingAccountId) {
-        return { error: forbiddenError('Authentication is required to perform this action.') };
-    }
-    const { error } = await requireMembership(businessRepository, businessId, requestingAccountId, { role });
-    if (error) return { error };
-    return {};
-}
+// buildReviewComplianceStateUseCase (verified path)
+const verified = await repository.recordVerification(businessId, branchId, { verification_status: verificationStatus, ... });
+const finalRow = verificationStatus === 'verified'
+    ? await repository.upsertState(businessId, branchId, { state: newState })
+    : verified;
 ```
+If the first call in either sequence commits and the second call then throws (e.g. a transient `TenantDatabaseUnavailableError`, or, per WR-01, some other error masked as one), the use case returns a failure `ApplicationResult`, but the first write has already been durably committed. For `buildSubmitComplianceEvidenceUseCase`, this can leave `compliance_profile` updated with stale `verification_status`/`verified_by_actor_type`/`verified_at` (i.e. new evidence submitted, but not actually reset to `pending_review` as the docstring promises). For `buildReviewComplianceStateUseCase`'s verified path, this can leave `verification_status: 'verified'` recorded on the row while `state` never actually transitioned to `newState` — an auditable inconsistency in a compliance-critical record.
 
-### WR-02: Repository `withModel`/`withModels` wraps every non-whitelisted error (including FK constraint violations) into `TenantDatabaseUnavailableError('unreachable')`, which use cases then surface as a misleading 503
+**Fix:** Wrap each two-step sequence in a single `sequelize.transaction()` at the repository layer (mirroring `shiftRepository.js`'s and `bookingRepository.js`'s existing multi-write transaction pattern), exposing one repository method (e.g. `submitEvidenceAtomic()` / `reviewAndTransitionAtomic()`) that performs both writes inside one transaction.
 
-**File:** `apps/dgfy-api/src/modules/shifts/repositories/shiftRepository.js:164-183, 230-238`
-**Also affects:** `apps/dgfy-api/src/modules/products/repositories/productRepository.js:96-108`, `apps/dgfy-api/src/modules/products/repositories/productFolderRepository.js:74-86`, `apps/dgfy-api/src/modules/inventory/repositories/inventoryMovementRepository.js:136-148, 330-339`, `apps/dgfy-api/src/modules/shifts/repositories/cashDrawerEventRepository.js:103-115`, `apps/dgfy-api/src/modules/compliance/repositories/complianceModeStateRepository.js:113-127`, `apps/dgfy-api/src/modules/booking/repositories/bookingRepository.js:132-146`
+### WR-04: `isPositiveInteger` in `productUseCases.js` rejects numeric strings, inconsistent with every other numeric validator added in this phase
 
-**Issue:** Every repository's `withModel`/`withModels` helper catches *any* error not already one of its own named error classes and rethrows it as `TenantDatabaseUnavailableError('unreachable', ...)`:
-
+**File:** `apps/dgfy-api/src/modules/products/usecases/productUseCases.js:78`
+**Issue:**
 ```js
-} catch (error) {
-    if (error instanceof TenantDatabaseUnavailableError) throw error;
-    throw new TenantDatabaseUnavailableError('unreachable', 'Unable to reach the tenant database for this business.');
-}
+const isPositiveInteger = (value) => Number.isInteger(value) && value > 0;
 ```
+`Number.isInteger()` returns `false` for anything that isn't already a JS `number` primitive — a request body value of `"30"` (a numeric string, e.g. from a form-encoded client or a client that stringifies all outgoing fields) is rejected with a 400 for `slot_duration_minutes`/`concurrent_capacity` in `buildSetProductBookableUseCase`. Every other numeric validator added in this same phase coerces first: `isFiniteNumberOrNull` in this very file (`Number.isFinite(Number(value))`), `isNonNegativeNumber` in `shiftUseCases.js`, `isFiniteNonZeroNumber`/`isPositiveNumber` in `inventoryMovementUseCases.js`. This one validator's stricter, type-sensitive behavior is inconsistent with its siblings and will silently reject otherwise-valid-looking requests that the rest of the API accepts.
 
-The corresponding use-case layer then maps every `reason !== 'missing'/'not_configured'` to `503 SERVICE_UNAVAILABLE`. This means a genuine client-caused error — e.g. `shiftController.openShift` being called with a `cashierAccountId` or `terminalId` that doesn't exist in `staff_accounts`/`terminal_identities` for this tenant (a FK constraint violation), or `productController.createProduct` with a bogus `folder_id` — is reported to the caller as "tenant database unreachable" with a 503, instead of a 400/404 that reflects the actual, client-fixable problem. This also means genuine infrastructure incidents (connection pool exhaustion, network partition) are indistinguishable in the API response from a validation mistake, which will confuse both API consumers and on-call responders reading logs/alerts.
-
-**Fix:** At minimum, do not use the same "unreachable" reason for every uncaught error. Distinguish (a) FK/constraint violations — duck-type on `SequelizeForeignKeyConstraintError`/`error.original.code === 'ER_NO_REFERENCED_ROW_2'` and map to a 400/404 `DomainError` — from (b) genuine connectivity failures (`SequelizeConnectionError` and friends), which alone should map to 503.
-
-### WR-03: `ProductRepository`, `ProductFolderRepository`, and `BookingRepository` don't scope single-row lookups by `business_id`, unlike their sibling repositories
-
-**File:** `apps/dgfy-api/src/modules/products/repositories/productRepository.js:131-137, 152-177`
-**Also affects:** `apps/dgfy-api/src/modules/products/repositories/productFolderRepository.js:108-114, 142-157`, `apps/dgfy-api/src/modules/booking/repositories/bookingRepository.js:231-237, 266-295`
-
-**Issue:** `ProductRepository.findById()`/`.update()`, `ProductFolderRepository.findById()`/`.update()`, and `BookingRepository.findById()`/`.cancelBooking()` all resolve a row via a bare `Model.findByPk(Number(id))` (or `findByPk` inside a transaction for booking), with **no `business_id` filter in the WHERE clause**. This relies entirely on "one physical database per business" for tenant isolation.
-
-Contrast this with `InventoryMovementRepository.findOne()`, `ShiftRepository.findById()`/`.closeShift()`, `CashDrawerEventRepository.findOne()`, and `ComplianceModeStateRepository`'s queries, all of which explicitly filter `WHERE ... AND business_id = :businessId` even though they resolve the same per-business tenant connection. That defense-in-depth is cheap and is already the established convention in this exact phase's own sibling files — its absence in three of the eight repositories is an inconsistency, and it is the only thing standing between "isolated by business_id" and "isolated only by which physical database happened to be resolved" if the tenant-database-resolution assumption (1 DB per business) is ever violated (e.g. a future consolidation, a registry misconfiguration pointing two businesses at the same `database_name`, or a test/staging environment that intentionally shares one DB).
-
-**Fix:** Add `where: { business_id: businessId }` to every single-row lookup in these three repositories, mirroring `shiftRepository.js`/`inventoryMovementRepository.js`'s existing pattern:
-```js
-const record = await Product.findOne({ where: { id: Number(id), business_id: businessId } });
-```
-
-### WR-04: `shiftRepository.openShift()` never validates that `cashierAccountId`/`terminalId` belong to `businessId`'s tenant database before the FK-constrained INSERT
-
-**File:** `apps/dgfy-api/src/modules/shifts/usecases/shiftUseCases.js:160-208`
-**Also affects:** `apps/dgfy-api/src/modules/shifts/controllers/shiftController.js:20-31`, `apps/dgfy-api/src/modules/shifts/repositories/shiftRepository.js:194-238`
-
-**Issue:** `buildOpenShiftUseCase` validates that `cashierAccountId`/`terminalId` are present and non-null, but never checks that they resolve to existing `staff_accounts`/`terminal_identities` rows for this business before calling `repository.openShift()`. If the client (or a staff member picking from a stale cached list) supplies an ID that doesn't exist, the resulting FK constraint violation is caught by `openShift()`'s inner `catch` block, fails the `isUniqueConstraintViolation()` duck-type check (it's not a unique-index violation), and falls through to the outer catch, which (per WR-02) reports it as a 503 "tenant database unreachable" rather than a 400/404 identifying the invalid `cashierAccountId`/`terminalId`.
-
-**Fix:** Validate `terminalId`/`cashierAccountId` existence explicitly in the use case (or repository) before the INSERT, and return a clean `404`/`400` `DomainError` when either doesn't resolve — consistent with how `bookingUseCases.js` explicitly resolves and validates the `Product` via `productRepository.findById()` before calling `repository.createBooking()`.
-
-### WR-05: `booking_capacity`'s guarded release on cancel is not bounded by the slot's original capacity
-
-**File:** `apps/dgfy-api/src/modules/booking/repositories/bookingRepository.js:266-295`
-
-**Issue:** `cancelBooking()` unconditionally applies `slots_remaining = slots_remaining + 1` for the booking's `(product_id, branch_id, slot_start)` whenever a `booked` booking is cancelled. There is no upper bound tying this back to the slot's originally-provisioned capacity. Under the current single-writer contract this can't currently be reached from outside (creates only ever decrement, cancels only ever increment 1:1 with a prior successful create), so this is low-risk today — but if a future change (a data-migration backfill, a manual DB fix, a Phase-9 refund/reschedule flow) ever double-cancels a booking outside `cancelBooking()`'s existing `BookingAlreadyCancelledError` guard, or if `concurrent_capacity` is edited downward on a `Product` after bookings already exist for a slot, `slots_remaining` can silently exceed the product's `concurrent_capacity`, at which point the atomic guard in `createBooking()` (`slots_remaining >= 1`) no longer reflects the intended ceiling.
-
-**Fix:** Consider asserting `slots_remaining < concurrent_capacity` as a guard on the release UPDATE (mirroring the `>= 1` guard used on decrement), or documenting explicitly why this is safe to omit given the current single-writer invariants, so a future change to this file doesn't have to re-derive that reasoning from scratch.
-
-### WR-06: The new commerce-foundation migration has no dedicated unit test; only the pre-existing business-foundation migration is unit-tested
-
-**File:** `apps/dgfy-migration-runner/src/migrations/schema/20260712100000-create-commerce-foundation.cjs`
-**Also affects:** `apps/dgfy-migration-runner/tests/dgfyBusinessSchema.test.js`
-
-**Issue:** `dgfyBusinessSchema.test.js` (the only migration-runner test file in this phase's file list) unit-tests `20260710021000-create-dgfy-business-foundation.cjs` and `20260711143000-add-dgfy-business-staff-invitations.cjs` against a mocked `queryInterface` (idempotency, index/FK wiring, table set). It never loads or exercises `20260712100000-create-commerce-foundation.cjs` — the migration this phase actually adds — the same way. The only exercise of this migration file is `bookingCapacity.test.js`, a real-MySQL integration test that is **skipped by default** (`RUN_BOOKING_CAPACITY_INTEGRATION=true` opt-in) and only covers the `bookings`/`booking_capacity` tables' concurrency behavior, not the migration's idempotency guards, the append-only triggers on `inventory_movements`/`cash_drawer_events`, or the `active_terminal_cashier_key` generated column on `shifts`. None of these — the parts of this migration most likely to have a subtle bug (raw SQL trigger/generated-column strings, `DROP TRIGGER IF EXISTS` idempotency, `describeTable` gating) — have any unit-level coverage that runs in ordinary CI.
-
-**Fix:** Add a `dgfyBusinessSchema.test.js`-style mocked-`queryInterface` unit test suite for `20260712100000-create-commerce-foundation.cjs` mirroring the existing pattern (idempotent `createTable`/`addIndex` skip-on-exists, contract column/index/FK parity, rejected-table absence), plus at least a smoke assertion that the raw `CREATE TRIGGER`/`ALTER TABLE ... GENERATED ALWAYS` query strings are issued for the expected table names.
+**Fix:** `const isPositiveInteger = (value) => Number.isInteger(Number(value)) && Number(value) > 0;` (or explicitly document that this endpoint requires JSON-typed numbers, unlike its siblings).
 
 ## Info
 
-### IN-01: Migration `down()`'s "DROP TYPE" cleanup block is dead code on MySQL
+### IN-01: `evaluateComplianceChecklist()` computes `documentary_readiness` and `evidence.submission_artifacts` as two separately-maintained copies of the same data
 
-**File:** `apps/dgfy-migration-runner/src/migrations/schema/20260712100000-create-commerce-foundation.cjs:508-518`
+**File:** `apps/dgfy-api/src/modules/compliance/policy/policyEngine.js:650-656,672-678`
+**Issue:** The returned checklist object duplicates the exact same `{ complete, total, missing, ready, items }` shape twice — once at `documentary_readiness` and once at `evidence.submission_artifacts` — computed from the same source expression (`evidence?.submission_artifacts?.*`) in two places. Any future change to one copy's derivation (e.g. a rounding/parsing tweak) risks silently diverging from the other.
+**Fix:** Compute the shape once into a local variable and reference it from both `documentary_readiness` and `evidence.submission_artifacts`.
 
-**Issue:** `down()` issues 9 `DROP TYPE IF EXISTS enum_*` statements guarded by `getDialect() === 'mysql'`, each wrapped in `.catch(() => {})`. MySQL has no `DROP TYPE` DDL statement — ENUMs in MySQL are inline column type definitions, not separate named types (unlike PostgreSQL, where this idiom is meaningful). Since this project's `dialect` is always `'mysql'` (`tenantConnector.js:49`), every one of these 9 statements will throw a SQL syntax error on every rollback, and the error is always silently swallowed. This is confusing dead code copy-pasted from a Postgres-oriented migration pattern — it implies enum cleanup happens on rollback when it never does anything (dropping the table already removes the inline enum definition).
+### IN-02: `bookingUseCases.js`'s `isFiniteId` does not verify numeric-ness, only presence
 
-**Fix:** Delete the `DROP TYPE` block entirely (dropping the tables already cleans up the inline MySQL enums), or replace the dialect guard with a comment clarifying it is intentionally a no-op reserved for a future Postgres target, if that's actually the intent.
-
-### IN-02: `BookingEntity.ownedBy()` / `ProductEntity.isBookableEligible()` duplicate inline logic in the use-case layer instead of being called
-
-**File:** `apps/dgfy-api/src/modules/booking/entities/bookingEntity.js:62-64`
-**Also affects:** `apps/dgfy-api/src/modules/products/entities/productEntity.js:50-52`
-
-**Issue:** `bookingUseCases.js`'s `buildCancelBookingUseCase` re-implements the exact ownership check `BookingEntity.ownedBy()` already provides (`existing.customer_account_id === requestingAccountId`) inline rather than constructing a `BookingEntity` and calling it; `productUseCases.js`'s `buildSetProductBookableUseCase` does the same for `ProductEntity.isBookableEligible()`. This mirrors a documented project convention ("entities exist standalone without usecases importing them directly"), so it's intentional rather than an oversight, but it does mean these entity methods are effectively unreachable/untested dead code from the use-case layer's perspective — a future edit to the ownership/eligibility rule in one place (the entity) will silently not affect the other (the use case), since they aren't the same code path.
-
-**Fix:** No action required if the "standalone entity" convention is deliberate project policy: consider adding a one-line comment at each duplicated check noting the entity method exists so a future maintainer doesn't have to discover the divergence by searching, or have the use case actually call the entity method to keep the two in sync by construction.
-
-### IN-03: `buildCreateBookingUseCase`/`buildCancelBookingUseCase` skip the `businessRepository.findById()` existence check that every sibling module's `guardBusinessAccess` performs
-
-**File:** `apps/dgfy-api/src/modules/booking/usecases/bookingUseCases.js:134-200, 212-255`
-
-**Issue:** Unlike `productUseCases.js`/`inventoryMovementUseCases.js`/`shiftUseCases.js`/`complianceUseCases.js`, which all call a shared `guardBusinessAccess` that starts with `businessRepository.findById(businessId)` and returns a `404 Business not found` `DomainError` if it's missing, `buildCreateBookingUseCase`/`buildCancelBookingUseCase` never check business existence directly — they only call `isActiveStaffOrOwner`, which calls `getMembership` (returns `false`/no membership for a non-existent business) and then fall through to the tenant-database resolution, which will separately 404 with `NO_TENANT_DATABASE` once `productRepository.findById`/`repository.createBooking` runs. The end result is still a 404, but with a different error code/message than the rest of the API's convention ("Business not found" vs. "No tenant database is registered for this business"), which is a minor inconsistency for API consumers that branch on `error.details.error_code`.
-
-**Fix:** For consistency, consider having `buildCreateBookingUseCase`/`buildCancelBookingUseCase` call the same `guardBusinessAccess`-style existence check other modules use, or explicitly document why booking's authorization shape (dual staff-or-owner/consumer) makes that check structurally different on purpose.
+**File:** `apps/dgfy-api/src/modules/booking/usecases/bookingUseCases.js:116`
+**Issue:** `const isFiniteId = (value) => value !== undefined && value !== null && value !== '';` accepts any non-empty value, including non-numeric strings like `"abc"`, for `productId`/`branchId`/`bookingId`. Combined with WR-01, a malformed ID reaching the repository/DB layer surfaces as a misleading 503 instead of a 400 validation error at the usecase boundary where it belongs.
+**Fix:** `const isFiniteId = (value) => value !== undefined && value !== null && value !== '' && Number.isFinite(Number(value));`
 
 ---
 
-_Reviewed: 2026-07-12T14:23:08Z_
+_Reviewed: 2026-07-12T15:25:51Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
