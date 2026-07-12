@@ -32,6 +32,8 @@
     "audit:dependencies": "npm audit --json && npm --prefix backend audit --json && npm --prefix frontend audit --json",
     "audit:dependencies:prod": "npm audit --omit=dev --json && npm --prefix backend audit --omit=dev --json && npm --prefix frontend audit --omit=dev --json",
     "lint:docs": "node scripts/lint-docs.js",
+    "check:compat-seams": "node scripts/check-compat-seams.js",
+    "generate:compat-inventory": "node scripts/generate-compat-inventory.js",
     "preflight:shared": "node scripts/check-hosting-profile.js --profile shared",
     "preflight:vps": "node scripts/check-hosting-profile.js --profile vps",
     "check:production-env": "node scripts/check-production-env-fixtures.js",
