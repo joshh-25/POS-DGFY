@@ -53,7 +53,15 @@ export default (sequelize) => {
         },
         verified_at: {
             type: DataTypes.DATE,
-            allowNull: true
+            allowNull: true,
+            // Explicit null default (not just allowNull:true) so a freshly
+            // created instance carries verified_at:null in-memory even
+            // though MySQL has no RETURNING clause — otherwise the
+            // attribute is left `undefined` after .create(), and
+            // JSON.stringify silently drops undefined keys from API
+            // responses (toSafeMetadata()/toPlain() would report an object
+            // with no verified_at key at all instead of verified_at: null).
+            defaultValue: null
         }
     }, {
         sequelize,
