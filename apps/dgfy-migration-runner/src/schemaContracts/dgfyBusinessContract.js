@@ -409,6 +409,7 @@ export const dgfyBusinessContract = {
         'id',
         'business_id',
         'branch_id',
+        'branch_scope_key',
         'state',
         'compliance_profile',
         'active_policy_pack_version',
@@ -418,8 +419,16 @@ export const dgfyBusinessContract = {
         'created_at',
         'updated_at'
       ],
-      indexes: ['unique_compliance_mode_state_business_branch'],
-      uniqueConstraints: ['unique_compliance_mode_state_business_branch'],
+      // Phase 08 gap-closure (08-09-PLAN.md, CR-01/FSC-01):
+      // 20260712140000-harden-compliance-mode-state-uniqueness.cjs replaces
+      // the plain (business_id, branch_id) unique index with
+      // unique_compliance_mode_state_business_branch_scope on
+      // (business_id, branch_scope_key) — a STORED generated column
+      // (= COALESCE(branch_id, 0)) — because MySQL treats every NULL
+      // branch_id as distinct, so the old index could not enforce
+      // one-row-per-business when branch_id IS NULL.
+      indexes: ['unique_compliance_mode_state_business_branch_scope'],
+      uniqueConstraints: ['unique_compliance_mode_state_business_branch_scope'],
       foreignKeys: [
         { column: 'branch_id', referencesTable: 'locations', referencesColumn: 'id' }
       ],
