@@ -170,6 +170,10 @@ jobs:
       - name: Enforce compliance impact declarations
         run: npm run check:compliance
 
+      - name: Enforce compatibility-seam manifest gate
+        working-directory: .
+        run: npm run check:compat-seams
+
       - name: Prepare test schema
         run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
         env:
