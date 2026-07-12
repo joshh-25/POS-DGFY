@@ -82,13 +82,13 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 
 - [x] **PRD-01**: Business owner can create a Product in Food, Service, or Retail category — category lives on the Product, not the Store, and a Store can mix categories freely.
 - [x] **PRD-02**: Business owner can choose Basic Inventory (vendor-set stock count) or non-stock per Product; whether a given sale line decrements stock is decided per sale line (`stock_effect_type`), not fixed on the Product.
-- [ ] **PRD-03**: Business owner can group Products into folders (e.g., menu categories) for organization.
+- [x] **PRD-03**: Business owner can group Products into folders (e.g., menu categories) for organization.
 - [x] **PRD-04**: Every stock-count change (sale, restock, loss, adjustment) is recorded as an append-only Inventory Movement row, never mutated after insert.
 - [x] **PRD-05**: New Product and Inventory Movement tables live in `dgfy_business_*` as genuinely new schema — never reusing or foreign-keying into the legacy IMS-shared `items`/`PosTransactionLine` tables.
 
 ### Booking
 
-- [ ] **BOK-01**: Business owner can mark a Service Product as bookable, with a slot duration and branch-level concurrent capacity.
+- [x] **BOK-01**: Business owner can mark a Service Product as bookable, with a slot duration and branch-level concurrent capacity.
 - [ ] **BOK-02**: Consumer or staff can create a Booking against a bookable Service Product; the system blocks a Booking once branch-level capacity for that slot is reached — no individual staff calendar required.
 - [ ] **BOK-03**: A fulfilled Booking links to the Availment that completes it.
 
@@ -217,10 +217,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CMP-05 | Phase 7 | Pending |
 | PRD-01 | Phase 8 | Complete |
 | PRD-02 | Phase 8 | Complete |
-| PRD-03 | Phase 8 | Pending |
+| PRD-03 | Phase 8 | Complete |
 | PRD-04 | Phase 8 | Complete |
 | PRD-05 | Phase 8 | Complete |
-| BOK-01 | Phase 8 | Pending |
+| BOK-01 | Phase 8 | Complete |
 | BOK-02 | Phase 8 | Pending |
 | BOK-03 | Phase 8 | Pending |
 | SFT-01 | Phase 8 | Complete |

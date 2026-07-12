@@ -6,14 +6,14 @@ current_phase: 08
 current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-07-12T12:53:33.204Z"
+last_updated: "2026-07-12T13:06:56.145Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 43
-  completed_plans: 34
+  completed_plans: 35
   percent: 55
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 ## Current Position
 
 Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 08 execution started
 
@@ -93,6 +93,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overa
 | Phase 06 P03 | 12min | 2 tasks | 3 files |
 | Phase 08 P01 | 20min | 2 tasks | 3 files |
 | Phase 08 P02 | 15min | 2 tasks | 9 files |
+| Phase 08 P03 | 30min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,8 @@ Recent decisions affecting current work:
 - [Phase 08]: P01: INTEGER (not BIGINT) autoincrement PKs on all 8 new commerce tables including append-only ledgers, matching existing tenant-table convention.
 - [Phase 08]: P01: actor_staff_account_id on inventory_movements/cash_drawer_events FKs staff_accounts.id (SET NULL), matching the tenant_audit_logs referential-integrity precedent.
 - [Phase 08]: P02: reworded model doc comments to avoid literal 'backend/src/models' substring so the plan's automated grep prohibition check passes while still documenting legacy provenance by name.
+- [Phase 08]: P03: productRepository/productFolderRepository resolve models via tenantConnector.getModels() (not direct model-factory import), since Product/ProductFolder are 08-02's registered Tenant models.
+- [Phase 08]: P03: products module mounts top-level at /products (not nested under /businesses/:businessId); businessId read from req.body/req.query in controllers.
 
 ### Pending Todos
 
@@ -134,6 +137,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T12:53:07.160Z
+Last session: 2026-07-12T13:05:55.519Z
 Stopped at: Phase 8 context gathered
 Resume file: .planning/phases/08-commerce-foundation-product-catalog-booking-shift-cash-drawe/08-CONTEXT.md
