@@ -66,7 +66,17 @@ function addGate(gates, name, ok, detail) {
   console.log(`[${status}] ${name} :: ${detail}`);
 }
 
-function ensureDir(dirPath) {
+/**
+ * CR-02: evidenceDir is reused across reruns of the gate against the same
+ * SHA (a normal local-iteration workflow). Report files are timestamped
+ * (never overwritten) and seam_smoke.json is a fixed filename only
+ * rewritten on a clean completion — so without clearing first, a prior
+ * run's leftovers can be read as current and silently mask real failures
+ * as passes (fail-open). Recreate the directory from scratch before any
+ * evidence-generating command executes.
+ */
+function resetDir(dirPath) {
+  fs.rmSync(dirPath, { recursive: true, force: true });
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
@@ -136,7 +146,10 @@ function buildVerdictPayload({ targetSha, gates, artifactPaths }) {
 function main() {
   const targetSha = (process.env.RELEASE_TARGET_SHA || captureStdout('git', ['rev-parse', 'HEAD'])).toLowerCase();
   const evidenceDir = path.join('.tmp', 'release-gates', targetSha);
-  ensureDir(evidenceDir);
+  // CR-02: recreate (never reuse) the evidence dir at the start of each run
+  // so a prior run's stale reports/seam_smoke.json can never be read as
+  // current evidence.
+  resetDir(evidenceDir);
   const outputFile = path.join(evidenceDir, 'dgfy_release_evidence.json');
   const gates = [];
 
@@ -206,11 +219,17 @@ function main() {
   // one gate per seam id; an absent file fails closed. An empty seams[]
   // (no active seams registered) is a legitimate not-applicable pass,
   // mirroring dgfy-seam-smoke.js's own `[].every()===true` semantics.
-  runCommand(nodeCmd, ['scripts/dgfy-seam-smoke.js', '--evidence-dir', evidenceDir]);
+  const seamSmokeCommandOk = runCommand(nodeCmd, ['scripts/dgfy-seam-smoke.js', '--evidence-dir', evidenceDir]);
+  const seamSmokeCommandDetail = `node scripts/dgfy-seam-smoke.js --evidence-dir ${evidenceDir}`;
   const seamSmokeFile = path.join(evidenceDir, 'seam_smoke.json');
   const seamSmokeReport = readJsonIfExists(seamSmokeFile);
 
-  if (!seamSmokeReport) {
+  if (!seamSmokeCommandOk) {
+    // CR-02: a non-zero exit (e.g. the runner crashed before writing
+    // seam_smoke.json) must fail closed regardless of what the file
+    // currently contains — never silently trust a leftover pass.
+    addGate(gates, 'compat.seam.smoke', false, `${seamSmokeCommandDetail} — command failed (fail-closed)`);
+  } else if (!seamSmokeReport) {
     addGate(gates, 'compat.seam.smoke', false, `${seamSmokeFile} absent (fail-closed)`);
   } else if (!Array.isArray(seamSmokeReport.seams) || seamSmokeReport.seams.length === 0) {
     addGate(
