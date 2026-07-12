@@ -380,14 +380,14 @@ export const evaluateComplianceChecklist = ({
         missingProfileFields.push('readiness.tests_passed');
     }
 
-    const fiscalAccumulatorStreamReady = evidence?.fiscal_accumulator_stream_ready !== false;
-    const auditLogAppendOnlyEnforced = evidence?.audit_log_append_only_enforced !== false;
-    const paymentHandoffPolicyReady = evidence?.payment_handoff_policy_ready !== false;
+    const fiscalAccumulatorStreamReady = evidence?.fiscal_accumulator_stream_ready === true;
+    const auditLogAppendOnlyEnforced = evidence?.audit_log_append_only_enforced === true;
+    const paymentHandoffPolicyReady = evidence?.payment_handoff_policy_ready === true;
     const submissionArtifacts = Array.isArray(evidence?.submission_artifacts?.items)
         ? evidence.submission_artifacts.items
         : [];
-    const submissionArtifactsReady = evidence?.submission_artifacts?.ready !== false;
-    const encryptionPolicyPrerequisitesReady = evidence?.encryption_policy_prerequisites_ready !== false;
+    const submissionArtifactsReady = evidence?.submission_artifacts?.ready === true;
+    const encryptionPolicyPrerequisitesReady = evidence?.encryption_policy_prerequisites_ready === true;
     const rmoFilingReadiness = evidence?.rmo_filing_readiness && typeof evidence.rmo_filing_readiness === 'object'
         ? evidence.rmo_filing_readiness
         : {};
