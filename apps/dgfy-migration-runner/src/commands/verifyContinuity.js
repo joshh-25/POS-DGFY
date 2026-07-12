@@ -153,6 +153,10 @@ export async function runVerifyContinuity({} = {}) {
 
     return report;
   } finally {
-    await legacy.close();
+    try {
+      await legacy.close();
+    } catch (closeError) {
+      console.error(`[verify-continuity] warning: failed to close SOURCE_DB connection: ${closeError.message}`);
+    }
   }
 }
