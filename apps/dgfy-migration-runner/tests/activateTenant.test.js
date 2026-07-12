@@ -150,128 +150,26 @@ describe('applyAndVerifyBusinessSchema — missing-table verification error (ski
   });
 });
 
-describe('runActivateTenant — guard rejection (skip-safe unit)', () => {
-  beforeEach(() => {
-    jest.resetModules();
-    applyEnv();
-  });
-
-  afterEach(() => {
-    restoreEnv();
-    jest.resetModules();
-  });
-
-  test('rejects a non-business database_name (dgfy_core) with a TargetGuardError and never opens a connection or writes the registry', async () => {
-    const mockCreateTargetConnection = jest.fn();
-    const mockCreateMetaConnection = jest.fn();
-    const mockCreateBusinessTargetConnection = jest.fn();
-    const mockApplyAndVerifyBusinessSchema = jest.fn();
-
-    jest.unstable_mockModule('../src/config/db.js', () => ({
-      createTargetConnection: mockCreateTargetConnection,
-      createMetaConnection: mockCreateMetaConnection,
-      createBusinessTargetConnection: mockCreateBusinessTargetConnection
-    }));
-    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
-      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
-      recordCommandStart: jest.fn().mockResolvedValue(1),
-      recordCommandComplete: jest.fn().mockResolvedValue(undefined)
-    }));
-    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
-      applyAndVerifyBusinessSchema: mockApplyAndVerifyBusinessSchema
-    }));
-
-    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
-
-    await expect(runActivateTenant({ databaseName: 'dgfy_core' })).rejects.toThrow(/non-business database_name/i);
-
-    expect(mockCreateTargetConnection).not.toHaveBeenCalled();
-    expect(mockCreateMetaConnection).not.toHaveBeenCalled();
-    expect(mockCreateBusinessTargetConnection).not.toHaveBeenCalled();
-    expect(mockApplyAndVerifyBusinessSchema).not.toHaveBeenCalled();
-  });
-
-  test('rejects an arbitrary non-dgfy_ database_name before any connection is opened', async () => {
-    const mockCreateTargetConnection = jest.fn();
-    const mockCreateMetaConnection = jest.fn();
-
-    jest.unstable_mockModule('../src/config/db.js', () => ({
-      createTargetConnection: mockCreateTargetConnection,
-      createMetaConnection: mockCreateMetaConnection,
-      createBusinessTargetConnection: jest.fn()
-    }));
-    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
-      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
-      recordCommandStart: jest.fn().mockResolvedValue(1),
-      recordCommandComplete: jest.fn().mockResolvedValue(undefined)
-    }));
-    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
-      applyAndVerifyBusinessSchema: jest.fn()
-    }));
-
-    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
-
-    await expect(runActivateTenant({ databaseName: 'sku_inventory_manager' })).rejects.toThrow();
-
-    expect(mockCreateTargetConnection).not.toHaveBeenCalled();
-    expect(mockCreateMetaConnection).not.toHaveBeenCalled();
-  });
-});
-
-describe('runActivateTenant — missing registry row fails closed (skip-safe unit)', () => {
-  beforeEach(() => {
-    jest.resetModules();
-    applyEnv();
-  });
-
-  afterEach(() => {
-    restoreEnv();
-    jest.resetModules();
-  });
-
-  test('fails closed with no matching business_database_registry row and never attempts a schema apply', async () => {
-    const mockCoreQuery = jest.fn().mockResolvedValue([[]]);
-    const mockCreateTargetConnection = jest.fn(() => ({ query: mockCoreQuery }));
-    const mockCreateBusinessTargetConnection = jest.fn();
-    const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
-    const mockApplyAndVerifyBusinessSchema = jest.fn();
-
-    jest.unstable_mockModule('../src/config/db.js', () => ({
-      createTargetConnection: mockCreateTargetConnection,
-      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() })),
-      createBusinessTargetConnection: mockCreateBusinessTargetConnection
-    }));
-    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
-      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
-      recordCommandStart: jest.fn().mockResolvedValue(1),
-      recordCommandComplete: mockRecordCommandComplete
-    }));
-    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
-      applyAndVerifyBusinessSchema: mockApplyAndVerifyBusinessSchema
-    }));
-
-    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
-
-    await expect(runActivateTenant({ databaseName: 'dgfy_business_missingrow' })).rejects.toThrow(
-      /no business_database_registry row exists/i
-    );
-
-    expect(mockApplyAndVerifyBusinessSchema).not.toHaveBeenCalled();
-    expect(mockCreateBusinessTargetConnection).not.toHaveBeenCalled();
-    // Only the SELECT is issued — never an UPDATE.
-    const updateCalls = mockCoreQuery.mock.calls.filter(([sql]) => /UPDATE\s+business_database_registry/i.test(sql));
-    expect(updateCalls).toHaveLength(0);
-    // Command failure is recorded (repudiation/audit trail).
-    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
-      expect.anything(),
-      1,
-      expect.objectContaining({ exitStatus: 'failed' })
-    );
-  });
-});
-
 // ---------------------------------------------------------------------------
 // DB-backed gated tests — RUN_ACTIVATE_TENANT_INTEGRATION=true with real MySQL.
+//
+// NOTE: this block is intentionally declared here — immediately after the
+// missing-table-verification block above and BEFORE any describe block below
+// registers a jest.unstable_mockModule() stub for '../src/config/db.js' or
+// '../src/schema/applyBusinessSchema.js'. Empirically verified (Jest 29 ESM):
+// jest.unstable_mockModule() registrations persist across jest.resetModules()
+// calls within the same test file — resetModules() clears the evaluated
+// module cache but does NOT undo a prior mock registration for that
+// specifier. If this block ran after "guard rejection" / "missing registry
+// row fails closed" (both of which mock '../src/config/db.js'), its dynamic
+// import of activateTenant.js would silently inherit their last-registered
+// fake connection (whose query() always resolves to an empty result set)
+// instead of the real Sequelize-backed factories — causing every assertion
+// here to fail against a mock, never against real MySQL, regardless of what
+// is actually in the database. This is the same hazard the block above
+// already guards against for '../src/schema/applyBusinessSchema.js'; this
+// comment extends that same protection to this block for both specifiers it
+// needs real (db.js and schema/applyBusinessSchema.js).
 // ---------------------------------------------------------------------------
 
 describeIfIntegration('runActivateTenant — real MySQL provisioning->active/verified transition', () => {
@@ -408,4 +306,124 @@ describeIfIntegration('runActivateTenant — real MySQL provisioning->active/ver
     });
     expect(Number(rows[0].total ?? rows[0].TOTAL)).toBe(1);
   }, 60000);
+});
+
+describe('runActivateTenant — guard rejection (skip-safe unit)', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    applyEnv();
+  });
+
+  afterEach(() => {
+    restoreEnv();
+    jest.resetModules();
+  });
+
+  test('rejects a non-business database_name (dgfy_core) with a TargetGuardError and never opens a connection or writes the registry', async () => {
+    const mockCreateTargetConnection = jest.fn();
+    const mockCreateMetaConnection = jest.fn();
+    const mockCreateBusinessTargetConnection = jest.fn();
+    const mockApplyAndVerifyBusinessSchema = jest.fn();
+
+    jest.unstable_mockModule('../src/config/db.js', () => ({
+      createTargetConnection: mockCreateTargetConnection,
+      createMetaConnection: mockCreateMetaConnection,
+      createBusinessTargetConnection: mockCreateBusinessTargetConnection
+    }));
+    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
+      recordCommandStart: jest.fn().mockResolvedValue(1),
+      recordCommandComplete: jest.fn().mockResolvedValue(undefined)
+    }));
+    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
+      applyAndVerifyBusinessSchema: mockApplyAndVerifyBusinessSchema
+    }));
+
+    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
+
+    await expect(runActivateTenant({ databaseName: 'dgfy_core' })).rejects.toThrow(/non-business database_name/i);
+
+    expect(mockCreateTargetConnection).not.toHaveBeenCalled();
+    expect(mockCreateMetaConnection).not.toHaveBeenCalled();
+    expect(mockCreateBusinessTargetConnection).not.toHaveBeenCalled();
+    expect(mockApplyAndVerifyBusinessSchema).not.toHaveBeenCalled();
+  });
+
+  test('rejects an arbitrary non-dgfy_ database_name before any connection is opened', async () => {
+    const mockCreateTargetConnection = jest.fn();
+    const mockCreateMetaConnection = jest.fn();
+
+    jest.unstable_mockModule('../src/config/db.js', () => ({
+      createTargetConnection: mockCreateTargetConnection,
+      createMetaConnection: mockCreateMetaConnection,
+      createBusinessTargetConnection: jest.fn()
+    }));
+    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
+      recordCommandStart: jest.fn().mockResolvedValue(1),
+      recordCommandComplete: jest.fn().mockResolvedValue(undefined)
+    }));
+    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
+      applyAndVerifyBusinessSchema: jest.fn()
+    }));
+
+    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
+
+    await expect(runActivateTenant({ databaseName: 'sku_inventory_manager' })).rejects.toThrow();
+
+    expect(mockCreateTargetConnection).not.toHaveBeenCalled();
+    expect(mockCreateMetaConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe('runActivateTenant — missing registry row fails closed (skip-safe unit)', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    applyEnv();
+  });
+
+  afterEach(() => {
+    restoreEnv();
+    jest.resetModules();
+  });
+
+  test('fails closed with no matching business_database_registry row and never attempts a schema apply', async () => {
+    const mockCoreQuery = jest.fn().mockResolvedValue([[]]);
+    const mockCreateTargetConnection = jest.fn(() => ({ query: mockCoreQuery }));
+    const mockCreateBusinessTargetConnection = jest.fn();
+    const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
+    const mockApplyAndVerifyBusinessSchema = jest.fn();
+
+    jest.unstable_mockModule('../src/config/db.js', () => ({
+      createTargetConnection: mockCreateTargetConnection,
+      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() })),
+      createBusinessTargetConnection: mockCreateBusinessTargetConnection
+    }));
+    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
+      recordCommandStart: jest.fn().mockResolvedValue(1),
+      recordCommandComplete: mockRecordCommandComplete
+    }));
+    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
+      applyAndVerifyBusinessSchema: mockApplyAndVerifyBusinessSchema
+    }));
+
+    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
+
+    await expect(runActivateTenant({ databaseName: 'dgfy_business_missingrow' })).rejects.toThrow(
+      /no business_database_registry row exists/i
+    );
+
+    expect(mockApplyAndVerifyBusinessSchema).not.toHaveBeenCalled();
+    expect(mockCreateBusinessTargetConnection).not.toHaveBeenCalled();
+    // Only the SELECT is issued — never an UPDATE.
+    const updateCalls = mockCoreQuery.mock.calls.filter(([sql]) => /UPDATE\s+business_database_registry/i.test(sql));
+    expect(updateCalls).toHaveLength(0);
+    // Command failure is recorded (repudiation/audit trail).
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'failed' })
+    );
+  });
 });
