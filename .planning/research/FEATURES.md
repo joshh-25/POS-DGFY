@@ -1,197 +1,216 @@
 # Feature Research
 
-**Domain:** DGFY database-first migration/refactor milestone
-**Researched:** 2026-07-10
-**Confidence:** LOW per `classify-confidence` seam for local/curated sources; evidence is repository-authoritative/reference docs read directly.
+**Domain:** SMB multi-vertical POS + storefront commerce (food, retail, service) — Philippines market
+**Researched:** 2026-07-12
+**Confidence:** MEDIUM (regulatory/BIR findings cross-checked across multiple official + vendor sources; competitor UX/data-model findings are single-search web-sourced, treat as directional, not authoritative — see Sources)
+
+## Milestone Note
+
+This supersedes the prior `.planning/research/FEATURES.md`, which covered the earlier v1.0 database-first foundation milestone (Accounts/Businesses/Tenancy). That milestone is complete. This research covers the current v2.0 Commerce Domain milestone: Product Catalog, POS Checkout & Payment, Shift/Cash-Drawer, Fiscal/Compliance, Storefront Online Ordering, and Order Fulfillment/Delivery Coordination — built as backend API parity with the legacy system on the new `dgfy_*` schema, no new frontends this milestone.
 
 ## Feature Landscape
 
-This milestone is a brownfield foundation milestone, not a product-expansion milestone. The required feature set is the minimum capability surface needed to create a DGFY-owned database foundation, migrate data safely from the IMS-shaped legacy system, and expose first backend APIs for Accounts, Businesses, and Tenancy while preserving current POS and Storefront behavior.
+### Table Stakes (Users Expect These)
 
-### Table Stakes (Required For Safe Refactor)
-
-Missing any of these makes the database-first refactor unsafe, unverifiable, or likely to regress existing beta/production users.
+Features users assume exist. Missing these = product feels incomplete or, for PH-specific items, is legally non-compliant.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Dedicated one-shot migration runner container | Schema/data migration must be an explicit deploy artifact, not an API startup side effect. | MEDIUM | One image should support schema migration, data migration, verification, and runbook/rollback-support commands. Long-running API containers must not be the primary migration surface. |
-| New `dgfy_*` landlord database foundation | DGFY must stop inheriting account/business/tenant ownership from the IMS-shaped schema. | HIGH | Additive beside legacy by default. Must cover DGFY Accounts, Businesses, Branches, Tenancy registry, and migration metadata before backend APIs depend on it. |
-| New tenant foundation for identity and operational ownership | Tenant-local Staff Accounts, Assignments, and Terminal identity are prerequisites for POS and later domain migration. | HIGH | Scope to foundation only. Do not pull in Product, POS checkout, shifts, payments, fiscal, or Storefront domain behavior. |
-| Migration metadata, checkpoints, and idempotency | Partial failures must have a clean retry path during rehearsals and eventual cutover. | HIGH | Track migration runs, source/target mappings, per-step completion, verification status, and failure reason. This is a table-stakes safety feature, not polish. |
-| Dry-run mode for old-to-new migrations | Operators need evidence before writing target data. | MEDIUM | Dry-run should report planned inserts/updates/skips/conflicts without mutating `dgfy_*` data. |
-| Legacy-to-DGFY transformation scripts | The migration is a real transformation, not a raw copy of IMS tables. | HIGH | For this milestone, prioritize account/business/tenancy data and the source-to-target mapping needed by those domains. Finished-item Product migration is later unless needed only as a mapping proof. |
-| Verification reports for migration correctness | A migration that runs but cannot prove what moved is not release-ready. | MEDIUM | Emit machine-readable and human-readable evidence: row counts, orphan checks, duplicate/conflict checks, skipped records, tenant coverage, and data-shape warnings. |
-| Abort-threshold and rehearsal evidence hooks | Full-stop cutover requires pre-decided abort criteria and realistic rehearsal data. | MEDIUM | The milestone should produce the technical hooks and reports that a later runbook uses, even if final production cutover is deferred. |
-| Backend Accounts APIs | First backend surface must prove DGFY-owned identity independent of SKUpervisor redirects. | HIGH | Implement through `routes -> controllers -> usecases -> repositories -> models`. Include registration/login/account lifecycle basics and hardening proof where touched. |
-| Backend Businesses APIs | Business ownership and business selection are foundational for every later POS/Storefront capability. | HIGH | Cover business creation/selection and branch registry basics only. Avoid billing, co-ownership UX, back-office, and commercial expansion unless required by current data preservation. |
-| Backend Tenancy APIs | Tenant routing and membership/session creation must be stable before later domains move. | HIGH | Preserve the DGFY Account vs Staff Account split. Tenant session creation must require explicit accepted membership/assignment evidence. |
-| Compatibility/facade behavior for legacy callers | Existing POS/Storefront behavior must not regress while new foundations are introduced. | HIGH | Use ADR 0003 facade strategy. Legacy code stays live; only approved seams are allowed, such as a future POS API base URL switch or adapter. |
-| Architecture guardrail compliance | New backend work must not weaken the modular-monolith boundary contract. | MEDIUM | Controllers stay transport-only; Sequelize access stays in repositories; any cross-boundary exception needs ADR/update and removal plan. |
-| Tenant schema drift prevention for new foundations | Existing code already has recurring tenant schema drift risk. | HIGH | New migrations must include coverage checks and repair/verification patterns, not just landlord migration success. |
-| Security/session hardening for account and tenancy flows | Account lifecycle, tenant provisioning, and auth are explicitly covered by the governance hardening contract. | HIGH | Include replay rejection, duplicate/conflict paths, logout/session cleanup, deferred-verification honesty, and durable persistence proof. |
-| Legacy behavior preservation tests | The milestone must prove existing beta behavior remains available while foundations change. | MEDIUM | Use focused backend tests, migration tests, architecture checks, and targeted smoke/contract checks for touched compatibility seams. |
+| Discount codes (promo/campaign) | Every mainstream POS (Shopify POS, Square, Loyverse) supports admin-defined codes entered/scanned at checkout | LOW-MEDIUM | Model as `Discount` definition (code, type: %/fixed, scope: order/line/product, active window, usage limit) separate from its application record. DGFY already scopes this as "discount codes" in v2.0 target features — correctly table stakes. |
+| Manual/staff-applied discount, permission-gated | Cashiers routinely need to comp, adjust, or discount for goodwill/damaged goods; every reviewed platform gates this behind a specific staff permission | LOW | Needs an `applied_by_staff_id` + reason/note field for audit — matters for shift reconciliation and fraud review, not just UX. Depends on the existing Staff Accounts + role-based access foundation from v1.0. |
+| Senior Citizen / PWD discount (RA 9994, RR 7-2010, RMC 71-2022) | Legally mandated in the Philippines for any business selling to the public; a compliant POS is a regulatory requirement, not optional | MEDIUM-HIGH | Must capture ID number (OSCA/PWD), name, TIN; compute by stripping 12% VAT first, then 20% off the VAT-exclusive amount; print separate "Less: VAT Exemption" and "Less: 20% SC/PWD Discount" receipt lines; segregate exempt vs. taxable sales in the fiscal record. For group/restaurant meals, apply the Most Expensive Meal Combo (MEMC) rule: discount basis is a per-head base value, capped to the number of qualifying seniors/PWDs actually present. This is exactly the class of thing DGFY's existing fiscal/compliance policy engine already exists to gate — treat SC/PWD math as a fiscal-domain concern, not a generic "manual discount," because BIR receipt shape depends on it. |
+| Server-verified checkout totals (line items, discounts, tax, change) | Client-computed totals are a classic POS fraud/bug vector; all serious platforms verify total server-side before finalizing a sale | MEDIUM | Already explicitly named in DGFY's v2.0 scope ("server-verified totals/change") — correctly identified as non-negotiable. The legacy system's known gaps include client-declared payment status and client-side change calculation; this milestone should close that gap, not just replicate it. |
+| Payment method selection at checkout (Cash, GCash, Credit Card) | Table stakes for any PH SMB POS given GCash's near-universal adoption alongside cash | LOW-MEDIUM | Recording *which* method was used per Availment is table stakes; real-time payment gateway integration (e.g., actually processing a GCash/card charge) is a bigger lift — see Anti-Features. |
+| Shift open/close with starting cash float | Every reviewed POS (Loyverse, Square, Toast) requires a cashier to open a shift with a declared float before transacting | LOW-MEDIUM | Needed before any Availment can be recorded against a terminal/cashier — this is a hard dependency, not a nice-to-have. Depends on v1.0's Staff Accounts and terminal identity foundation. |
+| Cash-drawer reconciliation (expected vs. actual, over/short) | Standard loss-prevention practice; Loyverse's model (system-computed "Expected" from cash sales/refunds/pay-ins/pay-outs vs. counted "Actual", with a Difference field) is the de facto pattern | MEDIUM | Recommend the same 3-field model: Expected (system-derived), Actual (cashier-entered count), Difference (computed, signed). Optionally support "blind count" mode (hide Expected from cashier) as a permission — cheap to add, closes an obvious gaming vector. |
+| Order fulfillment status tracking (placed → prep → ready → completed) | Every restaurant/retail OMS reviewed (Toast, Chowbus-style systems) centralizes this; customers and staff both expect visible order state | LOW-MEDIUM | Core pipeline is shared across fulfillment types; branch only the "handoff leg" per type (pickup: ready→picked-up; delivery: driver-assigned→en-route→delivered; dine-in: served→closed). Model as `fulfillment_type` + `fulfillment_status`, not one giant enum. |
+| Guest checkout for storefront ordering | Forced account creation measurably increases cart abandonment (cited ~24-28% abandonment attributable to forced signup across ecommerce research); this is now baseline UX expectation, not a differentiator | LOW-MEDIUM | DGFY's v2.0 scope already specifies "guest-or-account checkout" — correctly identified. Guest orders still need a durable contact (phone/email) to receive status updates and be linkable to an account later if the guest signs up. Reuses the existing DGFY Account foundation for the account path. |
+| Receipt generation reflecting all discounts/taxes | BIR-compliant receipts are a legal requirement whenever a sale occurs, not just a UX nicety | MEDIUM | Tightly coupled to fiscal/compliance gating — the receipt shape itself is a compliance artifact, not a template exercise. |
+| Manual delivery/courier assignment for online orders | For a sub-100-user platform without an in-house rider network, a simple "assign this order to [named courier/contact]" flow is what every small PH F&B operator actually does today (Lalamove/Grab booked manually, or an in-house rider tapped by staff) | LOW | DGFY's scope already frames this as "manual delivery/courier assignment," not integration with a live courier API — correctly right-sized, and matches the legacy system's own "outbound links" capability. |
 
-### Differentiators (Valuable But Not Required Now)
+### Differentiators (Competitive Advantage)
 
-These features improve operator confidence, migration quality, or future scalability, but they are not required to complete the first database-first milestone if time is constrained.
+Features that set the product apart from generic SMB POS. Not required for parity, but valuable given DGFY's target market and constraints.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Operator migration dashboard | Makes migration progress and failures easier to inspect without reading raw logs. | MEDIUM | Defer to reports/CLI first. A dashboard is useful after migration metadata stabilizes. |
-| Rich source-to-target diff viewer | Helps explain exactly how legacy records transformed into DGFY records. | MEDIUM | Useful for QA and stakeholder review, but report files are enough for this milestone. |
-| Automated rollback execution | Reduces pressure during a failed rehearsal or cutover. | HIGH | This milestone should document rollback support and preserve legacy as fallback; automatic rollback can wait until cutover runbook design. |
-| Seeded demo tenant on new DGFY schema | Helps frontend/API consumers test against a clean DGFY-owned shape. | LOW | Useful once Accounts/Businesses/Tenancy APIs exist. Keep it clearly separate from migration proof. |
-| Compatibility adapter package for old POS response shapes | Could reduce old frontend edits during backend-first cutover. | MEDIUM | Valuable if the team chooses backend-side compatibility. Decision is still open; do not assume until API shape comparison is done. |
-| Migration performance benchmark suite | Gives stronger confidence before production cutover. | MEDIUM | Start with runtime reporting in rehearsal scripts; expand into benchmark gates when realistic data snapshots are available. |
-| Expanded audit trail UI for account/business/tenant changes | Improves supportability and future compliance posture. | MEDIUM | Persist audit evidence now where security-sensitive; UI can wait. |
-| Multi-owner business governance | Co-ownership is anticipated by the domain model and valuable commercially. | HIGH | Not needed for the first backend scope unless existing data already requires it. Governance for irreversible actions needs separate design. |
+| Fiscal/compliance policy-engine gating (block checkout/receipts/shift when BIR paperwork is missing) | Most SMB POS platforms (Square, Loyverse, Shopify POS) assume the merchant is already fiscally registered elsewhere and don't actively gate transactions on paperwork state; DGFY already has this as a proven legacy capability and it directly serves PH SMBs who are mid-registration or juggling multiple permits | HIGH | This is a genuine differentiator vs. Square/Shopify/Loyverse for the PH long-tail SMB segment — none of the international platforms model "can't legally issue a receipt yet" as a first-class state. Correctly already scoped in v2.0 as its own domain, not folded into checkout logic. |
+| Unified Product model spanning Food/Service/Retail categories under one entity | Most POS platforms are either retail-first (Square, Shopify) or F&B-first (Toast) with bolted-on support for the other; a genuinely unified model with stock/non-stock and Booking (bookable services) sharing one Product concept simplifies onboarding for hybrid businesses (e.g., a salon that also sells retail product) | MEDIUM-HIGH | Matches DGFY's stated multi-vertical target and legacy precedent (IMS vocabulary already spans these). Worth the complexity because it's foundational, not a bolt-on. |
+| Branch-level booking capacity without staff calendars | Simpler than Square Appointments/Calendly-style per-staff scheduling, but still enables service businesses (barbershops, clinics, repair shops) to cap concurrent bookings per branch/timeslot | MEDIUM | Correctly scoped as "no staff calendar yet" — this is the right MVP cut; full staff-level calendars are a well-known scope trap (see Anti-Features). |
+| Discovery/map-based storefront browse across many small vendors | Aggregated multi-tenant discovery (map browse/search across DGFY-hosted storefronts) is closer to a marketplace pattern than a single-merchant Shopify storefront; this is a real differentiator if DGFY's value prop includes helping customers *find* PH SMBs, not just transact with ones they already know | MEDIUM-HIGH | High value but also the most product-strategy-dependent item here; the existing `dgfy_core.storefront_discovery_index` projection built in Phase 2 is already positioned to support this. |
 
-### Anti-Features (Explicitly Do Not Build Now)
+### Anti-Features (Commonly Requested, Often Problematic)
 
-These are tempting because they are adjacent to DGFY's real product goals, but including them now would blur the foundation milestone and increase regression risk.
+Features that seem good but create disproportionate cost for a sub-100-active-user platform at this stage.
 
 | Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| Product/Availment domain migration | Product/POS behavior is central to DGFY's value. | It depends on stable Accounts/Businesses/Tenancy and has unresolved design decisions around fulfillment status, stock effects, scheduling, and legacy transformations. | Defer until the database foundation and first backend APIs are stable. Capture only source-to-target mapping prerequisites if needed. |
-| POS checkout, payment mechanics, discounts, shifts, fiscal compliance | These are visible user workflows and known gaps. | They are large, fragile, and include correctness/security issues such as client-declared payment status and client-side change calculation. | Treat as later domain-specific milestones with their own design and hardening. |
-| Storefront frontend or POS frontend migration to new apps | A standalone DGFY frontend suite is the long-term goal. | Frontend migration before database/API foundations creates churn and risks current beta behavior. | Keep existing frontend running. Allow only narrow approved compatibility seams. |
-| Big-bang production cutover | It seems faster than running old and new side-by-side. | It violates the accepted facade/Strangler strategy and would lack rehearsal, abort, and rollback evidence. | Build beside legacy; rehearse; cut over only with a separate runbook. |
-| Raw-copy legacy schemas into `dgfy_*` | Faster than designing clean DGFY tables. | Preserves the IMS coupling the refactor is meant to remove. | Transform legacy data into DGFY-owned account/business/tenant structures. |
-| General legacy cleanup | Code quality concerns are real. | Broad cleanup risks regressions and merge conflicts while the old system must stay live. | Touch legacy only at approved compatibility seams or safety fixes. |
-| New architecture allowlist exceptions as a shortcut | Speeds up implementation in the moment. | Existing expired exceptions are already a concern; adding more weakens the migration contract. | Move persistence into repositories and update ADRs only for genuine cross-boundary changes. |
-| Full payment gateway or PayMongo readiness automation | Payments are commercially important. | Payment mechanics are out of first backend scope and current PayMongo readiness depends on separate provider evidence. | Defer to payment/fiscal milestone. Preserve existing behavior. |
-| Business Back Office split | Separating POS and Back Office is part of the target product shape. | It is frontend/application scope, not database foundation scope. | Keep POS and Back Office behavior as-is until frontend migration phase. |
-| Deleting or archiving legacy code immediately | Removes clutter. | Legacy code remains the fallback and parity reference until replacement paths are proven. | Archive only after parity evidence and no active dependency. |
+|---------|---------------|------------------|-------------|
+| Programmatic split-tender across arbitrary payment method combinations via API | "Customers should be able to pay part cash, part card, part e-wallet in any combination" feels like parity with Square | Square's own findings show even their mature APIs have real limits here (Terminal API can't split a single checkout into multiple payments in one call; you sequence partial payments against an Order and reconcile at the end) — building this from scratch for 3 payment methods at <100-user scale is high effort for a rarely-used edge case | Support at most 2-way split (e.g., cash + one electronic method) recorded as two `Payment` rows against one `Availment`, verified server-side that the sum equals total. Defer N-way arbitrary splits until real usage data shows demand. |
+| Live courier/delivery API integration (Grab, Lalamove, etc.) | "Real-time rider tracking and automated dispatch" looks like table stakes vs. big delivery apps | Requires per-courier API contracts, webhook infrastructure, and payout reconciliation logic that's disproportionate for a sub-100-user base still validating fulfillment demand; legacy system itself only did "outbound links," not deep integration | Manual assignment + status update + payout tracking, exactly as already scoped for v2.0. Revisit real integration only after fulfillment volume justifies the operational cost. |
+| Full staff-level appointment calendars (per-staff time slots, staff skill matching, resource booking) | Natural next step once branch-level booking capacity exists, and competitors like Square Appointments do this | Materially larger scope (staff working-hour models, conflict resolution, rescheduling policy) than what's needed to prove the Booking domain at this scale; DGFY's own scope already excludes it explicitly ("no staff calendar yet") | Ship branch-level capacity first (already scoped); let real usage tell you whether staff-level granularity is actually requested before building it. |
+| Real-time payment gateway processing embedded in checkout (actually charging a card/GCash at time of sale via DGFY-integrated gateway) | "Payment method selection" naturally suggests "and DGFY processes the payment" | PayMongo (or similar) integration is a genuine differentiator eventually, but v2.0 scope already frames it as "where available" for storefront, and full gateway integration (webhooks, reconciliation, chargebacks) is its own project-sized effort, not a checkout sub-feature | Record payment *method* and amount at checkout as the v2.0 deliverable (what legacy already does); treat live gateway capture/settlement as a distinct, later milestone once Availment/Order plumbing is proven. |
+| Loyalty points / rewards program | Loyverse and many SMB POS bundle this as a retention feature and it's commonly requested by vendors once they see competitors have it | No current DGFY scope item mentions it; building a points/rewards ledger now competes for effort against getting Product/Checkout/Fulfillment parity shipped, and it has no legacy precedent to migrate | Explicitly defer; revisit as its own milestone once Commerce Domain parity is proven and there's a customer-facing account system mature enough to attach points to. |
+| Automated over/short alerting, cash-variance analytics dashboards | Feels like a natural addition once shift reconciliation exists | At <100 active users this is instrumentation for a scale of cash-handling risk DGFY doesn't have yet; building dashboards before there's data to show them value is premature | Store the Expected/Actual/Difference fields (table stakes) and defer alerting/analytics UI until there's enough shift volume for it to be useful, or until legacy-parity data shows it was actually used. |
+| Full omnichannel order routing across many external channels (delivery-app marketplaces, phone orders, kiosk, etc.) | Toast-style "OMS" that centralizes every channel into one kitchen routing engine looks like the gold standard | DGFY's storefront is the only order-intake channel in scope for v2.0 — building a generic multi-channel router now is solving a problem DGFY doesn't have yet (no delivery-marketplace integrations are in scope) | Model fulfillment status/type generically enough (per Table Stakes) that a future channel can plug in, but don't build channel-routing infrastructure until a second channel actually exists. |
+| Comprehensive Inventory / external IMS integration | Inventory depth feels adjacent and useful once a Product catalog exists | Explicitly out of scope per `.planning/PROJECT.md` — "contract not yet defined technically"; building deep inventory logic now risks coupling this milestone to an undefined external contract | Ship "Basic Inventory ledger" only, as already scoped; defer comprehensive IMS integration to a dedicated future milestone with its own contract design. |
 
 ## Feature Dependencies
 
 ```text
-Architecture/governance docs
-    └──requires──> Migration runner container
-                       └──requires──> New dgfy_* schema migrations
-                                          └──requires──> Migration metadata/checkpoints
-                                                             └──requires──> Dry-run + verification reports
-                                                                                └──enables──> old-to-new migration rehearsals
+Existing foundation (v1.0, already built)
+    Accounts + Businesses + Tenancy + Staff Accounts/RBAC
+        └──enables──> everything below
 
-New dgfy_* landlord foundation
-    ├──enables──> Accounts APIs
-    ├──enables──> Businesses APIs
-    └──enables──> Tenancy APIs
+Product Catalog (Food/Service/Retail, stock/non-stock, folders, Basic Inventory ledger)
+    └──requires──> existing Business/Branch/Tenancy foundation
 
-New tenant foundation
-    ├──requires──> landlord tenancy registry
-    ├──enables──> Staff Accounts / Assignments / Terminal identity
-    └──enables later──> POS/Product/Storefront domain migration
+Booking (bookable Services, branch-level capacity)
+    └──requires──> Product Catalog (a bookable Service is a Product subtype/category)
 
-Accounts APIs
-    └──requires──> session/security hardening
-                       └──requires──> tenant membership/assignment proof
+Shift & Cash Drawer (open/close, reconciliation)
+    └──requires──> existing Staff Accounts + role-based access (shift belongs to a cashier/terminal identity)
+    └──blocks──> POS Checkout & Payment (no Availment without an open shift)
 
-Legacy behavior preservation
-    ├──requires──> compatibility/facade seams
-    └──blocks──> legacy deletion
+Fiscal/Compliance policy engine
+    └──requires──> Business/Branch/Tenancy foundation (compliance state is tenant/branch-scoped)
+    └──blocks──> POS Checkout & Payment, Shift open, Receipts (gates all three on compliance-mode state)
 
-Product/POS/payment/fiscal/frontend migration
-    └──deferred until──> Accounts + Businesses + Tenancy + migration foundation stable
+POS Checkout & Payment (Availment + line items)
+    └──requires──> Product Catalog (line items reference Products)
+    └──requires──> Shift & Cash Drawer (Availment must be recorded against an open shift/terminal)
+    └──requires──> Fiscal/Compliance gating (checkout must check compliance-mode state before allowing sale/receipt)
+
+Discount codes + manual discounts (incl. SC/PWD)
+    └──requires──> POS Checkout & Payment (discounts apply to an Availment/line item)
+    └──enhances──> Fiscal/Compliance (SC/PWD discount math feeds BIR-compliant receipt shape)
+
+Storefront Discovery & Online Ordering (browse/cart/checkout)
+    └──requires──> Product Catalog (customers browse/order Products)
+    └──requires──> Booking (if ordering a bookable Service via storefront)
+    └──enhances──> existing Accounts (account checkout path reuses existing DGFY Account login)
+
+Order Fulfillment & Delivery Coordination
+    └──requires──> Storefront Discovery & Online Ordering (fulfillment acts on orders placed there)
+    └──requires──> POS Checkout & Payment concepts (an online order is conceptually an Availment variant)
+
+Guest checkout ──conflicts──> mandatory account creation
+    (guest checkout and forced-signup are mutually exclusive UX choices; research strongly favors guest-first with post-purchase account prompt, not forced signup)
 ```
 
 ### Dependency Notes
 
-- **Migration runner requires architecture/governance alignment:** It changes deployment and database operations, so it must follow authoritative docs and avoid migrations hidden inside API startup.
-- **Backend APIs require stable schema:** Accounts, Businesses, and Tenancy should not be built against provisional tables; the database contract must lead.
-- **Tenant foundation requires landlord registry:** Tenant-local Staff Accounts and Assignments only make sense when the landlord can resolve Account-to-Business-to-Branch/Tenant ownership.
-- **Migration scripts require metadata before rehearsals:** Without checkpoints and run records, dry-run and retry behavior cannot be trusted.
-- **Compatibility seams block broad legacy edits:** ADR 0003 accepts facades during migration, but cleanup waits until parity is proven.
-- **Product/POS/payment/fiscal domains depend on tenancy:** Those workflows require stable account, business, branch, staff, and terminal identity first.
+- **Shift & Cash Drawer blocks POS Checkout & Payment:** every reviewed platform requires an open shift/terminal session before a sale can be recorded — this must land in an earlier phase than checkout, or checkout has nowhere to attach its Availment.
+- **Fiscal/Compliance blocks Checkout, Shift open, and Receipts:** DGFY's legacy precedent already gates all three behind compliance-mode state; this is a cross-cutting concern that should be designed once and referenced by the other three, not reimplemented per-surface.
+- **Booking requires Product Catalog:** a bookable Service is presented in this milestone as a Product subtype/category, so the catalog's category model (Food/Service/Retail) must exist before Booking can attach capacity rules to it.
+- **SC/PWD discount enhances Fiscal/Compliance, not just Checkout:** because the discount computation directly determines receipt line shape (VAT exemption + 20% discount lines) and the compliance engine gates receipt issuance, these two domains should share the same tax/discount computation module rather than duplicating math.
+- **Order Fulfillment requires Online Ordering, not the reverse:** orders must exist before they can be fulfilled — Storefront/Online Ordering is the earlier dependency in any phase sequencing.
+- **Guest checkout conflicts with forced account creation:** don't build a "must create account to order" path even as an interim step; research is unusually consistent that this measurably hurts conversion with no compensating benefit at this scale.
+- **All of the above depend on the completed v1.0 foundation:** Accounts, Businesses, Tenancy, and Staff Accounts/RBAC (Phases 1-6, complete) are prerequisites for every Commerce Domain feature — no new Commerce Domain feature should attempt to re-derive identity, tenancy, or staff-permission concepts independently.
 
 ## MVP Definition
 
-### Launch With (Milestone v1)
+Given DGFY's constraint of "backend API parity with legacy, no new frontends, sub-100 active users," MVP here means backend capability parity, not feature completeness beyond legacy.
 
-- [ ] Dedicated migration runner container with explicit commands for schema, data, verify, and runbook-support operations.
-- [ ] New `dgfy_*` landlord schema foundation for Accounts, Businesses, Branches, Tenancy registry, and migration metadata.
-- [ ] New tenant schema foundation for Staff Accounts, Assignments, Terminal identity, and tenant-local ownership records.
-- [ ] Idempotent old-to-new migration scripts scoped to the Accounts/Businesses/Tenancy foundation, with dry-run and checkpoint behavior.
-- [ ] Verification reports that prove tenant coverage, data mapping, conflict handling, and drift status.
-- [ ] Backend Accounts APIs implemented inside the governed route/controller/usecase/repository/model boundary.
-- [ ] Backend Businesses APIs for business registration/selection and branch registry basics.
-- [ ] Backend Tenancy APIs for tenant lookup, membership/assignment authorization, and tenant session creation.
-- [ ] Compatibility/facade seams that preserve existing POS and Storefront behavior.
-- [ ] Tests and release evidence: architecture checks, migration tests, tenant drift checks, account/business/tenancy success/failure/conflict tests, and targeted legacy smoke/contract checks.
+### Launch With (v2.0 backend parity)
 
-### Add After Validation (Milestone v1.x)
+- [ ] Product Catalog (Food/Service/Retail, stock/non-stock, folders, Basic Inventory ledger) — legacy already has this; existing POS/Storefront frontends need it to keep functioning conceptually once cut over
+- [ ] Booking (branch-level capacity, no staff calendar) — explicitly scoped, correctly minimal
+- [ ] Availment + line items + server-verified totals/change — the checkout transaction is the core commerce primitive everything else hangs off
+- [ ] Discount codes + manual discounts including SC/PWD — legally required (SC/PWD) and already a legacy capability that must not regress
+- [ ] Payment method selection (Cash, GCash, Credit Card) recorded on Availment — table stakes; does not require live gateway processing
+- [ ] Receipts reflecting discounts/taxes correctly, gated by compliance state
+- [ ] Shift open/close + cash-drawer reconciliation (Expected/Actual/Difference) — hard dependency for Checkout to function at all
+- [ ] Fiscal/Compliance policy-engine gating — legacy precedent; a known differentiator DGFY must not lose in the rebuild
+- [ ] Storefront browse/search/cart, guest-or-account checkout, pickup/delivery scheduling — matches legacy Storefront capability
+- [ ] Order Fulfillment status updates + manual courier assignment + payout tracking — matches legacy's "outbound links" capability, correctly not a live integration
 
-- [ ] Migration dashboard or richer report viewer once report formats stabilize.
-- [ ] Compatibility adapter package if API shape comparison proves old POS needs backend-side translation.
-- [ ] Seeded clean DGFY demo tenant for internal QA.
-- [ ] Automated rehearsal performance comparison against realistic snapshots.
-- [ ] Expanded audit browsing UI for account/business/tenant changes.
+### Add After Validation (v2.x)
 
-### Future Consideration (v2+)
+- [ ] Blind-count shift closing mode (hide Expected cash from cashier) — cheap addition once base reconciliation exists, add if fraud/gaming becomes a concern
+- [ ] 2-way split-tender payments (e.g., cash + GCash) recorded as two Payment rows — add once real merchant demand is observed, not preemptively
+- [ ] Cash-variance analytics/alerting on top of shift reconciliation data — add once there's enough shift volume to make it meaningful
 
-- [ ] Product and Availment database/API migration after account/business/tenancy foundations stabilize.
-- [ ] POS checkout, payment mechanics, split payments, and server-side tender verification.
-- [ ] Fiscal/compliance policy engine redesign and BIR metadata validation.
-- [ ] Shift management and cash drawer audit expansion.
-- [ ] Storefront/POS/Business frontend migration into new `apps/dgfy-*` surfaces.
-- [ ] Full production cutover runbook with rehearsed abort thresholds.
-- [ ] Optional IMS/SKUpervisor integration contract after DGFY owns its core schema.
+### Future Consideration (v3+)
+
+- [ ] Live payment gateway integration (PayMongo full capture/settlement, webhooks, chargebacks) — defer until Availment/Order plumbing is fully proven; "where available" per current scope is the right interim posture
+- [ ] Real courier/delivery API integrations (Grab, Lalamove) — defer until fulfillment volume justifies the integration and operational cost
+- [ ] Staff-level appointment calendars — defer until branch-level Booking capacity proves insufficient in practice
+- [ ] Loyalty/rewards program — defer; no legacy precedent, no current scope, competes for effort against Commerce Domain parity
+- [ ] Multi-channel order routing (delivery marketplaces, kiosk, phone) — defer until a second intake channel actually exists beyond DGFY's own storefront
+- [ ] Comprehensive Inventory / external IMS integration — deferred per `.planning/PROJECT.md`, contract not yet defined
+- [ ] Co-ownership feature exposure — data model already supports it, feature not exposed yet, deferred per `.planning/PROJECT.md`
+- [ ] Product/Availment data-cutover migration and production cutover — downstream of this milestone, Phase 7 stays paused until this domain is proven
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Migration runner container | HIGH | MEDIUM | P1 |
-| New `dgfy_*` landlord foundation | HIGH | HIGH | P1 |
-| New tenant foundation | HIGH | HIGH | P1 |
-| Migration metadata/checkpoints | HIGH | HIGH | P1 |
-| Dry-run migration mode | HIGH | MEDIUM | P1 |
-| Verification reports | HIGH | MEDIUM | P1 |
-| Accounts APIs | HIGH | HIGH | P1 |
-| Businesses APIs | HIGH | HIGH | P1 |
-| Tenancy APIs | HIGH | HIGH | P1 |
-| Compatibility/facade preservation | HIGH | HIGH | P1 |
-| Architecture guardrail compliance | HIGH | MEDIUM | P1 |
-| Security/session hardening | HIGH | HIGH | P1 |
-| Migration dashboard | MEDIUM | MEDIUM | P2 |
-| Compatibility adapter package | MEDIUM | MEDIUM | P2 |
-| Seeded clean DGFY demo tenant | MEDIUM | LOW | P2 |
-| Automated rollback execution | MEDIUM | HIGH | P3 |
-| Multi-owner business governance | MEDIUM | HIGH | P3 |
-| Product/Availment migration | HIGH | HIGH | P3 for this milestone |
-| POS/payment/fiscal migration | HIGH | HIGH | P3 for this milestone |
-| Frontend migration | HIGH | HIGH | P3 for this milestone |
+| Product Catalog (Food/Service/Retail, stock/non-stock) | HIGH | MEDIUM | P1 |
+| Basic Inventory ledger | MEDIUM | MEDIUM | P1 |
+| Booking (branch-level capacity) | MEDIUM | MEDIUM | P1 |
+| Availment + line items + server-verified totals | HIGH | MEDIUM | P1 |
+| Discount codes | MEDIUM | LOW | P1 |
+| Manual discounts (permission-gated) | MEDIUM | LOW | P1 |
+| SC/PWD regulatory discount | HIGH (legal requirement) | MEDIUM-HIGH | P1 |
+| Payment method selection (record only) | HIGH | LOW-MEDIUM | P1 |
+| Receipts | HIGH (legal requirement) | MEDIUM | P1 |
+| Shift open/close | HIGH (blocks checkout) | LOW-MEDIUM | P1 |
+| Cash-drawer reconciliation | MEDIUM | MEDIUM | P1 |
+| Fiscal/compliance gating | HIGH (differentiator + legal) | HIGH | P1 |
+| Storefront browse/search/cart | HIGH | MEDIUM | P1 |
+| Guest checkout | HIGH | LOW-MEDIUM | P1 |
+| Pickup/delivery scheduling | MEDIUM | MEDIUM | P1 |
+| Order fulfillment status tracking | HIGH | LOW-MEDIUM | P1 |
+| Manual courier assignment + payout tracking | MEDIUM | LOW | P1 |
+| Blind-count shift closing | LOW | LOW | P2 |
+| 2-way split-tender payments | MEDIUM | MEDIUM | P2 |
+| Cash-variance analytics/alerting | LOW | MEDIUM | P3 |
+| Live payment gateway capture/settlement | HIGH (eventually) | HIGH | P3 |
+| Real courier API integration | MEDIUM | HIGH | P3 |
+| Staff-level appointment calendars | LOW (at this scale) | HIGH | P3 |
+| Loyalty/rewards program | LOW (at this scale) | MEDIUM-HIGH | P3 |
+| Comprehensive Inventory/IMS integration | MEDIUM (eventually) | HIGH | P3 |
 
 **Priority key:**
-- P1: Must have for this database-first milestone.
-- P2: Useful after the foundation validates.
-- P3: Valuable but explicitly deferred from this milestone.
+- P1: Must have for v2.0 Commerce Domain launch (legacy parity + legal requirements)
+- P2: Should have, add when possible after core is stable
+- P3: Nice to have, future consideration — explicitly deferred given <100-user scale
 
-## Scope Guardrails For Requirements Definition
+## Competitor Feature Analysis
 
-- First backend scope is **Accounts + Businesses + Tenancy only**.
-- New DGFY schemas are created beside legacy by default; legacy schemas are not mutated as the normal path.
-- Existing `backend/*` and `frontend/apps/{store,pos}/*` remain live during the milestone.
-- Legacy edits are limited to approved compatibility seams and safety fixes.
-- No Product, Inventory, POS checkout, Storefront checkout, payments, discounts, fiscal compliance, shifts, reports, or frontend app migration should enter the first milestone requirements.
-- Any cross-boundary design change requires ADR review/update per architecture governance.
+| Feature | Shopify POS | Square | Loyverse | Our Approach |
+|---------|-------------|--------|----------|--------------|
+| Discount codes vs. manual discount | Both supported; manual gated behind "Apply custom discounts" staff permission | Both supported via similar permission model | Both supported | Same two-track model (code-based + permissioned manual), plus SC/PWD as a distinct third regulated discount type layered on the fiscal engine |
+| Split/multi-tender payments | Supported at UI level | Supported at UI level; API-level splitting has real documented limits (no single-call split via Terminal API) | Limited public detail found | Record method + amount per Availment as table stakes; defer arbitrary N-way splits, ship at most 2-way if needed (P2) |
+| Shift/cash-drawer reconciliation | Not detailed in research | Not detailed in research | Explicit Expected/Actual/Difference model with optional blind-count mode | Adopt Loyverse's 3-field model directly — it's the clearest, most directly reusable pattern found |
+| SC/PWD-style regulatory discount | N/A (not a PH-specific platform) | N/A | N/A | No general-purpose competitor precedent exists; must design against BIR regulations directly and against PH-specific POS vendors (StoreHub, Qashier) who already solved this (MEMC base-value pattern for group meals) |
+| Order fulfillment status model | N/A (retail-first) | Some restaurant support | N/A | Toast's pattern (shared core pipeline + type-specific handoff leg) is the right generalizable model; adopt `fulfillment_type` + `fulfillment_status` split |
+| Guest checkout | Native, well-documented UX guidance to default to guest + post-purchase account prompt | Similar industry-standard pattern assumed | N/A | Directly adopt "guest-first, prompt post-purchase" — matches DGFY's own "guest-or-account checkout" scope language already |
 
 ## Sources
 
-- `.planning/PROJECT.md` — project context, active requirements, scope, constraints.
-- `.planning/codebase/ARCHITECTURE.md` — current component map and architecture pattern context.
-- `.planning/codebase/CONCERNS.md` — tenant drift, token/session, migration, and fragile-area risks.
-- `.planning/codebase/TESTING.md` — expected verification patterns and release gates.
-- `docs/START_HERE.md` — authoritative documentation lookup order.
-- `docs/architecture/ARCHITECTURE_BOUNDARIES.md` — authoritative backend boundary contract.
-- `docs/architecture/ARCHITECTURE_GOVERNANCE.md` — authoritative governance and hardening contract.
-- `docs/architecture/adr/0003-migration-facade-strategy.md` — accepted compatibility facade strategy.
-- `refactor/DGFY_Project_Status_and_Proposal.md` — business and product rationale for standalone DGFY.
-- `refactor/DGFY_Implementation_Phases.md` — phased scope and explicit deferrals.
-- `refactor/DGFY_Legacy_Feature_Inventory.md` — legacy capabilities and gaps to preserve or defer.
-- `refactor/DGFY_Plan_vs_Reality_Reconciliation.md` — schema coupling, corrections, and risk findings.
-- `refactor/DGFY_Migration_Cutover_Strategy.md` — migration/cutover strategy, backend-first milestone, rehearsal requirements.
+- [Shopify Help Center: Discounts in Shopify POS](https://help.shopify.com/en/manual/sell-in-person/shopify-pos/discount-management) — MEDIUM (official vendor docs, single search pass)
+- [Shopify Help Center: Applying discounts in Shopify POS](https://help.shopify.com/en/manual/sell-in-person/shopify-pos/discount-management/applying-discounts) — MEDIUM (official vendor docs)
+- [Square Developer: Split Payment scenarios](https://developer.squareup.com/docs/payments/scenarios/split-online-payment) — MEDIUM (official vendor docs)
+- [Square Support: Process split-tender payments](https://squareup.com/help/us/en/article/5097-process-split-tender-payments-with-square) — MEDIUM (official vendor docs)
+- [Square Developer: Terminal API overview](https://developer.squareup.com/docs/terminal-api/overview) — MEDIUM (official vendor docs)
+- [Loyverse Help: Shift Management in Loyverse POS](https://help.loyverse.com/help/shift-management-loyverse-pos) — MEDIUM (official vendor docs)
+- [Loyverse Support: Shift Management](https://support.loyverse.com/en/articles/1030617-shift-management) — MEDIUM (official vendor docs)
+- [Cointab: Cash Drawer Reconciliation for Retailers](https://www.cointab.net/us/a-guide-to-cash-drawer-reconciliation-for-retailers-simplify-your-process) — LOW (general industry blog)
+- [Toast Support: Managing Off-Premise Orders with Orders Hub](https://support.toasttab.com/en/article/Managing-Off-Premise-Orders-with-Orders-Hub) — MEDIUM (official vendor docs)
+- [Chowbus: Order Management System (OMS) — What is It & How Does it Work](https://www.chowbus.com/blog/oms-order-management-system) — LOW (vendor blog)
+- [Toast Developer Guide: Orders API overview](https://doc.toasttab.com/doc/devguide/portalOrdersApiOverview.html) — MEDIUM (official vendor docs)
+- [Shopify: Guest Checkout — Simplify Purchases and Boost Sales](https://www.shopify.com/enterprise/blog/guest-checkout) — MEDIUM (official vendor content, contains cited conversion statistics)
+- [Cartylabs: Guest Checkout vs. Account Creation on Shopify](https://cartylabs.com/blog/guest-checkout-vs-account-creation-shopify/) — LOW (third-party blog, cross-checked against Shopify's own guest-checkout content)
+- [BIR Revenue Regulation No. 7-2010 — Expanded Senior Citizens Act implementation](https://elibrary.judiciary.gov.ph/thebookshelf/showdocs/10/55830) — HIGH (primary regulatory source)
+- [BIR RMC No. 71-2022](https://bir-cdn.bir.gov.ph/local/pdf/RMC%20No.%2071-2022.pdf) — HIGH (primary regulatory source, PDF)
+- [BIR RR No. 16-2018](https://bir-cdn.bir.gov.ph/local/pdf/RR%20No.%2016-2018.pdf) — HIGH (primary regulatory source, PDF)
+- [Hashmicro PH: BIR POS Compliance Requirements and Guide](https://www.hashmicro.com/ph/blog/official-receipt-bir/) — MEDIUM (vendor guide, cross-referenced against BIR primary sources)
+- [Respicio & Co.: PWD and Senior Citizen Discounts in the Philippines — Rights and Requirements](https://www.respicio.ph/commentaries/pwd-and-senior-citizen-discounts-in-the-philippines-rights-and-requirements) — MEDIUM (PH law firm commentary, cross-referenced against BIR primary sources)
+- [StoreHub Care: PH BIR — How to Set Up and Apply MEMC Discounts for Senior Citizens and PWDs](https://care.storehub.com/en/articles/12252232-ph-bir-how-to-set-up-and-apply-memc-discounts-for-senior-citizens-and-pwds) — MEDIUM (PH-market competitor vendor documentation, directly analogous implementation, fetched and read in full)
+- Qashier Help Center: PH Guide to SC/PWD Discounts in the POS (`support.qashier.com/en/articles/8198157`) — cited in search snippets only; direct fetch returned HTTP 403, so this source is summarized secondhand via search results, not independently verified — treat corroborating detail from this one as LOW confidence
+- `.planning/PROJECT.md` — v2.0 Commerce Domain milestone scope, deferred items, existing v1.0 foundation
 
 ---
-*Feature research for: DGFY standalone database-first refactor milestone*
-*Researched: 2026-07-10*
+*Feature research for: DGFY v2.0 Commerce Domain milestone (Product, Checkout & Fulfillment)*
+*Researched: 2026-07-12*

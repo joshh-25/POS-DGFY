@@ -1,384 +1,269 @@
-# Architecture Research
+# Architecture Research: Commerce Domain Integration
 
-**Domain:** DGFY standalone database-first refactor beside a live modular-monolith platform
-**Researched:** 2026-07-10
-**Confidence:** HIGH
+**Domain:** Product Catalog, POS Checkout & Payment, Shift/Cash-Drawer, Fiscal/Compliance, Storefront Online Ordering, Order Fulfillment/Delivery Coordination — integrated into DGFY's existing Landlord+Tenant, layered backend
+**Researched:** 2026-07-12
+**Confidence:** HIGH (grounded directly in the live codebase — `apps/dgfy-api/src`, `apps/dgfy-migration-runner/src/schemaContracts`, `backend/src/modules/{pos,compliance,stockMovements}`, ADRs 0003/0024/0029/0034 — not external ecosystem research)
+
+**Supersedes:** the prior v1.0 database-first-refactor ARCHITECTURE.md that lived at this path — that research covered the migration-runner/landlord-tenant foundation, which is now built (Phases 1-6, see PROJECT.md). This document is scoped to the v2.0 Commerce Domain milestone: how new commerce modules integrate with the now-stable foundation.
 
 ## Standard Architecture
 
 ### System Overview
 
-The refactor should be structured as a database-first Strangler Fig, not as a backend rewrite that discovers its schema while being built. The new DGFY foundation sits beside the existing SKUpervisor/legacy landlord and tenant databases. Legacy runtime stays live until the new schema, migration evidence, backend modules, compatibility seams, and cutover rehearsals prove readiness.
+The v2.0 Commerce Domain is new module code inside **`apps/dgfy-api`** (not `backend/`). Phases 1-6 already proved this pattern for Accounts/Businesses/Tenancy; Commerce Domain extends the same shape rather than inventing a new one.
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Existing Live Runtime                               │
-├───────────────────────┬───────────────────────┬─────────────────────────────┤
-│ frontend/apps/store   │ frontend/apps/pos     │ backend modular monolith    │
-│ Storefront            │ POS + back office     │ legacy + module routes      │
-└───────────┬───────────┴───────────┬───────────┴──────────────┬──────────────┘
-            │                       │                          │
-            ▼                       ▼                          ▼
-┌─────────────────────────────┐ ┌─────────────────────────────────────────────┐
-│ Legacy/current landlord DB  │ │ Legacy/current tenant DBs                   │
-│ tenant registry, current    │ │ IMS-shaped operational schemas              │
-│ DGFY account tables, etc.   │ │ POS, storefront, items, stock, bookings     │
-└─────────────────────────────┘ └─────────────────────────────────────────────┘
-            │
-            │ read-only extraction by default
-            ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    Dedicated DGFY Migration Runner                          │
-│ one-shot container, explicit commands, no long-running API startup migrate  │
-│ schema migrate | data migrate | verify | report | rollback/runbook support  │
-└───────────┬───────────────────────────────┬─────────────────────────────────┘
-            │ creates/updates               │ writes evidence/checkpoints
-            ▼                               ▼
-┌─────────────────────────────┐ ┌─────────────────────────────────────────────┐
-│ New DGFY landlord DB        │ │ New DGFY tenant DBs                         │
-│ dgfy_* account, business,   │ │ one DB per business for staff, assignments, │
-│ branch, tenancy registry,   │ │ terminals, tenant-local ownership metadata  │
-│ migration metadata          │ │ and later operational domains               │
-└───────────┬─────────────────┘ └────────────────┬────────────────────────────┘
-            │ stable DB contract                  │ request-scoped tenant bind
-            ▼                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         New DGFY Backend Foundation                         │
-│ routes -> controllers/handlers -> usecases -> repositories -> models        │
-│ Accounts module | Businesses module | Tenancy module                        │
-└───────────┬─────────────────────────────────────────────────────────────────┘
-            │
-            ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     Compatibility Seams and Cutover Gates                    │
-│ api.dgfy.ph routing, old POS API-base seam, response adapters if required,  │
-│ parity tests, dry-run evidence, rehearsal evidence, abort thresholds         │
-└─────────────────────────────────────────────────────────────────────────────┘
 ```
+┌───────────────────────────────────────────────────────────────────────────┐
+│ apps/dgfy-api (Express)                                                    │
+│  routes -> controllers -> usecases -> repositories -> models               │
+├───────────────────────────────────────────────────────────────────────────┤
+│ EXISTING MODULES (Phase 4/5)          │ NEW COMMERCE MODULES (v2.0)        │
+│  modules/accounts        (Landlord)   │  modules/products      (Tenant)    │
+│  modules/businesses       (Landlord+  │  modules/inventory     (Tenant)    │
+│                             Tenant    │  modules/booking       (Tenant)    │
+│                             writes    │  modules/shifts        (Tenant)    │
+│                             via       │  modules/compliance    (Tenant)    │
+│                             TenantCon-│  modules/availment      (Tenant,   │
+│                             nector)   │    checkout+fulfillment core)      │
+│  modules/dgfyAuth (LEGACY COMPAT      │  modules/storefrontOrdering        │
+│    PROXY — points at legacy           │    (Landlord Account +             │
+│    sku_inventory_manager,             │     Tenant Availment/Booking)      │
+│    slated for removal)                │  modules/fulfillment/delivery      │
+├───────────────────────────────────────────────────────────────────────────┤
+│ infra/tenantConnector.js — per-tenant Sequelize connection + model cache    │
+│ middleware/tenantContextResolver.js — resolves req.tenantContext/Models    │
+│   (built Wave 4, UNMOUNTED — Storefront Ordering is its first real caller)│
+├───────────────────────────────────────────────────────────────────────────┤
+│ dgfy_core (Landlord)                  │ dgfy_business_* (one per Tenant)   │
+│  accounts, businesses,                │  locations, staff_accounts,        │
+│  business_memberships,                │  account_staff_assignments,        │
+│  business_database_registry,          │  terminal_identities,              │
+│  storefront_discovery_index           │  + NEW: products, availments,      │
+│                                        │    availment_items,                │
+│                                        │    availment_stage_events,         │
+│                                        │    inventory_movements, bookings,  │
+│                                        │    shifts, cash_drawer_events,     │
+│                                        │    compliance_mode_state           │
+└───────────────────────────────────────────────────────────────────────────┘
+        (separate, untouched)  backend/ (legacy Express, sku_inventory_manager,
+                                Item/PosTransaction/StockMovement/PosTerminalShift/
+                                compliancePolicyEngine — reference precedent only,
+                                current live POS/Storefront frontends still call this)
+```
+
+**Two live backends, one direction of travel.** `backend/` is the legacy modular monolith still serving the current POS/Storefront frontends against `sku_inventory_manager` — Commerce Domain does not touch it, per PROJECT.md's "no legacy edits except approved seams." `apps/dgfy-api` is the new, IMS-schema-free backend built against `dgfy_core`/`dgfy_business_*`. Commerce Domain v2.0 is new module code inside `apps/dgfy-api`, following the exact folder shape `modules/accounts`, `modules/businesses`, and `modules/dgfyAuth` already established: `modules/<name>/{controllers,entities,repositories,routes.js,usecases,index.js}`.
+
+**Critical existing-codebase fact that changes the "customer_account_id" answer:** `apps/dgfy-api/src/modules/dgfyAuth` (`DgfyAccount` model, table `dgfy_accounts`) is a **legacy compatibility proxy** pointed at `sku_inventory_manager`, explicitly commented in `apps/dgfy-api/src/config/db.js` as "slated for removal in Phase 5." The canonical, forward DGFY Account for Commerce Domain purposes is `apps/dgfy-api/src/models/Landlord/Account.js` (`dgfy_core.accounts`), exposed through `modules/accounts`. Any `customer_account_id` on AVAILMENT/BOOKING must resolve against **this** Account, not `dgfyAuth`'s proxy model.
 
 ### Component Responsibilities
 
-| Component | Responsibility | Boundary |
-|-----------|----------------|----------|
-| Existing backend modular monolith | Keep current POS, Storefront, tenant provisioning, and legacy-compatible APIs running | Do not restructure for this refactor. Legacy controllers/services remain compatibility facades under ADR 0003. |
-| Existing legacy/current landlord DB | Source for current tenant registry, current account/membership records, and migration input | Read-only by default during migration scripts. Schema mutations are forbidden unless explicitly accepted as a compatibility seam. |
-| Existing legacy/current tenant DBs | Source for current tenant-local POS, items, storefront, staff, bookings, stock, and transaction data | Read-only extraction by default. Do not "fix" old schemas as part of new DGFY schema design except through approved production repair paths. |
-| Migration runner image | Own schema migration, data transformation, verification, reporting, checkpoints, and rollback/runbook commands | One-shot deploy artifact. Long-running API containers must not be the primary migration execution surface. |
-| New DGFY landlord DB | Own DGFY Accounts, Businesses, Branches, Tenancy registry, tenant DB pointers, discovery metadata foundation, and migration metadata | New `dgfy_*` schema family beside legacy. It becomes the authority only after cutover gates pass. |
-| New DGFY tenant DBs | Own tenant-local Staff Accounts, Assignments, Terminals, and later operational DGFY domains | One DB per Business. Tenant-local operational data must not be queried cross-tenant in request paths. |
-| Accounts backend module | Own DGFY Account lifecycle, login, profile, password, verification, legal acknowledgement, and owner/manager identity behavior | New module code follows `routes -> controllers -> usecases -> repositories -> models`. No direct model imports from controllers. |
-| Businesses backend module | Own Business and Branch registration, ownership relation, branch type, business currency, and business-level lifecycle | Landlord-scoped repository access only. Tenant DB creation/provisioning is delegated to Tenancy. |
-| Tenancy backend module | Own tenant registry, tenant DB provisioning, tenant resolution, tenant connection metadata, and migration-visible tenancy state | Separates landlord registry from tenant-local operational access. Avoid direct reuse of legacy tenant connector assumptions unless wrapped. |
-| Compatibility adapters | Translate between old frontend/API expectations and the new backend where cutover requires it | Narrow, documented, temporary, and test-covered. Must have removal criteria. |
-| Cutover gates | Decide whether to proceed, retry, abort, or roll back | Evidence-driven: dry-run, idempotency, realistic rehearsal volume, parity checks, architecture checks, and abort threshold. |
+| Component | Responsibility | Existing / New |
+|-----------|----------------|-----------------|
+| `modules/products` | Product identity, category (Food/Service/Retail), stock-vs-non-stock setting, folders/grouping, availability toggle | New |
+| `modules/inventory` | Owns `INVENTORY_MOVEMENT` ledger writes (sale/restock/loss/adjustment); only module allowed to write stock balance effects | New |
+| `modules/booking` | `BOOKING` entity, slot capacity check against Product's `slot_duration_minutes`/`concurrent_capacity` | New |
+| `modules/shifts` | Shift open/close, cash-drawer event log, close-time reconciliation; one-open-shift-per-terminal invariant | New |
+| `modules/compliance` | Compliance-mode state machine + a narrow gate port called by other modules' usecases | New (fresh build, not a port of `backend/src/modules/compliance` — see Pattern 1) |
+| `modules/availment` | `AVAILMENT`/`AVAILMENT_ITEM`/`AVAILMENT_STAGE_EVENT`; POS checkout usecases; requests (not performs) stock effects from `modules/inventory` | New |
+| `modules/storefrontOrdering` | Cart, guest-or-account checkout, cross-DB Account resolution, writes into tenant Availment/Booking | New — first module to legitimately touch both Landlord and Tenant repositories in one usecase |
+| `modules/fulfillment` (or folded into `modules/availment`) | Order status updates, `AVAILMENT_STAGE_EVENT` full lifecycle, manual delivery/courier assignment, payout tracking | New |
+| `infra/tenantConnector.js` | Per-tenant Sequelize connection cache + tenant model registry (`getModels(databaseName)`) | Existing — extend `getModels()`'s `modelDefiners` map with every new Tenant model |
+| `middleware/tenantContextResolver.js` | Resolves `req.tenantContext`/`req.tenantModels` from `x-business-id` header + membership check | Existing, built but **unmounted** — Commerce Domain (specifically Storefront Ordering and any tenant-scoped POS route) is its first real caller |
+| `modules/accounts/repositories/accountRepository.js` | Landlord Account lookup/validation | Existing — gains a new external caller (`storefrontOrdering` usecase), not modified internally |
+| `apps/dgfy-migration-runner/src/schemaContracts/dgfyBusinessContract.js` | Authoritative tenant-schema contract the runner verifies against | Existing — extend with every new tenant table |
 
 ## Recommended Project Structure
 
-The immediate refactor should not relocate the whole repo into the target `apps/dgfy-*` shape. That direction is documented by ADR 0032, but moving all deployables now would increase blast radius. The foundation should add the smallest number of new runtime surfaces needed to prove the database contract.
-
-```text
-dgfy-platform/
-├── apps/
-│   └── dgfy-api/                         # Existing standalone service; bounded auth slice per ADR 0032
-├── backend/
-│   ├── migrations/                       # Existing Sequelize migration convention, legacy/current surface
-│   └── src/
-│       ├── routes/
-│       │   ├── dgfyAccounts.js           # New route file, if kept in main backend
-│       │   ├── dgfyBusinesses.js         # New route file, if kept in main backend
-│       │   └── dgfyTenancy.js            # New route file, if kept in main backend
-│       └── modules/
-│           ├── dgfyAccounts/
-│           │   ├── controllers/*Handlers.js
-│           │   ├── usecases/
-│           │   ├── repositories/
-│           │   ├── contracts/
-│           │   ├── domain/
-│           │   ├── index.js
-│           │   └── README.md
-│           ├── dgfyBusinesses/
-│           └── dgfyTenancy/
-├── infrastructure/
-│   └── docker/
-│       └── dgfy-migration-runner/        # New one-shot migration image
-├── scripts/
-│   └── dgfy-migrations/                  # Operator-facing wrappers and evidence helpers, if not inside runner package
-└── refactor/                             # Planning/reference docs only, not runtime dependency
 ```
-
-If the new backend foundation is placed in `apps/dgfy-api` instead of `backend/src/modules`, the same internal layering must still apply: routes/controllers are transport-only, use cases own workflow, repositories own Sequelize, and models are not imported by controllers. The important architectural decision is the boundary contract, not the exact folder root.
+apps/dgfy-api/src/
+├── models/
+│   ├── Landlord/                  # unchanged this milestone (Account, Business, ...)
+│   └── Tenant/
+│       ├── Product.js             # NEW
+│       ├── Availment.js           # NEW
+│       ├── AvailmentItem.js       # NEW
+│       ├── AvailmentStageEvent.js # NEW — insert-only (see Pattern 2)
+│       ├── InventoryMovement.js   # NEW — insert-only (see Pattern 2)
+│       ├── Booking.js             # NEW
+│       ├── Shift.js               # NEW
+│       ├── CashDrawerEvent.js     # NEW — insert-only
+│       └── ComplianceModeState.js # NEW
+├── modules/
+│   ├── products/{controllers,entities,repositories,routes.js,usecases,index.js}
+│   ├── inventory/{...}            # owns InventoryMovement writes only
+│   ├── booking/{...}
+│   ├── shifts/{...}
+│   ├── compliance/{...}           # exposes the compliance gate PORT, see Pattern 1
+│   ├── availment/{...}            # checkout usecases call compliance + inventory ports
+│   ├── storefrontOrdering/{...}   # calls modules/accounts (Landlord) + tenant Availment/Booking
+│   └── fulfillment/{...}
+├── infra/tenantConnector.js       # extend getModels()'s modelDefiners map
+└── middleware/tenantContextResolver.js  # mount on all Commerce routes needing tenant DB access
+```
 
 ### Structure Rationale
 
-- **`infrastructure/docker/dgfy-migration-runner/`:** Treat migration execution as an explicit deploy artifact with its own image lifecycle and command surface. This prevents API startup from becoming a hidden migration path.
-- **`backend/src/modules/dgfyAccounts`, `dgfyBusinesses`, `dgfyTenancy`:** Keeps new backend work aligned with ADR 0001 and the architecture guardrails while avoiding broad changes to legacy controllers/services.
-- **`apps/dgfy-api`:** Already accepted as a standalone DGFY API service, but currently bounded to auth/registration. Expanding it into broader Accounts/Businesses/Tenancy APIs is cross-boundary and should update ADR 0032 or create a follow-up ADR.
-- **Compatibility files:** Keep adapters physically close to the boundary they translate, with names that make temporary compatibility obvious. Avoid burying legacy-shape translations inside core use cases.
+- **One module per bounded concern, mirroring `modules/accounts`/`modules/businesses` exactly** — not one giant `modules/commerce` — so ADR-0029-style ownership boundaries (below) are enforced by *which module's repository* is allowed to write a table, not by convention alone.
+- **`modules/inventory` and `modules/compliance` are deliberately separate from `modules/availment`/`modules/products`**, even though they'll be called constantly by checkout — this is what makes rule (a) below ("gate without scattering") and rule (b) below (single writer of the stock ledger) enforceable rather than aspirational.
 
 ## Architectural Patterns
 
-### Pattern 1: Database-First Strangler Foundation
+### Pattern 1: Fiscal/Compliance gating sits in the use-case layer, behind a narrow injected port — not middleware, not scattered per-call checks
 
-**What:** Create the new `dgfy_*` landlord and tenant schemas beside the existing live schemas, then migrate data through explicit transformation scripts. New backend APIs are built only after the schema contract is stable.
+**What:** A `modules/compliance` module exposes one stable function, e.g. `assertComplianceGate({ businessId, operation })` where `operation` is a small closed enum (`checkout`, `receipt_render`, `shift_open`, `shift_close`). Every gated usecase (`availment` checkout usecase, receipt-render usecase, `shifts` open/close usecases) takes this as an injected dependency (constructor/factory param) and calls it as the first line of the usecase body, inside the same function that will go on to touch repositories — never in a controller, never as global route middleware.
 
-**When to use:** This is the default for this milestone because the current DGFY behavior grew inside IMS-shaped tables and tenant schema drift has already been a recurring issue.
+**Why this exact placement, not the two obvious alternatives:**
+- *Not route middleware*, because the gate's meaning is operation-specific (`shift_close` allows different states than `checkout`), and middleware would either (a) need per-route configuration that duplicates the usecase's own knowledge of what it's about to do, or (b) become one giant "is this business compliant" gate blind to which operation is being attempted — exactly the "scattered cross-cutting concern" the question warns about, just moved one layer up instead of solved.
+- *Not scattered ad hoc checks per line of business logic*, because that's what the question is worried about, and it's also what would happen if every module independently imported `compliancePolicyEngine`-equivalent logic.
+- *Use-case layer, behind a port*, because `ARCHITECTURE_BOUNDARIES.md` already assigns "business logic belongs in use-cases" — a gate is business logic (it can change checkout's *outcome*, not just observe it) — and because this exactly matches the **existing, working precedent**: `backend/src/modules/pos/usecases/posUseCases.js` already calls into compliance-readiness logic from inside its own usecase functions (`resolvePosScanBlockedReason`, `complianceError` handling), not from middleware. Commerce Domain should keep that placement, just make the port an injected dependency instead of a direct import, so `modules/availment`/`modules/shifts` never import `modules/compliance` internals directly (mirrors the Dependency Inversion pattern already used by `buildTenantContextResolver`/`accountAuthMiddleware`).
 
-**Trade-offs:** It delays visible API/frontend progress, but it prevents the backend from hard-coding unstable schema assumptions. It also allows rehearsal and verification without touching live legacy schemas as the default path.
+**Trade-offs:** Every gated usecase needs the port wired at construction time (one extra constructor arg) — slightly more boilerplate than a blanket middleware, but it keeps the gate testable in isolation (inject a stub) and keeps `modules/compliance` as the single place the state machine and reason codes live, satisfying "without becoming a scattered cross-cutting concern."
 
-### Pattern 2: One-Shot Migration Runner
+**Example:**
+```typescript
+// modules/compliance/index.js
+export const buildComplianceGate = ({ complianceStateRepository }) => ({
+  async assertComplianceGate({ businessId, operation }) {
+    const state = await complianceStateRepository.findByBusinessId(businessId);
+    const decision = evaluateComplianceDecision(state, operation); // pure policy fn
+    if (decision.blocked) {
+      throw new ComplianceGateError(decision.reasonCode, decision.message);
+    }
+  }
+});
 
-**What:** A dedicated migration image exposes explicit commands:
-
-```text
-schema:migrate
-data:migrate --dry-run
-data:migrate --apply
-verify
-report
-rollback:plan
+// modules/availment/usecases/checkoutUseCase.js
+export const buildCheckoutUseCase = ({ availmentRepository, inventoryPort, complianceGate }) =>
+  async function checkout(input) {
+    await complianceGate.assertComplianceGate({ businessId: input.businessId, operation: 'checkout' });
+    // ...proceed to compute totals, write Availment, request stock effects
+  };
 ```
 
-Each command writes structured evidence and uses migration metadata/checkpoints in the new DGFY landlord database.
+### Pattern 2: Append-only event history — dedicated insert-only Sequelize models per event type, not a generic event table
 
-**When to use:** Every schema migration, data transformation, rehearsal, production cutover, and post-cutover verification step.
+**What:** `AVAILMENT_STAGE_EVENT` and `INVENTORY_MOVEMENT` are each their own strongly-typed Sequelize model, owned by the module responsible for that ledger (`modules/availment` for stage events, `modules/inventory` for movements). Each model:
+1. Declares `timestamps: true, updatedAt: false` — the exact technique already proven in `backend/src/models/StockMovement.js` (line 85: `updatedAt: false`) for the equivalent legacy pattern.
+2. Adds a `beforeUpdate`/`beforeBulkUpdate` hook that throws, as defense-in-depth — omitting `updatedAt` stops Sequelize from auto-touching a column, but it does not, by itself, block an explicit `.update()` call; Sequelize's own hook system (`beforeUpdate`, `beforeBulkUpdate`) is the documented mechanism for intercepting and rejecting lifecycle events (confirmed against current Sequelize v6 docs — this repo pins `sequelize@^6.37.8`).
+3. Is exposed through its module's repository with **only** `create`/`bulkCreate`/`findAll`/`findOne` methods — no `update`, no `destroy` — so the "repository owns Sequelize access" rule itself becomes the enforcement point: nothing outside that repository can reach the model to mutate a row, by construction.
+4. Writes its insert **in the same DB transaction** as the denormalized "current state" cache on its parent row (`AVAILMENT.status`/`fulfillment_stage`; a derived stock balance) — so cache and ledger cannot drift, exactly matching the domain doc's "cache of this table, not a parallel source of truth."
 
-**Trade-offs:** It adds one deployable artifact, but it keeps migration operations observable, repeatable, and separate from API uptime. This is safer than running migrations inside long-lived API containers.
+**Why not a generic `entity_type + payload JSON` event table:** it would (a) lose column-level typing/validation Sequelize gives per-model, (b) force every reader to know the JSON shape per `entity_type` rather than relying on the ORM, (c) fight the "data access belongs in repositories" rule by making one repository serve every event kind, and (d) contradicts the two tables' actually-different column sets already fixed in the domain doc (`AVAILMENT_STAGE_EVENT` has `status`/`fulfillment_stage`/`changed_by`/`reason`; `INVENTORY_MOVEMENT` has `movement_type`/`quantity_delta`/`value_per_unit`/`currency` — genuinely different shapes, not the same event dressed differently).
 
-### Pattern 3: Layered Backend Modules
+**Trade-offs:** Two extra models/migrations instead of one generic table — a small amount of duplication in "define an insert-only Sequelize model" boilerplate, worth extracting into a tiny shared model-factory helper (`defineInsertOnlyModel(sequelize, name, attrs, opts)`) once a third insert-only table shows up (cash-drawer events).
 
-**What:** Accounts, Businesses, and Tenancy are separate modules with the enforced flow:
-
-```text
-routes -> controllers/handlers -> usecases -> repositories -> models
+**Example:**
+```typescript
+// models/Tenant/InventoryMovement.js
+export default (sequelize) => {
+  const InventoryMovement = sequelize.define('InventoryMovement', { /* columns */ }, {
+    tableName: 'inventory_movements',
+    underscored: true,
+    timestamps: true,
+    updatedAt: false,       // matches backend/src/models/StockMovement.js precedent
+    hooks: {
+      beforeUpdate: () => { throw new Error('InventoryMovement rows are insert-only.'); },
+      beforeBulkUpdate: () => { throw new Error('InventoryMovement rows are insert-only.'); }
+    }
+  });
+  return InventoryMovement;
+};
 ```
 
-Controllers translate HTTP only. Use cases own business workflow. Repositories own Sequelize access. Models are persistence definitions only.
+### Pattern 3: Storefront order crosses Landlord/Tenant with application-level resolution, never a DB-level FK — mirrors `customer_account_id`, no 2PC
 
-**When to use:** All new backend work in this refactor.
+**What:** `customer_account_id` on AVAILMENT/BOOKING is a plain UUID column in the tenant `dgfy_business_*` schema with **no** database foreign-key constraint (MySQL cannot enforce a cross-database FK across `dgfy_core` and `dgfy_business_*` even if co-located on one server, and tenant databases must stay independently provisionable/droppable). Referential integrity is enforced entirely at the application layer, in one specific place: the `storefrontOrdering` checkout usecase, which is the **first** usecase in the whole codebase to legitimately call both a Landlord repository (`modules/accounts/repositories/accountRepository.findById`) and a Tenant repository (`modules/availment`'s Availment/Booking repository, resolved through `tenantConnector`) in a single call.
 
-**Trade-offs:** More files up front, but lower coupling and direct compatibility with existing guardrails. It also prevents new code from repeating legacy controller/service layering drift.
+**Sequence:**
+1. Resolve landlord identity — either an authenticated DGFY Account (`req.account`, from the *canonical* `modules/accounts`, not `dgfyAuth`'s legacy proxy) or explicit guest checkout (no account).
+2. If an account is present, validate it exists/is active via `accountRepository` (Landlord DB read) *before* touching the tenant DB.
+3. Resolve `tenantContext`/tenant DB connection via `tenantContextResolver` middleware (already built in Wave 4, currently unmounted — this is its first real caller) keyed off the Business being ordered from (e.g. from the storefront page's business id).
+4. Write the Availment/Booking row into the tenant DB with `customer_account_id` set from the validated (or null, for guest) landlord id.
+5. No distributed transaction across the two databases — accept the same eventual-consistency/orphan-reference posture the domain doc already flags as a known, accepted limitation ("resolving and validating it needs an application-level lookup rather than a DB constraint"). This mirrors the legacy system's own proven precedent: ADR 0024 already ships a nullable `dgfy_account_id` on tenant-local `store_customers` with app-level linkage plus email fallback, not a DB constraint — same posture DGFY should reuse deliberately.
 
-### Pattern 4: Compatibility Adapter at the Edge
+**Guest checkout implication:** BOOKING's domain doc explicitly says `customer_account_id` "isn't optional the way it can be elsewhere" (need a way to reach the customer) — but Reconciliation §2 confirms the legacy system's guest checkout genuinely works with zero DGFY Account. Resolve this by adding guest-contact snapshot columns (`guest_name`/`guest_phone`/`guest_email`) alongside a **nullable** `customer_account_id` on BOOKING, so a booking can always reach its customer even without an account — do not make `customer_account_id` non-null on BOOKING; that would silently break guest checkout parity, a Validated requirement.
 
-**What:** If the old POS frontend must call the new backend during interim backend-first cutover, put response-shape and request-shape translation in an explicit adapter at the API edge, not in core domain use cases.
+**Trade-offs:** No cross-database transactional guarantee — a landlord Account soft-delete after an order was placed leaves a (deliberately accepted) orphaned reference in tenant data, same as production legacy behavior today. Do not attempt cross-database FKs, database links, or 2PC — that complexity is not justified at this system's scale and actively works against the Landlord/Tenant database-independence property the platform is built on (ADR/Part 1 §9).
 
-**When to use:** Only for the old POS API-base seam or other approved legacy-facing routes.
+### Pattern 4: Ownership boundaries inside Commerce Domain — mirror ADR 0029's "request effects vs. record effects" rule internally
 
-**Trade-offs:** Temporary duplication is acceptable under ADR 0003, but every adapter must have tests and removal criteria. The adapter should never become the canonical DGFY API contract.
+**What:** ADR 0029 (legacy, `backend/`) already establishes the correct shape for exactly this problem — "POS and Storefront may request stock effects. Only Inventory records stock effects." Commerce Domain should adopt the identical rule as an internal contract between its own new modules, not just as legacy precedent to read about: `modules/availment` (checkout) and `modules/storefrontOrdering` and `modules/booking` must never write `INVENTORY_MOVEMENT` rows directly — they call a narrow `modules/inventory` usecase (`recordSaleEffect`, `recordLoss`, etc.) that is the only writer. Same pattern for `AVAILMENT_STAGE_EVENT`: `modules/fulfillment`/delivery-coordination usecases request a stage transition; `modules/availment`'s own repository is the only writer of that ledger.
 
-### Pattern 5: Evidence-Gated Cutover
+**Why:** this is the same shape as Pattern 1 (compliance) and Pattern 2 (ledgers) applied consistently — one clear owner per mutable/append-only resource, everyone else calls a port. It also directly prevents re-introducing the "DGFY and SKUpervisor share schema" failure mode (Reconciliation §1) inside the *new* system: if every module could reach into every table, Commerce Domain would just reinvent the coupling problem this whole refactor exists to remove.
 
-**What:** Cutover is a gate sequence, not a date-driven switch. A production cutover can proceed only after dry-run, rehearsal, verification, parity, architecture, and rollback/abort evidence are collected.
-
-**When to use:** Before backend-first cutover, before full database cutover, and before retiring any legacy path.
-
-**Trade-offs:** More ceremony than a small greenfield launch, but appropriate for a live brownfield platform with real users and database transformations.
+**Trade-off:** more usecase-to-usecase calls across module boundaries than a naive "one module, one big usecase file" design — acceptable, and it's exactly the shape `modules/businesses`'s Wave-based build already used successfully (locationUseCases calling into businessDatabaseRegistryRepository, tenantSessionUseCases calling into tenantRegistryUseCases, etc.).
 
 ## Data Flow
 
-### Schema Build Flow
+### POS Checkout Request Flow
 
-```text
-Developer adds migration
+```
+POS terminal request (has open Shift, per Pattern 4's Shift precedent)
     ↓
-Migration runner image built
+routes/availment.js -> checkoutController (transport only)
     ↓
-schema:migrate targets new dgfy landlord DB
+availment/usecases/checkoutUseCase (injected: complianceGate, inventoryPort, shiftPort)
+    ↓ 1. complianceGate.assertComplianceGate({ operation: 'checkout' })   [Pattern 1]
+    ↓ 2. shiftPort.assertOpenShift(terminalId)
+    ↓ 3. compute totals server-side (never trust client change_amount — Reconciliation §6)
+    ↓ 4. availmentRepository.create(Availment + AvailmentItem rows, one DB transaction)
+    ↓ 5. inventoryPort.recordSaleEffect(...) for each stock_effect_type='inventory_issue' line [Pattern 4]
+    ↓ 6. availmentRepository writes first AVAILMENT_STAGE_EVENT row in the same transaction [Pattern 2]
     ↓
-tenant schema migrations target each new dgfy tenant DB
-    ↓
-verify confirms expected tables, columns, indexes, constraints, and metadata
-    ↓
-report becomes release evidence
+Response (receipt) ← receiptUseCase also calls complianceGate({ operation: 'receipt_render' })
 ```
 
-Direction is one-way into the new DGFY databases. Existing legacy schemas are not mutated as part of this flow.
+### Storefront Order Request Flow (Landlord/Tenant crossing)
 
-### Data Migration Flow
-
-```text
-Legacy/current landlord DB + tenant registry
-    ↓ read-only
-Legacy/current tenant DBs
-    ↓ read-only extract
-Transformation layer in migration runner
-    ↓ validate/map
-New DGFY landlord DB
-    ↓ tenant registry and migration metadata
-New DGFY tenant DBs
-    ↓ tenant-local staff, assignment, terminal, and later operational data
-Verification/report output
 ```
-
-The migration is a transformation, not a raw copy. For the early foundation, the data scope should be Accounts, Businesses, Branches, Tenancy registry, Staff Accounts, Assignments, Terminal identity, and migration metadata. Product/POS/payment/fiscal migration should wait for later phases.
-
-### Backend Request Flow After Foundation
-
-```text
-Client request to DGFY API
+DGFY Account (or guest) browses a Business's storefront page
     ↓
-Route
+authenticateDgfyAccount-equivalent (canonical modules/accounts, NOT dgfyAuth proxy) -> req.account (optional)
     ↓
-Controller/handler
+tenantContextResolver({ required: true }) keyed by business_id from the storefront URL  [first real mount]
+    ↓ resolves req.tenantContext.databaseName via BusinessDatabaseRegistry (Landlord read)
+    ↓ resolves req.tenantModels via tenantConnector.getModels(databaseName)              [Pattern 3]
     ↓
-Accounts, Businesses, or Tenancy use case
-    ↓
-Repository
-    ↓
-New DGFY landlord DB or resolved new DGFY tenant DB
-    ↓
-Response DTO
+storefrontOrdering/usecases/placeOrderUseCase
+    ↓ 1. if req.account present: accountRepository.findById (Landlord read, validate active)
+    ↓ 2. else: guest path, capture guest contact snapshot                                [Pattern 3]
+    ↓ 3. availment/booking repository (Tenant write) with customer_account_id set/null
+    ↓ 4. same downstream chain as POS checkout (inventory effects, stage events)
 ```
-
-Tenant resolution should consult the new DGFY landlord registry and bind exactly one tenant database per tenant-scoped request. Cross-tenant operational reads must not happen in request paths. Public discovery should read landlord-side materialized snapshots, not fan out across tenant DBs.
-
-### Interim Compatibility Flow
-
-```text
-Old POS frontend
-    ↓ configured API base URL seam
-api.dgfy.ph or new backend route
-    ↓
-Compatibility adapter, if required
-    ↓
-New DGFY module use case
-    ↓
-New DGFY DBs
-```
-
-The old frontend API-base change is an explicitly approved legacy touch from the cutover docs. Any additional old frontend edits should be treated as exceptions requiring clear scope and tests.
-
-### Cutover Flow
-
-```text
-Pre-cutover rehearsal evidence green
-    ↓
-Maintenance window starts
-    ↓
-Stop legacy write paths
-    ↓
-Run migration runner apply commands
-    ↓
-Run verification commands
-    ↓
-Decision gate: proceed, retry, or abort
-    ↓
-Point traffic to new backend/database foundation
-    ↓
-Post-cutover smoke and parity checks
-```
-
-The full-stop maintenance window is acceptable at the current scale because it avoids split-brain writes. It must not be used without a pre-decided abort threshold and rehearsal evidence against realistic historical data volume.
-
-## Build Order Implications
-
-1. **Architecture contract and ADR decision:** Confirm whether broader Accounts/Businesses/Tenancy APIs live in `backend/src/modules` or expand `apps/dgfy-api`. Expanding `apps/dgfy-api` beyond ADR 0032 auth/registration scope requires ADR update or a new ADR.
-2. **Migration runner skeleton:** Build the one-shot image, command parser, environment contract, logging/report format, and migration metadata table before writing domain-heavy migrations.
-3. **New DGFY landlord schema:** Add Accounts, Businesses, Branches, ownership/membership, tenant registry, tenant DB pointer, branch metadata, and migration metadata foundations.
-4. **New DGFY tenant schema:** Add Staff Accounts, Assignments, Terminal identity, and tenant-local ownership foundations.
-5. **Dry-run transformation scripts:** Extract from legacy/current schemas read-only, map into new schema, validate conflicts, and emit reports without writing.
-6. **Apply transformation with checkpoints:** Add idempotency keys, per-tenant checkpoints, and retry-safe writes before production-like rehearsal.
-7. **Verification suite:** Verify row counts, referential integrity, account/business/tenant mapping, tenant coverage, and expected empty/deferred domains.
-8. **Backend module APIs:** Build Accounts, Businesses, and Tenancy modules against the stable DGFY schema.
-9. **Compatibility seam:** Decide whether old POS gets a backend adapter or a small frontend shape update. Keep the seam narrow and temporary.
-10. **Cutover rehearsal gates:** Run realistic data rehearsals, define abort threshold, prove retry path, and collect release evidence.
-11. **Production cutover:** Execute only after the gate package is green.
-12. **Legacy retirement:** Move old code to `.archive` only after parity is proven and no active runtime depends on it.
-
-## Compatibility Seams and Forbidden Legacy Edits
-
-### Approved Seams
-
-| Seam | Allowed Change | Conditions |
-|------|----------------|------------|
-| Old POS API base URL | Point old POS frontend to `api.dgfy.ph` or the new backend route | Narrow config-only or minimal service-client change, with smoke tests. |
-| Backend response/request adapter | Preserve old POS expectations during backend-first cutover | Temporary adapter at API edge, not core use case logic. |
-| Legacy facade call-through | Existing legacy controllers call new use cases | Allowed by ADR 0003 when parity tests and cleanup checkpoints exist. |
-| Nginx/API routing | Add routing for proven DGFY API service/domain | Must pass compose/nginx config validation for all environments. |
-| Migration read access | Runner reads old landlord and tenant DBs | Read-only by default, with explicit env targeting and dry-run default. |
-
-### Forbidden by Default
-
-| Forbidden Edit | Why |
-|----------------|-----|
-| Broad cleanup of `backend/src/controllers` or `backend/src/services` | Increases blast radius and conflicts with the Strangler plan. |
-| Mutating legacy schemas to make new DGFY design easier | Hides coupling and risks current production behavior. |
-| Running new migrations from API startup | Makes deploy behavior implicit and hard to retry or audit. |
-| Controller-to-model imports in new modules | Violates ADR 0001 and architecture guardrails. |
-| Letting compatibility adapters define canonical DGFY API shape | Freezes legacy assumptions into the new system. |
-| Migrating Product/POS/payment/fiscal domains in the foundation phase | Expands scope before Accounts/Businesses/Tenancy are stable. |
-| Deleting legacy code after first green run | Legacy retirement needs parity evidence and no active dependency. |
-
-## Cutover Gates
-
-| Gate | Required Evidence | Blocks |
-|------|-------------------|--------|
-| Architecture gate | ADR impact recorded, module boundaries selected, `npm run check:architecture` green for touched backend surfaces | Backend module work and PR merge. |
-| Runner gate | Runner image builds, commands are explicit, dry-run is default for destructive/data-writing actions, env targeting is validated | Any data migration apply command. |
-| Schema gate | New landlord and tenant migrations apply cleanly from empty DB, re-run cleanly, and verify expected metadata | Backend API development against the schema. |
-| Transformation gate | Dry-run maps realistic legacy/current data with conflict report and no unexpected legacy writes | Apply rehearsal. |
-| Idempotency gate | Partial failure can retry without duplicate accounts, businesses, tenant DBs, memberships, staff, or terminals | Production rehearsal. |
-| Verification gate | Row counts, referential integrity, tenant coverage, and known deferred scopes are reported | Cutover approval. |
-| Compatibility gate | Old POS/base URL seam or adapter path is tested against old frontend expectations | Backend-first cutover. |
-| Rehearsal gate | Realistic data volume rehearsals meet runtime target and produce evidence | Production maintenance window. |
-| Abort gate | Time limit and rollback decision rules are written before cutover starts | Production maintenance window. |
-| Post-cutover gate | Smoke tests, account/business/tenant login checks, and read/write checks pass | Legacy archive/removal planning. |
 
 ## Scaling Considerations
 
 | Scale | Architecture Adjustments |
 |-------|--------------------------|
-| Fewer than 100 active users | Full-stop maintenance cutover is acceptable if rehearsed. One DB server hosting landlord plus tenant DBs is acceptable. |
-| 1k-10k users | Keep tenant DB per business, add stronger batching/concurrency controls to runner, track migration runtime per tenant, and make discovery snapshots explicit. |
-| 10k+ users | Add tenant placement metadata for sharding across DB servers, queue-based discovery sync, and migration runner batching by shard/server. |
-
-### Scaling Priorities
-
-1. **First bottleneck:** Tenant-by-tenant migration and verification runtime. Fix with checkpointing, batching, progress reports, and bounded concurrency.
-2. **Second bottleneck:** Public discovery freshness if many tenant databases feed one landlord-side index. Fix with explicit sync jobs and freshness SLOs, not live cross-tenant search.
-3. **Third bottleneck:** Tenant connection lifecycle in backend APIs. Fix with a bounded tenant connection cache and registry-driven server placement metadata.
+| MVP / beta (<100 businesses) | Current per-request `tenantContextResolver` + `tenantConnector` connection cache is sufficient; no eviction/pooling changes needed (matches the deliberate "no periodic idle-eviction timers" decision already documented in `tenantConnector.js`). |
+| Growth (hundreds of tenants, higher order volume) | `INVENTORY_MOVEMENT`/`AVAILMENT_STAGE_EVENT` are append-only and will grow fastest — add the domain doc's already-flagged future optimization (materialized daily-summary tables) only once real query latency is observed, not ahead of need. `tenantConnector`'s per-database connection cache will need the idle-eviction logic the legacy `TenantConnector` already has (explicitly deferred) once concurrent open tenant connections becomes real pressure. |
+| Storefront-heavy traffic | `storefront_discovery_index` (Landlord) already exists as a read-optimized projection for browse/search — Commerce Domain's Product catalog should feed this index the same way, rather than the Storefront browse path querying tenant databases directly per request. |
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Backend-First Schema Guessing
+### Anti-Pattern 1: Building Product against (or borrowing identity from) legacy `items`
 
-**What people do:** Start Accounts/Businesses/Tenancy APIs first and let migrations follow whatever the API happens to need.
+**What people do:** Reach for the legacy `Item`/`items` table as a shortcut ("it already has cost price, senior/PWD eligibility, category") since Reconciliation §2 shows those fields already exist there.
+**Why it's wrong:** Reconciliation §1 is explicit — `items` is IMS-shared schema, the exact coupling this whole refactor exists to remove. Any FK or read dependency from a new `dgfy_business_*.products` table into legacy `items` reintroduces the "DGFY was grown inside SKUpervisor's schema" problem inside the *new* system.
+**Do this instead:** Build `products` fresh in `dgfy_business_*`, informed by (not backed by) the legacy fields' proven shape — copy the *field list* (cost price, senior/PWD eligibility), not the table.
 
-**Why it is wrong:** It recreates the current problem where DGFY behavior inherits the wrong database foundation. It also makes data migration an afterthought.
+### Anti-Pattern 2: Trusting client-declared payment/change data
 
-**Do this instead:** Stabilize the new DGFY landlord/tenant schema and migration verification first, then build APIs against that contract.
+**What people do:** Accept `change_amount`/`payment_status` as sent by the POS client, matching legacy's confirmed behavior (Reconciliation §6: "Change calculation is entirely client-side, with no server-side check"; "`payment_status` is client-declared for non-QR-Ph payments").
+**Why it's wrong:** This is a documented, real correctness/security gap in the current system, not a pattern to preserve.
+**Do this instead:** New `availment` checkout usecase computes `change_amount` server-side from `cash_received - total_amount` and treats non-gateway payment confirmation as a distinct, explicitly-recorded event rather than an unverified client flag.
 
-### Anti-Pattern 2: Hidden Migration on API Startup
+### Anti-Pattern 3: A single generic "Payment" concept name colliding with tenant billing
 
-**What people do:** Put schema/data migration logic into API container startup or health-check boot paths.
+**What people do:** Name a new entity `Payment`.
+**Why it's wrong:** Reconciliation §6 flags that a `Payment` model already exists and means *tenant subscription billing*, not order payment — a real naming collision risk carried over from the legacy system's Business/Tenant billing block.
+**Do this instead:** Name Commerce Domain's payment concept something unambiguous (`AvailmentPayment`, `CheckoutPayment`) — never bare `Payment` anywhere in `apps/dgfy-api`.
 
-**Why it is wrong:** A failed migration becomes an API availability incident and is difficult to retry safely.
+### Anti-Pattern 4: Mounting `tenantContextResolver` loosely / duplicating tenant-resolution logic
 
-**Do this instead:** Use the dedicated one-shot migration runner with explicit commands and evidence output.
-
-### Anti-Pattern 3: Raw Copy from Legacy Tables
-
-**What people do:** Copy current IMS-shaped rows into new DGFY tables with minimal transformation.
-
-**Why it is wrong:** It preserves the schema coupling the refactor exists to remove.
-
-**Do this instead:** Map legacy/current data into DGFY concepts: Account, Business, Branch, Staff Account, Assignment, Terminal, and tenant registry. Later phases should transform finished-item Products separately.
-
-### Anti-Pattern 4: Compatibility Logic in Core Use Cases
-
-**What people do:** Add legacy POS request/response quirks inside Accounts/Businesses/Tenancy use cases.
-
-**Why it is wrong:** It makes legacy shape part of the new domain model and complicates future API contracts.
-
-**Do this instead:** Put translation in temporary adapters at the route/controller edge with removal criteria.
-
-### Anti-Pattern 5: Scope Collapse into POS/Product/Fiscal
-
-**What people do:** Add Product, POS checkout, payments, shifts, fiscal compliance, or Storefront migration into the same foundation milestone.
-
-**Why it is wrong:** Those domains are real but carry separate correctness, compliance, and migration risks.
-
-**Do this instead:** Keep this phase to migration runner, `dgfy_*` foundations, Accounts, Businesses, and Tenancy.
+**What people do:** Each new Commerce module writes its own "resolve business_id header, look up registry, get tenant connection" logic inline, since `tenantContextResolver` has never had a real caller yet.
+**Why it's wrong:** Recreates per-module tenant-resolution drift and bypasses the membership/registry checks already centralized in the resolver.
+**Do this instead:** Every new tenant-scoped Commerce route mounts the existing `tenantContextResolver({ required: true })` middleware and reads `req.tenantContext`/`req.tenantModels` — this is precisely the infrastructure Wave 4 built ahead of need for this milestone.
 
 ## Integration Points
 
@@ -386,51 +271,62 @@ The full-stop maintenance window is acceptable at the current scale because it a
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| Migration runner -> legacy/current DBs | Read-only DB connections | Default to dry-run and explicit env targeting. |
-| Migration runner -> new DGFY DBs | Schema/data writes plus verification reads | Owns migration metadata and checkpoints. |
-| Accounts -> Businesses | Use-case/repository calls through module contracts | Account identity is landlord-scoped; business ownership is landlord-scoped. |
-| Businesses -> Tenancy | Use-case call or command boundary | Business creation should request tenant provisioning; it should not manually create tenant DB internals. |
-| Tenancy -> tenant DBs | Registry-driven connection binding | Exactly one tenant DB per tenant-scoped request. |
-| New backend -> old POS frontend | API route/adapter seam | Temporary until frontend migrates or API contract becomes native. |
-| New DGFY APIs -> `apps/dgfy-api` | Shared DB contract or bounded duplicate logic | ADR 0032 currently limits `apps/dgfy-api` to auth/registration. Expanding scope needs governance. |
+| `modules/availment` (checkout) ↔ `modules/inventory` | Injected usecase port (`inventoryPort.recordSaleEffect`) | Never direct repository access — Pattern 4 |
+| `modules/availment`/`modules/shifts`/`modules/fulfillment` ↔ `modules/compliance` | Injected usecase port (`complianceGate.assertComplianceGate`) | Pattern 1 |
+| `modules/storefrontOrdering` ↔ `modules/accounts` (Landlord) | Direct repository call, read-only (`accountRepository.findById`) — Landlord data stays read-only from a Tenant-writing usecase | Pattern 3 |
+| `modules/storefrontOrdering`/POS routes ↔ `middleware/tenantContextResolver` | Express middleware, mounted per-route | First real mount of Wave-4-built infra |
+| `modules/products`/`modules/booking`/`modules/availment` ↔ `infra/tenantConnector.js` | `tenantConnector.getModels(databaseName)` model registry | Extend existing `modelDefiners` map, don't build a parallel connector |
+| Commerce Domain (`apps/dgfy-api`) ↔ legacy `backend/` | **None** this milestone | Existing frontends keep calling `backend/`; no compat seam needed unless a specific narrow read is later justified under ADR 0003 |
 
-### ADR and Governance Impact
+### External Services
 
-| Topic | Impact |
-|-------|--------|
-| ADR 0001 modular monolith boundaries | Applies to all new backend modules. No controller model imports, business logic in use cases, persistence in repositories. |
-| ADR 0003 migration facade strategy | Supports temporary facades/adapters and legacy call-through, but requires parity evidence and cleanup checkpoints. |
-| ADR 0032 standalone DGFY API service | Existing accepted scope is auth/registration only. Using `apps/dgfy-api` for full Accounts/Businesses/Tenancy requires ADR update or a new ADR. |
-| Architecture Governance Playbook | This is architecture-impacting and cross-boundary. PRs must include architecture checks, tests, rollback notes, and hardening proof for auth/registration/tenant provisioning changes. |
-| Documentation freshness | `docs/START_HERE.md` and `docs/architecture/ARCHITECTURE_BOUNDARIES.md` were last reviewed 2026-03-06; `ARCHITECTURE_GOVERNANCE.md` 2026-05-21; ADR 0032 2026-07-06. These are current enough for this research. |
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| PayMongo (storefront QR Ph payments) | Out of this research's depth — legacy precedent exists (`backend/`, ADR 0027) for gateway split-settlement; PROJECT.md scopes "payment method selection... PayMongo where available" as v2.0 target, not yet designed here | Flag for phase-specific research when the payment phase is planned |
 
-## Roadmap Phase Shape
+## Suggested Build Order (dependency-driven)
 
-1. **Foundation contract phase:** ADR decision, migration runner skeleton, new schema naming, metadata/checkpoint design.
-2. **DGFY database foundation phase:** Landlord and tenant migrations for Accounts, Businesses, Branches, Tenancy, Staff Accounts, Assignments, and Terminals.
-3. **Migration proof phase:** Dry-run transformation, idempotent apply, verification reports, and realistic rehearsal dataset.
-4. **Backend foundation phase:** Accounts, Businesses, and Tenancy APIs against the stable schema.
-5. **Compatibility phase:** Old POS API-base seam and adapter decision for backend-first cutover.
-6. **Cutover rehearsal phase:** Runtime evidence, abort thresholds, rollback/runbook, and post-cutover smoke checks.
-7. **Retirement planning phase:** Archive legacy only after parity and dependency checks.
+```
+1. Product Catalog + Basic Inventory ledger  ─┐  (nothing else has a product_id to reference)
+                                                │
+2. Shift & Cash Drawer  ──(parallel with 1)───┤  (only needs existing Business/Location/StaffAccount/
+                                                │   TerminalIdentity — no Product dependency)
+3. Booking  ──(after 1, parallel with 2)──────┤  (needs bookable-Service Products)
+                                                │
+4. Fiscal/Compliance policy engine + gate port ┤  (no data dependency; build the port contract
+   ──(parallel with 1-3)──────────────────────┘   before Checkout usecases are written, not after)
+            ↓
+5. POS Checkout & Payment (Availment/AvailmentItem)  — depends on 1 (Product), 2 (Shift, for
+   terminal/cashier attach + gating precondition), 4 (compliance gate)
+            ↓
+6. Storefront Discovery & Online Ordering — depends on 1 (catalog to browse), 5 (Availment shape
+   to write into); FIRST real Landlord↔Tenant crossing — budget extra risk/time (Pattern 3)
+            ↓
+7. Order Fulfillment & Delivery Coordination — depends on 5 (and mainly 6, since online orders
+   are its primary source, though POS-originated delivery/pickup also applies) — full
+   AVAILMENT_STAGE_EVENT lifecycle + manual delivery/courier assignment (ADR 0034 precedent)
+```
+
+**Why Fiscal/Compliance is sequenced 4th, not last:** its policy engine and state machine have zero data dependency on Product/Availment — but its *gate port contract* (Pattern 1) needs to exist and be stable before Checkout(5)/Shift(2)-close usecases are written against it, so build it in parallel with 1-3 and have it ready by the time 5 starts, rather than retrofitting gating into already-built checkout logic.
+
+**Why Storefront Ordering is its own phase, not folded into Checkout:** it's the only place in the new system that legitimately crosses Landlord and Tenant databases in one usecase (Pattern 3) — genuinely new risk surface (first mount of `tenantContextResolver`, first cross-DB application-level resolution), not just "checkout with a different UI."
+
+## Open Decisions This Research Surfaces (not resolved here — flag for roadmap/phase planning)
+
+1. **Fulfillment status shape:** domain doc's two-field `status`+`fulfillment_stage` (with `AVAILMENT_STAGE_EVENT` as source of truth) vs. legacy's proven single-field `fulfillment_status` state machine (Reconciliation §4). This research assumes the two-field/event-sourced design (it directly satisfies the milestone's explicit AVAILMENT_STAGE_EVENT requirement) but this is a real design decision the roadmap should confirm, not assume.
+2. **Stock effect placement:** per-sale-line `stock_effect_type` (domain doc, matches legacy reality per Reconciliation §4) — already effectively decided by both documents agreeing; low risk.
+3. **Compliance-mode state ownership:** legacy compliance state lives on the Business/Tenant billing-adjacent block (Reconciliation §3, not yet in `dgfy_core`'s `Business` model). Confirm whether v2.0's `ComplianceModeState` is Landlord-scoped (on `dgfy_core.businesses`) or Tenant-scoped (`dgfy_business_*`) before building `modules/compliance` — this research assumes Tenant-scoped (compliance gates tenant-local operations: checkout, shift, receipts) but the state itself may need to live wherever `Business` billing state ends up.
 
 ## Sources
 
-- `.planning/PROJECT.md` - project scope and active constraints.
-- `.planning/codebase/ARCHITECTURE.md` - mapped current runtime architecture and module patterns.
-- `.planning/codebase/STRUCTURE.md` - current directory/deployable structure.
-- `.planning/codebase/CONCERNS.md` - tenant schema drift, allowlist, and fragile areas.
-- `docs/START_HERE.md` - authoritative documentation lookup order and planning rules.
-- `docs/architecture/ARCHITECTURE_BOUNDARIES.md` - authoritative backend layering rules.
-- `docs/architecture/ARCHITECTURE_GOVERNANCE.md` - authoritative architecture process, hardening, gates, and exception rules.
-- `docs/architecture/adr/0001-modular-monolith-boundaries.md` - accepted modular monolith decision.
-- `docs/architecture/adr/0003-migration-facade-strategy.md` - accepted compatibility facade strategy.
-- `docs/architecture/adr/0032-standalone-dgfy-api-service.md` - accepted standalone DGFY API boundary.
-- `refactor/DGFY_Developer_Technical_Reference.md` - compiled DGFY target architecture and migration context.
-- `refactor/DGFY_Domain_01_Accounts.md` - account, business, staff, branch, tenancy, and login model.
-- `refactor/DGFY_Infrastructure_Deployment.md` - target app/domain/deployment structure.
-- `refactor/DGFY_Migration_Cutover_Strategy.md` - Strangler approach, migration scope, and cutover rehearsal requirements.
+- `apps/dgfy-api/src/infra/tenantConnector.js`, `apps/dgfy-api/src/middleware/tenantContextResolver.js`, `apps/dgfy-api/src/models/Landlord/Account.js`, `apps/dgfy-api/src/modules/dgfyAuth/models/DgfyAccount.js`, `apps/dgfy-api/src/config/db.js` — current dgfy-api implementation (HIGH confidence, primary source)
+- `backend/src/models/StockMovement.js`, `backend/src/modules/compliance/usecases/complianceUseCases.js`, `backend/src/modules/pos/usecases/posUseCases.js`, `backend/src/models/PosTerminalShift.js` — legacy proven patterns used as precedent, not integration targets (HIGH confidence, primary source)
+- `docs/architecture/ARCHITECTURE_BOUNDARIES.md`, `docs/architecture/adr/0003-migration-facade-strategy.md`, `docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md`, `docs/architecture/adr/0034-manual-delivery-job-foundation.md`, `docs/architecture/adr/0024-front-facing-dgfy-customer-account.md` — authoritative governance and precedent ADRs (HIGH confidence, primary source)
+- `refactor-do-not-commit/DGFY_Domain_02_Product.md` §9-10 — target ER shape (HIGH confidence, project-provided)
+- `refactor-do-not-commit/DGFY_Plan_vs_Reality_Reconciliation.md` §1-6 — plan-vs-reality gap findings (HIGH confidence, project-provided)
+- `.planning/PROJECT.md` — milestone scope, constraints, phase history (HIGH confidence, project-provided)
+- Sequelize v6 official docs (Context7 `/sequelize/website`) — hooks (`beforeUpdate`/`beforeBulkUpdate`) as the correct mechanism for blocking updates on insert-only models (HIGH confidence, official docs; repo pins `sequelize@^6.37.8`)
 
 ---
-*Architecture research for: DGFY standalone database-first refactor*
-*Researched: 2026-07-10*
+*Architecture research for: DGFY Commerce Domain (v2.0 milestone)*
+*Researched: 2026-07-12*
