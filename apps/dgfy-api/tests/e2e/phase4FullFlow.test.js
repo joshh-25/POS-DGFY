@@ -12,6 +12,7 @@ import defineAccountModel from '../../src/models/Landlord/Account.js';
 import defineBusinessModel from '../../src/models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../../src/models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../../src/models/Landlord/BusinessDatabaseRegistry.js';
+import defineStaffAccountModel from '../../src/models/Tenant/StaffAccount.js';
 import { buildAccountsModule, createAccountRoutes, buildAccountAuthMiddleware } from '../../src/modules/accounts/index.js';
 import { buildBusinessesModule, createBusinessRoutes, createInvitationRoutes } from '../../src/modules/businesses/index.js';
 import { TenantConnector } from '../../src/infra/tenantConnector.js';
@@ -518,9 +519,21 @@ describeIfIntegration('Phase 4 full end-to-end user journeys (real MySQL landlor
                 .post(`/businesses/${businessId}/locations`)
                 .set('Authorization', `Bearer ${userAToken}`)
                 .send({ name: 'Journey4 Branch', address_line: '789 Journey4 Blvd' });
+            // account_staff_assignments.staff_account_id is a real, same-database
+            // FK into staff_accounts (unlike dgfy_account_id, which is opaque
+            // cross-database) — unlike Journey 2, this journey never runs the
+            // invitation-accept flow, so no staff_accounts row exists yet in this
+            // business's tenant database. Seed a minimal one directly (mirrors
+            // AccountStaffAssignmentRepository.create()'s own "test seeding" role)
+            // and use its real id, rather than assuming id 1 already exists.
+            const staffAccountModel = defineStaffAccountModel(tenantConnector.getConnection(databaseName));
+            const journey4StaffAccount = await staffAccountModel.create({
+                display_name: 'Journey4B',
+                email: 'user-b-staff@phase4test.com'
+            });
             await accountStaffAssignmentRepository.create(databaseName, {
                 dgfyAccountId: userBId,
-                staffAccountId: 1,
+                staffAccountId: journey4StaffAccount.id,
                 role: 'manager',
                 status: 'active'
             });
