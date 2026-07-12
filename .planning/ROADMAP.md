@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: DGFY Database Foundation** - New landlord and tenant `dgfy_*` schemas exist beside legacy and can be verified repeatably. (completed 2026-07-11)
 - [x] **Phase 3: Old-to-New Migration Proof** - Operators can rehearse and apply legacy-to-DGFY data transformations with retry and verification evidence. (completed 2026-07-11)
 - [x] **Phase 4: Backend Accounts, Businesses, and Tenancy Foundation** - Backend APIs use the stable DGFY schema for the first standalone identity and tenancy scope. (gaps found 2026-07-11 — see 04-VERIFICATION.md) (completed 2026-07-11) (activation handoff added in 04-09 (activate-tenant CLI); SC2/SC3 reachable once the DB-backed activation run is executed against real MySQL)
-- [ ] **Phase 5: Compatibility and Backend-First Cutover Seam** - Current POS and Storefront behavior remains available through narrow, temporary compatibility seams.
+- [x] **Phase 5: Compatibility and Backend-First Cutover Seam** - Current POS and Storefront behavior remains available through narrow, temporary compatibility seams. (completed 2026-07-12)
 - [ ] **Phase 6: Release Evidence and Rehearsal Gates** - Release evidence proves architecture, migration, tenant drift, and compatibility checks before cutover planning.
 - [ ] **Phase 7: Cutover Runbook and Deferred Domain Split** - Production cutover remains gated by a rehearsal-backed runbook and later domain plans stay out of v1.
 
@@ -199,7 +199,7 @@ Plans:
   3. Compatibility adapters, when needed, translate at API boundaries and do not define canonical DGFY domain contracts.
   4. Developer can identify the temporary compatibility inventory and the condition that removes each seam.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -209,7 +209,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 05-02-PLAN.md — SC3 guardrail extension (compat-import ban + entities/ scan + eslint) + CI/husky acceptance gate + governance ADR 0035
-- [ ] 05-03-PLAN.md — DB-continuity reference seam (non-destructive verify-continuity command) + first manifest entry + inventory regeneration
+- [x] 05-03-PLAN.md — DB-continuity reference seam (non-destructive verify-continuity command) + first manifest entry + inventory regeneration
 
 ### Phase 6: Release Evidence and Rehearsal Gates
 
@@ -248,6 +248,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 2. DGFY Database Foundation | 5/5 | Complete    | 2026-07-10 |
 | 3. Old-to-New Migration Proof | 6/6 | Complete   | 2026-07-11 |
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 11/11 | Complete    | 2026-07-11 |
-| 5. Compatibility and Backend-First Cutover Seam | 2/3 | In Progress|  |
+| 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete   | 2026-07-12 |
 | 6. Release Evidence and Rehearsal Gates | 0/TBD | Not started | - |
 | 7. Cutover Runbook and Deferred Domain Split | 0/TBD | Not started | - |

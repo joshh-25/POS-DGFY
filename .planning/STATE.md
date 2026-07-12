@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 05
 current_phase_name: compatibility-and-backend-first-cutover-seam
-status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-07-12T04:25:02.596Z"
+status: verifying
+stopped_at: Completed 05-03-PLAN.md (phase 05 complete, 3/3 plans)
+last_updated: "2026-07-12T04:33:51.246Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 29
-  completed_plans: 28
-  percent: 57
+  completed_plans: 29
+  percent: 71
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 Phase: 05 (compatibility-and-backend-first-cutover-seam) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-12 — Phase 05 execution started
 
 Progress: [████░░░░░░] 43%
@@ -85,6 +85,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P09 | 35min | 3 tasks | 9 files |
 | Phase 05 P01 | 20min | 3 tasks | 6 files |
 | Phase 05 P02 | 11min | 3 tasks | 8 files |
+| Phase 05 P03 | 25min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -175,6 +176,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 05-02: refactored the usecases forEach early-return to an inline condition so the new compat-import check runs independently of the usecaseLegacyServiceImports allowlist short-circuit
 - [Phase ?]: 05-02: placed the CI compat-seams gate step inside the existing test-backend job via working-directory: . (mirroring test-dgfy-api's pattern) instead of a new job
 - [Phase ?]: 05-02: pre-commit compat-seams trigger combines a file-path grep of the three named surface files with a content grep of the staged diff for the @compat-seam marker, so any new marker anywhere triggers the gate
+- [Phase 05]: 05-03: EXPECTED_LEGACY_DOMAIN_TABLES defined against confirmed backend/src/models/*.js tableName fields (items, purchase_orders, job_orders, stock_movements, suppliers, users), cross-checked against dgfyCoreContract.js's rejectedTables list
+- [Phase 05]: 05-03: Task 1 (verifyContinuity.js/cli.js) and Task 3 (manifest entry/inventory) commits combined into one commit because the Plan 02 pre-commit hook requires any @compat-seam marker to be staged atomically with its complete reconciled manifest entry
 
 ### Pending Todos
 
@@ -196,6 +199,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T04:25:02.590Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-07-12T04:33:51.240Z
+Stopped at: Completed 05-03-PLAN.md (phase 05 complete, 3/3 plans)
 Resume file: None
