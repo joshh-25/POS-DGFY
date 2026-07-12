@@ -295,3 +295,12 @@ None - no external service configuration required. Real-MySQL verification of th
 ---
 *Phase: 08-commerce-foundation-product-catalog-booking-shift-cash-drawe*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+- FOUND: `apps/dgfy-migration-runner/src/migrations/schema/20260712100000-create-commerce-foundation.cjs`
+- FOUND: `apps/dgfy-migration-runner/src/schemaContracts/dgfyBusinessContract.js`
+- FOUND: `.planning/phases/08-commerce-foundation-product-catalog-booking-shift-cash-drawe/08-01-SUMMARY.md`
+- FOUND commit: `5e50af37` (Task 1)
+- FOUND commit: `0e879b9c` (Task 2)
+- FOUND commit: `a9b443cc` (SUMMARY)
