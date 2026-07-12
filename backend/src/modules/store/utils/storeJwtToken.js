@@ -7,6 +7,8 @@ const STORE_CANCEL_PROOF_SECRET = process.env.STORE_CANCEL_PROOF_SECRET || `${ba
 const STORE_CANCEL_PROOF_EXPIRY = process.env.STORE_CANCEL_PROOF_EXPIRY || '30m';
 const STORE_CLAIM_TOKEN_SECRET = process.env.STORE_CLAIM_TOKEN_SECRET || `${baseSecret}:store:claim`;
 const STORE_CLAIM_TOKEN_EXPIRY = process.env.STORE_CLAIM_TOKEN_EXPIRY || '30m';
+const STORE_GUEST_CHECKOUT_PROOF_SECRET = process.env.STORE_GUEST_CHECKOUT_PROOF_SECRET || `${baseSecret}:store:guest-checkout-proof`;
+const STORE_GUEST_CHECKOUT_PROOF_EXPIRY = process.env.STORE_GUEST_CHECKOUT_PROOF_EXPIRY || '15m';
 const TENANT_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const parsePositiveInt = (value) => {
@@ -105,8 +107,27 @@ export const generateStoreClaimToken = ({ trackingPin, tenantId, orderId, email 
 
 export const verifyStoreClaimToken = (token) => jwt.verify(token, STORE_CLAIM_TOKEN_SECRET);
 
+export const generateStoreGuestCheckoutProof = ({ tenantId, email, idempotencyKey }) => {
+    const normalizedTenantId = normalizeTenantIdentifier(tenantId);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedIdempotencyKey = String(idempotencyKey || '').trim();
+    if (!normalizedTenantId || !normalizedEmail || !normalizedIdempotencyKey) {
+        throw new Error('generateStoreGuestCheckoutProof requires tenantId, email, and idempotencyKey');
+    }
+
+    return jwt.sign({
+        type: 'store_guest_checkout_proof',
+        tenant_id: normalizedTenantId,
+        email: normalizedEmail,
+        idempotency_key: normalizedIdempotencyKey
+    }, STORE_GUEST_CHECKOUT_PROOF_SECRET, { expiresIn: STORE_GUEST_CHECKOUT_PROOF_EXPIRY });
+};
+
+export const verifyStoreGuestCheckoutProof = (token) => jwt.verify(token, STORE_GUEST_CHECKOUT_PROOF_SECRET);
+
 export const getStoreTokenConfig = () => ({
     expiresIn: STORE_JWT_EXPIRY,
     cancelProofExpiresIn: STORE_CANCEL_PROOF_EXPIRY,
-    claimTokenExpiresIn: STORE_CLAIM_TOKEN_EXPIRY
+    claimTokenExpiresIn: STORE_CLAIM_TOKEN_EXPIRY,
+    guestCheckoutProofExpiresIn: STORE_GUEST_CHECKOUT_PROOF_EXPIRY
 });

@@ -53,7 +53,17 @@ const storeQuoteSchema = Joi.object({
 
 const storeCheckoutSchema = storeQuoteSchema.keys({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
-    payment_type: Joi.string().valid(...PAYMENT_TYPES).default('cash')
+    payment_type: Joi.string().valid(...PAYMENT_TYPES).default('cash'),
+    guest_checkout_proof: Joi.string().trim().min(16).max(2048).allow('', null).optional()
+});
+
+const guestCheckoutOtpRequestSchema = Joi.object({
+    email: Joi.string().email().trim().lowercase().max(255).required(),
+    idempotency_key: Joi.string().trim().min(8).max(120).required()
+});
+
+const guestCheckoutOtpVerifySchema = guestCheckoutOtpRequestSchema.keys({
+    code: Joi.string().pattern(/^\d{6}$/).required()
 });
 
 const storeAddressCreateSchema = Joi.object({
@@ -150,6 +160,8 @@ export const validateStoreCheckout = validateSchema(storeCheckoutSchema, 'body',
 export const validateStoreCheckoutPaymentSession = validateSchema(storeCheckoutSchema.keys({
     payment_type: Joi.string().valid('qrph').default('qrph')
 }), 'body', 'validatedData');
+export const validateStoreGuestCheckoutOtpRequest = validateSchema(guestCheckoutOtpRequestSchema, 'body', 'validatedData');
+export const validateStoreGuestCheckoutOtpVerify = validateSchema(guestCheckoutOtpVerifySchema, 'body', 'validatedData');
 export const validateStoreCreateAddress = validateSchema(storeAddressCreateSchema, 'body', 'validatedData');
 export const validateStoreUpdateAddress = validateSchema(storeAddressUpdateSchema, 'body', 'validatedData');
 export const validateStoreAddressIdParam = validateSchema(storeAddressIdParamSchema, 'params', 'validatedParams');

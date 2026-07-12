@@ -462,6 +462,9 @@ export const generalLimiter = rateLimit({
     if (req.path === '/health') return true;
     if (process.env.NODE_ENV === 'test') return true;
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    // POS routes apply their own tenant/user/terminal limiter after authentication.
+    // Do not also consume the shared public IP bucket for ordinary POS work.
+    if (/^\/(?:v1\/)?(?:pos|mobile-pos)(?:\/|$)/.test(req.path || req.originalUrl || '')) return true;
     if (isAuthenticatedPosBootstrapRead(req)) return true;
     return false;
   },

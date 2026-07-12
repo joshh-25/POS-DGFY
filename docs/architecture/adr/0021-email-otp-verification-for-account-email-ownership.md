@@ -44,6 +44,8 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
 11. Invitation-acceptance OTP requests resolve tenant context from `invitation_token` when no `x-company-token` is present, matching token-only invite validation and acceptance links. Other tenant-scoped OTP purposes remain tenant-bound and still require tenant context.
 12. Controllers remain transport-only. OTP creation/verification lives in service/use-case boundaries and the registry is landlord-scoped so tenant-local schemas are not required before company registration.
 13. Phone verification is out of scope for this ADR version. `phone_verified_at` on DGFY accounts is reserved for a future phone OTP flow and must stay nullable until that flow is implemented.
+14. Guest Storefront orders require a tenant-bound `storefront_guest_checkout` email OTP when `STOREFRONT_GUEST_OTP_REQUIRED` is not explicitly disabled. Verification consumes the six-digit OTP and returns a short-lived signed proof bound to the normalized email, tenant, and checkout idempotency key. The checkout endpoint validates that proof for non-DGFY customers; DGFY-authenticated customers continue through the authenticated account path without a guest OTP.
+15. The guest checkout proof may be replayed only with its bound idempotency key. Checkout idempotency returns the original order for a matching retry and rejects a changed payload, preventing the proof from creating multiple orders.
 
 ## Consequences
 1. Email ownership is proved before new login identities and email-to-tenant mappings are written.
@@ -52,8 +54,10 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
 4. Email changes no longer update tenant lookup mappings unless the new email is verified.
 5. OTP rows are auditable and disposable; expired/consumed rows can be cleaned by future maintenance without changing account state.
 6. DGFY password reset reuses the email OTP registry and does not introduce phone OTP behavior.
+7. Guest checkout is protected from disposable browser retries and unverified email submissions without changing public browsing, Storefront catalog access, delivery routing, or payment-provider webhooks.
 
 ## Rollback Notes
 1. Runtime rollback can set `EMAIL_OTP_ENFORCEMENT_ENABLED=false`; validators stop requiring `email_otp_code` and verification calls return a disabled-enforcement success result without querying OTP rows.
 2. Existing tenant records, users, invitations, and email-to-tenant mappings remain valid.
 3. The `email_otps` table is additive and can remain unused during rollback.
+4. A temporary rollback can set `STOREFRONT_GUEST_OTP_REQUIRED=false`; this restores legacy guest checkout while leaving the additive OTP purpose and rows intact.

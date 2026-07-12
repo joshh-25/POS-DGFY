@@ -15,7 +15,9 @@ import {
     generateStoreToken,
     getStoreTokenConfig,
     normalizeTenantIdentifier,
+    generateStoreGuestCheckoutProof,
     verifyStoreCancelProof,
+    verifyStoreGuestCheckoutProof,
     verifyStoreClaimToken
 } from '../utils/storeJwtToken.js';
 import { normalizeIntakeFormSchema } from '../../shared/utils/intakeFormSchema.js';
@@ -161,6 +163,41 @@ const stableStringify = (value) => {
 };
 
 const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+
+const isStorefrontGuestOtpRequired = () => String(process.env.STOREFRONT_GUEST_OTP_REQUIRED || 'true').trim().toLowerCase() !== 'false';
+
+const isDgfyStoreCustomer = (storeCustomer) => Boolean(String(storeCustomer?.dgfy_account_id || '').trim());
+
+export const assertGuestCheckoutProof = ({ tenantId, email, idempotencyKey, proof, storeCustomer }) => {
+    if (!isStorefrontGuestOtpRequired() || isDgfyStoreCustomer(storeCustomer)) return;
+
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedEmail) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'A verified Gmail address is required for guest checkout.',
+            { statusCode: 422 }
+        );
+    }
+
+    try {
+        const decoded = verifyStoreGuestCheckoutProof(proof);
+        if (
+            decoded?.type !== 'store_guest_checkout_proof'
+            || normalizeTenantIdentifier(decoded?.tenant_id) !== normalizeTenantIdentifier(tenantId)
+            || String(decoded?.email || '').trim().toLowerCase() !== normalizedEmail
+            || String(decoded?.idempotency_key || '').trim() !== String(idempotencyKey || '').trim()
+        ) {
+            throw new Error('Guest checkout proof does not match this order.');
+        }
+    } catch {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Verify the Gmail code before placing this guest order.',
+            { statusCode: 422 }
+        );
+    }
+};
 
 const randomAlphaNumeric = (length) => {
     const bytes = crypto.randomBytes(length);
@@ -1142,7 +1179,10 @@ const resolveCheckoutContext = async ({
     const promoApplication = resolveStorefrontPromoApplication({
         settings,
         promoCode: normalized.promo_code,
-        prepared
+        prepared,
+        channel: 'storefront',
+        orderMethod,
+        scheduledFor
     });
 
     const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
@@ -1886,6 +1926,53 @@ export const buildStoreCartQuoteUseCase = ({ storeRepository }) => {
     };
 };
 
+export const buildRequestStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => {
+    return async ({ tenantId, payload }) => {
+        try {
+            const normalizedTenantId = ensureTenantContext(tenantId);
+            const email = String(payload?.email || '').trim().toLowerCase();
+            const idempotencyKey = String(payload?.idempotency_key || '').trim();
+            await emailOtpService.requestEmailOtp({
+                purpose: emailOtpService.EMAIL_OTP_PURPOSES.STOREFRONT_GUEST_CHECKOUT,
+                email,
+                tenantId: normalizedTenantId,
+                metadata: { checkout_idempotency_key: idempotencyKey }
+            });
+            return ok({ email, idempotency_key: idempotencyKey });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to send guest checkout verification code'));
+        }
+    };
+};
+
+export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => {
+    return async ({ tenantId, payload }) => {
+        try {
+            const normalizedTenantId = ensureTenantContext(tenantId);
+            const email = String(payload?.email || '').trim().toLowerCase();
+            const idempotencyKey = String(payload?.idempotency_key || '').trim();
+            await emailOtpService.verifyEmailOtp({
+                purpose: emailOtpService.EMAIL_OTP_PURPOSES.STOREFRONT_GUEST_CHECKOUT,
+                email,
+                code: payload?.code,
+                tenantId: normalizedTenantId
+            });
+            return ok({
+                email,
+                idempotency_key: idempotencyKey,
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: normalizedTenantId,
+                    email,
+                    idempotencyKey
+                }),
+                expires_in: getStoreTokenConfig().guestCheckoutProofExpiresIn
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to verify guest checkout code'));
+        }
+    };
+};
+
 export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
     return async ({ tenantId, payload, storeCustomer = null }) => {
         if (!isPlainObject(payload)) {
@@ -2003,6 +2090,14 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                     { statusCode: 422 }
                 );
             }
+
+            assertGuestCheckoutProof({
+                tenantId: normalizedTenantId,
+                email: normalized.customer_email,
+                idempotencyKey,
+                proof: payload.guest_checkout_proof,
+                storeCustomer: normalizedStoreCustomer
+            });
 
             const trackingPin = await generateUniqueTrackingPin(storeRepository, {
                 transaction,
