@@ -23,10 +23,22 @@ import { COMPLIANCE_DECISION, COMPLIANCE_MODE_STATE } from '../policy/constants.
 //
 // No artifact/peripheral/settings persistence exists yet this phase (that is
 // a Phase 9+ concern) — assertComplianceGate accepts artifacts/peripherals/
-// settings/evidence as optional pass-through inputs (defaulting to empty)
-// so a compliant_active business with no submitted checklist evidence
-// correctly falls through evaluateComplianceChecklist's "incomplete" paths
-// (REQUIRES_SETUP) rather than the gate silently assuming completeness.
+// settings/evidence as optional pass-through inputs (defaulting to empty).
+//
+// CR-02/FSC-02 gap-closure (08-09-PLAN.md Task 3): for a compliant_active
+// business, ../policy/policyEngine.js's POS-operation decision branch now
+// consults the FULL evidence-derived checklist evaluateComplianceChecklist()
+// computes — all seven readiness signals (profile, settings, artifacts,
+// peripherals, plus fiscal-accumulator-stream, audit-log append-only
+// enforcement, payment-handoff policy, encryption prerequisites, documentary/
+// submission-artifact readiness, RMO 24-2023 filing readiness, and fiscal
+// terminal registration, rolled up as checklist.ready_for_compliant_activation)
+// — before returning ALLOW. So a compliant_active business with no submitted
+// checklist evidence (artifacts/peripherals/settings/evidence all defaulting
+// to empty here) correctly falls through to REQUIRES_SETUP, mapped to the
+// specific unmet signal's own reason code (e.g. RMO_FILING_EVIDENCE_REQUIRED,
+// FISCAL_TERMINAL_REGISTRATION_REQUIRED) via checklist.activation_blockers —
+// the gate never silently assumes completeness for any of the seven signals.
 
 const validationError = (message, details = null) => new DomainError(
     DomainErrorCode.VALIDATION_FAILED,

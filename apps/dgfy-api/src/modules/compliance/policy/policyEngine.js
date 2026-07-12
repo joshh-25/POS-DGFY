@@ -1000,6 +1000,40 @@ export const evaluateComplianceDecision = ({
                 });
             }
 
+            // CR-02/FSC-02 gap-closure (08-09-PLAN.md Task 3): profile/
+            // settings/artifacts/peripherals are ALL confirmed complete by
+            // this point (the four checks above already returned otherwise),
+            // but evaluateComplianceChecklist() computes THREE more
+            // evidence-derived readiness signals beyond those four sections
+            // — fiscal accumulator stream, audit-log append-only
+            // enforcement, payment-handoff policy, encryption prerequisites,
+            // documentary/submission-artifact readiness, RMO 24-2023 filing
+            // readiness, and fiscal terminal registration — folded into
+            // checklist.ready_for_compliant_activation /
+            // checklist.activation_blockers. None of those signals were
+            // previously consulted here, so a compliant_active business with
+            // e.g. an unregistered fiscal terminal or incomplete RMO filing
+            // evidence could reach ALLOW despite the gate's own header
+            // comment claiming full-checklist enforcement. Because
+            // profile/settings/artifacts/peripherals are already proven
+            // complete above, any activation_blockers entry remaining here
+            // is necessarily one of these evidence-derived signals — reuse
+            // its already-assembled reason code/message rather than
+            // duplicating the mapping table.
+            if (!checklist.ready_for_compliant_activation) {
+                const blocker = checklist.activation_blockers[0] || null;
+                return buildDecision({
+                    tenant,
+                    operation,
+                    modeState,
+                    decision: COMPLIANCE_DECISION.REQUIRES_SETUP,
+                    reasonCode: blocker?.code || COMPLIANCE_REASON_CODE.COMPLIANT_MODE_FAIL_CLOSED,
+                    checklist,
+                    policyPack,
+                    obligations: [blocker?.message || 'Complete the remaining compliance activation checklist items.']
+                });
+            }
+
             return buildDecision({
                 tenant,
                 operation,
