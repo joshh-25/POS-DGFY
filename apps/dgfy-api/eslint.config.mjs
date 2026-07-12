@@ -32,5 +32,21 @@ export default [
                 }
             ]
         }
+    },
+    {
+        files: ["src/modules/**/entities/**/*.js", "src/modules/**/usecases/**/*.js"],
+        rules: {
+            "no-restricted-imports": [
+                "error",
+                {
+                    patterns: [
+                        {
+                            group: ["**/continuity", "**/continuity/**", "**/compat", "**/compat/**"],
+                            message: "Domain layer (entities/usecases) must not import compatibility/continuity code (CMP-03)."
+                        }
+                    ]
+                }
+            ]
+        }
     }
 ];

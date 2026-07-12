@@ -31,7 +31,15 @@ export const ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST = Object.freeze([
 // apps/dgfy-api has no usecase-layer legacy-service-import exceptions yet.
 export const ARCHITECTURE_USECASE_SERVICE_IMPORT_ALLOWLIST = Object.freeze([]);
 
+// CMP-03 (Phase 5, 05-02-PLAN.md): the canonical domain layer (entities and
+// usecases) must never import compatibility/continuity code. Empty by
+// default — no domain-layer compat imports are allowed in this phase. Any
+// future entry here still needs the `../apps/dgfy-api/...` prefix
+// convention documented in the file header above.
+export const ARCHITECTURE_COMPAT_IMPORT_ALLOWLIST = Object.freeze([]);
+
 export default Object.freeze({
     controllerNaming: ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST,
-    usecaseLegacyServiceImports: ARCHITECTURE_USECASE_SERVICE_IMPORT_ALLOWLIST
+    usecaseLegacyServiceImports: ARCHITECTURE_USECASE_SERVICE_IMPORT_ALLOWLIST,
+    compatImport: ARCHITECTURE_COMPAT_IMPORT_ALLOWLIST
 });
