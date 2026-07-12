@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: backend-accounts-businesses-and-tenancy-foundation
 status: executing
-stopped_at: Completed 04-08-PLAN.md
-last_updated: "2026-07-11T16:37:46.970Z"
-last_activity: 2026-07-11
+stopped_at: Completed 04-09-PLAN.md
+last_updated: "2026-07-12T01:01:04.878Z"
+last_activity: 2026-07-12
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 25
-  completed_plans: 25
+  total_plans: 26
+  completed_plans: 26
   percent: 57
 ---
 
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 04 (backend-accounts-businesses-and-tenancy-foundation) — EXECUTING
-Plan: 4 of 10
+Plan: 2 of 11
 Status: Ready to execute
-Last activity: 2026-07-11 — Phase 04 execution started
+Last activity: 2026-07-12 — Phase 04 execution started
 
 Progress: [████░░░░░░] 43%
 
@@ -81,6 +81,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P06 | 30min | 2 tasks | 13 files |
 | Phase 04 P07 | 50min | 2 tasks | 20 files |
 | Phase 04 P08 | 75min | 2 tasks | 16 files |
+| Phase 04 P09 | 35min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -163,6 +164,8 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-08: TenantConnector.getModels() closes TerminalIdentity orphan finding without adding a public terminal identity route
 - [Phase 04]: 04-08: tenantSessionUseCases.js now requires registry status=active AND verified_at before activation succeeds, closing an owner-bypass gap
 - [Phase 04]: 04-08: fixed a duplicate business_database_registry row bug present in every gated Phase 04 suite
+- [Phase ?]: 04-09: activate-tenant CLI activates registry via a direct UPDATE keyed on database_name from the runner's own connection, never dgfy-api's updateStatus() (respects runner<->dgfy-api package boundary)
+- [Phase ?]: 04-09: No MySQL reachable in executor environment — REQUIREMENTS.md API-02/API-03 reconciled to Pending (not Complete) pending a human-run real-MySQL activation proof
 
 ### Pending Todos
 
@@ -185,6 +188,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-11T16:37:46.840Z
-Stopped at: Completed 04-08-PLAN.md
+Last session: 2026-07-12T01:01:04.864Z
+Stopped at: Completed 04-09-PLAN.md
 Resume file: None
