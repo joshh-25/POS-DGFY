@@ -6,7 +6,9 @@
   "main": "src/cli.js",
   "scripts": {
     "start": "node src/cli.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest --config jest.config.cjs --runInBand",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --config jest.config.cjs --runInBand && npm run test:architecture",
+    "test:architecture": "node --test scripts/check-architecture.test.js",
+    "check:architecture": "node scripts/check-architecture.js",
     "lint": "echo 'lint: deferred — no eslint devDependency/config shipped for this package yet (see WR-07, phase 01 code review)' && exit 0"
   },
   "dependencies": {
