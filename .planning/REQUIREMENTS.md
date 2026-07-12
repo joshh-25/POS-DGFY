@@ -215,13 +215,40 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CMP-03 | Phase 5 | Complete |
 | CMP-04 | Phase 6 | Complete |
 | CMP-05 | Phase 7 | Pending |
+| PRD-01 | Phase 8 | Pending |
+| PRD-02 | Phase 8 | Pending |
+| PRD-03 | Phase 8 | Pending |
+| PRD-04 | Phase 8 | Pending |
+| PRD-05 | Phase 8 | Pending |
+| BOK-01 | Phase 8 | Pending |
+| BOK-02 | Phase 8 | Pending |
+| BOK-03 | Phase 8 | Pending |
+| SFT-01 | Phase 8 | Pending |
+| SFT-02 | Phase 8 | Pending |
+| SFT-03 | Phase 8 | Pending |
+| FSC-01 | Phase 8 | Pending |
+| FSC-02 | Phase 8 | Pending |
+| CHK-01 | Phase 9 | Pending |
+| CHK-02 | Phase 9 | Pending |
+| CHK-03 | Phase 9 | Pending |
+| CHK-04 | Phase 9 | Pending |
+| CHK-05 | Phase 9 | Pending |
+| CHK-06 | Phase 9 | Pending |
+| FSC-03 | Phase 9 | Pending |
+| STF-01 | Phase 10 | Pending |
+| STF-02 | Phase 10 | Pending |
+| STF-03 | Phase 10 | Pending |
+| STF-04 | Phase 10 | Pending |
+| STF-05 | Phase 10 | Pending |
+| FUL-01 | Phase 11 | Pending |
+| FUL-02 | Phase 11 | Pending |
+| FUL-03 | Phase 11 | Pending |
 
 **Coverage:**
 
-- v1 requirements: 26 total
-- Mapped to phases: 26
-- Unmapped: 0
+- v1 requirements: 26 total — mapped to phases: 26 — unmapped: 0
+- v2 requirements: 28 total — mapped to phases: 28 — unmapped: 0
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-12 after defining v2.0 Commerce Domain requirements*
+*Last updated: 2026-07-12 after creating the v2.0 Commerce Domain roadmap (Phases 8-11)*

@@ -4,6 +4,13 @@
 
 DGFY moves from an IMS-backed foundation to standalone `dgfy_*` landlord and tenant databases through a database-first Strangler Fig path. The live legacy POS and Storefront stay available while one explicit migration runner, new database contracts, old-to-new migration proof, and backend Accounts/Businesses/Tenancy APIs are built beside legacy. Architecture decisions follow `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`, `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, and ADR 0003's compatibility facade strategy.
 
+Once that foundation stood (Phases 1-6), the v2.0 Commerce Domain milestone extends it with new module code inside `apps/dgfy-api` — Product Catalog, Booking, Shift & Cash Drawer, Fiscal/Compliance, POS Checkout & Payment, Storefront Discovery & Online Ordering, and Order Fulfillment — following the exact `routes -> controllers -> usecases -> repositories -> models` layering and per-module folder shape already proven by `modules/accounts`/`modules/businesses`. New tables live in `dgfy_business_*` tenant schemas (with `dgfy_core` used only for the Storefront Discovery Index and the cross-database order-write pattern). This milestone is backend-API-only: existing frontends keep talking to the old backend, and no new frontend apps are built.
+
+## Milestones
+
+- 🚧 **v1.0 Standalone Refactor Foundation** - Phases 1-7 (Phases 1-6 complete; Phase 7 paused 2026-07-12 pending real Docker/GHCR rehearsal infra — CMP-05 stays Pending, not archived)
+- 📋 **v2.0 Commerce Domain — Product, Checkout & Fulfillment** - Phases 8-11 (planned; backend-API-only, does not depend on Phase 7 completing)
+
 ## Phases
 
 **Phase Numbering:**
@@ -20,6 +27,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Compatibility and Backend-First Cutover Seam** - Current POS and Storefront behavior remains available through narrow, temporary compatibility seams. (completed 2026-07-12)
 - [x] **Phase 6: Release Evidence and Rehearsal Gates** - Release evidence proves architecture, migration, tenant drift, and compatibility checks before cutover planning. (completed 2026-07-12)
 - [ ] **Phase 7: Cutover Runbook and Deferred Domain Split** - Production cutover remains gated by a rehearsal-backed runbook and later domain plans stay out of v1. (paused 2026-07-12 — requires real Docker/GHCR rehearsal infra and operator-run docker login; parked in favor of starting the next milestone. Resume with `/gsd-execute-phase 7` once prerequisites are ready.)
+- [ ] **Phase 8: Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating** - Businesses can define what they sell/service and staff can run accountable cash shifts under a compliance-mode gate, without any new table referencing legacy `items`/IMS data.
+- [ ] **Phase 9: POS Checkout & Payment** - Staff can run a complete, trustworthy checkout — line items, discounts incl. SC/PWD, payment method, server-verified totals/change, receipts — gated by an open shift and the compliance policy engine.
+- [ ] **Phase 10: Storefront Discovery & Online Ordering** - Consumers can discover stores/Products and complete a guest-or-account online order that durably and idempotently becomes a real tenant Availment.
+- [ ] **Phase 11: Order Fulfillment & Delivery Coordination** - Business staff can process incoming online orders through a shared fulfillment pipeline, including manual courier assignment and payout tracking.
 
 ## Phase Details
 
@@ -257,10 +268,67 @@ Plans:
 
 - [ ] 07-02-PLAN.md — Cutover runbook (SC2 gate): dgfy_*-only backup/restore proof against a preserved 07-01 clone (D-04) + committed governed runbook documenting the wall-clock abort threshold (D-01), human enforcement (D-02), and the reopen-on-legacy non-event (D-03)
 
+### Phase 8: Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating
+
+**Goal**: Businesses can define what they sell and service (Products, folders, Basic Inventory, bookable Services) and staff can run accountable cash shifts, with a tenant/branch compliance-mode gate in place — establishing every downstream Checkout/Storefront dependency (`product_id`, shift-open precondition, compliance gate contract) in one phase, before Checkout is written against it. No new table references the legacy IMS-shared `items`/`PosTransactionLine` tables.
+**Depends on**: Phase 6 (stable `dgfy-api` foundation — Accounts/Businesses/Tenancy, compatibility governance, release-evidence tooling — that this milestone's modules extend). Independent of Phase 7 (paused cutover rehearsal is an unrelated track and does not block this milestone).
+**Requirements**: PRD-01, PRD-02, PRD-03, PRD-04, PRD-05, BOK-01, BOK-02, BOK-03, SFT-01, SFT-02, SFT-03, FSC-01, FSC-02
+**Success Criteria** (what must be TRUE):
+
+  1. Business owner can create a Product in Food, Service, or Retail category, group Products into folders, and choose Basic Inventory (vendor-set stock count) or non-stock per Product — with whether a given sale line decrements stock decided per line, not fixed on the Product — using genuinely new `dgfy_business_*` tables, never a foreign key into legacy `items`/`PosTransactionLine`.
+  2. Every stock-count change (sale, restock, loss, adjustment) is recorded as an append-only Inventory Movement row that cannot be mutated after insert.
+  3. Business owner can mark a Service Product bookable with a slot duration and branch-level concurrent capacity; a Booking is blocked once that branch-level capacity for a slot is reached, and a fulfilled Booking links to the Availment that completes it.
+  4. Staff can open a shift with a declared starting cash float (one open shift per cashier+terminal enforced at the database level), close it with a computed Expected-vs-Actual cash Difference, and every cash-drawer event — including a no-sale drawer pop — is logged.
+  5. A tenant/branch carries a compliance-mode state reflecting whether required fiscal paperwork is present and verified, checked through one shared policy-engine gate port rather than duplicated per surface (wired into Checkout, Shift, and receipt issuance in Phase 9).
+
+**Plans**: TBD
+
+### Phase 9: POS Checkout & Payment
+
+**Goal**: Staff can run a complete, trustworthy point-of-sale checkout — building an Availment, applying discounts (including the statutory Senior Citizen/PWD discount), selecting a payment method, and producing a receipt — gated by an open shift and the shared compliance policy engine, with totals and cash change always computed server-side.
+**Depends on**: Phase 8 (Product Catalog for line items; Shift for the open-shift precondition; compliance gate port)
+**Requirements**: CHK-01, CHK-02, CHK-03, CHK-04, CHK-05, CHK-06, FSC-03
+**Success Criteria** (what must be TRUE):
+
+  1. Staff can add Products to an Availment, adjust line-item quantities, and remove lines before finalizing a sale.
+  2. The system computes order totals and cash change server-side (`change_due = cash_received - total`); the client cannot submit an arbitrary total or change amount.
+  3. Staff can apply a discount code or a permission-gated manual discount (recorded with the applying staff ID and a reason), and the system computes the Senior Citizen/PWD discount server-side per BIR rules (VAT-exclusive base, 20% discount, MEMC group-meal rule), producing its own separate receipt line.
+  4. Staff can select a payment method (Cash, GCash, Credit Card) per Availment, with the method and amount recorded (not a live gateway charge); an Availment is rejected unless the cashier and terminal have an open shift.
+  5. A completed Availment produces a receipt reflecting every applied discount and tax, gated by the Phase 8 compliance policy engine.
+
+**Plans**: TBD
+
+### Phase 10: Storefront Discovery & Online Ordering
+
+**Goal**: Consumers can discover DGFY stores and Products and complete an online order — as a guest or a logged-in DGFY Account — that is durably and idempotently finalized into the correct tenant's Availment, safely crossing the Landlord/Tenant database boundary for the first time in this system.
+**Depends on**: Phase 8 (Product Catalog to browse), Phase 9 (Availment shape the order finalizes into)
+**Requirements**: STF-01, STF-02, STF-03, STF-04, STF-05
+**Success Criteria** (what must be TRUE):
+
+  1. Consumer can browse and search DGFY stores and Products through the map-based discovery surface, then retrieve a specific store's product listing and add Products to a cart.
+  2. Consumer can complete a purchase as a guest (with durable contact info) or as a logged-in DGFY Account, without forced account creation.
+  3. Consumer can choose pickup or delivery, immediate or scheduled, and a payment method (cash on pickup/delivery, or GCash/Credit Card via PayMongo where available) at checkout.
+  4. A storefront order is durably recorded on the Landlord side first, then finalized into the correct tenant's Availment idempotently — an interrupted or retried cross-database write never produces a duplicate or lost order, and any unresolved case lands in an explicit manual-resolution state rather than failing silently.
+
+**Plans**: TBD
+
+### Phase 11: Order Fulfillment & Delivery Coordination
+
+**Goal**: Business staff can process incoming online orders through a shared fulfillment pipeline from placement to completion, including manual courier/delivery assignment and payout tracking — mirroring legacy's manual "outbound links" capability, not live courier API integration.
+**Depends on**: Phase 10 (online orders are the primary fulfillment source); Phase 9 (POS-originated Availments also flow through the same stage-event lifecycle)
+**Requirements**: FUL-01, FUL-02, FUL-03
+**Success Criteria** (what must be TRUE):
+
+  1. Business staff can retrieve and process incoming online orders.
+  2. Staff can progress an order's fulfillment status through a shared core pipeline (placed to confirmed to preparing to ready/out-for-delivery to completed), with handoff steps specific to pickup, delivery, and dine-in.
+  3. Staff can manually assign a courier/delivery partner to an order and track courier payout through to fulfillment completion.
+
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 paused). v2.0 Commerce Domain runs 8 -> 9 -> 10 -> 11 and does not depend on Phase 7 completing.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -271,3 +339,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete    | 2026-07-12 |
 | 6. Release Evidence and Rehearsal Gates | 3/3 | Complete    | 2026-07-12 |
 | 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |
+| 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 0/TBD | Not started | - |
+| 9. POS Checkout & Payment | 0/TBD | Not started | - |
+| 10. Storefront Discovery & Online Ordering | 0/TBD | Not started | - |
+| 11. Order Fulfillment & Delivery Coordination | 0/TBD | Not started | - |
