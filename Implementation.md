@@ -2644,9 +2644,29 @@ POS transaction reads failed with `Table '<tenant>.delivery_jobs' doesn't exist`
 - `frontend/apps/pos/index.html`
 - `Implementation.md`
 
-### Files changed
-
 - `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
 - `backend/src/validators/settingsValidator.js`
 - `backend/tests/settingsValidator.storefrontPromoDates.test.js`
 - `Implementation.md`
+
+---
+
+## 2026-07-12 — Redesign: Ultra-Compact Apply Discount Modal
+
+### Goal
+Reduce the layout size of the "Apply Discount" modal dialog further to make it extremely clean, space-efficient, and proportional.
+
+### Implemented solution
+- Capped dialog width to `max-w-[480px]`.
+- Changed discount type option tabs from responsive grid to a compact `grid-cols-5` with vertically stacked icons and text (`h-[48px]`, `text-[10px]`).
+- Reorganized form fields to a side-by-side `grid-cols-2` layout on all screen sizes to save vertical space.
+- Reduced inner spacing, label sizes, input heights (`h-8`), action button heights (`h-8`), and icon sizes.
+- Made eligible items row (`min-h-[32px]`), image (`h-6 w-6`), and list scroll height (`max-h-28`) more compact.
+- Optimized breakdown panel padding and text sizes.
+
+### Files changed
+- `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `Implementation.md`
+- `Plan.md`
+
+
