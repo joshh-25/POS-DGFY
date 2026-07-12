@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Backend Accounts, Businesses, and Tenancy Foundation** - Backend APIs use the stable DGFY schema for the first standalone identity and tenancy scope. (gaps found 2026-07-11 — see 04-VERIFICATION.md) (completed 2026-07-11) (activation handoff added in 04-09 (activate-tenant CLI); SC2/SC3 reachable once the DB-backed activation run is executed against real MySQL)
 - [x] **Phase 5: Compatibility and Backend-First Cutover Seam** - Current POS and Storefront behavior remains available through narrow, temporary compatibility seams. (completed 2026-07-12)
 - [x] **Phase 6: Release Evidence and Rehearsal Gates** - Release evidence proves architecture, migration, tenant drift, and compatibility checks before cutover planning. (completed 2026-07-12)
-- [ ] **Phase 7: Cutover Runbook and Deferred Domain Split** - Production cutover remains gated by a rehearsal-backed runbook and later domain plans stay out of v1.
+- [ ] **Phase 7: Cutover Runbook and Deferred Domain Split** - Production cutover remains gated by a rehearsal-backed runbook and later domain plans stay out of v1. (paused 2026-07-12 — requires real Docker/GHCR rehearsal infra and operator-run docker login; parked in favor of starting the next milestone. Resume with `/gsd-execute-phase 7` once prerequisites are ready.)
 
 ## Phase Details
 
@@ -270,4 +270,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 11/11 | Complete    | 2026-07-11 |
 | 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete    | 2026-07-12 |
 | 6. Release Evidence and Rehearsal Gates | 3/3 | Complete    | 2026-07-12 |
-| 7. Cutover Runbook and Deferred Domain Split | 0/3 | Not started | - |
+| 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |

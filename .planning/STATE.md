@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 7
 current_phase_name: Cutover Runbook and Deferred Domain Split
-status: executing
-stopped_at: Phase 07 context gathered
-last_updated: "2026-07-12T09:50:54.355Z"
+status: paused
+stopped_at: Phase 07 paused — parked pending rehearsal infra; starting next milestone
+last_updated: "2026-07-12T09:59:19.000Z"
 last_activity: 2026-07-12
-last_activity_desc: Phase 06 complete, transitioned to Phase 7
+last_activity_desc: Phase 7 paused (requires real Docker/GHCR rehearsal infra); starting next milestone
 progress:
   total_phases: 7
   completed_phases: 6
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 Phase: 7 — Cutover Runbook and Deferred Domain Split
 Plan: Not started
-Status: Ready to execute
-Last activity: 2026-07-12 — Phase 06 complete, transitioned to Phase 7
+Status: Paused — real Docker/GHCR rehearsal infra (docker login, local-test/local-dev clones) not yet ready. All 3 plans (07-01, 07-02, 07-03) untouched. Resume with /gsd-execute-phase 7 when ready.
+Last activity: 2026-07-12 — Phase 7 paused; starting next milestone (v2 scope: Product/Availment, POS checkout, payment, fiscal, frontend migration per REQUIREMENTS.md v2)
 
 Progress: [████░░░░░░] 43%
 
@@ -212,6 +212,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T09:32:57.241Z
-Stopped at: Phase 07 context gathered
+Last session: 2026-07-12T09:59:19.000Z
+Stopped at: Phase 07 paused (0/3 plans); starting next milestone
 Resume file: .planning/phases/07-cutover-runbook-and-deferred-domain-split/07-CONTEXT.md
