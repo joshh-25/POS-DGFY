@@ -315,6 +315,11 @@ Plans:
 
 - [x] 08-10-PLAN.md — compliance gap closure: make all seven evidence-derived readiness signals fail closed uniformly (five `!== false` defaults → `=== true`) + partial-evidence regression test proving a compliant_active POS bundle with omitted signals yields REQUIRES_SETUP not ALLOW, D-05 preserved (FSC-02)
 
+**Wave 8** *(gap closure — three Critical findings from the post-08-10 08-REVIEW.md / 08-VERIFICATION.md; disjoint modules, run in parallel)*
+
+- [ ] 08-11-PLAN.md — compliance gap closure (FSC-01): reject/revoke review outcomes now demote compliance_mode_state.state to non_compliant_active so a revoked/rejected compliant_active business no longer reaches ALLOW for a Fiscal POS_CHECKOUT (state-demotion as single source of truth), D-05 preserved (FSC-01)
+- [ ] 08-12-PLAN.md — booking/shift concurrency hardening (CR-02, CR-03): row-lock (FOR UPDATE) the cancelBooking and closeShift guard reads so concurrent double-submits serialize — a second cancel cannot double-release capacity, a second close cannot write a duplicate 'close' event or lose the reconciliation update (BOK-02, SFT-02, SFT-03)
+
 ### Phase 9: POS Checkout & Payment
 
 **Goal**: Staff can run a complete, trustworthy point-of-sale checkout — building an Availment, applying discounts (including the statutory Senior Citizen/PWD discount), selecting a payment method, and producing a receipt — gated by an open shift and the shared compliance policy engine, with totals and cash change always computed server-side.
