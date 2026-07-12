@@ -94,11 +94,8 @@ bun.lock
 # now lands under data/certbot/conf/live/ instead of dev-certs/ itself)
 /infrastructure/docker/data/
 
-# Docker env files
-/infrastructure/docker/.env
-
-local-test/
-local-dev/
+# Ignore .env files, which may contain secrets. See
+.env
 
 # Built Android release artifacts (scripts/build-android-beta-release.sh)
 /releases/android/
