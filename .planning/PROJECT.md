@@ -17,6 +17,21 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - **Success metric**: Existing users experience no regression while new DGFY Accounts, Businesses, Tenancy, and migration scripts prove a clean path away from the IMS-backed schema.
 - **Strategy notes**: See `refactor/DGFY_Project_Status_and_Proposal.md`, `refactor/DGFY_Implementation_Phases.md`, and `refactor/DGFY_Migration_Cutover_Strategy.md`.
 
+## Current Milestone: v2.0 Commerce Domain — Product, Checkout & Fulfillment
+
+**Goal:** Backend API parity with the current legacy system's full commerce flow — product catalog, POS checkout/payment, storefront online ordering, and order fulfillment — built beside legacy on `dgfy_*` schemas the same way Accounts/Businesses/Tenancy was, extending that now-stable foundation. Existing frontends keep talking to the old backend; no new frontend apps this milestone.
+
+**Target features:**
+- Product Catalog (Food/Service/Retail, stock/non-stock, folders/grouping, Basic Inventory ledger)
+- Booking (bookable Services, branch-level slot capacity, no staff calendar yet)
+- POS Checkout & Payment (Availment + line items, discount codes, manual discounts incl. senior/PWD, server-verified totals/change, payment method selection, receipts)
+- Shift & Cash Drawer (open/close shift per cashier/terminal, cash-drawer auditing, close-time reconciliation)
+- Fiscal/Compliance (policy-engine gating checkout/receipts/shift on compliance-mode state)
+- Storefront Discovery & Online Ordering (map browse/search, storefront page, cart, guest-or-account checkout, pickup/delivery immediate-or-scheduled, payment method incl. PayMongo where available)
+- Order Fulfillment & Delivery Coordination (business/staff process online orders, status updates, manual delivery/courier assignment and payout tracking through completion)
+
+**Deferred to later milestones:** new frontend apps (dgfy-storefront/pos/business), the actual Product data-cutover migration + production cutover (Phase 7 stays paused, likely revisited once this domain is proven), Comprehensive Inventory/IMS integration, co-ownership exposure, Hospitality/Ticketing/Jobs ecosystem integrations.
+
 ## Requirements
 
 ### Validated
@@ -38,11 +53,22 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 ### Active
 
 - [ ] Preserve current POS/Storefront behavior until replacement paths have parity evidence and rollback options.
-- [ ] Cutover rehearsal, data-volume evidence, backup/restore proof, and abort thresholds before production cutover is scheduled — CMP-05, Phase 7.
+- [ ] Cutover rehearsal, data-volume evidence, backup/restore proof, and abort thresholds before production cutover is scheduled — CMP-05, Phase 7 (paused 2026-07-12, pending real Docker/GHCR rehearsal infra; will likely be revisited once the Commerce Domain below is proven, since the real production migration must move Product/Availment data too, not just Accounts/Businesses/Tenancy).
+- [ ] Product Catalog domain (Food/Service/Retail, stock/non-stock, folders, Basic Inventory) built beside legacy — v2.0.
+- [ ] Booking domain (bookable Services, branch-level capacity) — v2.0.
+- [ ] POS Checkout & Payment (Availment, discounts, senior/PWD, server-verified totals, payment method selection, receipts) — v2.0.
+- [ ] Shift & Cash Drawer (open/close shift, cash-drawer auditing, reconciliation) — v2.0.
+- [ ] Fiscal/Compliance policy-engine gating (checkout/receipts/shift) — v2.0.
+- [ ] Storefront Discovery & Online Ordering (map browse/search, cart, guest/account checkout, pickup/delivery scheduling) — v2.0.
+- [ ] Order Fulfillment & Delivery Coordination (process online orders, delivery/courier assignment, payout tracking) — v2.0.
 
 ### Out of Scope
 
-- Product, Availment, Inventory, POS checkout, payments, discounts, fiscal compliance, shifts, and Storefront frontend migration — deferred until Accounts/Businesses/Tenancy and migration foundations are stable.
+- New frontend apps (dgfy-storefront/dgfy-pos/dgfy-business) — database/backend foundation and now the Commerce Domain must stabilize first; current POS and Storefront frontends stay live against the old backend.
+- Product/Availment data-cutover migration and production cutover — downstream of the v2.0 Commerce Domain; Phase 7 stays paused until this domain is proven, not resumed as-is.
+- Comprehensive Inventory / external IMS (SKUpervisor) integration — contract not yet defined technically.
+- Co-ownership feature exposure — data model supports it (Phase 1) but the feature itself isn't exposed yet.
+- Hospitality/Ticketing/Jobs Sieitz ecosystem integrations, and the Food Manufacturing IMS supply marketplace vision — directional notes only, not designed.
 - Opportunistic cleanup of legacy code — avoided unless explicitly approved as a compatibility seam or required safety fix.
 - Big-bang production cutover — full migration and cutover require rehearsals, abort thresholds, and a separate runbook.
 - Deleting legacy code — migrated legacy code should move to `.archive` only after parity is proven and no active path depends on it.
@@ -92,7 +118,9 @@ Existing codebase concerns make this database-first approach necessary: tenant s
 | Canonical branches/locations live in tenant schema, not landlord | Discovered during Phase 2 planning (D-10): `dgfy_core` should only hold a public discovery projection, not canonical branch data — location ownership is tenant-local. | ✓ `dgfy_core.storefront_discovery_index` is projection-only; `locations` lives in each `dgfy_business_*` schema |
 | Accounts + Businesses + Tenancy as first backend scope | Identity and tenant routing are the foundation for every later POS/Product/Storefront domain. | ✓ Built in Phase 4 — 11 execution waves, API-01 through API-06 satisfied, operator `activate-tenant` CLI closes the provisioning→active handoff gap, human UAT confirmed against real MySQL, 35/36 STRIDE threats closed |
 | No legacy edits except approved seams | Preserves current uptime while allowing narrow compatibility wiring when migration requires it. | — Pending |
-| Product/POS/payment/fiscal domains deferred | These domains are important but too large to bundle into the database and tenancy foundation. | — Pending |
+| Product/POS/payment/fiscal domains deferred from v1 | These domains are important but too large to bundle into the database and tenancy foundation. | ✓ Correctly deferred — now the v2.0 milestone scope |
+| Phase 7 (cutover rehearsal) paused, v2.0 Commerce Domain started instead | Cutting over now would migrate Accounts/Businesses/Tenancy but leave Product/Availment data in legacy `sku_*` — new businesses would still depend on old tenant databases for their catalog. The real cutover migration must cover Product data too. | — Pending |
+| v2.0 scope is backend-API-only, no new frontend apps | Matches the original phased plan (Phase 2 before Phase 3); avoids building frontend against an unstable API surface. | — Pending |
 
 ## Evolution
 
@@ -113,4 +141,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Update Context with current state
 
 ---
-*Last updated: 2026-07-12 after Phase 6 completion*
+*Last updated: 2026-07-12 after starting v2.0 Commerce Domain milestone (Phase 7 paused)*

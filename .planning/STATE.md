@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-current_phase: 7
-current_phase_name: Cutover Runbook and Deferred Domain Split
-status: paused
-stopped_at: Phase 07 paused — parked pending rehearsal infra; starting next milestone
-last_updated: "2026-07-12T09:59:19.000Z"
+milestone: v2.0
+milestone_name: Commerce Domain — Product, Checkout & Fulfillment
+status: planning
+last_updated: "2026-07-12T10:20:19.978Z"
 last_activity: 2026-07-12
-last_activity_desc: Phase 7 paused (requires real Docker/GHCR rehearsal infra); starting next milestone
 progress:
-  total_phases: 7
-  completed_phases: 6
-  total_plans: 33
-  completed_plans: 32
-  percent: 86
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,12 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 ## Current Position
 
-Phase: 7 — Cutover Runbook and Deferred Domain Split
-Plan: Not started
-Status: Paused — real Docker/GHCR rehearsal infra (docker login, local-test/local-dev clones) not yet ready. All 3 plans (07-01, 07-02, 07-03) untouched. Resume with /gsd-execute-phase 7 when ready.
-Last activity: 2026-07-12 — Phase 7 paused; starting next milestone (v2 scope: Product/Availment, POS checkout, payment, fiscal, frontend migration per REQUIREMENTS.md v2)
-
-Progress: [████░░░░░░] 43%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-12 — Milestone v2.0 started
 
 ## Performance Metrics
 
