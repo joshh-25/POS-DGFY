@@ -281,7 +281,7 @@ Plans:
   4. Staff can open a shift with a declared starting cash float (one open shift per cashier+terminal enforced at the database level), close it with a computed Expected-vs-Actual cash Difference, and every cash-drawer event — including a no-sale drawer pop — is logged.
   5. A tenant/branch carries a compliance-mode state reflecting whether required fiscal paperwork is present and verified, checked through one shared policy-engine gate port rather than duplicated per surface (wired into Checkout, Shift, and receipt issuance in Phase 9).
 
-**Plans**: 8/8 plans complete
+**Plans**: 8/9 plans complete (08-09 gap closure pending)
 
 Plans:
 **Wave 1**
@@ -306,6 +306,10 @@ Plans:
 **Wave 5** *(blocked on all module plans)*
 
 - [x] 08-08-PLAN.md — composition-root wiring: build + mount all 5 commerce modules, cross-module injection, mount/integration smoke test (PRD-01, PRD-03, BOK-02, SFT-01, FSC-02)
+
+**Wave 6** *(gap closure — CR-01/CR-02 from 08-VERIFICATION.md, isolated to modules/compliance)*
+
+- [ ] 08-09-PLAN.md — compliance gap closure: DB-enforceable one-row-per-branch invariant (generated-column unique index) + atomic findOrCreate write path with 409 mapping (CR-01), and full evidence-derived checklist enforcement in the compliant_active POS gate (CR-02), D-05 preserved (FSC-01, FSC-02)
 
 ### Phase 9: POS Checkout & Payment
 
