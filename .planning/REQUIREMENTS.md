@@ -9,6 +9,8 @@
 - As a DGFY developer, I can build Accounts, Businesses, and Tenancy APIs against stable `dgfy_*` database contracts instead of inferring behavior from IMS-shaped legacy tables.
 - As a DGFY operator, I can rehearse old-to-new data migration with dry-run, checkpoint, retry, and verification reports before any cutover decision.
 - As an existing DGFY vendor or consumer, I continue using the current POS and Storefront while the new database/backend foundation is built beside legacy.
+- As a DGFY business owner, I can manage my Product catalog, take POS sales through checkout, and run shifts against the new `dgfy-api`, without depending on the legacy IMS-shared `items` schema.
+- As a DGFY consumer, I can browse, order, and track fulfillment of a purchase through the new storefront ordering API, as a guest or a logged-in account.
 
 ## Acceptance Criteria
 
@@ -74,19 +76,91 @@ Requirements for the initial database-first refactor milestone. Each maps to roa
 
 ## v2 Requirements
 
-Deferred to future release. Tracked but not in current roadmap.
+Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/dgfy-api`), built beside legacy on `dgfy_business_*` schemas — no new frontends, no production data-cutover migration. Each maps to roadmap phases.
 
-### Product And POS Domains
+### Product Catalog
 
-- **PRD-01**: Product and Availment database/API migration covers Food, Retail, Service, basic inventory, booking, and fulfillment modeling after tenancy foundation is stable.
-- **PRD-02**: POS checkout, payment tender, split payments, discounts, shift management, fiscal compliance, and receipt behavior are designed as separate domain milestones with server-side correctness checks.
-- **PRD-03**: Storefront/POS/Business frontend migration into new app surfaces proceeds only after backend and compatibility seams prove stable.
+- [ ] **PRD-01**: Business owner can create a Product in Food, Service, or Retail category — category lives on the Product, not the Store, and a Store can mix categories freely.
+- [ ] **PRD-02**: Business owner can choose Basic Inventory (vendor-set stock count) or non-stock per Product; whether a given sale line decrements stock is decided per sale line (`stock_effect_type`), not fixed on the Product.
+- [ ] **PRD-03**: Business owner can group Products into folders (e.g., menu categories) for organization.
+- [ ] **PRD-04**: Every stock-count change (sale, restock, loss, adjustment) is recorded as an append-only Inventory Movement row, never mutated after insert.
+- [ ] **PRD-05**: New Product and Inventory Movement tables live in `dgfy_business_*` as genuinely new schema — never reusing or foreign-keying into the legacy IMS-shared `items`/`PosTransactionLine` tables.
+
+### Booking
+
+- [ ] **BOK-01**: Business owner can mark a Service Product as bookable, with a slot duration and branch-level concurrent capacity.
+- [ ] **BOK-02**: Consumer or staff can create a Booking against a bookable Service Product; the system blocks a Booking once branch-level capacity for that slot is reached — no individual staff calendar required.
+- [ ] **BOK-03**: A fulfilled Booking links to the Availment that completes it.
+
+### POS Checkout And Payment
+
+- [ ] **CHK-01**: Staff can add Products to an Availment, adjust line-item quantities, and remove lines before finalizing a sale.
+- [ ] **CHK-02**: The system computes order totals AND cash change server-side (`change_due = cash_received − total`); the client cannot submit an arbitrary total or `change_amount`.
+- [ ] **CHK-03**: Staff can apply a discount code or a permission-gated manual discount to an Availment, recorded with the applying staff ID and a reason.
+- [ ] **CHK-04**: Staff can select a payment method (Cash, GCash, Credit Card) per Availment; the system records the method and amount, not a live gateway charge.
+- [ ] **CHK-05**: A completed Availment produces a receipt reflecting every applied discount and tax, gated by fiscal/compliance state.
+- [ ] **CHK-06**: An Availment cannot be recorded without an open shift for the cashier and terminal.
+
+### Shift And Cash Drawer
+
+- [ ] **SFT-01**: Staff can open a shift with a declared starting cash float; the system enforces one open shift per cashier+terminal at a time (DB-level constraint).
+- [ ] **SFT-02**: Staff can close a shift; the system computes Expected cash (from sales/refunds/pay-ins/pay-outs) against a cashier-entered Actual count, with a signed Difference.
+- [ ] **SFT-03**: Every cash-drawer event, including a no-sale drawer pop, is logged.
+
+### Fiscal And Compliance
+
+- [ ] **FSC-01**: A tenant/branch has a compliance-mode state reflecting whether required fiscal paperwork is present and verified.
+- [ ] **FSC-02**: Checkout, shift opening, and receipt issuance are all gated through one shared compliance policy-engine check, not duplicated per surface.
+- [ ] **FSC-03**: Senior Citizen / PWD discounts are computed server-side per BIR rules (VAT-exclusive base, 20% discount, MEMC group-meal rule) and produce the correct separate receipt lines.
+
+### Storefront Discovery And Online Ordering
+
+- [ ] **STF-01**: Consumer can browse and search DGFY stores and Products via the map-based storefront discovery surface.
+- [ ] **STF-02**: Consumer can view a store's storefront page and add its Products to a cart.
+- [ ] **STF-03**: Consumer can complete a purchase as a guest (with durable contact info) or as a logged-in DGFY Account, without forced account creation.
+- [ ] **STF-04**: Consumer can choose pickup or delivery, immediate or scheduled, and a payment method (cash on pickup/delivery, or GCash/Credit Card via PayMongo where available) at checkout.
+- [ ] **STF-05**: A storefront order is durably recorded on the Landlord side and finalized into the correct tenant's Availment idempotently, safe against an interrupted cross-database write.
+
+### Order Fulfillment And Delivery Coordination
+
+- [ ] **FUL-01**: Business staff can view and process incoming online orders.
+- [ ] **FUL-02**: Staff can progress an order's fulfillment status through a shared core pipeline (placed → confirmed → preparing → ready/out-for-delivery → completed), with handoff steps specific to pickup, delivery, and dine-in.
+- [ ] **FUL-03**: Staff can manually assign a courier/delivery partner to an order and track courier payout through to fulfillment completion.
+
+## v3 Requirements
+
+Deferred beyond the v2.0 Commerce Domain milestone. Tracked but not in current roadmap.
+
+### Frontend Migration
+
+- **FE-01**: Storefront/POS/Business frontend migration into new dedicated app surfaces (`dgfy-storefront`, `dgfy-pos`, `dgfy-business`) proceeds only after the Commerce Domain backend and compatibility seams prove stable.
 
 ### Cutover And Decommissioning
 
-- **CUT-01**: Full production cutover runbook is executed only after repeated realistic rehearsals meet the downtime target and abort threshold.
+- **CUT-01**: Full production cutover runbook is executed only after repeated realistic rehearsals meet the downtime target and abort threshold — must cover Product/Availment data migration, not just Accounts/Businesses/Tenancy (Phase 7 paused pending this).
 - **CUT-02**: Legacy code moves to `.archive` only after parity evidence proves no active runtime depends on it.
-- **CUT-03**: Optional SKUpervisor/IMS integration contract is defined after DGFY owns its core schema.
+- **CUT-03**: Optional SKUpervisor/IMS integration contract (Comprehensive Inventory tier) is defined after DGFY owns its core Commerce schema.
+
+### Payments And Fulfillment
+
+- **PAY-01**: Live payment gateway capture/settlement (full PayMongo integration with webhooks and chargebacks) beyond method-and-amount recording.
+- **PAY-02**: 2-way split-tender payments (e.g., cash + GCash) recorded as two Payment rows against one Availment.
+- **FUL-04**: Real courier/delivery API integration (Grab, Lalamove, etc.) replacing manual assignment.
+
+### Shift And Cash Drawer (v2.x)
+
+- **SFT-04**: Blind-count shift closing mode (hides Expected cash from the cashier during count).
+- **SFT-05**: Automated over/short alerting and cash-variance analytics on top of shift reconciliation data.
+
+### Booking (v3+)
+
+- **BOK-04**: Staff-level appointment calendars (per-staff time slots, skill matching, resource booking) beyond branch-level capacity.
+
+### Other
+
+- **LOY-01**: Loyalty points / rewards program.
+- **OMC-01**: Multi-channel order routing across external channels (delivery marketplaces, phone orders, kiosk) beyond DGFY's own storefront.
+- **BIZ-01**: Co-ownership feature exposure (data model already supports it from Phase 1, feature itself not exposed).
 
 ## Out of Scope
 
@@ -94,12 +168,19 @@ Explicitly excluded. Documented to prevent scope creep.
 
 | Feature | Reason |
 |---------|--------|
-| Product/Availment implementation in v1 | Depends on stable Accounts/Businesses/Tenancy and has separate fulfillment, stock, scheduling, and migration design questions. |
-| POS checkout/payment/fiscal/shift implementation in v1 | High-risk user-facing domains with known correctness and compliance issues; needs its own design and hardening. |
-| Frontend migration in v1 | Database/backend foundation must stabilize first; current POS and Storefront stay live. |
-| Big-bang cutover | Conflicts with Strangler Fig/ADR 0003 migration strategy and lacks rehearsal evidence. |
+| New frontend apps in v2.0 | Backend/Commerce Domain foundation must stabilize first; current POS and Storefront stay live against the old backend. |
+| Product/Availment data-cutover migration in v2.0 | Downstream of this milestone; the real production migration must move Product/Availment data too, not just Accounts/Businesses/Tenancy — Phase 7 stays paused until this domain is proven. |
+| N-way arbitrary split-tender payments | Even mature platforms (Square) have real API limits here; disproportionate effort for a sub-100-user base. At most 2-way split is a v2.x candidate. |
+| Live courier/delivery API integration (Grab, Lalamove) | Requires per-courier API contracts, webhooks, and payout reconciliation disproportionate to current fulfillment volume; manual assignment matches legacy's own "outbound links" capability. |
+| Full staff-level appointment calendars | Materially larger scope than branch-level capacity; ship branch-level first and let usage justify staff-level granularity. |
+| Real-time payment gateway processing (actual charge capture at checkout) | Recording payment method/amount is the v2.0 deliverable (matches legacy); live capture/settlement/webhooks/chargebacks is its own project-sized effort. |
+| Loyalty points / rewards program | No legacy precedent, no current scope; competes for effort against Commerce Domain parity. |
+| Automated cash-variance analytics/alerting | Instrumentation for a scale of cash-handling risk DGFY doesn't have yet at <100 active users. |
+| Full multi-channel order routing (delivery marketplaces, kiosk, phone) | DGFY's own storefront is the only order-intake channel in scope; no second channel exists yet to route from. |
+| Comprehensive Inventory / external IMS integration | Contract with SKUpervisor/IMS not yet defined technically. |
 | Raw-copying legacy schemas | Preserves the IMS coupling this project is intended to remove. |
 | Broad legacy cleanup | Risks regressions and merge conflicts while legacy remains the live fallback. |
+| Big-bang cutover | Conflicts with Strangler Fig/ADR 0003 migration strategy and lacks rehearsal evidence. |
 | Automatic production cutover | Requires a separate rehearsal-backed runbook with abort and rollback proof. |
 
 ## Traceability
@@ -143,4 +224,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-10 after roadmap creation*
+*Last updated: 2026-07-12 after defining v2.0 Commerce Domain requirements*
