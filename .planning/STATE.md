@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: compatibility-and-backend-first-cutover-seam
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-07-12T04:11:27.754Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-07-12T04:25:02.596Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 29
-  completed_plans: 27
+  completed_plans: 28
   percent: 57
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 ## Current Position
 
 Phase: 05 (compatibility-and-backend-first-cutover-seam) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 05 execution started
 
@@ -84,6 +84,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04 P08 | 75min | 2 tasks | 16 files |
 | Phase 04 P09 | 35min | 3 tasks | 9 files |
 | Phase 05 P01 | 20min | 3 tasks | 6 files |
+| Phase 05 P02 | 11min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -171,6 +172,9 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-01: COMPAT_SEAMS_REPO_ROOT env override added (mirrors plan-mandated COMPAT_SEAMS_MANIFEST_PATH) so code-marker scan and tests[] path-safety resolution root are test-isolatable
 - [Phase 05]: 05-01: @compat-seam id= marker token built from joined string-array parts in check-compat-seams.js and its test file, never a literal substring, so a full-repo run never self-matches its own source
 - [Phase 05]: 05-01: orphan-entry reconciliation (active/accepted seam with no code marker) only runs in default full-tree mode, skipped under --staged
+- [Phase ?]: 05-02: refactored the usecases forEach early-return to an inline condition so the new compat-import check runs independently of the usecaseLegacyServiceImports allowlist short-circuit
+- [Phase ?]: 05-02: placed the CI compat-seams gate step inside the existing test-backend job via working-directory: . (mirroring test-dgfy-api's pattern) instead of a new job
+- [Phase ?]: 05-02: pre-commit compat-seams trigger combines a file-path grep of the three named surface files with a content grep of the staged diff for the @compat-seam marker, so any new marker anywhere triggers the gate
 
 ### Pending Todos
 
@@ -192,6 +196,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-12T04:09:17.616Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-compatibility-and-backend-first-cutover-seam/05-CONTEXT.md
+Last session: 2026-07-12T04:25:02.590Z
+Stopped at: Completed 05-02-PLAN.md
+Resume file: None

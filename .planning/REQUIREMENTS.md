@@ -66,9 +66,9 @@ Requirements for the initial database-first refactor milestone. Each maps to roa
 
 ### Compatibility And Safety
 
-- [ ] **CMP-01**: Existing POS and Storefront behavior remains available while the new database/backend foundation is built beside legacy.
+- [x] **CMP-01**: Existing POS and Storefront behavior remains available while the new database/backend foundation is built beside legacy.
 - [x] **CMP-02**: Any legacy code touch is limited to an approved compatibility seam with documented rationale, tests, rollback notes, and removal criteria.
-- [ ] **CMP-03**: Compatibility adapters, if required, live at API boundaries and do not define canonical DGFY domain contracts.
+- [x] **CMP-03**: Compatibility adapters, if required, live at API boundaries and do not define canonical DGFY domain contracts.
 - [ ] **CMP-04**: Release evidence includes architecture checks, migration verification, tenant drift checks, and targeted smoke/contract checks for touched compatibility seams.
 - [ ] **CMP-05**: Cutover planning captures rehearsal runtime, realistic data-volume evidence, backup/restore proof, abort thresholds, and reopen-on-legacy steps before production cutover is scheduled.
 
@@ -129,9 +129,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | API-04 | Phase 4 | Complete |
 | API-05 | Phase 4 | Complete |
 | API-06 | Phase 4 | Complete |
-| CMP-01 | Phase 5 | Pending |
+| CMP-01 | Phase 5 | Complete |
 | CMP-02 | Phase 5 | Complete |
-| CMP-03 | Phase 5 | Pending |
+| CMP-03 | Phase 5 | Complete |
 | CMP-04 | Phase 6 | Pending |
 | CMP-05 | Phase 7 | Pending |
 
