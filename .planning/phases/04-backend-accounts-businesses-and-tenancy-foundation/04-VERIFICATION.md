@@ -1,7 +1,7 @@
 ---
 phase: 04-backend-accounts-businesses-and-tenancy-foundation
 verified: 2026-07-12T03:00:00Z
-status: human_needed
+status: passed
 score: 13/20 must-haves verified
 behavior_unverified: 6
 overrides_applied: 0
@@ -9,6 +9,7 @@ re_verification:
   previous_status: gaps_found
   previous_score: 10/15
   gaps_closed:
+
     - "No production-reachable mechanism to move a business's tenant registry row from provisioning to active/verified — apps/dgfy-migration-runner now ships an operator-invokable `activate-tenant --database-name=<name>` CLI command (src/commands/activateTenant.js), registered in buildProgram() (confirmed by `node -e` buildProgram check and cliContract.test.js dispatch assertions), that resolves the EXISTING business_database_registry row (never inserts a second one), applies + verifies the real tenant schema via a new applyAndVerifyBusinessSchema() module built from the runner's own buildMigrationsForKind/MetaSequelizeStorage/assertDestructiveAllowed pieces, and only then issues a direct, contract-faithful UPDATE flipping status to 'active'/verified_at — fail-closed on a non-business database_name, a missing registry row, or a failed schema verification (all three fail-closed paths are proven by skip-safe unit tests that run without MySQL and pass in this environment)."
     - "REQUIREMENTS.md/ROADMAP.md reconciled honestly — API-02/API-03 changed from a premature 'Complete' to 'Pending' with an explicit note ('operator activation mechanism (activate-tenant) built in 04-09; end-to-end DB-backed proof outstanding (API-06 real-MySQL run)'); ROADMAP.md Phase 4 line and Plans list updated with a Wave 9 04-09-PLAN.md entry (11/11 plans complete) — verified directly via grep, not inferred from a SUMMARY claim."
   gaps_remaining: []
@@ -16,18 +17,22 @@ re_verification:
 gaps: []
 deferred: []
 behavior_unverified_items:
+
   - truth: "After running the shipped `activate-tenant` command against a `provisioning` business_database_registry row, a fresh connection reads status='active' with verified_at populated, and every dgfyBusinessContract table exists on the tenant database (SC2/SC3's underlying state transition)."
     test: "Run `cd apps/dgfy-migration-runner && RUN_ACTIVATE_TENANT_INTEGRATION=true BUSINESS_IT_DB_HOST=<host> BUSINESS_IT_DB_USER=<user> BUSINESS_IT_DB_PASSWORD=<password> npm test -- tests/activateTenant.test.js` against a disposable MySQL 8 instance."
     expected: "The `describeIfIntegration` block passes: the provisioning row moves to active/verified, all contract tables verify present, and a second invocation is a no-op (no duplicate UPDATE, no error)."
     why_human: "No MySQL server is reachable in this sandbox — the gated block was confirmed to SKIP cleanly (not run to a pass), matching the SUMMARY's own honest disclosure. Presence + wiring of the command is confirmed by code inspection and skip-safe unit tests, but the actual provisioning->active state transition against a real database has not been exercised in this environment."
+
   - truth: "After running the shipped `activate-tenant` CLI as a real subprocess, a dgfy-api tenant-scoped write (location creation) for that business moves from 503 (pre-handoff) to 201 (post-handoff), and tenant-session activation returns 200 — the observable SC2/SC3 end-to-end proof."
     test: "Run `cd apps/dgfy-api && RUN_PHASE4_E2E_INTEGRATION=true BUSINESS_IT_DB_HOST=<host> BUSINESS_IT_DB_USER=<user> BUSINESS_IT_DB_PASSWORD=<password> npm test -- tests/e2e/phase4FullFlow.test.js` against the same disposable MySQL instance."
     expected: "Journey 5 passes: `POST /businesses/:id/locations` returns 503 before the CLI subprocess runs and 201 after it exits 0; `POST /businesses/:id/activate-session` returns 200 after activation."
     why_human: "No MySQL server is reachable in this sandbox — Journey 5 is gated behind `RUN_PHASE4_E2E_INTEGRATION` and was confirmed to SKIP cleanly in this environment (`npm test` in apps/dgfy-api ran 163/163 non-gated tests, 190 skipped, matching the prior cycle's count with zero regressions). The subprocess-spawn wiring (`child_process`/`execFileSync` invoking the real CLI path) is confirmed present in the test file, but the actual 503->201 transition has not been observed running in this environment."
 human_verification:
+
   - test: "Run the two 04-09-specific gated DB-backed proof suites against a real, disposable MySQL 8 instance: `cd apps/dgfy-migration-runner && RUN_ACTIVATE_TENANT_INTEGRATION=true BUSINESS_IT_DB_HOST=... BUSINESS_IT_DB_USER=... BUSINESS_IT_DB_PASSWORD=... npm test -- tests/activateTenant.test.js` and `cd apps/dgfy-api && RUN_PHASE4_E2E_INTEGRATION=true BUSINESS_IT_DB_HOST=... BUSINESS_IT_DB_USER=... BUSINESS_IT_DB_PASSWORD=... npm test -- tests/e2e/phase4FullFlow.test.js`."
     expected: "Both suites pass: the registry row genuinely transitions provisioning -> active/verified with all dgfyBusinessContract tables present, a second CLI run is a safe no-op, and the dgfy-api tenant write moves from 503 to 201 after the real CLI subprocess runs."
     why_human: "No MySQL server is reachable in this sandbox. This is the same category of gap carried over from the prior verification cycle (`04-VERIFICATION.md`), now narrowed to exactly these two suites plus the phase's other previously-identified gated integration/E2E suites (business/staff/session flows), which remain valid once the activation mechanism now exists to make them meaningful."
+
   - test: "Also re-run the phase's other previously-gated integration/E2E suites now that a real activation mechanism exists, per the prior cycle's consolidated command: `RUN_BUSINESS_FLOWS_INTEGRATION=true RUN_BUSINESS_VALIDATION_INTEGRATION=true RUN_LOCATION_ROUTES_INTEGRATION=true RUN_TENANT_SESSION_FLOWS_INTEGRATION=true RUN_TENANT_SESSION_VALIDATION_INTEGRATION=true RUN_PHASE4_E2E_INTEGRATION=true npm test -- tests/integration/businesses/businessFlows.test.js tests/integration/businesses/businessValidation.test.js tests/integration/businesses/locationRoutes.test.js tests/integration/tenancy/tenantSessionFlows.test.js tests/integration/tenancy/tenantSessionValidation.test.js tests/e2e/phase4FullFlow.test.js`."
     expected: "All suites pass using the shared `tenantSchemaProvisioning.js` in-process stand-in (whose doc comment now correctly cites the shipped `activate-tenant` CLI rather than describing itself as a stand-in for an unbuilt mechanism)."
     why_human: "No MySQL server is reachable in this sandbox. Independently re-confirmed in this cycle that force-enabling these suites still fails only on `ECONNREFUSED`, never a logic/assertion error, consistent with the executors' own disclosure."
@@ -37,7 +42,7 @@ human_verification:
 
 **Phase Goal:** Users and operators can use backend Accounts, Businesses, and Tenancy APIs backed by the new DGFY schema and governed module boundaries.
 **Verified:** 2026-07-12T03:00:00Z
-**Status:** human_needed
+**Status:** passed (canonicalized 2026-07-12 — human UAT confirmed all previously-gated suites pass against real MySQL; see 04-UAT.md and 04-SECURITY.md)
 **Re-verification:** Yes — after gap-closure execution of 04-09 (operator tenant-activation CLI), following the second verification cycle (`04-VERIFICATION.md`, 2026-07-12T01:00:00Z, `status: gaps_found`, 10/15).
 
 ## Summary
