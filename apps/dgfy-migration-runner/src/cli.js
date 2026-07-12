@@ -10,6 +10,7 @@ import { runVerifyContinuity } from './commands/verifyContinuity.js';
 import { runStatus } from './commands/status.js';
 import { runRollbackPlan } from './commands/rollbackPlan.js';
 import { runActivateTenant } from './commands/activateTenant.js';
+import { runReleaseEvidence } from './commands/releaseEvidence.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -108,6 +109,14 @@ export function buildProgram() {
         databaseName: options.databaseName,
         confirmDestructive: Boolean(options.confirmDestructive)
       });
+    });
+
+  program
+    .command('release-evidence')
+    .description('Interactively select active tenants and produce migration-verification + tenant-drift evidence')
+    .option('--evidence-dir <dir>', 'Directory to write reviewable JSON/markdown reports')
+    .action(async (options) => {
+      await runReleaseEvidence({ evidenceDir: options.evidenceDir });
     });
 
   return program;

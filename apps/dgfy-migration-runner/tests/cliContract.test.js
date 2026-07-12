@@ -50,14 +50,25 @@ describe('CLI dispatch to command handlers (mocked)', () => {
     mockRunActivateTenant.mockClear();
 
     jest.unstable_mockModule('../src/commands/schema.js', () => ({
-      runSchemaMigrate: mockRunSchemaMigrate
+      runSchemaMigrate: mockRunSchemaMigrate,
+      // 06-01: releaseEvidence.js statically imports resolveTargetKind from
+      // schema.js — must exist on this mock even though this suite never
+      // calls it (mirrors the checkContractSchema/checkMigrationMetadata
+      // note on the verify.js mock above).
+      resolveTargetKind: jest.fn()
     }));
     jest.unstable_mockModule('../src/commands/data.js', () => ({
       runDataDryRun: mockRunDataDryRun,
       runDataApply: mockRunDataApply
     }));
     jest.unstable_mockModule('../src/commands/verify.js', () => ({
-      runVerify: mockRunVerify
+      runVerify: mockRunVerify,
+      // 06-01: releaseEvidence.js (imported for real by cli.js, mirroring
+      // verifyContinuity.js's already-unmocked precedent in this file)
+      // statically imports these two exports from verify.js — they must
+      // exist on this mock even though this suite never calls them.
+      checkContractSchema: jest.fn(),
+      checkMigrationMetadata: jest.fn()
     }));
     jest.unstable_mockModule('../src/commands/status.js', () => ({
       runStatus: mockRunStatus
