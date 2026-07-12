@@ -245,12 +245,17 @@ Plans:
   2. Backup/restore proof, abort thresholds, and reopen-on-legacy steps are documented before any production cutover is scheduled.
   3. Product, POS checkout, payment, fiscal, and frontend migration scope is explicitly deferred into post-foundation planning instead of entering v1 implementation.
 
-**Plans**: 0/1+ plans complete (SC2/SC3 plans not yet planned)
+**Plans**: 0/3 plans complete
 
 Plans:
 **Wave 1**
 
 - [ ] 07-01-PLAN.md — Production-volume migration rehearsal: run the guinea-pig clone loop (auto-provision/seed/manifest/migrate/verify, one human-action checkpoint for release-evidence's TTY tenant picker) until N consecutive clean attempts, then write the committed rehearsal runbook (SC1)
+- [ ] 07-03-PLAN.md — Deferred-domain-split register: committed doc that makes SC3 explicit and traceable by cross-referencing (not duplicating) REQUIREMENTS.md v2 (PRD/CUT) + PROJECT.md Out of Scope (SC3, independent of 07-01)
+
+**Wave 2** *(blocked on 07-01 completion)*
+
+- [ ] 07-02-PLAN.md — Cutover runbook (SC2 gate): dgfy_*-only backup/restore proof against a preserved 07-01 clone (D-04) + committed governed runbook documenting the wall-clock abort threshold (D-01), human enforcement (D-02), and the reopen-on-legacy non-event (D-03)
 
 ## Progress
 
@@ -265,4 +270,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Backend Accounts, Businesses, and Tenancy Foundation | 11/11 | Complete    | 2026-07-11 |
 | 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete    | 2026-07-12 |
 | 6. Release Evidence and Rehearsal Gates | 3/3 | Complete    | 2026-07-12 |
-| 7. Cutover Runbook and Deferred Domain Split | 0/1+ | Not started | - |
+| 7. Cutover Runbook and Deferred Domain Split | 0/3 | Not started | - |
