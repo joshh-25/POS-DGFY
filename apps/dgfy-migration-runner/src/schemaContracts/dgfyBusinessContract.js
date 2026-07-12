@@ -214,6 +214,216 @@ export const dgfyBusinessContract = {
         { column: 'staff_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
       ],
       projectionOnly: false
+    },
+
+    // --- Phase 08 Commerce Domain foundation (08-01-PLAN.md) ----------------
+    // Implemented by
+    // apps/dgfy-migration-runner/src/migrations/schema/20260712100000-create-commerce-foundation.cjs.
+    // These 8 tables were previously out-of-scope operational names (D-15) —
+    // 'products' and 'shifts' are removed from rejectedTables below now that
+    // Phase 08 legitimizes them. 'stock_movements' stays rejected: the new
+    // append-only ledger is named inventory_movements (Pitfall 1/PRD-04/
+    // PRD-05), never stock_movements.
+
+    // PRD-03/D-14: flat, business-scoped folder grouping — no parent_id
+    // nesting (D-14 supersedes legacy ItemFolder.js's self-nesting FK).
+    product_folders: {
+      columns: [
+        'id',
+        'business_id',
+        'name',
+        'description',
+        'show_in_pos_filter',
+        'is_active',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['unique_product_folders_business_name'],
+      uniqueConstraints: ['unique_product_folders_business_name'],
+      foreignKeys: [],
+      projectionOnly: false
+    },
+
+    // PRD-01/PRD-02/BOK-01: category lives on the Product, not the Store;
+    // inventory_mode only (D-07 — stock_effect_type is Phase 9's
+    // AvailmentItem, not this table).
+    products: {
+      columns: [
+        'id',
+        'business_id',
+        'folder_id',
+        'name',
+        'category',
+        'inventory_mode',
+        'stock_count',
+        'base_price',
+        'is_bookable',
+        'slot_duration_minutes',
+        'concurrent_capacity',
+        'is_active',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['idx_products_business', 'idx_products_folder', 'idx_products_category'],
+      uniqueConstraints: [],
+      foreignKeys: [
+        { column: 'folder_id', referencesTable: 'product_folders', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // PRD-04/D-06: append-only ledger, sole writer modules/inventory (ADR
+    // 0029). movement_type reserves (unwired) sale/booking values. Never
+    // named stock_movements.
+    inventory_movements: {
+      columns: [
+        'id',
+        'business_id',
+        'product_id',
+        'movement_type',
+        'quantity',
+        'reference_type',
+        'reference_id',
+        'actor_account_id',
+        'actor_staff_account_id',
+        'before_snapshot',
+        'after_snapshot',
+        'created_at'
+      ],
+      indexes: ['idx_inventory_movements_business_product', 'idx_inventory_movements_movement_type'],
+      uniqueConstraints: [],
+      foreignKeys: [
+        { column: 'product_id', referencesTable: 'products', referencesColumn: 'id' },
+        { column: 'actor_staff_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // BOK-01/BOK-02/BOK-03: availment_id reserved, no FK (Availment table is
+    // Phase 9). customer_account_id opaque UUID, no cross-DB FK (D-09).
+    bookings: {
+      columns: [
+        'id',
+        'business_id',
+        'product_id',
+        'branch_id',
+        'customer_account_id',
+        'slot_start',
+        'slot_end',
+        'status',
+        'availment_id',
+        'cancelled_at',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['idx_bookings_business_product_branch_slot', 'idx_bookings_customer_account'],
+      uniqueConstraints: [],
+      foreignKeys: [
+        { column: 'product_id', referencesTable: 'products', referencesColumn: 'id' },
+        { column: 'branch_id', referencesTable: 'locations', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // BOK-02: branch-level slot capacity counter — atomic guarded UPDATE
+    // (Pattern D), never findOne-then-update.
+    booking_capacity: {
+      columns: [
+        'id',
+        'business_id',
+        'product_id',
+        'branch_id',
+        'slot_start',
+        'slots_remaining',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['unique_booking_capacity_product_branch_slot'],
+      uniqueConstraints: ['unique_booking_capacity_product_branch_slot'],
+      foreignKeys: [
+        { column: 'product_id', referencesTable: 'products', referencesColumn: 'id' },
+        { column: 'branch_id', referencesTable: 'locations', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // SFT-01/SFT-02, D-12/D-13: active_terminal_cashier_key is a MySQL
+    // GENERATED ALWAYS AS (...) STORED column; its unique index is the
+    // DB-level one-open-shift-per-(terminal,cashier) invariant.
+    // cashier_account_id is the tenant-local staff_accounts.id (D-13), not
+    // the landlord dgfy_account_id.
+    shifts: {
+      columns: [
+        'id',
+        'business_id',
+        'terminal_id',
+        'cashier_account_id',
+        'cashier_dgfy_account_id',
+        'status',
+        'opening_float_amount',
+        'expected_cash_amount',
+        'closing_cash_amount',
+        'cash_variance_amount',
+        'opened_at',
+        'closed_at',
+        'active_terminal_cashier_key',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['uq_shifts_active_terminal_cashier'],
+      uniqueConstraints: ['uq_shifts_active_terminal_cashier'],
+      foreignKeys: [
+        { column: 'terminal_id', referencesTable: 'terminal_identities', referencesColumn: 'id' },
+        { column: 'cashier_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // SFT-03: append-only, sole writer modules/shifts. event_type reserves
+    // (unwired) pay_in/pay_out values (D-10).
+    cash_drawer_events: {
+      columns: [
+        'id',
+        'business_id',
+        'shift_id',
+        'event_type',
+        'amount',
+        'reason',
+        'actor_staff_account_id',
+        'created_at'
+      ],
+      indexes: ['idx_cash_drawer_events_shift', 'idx_cash_drawer_events_event_type'],
+      uniqueConstraints: [],
+      foreignKeys: [
+        { column: 'shift_id', referencesTable: 'shifts', referencesColumn: 'id' },
+        { column: 'actor_staff_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // FSC-01/FSC-02, D-01: tenant-scoped compliance-mode state (not
+    // dgfy_core). D-02/D-03 enum/policy-pack shapes; D-04 manual
+    // verification review fields.
+    compliance_mode_state: {
+      columns: [
+        'id',
+        'business_id',
+        'branch_id',
+        'state',
+        'compliance_profile',
+        'active_policy_pack_version',
+        'verification_status',
+        'verified_by_actor_type',
+        'verified_at',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['unique_compliance_mode_state_business_branch'],
+      uniqueConstraints: ['unique_compliance_mode_state_business_branch'],
+      foreignKeys: [
+        { column: 'branch_id', referencesTable: 'locations', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
     }
   },
 
@@ -221,9 +431,15 @@ export const dgfyBusinessContract = {
   // operational tables are explicitly out of scope for the dgfy_business_*
   // tenant foundation. Used both by this contract's own tests and by
   // Plan 04's verification scope guard.
+  //
+  // Phase 08 (08-01-PLAN.md) legitimizes 'products' and 'shifts' — they are
+  // now real tables{} entries above (created by
+  // 20260712100000-create-commerce-foundation.cjs), so both names are
+  // REMOVED from this list. 'stock_movements' stays rejected: the new
+  // append-only ledger is named inventory_movements, which is a different,
+  // non-rejected name (Pitfall 1).
   rejectedTables: [
     'items',
-    'products',
     'skus',
     'product_variants',
     'categories',
@@ -236,7 +452,6 @@ export const dgfyBusinessContract = {
     'supplier_items',
     'pos_transactions',
     'pos_transaction_lines',
-    'shifts',
     'cashier_sessions',
     'terminal_sessions',
     'discounts',

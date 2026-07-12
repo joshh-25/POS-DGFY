@@ -29,9 +29,16 @@ const BUSINESS_TABLE_NAMES = [
   'tenant_audit_logs'
 ];
 
+// Phase 08 (08-01-PLAN.md) legitimized 'products' and 'shifts' as real
+// dgfyBusinessContract.tables{} entries (created by
+// 20260712100000-create-commerce-foundation.cjs) and removed both names
+// from rejectedTables — so 'products' is intentionally no longer part of
+// this out-of-scope list (it was never in this array to begin with;
+// 'shifts' also is not). 'stock_movements' stays out-of-scope/rejected: the
+// new append-only ledger is the different, non-rejected name
+// inventory_movements (Pitfall 1).
 const OUT_OF_SCOPE_TABLE_NAMES = [
   'items',
-  'products',
   'purchase_orders',
   'job_orders',
   'stock_movements',
