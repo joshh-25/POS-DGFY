@@ -27,6 +27,13 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Lint governed documentation
         run: npm run lint:docs
+      - name: Verify compatibility inventory doc matches manifest
+        run: |
+          npm run generate:compat-inventory
+          git diff --exit-code -- docs/architecture/COMPATIBILITY_INVENTORY.md || {
+            echo "COMPATIBILITY_INVENTORY.md is stale — run npm run generate:compat-inventory and commit the result."
+            exit 1
+          }
 
   release-verdict-contract:
     runs-on: ubuntu-latest
