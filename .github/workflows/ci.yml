@@ -76,6 +76,8 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install root dependencies
         run: npm ci
+      - name: Run compat-seams regression suite
+        run: npm run test:compat-seams
       - name: Generate and validate batch inventory
         shell: bash
         run: |
