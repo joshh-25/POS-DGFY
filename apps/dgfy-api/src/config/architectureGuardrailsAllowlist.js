@@ -30,7 +30,11 @@ export const ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST = Object.freeze([
     // locked apps/dgfy-api Clean-Architecture naming (*Controller.js, not
     // backend/'s *Handlers.js convention) as the entries above.
     '../apps/dgfy-api/src/modules/products/controllers/productController.js',
-    '../apps/dgfy-api/src/modules/products/controllers/productFolderController.js'
+    '../apps/dgfy-api/src/modules/products/controllers/productFolderController.js',
+    // Phase 8 (08-04-PLAN.md): inventory module controller follows the same
+    // locked apps/dgfy-api Clean-Architecture naming (*Controller.js, not
+    // backend/'s *Handlers.js convention) as the entries above.
+    '../apps/dgfy-api/src/modules/inventory/controllers/inventoryMovementController.js'
 ]);
 
 // apps/dgfy-api has no usecase-layer legacy-service-import exceptions yet.
