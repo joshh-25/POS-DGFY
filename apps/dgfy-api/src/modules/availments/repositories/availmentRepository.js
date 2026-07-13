@@ -592,101 +592,112 @@ export class AvailmentRepository {
             ...(transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {})
         });
 
+        // WR-04 fix (10-REVIEW.md): reformatted this try/catch block to the
+        // file's existing 4-space indentation convention (it was
+        // previously indented one level too deep, with closing braces
+        // misaligned relative to their openers) and relabeled the inline
+        // step comments in ACTUAL execution order — (a) idempotent lookup,
+        // (b) create Availment, (c) AvailmentItem lines, (d) reservation ->
+        // sale commit, (e) Payment row. The previous lettering had (c)
+        // Payment labeled BEFORE (d) commitReservation even though Payment
+        // is created AFTER the reservation commit in the real execution
+        // order below.
         try {
             return await sequelize.transaction(async (transaction) => {
-                    // (a) idempotent no-op: row-locked lookup by (business_id, source_reference)
-                    const existing = await findExistingByReference(transaction);
-                    if (existing) {
-                        return {
-                            availment: this.toPlain(existing),
-                            payment: this.toPlainPayment((existing.payments || [])[0]),
-                            idempotent: true
-                        };
-                    }
+                // (a) idempotent no-op: row-locked lookup by (business_id, source_reference)
+                const existing = await findExistingByReference(transaction);
+                if (existing) {
+                    return {
+                        availment: this.toPlain(existing),
+                        payment: this.toPlainPayment((existing.payments || [])[0]),
+                        idempotent: true
+                    };
+                }
 
-                    // (b) create the finalized Availment — NO shift_id/terminal_id/cashier fields
-                    const availment = await AvailmentModel.create({
-                        business_id: businessId,
-                        branch_id: null,
-                        customer_account_id: customerAccountId,
-                        shift_id: null,
-                        terminal_id: null,
-                        cashier_account_id: null,
-                        cashier_dgfy_account_id: null,
-                        status: 'finalized',
-                        document_context: null,
-                        source_reference: sourceReference,
-                        subtotal_amount: header.subtotal_amount,
-                        discount_amount: header.discount_amount,
-                        vat_amount: header.vat_amount,
-                        vat_exempt_amount: header.vat_exempt_amount,
-                        total_amount: header.total_amount,
-                        finalized_at: new Date()
-                    }, { transaction });
+                // (b) create the finalized Availment — NO shift_id/terminal_id/cashier fields
+                const availment = await AvailmentModel.create({
+                    business_id: businessId,
+                    branch_id: null,
+                    customer_account_id: customerAccountId,
+                    shift_id: null,
+                    terminal_id: null,
+                    cashier_account_id: null,
+                    cashier_dgfy_account_id: null,
+                    status: 'finalized',
+                    document_context: null,
+                    source_reference: sourceReference,
+                    subtotal_amount: header.subtotal_amount,
+                    discount_amount: header.discount_amount,
+                    vat_amount: header.vat_amount,
+                    vat_exempt_amount: header.vat_exempt_amount,
+                    total_amount: header.total_amount,
+                    finalized_at: new Date()
+                }, { transaction });
 
-                    for (const line of (lines || [])) {
-                        await AvailmentItemModel.create({
-                            business_id: businessId,
-                            availment_id: availment.id,
-                            product_id: line.productId,
-                            product_name: line.productName || null,
-                            quantity: line.quantity,
-                            unit_price: line.unitPrice,
-                            stock_effect_type: 'inventory_issue',
-                            tax_treatment: 'vatable',
-                            tax_rate: '0.1200'
-                        }, { transaction });
-                    }
-
-                    // (d) reservation -> sale, injected single-writer port
-                    // (ADR 0029), SAME transaction — a non-success result
-                    // throws so the whole finalize rolls back.
-                    const commitResult = await commitReservation(transaction);
-                    if (commitResult && typeof commitResult.isSuccess === 'boolean' && !commitResult.isSuccess) {
-                        throw new Error(
-                            `Reservation commit failed for source_reference ${sourceReference}: ${
-                                commitResult.error?.message || 'unknown error'
-                            }`
-                        );
-                    }
-
-                    // (c) Payment row — payment_reference stored separately
-                    // from the payment_method ENUM (T-10-07-04, A4).
-                    const paymentRow = await PaymentModel.create({
+                // (c) AvailmentItem lines
+                for (const line of (lines || [])) {
+                    await AvailmentItemModel.create({
                         business_id: businessId,
                         availment_id: availment.id,
-                        payment_method: payment.payment_method,
-                        amount_received: payment.amount_received,
-                        change_due: payment.change_due || null,
-                        payment_handoff_mode: payment.payment_handoff_mode || null,
-                        payment_reference: payment.payment_reference || null
+                        product_id: line.productId,
+                        product_name: line.productName || null,
+                        quantity: line.quantity,
+                        unit_price: line.unitPrice,
+                        stock_effect_type: 'inventory_issue',
+                        tax_treatment: 'vatable',
+                        tax_rate: '0.1200'
                     }, { transaction });
-
-                    return {
-                        availment: this.toPlain(availment),
-                        payment: this.toPlainPayment(paymentRow),
-                        idempotent: false
-                    };
-                });
-            } catch (error) {
-                // Lost-guard race: two concurrent calls both missed the
-                // row-locked lookup (neither row existed yet) and both
-                // attempted an insert; the UNIQUE unique_availments_source_
-                // reference index lets exactly one win. Re-resolve the
-                // loser to the winner's row instead of surfacing a raw DB
-                // error (RESEARCH Pitfall 2 belt-and-suspenders).
-                if (error && error.name === 'SequelizeUniqueConstraintError') {
-                    const existing = await findExistingByReference(null);
-                    if (existing) {
-                        return {
-                            availment: this.toPlain(existing),
-                            payment: this.toPlainPayment((existing.payments || [])[0]),
-                            idempotent: true
-                        };
-                    }
                 }
-                throw error;
+
+                // (d) reservation -> sale, injected single-writer port
+                // (ADR 0029), SAME transaction — a non-success result
+                // throws so the whole finalize rolls back.
+                const commitResult = await commitReservation(transaction);
+                if (commitResult && typeof commitResult.isSuccess === 'boolean' && !commitResult.isSuccess) {
+                    throw new Error(
+                        `Reservation commit failed for source_reference ${sourceReference}: ${
+                            commitResult.error?.message || 'unknown error'
+                        }`
+                    );
+                }
+
+                // (e) Payment row — payment_reference stored separately
+                // from the payment_method ENUM (T-10-07-04, A4).
+                const paymentRow = await PaymentModel.create({
+                    business_id: businessId,
+                    availment_id: availment.id,
+                    payment_method: payment.payment_method,
+                    amount_received: payment.amount_received,
+                    change_due: payment.change_due || null,
+                    payment_handoff_mode: payment.payment_handoff_mode || null,
+                    payment_reference: payment.payment_reference || null
+                }, { transaction });
+
+                return {
+                    availment: this.toPlain(availment),
+                    payment: this.toPlainPayment(paymentRow),
+                    idempotent: false
+                };
+            });
+        } catch (error) {
+            // Lost-guard race: two concurrent calls both missed the
+            // row-locked lookup (neither row existed yet) and both
+            // attempted an insert; the UNIQUE unique_availments_source_
+            // reference index lets exactly one win. Re-resolve the
+            // loser to the winner's row instead of surfacing a raw DB
+            // error (RESEARCH Pitfall 2 belt-and-suspenders).
+            if (error && error.name === 'SequelizeUniqueConstraintError') {
+                const existing = await findExistingByReference(null);
+                if (existing) {
+                    return {
+                        availment: this.toPlain(existing),
+                        payment: this.toPlainPayment((existing.payments || [])[0]),
+                        idempotent: true
+                    };
+                }
             }
+            throw error;
+        }
     }
 
     // ============================================================================
