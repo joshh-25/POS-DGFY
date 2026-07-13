@@ -102,6 +102,7 @@ import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const MapPinPicker = lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
+const POS_ITEMS_PAGE_SIZE = 15;
 
 const MODE_META = {
   incoming_queue: {
@@ -1492,11 +1493,13 @@ function ItemsWorkspace({
     });
   };
   const [savedMessage, setSavedMessage] = useState({ name: '', barcode: '', action: 'updated' });
+  const [itemSaveInFlight, setItemSaveInFlight] = useState(false);
   const [deletedItemName, setDeletedItemName] = useState('');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
+  const [itemsPage, setItemsPage] = useState(1);
   const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
@@ -1700,6 +1703,23 @@ function ItemsWorkspace({
     });
   }, [categoryFilter, primaryBarcodes, searchQuery, sortedItems, stockFilter]);
 
+  useEffect(() => {
+    setItemsPage(1);
+  }, [categoryFilter, searchQuery, stockFilter]);
+
+  const totalItemsPages = Math.max(1, Math.ceil(filteredItems.length / POS_ITEMS_PAGE_SIZE));
+  const currentItemsPage = Math.min(itemsPage, totalItemsPages);
+  const paginatedItems = useMemo(() => {
+    const start = (currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE;
+    return filteredItems.slice(start, start + POS_ITEMS_PAGE_SIZE);
+  }, [currentItemsPage, filteredItems]);
+
+  useEffect(() => {
+    if (itemsPage !== currentItemsPage) {
+      setItemsPage(currentItemsPage);
+    }
+  }, [currentItemsPage, itemsPage]);
+
   const activeEditItem = useMemo(
     () => sortedItems.find((item) => Number(item?.item_id) === Number(editingItemId)) || null,
     [editingItemId, sortedItems]
@@ -1804,6 +1824,7 @@ function ItemsWorkspace({
     }
 
     try {
+      setItemSaveInFlight(true);
       setPersistingEditAssets(true);
       const resolvedStock = category === 'product' || category === 'supplies' ? stock : 0;
       const currentFolderId = Number(activeEditItem.folder_id || 0);
@@ -1860,6 +1881,7 @@ function ItemsWorkspace({
       toast.error(updateError?.response?.data?.message || 'Failed to update item.');
     } finally {
       setPersistingEditAssets(false);
+      setItemSaveInFlight(false);
     }
   };
 
@@ -2105,6 +2127,7 @@ function ItemsWorkspace({
     };
 
     try {
+      setItemSaveInFlight(true);
       setPostCreateSaving(true);
       if (pendingCreateRecovery?.itemId) {
         const recoveryName = pendingCreateRecovery.name || name;
@@ -2156,6 +2179,7 @@ function ItemsWorkspace({
       }
     } finally {
       setPostCreateSaving(false);
+      setItemSaveInFlight(false);
     }
   };
 
@@ -2344,7 +2368,7 @@ function ItemsWorkspace({
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredItems.map((item) => {
+          {paginatedItems.map((item) => {
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
             const imageUrl = item?.storefront_image_url || '';
             const stockQuantity = Number(item?.current_stock || 0);
@@ -2521,6 +2545,35 @@ function ItemsWorkspace({
               </div>
             );
           })}
+
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-200/60 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-medium text-[#64748B]">
+              Showing {Math.min(((currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE) + 1, filteredItems.length)}–{Math.min(currentItemsPage * POS_ITEMS_PAGE_SIZE, filteredItems.length)} of {filteredItems.length} items
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setItemsPage((page) => Math.max(1, page - 1))}
+                disabled={currentItemsPage === 1}
+                aria-label="Previous items page"
+              >
+                Previous
+              </Button>
+              <span className="min-w-[5.5rem] text-center text-sm font-semibold text-[#0F172A]">
+                Page {currentItemsPage} of {totalItemsPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setItemsPage((page) => Math.min(totalItemsPages, page + 1))}
+                disabled={currentItemsPage === totalItemsPages}
+                aria-label="Next items page"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3173,6 +3226,27 @@ function ItemsWorkspace({
                 {savingItem || persistingEditAssets ? 'Saving...' : 'Save Item'}
               </Button>
             </div>
+          </div>
+        </div>
+      ), document.body)}
+
+      {itemSaveInFlight && typeof document !== 'undefined' && createPortal((
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-sm"
+          role="status"
+          aria-live="assertive"
+          aria-label="Saving item"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-2xl shadow-slate-950/30">
+            <div className="mx-auto flex h-14 w-20 items-center justify-center gap-2 rounded-full bg-blue-50" aria-hidden="true">
+              <span className="h-4 w-4 animate-bounce rotate-[-45deg] bg-blue-500 [animation-delay:-0.2s] [border-radius:50%_50%_50%_0]" />
+              <span className="h-5 w-5 animate-bounce rotate-[-45deg] bg-blue-600 [animation-delay:-0.1s] [border-radius:50%_50%_50%_0]" />
+              <span className="h-4 w-4 animate-bounce rotate-[-45deg] bg-blue-500 [border-radius:50%_50%_50%_0]" />
+            </div>
+            <p className="mt-4 text-lg font-extrabold text-[#0F172A]">Saving item…</p>
+            <p className="mt-2 text-sm leading-6 text-[#64748B]">
+              Please wait while we finish saving your changes.
+            </p>
           </div>
         </div>
       ), document.body)}
