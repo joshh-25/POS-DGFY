@@ -39,6 +39,9 @@ Major. This change adds a client-side-only, mobile-only "Best Seller" tag that a
    - The mobile Settings tab bar changes from `flex items-center gap-2 sm:hidden` with each tab button `flex-1` (equal-width row) to `grid grid-cols-2 gap-2 sm:hidden` with buttons sized to their grid cell instead of `flex-1`.
    - A new "Best Seller Auto-Tagging" card is added (mobile-only, `sm:hidden`) with two checkboxes ("tag if sold more than 100 times last day", "tag if among the top 3 best sold items overall"). These checkboxes are **not wired to any state, persistence, or evaluation logic** — they are static, non-functional UI placeholders only; no automatic tagging occurs from sales data as a result of this change.
 
+### Lint fix (follow-up, same file)
+5. `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx` — the literal `"` characters in the new "Best Seller" toggle helper text and the "Best Seller Auto-Tagging" checkbox labels are escaped to `&quot;` to satisfy the `react/no-unescaped-entities` ESLint rule (this was failing the frontend lint CI job). Text content only; no behavior change.
+
 ## Compliance Preconditions
 
 1. `pos_best_seller`/the best-seller tag has no backend field, is never sent to the server, and does not affect `current_stock`, pricing, VAT, discounts, or any checkout/order calculation — it is a purely cosmetic, client-side, mobile-only label read from `localStorage`.

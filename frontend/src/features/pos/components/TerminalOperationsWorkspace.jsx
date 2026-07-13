@@ -2656,7 +2656,7 @@ function ItemsWorkspace({
                           <label htmlFor="pos-items-create-best-seller" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
                             Best Seller
                           </label>
-                          <span className="block text-[10px] text-[#64748B]">Shows a "best seller" tag in the Sell Catalog.</span>
+                          <span className="block text-[10px] text-[#64748B]">Shows a &quot;best seller&quot; tag in the Sell Catalog.</span>
                         </div>
                         <Switch
                           id="pos-items-create-best-seller"
@@ -2986,7 +2986,7 @@ function ItemsWorkspace({
                           <label htmlFor="pos-items-edit-best-seller" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
                             Best Seller
                           </label>
-                          <span className="block text-[10px] text-[#64748B]">Shows a "best seller" tag in the Sell Catalog.</span>
+                          <span className="block text-[10px] text-[#64748B]">Shows a &quot;best seller&quot; tag in the Sell Catalog.</span>
                         </div>
                         <Switch
                           id="pos-items-edit-best-seller"
@@ -5863,13 +5863,13 @@ function SettingsWorkspace({
               <label className="flex items-start gap-2">
                 <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1A4E8D]" />
                 <span className="text-[12px] font-semibold text-[#0F172A]">
-                  Add a "Best Seller" tag if an item is sold more than 100 times last day.
+                  Add a &quot;Best Seller&quot; tag if an item is sold more than 100 times last day.
                 </span>
               </label>
               <label className="flex items-start gap-2">
                 <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1A4E8D]" />
                 <span className="text-[12px] font-semibold text-[#0F172A]">
-                  Add a "Best Seller" tag if the item was among the top 3 best sold items overall.
+                  Add a &quot;Best Seller&quot; tag if the item was among the top 3 best sold items overall.
                 </span>
               </label>
             </div>
