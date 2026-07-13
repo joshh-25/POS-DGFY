@@ -98,7 +98,18 @@ describe('runSchemaMigrate', () => {
       showAllTables: jest.fn().mockResolvedValue([]),
       showIndex: jest.fn().mockResolvedValue([]),
       createTable: jest.fn().mockResolvedValue(undefined),
-      addIndex: jest.fn().mockResolvedValue(undefined)
+      addIndex: jest.fn().mockResolvedValue(undefined),
+      // describeTable returns no columns by default so additive-column
+      // migrations' `if (!description.someColumn)` guards see the column
+      // as missing and proceed to addColumn — matching a fresh/unmigrated
+      // table (Phase 10 CR-04 fix: first core-targeted add-column migration).
+      describeTable: jest.fn().mockResolvedValue({}),
+      addColumn: jest.fn().mockResolvedValue(undefined),
+      removeColumn: jest.fn().mockResolvedValue(undefined),
+      // Raw ALTER TABLE / generated-column statements (e.g. 20260714101000's
+      // geo/full-text search columns) go through queryInterface.sequelize.query
+      // directly rather than a queryInterface.* helper.
+      sequelize: { query: jest.fn().mockResolvedValue([[], []]) }
     };
 
     mockCreateTargetConnection.mockReset().mockReturnValue({
