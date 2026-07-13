@@ -14,6 +14,7 @@
 // causes phantom out-of-stock. The sweep helper (expireDueReservations) is a
 // durable cleanup, not a correctness requirement.
 
+import { Op } from 'sequelize';
 import { TenantDatabaseUnavailableError, InsufficientStockError } from './inventoryMovementRepository.js';
 
 export class InventoryReservationRepository {
@@ -127,18 +128,23 @@ export class InventoryReservationRepository {
 
             const onHand = Number(product.stock_count || 0);
 
-            // D-09: exclude expired-active rows from the held sum on-read
+            // D-09: exclude expired-active rows from the held sum on-read.
+            // CR-02 fix (10-REVIEW.md): MUST filter by product_id — without
+            // it this summed EVERY active, non-expired reservation for the
+            // ENTIRE tenant (every product), not just this one, corrupting
+            // availability across every product in the tenant. WR-03 fix:
+            // replaced the raw sequelize.literal/Op.gt-as-boolean idiom with
+            // a plain Sequelize `where` object (portable, unambiguous, and
+            // makes the missing product_id filter far less likely to recur).
             const heldResult = await InventoryReservation.findAll({
                 attributes: [
                     [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'heldSum']
                 ],
-                where: sequelize.where(
-                    sequelize.literal(
-                        `(status = 'active' AND (expires_at IS NULL OR expires_at > '${timestamp.toISOString()}'))`
-                    ),
-                    sequelize.Op.gt,
-                    0
-                ),
+                where: {
+                    product_id: Number(productId),
+                    status: 'active',
+                    [Op.or]: [{ expires_at: null }, { expires_at: { [Op.gt]: timestamp } }]
+                },
                 raw: true
             });
 
@@ -198,18 +204,21 @@ export class InventoryReservationRepository {
                     }
 
                     if (product.inventory_mode === 'basic_inventory') {
-                        // D-09: exclude expired-active from held sum on-read
+                        // D-09: exclude expired-active from held sum on-read.
+                        // CR-02/WR-03 fix (10-REVIEW.md): filter by
+                        // product_id (this line's own product, not every
+                        // product in the tenant) via a plain Sequelize
+                        // `where` object rather than the fragile
+                        // literal/Op.gt-as-boolean idiom.
                         const heldResult = await InventoryReservation.findAll({
                             attributes: [
                                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'heldSum']
                             ],
-                            where: sequelize.where(
-                                sequelize.literal(
-                                    `(status = 'active' AND (expires_at IS NULL OR expires_at > '${now.toISOString()}'))`
-                                ),
-                                sequelize.Op.gt,
-                                0
-                            ),
+                            where: {
+                                product_id: Number(line.productId),
+                                status: 'active',
+                                [Op.or]: [{ expires_at: null }, { expires_at: { [Op.gt]: now } }]
+                            },
                             transaction,
                             raw: true
                         });
