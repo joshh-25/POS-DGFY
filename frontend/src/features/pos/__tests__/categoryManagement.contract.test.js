@@ -27,4 +27,12 @@ describe('POS category management contract', () => {
     expect(source).toContain('Move assigned items to');
     expect(source).toContain('replacementFolderId');
   });
+
+  it('maps the saved category ID back into the edit-item category control', () => {
+    const source = fs.readFileSync(workspacePath, 'utf8');
+
+    expect(source).toContain('const savedFolderId = Number(item?.folder_id || 0);');
+    expect(source).toContain('Number(option?.folder_id) === savedFolderId');
+    expect(source).toContain('pos_category: matchedActiveCategory?.value');
+  });
 });

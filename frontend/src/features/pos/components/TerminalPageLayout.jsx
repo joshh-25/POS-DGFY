@@ -390,7 +390,7 @@ export default function TerminalPageLayout({
         </div>
       )}
       <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-      <div className={`dgfy-pos-panel border-b border-pos px-4 py-2 backdrop-blur sm:px-5 lg:px-7 ${lockedSurfaceClassName}`}>
+      <div className={`dgfy-pos-panel sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 backdrop-blur sm:px-5 lg:px-7 ${lockedSurfaceClassName}`}>
         <div className={headerShellClassName}>
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">

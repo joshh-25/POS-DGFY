@@ -168,6 +168,7 @@ const parsePositiveInt = (value) => {
     if (!Number.isInteger(normalized) || normalized <= 0) return null;
     return normalized;
 };
+const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 
 const nowInManilaBusinessDate = () => (
     new Intl.DateTimeFormat('en-CA', {
@@ -2179,7 +2180,13 @@ export const buildCheckoutPosUseCase = ({
                     promo_code: String(payload.governed_discount.promo_code || '').trim().toUpperCase() || null,
                     eligible_item_ids: [...new Set((payload.governed_discount.eligible_item_ids || [])
                         .map((itemId) => parsePositiveInt(itemId))
-                        .filter(Boolean))]
+                        .filter(Boolean))],
+                    eligible_items: (payload.governed_discount.eligible_items || [])
+                        .map((entry) => ({
+                            item_id: parsePositiveInt(entry?.item_id),
+                            eligible_quantity: round4(entry?.eligible_quantity)
+                        }))
+                        .filter((entry) => entry.item_id && entry.eligible_quantity > 0)
                 }
                 : null,
             lines: lines
@@ -2513,7 +2520,7 @@ export const buildCheckoutPosUseCase = ({
                     line_subtotal: lineSubtotal,
                     vat_type_snapshot: item.vat_type || 'vatable',
                     vat_rate_snapshot: VAT_RATE,
-                    senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
+                    senior_pwd_discount_eligible: isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible),
                     fnb_course_snapshot: normalizeFnbCourse(line.course),
                     fnb_modifiers_snapshot: modifierResolution.modifiersSnapshot,
                     fnb_special_instructions: String(line.special_instructions || '').trim().slice(0, 1000) || null,
@@ -2554,6 +2561,7 @@ export const buildCheckoutPosUseCase = ({
                     preparedLines,
                     subtotalAmount,
                     settings: discountSettings,
+                    orderMethod: normalizedOrderMethod,
                     findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
                     findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction })
                 })

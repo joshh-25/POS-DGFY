@@ -222,6 +222,7 @@ const getAccountAddressActionMeta = (value = '') => {
 };
 
 export function DgfyCustomerAccountPage({
+  presentation = 'drawer',
   isMobileViewport,
   onClose,
   onRefresh,
@@ -1674,7 +1675,20 @@ export function DgfyCustomerAccountPage({
   );
 
   return (
-    <div style={{ position: 'relative', width: '100%', minHeight: '100vh', background: THEME.bg, display: 'flex', fontFamily: "'Inter', sans-serif" }}>
+    <div
+      data-testid="dgfy-customer-account-page"
+      style={{
+        position: presentation === 'drawer' ? 'fixed' : 'relative',
+        inset: presentation === 'drawer' ? 0 : undefined,
+        zIndex: presentation === 'drawer' ? 200 : undefined,
+        width: '100%',
+        minHeight: '100vh',
+        background: THEME.bg,
+        display: 'flex',
+        fontFamily: "'Inter', sans-serif",
+        overflowY: presentation === 'drawer' ? 'auto' : undefined
+      }}
+    >
       
       {/* --- LEFT NAVIGATION SIDEBAR --- */}
       <aside style={{ 
@@ -1939,4 +1953,3 @@ export function DgfyCustomerAccountPage({
 }
 
 export default DgfyCustomerAccountPage;
-

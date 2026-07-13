@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-06-30
+last_reviewed: 2026-07-13
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -104,7 +104,8 @@ Storefront order checkout and Services booking use a shared guest-or-account ent
 - Guest checkout shows split `First Name` and `Last Name` fields, then submits the unchanged backend payload shape with a merged `customer_name`.
 - While a signed-out customer is actively checking out, the Storefront stores the cart, current checkout step, contact and delivery details, fulfillment selection, schedule details, special instructions, map pin, and payment method in session-scoped browser storage. A draft is restored only for the same storefront, requires a non-empty valid cart, asks the customer to refresh the quote, and is cleared after successful checkout, when storefront context is removed, or when an authenticated DGFY session takes over.
 - Guest-entered details may also be remembered locally on the device and reused for later guest checkout or DGFY create-account prefills; this longer-lived convenience data is separate from the session-scoped active checkout draft.
-- Order checkout accepts only backend-supported payment values: `cash`, `gcash`, `maya`, `card`, `bank_transfer`, or `qrph`. An invalid or obsolete stored value falls back to `cash`, and the Storefront does not enable order submission until customer, fulfillment, and payment requirements are valid.
+- Guest checkout Gmail verification applies separate tenant/IP/email rate-limit buckets for sending a code and verifying a code. After a successful send, Storefront disables resend for 60 seconds; when the API supplies `Retry-After`, Storefront uses that server-provided cooldown instead. This prevents accidental repeat sends without weakening OTP verification-attempt limits.
+- The backend recognizes legacy payment values `cash`, `gcash`, `maya`, `card`, `bank_transfer`, and `qrph`, but Storefront offers only `cash` until a customer-completable, tenant-ready online payment handoff is configured. Any persisted unavailable value falls back to `cash`; Storefront does not enable order submission until customer, fulfillment, and the enabled payment requirement are valid.
 - Checkout validation failures map known backend fields such as payment method, cart lines, customer identity/contact, delivery address, idempotency key, and fulfillment location to actionable customer-facing messages instead of displaying a generic validation failure.
 - Authenticated orders and bookings remain account-owned from creation time and appear only on the dashboard linked to that DGFY account.
 - Guest orders and bookings remain guest-owned and must not be auto-adopted into a later DGFY account by email or phone matching.

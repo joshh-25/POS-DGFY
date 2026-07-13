@@ -34,11 +34,16 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain('Promo Code');
     expect(discountModalContent).toContain('Approver PIN');
     expect(discountModalContent).toContain('discountDraft.approver_user_id');
+    expect(discountModalContent).toContain('Approving as');
     expect(checkoutContent).toContain('signedInUserIsAdminLike');
+    expect(checkoutContent).toContain('signedInUserCanApproveManualDiscount');
+    expect(checkoutContent).toContain('manualDiscountUsesCurrentPosApprover');
     expect(checkoutContent).toContain("discount_type: type");
     expect(checkoutContent).toContain("type === 'employee' && !signedInUserIsAdminLike");
     expect(checkoutContent).toContain('verifyPosDiscountApproval');
     expect(discountModalContent).toContain('calculateGovernedDiscount(safeCart, { ...discountDraft, eligible_item_ids: safeEligibleDiscountItemIds })');
+    expect(discountModalContent).toContain('eligible_quantity: 1');
+    expect(discountModalContent).toContain('Select only items and quantities for this Senior/PWD customer.');
     expect(discountModalContent).toContain('handleApplyGovernedDiscount');
   });
 });

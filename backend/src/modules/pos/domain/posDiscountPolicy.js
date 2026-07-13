@@ -8,6 +8,7 @@ const positiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
+const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 
 const validationError = (message, reasonCode, details = {}) => {
     throw new DomainError(DomainErrorCode.VALIDATION_FAILED, message, {
@@ -38,6 +39,7 @@ export const resolvePosGovernedDiscount = async ({
     preparedLines = [],
     subtotalAmount = 0,
     settings = {},
+    orderMethod = '',
     findActiveRule,
     findActiveEmployee
 }) => {
@@ -51,7 +53,9 @@ export const resolvePosGovernedDiscount = async ({
         const promo = resolveCommercialPromoApplication({
             settings,
             promoCode: draft.promo_code,
-            prepared: { preparedLines, subtotalAmount }
+            prepared: { preparedLines, subtotalAmount },
+            channel: 'pos',
+            orderMethod
         });
         return {
             application: {
@@ -82,17 +86,31 @@ export const resolvePosGovernedDiscount = async ({
         if (!text(draft.customer_name) || !text(draft.id_number)) {
             validationError('Customer name and Senior/PWD ID number are required.', 'STATUTORY_IDENTITY_REQUIRED');
         }
-        const selectedIds = [...new Set((Array.isArray(draft.eligible_item_ids) ? draft.eligible_item_ids : []).map(positiveInt).filter(Boolean))];
+        const selectedItems = Array.isArray(draft.eligible_items) && draft.eligible_items.length > 0
+            ? draft.eligible_items.map((entry) => ({
+                item_id: positiveInt(entry?.item_id),
+                eligible_quantity: Number(entry?.eligible_quantity)
+            })).filter((entry) => entry.item_id && Number.isFinite(entry.eligible_quantity) && entry.eligible_quantity > 0)
+            : [...new Set((Array.isArray(draft.eligible_item_ids) ? draft.eligible_item_ids : []).map(positiveInt).filter(Boolean))]
+                .map((itemId) => ({ item_id: itemId, eligible_quantity: null }));
+        const selectedIds = [...new Set(selectedItems.map((entry) => entry.item_id))];
         if (selectedIds.length === 0) validationError('Select at least one eligible item.', 'STATUTORY_ITEM_SELECTION_REQUIRED');
         const linesByItemId = new Map(preparedLines.map((line) => [positiveInt(line.item_id), line]));
-        const invalidIds = selectedIds.filter((itemId) => linesByItemId.get(itemId)?.senior_pwd_discount_eligible !== true);
+        const invalidIds = selectedIds.filter((itemId) => !isSeniorPwdDiscountEligible(linesByItemId.get(itemId)?.senior_pwd_discount_eligible));
         if (invalidIds.length > 0) {
             validationError('One or more selected items are not eligible for Senior/PWD discount.', 'STATUTORY_ITEM_NOT_ELIGIBLE', { item_ids: invalidIds });
+        }
+        const invalidQuantities = selectedItems.filter((entry) => {
+            const line = linesByItemId.get(entry.item_id);
+            return entry.eligible_quantity != null && entry.eligible_quantity > Number(line?.quantity || 0);
+        });
+        if (invalidQuantities.length > 0) {
+            validationError('Selected Senior/PWD quantity exceeds the cart quantity.', 'STATUTORY_QUANTITY_INVALID', { item_ids: invalidQuantities.map((entry) => entry.item_id) });
         }
         application.method = 'percentage';
         application.rate = Number(rule.rate ?? 20);
         application.amount = null;
-        application.lines = selectedIds.map((itemId) => ({ item_id: itemId }));
+        application.lines = selectedItems.map((entry) => ({ item_id: entry.item_id, ...(entry.eligible_quantity != null ? { eligible_quantity: entry.eligible_quantity } : {}) }));
     }
 
     if (type === 'employee') {

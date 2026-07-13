@@ -2,6 +2,7 @@ import { storeRepository } from './repositories/storeRepository.js';
 import { commercePaymentRepository } from '../commercePayments/repositories/commercePaymentRepository.js';
 import { paymongoService } from '../../services/paymongoService.js';
 import { getStorefrontDiscoveryIndexSnapshotForTenant } from '../../services/storefrontDiscoveryIndexService.js';
+import { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 import {
     commercePaymentsEnabled,
     commerceQrphEnabled,
@@ -21,6 +22,8 @@ import {
     buildSetDefaultStoreCustomerAddressUseCase,
     buildDeleteStoreCustomerAddressUseCase,
     buildStoreCartQuoteUseCase,
+    buildRequestStoreGuestCheckoutOtpUseCase,
+    buildVerifyStoreGuestCheckoutOtpUseCase,
     buildStoreCheckoutPaymentSessionUseCase,
     buildGetStoreCheckoutPaymentSessionUseCase,
     buildStoreCheckoutUseCase,
@@ -45,6 +48,9 @@ export const updateStoreCustomerAddressUseCase = buildUpdateStoreCustomerAddress
 export const setDefaultStoreCustomerAddressUseCase = buildSetDefaultStoreCustomerAddressUseCase({ storeRepository });
 export const deleteStoreCustomerAddressUseCase = buildDeleteStoreCustomerAddressUseCase({ storeRepository });
 export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepository });
+const emailOtpService = { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp };
+export const requestStoreGuestCheckoutOtpUseCase = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
+export const verifyStoreGuestCheckoutOtpUseCase = buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService });
 export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessionUseCase({
     storeRepository,
     commercePaymentRepository,

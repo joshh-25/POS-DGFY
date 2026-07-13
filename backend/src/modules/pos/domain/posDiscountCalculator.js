@@ -1,5 +1,6 @@
 const VAT_RATE = 0.12;
 const STATUTORY_TYPES = new Set(['senior', 'pwd']);
+const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 
@@ -28,7 +29,7 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   const eligibleBase = round4(normalizedLines.reduce((sum, line) => {
     const selected = selections.get(Number(line.item_id));
     if (!statutory) return restrictToSelections && !selected ? sum : sum + line.gross_amount;
-    const autoEligible = line.senior_pwd_discount_eligible === true;
+    const autoEligible = isSeniorPwdDiscountEligible(line.senior_pwd_discount_eligible);
     if (!selected || !autoEligible) return sum;
     const eligibleQuantity = clamp(selected.eligible_quantity ?? line.quantity, 0, line.quantity);
     return sum + round4(eligibleQuantity * line.sale_price);
@@ -38,7 +39,7 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   const eligibleLineIndexes = normalizedLines
     .map((line, index) => {
       const selected = selections.get(Number(line.item_id));
-      if (statutory) return selected && line.senior_pwd_discount_eligible === true ? index : null;
+      if (statutory) return selected && isSeniorPwdDiscountEligible(line.senior_pwd_discount_eligible) ? index : null;
       return !restrictToSelections || selected ? index : null;
     })
     .filter((index) => index != null);
@@ -47,7 +48,7 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   const calculatedLines = normalizedLines.map((line, index) => {
     const selected = selections.get(Number(line.item_id));
     const eligibleQuantity = statutory
-      ? (selected && line.senior_pwd_discount_eligible === true ? clamp(selected.eligible_quantity ?? line.quantity, 0, line.quantity) : 0)
+      ? (selected && isSeniorPwdDiscountEligible(line.senior_pwd_discount_eligible) ? clamp(selected.eligible_quantity ?? line.quantity, 0, line.quantity) : 0)
       : (restrictToSelections && !selected ? 0 : line.quantity);
     const eligibleGross = round4(eligibleQuantity * line.sale_price);
     let vatRemoved = 0;

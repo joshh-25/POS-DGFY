@@ -35,6 +35,7 @@ Major. This changes POS catalog administration and tenant schema readiness, but 
 - Only tenant admins and master admins can create, edit, activate, deactivate, or delete categories through the API.
 - Category names are validated server-side and duplicate names are rejected case-insensitively within the same tenant.
 - Admin Add Item may explicitly create a category while saving a new item; the category and item are persisted together. Edit Item uses active managed categories only; inactive categories remain attached to existing items but cannot be newly selected.
+- The POS catalog projection returns each item's persisted `folder_id`, legacy `product_folder`, and folder relation so Edit Item can preselect the saved active category by ID.
 - Deletion is blocked while an item references the category. No item category is silently cleared.
 - `item_folders.is_active` is additive and included in tenant-schema repair and runtime readiness checks.
 

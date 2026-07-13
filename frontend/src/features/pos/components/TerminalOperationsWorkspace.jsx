@@ -82,10 +82,11 @@ import {
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
 import { deleteStorefrontAsset, getCompanyInfo, getAllSettings, updateSettingByKey, updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
-import { updateProfile } from '@/services/userService.js';
+import { getAllUsers, updatePosApprovalPin, updateProfile } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
+import { getStorefrontPromoScheduleValidationError } from '@/src/features/pos/utils/storefrontPromoSchedule.js';
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
@@ -329,8 +330,15 @@ const createBlankStorefrontPromo = () => ({
   valid_from: '',
   valid_until: '',
   target_item_ids: [],
+  channels: { storefront: true, pos: true },
+  fulfillment_methods: { delivery: true, pickup: true },
+  order_timing: { asap: true, scheduled: true },
   active: false
 });
+const normalizePromoEligibilityMap = (value, keys) => {
+  const source = isPlainObject(value) ? value : {};
+  return Object.fromEntries(keys.map((key) => [key, source[key] !== false]));
+};
 const normalizeStorefrontPromoConfig = (raw = {}) => {
   const promo = isPlainObject(raw) ? raw : {};
   const normalizeDateOnly = (value) => String(value || '').trim().slice(0, 10);
@@ -349,6 +357,9 @@ const normalizeStorefrontPromoConfig = (raw = {}) => {
     valid_from: normalizeDateOnly(promo.valid_from),
     valid_until: normalizeDateOnly(promo.valid_until),
     target_item_ids: normalizePositiveIntegerList(promo.target_item_ids),
+    channels: normalizePromoEligibilityMap(promo.channels, ['storefront', 'pos']),
+    fulfillment_methods: normalizePromoEligibilityMap(promo.fulfillment_methods, ['delivery', 'pickup']),
+    order_timing: normalizePromoEligibilityMap(promo.order_timing, ['asap', 'scheduled']),
     active: promo.active === true
   };
 };
@@ -1323,6 +1334,7 @@ function ItemsWorkspace({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
   const [createCategoryInput, setCreateCategoryInput] = useState('');
+  const [editCategoryInput, setEditCategoryInput] = useState('');
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
@@ -1540,6 +1552,11 @@ function ItemsWorkspace({
   );
 
   const openEdit = (item) => {
+    const savedFolderId = Number(item?.folder_id || 0);
+    const savedFolderName = String(item?.folder?.name || item?.product_folder || '').trim();
+    const matchedActiveCategory = savedFolderId > 0
+      ? foodCategoryOptions.find((option) => Number(option?.folder_id) === savedFolderId)
+      : foodCategoryOptions.find((option) => normalizeFolderNameKey(option?.name) === normalizeFolderNameKey(savedFolderName));
     setEditingItemId(item?.item_id || null);
     setEditForm({
       name: String(item?.name || ''),
@@ -1547,18 +1564,21 @@ function ItemsWorkspace({
       default_sale_price: String(item?.default_sale_price ?? ''),
       cost_per_unit: String(item?.cost_per_unit ?? ''),
       pos_always_available: item?.pos_always_available === true,
-      senior_pwd_discount_eligible: item?.senior_pwd_discount_eligible === true,
+      senior_pwd_discount_eligible: item?.senior_pwd_discount_eligible === true || Number(item?.senior_pwd_discount_eligible) === 1,
       description: String(item?.description || ''),
-      pos_category: item?.folder_id
-        ? createFolderFilterValue({ folder_id: item.folder_id, name: item?.folder?.name || item?.product_folder })
-        : ''
+      // Item lists do not always hydrate the nested folder name. Resolve by saved ID first.
+      pos_category: matchedActiveCategory?.value || (savedFolderId
+        ? createFolderFilterValue({ folder_id: savedFolderId, name: item?.folder?.name || item?.product_folder })
+        : '')
     });
+    setEditCategoryInput(String(item?.folder?.name || item?.product_folder || ''));
   };
 
   const closeEdit = ({ force = false } = {}) => {
     if (!force && (savingItem || persistingEditAssets)) return;
     setEditingItemId(null);
     setPersistingEditAssets(false);
+    setEditCategoryInput('');
     setEditForm({
       name: '',
       current_stock: '0',
@@ -1630,15 +1650,30 @@ function ItemsWorkspace({
     try {
       setPersistingEditAssets(true);
       const resolvedStock = category === 'product' || category === 'supplies' ? stock : 0;
-      const foodCategory = resolveFoodCategorySelection(editForm.pos_category);
       const currentFolderId = Number(activeEditItem.folder_id || 0);
-      if (!foodCategory && !currentFolderId) {
+      const currentFolderName = String(activeEditItem?.folder?.name || activeEditItem?.product_folder || '').trim();
+      const typedCategoryName = String(editCategoryInput || '').trim().replace(/\s+/g, ' ');
+      const foodCategory = resolveFoodCategorySelection(editForm.pos_category)
+        || foodCategoryOptions.find((option) => normalizeFolderNameKey(option.name) === normalizeFolderNameKey(typedCategoryName));
+      // Admins can type a brand-new category name (mirrors handleCreateItem) - but only treat it
+      // as "create a new one" when it actually differs from the item's current category, so an
+      // untouched field never gets misread as a create request.
+      const categoryUnchanged = !foodCategory && normalizeFolderNameKey(typedCategoryName) === normalizeFolderNameKey(currentFolderName);
+      const isTypingNewCategory = canManageCategories && !foodCategory && !categoryUnchanged && Boolean(typedCategoryName);
+      if (!foodCategory && !currentFolderId && !isTypingNewCategory) {
         toast.error('Select an active category managed by an administrator.');
         return;
       }
+      // foodCategory resolves to null whenever the item's current category is inactive
+      // (foodCategoryOptions only lists active folders) even though the item still legitimately
+      // has that folder assigned. Previously that silently dropped product_folder/folder_id from
+      // the payload entirely, which cleared the item's category on every save. Fall back to the
+      // item's existing folder so an untouched (inactive) category is preserved instead of wiped.
       const categoryPayload = foodCategory
         ? { product_folder: foodCategory.name, folder_id: foodCategory.folder_id }
-        : {};
+        : isTypingNewCategory
+          ? { create_category_name: typedCategoryName }
+          : { product_folder: currentFolderName, folder_id: currentFolderId };
       await updateItem(activeEditItem.item_id, {
         name,
         category,
@@ -1662,7 +1697,7 @@ function ItemsWorkspace({
         pos_always_available: editForm.pos_always_available === true
       });
       closeEdit({ force: true });
-      await loadItems();
+      await Promise.all([loadItems(), loadPosFolders()]);
       setSavedMessage({ name, barcode: primaryBarcodes[String(activeEditItem.item_id)]?.code || '', action: 'updated' });
     } catch (updateError) {
       toast.error(updateError?.response?.data?.message || 'Failed to update item.');
@@ -2233,7 +2268,10 @@ function ItemsWorkspace({
                           </div>
                           <div className="min-w-0">
                             <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Category</p>
-                            <p className="mt-0.5 text-xs font-bold capitalize text-[#0F172A]">{item.category || 'Uncategorized'}</p>
+                            {/* Reflects the item's food category (POS folder) - item.category is
+                                a fixed inventory enum (always "product" here), not what the Food
+                                Category field on the item form actually sets. */}
+                            <p className="mt-0.5 truncate text-xs font-bold text-[#0F172A]">{item.folder?.name || item.product_folder || 'Uncategorized'}</p>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-2">
@@ -2761,21 +2799,50 @@ function ItemsWorkspace({
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Food Category <span className="text-rose-500">*</span>
                       </label>
-                      <select
-                        value={editForm.pos_category}
-                        onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
-                        disabled={savingItem || persistingEditAssets}
-                      >
-                        {!editForm.pos_category && <option value="">Select an active category</option>}
-                        {editForm.pos_category && !foodCategoryOptions.some((option) => option.value === editForm.pos_category) && (
-                          <option value={editForm.pos_category} disabled>Current category is inactive</option>
-                        )}
-                        {foodCategoryOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                      <p className="text-[11px] text-slate-500">Inactive categories remain on existing items but cannot be selected again.</p>
+                      {canManageCategories ? (
+                        <>
+                          <Input
+                            list="pos-items-edit-category-options"
+                            value={editCategoryInput}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              const matchedCategory = foodCategoryOptions.find((option) => (
+                                normalizeFolderNameKey(option.name) === normalizeFolderNameKey(nextValue)
+                              ));
+                              setEditCategoryInput(nextValue);
+                              setEditForm((current) => ({
+                                ...current,
+                                pos_category: matchedCategory?.value || ''
+                              }));
+                            }}
+                            className="h-11 rounded-xl border-slate-200 text-xs font-medium focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                            disabled={savingItem || persistingEditAssets}
+                            placeholder="Select or create a category"
+                          />
+                          <datalist id="pos-items-edit-category-options">
+                            {foodCategoryOptions.map((option) => <option key={option.value} value={option.name} />)}
+                          </datalist>
+                          <p className="text-[11px] text-slate-500">Select an existing category, or enter a new name to create it when this item is saved.</p>
+                        </>
+                      ) : (
+                        <>
+                          <select
+                            value={editForm.pos_category}
+                            onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
+                            disabled={savingItem || persistingEditAssets}
+                          >
+                            {!editForm.pos_category && <option value="">Select an active category</option>}
+                            {editForm.pos_category && !foodCategoryOptions.some((option) => option.value === editForm.pos_category) && (
+                              <option value={editForm.pos_category} disabled>Current category is inactive</option>
+                            )}
+                            {foodCategoryOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <p className="text-[11px] text-slate-500">Inactive categories remain on existing items but cannot be selected again. Only an administrator can create new categories.</p>
+                        </>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">
@@ -3346,6 +3413,7 @@ function SettingsWorkspace({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const canManageCashiers = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('users:manage');
+  const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
   const canManageCategories = terminalUser?.is_master_admin === true
     || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -3362,6 +3430,11 @@ function SettingsWorkspace({
   const [cashierUsers, setCashierUsers] = useState([]);
   const [cashiersLoading, setCashiersLoading] = useState(false);
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
+  const [discountApprovers, setDiscountApprovers] = useState([]);
+  const [discountApproversLoading, setDiscountApproversLoading] = useState(false);
+  const [approvalPinUser, setApprovalPinUser] = useState(null);
+  const [approvalPin, setApprovalPin] = useState('');
+  const [savingApprovalPin, setSavingApprovalPin] = useState(false);
   const [storefrontPromoItemOptions, setStorefrontPromoItemOptions] = useState([]);
   const [storefrontPromoItemsLoading, setStorefrontPromoItemsLoading] = useState(false);
   const [storefrontPromoCandidateItemId, setStorefrontPromoCandidateItemId] = useState('');
@@ -3442,6 +3515,9 @@ function SettingsWorkspace({
     storefrontPromoValidFrom: '',
     storefrontPromoValidUntil: '',
     storefrontPromoTargetItemIds: [],
+    storefrontPromoChannels: { storefront: true, pos: true },
+    storefrontPromoFulfillmentMethods: { delivery: true, pickup: true },
+    storefrontPromoOrderTiming: { asap: true, scheduled: true },
     storefrontPromoActive: false,
     storefrontPromoId: '',
     storefrontPromoEditingId: '',
@@ -3509,6 +3585,9 @@ function SettingsWorkspace({
       valid_from: storefrontForm.storefrontPromoValidFrom,
       valid_until: storefrontForm.storefrontPromoValidUntil,
       target_item_ids: storefrontForm.storefrontPromoTargetItemIds,
+      channels: storefrontForm.storefrontPromoChannels,
+      fulfillment_methods: storefrontForm.storefrontPromoFulfillmentMethods,
+      order_timing: storefrontForm.storefrontPromoOrderTiming,
       active: storefrontForm.storefrontPromoActive
     });
     const editingId = String(storefrontForm.storefrontPromoEditingId || currentPromo.id || '').trim();
@@ -3619,6 +3698,57 @@ function SettingsWorkspace({
       setCashiersLoading(false);
     }
   }, [canManageCashiers]);
+
+  const loadDiscountApprovers = useCallback(async ({ silent = false } = {}) => {
+    if (!canManageDiscountApprovalPins) {
+      setDiscountApprovers([]);
+      return;
+    }
+    if (!silent) setDiscountApproversLoading(true);
+    try {
+      const rows = await getAllUsers({ include_invitations: false });
+      setDiscountApprovers((Array.isArray(rows) ? rows : [])
+        .filter((user) => user?.is_active !== false && !user?.deleted_at)
+        .filter((user) => ['admin', 'manager'].includes(String(user?.role || '').trim().toLowerCase()))
+        .sort((left, right) => String(left?.username || '').localeCompare(String(right?.username || ''))));
+    } catch (error) {
+      if (!silent) {
+        toast.error(error?.response?.data?.message || 'Failed to load discount approvers.');
+      }
+    } finally {
+      setDiscountApproversLoading(false);
+    }
+  }, [canManageDiscountApprovalPins]);
+
+  const closeApprovalPinDialog = useCallback(() => {
+    if (savingApprovalPin) return;
+    setApprovalPinUser(null);
+    setApprovalPin('');
+  }, [savingApprovalPin]);
+
+  const saveApprovalPin = useCallback(async ({ clear = false } = {}) => {
+    if (!approvalPinUser) return;
+    if (!clear && !/^\d{4,12}$/.test(approvalPin)) {
+      toast.error('POS approval PIN must contain 4 to 12 digits.');
+      return;
+    }
+    setSavingApprovalPin(true);
+    try {
+      const updated = await updatePosApprovalPin(approvalPinUser.user_id, { pin: approvalPin, clear });
+      setDiscountApprovers((current) => current.map((user) => (
+        user.user_id === approvalPinUser.user_id
+          ? { ...user, pos_approval_pin_configured: updated.pos_approval_pin_configured === true }
+          : user
+      )));
+      toast.success(clear ? 'POS approval PIN cleared.' : 'POS approval PIN configured.');
+      setApprovalPinUser(null);
+      setApprovalPin('');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update POS approval PIN.');
+    } finally {
+      setSavingApprovalPin(false);
+    }
+  }, [approvalPin, approvalPinUser]);
 
   const loadStorefrontPromoItems = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -3758,6 +3888,9 @@ function SettingsWorkspace({
         storefrontPromoValidFrom: String(selectedStorefrontPromo.valid_from || '').slice(0, 10),
         storefrontPromoValidUntil: String(selectedStorefrontPromo.valid_until || '').slice(0, 10),
         storefrontPromoTargetItemIds: normalizePositiveIntegerList(selectedStorefrontPromo.target_item_ids),
+        storefrontPromoChannels: normalizePromoEligibilityMap(selectedStorefrontPromo.channels, ['storefront', 'pos']),
+        storefrontPromoFulfillmentMethods: normalizePromoEligibilityMap(selectedStorefrontPromo.fulfillment_methods, ['delivery', 'pickup']),
+        storefrontPromoOrderTiming: normalizePromoEligibilityMap(selectedStorefrontPromo.order_timing, ['asap', 'scheduled']),
         storefrontPromoActive: selectedStorefrontPromo.active === true,
         storefrontFollowEnabled: settingsPayload?.storefront_follow_enabled?.value === true,
         storefrontShareEnabled: settingsPayload?.storefront_share_enabled?.value === true
@@ -3784,6 +3917,10 @@ function SettingsWorkspace({
   useEffect(() => {
     loadCashierAccounts({ silent: true });
   }, [loadCashierAccounts]);
+
+  useEffect(() => {
+    loadDiscountApprovers({ silent: true });
+  }, [loadDiscountApprovers]);
 
   useEffect(() => {
     loadStorefrontPromoItems({ silent: true });
@@ -4169,6 +4306,9 @@ function SettingsWorkspace({
     valid_from: String(form.storefrontPromoValidFrom || '').trim(),
     valid_until: String(form.storefrontPromoValidUntil || '').trim(),
     target_item_ids: normalizePositiveIntegerList(form.storefrontPromoTargetItemIds),
+    channels: normalizePromoEligibilityMap(form.storefrontPromoChannels, ['storefront', 'pos']),
+    fulfillment_methods: normalizePromoEligibilityMap(form.storefrontPromoFulfillmentMethods, ['delivery', 'pickup']),
+    order_timing: normalizePromoEligibilityMap(form.storefrontPromoOrderTiming, ['asap', 'scheduled']),
     active: form.storefrontPromoActive === true
   }), [storefrontForm]);
 
@@ -4201,6 +4341,9 @@ function SettingsWorkspace({
     storefrontPromoValidFrom: String(promo?.valid_from || ''),
     storefrontPromoValidUntil: String(promo?.valid_until || ''),
     storefrontPromoTargetItemIds: normalizePositiveIntegerList(promo?.target_item_ids),
+    storefrontPromoChannels: normalizePromoEligibilityMap(promo?.channels, ['storefront', 'pos']),
+    storefrontPromoFulfillmentMethods: normalizePromoEligibilityMap(promo?.fulfillment_methods, ['delivery', 'pickup']),
+    storefrontPromoOrderTiming: normalizePromoEligibilityMap(promo?.order_timing, ['asap', 'scheduled']),
     storefrontPromoActive: promo?.active === true
   }), []);
 
@@ -4276,24 +4419,9 @@ function SettingsWorkspace({
       const seenPromoCodes = new Set();
       for (const promo of storefrontPromos) {
         const promoCode = String(promo.promo_code || '').trim().toUpperCase();
-        const invalidTime = [promo.valid_time_start, promo.valid_time_end]
-          .find((value) => String(value || '').trim() && !PROMO_TIME_24_HOUR_PATTERN.test(String(value).trim()));
-        if (invalidTime) {
-          toast.error('Promo times must use the 24-hour HH:mm format, for example 14:30.');
-          return;
-        }
-        const from = buildPromoDateTimeValue(promo.valid_from, promo.valid_time_start);
-        const to = buildPromoDateTimeValue(promo.valid_until, promo.valid_time_end);
-        if ((promo.valid_from || promo.valid_time_start) && !from) {
-          toast.error('Promo From must include both a date and a 24-hour time.');
-          return;
-        }
-        if ((promo.valid_until || promo.valid_time_end) && !to) {
-          toast.error('Promo To must include both a date and a 24-hour time.');
-          return;
-        }
-        if (from && to && from > to) {
-          toast.error('Promo From must be earlier than Promo To.');
+        const scheduleValidationError = getStorefrontPromoScheduleValidationError(promo);
+        if (scheduleValidationError) {
+          toast.error(scheduleValidationError);
           return;
         }
         if (!promoCode) continue;
@@ -5233,8 +5361,9 @@ function SettingsWorkspace({
               </div>
             </div>
             {terminalUser?.is_master_admin === true ? (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="grid gap-3 md:grid-cols-[minmax(0,280px)_auto] md:items-start">
+              <div className="mt-4 grid gap-3">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,280px)_auto] md:items-start">
                   <div className="grid gap-1.5">
                     <Label className="text-[12px] font-black text-[#0F172A]">Settings Access PIN</Label>
                     <Input
@@ -5281,6 +5410,50 @@ function SettingsWorkspace({
                       >
                         Clear PIN
                       </Button>
+                    ) : null}
+                  </div>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[12px] font-black text-[#0F172A]">POS Discount Approval PINs</p>
+                      <p className="mt-1 text-[11px] text-[#64748B]">Configure the write-only PIN used by Admin and Manager approvers for Employee and Manual discounts.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-lg px-3 text-[12px] font-extrabold"
+                      onClick={() => loadDiscountApprovers()}
+                      disabled={locked || loading || discountApproversLoading}
+                    >
+                      {discountApproversLoading ? 'Refreshing...' : 'Refresh'}
+                    </Button>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {discountApprovers.map((user) => (
+                      <div key={`discount-approver-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
+                          <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {user.pos_approval_pin_configured ? 'PIN configured' : 'PIN not set'}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-teal-700"
+                          onClick={() => {
+                            setApprovalPinUser(user);
+                            setApprovalPin('');
+                          }}
+                          disabled={locked || loading}
+                        >
+                          <KeyRound className="mr-1.5 h-4 w-4" />
+                          {user.pos_approval_pin_configured ? 'Reset PIN' : 'Set PIN'}
+                        </Button>
+                      </div>
+                    ))}
+                    {!discountApproversLoading && discountApprovers.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active Admin or Manager approvers are available.</p>
                     ) : null}
                   </div>
                 </div>
@@ -5973,6 +6146,44 @@ function SettingsWorkspace({
                 <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoActive === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoActive: event.target.checked }))} />
               </div>
             </div>
+            <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+              <div className="space-y-2">
+                <p className="text-[12px] font-semibold text-slate-700">Sales Channel</p>
+                {[
+                  ['storefront', 'Storefront'],
+                  ['pos', 'POS Counter']
+                ].map(([key, label]) => (
+                  <label key={`promo-channel-${key}`} className="flex items-center gap-2 text-[12px] text-slate-700">
+                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoChannels?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoChannels: { ...current.storefrontPromoChannels, [key]: event.target.checked } }))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <p className="text-[12px] font-semibold text-slate-700">Storefront Fulfillment</p>
+                {[
+                  ['delivery', 'Delivery'],
+                  ['pickup', 'Pickup']
+                ].map(([key, label]) => (
+                  <label key={`promo-fulfillment-${key}`} className="flex items-center gap-2 text-[12px] text-slate-700">
+                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoFulfillmentMethods?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoFulfillmentMethods: { ...current.storefrontPromoFulfillmentMethods, [key]: event.target.checked } }))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <p className="text-[12px] font-semibold text-slate-700">Order Timing</p>
+                {[
+                  ['asap', 'ASAP'],
+                  ['scheduled', 'Scheduled']
+                ].map(([key, label]) => (
+                  <label key={`promo-timing-${key}`} className="flex items-center gap-2 text-[12px] text-slate-700">
+                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoOrderTiming?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoOrderTiming: { ...current.storefrontPromoOrderTiming, [key]: event.target.checked } }))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">Title</Label>
@@ -6321,6 +6532,57 @@ function SettingsWorkspace({
         submitLabel="Send Cashier Invitation"
         locationOptions={locations}
       />
+      <Dialog open={Boolean(approvalPinUser)} onOpenChange={(open) => !open && closeApprovalPinDialog()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-teal-600" />
+              POS Discount Approval PIN
+            </DialogTitle>
+            <DialogDescription>
+              This PIN is used only to approve Employee and Manual discounts. It cannot be viewed after saving.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <p className="font-semibold">{approvalPinUser?.username || approvalPinUser?.email}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {approvalPinUser?.pos_approval_pin_configured
+                  ? 'A PIN is configured. Enter a new PIN to replace it.'
+                  : 'Configure a PIN this approver will enter for Employee and Manual discounts.'}
+              </p>
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-slate-800">New approval PIN</Label>
+              <Input
+                value={approvalPin}
+                onChange={(event) => setApprovalPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                placeholder="4 to 12 digits"
+                className="mt-1"
+                disabled={savingApprovalPin}
+              />
+            </div>
+          </div>
+          <DialogFooter className="mt-4 flex-row justify-between gap-2 border-t pt-4 sm:justify-between">
+            <div>
+              {approvalPinUser?.pos_approval_pin_configured ? (
+                <Button type="button" variant="outline" onClick={() => saveApprovalPin({ clear: true })} disabled={savingApprovalPin} className="text-rose-600">
+                  Clear PIN
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={closeApprovalPinDialog} disabled={savingApprovalPin}>Cancel</Button>
+              <Button type="button" onClick={() => saveApprovalPin()} disabled={savingApprovalPin} className="bg-teal-600 hover:bg-teal-700">
+                {savingApprovalPin ? 'Saving...' : 'Save PIN'}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -212,8 +212,10 @@ export const updateItem = async (req, res, next) => {
     const { item_id } = req.params;
     const itemData = req.validatedData;
     const userId = req.user.user_id;
+    const role = String(req.user?.role || '').trim().toLowerCase();
+    const canManageCategories = req.user?.is_master_admin === true || role === 'admin';
     const result = await runInventoryUseCase(
-      () => updateItemUseCase({ itemId: item_id, itemData, userId }),
+      () => updateItemUseCase({ itemId: item_id, itemData, userId, canManageCategories }),
       'Failed to update item'
     );
     await trackProductUsageFromResult({

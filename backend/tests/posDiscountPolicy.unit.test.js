@@ -13,6 +13,23 @@ const rules = {
 };
 
 describe('POS governed discount policy', () => {
+    test('preserves a selected statutory quantity for an eligible item', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: { type: 'senior', customer_name: 'Juan', id_number: 'SC-1', eligible_items: [{ item_id: 1, eligible_quantity: 1 }] },
+            preparedLines: [{ item_id: 1, quantity: 2, sale_price: 112, senior_pwd_discount_eligible: true }],
+            findActiveRule: async () => rules.senior
+        });
+
+        expect(result.application.lines).toEqual([{ item_id: 1, eligible_quantity: 1 }]);
+    });
+
+    test('rejects a statutory quantity above the cart quantity', async () => {
+        await expect(resolvePosGovernedDiscount({
+            draft: { type: 'pwd', customer_name: 'Maria', id_number: 'PWD-1', eligible_items: [{ item_id: 1, eligible_quantity: 3 }] },
+            preparedLines: [{ item_id: 1, quantity: 2, sale_price: 112, senior_pwd_discount_eligible: true }],
+            findActiveRule: async () => rules.pwd
+        })).rejects.toMatchObject({ details: { reason_code: 'STATUTORY_QUANTITY_INVALID' } });
+    });
     test('uses the active statutory rule and selected eligible items', async () => {
         const result = await resolvePosGovernedDiscount({
             draft: {

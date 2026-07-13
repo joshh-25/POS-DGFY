@@ -30,8 +30,10 @@ item targets, time window, and usage limit.
    value, and increment only the matched rule in the same database transaction as
    checkout.
 4. Senior and PWD discounts remain POS statutory policies. Checkout requires a
-   customer name, ID number, and at least one explicitly selected item. A selected
-   item must also have `senior_pwd_discount_eligible = true`.
+   customer name, ID number, and at least one explicitly selected item/quantity.
+   A selected item must also have `senior_pwd_discount_eligible = true`; the
+   selected quantity cannot exceed the cart quantity. One application represents
+   one documented Senior/PWD beneficiary and does not split the POS transaction.
 5. Active `pos_discount_rules` own statutory rate/method and employee/manual rule
    constraints. Client values are preview intent only and cannot override a
    configured rule value or maximum discount.
@@ -60,6 +62,12 @@ item targets, time window, and usage limit.
     cashier shift. The server calculates change and persists collection time,
     cashier, shift, terminal, and an audit record in the same transaction. A
     pickup order cannot transition to `completed` until payment is `paid`.
+
+13. Commercial promos may constrain sales channel (`storefront`, `pos`), Storefront
+    fulfillment method (`delivery`, `pickup`), and order timing (`asap`, `scheduled`).
+    Storefront scheduled orders evaluate promo date/time windows at `scheduled_for`
+    in the tenant storefront timezone. The accepted transaction retains its saved
+    promo allocation; it is not repriced after acceptance.
 
 ## Boundary Consequences
 

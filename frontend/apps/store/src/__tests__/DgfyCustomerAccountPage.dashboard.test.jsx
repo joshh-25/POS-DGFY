@@ -199,6 +199,14 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.queryByText('stale@example.com')).toBeNull();
   });
 
+  it('renders the drawer above the Discovery header stacking layer', () => {
+    renderDashboard({ presentation: 'drawer' });
+
+    const drawer = screen.getByTestId('dgfy-customer-account-page');
+    expect(drawer.style.position).toBe('fixed');
+    expect(drawer.style.zIndex).toBe('200');
+  });
+
   it('renders the premium business grid with direct POS access and storefront assets', () => {
     const onOpenBusinessPos = vi.fn();
     renderDashboard({

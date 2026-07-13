@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, MapPinned, RefreshCcw } from 'lucide-react';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   FULFILLMENT_STATUS_LABELS,
@@ -176,88 +176,237 @@ function IncomingQueueWorkspace({
             const mapLink = deliveryCoords
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
               : '';
+
+            const buttons = [];
+            if (canCollectCash) {
+              buttons.push(
+                <Button
+                  key="collect_cash"
+                  type="button"
+                  size="sm"
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                  onClick={() => handleOpenCashCollection?.(order)}
+                >
+                  <Wallet className="mr-2 h-4 w-4 shrink-0" />
+                  Collect Cash
+                </Button>
+              );
+            }
+            nextActions.forEach((status) => {
+              const getStatusIcon = (statusName) => {
+                switch (statusName) {
+                case 'confirmed':
+                  return <Check className="mr-2 h-4 w-4 shrink-0" />;
+                case 'rejected':
+                  return <Ban className="mr-2 h-4 w-4 shrink-0" />;
+                case 'preparing':
+                  return <Clipboard className="mr-2 h-4 w-4 shrink-0" />;
+                case 'ready_for_pickup':
+                  return <ShoppingBag className="mr-2 h-4 w-4 shrink-0" />;
+                case 'out_for_delivery':
+                  return <Truck className="mr-2 h-4 w-4 shrink-0" />;
+                case 'completed':
+                  return <Check className="mr-2 h-4 w-4 shrink-0" />;
+                default:
+                  return null;
+                }
+              };
+              buttons.push(
+                <Button
+                  key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}
+                  type="button"
+                  size="sm"
+                  variant={status === 'rejected' ? 'destructive' : 'outline'}
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                  onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
+                >
+                  {actionLoading === status ? null : getStatusIcon(status)}
+                  {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
+                </Button>
+              );
+            });
+            if (utilityActions.includes('print_order')) {
+              buttons.push(
+                <Button
+                  key="print_order"
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
+                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: true })}
+                >
+                  <Printer className="mr-2 h-4 w-4 shrink-0" />
+                  {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Print Order'}
+                </Button>
+              );
+            }
+            if (utilityActions.includes('open_order')) {
+              buttons.push(
+                <Button
+                  key="open_order"
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
+                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: false })}
+                >
+                  <ExternalLink className="mr-2 h-4 w-4 shrink-0" />
+                  {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Order'}
+                </Button>
+              );
+            }
+
             return (
-              <div key={`incoming-workspace-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
-                  <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
-                    {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
-                  </span>
+              <div key={`incoming-workspace-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-4 xl:p-5 shadow-sm shadow-slate-200/70 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
+                    <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
+                      {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
+                    </span>
+                  </div>
+                  
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
+                    {/* Left Column */}
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <Tag className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">PIN</span>
+                          <span className="text-xs font-semibold text-slate-900 break-all flex-1">{order.tracking_pin || '-'}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <User className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Cashier</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{cashierName}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <User className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Customer</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{order.customer_name || 'Guest Buyer'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <Wallet className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Payment</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type || '-'}</span>
+                        </div>
+                      </div>
+
+                      <div className={`flex items-center gap-3 py-1.5 ${order.payment_collected_at ? 'border-b border-slate-100' : ''}`}>
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <Receipt className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Payment Status</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.payment_status || 'unpaid').replaceAll('_', ' ')}</span>
+                        </div>
+                      </div>
+
+                      {order.payment_collected_at && (
+                        <div className="flex items-center gap-3 py-1.5">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                            <User className="h-4 w-4" />
+                          </div>
+                          <div className="flex items-center flex-1 min-w-0">
+                            <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Collected by</span>
+                            <span className="text-xs font-semibold text-slate-900 break-words flex-1">{order.paymentCollectedByUser?.username || 'Cashier'} · {formatOrderDateTime(order.payment_collected_at)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <ShoppingBag className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Mode</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <Calendar className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Order Time</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatOrderDateTime(order.created_at)}</span>
+                        </div>
+                      </div>
+
+                      {order.order_method === 'delivery' && (
+                        <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                            <Truck className="h-4 w-4" />
+                          </div>
+                          <div className="flex items-center flex-1 min-w-0">
+                            <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Delivery</span>
+                            <span className="text-xs font-semibold text-slate-900 break-words flex-1">{deliveryJob?.provider || 'Manual'} · {DELIVERY_JOB_STATUS_LABELS[deliveryJob?.status] || deliveryJob?.status || 'Pending Dispatch'}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-3 py-1.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <MapPin className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Address</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.delivery_address || '').trim() || 'Address not provided'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {deliveryCoords && (
+                    <div className="mt-3">
+                      <a
+                        href={mapLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-[#1A4E8D] underline hover:text-blue-800"
+                      >
+                        Open pin in map
+                      </a>
+                    </div>
+                  )}
                 </div>
-                <div className="mt-2 space-y-1 text-xs text-slate-600">
-                  <p>PIN: <span className="font-semibold text-slate-900">{order.tracking_pin || '-'}</span></p>
-                  <p>Cashier: <span className="font-semibold text-slate-900">{cashierName}</span></p>
-                  <p>Customer: <span className="font-semibold text-slate-900">{order.customer_name || 'Guest Buyer'}</span></p>
-                  <p>Payment: <span className="font-semibold text-slate-900">{PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type || '-'}</span></p>
-                  <p>Payment Status: <span className="font-semibold text-slate-900">{String(order.payment_status || 'unpaid').replaceAll('_', ' ')}</span></p>
-                  {order.payment_collected_at ? <p>Collected by: <span className="font-semibold text-slate-900">{order.paymentCollectedByUser?.username || 'Cashier'} · {formatOrderDateTime(order.payment_collected_at)}</span></p> : null}
-                  <p>Mode: <span className="font-semibold text-slate-900">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</span></p>
-                  <p>Order Time: <span className="font-semibold text-slate-900">{formatOrderDateTime(order.created_at)}</span></p>
-                  {order.order_method === 'delivery' && (
-                    <p>Delivery: <span className="font-semibold text-slate-900">{deliveryJob?.provider || 'Manual'} · {DELIVERY_JOB_STATUS_LABELS[deliveryJob?.status] || deliveryJob?.status || 'Pending Dispatch'}</span></p>
-                  )}
-                  {order.delivery_address ? <p>{order.delivery_address}</p> : null}
-                  {deliveryCoords ? <p>Coords: {deliveryCoords.latitude.toFixed(6)}, {deliveryCoords.longitude.toFixed(6)}</p> : null}
-                  {deliveryCoords ? (
-                    <a
-                      href={mapLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    className="font-semibold text-[#1A4E8D] underline"
-                    >
-                      Open pin in map
-                    </a>
-                  ) : null}
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {canCollectCash && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={Boolean(actionLoading) || !canTransactPos || locked}
-                      onClick={() => handleOpenCashCollection?.(order)}
-                    >
-                      Collect Cash
-                    </Button>
-                  )}
-                  {nextActions.map((status) => (
-                    <Button
-                      key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}
-                      type="button"
-                      size="sm"
-                      variant={status === 'rejected' ? 'destructive' : 'outline'}
-                      disabled={Boolean(actionLoading) || !canTransactPos || locked}
-                      onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
-                    >
-                      {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
-                    </Button>
-                  ))}
-                  {utilityActions.includes('open_order') && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
-                      onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: false })}
-                    >
-                      {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Order'}
-                    </Button>
-                  )}
-                  {utilityActions.includes('print_order') && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
-                      onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: true })}
-                    >
-                      {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Print Order'}
-                    </Button>
+
+                <div>
+                  <div className="mt-4 pt-3 border-t border-slate-200 grid grid-cols-2 gap-2">
+                    {buttons.map((button, index) => {
+                      const isLast = index === buttons.length - 1;
+                      const isOdd = buttons.length % 2 !== 0;
+                      return React.cloneElement(button, {
+                        key: button.key || `btn-${index}`,
+                        className: `w-full ${button.props.className || ''} ${isLast && isOdd ? 'col-span-2' : ''}`
+                      });
+                    })}
+                  </div>
+                  {!canTransactPos && (
+                    <p className="mt-2 text-[11px] text-slate-500">You need POS transact permission to update order statuses.</p>
                   )}
                 </div>
-                {!canTransactPos && (
-                  <p className="mt-2 text-[11px] text-slate-500">You need POS transact permission to update order statuses.</p>
-                )}
               </div>
             );
           })}

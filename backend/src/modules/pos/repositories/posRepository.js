@@ -133,7 +133,10 @@ const BASE_POS_ITEM_ATTRIBUTES = [
     'unit_of_measure',
     'current_stock',
     'cost_per_unit',
-    'default_sale_price'
+    'default_sale_price',
+    // The POS item editor uses the catalog row to preselect its saved category.
+    'folder_id',
+    'product_folder'
 ];
 const POS_ITEM_ATTRIBUTES_WITH_VAT = [...BASE_POS_ITEM_ATTRIBUTES, 'vat_type', 'senior_pwd_discount_eligible'];
 const POS_CATALOG_OVERRIDE_ATTRIBUTES = [
@@ -218,6 +221,18 @@ const buildServiceDetailInclude = () => {
             model: ServiceItemDetail,
             as: 'serviceDetail',
             attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront'],
+            required: false
+        }]
+        : [];
+};
+
+const buildItemFolderInclude = () => {
+    const ItemFolder = safeGetModel('ItemFolder');
+    return ItemFolder
+        ? [{
+            model: ItemFolder,
+            as: 'folder',
+            attributes: ['folder_id', 'name', 'is_active', 'show_in_pos_filter'],
             required: false
         }]
         : [];
@@ -2865,6 +2880,7 @@ export const posRepository = {
             where,
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
             include: [
+                ...buildItemFolderInclude(),
                 ...buildServiceDetailInclude(),
                 ...buildFnbCatalogIncludes()
             ],
