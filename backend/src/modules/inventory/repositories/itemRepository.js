@@ -1291,7 +1291,7 @@ export const itemRepository = {
             throw normalizeSkuConflictError(error);
         }
     },
-    async updateItem(itemId, itemData, userId = null) {
+    async updateItem(itemId, itemData, userId = null, { canManageCategories = false } = {}) {
         const Item = dbStore.get('Item');
         const ItemFolder = dbStore.get('ItemFolder');
         const ItemLocationStock = dbStore.get('ItemLocationStock');
@@ -1303,7 +1303,66 @@ export const itemRepository = {
             if (Object.prototype.hasOwnProperty.call(itemData || {}, 'sku_code')) {
                 itemData.sku_code = String(itemData.sku_code || '').trim();
             }
-            if (Object.prototype.hasOwnProperty.call(itemData || {}, 'folder_id') && itemData.folder_id != null) {
+            const requestedCategoryName = String(itemData?.create_category_name || '').trim().replace(/\s+/g, ' ');
+            const hasFolderId = Object.prototype.hasOwnProperty.call(itemData || {}, 'folder_id') && itemData.folder_id != null;
+
+            if (requestedCategoryName && hasFolderId) {
+                const error = new Error('Select an existing category or enter a new category name, not both.');
+                error.statusCode = 422;
+                throw error;
+            }
+
+            if (requestedCategoryName) {
+                // Mirrors createItem's create-a-new-category-on-save behavior, previously only
+                // available when creating a brand-new item. Editing an item into a category that
+                // doesn't exist yet had no way to create it, silently leaving the category unset.
+                if (!canManageCategories) {
+                    const error = new Error('Admin access is required to create a category while editing an item.');
+                    error.statusCode = 403;
+                    throw error;
+                }
+
+                const existingFolders = await ItemFolder.findAll({
+                    where: { parent_id: null },
+                    attributes: ['folder_id', 'name', 'is_active'],
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                const normalizedRequestedCategoryName = requestedCategoryName.toLowerCase();
+                let folder = existingFolders.find((candidate) => (
+                    String(candidate?.name || '').trim().replace(/\s+/g, ' ').toLowerCase() === normalizedRequestedCategoryName
+                ));
+
+                if (folder && folder.is_active === false) {
+                    const error = new Error(`Category "${folder.name}" is inactive. Activate it in Category Management before using it.`);
+                    error.statusCode = 422;
+                    throw error;
+                }
+
+                if (!folder) {
+                    try {
+                        folder = await ItemFolder.create({
+                            name: requestedCategoryName,
+                            description: '',
+                            show_in_pos_filter: true,
+                            is_active: true,
+                            parent_id: null
+                        }, { transaction });
+                    } catch (error) {
+                        if (error?.name !== 'SequelizeUniqueConstraintError') throw error;
+
+                        folder = await ItemFolder.findOne({
+                            where: { parent_id: null, name: requestedCategoryName, is_active: true },
+                            transaction,
+                            lock: transaction.LOCK.UPDATE
+                        });
+                        if (!folder) throw error;
+                    }
+                }
+
+                itemData.folder_id = folder.folder_id;
+                itemData.product_folder = folder.name;
+            } else if (hasFolderId) {
                 const folderId = Number(itemData.folder_id);
                 const folder = Number.isInteger(folderId) && folderId > 0
                     ? await ItemFolder.findOne({
@@ -1372,6 +1431,9 @@ export const itemRepository = {
                 regulatory_compliance,
                 ...dbFields
             } = itemData;
+
+            // This is a command field, not an Item column.
+            delete dbFields.create_category_name;
 
             if (itemData.status === 'draft' || item.status === 'draft') {
                 dbFields.wizard_metadata = {
