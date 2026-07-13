@@ -441,10 +441,10 @@ Apply to a tenant: `node apps/dgfy-migration-runner/src/cli.js activate-tenant -
 
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
-| A1 | Product prices are VAT-INCLUSIVE (so VAT is decomposed as `L − L/1.12`) | Money & Tax | If prices are VAT-exclusive, VAT and totals are wrong; receipts fail BIR review. **Confirm with user.** |
-| A2 | SC/PWD VAT treatment: whether the SC/PWD sale also becomes VAT-EXEMPT (VAT zeroed) or just uses VAT-exclusive base for the 20% | Money & Tax / FSC-03 | BIR-incorrect receipts (SC/PWD sales are legally VAT-exempt). D-07 only specifies the 20% base. **Confirm before implementing FSC-03.** |
-| A3 | Device-bridge failure handling = record-then-warn (persist money, print best-effort) | Integration Ports #4 / D-11 | If user wants fail-closed, finalize must roll back on print failure. Claude's-discretion item — confirm. |
-| A4 | Only `non_compliant_active` + `non_fiscal` checkouts are in Phase 9 scope; `compliant_active` fiscal checkout (needs 7-signal evidence) is out of scope | Pitfall 4 | If fiscal checkout is required, finalize must gather compliance evidence inputs — larger scope. |
+| A1 | **CONFIRMED (D-19)** — Product prices are VAT-INCLUSIVE (VAT decomposed as `L − L/1.12`). | Money & Tax | Resolved: VAT-inclusive is now locked. |
+| A2 | **CONFIRMED (D-20)** — SC/PWD sales are VAT-EXEMPT: zero the 12% VAT entirely AND take 20% off the net base (BIR-correct branch). | Money & Tax / FSC-03 | Resolved: implement the VAT-exempt branch (VATable=0, VAT-exempt sales=base, less 20%). |
+| A3 | **CONFIRMED (D-22)** — Device-bridge print failure = record-then-warn / fail-open (persist money, print best-effort). | Integration Ports #4 / D-11 | Resolved: never roll back a recorded sale on print failure; receipt stored + re-printable. |
+| A4 | **SUPERSEDED by D-21** — Phase 9 MUST support BOTH fiscal (`compliant_active`) and non_fiscal checkout. No longer non_fiscal-only. | Pitfall 4 → §Fiscal Checkout Evidence Path | Scope expanded; see the new `## Fiscal Checkout Evidence Path (D-21)` section for the full evidence mapping and new-field requirements. |
 | A5 | Multi-line finalize should be ONE transaction (all-or-nothing) incl. sale movements | Integration Ports #2 / Pitfall 7 | Per-line-txn looping risks partial commits on failure. |
 | A6 | BIR SC/PWD = 20% off VAT-exclusive base (RA 9994/10754 general rule) | Money & Tax | Not verified against a live BIR source this session; edge cases (minimum purchase, per-item vs per-transaction cap) unconfirmed. |
 
@@ -581,3 +581,129 @@ Apply to a tenant: `node apps/dgfy-migration-runner/src/cli.js activate-tenant -
 
 **Research date:** 2026-07-13
 **Valid until:** ~2026-08-13 (stable internal codebase; re-verify if Phase 8 modules change).
+
+---
+
+## Fiscal Checkout Evidence Path (D-21)
+
+> **Added 2026-07-13** after D-21 expanded scope: Phase 9 MUST support BOTH `non_fiscal` (default/Omni) and `fiscal` (`compliant_active`, on-request Official Receipt) checkout. This section maps, from the actual compliance source, exactly what the finalize usecase must pass for a `compliant_active` + `fiscal` checkout to return ALLOW — and what is NOT yet obtainable from the Phase 8/9 data model. Supersedes assumption A4.
+
+### 0. The load-bearing finding (read first)
+
+The persisted `compliance_mode_state` row stores **only** `state`, `compliance_profile` (JSON), `active_policy_pack_version`, and the three verification fields — **NOT** artifacts, peripherals, settings, or the evidence signals. `[VERIFIED: complianceModeStateRepository.js:292-308 toPlain(); models/Tenant/ComplianceModeState.js]`
+
+The gate loads that row and builds its `tenant` context, then passes `artifacts`, `peripherals`, `settings`, `evidence` **straight through from the caller's `input`, defaulting to `[] / [] / {} / {}`** — it does NOT source them from anywhere. `[VERIFIED: complianceGate.js:92-101 (destructured defaults) and :132-141 (forwarded verbatim to evaluateComplianceDecision)]`
+
+**Consequence:** For a `compliant_active` business, `POS_CHECKOUT` runs the full `evaluateComplianceChecklist`. With empty inputs, `profile_complete`/`settings_complete`/`artifacts_complete`/`peripherals_complete`/`ready_for_compliant_activation` all evaluate false, so the gate returns **REQUIRES_SETUP** (or DENY for peripherals) and the fiscal sale is blocked. `[VERIFIED: policyEngine.js:947-1035]` The finalize usecase therefore has to **actively assemble and pass the complete evidence bundle** — and most of that bundle has **no storage home** in the current schema (see §4).
+
+### 1. Exact evidence inputs required for `compliant_active` + `fiscal` ALLOW
+
+The active policy pack is `2026.04.07` (the only pack; effective 2026-04-07). `[VERIFIED: policyPacks.js:8-61, getActivePolicyPack]` For `POS_CHECKOUT` the engine calls `evaluateComplianceChecklist` and then gates on four section flags plus `ready_for_compliant_activation` (which folds in seven more evidence-derived signals). All must be satisfied:
+
+**(a) Profile fields** — read from the persisted `compliance_mode_state.compliance_profile` JSON (the gate maps `stateRow.compliance_profile` → `tenant.compliance_profile` `[VERIFIED: complianceGate.js:124-126]`; the checklist normalizes it against `COMPLIANCE_PROFILE_DEFAULT`). Required (validated by `checkProfileField`, `[VERIFIED: policyPacks.js:22-45, policyEngine.js:177-201]`):
+| Field path | Type | Validity rule |
+|---|---|---|
+| `bir.software_accreditation_number` | string | non-empty |
+| `bir.software_accreditation_valid_until` | date string | `YYYY-MM-DD` ≥ today |
+| `bir.tax_classification_controls_confirmed` | boolean | true-like |
+| `bir.non_resettable_grand_total_enabled` | boolean | true-like |
+| `bir.mandatory_receipt_fields_confirmed` | boolean | true-like |
+| `bir.rmo_24_2023_filing_verified` | boolean | true-like |
+| `bir.fiscal_document_content_reviewed` | boolean | true-like |
+| `bir.terminal_registration_controls_confirmed` | boolean | true-like |
+| `bir.ejournal_integrity_controls_confirmed` | boolean | true-like |
+| `bir.esales_reporting_controls_confirmed` | boolean | true-like |
+| `npc.dpo_name` | string | non-empty |
+| `npc.dpo_email` | string | non-empty |
+| `npc.dps_registration_number` | string | non-empty |
+| `npc.dps_registration_valid_until` | date string | ≥ today |
+| `npc.breach_notification_procedure_confirmed` | boolean | true-like |
+| `readiness.tests_passed` | boolean | true-like (always required, `[VERIFIED: policyEngine.js:378-381]`) |
+| `bsp.ops_registration_status` = `'active'`, `bsp.payment_control_reviewed` = true | — | **only when** `bsp.ops_registration_required` is true-like `[VERIFIED: policyEngine.js:369-376]` |
+
+**(b) Settings** — passed as `settings` input, shape `{ <key>: { value: <non-empty> } }`. Required keys (`bir.required_settings_keys`): `pos_business_name`, `pos_tin_branch`, `pos_address`, `pos_ptu_number`, `pos_min_number`, `pos_accreditation_number`. A key is missing if `settings[key].value` is null/blank. `[VERIFIED: policyPacks.js:14-21, policyEngine.js:425-428]`
+
+**(c) Artifacts** — passed as `artifacts` array; each item `{ artifact_type, verification_status:'verified', status:'valid', valid_until? }`. An artifact counts only if `verification_status==='verified'` AND `status==='valid'` AND (`valid_until` absent OR ≥ now). Required types: `bir_accreditation_certificate`, `bir_ptu_document`, `npc_dps_certificate` (+ `bsp_ops_certificate` only when OPS required). `[VERIFIED: policyEngine.js:141-147, 400-415; policyPacks.js:34-54]`
+
+**(d) Peripherals** — passed as `peripherals` array; each `{ device_class, verification_status:'verified', status:'accredited', accreditation_valid_until?, is_shared?/terminal_id? }`. Required classes: `receipt_printer`, `cash_drawer`. A device must be accredited+verified+unexpired AND eligible for the checkout `terminal_id` (either `is_shared===true` or `terminal_id` matches `context.terminal_id`). Missing peripherals return **DENY** (not REQUIRES_SETUP): `ACCREDITED_PERIPHERAL_REQUIRED`, or `TERMINAL_DEVICE_MISMATCH` when a `terminal_id` is supplied. `[VERIFIED: policyEngine.js:149-175, 417-423, 986-1001]`
+
+**(e) The seven evidence-derived signals** — passed inside the `evidence` object; each must be exactly `true`/`ready:true`. `[VERIFIED: policyEngine.js:383-398, 693-706]`
+| # | Signal | Required `evidence` shape |
+|---|--------|---------------------------|
+| 1 | Fiscal accumulator stream | `evidence.fiscal_accumulator_stream_ready === true` |
+| 2 | Audit-log append-only enforced | `evidence.audit_log_append_only_enforced === true` |
+| 3 | Payment-handoff policy | `evidence.payment_handoff_policy_ready === true` |
+| 4 | Encryption policy prerequisites | `evidence.encryption_policy_prerequisites_ready === true` |
+| 5 | Submission documentary readiness | `evidence.submission_artifacts.ready === true` |
+| 6 | RMO 24-2023 filing readiness | `evidence.rmo_filing_readiness.ready === true` |
+| 7 | Fiscal terminal registration | `evidence.fiscal_terminal_registration.ready === true` |
+
+`ready_for_compliant_activation` is the AND of all four section-completes + `readiness_tests_passed` + these seven. `[VERIFIED: policyEngine.js:693-706]`
+
+**(f) Context** — `context.terminal_id` (for peripheral eligibility); for non-cash payments also `context.payment_type` and `context.payment_handoff_mode` (see §2 BSP note).
+
+### 2. Exact call signature — fiscal vs non_fiscal path
+
+Both paths call the SAME injected port (`assertComplianceGate`, `operation: COMPLIANCE_OPERATION.POS_CHECKOUT` = `'pos.checkout'`). The ONLY required difference is `requestedDocumentContext` and, for fiscal, the evidence bundle:
+
+```js
+// NON-FISCAL path (default / Omni build) — works for any state incl. compliant_active
+const decision = await assertComplianceGate({
+  businessId, branchId: null,
+  operation: 'pos.checkout',
+  requestedDocumentContext: 'non_fiscal',   // DOCUMENT_CONTEXTS.NON_FISCAL
+  // artifacts/peripherals/settings/evidence NOT needed:
+  //   non_compliant_active + non_fiscal  → ALLOW  (policyEngine.js:873-880)
+  //   compliant_pending  + non_fiscal    → ALLOW  (policyEngine.js:914-922)
+  //   compliant_active   + non_fiscal    → still runs the checklist (POS_OPERATIONS),
+  //     so a compliant_active business ALSO needs the full bundle even for non_fiscal!  ⚠
+});
+
+// FISCAL path (Official-Receipt request; only valid when compliant_active)
+const decision = await assertComplianceGate({
+  businessId, branchId: null,
+  operation: 'pos.checkout',
+  requestedDocumentContext: 'fiscal',       // DOCUMENT_CONTEXTS.FISCAL
+  artifacts,        // §1(c) — verified+valid, all required types
+  peripherals,      // §1(d) — accredited+verified, receipt_printer + cash_drawer, terminal-eligible
+  settings,         // §1(b) — all six required keys with non-empty .value
+  evidence,         // §1(e) — all seven signals true/ready
+  // profile comes from the persisted state row (loaded by the gate), NOT this call
+});
+```
+
+**Return / throw behavior** (`[VERIFIED: complianceGate.js:143-151]`): on `ALLOW` the port **returns the decision object** (`{ decision:'allow', reason_code:'ALLOWED', mode_state, receipt_contract, checklist, obligations }`); on `DENY` it **throws** `DomainError` 403 (`AUTHORIZATION_FAILED`, `details.reason_code`, `details.decision`); on `REQUIRES_SETUP` it **throws** `DomainError` 409 (`CONFLICT`, same details). There is no separate "BLOCKED" string — a hard block surfaces as the **DENY→403** throw (e.g. `NON_COMPLIANT_FISCAL_DOCUMENT_BLOCKED` when a `non_compliant_active` business requests `fiscal`, `[VERIFIED: policyEngine.js:842-855]`).
+
+**Two nuances the finalize usecase must handle:**
+- ⚠ **compliant_active + non_fiscal still runs the checklist.** `POS_CHECKOUT` is in `POS_OPERATIONS`, so ANY checkout by a `compliant_active` business (fiscal OR non_fiscal) evaluates the full evidence bundle. `[VERIFIED: policyEngine.js:947-948, constants.js:131-135]` So the evidence bundle is required whenever `state==='compliant_active'`, regardless of document context — not only for fiscal. (A `non_compliant_active` business never hits the checklist.)
+- ⚠ **Non-cash BSP sub-gate.** For `POS_CHECKOUT` with a non-cash `context.payment_type` (GCash/Credit Card) and `payment_handoff_mode !== 'external'`, the engine runs `evaluateBspGate`; if the profile marks OPS required but not active/reviewed it returns **DENY** `BSP_OPS_REGISTRATION_REQUIRED`/`BSP_PAYMENT_CONTROL_REQUIRED`. `[VERIFIED: policyEngine.js:781-800, 203-239]` Since D-10 records payments without a live gateway, pass `context.payment_handoff_mode: 'external'` for GCash/Credit Card to stay on the intended (non-capture) path and avoid spurious denials.
+
+### 3. What finalize must do on REQUIRES_SETUP / DENY (fiscal checkout)
+
+Because the port throws, the finalize usecase should catch the `DomainError` and convert to `ApplicationResult.failure` (or let it propagate to Express `errorHandler`) — but for a fiscal checkout it must **reject the sale** (do not silently downgrade to non-fiscal without an explicit rule). Recommended behavior:
+- **REQUIRES_SETUP (409):** reject; surface the missing items. The thrown error carries `details.decision.checklist` with `missing_profile_fields`, `missing_setting_keys`, `missing_artifacts`, `missing_peripheral_classes`, and `activation_blockers[]` (each `{ code, section, message, action_target }`), plus `next_blocking_step`. `[VERIFIED: policyEngine.js:633-649, 526-628; complianceGate.js:55-59]` Return these so staff/ops know exactly which signal is missing.
+- **DENY (403):** reject; this is a hard block (wrong state for fiscal, peripheral mismatch, or BSP OPS gate). Do not retry as fiscal.
+- **Fallback question (planner/user):** should a failed fiscal request auto-fall-back to a `non_fiscal` sale, or hard-fail so the customer is told "Official Receipt unavailable"? Not specified by D-21 — flag it (see Assumption A7). Recommend **hard-fail with a clear reason** for fiscal (Official Receipts are a legal artifact; silent downgrade is risky).
+- On **ALLOW**, use `decision.receipt_contract` for the printed/stored document type: `compliant_active` → `{ document_type:'fiscal_invoice', label:'FISCAL INVOICE', document_context:'fiscal' }`; otherwise `non_fiscal_slip`. This maps directly to device-bridge's `receipt_contract.document_type === 'fiscal_invoice'` branch (§Integration Ports #4) and satisfies D-14's "compliance mode on receipt". `[VERIFIED: policyEngine.js:710-724, 742; receiptFormatter.js:85]`
+
+### 4. Evidence signals NOT obtainable from the Phase 9 data model — concrete new-field requirements
+
+The gate expects the bundle but Phase 8 shipped **no producer/storage** for most of it. This is the real cost of D-21. Concrete gaps the planner must resolve (either build storage, or define an interim attestation source):
+
+| Bundle input | Persistence today | New requirement for fiscal support |
+|---|---|---|
+| `compliance_profile` (all §1a fields) | ✅ stored on `compliance_mode_state.compliance_profile` JSON `[VERIFIED]` | Needs a WRITE path/UI to populate it — `upsertState()` exists `[VERIFIED: complianceModeStateRepository.js:206-251]` but no Phase 9 endpoint sets these BIR/NPC fields. Either an operator seeds the profile, or Phase 9 adds a compliance-profile write surface. |
+| `settings` (six `pos_*` keys) | ❌ **no table** | New `compliance_settings` (or POS-settings) storage keyed by business/branch, returning `{ key: { value } }`; plus a producer that loads it at finalize. |
+| `artifacts` (4 cert types w/ verification + validity) | ❌ **no table** | New `compliance_artifacts` table (`artifact_type`, `verification_status`, `status`, `valid_until`) + loader. |
+| `peripherals` (accredited receipt_printer + cash_drawer, terminal-scoped) | ❌ **no table** (Phase 8 has `terminal_identities` but no accreditation/device-class rows) | New `compliance_peripherals` table (`device_class`, `verification_status`, `status`, `accreditation_valid_until`, `is_shared`/`terminal_id`) + loader. |
+| `evidence` signals 1-7 (accumulator, audit append-only, payment-handoff, encryption, submission docs, RMO filing, fiscal terminal registration) | ❌ **none** — no producer exists | Each is a `true`/`ready` attestation with no compute path in the codebase. Needs either an evidence-storage/attestation record per business, or a documented interim (operator-attested) source. Signals 5-7 carry sub-structures (`items[]`, `verified_count/total_count`). |
+
+**Planner call-out:** These five storage/producer needs (settings, artifacts, peripherals, evidence-attestation, plus a profile-write surface) are a **material sub-scope of D-21** — larger than the checkout tables themselves. Options to present to the user: (A) build a minimal `compliant_active` evidence layer (tables + a single "assemble compliance bundle for finalize" reader); (B) interim: gate reads an operator-seeded per-business attestation blob (one JSON row) so fiscal works end-to-end without full UIs; (C) restrict live fiscal to businesses whose evidence has been seeded out-of-band. Recommend (B) for MVP — one `compliance_evidence` JSON store per business/branch, populated by an operator endpoint, read and passed by the finalize usecase — it satisfies the gate with the least new surface while keeping the real bundle shape. `[ASSUMED — needs user/planner decision, tracked as A8]`
+
+### New assumptions raised by this section
+
+| # | Claim | Section | Risk if Wrong |
+|---|-------|---------|---------------|
+| A7 | On a failed fiscal gate, finalize hard-fails (no silent fall-back to non_fiscal). | §3 | If auto-downgrade is desired, add an explicit rule; silent downgrade of an Official-Receipt request is a compliance risk. |
+| A8 | Fiscal evidence bundle sourced via a minimal per-business attestation store (interim option B), not a full artifacts/peripherals/settings subsystem. | §4 | If full subsystems are required, D-21 scope grows substantially; confirm the MVP shape with the user. |
+| A9 | For `compliant_active` businesses, the evidence bundle is passed on EVERY checkout (fiscal and non_fiscal), since the checklist runs for all POS operations. | §2 | If missed, `compliant_active` non_fiscal sales would also be blocked at REQUIRES_SETUP. |
