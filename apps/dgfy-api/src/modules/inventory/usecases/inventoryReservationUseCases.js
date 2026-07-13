@@ -84,7 +84,7 @@ async function requireMembership(businessRepository, businessId, accountId) {
 export function buildAvailableToSellUseCase({ repository } = {}) {
     return async (businessId, productId) => {
         if (!businessId || !productId) {
-            return ApplicationResult.error(validationError('businessId and productId are required.'));
+            return ApplicationResult.failure(validationError('businessId and productId are required.'));
         }
 
         try {
@@ -92,9 +92,9 @@ export function buildAvailableToSellUseCase({ repository } = {}) {
             return ApplicationResult.success({ availableToSell: available });
         } catch (error) {
             if (isTenantDatabaseUnavailableError(error)) {
-                return ApplicationResult.error(mapTenantDatabaseError(error));
+                return ApplicationResult.failure(mapTenantDatabaseError(error));
             }
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 serviceUnavailableError('Failed to compute available stock.')
             );
         }
@@ -114,28 +114,28 @@ export function buildReserveStockUseCase({ repository, businessRepository } = {}
         const { businessId, accountId, lines = [], referenceId, expiresAt } = input;
 
         if (!businessId || !accountId) {
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 validationError('businessId and accountId are required.')
             );
         }
 
         const { error: membershipError } = await requireMembership(businessRepository, businessId, accountId);
         if (membershipError) {
-            return ApplicationResult.error(membershipError);
+            return ApplicationResult.failure(membershipError);
         }
 
         if (!lines || lines.length === 0) {
-            return ApplicationResult.error(validationError('At least one reservation line is required.'));
+            return ApplicationResult.failure(validationError('At least one reservation line is required.'));
         }
 
         if (!referenceId) {
-            return ApplicationResult.error(validationError('referenceId (order public_reference) is required.'));
+            return ApplicationResult.failure(validationError('referenceId (order public_reference) is required.'));
         }
 
         // Validate each line
         for (const line of lines) {
             if (!line.productId || !isPositiveNumber(line.quantity)) {
-                return ApplicationResult.error(
+                return ApplicationResult.failure(
                     validationError('Each line must have a positive productId and quantity.')
                 );
             }
@@ -148,14 +148,14 @@ export function buildReserveStockUseCase({ repository, businessRepository } = {}
             });
         } catch (error) {
             if (isTenantDatabaseUnavailableError(error)) {
-                return ApplicationResult.error(mapTenantDatabaseError(error));
+                return ApplicationResult.failure(mapTenantDatabaseError(error));
             }
             if (isInsufficientStockError(error)) {
-                return ApplicationResult.error(
+                return ApplicationResult.failure(
                     conflictError(error.message, { error_code: 'INSUFFICIENT_STOCK' })
                 );
             }
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 serviceUnavailableError('Failed to reserve stock.')
             );
         }
@@ -172,7 +172,7 @@ export function buildCommitReservationUseCase({ repository, recordSaleUseCase } 
         const { businessId, referenceId, transaction } = input;
 
         if (!businessId || !referenceId) {
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 validationError('businessId and referenceId are required.')
             );
         }
@@ -182,9 +182,9 @@ export function buildCommitReservationUseCase({ repository, recordSaleUseCase } 
             return ApplicationResult.success({ committed: true });
         } catch (error) {
             if (isTenantDatabaseUnavailableError(error)) {
-                return ApplicationResult.error(mapTenantDatabaseError(error));
+                return ApplicationResult.failure(mapTenantDatabaseError(error));
             }
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 serviceUnavailableError('Failed to commit reservation.')
             );
         }
@@ -198,7 +198,7 @@ export function buildCommitReservationUseCase({ repository, recordSaleUseCase } 
 export function buildReleaseReservationUseCase({ repository } = {}) {
     return async (businessId, referenceId) => {
         if (!businessId || !referenceId) {
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 validationError('businessId and referenceId are required.')
             );
         }
@@ -208,9 +208,9 @@ export function buildReleaseReservationUseCase({ repository } = {}) {
             return ApplicationResult.success({ releasedCount });
         } catch (error) {
             if (isTenantDatabaseUnavailableError(error)) {
-                return ApplicationResult.error(mapTenantDatabaseError(error));
+                return ApplicationResult.failure(mapTenantDatabaseError(error));
             }
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 serviceUnavailableError('Failed to release reservation.')
             );
         }
@@ -234,7 +234,7 @@ export function buildExpireDueReservationsUseCase({ repository } = {}) {
                 return ApplicationResult.success({ expiredCount });
             };
         } catch (error) {
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 serviceUnavailableError('Failed to expire due reservations.')
             );
         }
@@ -248,7 +248,7 @@ export function buildExpireDueReservationsUseCase({ repository } = {}) {
 export function buildSetReservationExpiryUseCase({ repository } = {}) {
     return async (businessId, referenceId, expiresAt) => {
         if (!businessId || !referenceId || !expiresAt) {
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 validationError('businessId, referenceId, and expiresAt are required.')
             );
         }
@@ -258,9 +258,9 @@ export function buildSetReservationExpiryUseCase({ repository } = {}) {
             return ApplicationResult.success({ updatedCount });
         } catch (error) {
             if (isTenantDatabaseUnavailableError(error)) {
-                return ApplicationResult.error(mapTenantDatabaseError(error));
+                return ApplicationResult.failure(mapTenantDatabaseError(error));
             }
-            return ApplicationResult.error(
+            return ApplicationResult.failure(
                 serviceUnavailableError('Failed to set reservation expiry.')
             );
         }
