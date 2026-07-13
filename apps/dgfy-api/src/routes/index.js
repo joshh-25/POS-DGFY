@@ -18,6 +18,8 @@ import { buildInventoryModule, createInventoryRoutes } from '../modules/inventor
 import { buildComplianceModule, createComplianceRoutes } from '../modules/compliance/index.js';
 import { buildShiftsModule, createShiftRoutes } from '../modules/shifts/index.js';
 import { buildBookingModule, createBookingRoutes } from '../modules/booking/index.js';
+import { buildAvailmentsModule, createAvailmentRoutes } from '../modules/availments/index.js';
+import { buildDeviceBridgeClient } from '../infra/deviceBridgeClient.js';
 
 // Composition root for the accounts + businesses modules (Wave 2/3,
 // 04-02-PLAN.md / 04-03-PLAN.md): builds the Account/Business/
@@ -93,7 +95,7 @@ const { useCases: complianceUseCases, assertComplianceGate } = buildComplianceMo
     businessRepository
 });
 
-const { useCases: shiftUseCases } = buildShiftsModule({
+const { useCases: shiftUseCases, repository: shiftRepository } = buildShiftsModule({
     tenantConnector,
     businessDatabaseRegistryRepository,
     businessRepository,
@@ -111,6 +113,27 @@ const { useCases: bookingUseCases } = buildBookingModule({
     inventoryEffectContracts
 });
 
+// Phase 9 (09-07-PLAN.md, Wave 5): compose the availments module reusing the
+// SAME tenantConnector/businessDatabaseRegistryRepository/businessRepository/
+// productRepository/assertComplianceGate instances already constructed above
+// — never a second, divergent set (09-PATTERNS.md's Composition Root Wiring
+// pattern; T-09-07-01). Also reuses inventoryUseCases.recordSale (the D-17
+// single-writer sale effect) and the shifts module's own repository
+// (shiftRepository, for CHK-06's open-shift binding), plus one
+// env-configured deviceBridgeClient for best-effort receipt printing (D-22).
+const deviceBridgeClient = buildDeviceBridgeClient();
+
+const { useCases: availmentUseCases } = buildAvailmentsModule({
+    tenantConnector,
+    businessDatabaseRegistryRepository,
+    businessRepository,
+    productRepository,
+    assertComplianceGate,
+    recordSaleEffect: inventoryUseCases.recordSale,
+    shiftRepository,
+    deviceBridgeClient
+});
+
 const router = Router();
 
 router.use('/', healthRoutes);
@@ -123,5 +146,6 @@ router.use('/inventory', createInventoryRoutes(inventoryUseCases, { authenticate
 router.use('/compliance', createComplianceRoutes(complianceUseCases, { authenticateAccount }));
 router.use('/shifts', createShiftRoutes(shiftUseCases, { authenticateAccount }));
 router.use('/bookings', createBookingRoutes(bookingUseCases, { authenticateAccount }));
+router.use('/availments', createAvailmentRoutes(availmentUseCases, { authenticateAccount }));
 
 export default router;
