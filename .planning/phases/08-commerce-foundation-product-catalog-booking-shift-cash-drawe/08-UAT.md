@@ -1,49 +1,65 @@
 ---
-status: testing
+status: partial
 phase: 08-commerce-foundation-product-catalog-booking-shift-cash-drawe
 source: [08-VERIFICATION.md]
 started: 2026-07-13T00:50:00Z
-updated: 2026-07-13T00:50:00Z
+updated: 2026-07-13T09:30:00Z
 ---
 
 ## Current Test
 
-number: 1
-name: Verify migrations against a real tenant DB
-expected: |
-  Run the 08-01/08-09 migrations against a real dgfy_business_* tenant, then run verify.
-  Expected: ok:true, tables/columns present, branch_scope_key populated correctly.
-awaiting: user response
+[testing paused — 2 items outstanding: tests 2 and 3 blocked on Test 1's migration failure]
 
 ## Tests
 
 ### 1. Verify migrations against a real tenant DB
 expected: Run the 08-01/08-09 migrations against a real dgfy_business_* tenant, then run verify. Expected: ok:true, tables/columns present, branch_scope_key populated correctly. Why human: no live MySQL reachable in this environment.
-result: [pending]
+result: issue
+reported: "Environment up and healthy on lima-dgfy-dev (192.168.64.19), built from source via the override. dgfy_core fully migrated, valid. Business-database migrations blocked on 20260712100000-create-commerce-foundation.cjs: MySQL rejects shifts.terminal_id/shifts.cashier_account_id's ON DELETE CASCADE FKs because active_terminal_cashier_key is a STORED GENERATED column computed from those same two columns (InnoDB restriction, error 1215). Fix would be dropping ON DELETE CASCADE on those two FKs (or switching the generated-column approach)."
+severity: blocker
 
 ### 2. Append-only trigger firing
 expected: Attempt a raw SQL UPDATE/DELETE against an inventory_movements row and a cash_drawer_events row. Expected: both rejected with SQLSTATE 45000. Why human: no live MySQL reachable; no unit test in this repo exercises the trigger SQL.
-result: [pending]
+result: blocked
+blocked_by: prior-phase
+reason: "Blocked by Test 1: business-database migration 20260712100000-create-commerce-foundation.cjs fails to apply (MySQL error 1215), so inventory_movements/cash_drawer_events tables don't exist to test against."
 
 ### 3. Real-concurrency reproduction of the now-fixed row locks
 expected: Against real MySQL under REPEATABLE READ, fire two concurrent cancelBooking() calls for the same booking id and two concurrent closeShift() calls for the same shift id. Expected: the second call in each pair blocks until the first commits, then observes the terminal status and is rejected — no double capacity release, no duplicate close event. Why human: requires real transaction-isolation timing under concurrent load; the mocked unit tests confirm the lock option is requested and the reject-second-operation logic, not live serialization timing.
-result: [pending]
+result: blocked
+blocked_by: prior-phase
+reason: "Blocked by Test 1: business-database migration 20260712100000-create-commerce-foundation.cjs fails to apply (MySQL error 1215), so shifts/bookings tables don't exist to test concurrency against."
 
 ### 4. Decision needed: is unvalidated shift-close reconciliation input (fresh review's CR-02) acceptable for Phase 8 sign-off?
 expected: Review shiftController.js:34-47 / shiftUseCases.js:219-268 and decide whether sales_cash/refunds_cash/pay_ins/pay_outs should be hardcoded to 0 server-side (matching the module's own D-10 documentation) rather than accepted from the client, given Phase 9 has not yet wired a real sales-data source. Expected: a decision either to (a) accept this as an intentional, temporary gap awaiting Phase 9's real data source, or (b) require a small gap-closure plan now (the fix is a one-line controller change) before this is reachable in production. Why human: this is a product/security-posture judgment call about acceptable risk for an interim state.
-result: [pending]
+result: pass
+decision: "(a) Accepted as intentional, temporary gap. User rationale: all phases in this milestone will be implemented anyway, so Phase 9's real sales-data source is expected to land and close this gap; no interim gap-closure plan needed."
 
 ### 5. Decision needed: is the compliance-state non-atomicity (fresh review's CR-03) acceptable for Phase 8 sign-off, or does it need a follow-up gap-closure plan before Phase 9?
 expected: Review the verifier's independent judgment in 08-VERIFICATION.md's Anti-Patterns section (real gap, narrow race/crash window, does not falsify FSC-01's must-haves as literally worded, but is the same bypass class one layer down). Expected: a decision either to (a) accept the current two-write sequence as sufficient for Phase 8, or (b) commission a follow-up plan to add a single recordVerificationAndState() transactional repository method before Phase 9 builds on this gate under real concurrent load. Why human: this is a severity/risk-acceptance judgment the verifier made a recommendation on but should not unilaterally decide.
-result: [pending]
+result: pass
+decision: "Accepted the current two-write sequence for Phase 8 sign-off (narrow race/crash window, not a deterministic bug). Unlike CR-02/test 4, this gap is NOT closed by any currently-planned future phase's own work — no roadmap phase touches complianceModeStateRepository.js. Explicitly tracked as a required backlog item (recordVerificationAndState() transactional repository method, mirroring shiftRepository.js's pattern) to be closed before the milestone ships, rather than assumed away."
 
 ## Summary
 
 total: 5
-passed: 0
-issues: 0
-pending: 5
+passed: 2
+issues: 1
+pending: 0
 skipped: 0
-blocked: 0
+blocked: 2
 
 ## Gaps
+
+- truth: "Running the 08-01/08-09 migrations against a real dgfy_business_* tenant results in ok:true, tables/columns present, branch_scope_key populated correctly."
+  status: failed
+  reason: "User reported: business-database migrations blocked on 20260712100000-create-commerce-foundation.cjs — MySQL rejects shifts.terminal_id/shifts.cashier_account_id's ON DELETE CASCADE FKs because active_terminal_cashier_key is a STORED GENERATED column computed from those same two columns (InnoDB restriction, error 1215). dgfy_core migrations completed and validated fine; only the commerce-foundation business-DB migration fails."
+  severity: blocker
+  test: 1
+  root_cause: ""
+  artifacts:
+    - path: "migrations/business/20260712100000-create-commerce-foundation.cjs"
+      issue: "ON DELETE CASCADE FK on shifts.terminal_id/shifts.cashier_account_id conflicts with STORED GENERATED column active_terminal_cashier_key computed from those same columns — MySQL error 1215 (InnoDB restriction on generated columns referenced by cascading FKs)"
+  missing:
+    - "Drop ON DELETE CASCADE on shifts.terminal_id and shifts.cashier_account_id FKs, or restructure active_terminal_cashier_key to avoid the generated-column/cascade conflict"
+  debug_session: ""
