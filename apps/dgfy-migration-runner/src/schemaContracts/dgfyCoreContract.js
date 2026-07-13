@@ -24,6 +24,8 @@
  *   implements Phase 10 tables/indexes.
  * - apps/dgfy-migration-runner/src/migrations/schema/20260714101000-enable-storefront-discovery-geo-search.cjs
  *   adds Phase 10 discovery generated columns + indexes.
+ * - apps/dgfy-migration-runner/src/migrations/schema/20260714104000-add-commerce-payment-session-audit-fields.cjs
+ *   (CR-04 fix, 10-REVIEW.md) adds commerce_payment_sessions.provider_event_id/failure_reason.
  * - Phase verification commands inspect `dgfy_core` against this contract shape.
  */
 
@@ -261,6 +263,13 @@ export const dgfyCoreContract = {
         'manual_resolution_reason',
         'split_payload',
         'platform_fee_centavos',
+        // CR-04 fix (10-REVIEW.md): added via 20260714104000-add-commerce-
+        // payment-session-audit-fields.cjs — see that migration's header
+        // comment for why (finalizePaidOrderUseCases.js/handleWebhook
+        // UseCases.js always attempted to write these; Sequelize was
+        // silently dropping them as unknown columns).
+        'provider_event_id',
+        'failure_reason',
         'created_at',
         'updated_at'
       ],

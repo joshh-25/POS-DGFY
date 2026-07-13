@@ -147,6 +147,26 @@ export default (sequelize) => {
             type: DataTypes.TEXT,
             allowNull: true
         },
+        // CR-04 fix (10-REVIEW.md): the PayMongo webhook event id
+        // (`data.id`), stamped on `payment.paid` for replay/audit/dedup
+        // tracking. Added via 20260714104000-add-commerce-payment-session-
+        // audit-fields.cjs — previously written by finalizePaidOrder
+        // UseCases.js but silently dropped by Sequelize (unknown column).
+        provider_event_id: {
+            type: DataTypes.STRING(191),
+            allowNull: true
+        },
+        // CR-04 fix (10-REVIEW.md): human-readable reason recorded on
+        // `payment.failed`/`qrph.expired` (distinct from
+        // manual_resolution_reason, which covers the
+        // finalize_failed_manual_resolution_required terminal state only).
+        // Added via 20260714104000-add-commerce-payment-session-audit-
+        // fields.cjs — previously written by handleWebhookUseCases.js but
+        // silently dropped by Sequelize (unknown column).
+        failure_reason: {
+            type: DataTypes.TEXT,
+            allowNull: true
+        },
         // D-02: Future per-tenant split configuration (JSON, nullable,
         // never populated in Phase 10). Allows phase-10-compatible split
         // addition without schema migration (D-02 "keep adjustable").

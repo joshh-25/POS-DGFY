@@ -109,6 +109,17 @@ describe('Phase 10 Storefront Commerce Schema: non-DB structural assertions', ()
     expect(table.columns).toContain('platform_fee_centavos');
   });
 
+  // CR-04 fix (10-REVIEW.md): commerce_payment_sessions.provider_event_id/
+  // failure_reason (20260714104000-add-commerce-payment-session-audit-
+  // fields.cjs) — finalizePaidOrderUseCases.js/handleWebhookUseCases.js
+  // always attempted to write these; they must now be real, documented
+  // columns rather than silently dropped by Sequelize.
+  test('commerce_payment_sessions contract includes provider_event_id and failure_reason audit columns (CR-04)', () => {
+    const table = dgfyCoreContract.tables.commerce_payment_sessions;
+    expect(table.columns).toContain('provider_event_id');
+    expect(table.columns).toContain('failure_reason');
+  });
+
   test('storefront_discovery_index contract gains latitude, longitude, search_text generated columns', () => {
     const table = dgfyCoreContract.tables.storefront_discovery_index;
     expect(table.columns).toContain('latitude');
