@@ -342,7 +342,7 @@ Plans:
 Plans:
 **Wave 1** *(parallel — no shared files)*
 
-- [ ] 09-01-PLAN.md — Schema foundation: availment-checkout migration (availments/availment_items/payments/receipts/compliance_evidence) + 5 Tenant models + tenantConnector registration + dgfyBusinessContract entries (CHK-01, CHK-04, CHK-05, CHK-06, FSC-03)
+- [ ] 09-01-PLAN.md — Schema foundation: availment-checkout migration (availments/availment_items/availment_discounts/payments/receipts/compliance_evidence) + 6 Tenant models + tenantConnector registration + dgfyBusinessContract entries (CHK-01, CHK-03, CHK-04, CHK-05, CHK-06, FSC-03)
 - [ ] 09-02-PLAN.md — money.js integer-centavo engine (VAT-inclusive decomposition, SC/PWD VAT-exempt 20%, independent stacking, server-side change) + golden tests (CHK-02, FSC-03)
 - [ ] 09-03-PLAN.md — Finalize integration seams: inventory sale usecase + txn-aware stock sync, ShiftRepository.findOpenShift + repo exposure, compliance-gate context passthrough, device-bridge HTTP client (CHK-04, CHK-06)
 
