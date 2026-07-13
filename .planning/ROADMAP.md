@@ -418,5 +418,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |
 | 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 13/13 | Complete   | 2026-07-13 |
 | 9. POS Checkout & Payment | 0/8 | Not started | - |
-| 10. Storefront Discovery & Online Ordering | 8/8 | Complete   | 2026-07-13 |
+| 10. Storefront Discovery & Online Ordering | 8/8 | Complete    | 2026-07-13 |
 | 11. Order Fulfillment & Delivery Coordination | 0/TBD | Not started | - |
