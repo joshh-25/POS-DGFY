@@ -1,9 +1,9 @@
 ---
-status: partial
+status: diagnosed
 phase: 08-commerce-foundation-product-catalog-booking-shift-cash-drawe
 source: [08-VERIFICATION.md]
 started: 2026-07-13T00:50:00Z
-updated: 2026-07-13T09:30:00Z
+updated: 2026-07-13T09:45:00Z
 ---
 
 ## Current Test
@@ -56,10 +56,10 @@ blocked: 2
   reason: "User reported: business-database migrations blocked on 20260712100000-create-commerce-foundation.cjs — MySQL rejects shifts.terminal_id/shifts.cashier_account_id's ON DELETE CASCADE FKs because active_terminal_cashier_key is a STORED GENERATED column computed from those same two columns (InnoDB restriction, error 1215). dgfy_core migrations completed and validated fine; only the commerce-foundation business-DB migration fails."
   severity: blocker
   test: 1
-  root_cause: ""
+  root_cause: "Confirmed by direct code read of apps/dgfy-migration-runner/src/migrations/schema/20260712100000-create-commerce-foundation.cjs: shifts.terminal_id (lines 295-299) and shifts.cashier_account_id (lines 304-308) are both declared with onDelete: 'CASCADE'. Lines 336-344 then add active_terminal_cashier_key as a STORED GENERATED column computed as CONCAT_WS('|', terminal_id, cashier_account_id) — i.e. generated from those same two base columns. MySQL/InnoDB error 1215 is raised because a base column referenced by a CASCADE/SET NULL foreign key cannot simultaneously feed a stored generated column (InnoDB restriction on generated-column dependencies plus cascading FK actions)."
   artifacts:
-    - path: "migrations/business/20260712100000-create-commerce-foundation.cjs"
-      issue: "ON DELETE CASCADE FK on shifts.terminal_id/shifts.cashier_account_id conflicts with STORED GENERATED column active_terminal_cashier_key computed from those same columns — MySQL error 1215 (InnoDB restriction on generated columns referenced by cascading FKs)"
+    - path: "apps/dgfy-migration-runner/src/migrations/schema/20260712100000-create-commerce-foundation.cjs"
+      issue: "shifts.terminal_id (line ~298) and shifts.cashier_account_id (line ~307) both use onDelete: 'CASCADE' while also being the source columns of the STORED GENERATED active_terminal_cashier_key added at lines 336-344 — triggers MySQL error 1215 on migration"
   missing:
-    - "Drop ON DELETE CASCADE on shifts.terminal_id and shifts.cashier_account_id FKs, or restructure active_terminal_cashier_key to avoid the generated-column/cascade conflict"
+    - "Drop onDelete: 'CASCADE' on shifts.terminal_id and shifts.cashier_account_id (switch to 'RESTRICT' or 'NO ACTION', or handle cleanup in application code), OR restructure active_terminal_cashier_key to not be a STORED generated column derived directly from the two cascading FK columns"
   debug_session: ""
