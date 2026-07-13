@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-07-11
+last_reviewed: 2026-07-13
 related_adr: 0031-pos-terminal-pairing-and-shift-safe-navigation.md
 declaration_id: 2026-07-11-pos-terminal-pwa-access
 classification: major
@@ -27,6 +27,7 @@ Major. This changes the POS terminal interface, mobile access behavior, and manu
 - POS terminal mobile layout, navigation, and shift-gated operations.
 - Offline transaction visibility and manual synchronization controls.
 - iPhone Safari viewport and input-size behavior.
+- Safari/PWA terminal-unlock rendering: the opaque sticky header and full terminal layout remount after unlock so navigation is repainted without a page refresh.
 - POS E2E test configuration and local test artifact handling.
 
 ## Compliance Preconditions
@@ -36,6 +37,7 @@ Major. This changes the POS terminal interface, mobile access behavior, and manu
 - POS transaction, payment, void, shift, and receipt APIs remain server-authoritative when connectivity exists.
 - Mobile quantity gestures must permit native pointer cancellation and scrolling; they must not capture a pointer beyond the control.
 - Mobile presentation changes do not alter receipt payloads, fiscal lifecycle state, tax calculation, or payment authorization.
+- Terminal unlock rendering does not change authentication, authorization, shift state, or checkout permissions; it only recreates the client layout after the existing unlock state transition.
 - POS terminal source-contract tests scope assertions to their relevant control sections so separate diagnostics do not mask terminal safety regressions.
 
 ## Verification Evidence

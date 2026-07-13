@@ -252,6 +252,7 @@ export default function TerminalPageLayout({
     ? 'fixed inset-0 z-50 lg:hidden'
     : 'fixed inset-0 z-50 xl:hidden';
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
+  const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
   const workspaceDesktopOverflowClassName = isCheckoutWorkspaceMode
     ? 'xl:flex xl:flex-col xl:overflow-hidden'
     : 'xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y';
@@ -390,7 +391,10 @@ export default function TerminalPageLayout({
         </div>
       )}
       <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-      <div className={`dgfy-pos-panel sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 backdrop-blur sm:px-5 lg:px-7 ${lockedSurfaceClassName}`}>
+      <div
+        key={locked ? 'terminal-header-locked' : 'terminal-header-unlocked'}
+        className={`dgfy-pos-panel dgfy-pos-panel-strong sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 sm:px-5 lg:px-7 ${lockedHeaderSurfaceClassName}`}
+      >
         <div className={headerShellClassName}>
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">

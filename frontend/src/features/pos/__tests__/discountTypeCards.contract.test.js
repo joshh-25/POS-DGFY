@@ -41,6 +41,10 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(checkoutContent).toContain("discount_type: type");
     expect(checkoutContent).toContain("type === 'employee' && !signedInUserIsAdminLike");
     expect(checkoutContent).toContain('verifyPosDiscountApproval');
+    expect(checkoutContent).toContain('const resolvedApproverUserId = Number(verifiedApprover?.user_id ?? approvalUserId);');
+    expect(checkoutContent).toContain('const governedDiscountApproverUserId = Number.isInteger(resolvedApproverUserId) && resolvedApproverUserId > 0');
+    expect(checkoutContent).toContain('approver_user_id: governedDiscountApproverUserId,');
+    expect(checkoutContent).not.toContain('approver_user_id: verifiedApprover?.user_id || approvalUserId || discountDraft.approver_user_id,');
     expect(discountModalContent).toContain('calculateGovernedDiscount(safeCart, { ...discountDraft, eligible_item_ids: safeEligibleDiscountItemIds })');
     expect(discountModalContent).toContain('eligible_quantity: 1');
     expect(discountModalContent).toContain('Select only items and quantities for this Senior/PWD customer.');

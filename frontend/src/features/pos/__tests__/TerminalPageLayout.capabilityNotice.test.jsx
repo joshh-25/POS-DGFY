@@ -141,6 +141,44 @@ describe('TerminalPageLayout capability notice', () => {
     expect(baseProps.setMobileNavOpen).not.toHaveBeenCalled();
   });
 
+  it('keeps the mobile sidebar menu trigger available and opens the navigation drawer', () => {
+    renderLayoutWithProps({
+      isDesktopWide: false,
+      effectiveSidebarCollapsed: false
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open sidebar menu' }));
+
+    expect(baseProps.setMobileNavOpen).toHaveBeenCalledWith(true);
+    expect(baseProps.setSidebarCollapsed).not.toHaveBeenCalled();
+  });
+
+  it('remounts an opaque sticky header when the terminal unlocks', () => {
+    const { container, rerender } = renderLayoutWithProps({
+      locked: true,
+      isDesktopWide: false
+    });
+
+    const lockedHeader = container.querySelector('.dgfy-pos-panel');
+    expect(lockedHeader?.className).toContain('pointer-events-none');
+    expect(lockedHeader?.className).toContain('dgfy-pos-panel-strong');
+    expect(lockedHeader?.className).not.toContain('blur-[2px]');
+    expect(lockedHeader?.className).not.toContain('backdrop-blur');
+
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout {...baseProps} locked={false} isDesktopWide={false} />
+      </MemoryRouter>
+    );
+
+    const unlockedHeader = container.querySelector('.dgfy-pos-panel');
+    const menuButton = container.querySelector('button[aria-label="Open sidebar menu"]');
+
+    expect(unlockedHeader).not.toBe(lockedHeader);
+    expect(unlockedHeader?.className).not.toContain('pointer-events-none');
+    expect(menuButton?.disabled).toBe(false);
+  });
+
   it('plays a native order alert only for newly seen incoming order ids after initial hydration', () => {
     const initialOrders = [
       { pos_transaction_id: 101, customer_name: 'Guest A' }
