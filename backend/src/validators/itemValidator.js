@@ -295,6 +295,7 @@ export const updateItemSchema = Joi.object({
   mode_item_preset: Joi.string().max(64).allow(null, ''),
   product_folder: Joi.string().max(100).allow(null, ''),
   folder_id: Joi.number().integer().positive().allow(null),
+  create_category_name: Joi.string().trim().replace(/\s+/g, ' ').min(1).max(100).allow(null, ''),
   description: Joi.string().allow(null, ''),
   max_capacity: Joi.number().positive().messages({
     'number.positive': 'Max capacity must be a positive number'

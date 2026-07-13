@@ -133,7 +133,9 @@ const BASE_POS_ITEM_ATTRIBUTES = [
     'unit_of_measure',
     'current_stock',
     'cost_per_unit',
-    'default_sale_price'
+    'default_sale_price',
+    'folder_id',
+    'product_folder'
 ];
 const POS_ITEM_ATTRIBUTES_WITH_VAT = [...BASE_POS_ITEM_ATTRIBUTES, 'vat_type', 'senior_pwd_discount_eligible'];
 const POS_CATALOG_OVERRIDE_ATTRIBUTES = [
@@ -2845,6 +2847,7 @@ export const posRepository = {
 
     async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null } = {}) {
         const Item = dbStore.get('Item');
+        const ItemFolder = dbStore.get('ItemFolder');
         const where = buildVisibleWhere(
             {},
             { statusField: 'status', excludeInactiveStatus: true }
@@ -2866,7 +2869,13 @@ export const posRepository = {
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
             include: [
                 ...buildServiceDetailInclude(),
-                ...buildFnbCatalogIncludes()
+                ...buildFnbCatalogIncludes(),
+                {
+                    model: ItemFolder,
+                    as: 'folder',
+                    attributes: ['folder_id', 'name', 'show_in_pos_filter'],
+                    required: false
+                }
             ],
             order: [['name', 'ASC']],
             limit: Math.min(Number.parseInt(limit, 10) || 100, 500)
