@@ -27,12 +27,14 @@ Major. The changed frontend files are within the POS/terminal guardrail perimete
 - POS Settings commercial-promo schedule validation.
 - Incoming Storefront-order address presentation in the POS terminal.
 - Storefront pickup checkout payload retention of the customer-provided address.
+- Incoming-order card layout and action-button presentation.
 
 ## Compliance Preconditions
 
 - The backend remains authoritative for promo eligibility, payment state, fiscal calculations, and transaction persistence.
 - The existing `storefront_promos` validation contract remains unchanged: date and time ranges are independently optional, but each provided range must be complete.
 - No fiscal, payment, receipt, audit, database, or migration contract changes are included.
+- Incoming-order address data is displayed as text; delivery coordinates remain limited to the map-link target and are not rendered in the card.
 
 ## Verification Evidence
 
