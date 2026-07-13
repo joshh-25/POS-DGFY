@@ -1,5 +1,7 @@
 import { jest } from '@jest/globals';
 import { StorefrontDiscoveryRepository } from '../../src/modules/storefront/repositories/storefrontDiscoveryRepository.js';
+import { buildSearchDiscoveryUseCase } from '../../src/modules/storefront/usecases/searchDiscoveryUseCases.js';
+import { buildGetStorePageUseCase } from '../../src/modules/storefront/usecases/getStorePageUseCases.js';
 
 // 10-03-PLAN.md Task 1: StorefrontDiscoveryRepository over the LANDLORD
 // dgfy_core `storefront_discovery_index` projection (10-01-PLAN.md). No
@@ -166,5 +168,127 @@ describe('StorefrontDiscoveryRepository', () => {
             expect(result).toBeNull();
             expect(sequelize.query).not.toHaveBeenCalled();
         });
+    });
+});
+
+// 10-03-PLAN.md Task 2 (TDD): buildSearchDiscoveryUseCase — validates
+// lat/lng/radius/limit/offset, delegates to the repository, and returns
+// ONLY opaque store references (handle/display_name/distance_km) — never
+// the raw storefront_discovery_index.id or business_id (T-10-03-02, IDOR
+// guard).
+describe('buildSearchDiscoveryUseCase', () => {
+    const makeRepository = (overrides = {}) => ({
+        searchNearby: jest.fn(async () => [
+            { id: 42, business_id: 'biz-secret', handle: 'acme-store', display_name: 'Acme Store', distance_km: 1.234 }
+        ]),
+        ...overrides
+    });
+
+    it('rejects a missing/out-of-range lat or lng', async () => {
+        const repository = makeRepository();
+        const useCase = buildSearchDiscoveryUseCase({ repository });
+
+        const missingLat = await useCase({ lng: 121.0 });
+        expect(missingLat.isSuccess).toBe(false);
+        expect(missingLat.error.code).toBe('VALIDATION_FAILED');
+
+        const outOfRangeLat = await useCase({ lat: 999, lng: 121.0 });
+        expect(outOfRangeLat.isSuccess).toBe(false);
+
+        expect(repository.searchNearby).not.toHaveBeenCalled();
+    });
+
+    it('clamps radius/limit to sane bounds and delegates to the repository', async () => {
+        const repository = makeRepository();
+        const useCase = buildSearchDiscoveryUseCase({ repository });
+
+        const result = await useCase({ lat: 14.6, lng: 121.0, radiusKm: 99999, limit: 99999, offset: -5 });
+
+        expect(result.isSuccess).toBe(true);
+        const call = repository.searchNearby.mock.calls[0][0];
+        expect(call.radiusKm).toBeLessThanOrEqual(50);
+        expect(call.limit).toBeLessThanOrEqual(100);
+        expect(call.offset).toBe(0);
+    });
+
+    it('returns opaque store references only — never a raw id or business_id', async () => {
+        const repository = makeRepository();
+        const useCase = buildSearchDiscoveryUseCase({ repository });
+
+        const result = await useCase({ lat: 14.6, lng: 121.0 });
+
+        expect(result.isSuccess).toBe(true);
+        expect(result.data.stores).toEqual([
+            { handle: 'acme-store', display_name: 'Acme Store', distance_km: 1.23 }
+        ]);
+        expect(JSON.stringify(result.data)).not.toMatch(/business_id|"id":42/);
+    });
+});
+
+// 10-03-PLAN.md Task 2 (TDD): buildGetStorePageUseCase — 404s for an
+// unknown/invisible handle, otherwise returns the store's discovery info
+// plus its ACTIVE product listing pulled from the tenant catalog via the
+// injected productRepository (resolved by the discovery row's business_id).
+describe('buildGetStorePageUseCase', () => {
+    const makeStoreRow = (overrides = {}) => ({
+        id: 7,
+        business_id: 'biz-1',
+        handle: 'acme-store',
+        display_name: 'Acme Store',
+        is_visible: 1,
+        latitude: 14.6,
+        longitude: 121.0,
+        ...overrides
+    });
+
+    const makeRepository = (overrides = {}) => ({
+        getStoreByHandle: jest.fn(async () => makeStoreRow()),
+        ...overrides
+    });
+
+    const makeProductRepository = (overrides = {}) => ({
+        findAll: jest.fn(async () => [
+            { id: 1, name: 'Coffee', category: 'food', base_price: '120.0000', folder_id: null, is_active: true },
+            { id: 2, name: 'Discontinued Item', category: 'food', base_price: '50.0000', folder_id: null, is_active: false }
+        ]),
+        ...overrides
+    });
+
+    it('returns 404 for an unknown handle', async () => {
+        const repository = makeRepository({ getStoreByHandle: jest.fn(async () => null) });
+        const productRepository = makeProductRepository();
+        const useCase = buildGetStorePageUseCase({ repository, productRepository });
+
+        const result = await useCase({ handle: 'does-not-exist' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(404);
+        expect(productRepository.findAll).not.toHaveBeenCalled();
+    });
+
+    it('returns the store info and only ACTIVE products for a known handle', async () => {
+        const repository = makeRepository();
+        const productRepository = makeProductRepository();
+        const useCase = buildGetStorePageUseCase({ repository, productRepository });
+
+        const result = await useCase({ handle: 'acme-store' });
+
+        expect(result.isSuccess).toBe(true);
+        expect(result.data.store.handle).toBe('acme-store');
+        expect(result.data.products).toHaveLength(1);
+        expect(result.data.products[0]).toMatchObject({ id: 1, name: 'Coffee' });
+        expect(productRepository.findAll).toHaveBeenCalledWith('biz-1');
+    });
+
+    it('rejects a blank handle without querying the repository', async () => {
+        const repository = makeRepository();
+        const productRepository = makeProductRepository();
+        const useCase = buildGetStorePageUseCase({ repository, productRepository });
+
+        const result = await useCase({ handle: '  ' });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(repository.getStoreByHandle).not.toHaveBeenCalled();
     });
 });
