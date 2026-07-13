@@ -11,7 +11,7 @@ import { DomainError, DomainErrorCode } from '../../../shared/contracts/domainEr
 // always returns an ApplicationResult. No HTTP concerns, no direct model
 // imports.
 
-export const MOVEMENT_TYPES = Object.freeze(['restock', 'loss', 'adjustment']);
+export const MOVEMENT_TYPES = Object.freeze(['restock', 'loss', 'sale', 'adjustment']);
 
 const validationError = (message, details = null) => new DomainError(
     DomainErrorCode.VALIDATION_FAILED,
@@ -131,9 +131,10 @@ function buildMovementUseCase({ repository, businessRepository, movementType, va
             businessId,
             requestingAccountId,
             productId,
-            referenceType = null,
+            referenceType = 'availment',
             referenceId = null,
-            actorStaffAccountId = null
+            actorStaffAccountId = null,
+            transaction = null
         } = input;
 
         if (!businessId) {
@@ -151,15 +152,19 @@ function buildMovementUseCase({ repository, businessRepository, movementType, va
         if (error) return ApplicationResult.failure(error);
 
         try {
-            const result = await repository.recordMovementWithStockSync(businessId, {
-                productId,
-                movementType,
-                quantity: signQuantity(input.quantity),
-                referenceType,
-                referenceId,
-                actorAccountId: requestingAccountId || null,
-                actorStaffAccountId
-            });
+            const result = await repository.recordMovementWithStockSync(
+                businessId,
+                {
+                    productId,
+                    movementType,
+                    quantity: signQuantity(input.quantity),
+                    referenceType,
+                    referenceId,
+                    actorAccountId: requestingAccountId || null,
+                    actorStaffAccountId
+                },
+                transaction ? { transaction } : {}
+            );
             return ApplicationResult.success(result);
         } catch (repoError) {
             if (isTenantDatabaseUnavailableError(repoError)) {
@@ -203,6 +208,24 @@ export function buildRecordLossUseCase({ repository, businessRepository }) {
         businessRepository,
         movementType: 'loss',
         validateQuantity: (quantity) => (isPositiveNumber(quantity) ? null : 'quantity must be a positive number for a loss.'),
+        signQuantity: (quantity) => -Math.abs(Number(quantity))
+    });
+}
+
+/**
+ * Records a sale movement (ADR-0029 D-06, Phase 9 wire-up). Staff-or-owner
+ * required. `quantity` must be a positive number — the repository applies it
+ * as a -N delta (a sale decreases stock, guarded so stock_count can never go
+ * negative). Optional `transaction` (from availment finalize) is passed through
+ * to recordMovementWithStockSync so the whole finalize stays atomic.
+ * @param {{repository, businessRepository}} deps
+ */
+export function buildRecordSaleUseCase({ repository, businessRepository }) {
+    return buildMovementUseCase({
+        repository,
+        businessRepository,
+        movementType: 'sale',
+        validateQuantity: (quantity) => (isPositiveNumber(quantity) ? null : 'quantity must be a positive number for a sale.'),
         signQuantity: (quantity) => -Math.abs(Number(quantity))
     });
 }

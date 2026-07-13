@@ -246,11 +246,19 @@ export class InventoryMovementRepository {
      * For a non_stock product, stock_count is left untouched (there is
      * nothing to sync) but the movement row is still recorded.
      *
+     * When `options.transaction` is provided (e.g., from an outer
+     * finalize-transaction), the Product read + guarded stock UPDATE +
+     * InventoryMovement.create use that external transaction instead of
+     * opening a new one. When absent, opens its own transaction as usual
+     * (preserving existing behavior). The negative-stock precheck and
+     * optimistic-concurrency WHERE guard remain unchanged in both paths.
+     *
      * @param {string} businessId
      * @param {{productId, movementType, quantity, referenceType?, referenceId?, actorAccountId?, actorStaffAccountId?, beforeSnapshot?, afterSnapshot?}} input
+     * @param {{transaction?: Object}} [options={}]
      * @returns {Promise<{movement: Object, product: {id, inventory_mode, stock_count}}>}
      */
-    async recordMovementWithStockSync(businessId, input = {}) {
+    async recordMovementWithStockSync(businessId, input = {}, options = {}) {
         if (!businessId) {
             throw new Error('InventoryMovementRepository.recordMovementWithStockSync requires businessId.');
         }
@@ -272,7 +280,7 @@ export class InventoryMovementRepository {
             const { InventoryMovement, Product } = this.tenantConnector.getModels(databaseName);
             const sequelize = InventoryMovement.sequelize;
 
-            return await sequelize.transaction(async (transaction) => {
+            const executeMovement = async (transaction) => {
                 const product = await Product.findByPk(Number(productId), { transaction });
                 if (!product) {
                     throw new InventoryProductNotFoundError('Product not found for this movement.');
@@ -326,7 +334,12 @@ export class InventoryMovementRepository {
                         stock_count: stockCountAfter
                     }
                 };
-            });
+            };
+
+            if (options.transaction) {
+                return await executeMovement(options.transaction);
+            }
+            return await sequelize.transaction(executeMovement);
         } catch (error) {
             if (error instanceof TenantDatabaseUnavailableError) throw error;
             if (error instanceof InsufficientStockError) throw error;

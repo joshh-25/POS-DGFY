@@ -26,6 +26,7 @@ export {
     MOVEMENT_TYPES,
     buildRecordRestockUseCase,
     buildRecordLossUseCase,
+    buildRecordSaleUseCase,
     buildRecordAdjustmentUseCase,
     buildListMovementsUseCase
 } from './usecases/inventoryMovementUseCases.js';
@@ -37,6 +38,7 @@ import { recordSaleEffect, recordBookingEffect } from './usecases/inventoryEffec
 import {
     buildRecordRestockUseCase,
     buildRecordLossUseCase,
+    buildRecordSaleUseCase,
     buildRecordAdjustmentUseCase,
     buildListMovementsUseCase
 } from './usecases/inventoryMovementUseCases.js';
@@ -64,6 +66,7 @@ export function buildInventoryModule({
         useCases: {
             recordRestock: buildRecordRestockUseCase({ repository, businessRepository }),
             recordLoss: buildRecordLossUseCase({ repository, businessRepository }),
+            recordSale: buildRecordSaleUseCase({ repository, businessRepository }),
             recordAdjustment: buildRecordAdjustmentUseCase({ repository, businessRepository }),
             listMovements: buildListMovementsUseCase({ repository, businessRepository })
         },

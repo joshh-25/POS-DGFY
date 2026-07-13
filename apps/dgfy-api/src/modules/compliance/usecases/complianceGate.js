@@ -79,7 +79,7 @@ const mapTenantDatabaseError = (error) => {
 
 /**
  * @param {{repository}} deps - repository = ComplianceModeStateRepository
- * @returns {(input: {businessId: string, branchId?: number|null, operation: string, requestedDocumentContext?: string, artifacts?: Array, peripherals?: Array, settings?: Object, evidence?: Object, now?: Date}) => Promise<Object>}
+ * @returns {(input: {businessId: string, branchId?: number|null, operation: string, requestedDocumentContext?: string, context?: Object, artifacts?: Array, peripherals?: Array, settings?: Object, evidence?: Object, now?: Date}) => Promise<Object>}
  *   Returns the ALLOW decision object on success; throws a DomainError
  *   (403 for DENY, 409 for REQUIRES_SETUP) otherwise.
  */
@@ -94,6 +94,7 @@ export function buildAssertComplianceGate({ repository }) {
             branchId = null,
             operation,
             requestedDocumentContext,
+            context = {},
             artifacts = [],
             peripherals = [],
             settings = {},
@@ -129,10 +130,23 @@ export function buildAssertComplianceGate({ repository }) {
             compliance_mode_choice_required: false
         };
 
+        const decisionContext = { requested_document_context: requestedDocumentContext };
+        // Forward whitelisted context fields (payment_type, payment_handoff_mode, terminal_id)
+        // to the policy engine without editing policyEngine.js (D-15 forward-compatible passthrough)
+        if (context.payment_type !== undefined) {
+            decisionContext.payment_type = context.payment_type;
+        }
+        if (context.payment_handoff_mode !== undefined) {
+            decisionContext.payment_handoff_mode = context.payment_handoff_mode;
+        }
+        if (context.terminal_id !== undefined) {
+            decisionContext.terminal_id = context.terminal_id;
+        }
+
         const decision = evaluateComplianceDecision({
             tenant,
             operation,
-            context: { requested_document_context: requestedDocumentContext },
+            context: decisionContext,
             artifacts,
             peripherals,
             settings,

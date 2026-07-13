@@ -348,6 +348,33 @@ export class ShiftRepository {
         });
     }
 
+    /**
+     * Finds the currently open shift for a given terminal and cashier (CHK-06).
+     * Returns the shift row with status='open' for the (businessId, terminalId,
+     * cashierAccountId) tuple, or null if no shift is open.
+     *
+     * @param {string} businessId
+     * @param {{terminalId, cashierAccountId}} options - cashierAccountId is
+     *   the tenant-local staff_accounts.id (INTEGER), never the landlord UUID
+     * @returns {Promise<Object|null>}
+     */
+    async findOpenShift(businessId, { terminalId, cashierAccountId } = {}) {
+        if (!businessId || terminalId === undefined || cashierAccountId === undefined) {
+            return null;
+        }
+        return this.withModel(businessId, async (Shift) => {
+            const record = await Shift.findOne({
+                where: {
+                    business_id: businessId,
+                    terminal_id: terminalId,
+                    cashier_account_id: Number(cashierAccountId),
+                    status: 'open'
+                }
+            });
+            return record ? this.toPlain(record) : null;
+        });
+    }
+
     toPlain(model) {
         if (!model) return null;
         const plain = typeof model.get === 'function' ? model.get({ plain: true }) : model;
