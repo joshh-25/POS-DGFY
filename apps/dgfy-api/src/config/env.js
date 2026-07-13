@@ -77,3 +77,26 @@ export const requireCommerceQrphConfig = () => {
     if (!PAYMONGO_SECRET_KEY) missing.push('PAYMONGO_SECRET_KEY');
     return { configured: missing.length === 0, missing };
 };
+
+// --- Storefront order placement scheduling/reservation config (Phase 10
+// Plan 06, STF-04/STF-05, D-08/D-09/D-12/D-13) ---
+//
+// [ASSUMED A1]: no legacy precedent exists for a minimum scheduled-order
+// lead time (legacy only checks business hours, never a lead-time floor —
+// see 10-RESEARCH.md:390). 30 minutes is the realistic PH food-prep floor
+// this phase assumes; confirm with product before go-live.
+export const STOREFRONT_MIN_LEAD_MINUTES = Number.parseInt(process.env.STOREFRONT_MIN_LEAD_MINUTES || '30', 10);
+
+// [ASSUMED A2]: no legacy precedent exists for a maximum advance-scheduling
+// window either. 14 days avoids stale far-future orders while covering
+// normal pre-orders; confirm with product before go-live (10-RESEARCH.md:391).
+export const STOREFRONT_MAX_ADVANCE_DAYS = Number.parseInt(process.env.STOREFRONT_MAX_ADVANCE_DAYS || '14', 10);
+
+// Fallback stock-reservation hold TTL (D-09 belt-and-suspenders): the
+// placement flow (placeOrderUseCases.js) always stamps this onto a new
+// reservation BEFORE any payment session exists, so a reservation is never
+// created with a null/open-ended expiry even if the next step (session
+// creation) fails before the shared D-08 clock can be re-stamped onto it.
+// Same 30-minute default as the legacy QR Ph session fallback
+// (paymongoService.js's Date.now() + 30*60*1000, 10-RESEARCH.md:389).
+export const STOREFRONT_HOLD_FALLBACK_MINUTES = Number.parseInt(process.env.STOREFRONT_HOLD_FALLBACK_MINUTES || '30', 10);
