@@ -340,11 +340,55 @@ const loadStorefrontCatalogImageMap = async (itemIds = [], options = {}) => {
     }
 };
 
+const loadPrimaryBarcodeMap = async (itemIds = [], options = {}) => {
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return new Map();
+    }
+
+    const ItemBarcode = safeGetModel('ItemBarcode');
+    if (!ItemBarcode || typeof ItemBarcode.findAll !== 'function') {
+        return new Map();
+    }
+
+    const rows = await ItemBarcode.findAll({
+        where: {
+            item_id: { [Op.in]: itemIds },
+            is_active: true
+        },
+        attributes: ['item_barcode_id', 'item_id', 'code', 'is_primary'],
+        order: [
+            ['item_id', 'ASC'],
+            ['is_primary', 'DESC'],
+            ['item_barcode_id', 'ASC']
+        ],
+        transaction: options.transaction
+    });
+
+    const primaryBarcodeMap = new Map();
+    rows.forEach((row) => {
+        const barcode = toPlain(row);
+        const itemId = Number(barcode?.item_id);
+        if (!Number.isInteger(itemId) || itemId <= 0 || primaryBarcodeMap.has(itemId)) {
+            return;
+        }
+        primaryBarcodeMap.set(itemId, {
+            item_barcode_id: Number(barcode.item_barcode_id),
+            code: String(barcode.code || '').trim(),
+            is_primary: barcode.is_primary === true
+        });
+    });
+
+    return primaryBarcodeMap;
+};
+
 const applyCatalogOverrides = async (items, options = {}) => {
     const normalizedItems = (Array.isArray(items) ? items : []).map((item) => toPlain(item));
     const itemIds = normalizedItems.map((item) => item.item_id);
     const overrideMap = await loadCatalogOverridesMap(itemIds, options);
     const storefrontImageMap = await loadStorefrontCatalogImageMap(itemIds, options);
+    const primaryBarcodeMap = options.includePrimaryBarcode === true
+        ? await loadPrimaryBarcodeMap(itemIds, options)
+        : new Map();
 
     return normalizedItems
         .map((item) => {
@@ -367,7 +411,10 @@ const applyCatalogOverrides = async (items, options = {}) => {
                     storedPath: storefrontImage?.storefront_image_path || null,
                     storedUrl: storefrontImage?.storefront_image_url || null
                 }),
-                storefront_image_gallery: storefrontImage?.storefront_image_gallery || null
+                storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
+                ...(options.includePrimaryBarcode === true
+                    ? { primary_barcode: primaryBarcodeMap.get(Number(item.item_id)) || null }
+                    : {})
             };
         })
         .filter((item) => item.pos_visible !== false);
@@ -2889,7 +2936,7 @@ export const posRepository = {
         };
 
         try {
-            const catalogItems = await applyCatalogOverrides(await Item.findAll(queryOptions));
+            const catalogItems = await applyCatalogOverrides(await Item.findAll(queryOptions), { includePrimaryBarcode: true });
             const stockMap = await loadLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id
@@ -2906,7 +2953,7 @@ export const posRepository = {
             const catalogItems = await applyCatalogOverrides(withLegacyVatFallback(await Item.findAll({
                 ...queryOptions,
                 attributes: BASE_POS_ITEM_ATTRIBUTES
-            })));
+            })), { includePrimaryBarcode: true });
             const stockMap = await loadLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id

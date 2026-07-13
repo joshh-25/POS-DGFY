@@ -68,7 +68,6 @@ import {
   generateItemBarcode,
   getFolders,
   getItems,
-  listItemBarcodes,
   updateFolder
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
@@ -1438,7 +1437,6 @@ function ItemsWorkspace({
   const [items, setItems] = useState([]);
   const [primaryBarcodes, setPrimaryBarcodes] = useState({});
   const [loading, setLoading] = useState(true);
-  const [barcodeLookupLoading, setBarcodeLookupLoading] = useState(false);
   const [error, setError] = useState('');
   const { createItem, loading: creatingItem } = useCreateItem();
   const { updateItem, loading: savingItem } = useUpdateItem();
@@ -1518,7 +1516,7 @@ function ItemsWorkspace({
     onStockFilterPresetApplied();
   }, [onStockFilterPresetApplied, stockFilterPreset]);
 
-  const loadPrimaryBarcodes = useCallback(async (catalogItems = []) => {
+  const loadPrimaryBarcodes = useCallback((catalogItems = []) => {
     const normalizedItems = Array.isArray(catalogItems)
       ? catalogItems.filter((item) => Number(item?.item_id) > 0)
       : [];
@@ -1528,27 +1526,14 @@ function ItemsWorkspace({
       return;
     }
 
-    setBarcodeLookupLoading(true);
-    try {
-      const entries = await Promise.allSettled(normalizedItems.map(async (item) => {
-        const payload = await listItemBarcodes(item.item_id);
-        const rows = Array.isArray(payload?.barcodes) ? payload.barcodes : [];
-        const primary = rows.find((row) => row?.is_primary === true && row?.is_active !== false)
-          || rows.find((row) => row?.is_active !== false)
-          || null;
-        return [String(item.item_id), primary];
-      }));
-
-      const nextBarcodes = {};
-      entries.forEach((entry) => {
-        if (entry.status !== 'fulfilled') return;
-        const [itemId, barcode] = entry.value;
-        nextBarcodes[itemId] = barcode;
-      });
-      setPrimaryBarcodes(nextBarcodes);
-    } finally {
-      setBarcodeLookupLoading(false);
-    }
+    const nextBarcodes = {};
+    normalizedItems.forEach((item) => {
+      const barcode = item?.primary_barcode;
+      if (barcode?.code) {
+        nextBarcodes[String(item.item_id)] = barcode;
+      }
+    });
+    setPrimaryBarcodes(nextBarcodes);
   }, []);
 
   const loadItems = useCallback(async () => {
@@ -1566,7 +1551,7 @@ function ItemsWorkspace({
       const data = await fetchPosCatalog({ limit: 200 });
       const catalogItems = Array.isArray(data) ? data : [];
       setItems(catalogItems);
-      await loadPrimaryBarcodes(catalogItems);
+      loadPrimaryBarcodes(catalogItems);
     } catch (loadError) {
       setItems([]);
       setPrimaryBarcodes({});
@@ -2424,11 +2409,6 @@ function ItemsWorkspace({
                             <div className="min-w-0 flex-1">
                               <div className="flex min-w-0 flex-col gap-1 md:flex-row md:items-center md:gap-2">
                                 <p className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Barcode</p>
-                                {barcodeLookupLoading && !barcode && (
-                                  <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-semibold text-slate-500">
-                                    Loading
-                                  </span>
-                                )}
                                 <p className="truncate text-xs font-bold text-[#0F172A]">{barcode || 'Not generated yet'}</p>
                               </div>
                             </div>
