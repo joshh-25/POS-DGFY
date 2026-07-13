@@ -477,6 +477,12 @@ export const dgfyBusinessContract = {
     // the storefront-order -> tenant-Availment finalize seam. NULL for every
     // POS availment; UNIQUE per business so a lost-guard duplicate-finalize
     // race collapses to one row.
+    // fulfillment_mode/fulfillment_status/fulfillment_stage (11-01, FUL-01..
+    // FUL-03, L5): denormalized read-cache columns mirroring the LATEST
+    // availment_stage_events row — additive/nullable, no backfill of
+    // pre-migration availments (A4). Distinct from `status` above (Landmine
+    // 1) — `status` is the draft/finalized/voided checkout lifecycle,
+    // `fulfillment_status` is the separate coarse fulfillment pipeline.
     availments: {
       columns: [
         'id',
@@ -498,6 +504,9 @@ export const dgfyBusinessContract = {
         'sc_pwd_metadata',
         'finalized_at',
         'source_reference',
+        'fulfillment_mode',
+        'fulfillment_status',
+        'fulfillment_stage',
         'created_at',
         'updated_at'
       ],
@@ -532,6 +541,69 @@ export const dgfyBusinessContract = {
       uniqueConstraints: [],
       foreignKeys: [
         { column: 'availment_id', referencesTable: 'availments', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // Phase 11 (11-01, D-07/D-10/D-15): STRICTLY append-only fulfillment
+    // event ledger — every progress-stage/courier/payout action writes one
+    // row here; availments.fulfillment_mode/fulfillment_status/
+    // fulfillment_stage above are a denormalized read cache of the LATEST
+    // row, never the source of truth. is_forced records D-10 overrides
+    // distinctly and queryably (Open Q2 RESOLVED), separate from the
+    // free-text reason.
+    availment_stage_events: {
+      columns: [
+        'id',
+        'business_id',
+        'availment_id',
+        'fulfillment_mode',
+        'fulfillment_status',
+        'fulfillment_stage',
+        'reason',
+        'is_forced',
+        'actor_staff_account_id',
+        'actor_account_id',
+        'created_at'
+      ],
+      indexes: ['idx_availment_stage_events_business_availment'],
+      uniqueConstraints: [],
+      foreignKeys: [
+        { column: 'availment_id', referencesTable: 'availments', referencesColumn: 'id' },
+        { column: 'actor_staff_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // Phase 11 (11-01, D-01/D-02/D-03/D-04, Landmine 3/A5): DELIBERATELY
+    // MUTABLE payout sub-lifecycle (payout_status owed->paid, paid_at,
+    // updated_at) — the ONLY commerce table in this contract with a mutable
+    // payout column and NO append-only trigger. Reassignment history is
+    // preserved via is_active/superseded_at (D-04): a new attempt inserts a
+    // new row and marks the prior inactive, never overwriting or deleting.
+    // Independent of Phase 8 shift/cash-drawer pay-outs (D-03) — no FK to
+    // shifts/cash_drawer_events.
+    courier_assignments: {
+      columns: [
+        'id',
+        'business_id',
+        'availment_id',
+        'courier_name',
+        'courier_contact',
+        'payout_amount',
+        'payout_status',
+        'paid_at',
+        'is_active',
+        'superseded_at',
+        'assigned_by_staff_account_id',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['idx_courier_assignments_business_availment'],
+      uniqueConstraints: [],
+      foreignKeys: [
+        { column: 'availment_id', referencesTable: 'availments', referencesColumn: 'id' },
+        { column: 'assigned_by_staff_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
       ],
       projectionOnly: false
     }
