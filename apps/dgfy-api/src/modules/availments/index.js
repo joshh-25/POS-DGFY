@@ -60,7 +60,9 @@ import { buildFinalizeStorefrontOrderUseCase } from './usecases/storefrontFinali
  *   recordSaleEffect,
  *   shiftRepository,
  *   deviceBridgeClient,
- *   commitReservation
+ *   commitReservation,
+ *   recordStageEvents?,
+ *   posFulfillmentModeDefault?
  * }} deps
  * @returns {{repository: AvailmentRepository, complianceEvidenceRepository: ComplianceEvidenceRepository, useCases: Object}}
  */
@@ -79,7 +81,17 @@ export function buildAvailmentsModule({
     // building the module without a breaking constructor change;
     // finalizeStorefrontOrder is only exposed on useCases when this is
     // supplied (10-06/10-08 inject it once they compose this module).
-    commitReservation
+    commitReservation,
+    // Phase 11 (11-03-PLAN.md, D-05/D-06): the fulfillment module's
+    // recordStageEvents port (modules/fulfillment's buildFulfillmentModule()
+    // -> stageEventRepository.bulkCreate), injected at the composition root.
+    // OPTIONAL — mirrors commitReservation's pattern, so existing test
+    // composition/finalizeLive.test.js that omits it still builds; when
+    // absent, both finalize seams simply skip the stage-event auto-write.
+    recordStageEvents,
+    // A1: POS/dine-in default fulfillment_mode when no controller-supplied
+    // override is threaded through buildFinalizeAvailmentUseCase's input.
+    posFulfillmentModeDefault = 'dine_in'
 } = {}) {
     const repository = new AvailmentRepository({ tenantConnector, businessDatabaseRegistryRepository });
     // D-23: the interim per-business compliance-evidence attestation store
@@ -117,7 +129,9 @@ export function buildAvailmentsModule({
                 recordSaleEffect,
                 shiftRepository,
                 complianceEvidenceRepository,
-                deviceBridgeClient
+                deviceBridgeClient,
+                recordStageEvents,
+                posFulfillmentModeDefault
             }),
             // 10-07: storefront-order -> tenant-Availment finalize seam (no
             // shift/terminal/cashier, cross-DB customer_account_id,
@@ -125,7 +139,13 @@ export function buildAvailmentsModule({
             // Exported for 10-06 (cash/COD immediate finalize) and 10-08
             // (payment.paid webhook finalize) to reuse directly.
             ...(typeof commitReservation === 'function'
-                ? { finalizeStorefrontOrder: buildFinalizeStorefrontOrderUseCase({ repository, commitReservation }) }
+                ? {
+                    finalizeStorefrontOrder: buildFinalizeStorefrontOrderUseCase({
+                        repository,
+                        commitReservation,
+                        recordStageEvents
+                    })
+                }
                 : {})
         }
     };

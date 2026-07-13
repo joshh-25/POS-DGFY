@@ -24,6 +24,7 @@ import { buildBookingModule, createBookingRoutes } from '../modules/booking/inde
 import { buildAvailmentsModule, createAvailmentRoutes } from '../modules/availments/index.js';
 import { buildStorefrontModule, createStorefrontRoutes } from '../modules/storefront/index.js';
 import { buildCommercePaymentsModule, createCommercePaymentRoutes } from '../modules/commercePayments/index.js';
+import { buildFulfillmentModule, createFulfillmentRoutes } from '../modules/fulfillment/index.js';
 import { buildDeviceBridgeClient } from '../infra/deviceBridgeClient.js';
 
 // Composition root for the accounts + businesses modules (Wave 2/3,
@@ -133,6 +134,17 @@ const { useCases: bookingUseCases } = buildBookingModule({
 // env-configured deviceBridgeClient for best-effort receipt printing (D-22).
 const deviceBridgeClient = buildDeviceBridgeClient();
 
+// Phase 11 (11-03-PLAN.md, D-05/D-06, Pitfall 4): compose the fulfillment
+// module reusing the SAME tenantConnector/businessDatabaseRegistryRepository/
+// businessRepository instances already constructed above — never a second,
+// divergent set. Built BEFORE buildAvailmentsModule so its recordStageEvents
+// port can be injected into the availments finalize seam below.
+const fulfillmentModule = buildFulfillmentModule({
+    tenantConnector,
+    businessDatabaseRegistryRepository,
+    businessRepository
+});
+
 // Phase 10 (10-08-PLAN.md, STF-05): commitReservation (10-02's
 // reservationPorts.commitReservation single-writer port, built above)
 // wires finalizeStorefrontOrder onto availmentUseCases — the reservation ->
@@ -147,7 +159,11 @@ const { useCases: availmentUseCases } = buildAvailmentsModule({
     recordSaleEffect: inventoryUseCases.recordSale,
     shiftRepository,
     deviceBridgeClient,
-    commitReservation: inventoryReservationPorts.commitReservation
+    commitReservation: inventoryReservationPorts.commitReservation,
+    // Phase 11 (11-03-PLAN.md, D-05/D-06): the fulfillment module's
+    // injectable stage-event auto-write port, consumed by both finalize
+    // transactions (finalizePersist/finalizeStorefrontOrder).
+    recordStageEvents: fulfillmentModule.recordStageEvents
 });
 
 // Phase 10 (10-03-PLAN.md built the module skeleton in isolation; 10-04-
@@ -219,6 +235,9 @@ router.use('/shifts', createShiftRoutes(shiftUseCases, { authenticateAccount }))
 router.use('/bookings', createBookingRoutes(bookingUseCases, { authenticateAccount }));
 router.use('/availments', createAvailmentRoutes(availmentUseCases, { authenticateAccount }));
 router.use('/storefront', createStorefrontRoutes(storefrontUseCases, { authenticateAccount }));
+// Phase 11 (11-03-PLAN.md, FUL-01/02/03): mounted top-level (NOT nested
+// under /businesses/:businessId), per the inventory precedent.
+router.use('/fulfillment', createFulfillmentRoutes(fulfillmentModule.useCases, { authenticateAccount }));
 // Phase 10 (10-08-PLAN.md, STF-05): PayMongo webhook (raw-body HMAC
 // verified inside the usecase, unauthenticated at the Express layer — see
 // modules/commercePayments/routes.js) + the operator retry-finalization

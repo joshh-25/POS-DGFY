@@ -11,6 +11,25 @@
 // inventory_issue line, and row-locks the availment to prevent double-finalize.
 //
 // Line mutation: soft-delete via cancelled_at; never hard-delete (D-02/D-18).
+//
+// Phase 11 (11-03-PLAN.md, D-05/D-06): both finalize methods now accept an
+// OPTIONAL `recordStageEvents` port — the fulfillment module's
+// stageEventRepository.bulkCreate, injected at the composition root
+// (apps/dgfy-api/src/routes/index.js), never imported directly here (this
+// repository must never import modules/fulfillment, Pitfall 4). When
+// supplied, the stage-event write happens INSIDE the same
+// sequelize.transaction() as the finalize itself — a thrown/rejected
+// recordStageEvents call rolls back the whole transaction, mirroring the
+// recordSaleEffect non-success-THROWs-to-rollback precedent below
+// (Pitfall 2). The per-mode stage sequence is duplicated here (not imported
+// from modules/fulfillment/usecases/fulfillmentUseCases.js's
+// STAGE_SEQUENCES) for the same Pitfall-4 reason — this is the D-15 canonical
+// stage list, kept in lockstep by convention/tests, not by a shared import.
+const FINALIZE_STAGE_SEQUENCES = Object.freeze({
+    pickup: Object.freeze(['placed', 'confirmed', 'preparing', 'ready', 'completed']),
+    dine_in: Object.freeze(['placed', 'confirmed', 'preparing', 'ready', 'completed']),
+    delivery: Object.freeze(['placed', 'confirmed', 'preparing', 'out_for_delivery', 'completed'])
+});
 
 export class TenantDatabaseUnavailableError extends Error {
     /**
@@ -412,17 +431,24 @@ export class AvailmentRepository {
      *
      * @param {string} businessId
      * @param {number|string} availmentId
-     * @param {{header, payment, receipt, saleEffectLines, recordSaleEffect}} input
+     * @param {{header, payment, receipt, saleEffectLines, recordSaleEffect, recordStageEvents, fulfillmentMode, actorStaffAccountId, actorAccountId}} input
      *   - header: {document_context, subtotal_amount, discount_amount, vat_amount, vat_exempt_amount, total_amount, shift_id, sc_pwd_fields...}
      *   - payment: {payment_method, amount_received, change_due, payment_handoff_mode}
      *   - receipt: {receipt_number, document_type, compliance_mode, payload}
      *   - saleEffectLines: [{productId, quantity, referenceType, referenceId, actorAccountId, actorStaffAccountId, stockEffectType}, ...]
      *   - recordSaleEffect: injected function for recording sale movements
+     *   - recordStageEvents: OPTIONAL injected port (businessId, events, {transaction}) => Promise —
+     *     when supplied, auto-writes the FULL per-mode stage sequence (D-05) inside this
+     *     same transaction; a thrown/rejected call rolls back the whole finalize (Pitfall 2)
+     *   - fulfillmentMode: 'pickup'|'dine_in'|'delivery', defaults to 'dine_in' (A1)
+     *   - actorStaffAccountId / actorAccountId: attributed on every written stage-event row
      * @returns {Promise<{availment: Object, payment: Object, receipt: Object}>}
      */
     async finalizePersist(businessId, availmentId, {
-        header, payment, receipt, saleEffectLines, recordSaleEffect
+        header, payment, receipt, saleEffectLines, recordSaleEffect,
+        recordStageEvents, fulfillmentMode, actorStaffAccountId = null, actorAccountId = null
     } = {}) {
+        const resolvedFulfillmentMode = fulfillmentMode || 'dine_in';
         if (!businessId) throw new Error('AvailmentRepository.finalizePersist requires businessId.');
 
         return this.withModel(businessId, async (Availment) => {
@@ -441,7 +467,10 @@ export class AvailmentRepository {
                 if (!availment) throw new AvailmentNotFoundError();
                 if (availment.status !== 'draft') throw new AvailmentFinalizedError();
 
-                // 2. Update the availment row to finalized status with computed amounts
+                // 2. Update the availment row to finalized status with computed amounts,
+                // plus the denormalized fulfillment_mode/fulfillment_status/fulfillment_stage
+                // (D-05/D-06) — a POS/dine-in finalize auto-fast-forwards to 'completed'
+                // since the full stage sequence below is written atomically in the same txn.
                 await availment.update({
                     status: 'finalized',
                     document_context: header.document_context,
@@ -453,8 +482,30 @@ export class AvailmentRepository {
                     shift_id: header.shift_id,
                     sc_pwd_id_number: header.sc_pwd_id_number,
                     sc_pwd_metadata: header.sc_pwd_metadata,
-                    finalized_at: new Date()
+                    finalized_at: new Date(),
+                    fulfillment_mode: resolvedFulfillmentMode,
+                    fulfillment_status: 'completed',
+                    fulfillment_stage: 'completed'
                 }, { transaction });
+
+                // 2b. Auto-write the FULL per-mode stage-event sequence (D-05) inside
+                // this SAME transaction via the injected recordStageEvents port. A
+                // thrown/rejected call rolls back the whole finalize (Pitfall 2) —
+                // recordStageEvents is OPTIONAL so existing test composition that
+                // omits it still builds/runs.
+                if (typeof recordStageEvents === 'function') {
+                    const stages = FINALIZE_STAGE_SEQUENCES[resolvedFulfillmentMode]
+                        || FINALIZE_STAGE_SEQUENCES.dine_in;
+                    const stageEvents = stages.map((stage) => ({
+                        availmentId: Number(availmentId),
+                        fulfillmentMode: resolvedFulfillmentMode,
+                        fulfillmentStatus: stage,
+                        fulfillmentStage: stage,
+                        actorStaffAccountId,
+                        actorAccountId
+                    }));
+                    await recordStageEvents(businessId, stageEvents, { transaction });
+                }
 
                 // 3. For each inventory_issue line, invoke the injected recordSaleEffect
                 // This write happens inside the SAME transaction. If any result is not a success,
@@ -543,13 +594,17 @@ export class AvailmentRepository {
      * P04/P06 atomicity discipline; nothing partial is ever persisted).
      *
      * @param {string} businessId
-     * @param {{sourceReference, customerAccountId, lines, header, payment, commitReservation}} input
+     * @param {{sourceReference, customerAccountId, lines, header, payment, commitReservation, fulfillmentMode, recordStageEvents}} input
      *   - sourceReference: unique-per-business key (the landlord order's public_reference)
      *   - customerAccountId: opaque UUID cross-DB reference (no FK), or null for a guest order
      *   - lines: [{productId, productName?, quantity, unitPrice}, ...] — AvailmentItem snapshot
      *   - header: {subtotal_amount, discount_amount, vat_amount, vat_exempt_amount, total_amount} (formatted DECIMAL strings)
      *   - payment: {payment_method, amount_received, change_due, payment_handoff_mode, payment_reference}
      *   - commitReservation: (transaction) => Promise<ApplicationResult|void> — the injected 10-02 single-writer stock-effect port
+     *   - fulfillmentMode: 'pickup'|'delivery' (A2) — PERSISTED onto the Availment (closes Landmine 2, previously dropped)
+     *   - recordStageEvents: OPTIONAL injected port (businessId, events, {transaction}) => Promise —
+     *     when supplied, writes ONE 'placed' stage event (D-06) inside this same transaction on a
+     *     fresh (non-idempotent-hit) finalize; a thrown/rejected call rolls back the whole finalize (Pitfall 2)
      * @returns {Promise<{availment: Object, payment: Object, idempotent: boolean}>}
      *
      * NOTE (deviation, Rule 1): deliberately does NOT go through this.withModel()
@@ -570,7 +625,8 @@ export class AvailmentRepository {
      * logged in deferred-items.md rather than changed here.)
      */
     async finalizeStorefrontOrder(businessId, {
-        sourceReference, customerAccountId = null, lines = [], header, payment, commitReservation
+        sourceReference, customerAccountId = null, lines = [], header, payment, commitReservation,
+        fulfillmentMode = null, recordStageEvents
     } = {}) {
         if (!businessId) throw new Error('AvailmentRepository.finalizeStorefrontOrder requires businessId.');
         if (!sourceReference) throw new Error('AvailmentRepository.finalizeStorefrontOrder requires sourceReference.');
@@ -631,7 +687,13 @@ export class AvailmentRepository {
                     vat_amount: header.vat_amount,
                     vat_exempt_amount: header.vat_exempt_amount,
                     total_amount: header.total_amount,
-                    finalized_at: new Date()
+                    finalized_at: new Date(),
+                    // D-06/L2: persist fulfillmentMode (previously dropped) + the
+                    // denormalized initial stage — online Availments enter at
+                    // 'placed' (A2), never auto-confirmed on payment.
+                    fulfillment_mode: fulfillmentMode,
+                    fulfillment_status: 'placed',
+                    fulfillment_stage: 'placed'
                 }, { transaction });
 
                 // (c) AvailmentItem lines
@@ -647,6 +709,22 @@ export class AvailmentRepository {
                         tax_treatment: 'vatable',
                         tax_rate: '0.1200'
                     }, { transaction });
+                }
+
+                // (c2) Auto-write ONE 'placed' stage event (D-06) inside this SAME
+                // transaction via the injected recordStageEvents port. A
+                // thrown/rejected call rolls back the whole finalize (Pitfall 2) —
+                // recordStageEvents is OPTIONAL so existing test composition that
+                // omits it still builds/runs. Not reached on the idempotent-hit
+                // early-return above (no second stage event for a repeat call).
+                if (typeof recordStageEvents === 'function') {
+                    await recordStageEvents(businessId, [{
+                        availmentId: availment.id,
+                        fulfillmentMode,
+                        fulfillmentStatus: 'placed',
+                        fulfillmentStage: 'placed',
+                        actorAccountId: customerAccountId
+                    }], { transaction });
                 }
 
                 // (d) reservation -> sale, injected single-writer port
