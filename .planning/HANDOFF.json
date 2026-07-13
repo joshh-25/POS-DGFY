@@ -1,0 +1,52 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-07-13T02:54:44.085Z",
+  "phase": "08",
+  "phase_name": "commerce-foundation-product-catalog-booking-shift-cash-drawe",
+  "phase_dir": ".planning/phases/08-commerce-foundation-product-catalog-booking-shift-cash-drawe",
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "paused",
+  "workflow": "gsd-verify-work",
+  "uat_file": ".planning/phases/08-commerce-foundation-product-catalog-booking-shift-cash-drawe/08-UAT.md",
+  "completed_tasks": [
+    {"id": 4, "name": "UAT Test 4 — shift-close reconciliation input decision (CR-02)", "status": "done", "result": "pass (decision recorded)"},
+    {"id": 5, "name": "UAT Test 5 — compliance-state non-atomicity decision (CR-03)", "status": "done", "result": "pass (decision recorded)"}
+  ],
+  "remaining_tasks": [
+    {"id": 1, "name": "UAT Test 1 — verify commerce-foundation migration chain against real tenant DB (lima-dgfy-dev, 192.168.64.19)", "status": "blocked"},
+    {"id": 2, "name": "UAT Test 2 — append-only trigger firing (inventory_movements/cash_drawer_events)", "status": "blocked_by_test_1"},
+    {"id": 3, "name": "UAT Test 3 — real-concurrency reproduction of row locks (cancelBooking/closeShift)", "status": "blocked_by_test_1"},
+    {"id": 6, "name": "UAT Test 6 — decide how to close WR-01 stale-table risk", "status": "not_started"}
+  ],
+  "blockers": [
+    {
+      "description": "This Claude Code sandbox has no network route to lima-dgfy-dev (192.168.64.19) and no docker binary installed — 'docker --context=lima-dgfy-dev', mysql client, ping, and nc all fail/are unavailable from this session. Cannot execute the Test 1 runbook (or any live-MySQL test) from inside this sandbox.",
+      "type": "technical",
+      "workaround": "Operator must run the runbook themselves from a machine that has network access to 192.168.64.19 and/or the 'lima-dgfy-dev' docker context configured, then report results back (paste verify output / SHOW CREATE TABLE output) so Claude can record the UAT result."
+    },
+    {
+      "description": "WR-01 risk: lima-dgfy-dev likely has a stale, partially-created 'shifts' table (and possibly compliance_mode_state) left over from the original failed migration run, still carrying the old ON DELETE CASCADE FKs on terminal_id/cashier_account_id (and branch_id). Simply re-running schema migrate will see tableExists('shifts')===true, skip createTable (which carries the RESTRICT fix), and reproduce MySQL error 1215 on the generated-column ALTER.",
+      "type": "technical",
+      "workaround": "User confirmed the tenant DB currently has empty data. Given that, the safe path is: SHOW CREATE TABLE shifts (and compliance_mode_state) to confirm stale CASCADE FK, DROP the stale table(s) since no real data exists, then re-run `node apps/dgfy-migration-runner/src/cli.js schema migrate` fresh, then `node apps/dgfy-migration-runner/src/cli.js verify`."
+    }
+  ],
+  "async_jobs": [],
+  "human_actions_pending": [
+    {
+      "action": "Run the Test 1 runbook against lima-dgfy-dev (192.168.64.19): (1) SHOW CREATE TABLE shifts / compliance_mode_state to check for stale CASCADE FKs, (2) DROP the stale table(s) since data is confirmed empty, (3) run `node apps/dgfy-migration-runner/src/cli.js schema migrate` with TARGET_DB_HOST/TARGET_DB_NAME (or DGFY_BUSINESS_DB_NAMES) pointed at that tenant, (4) run `node apps/dgfy-migration-runner/src/cli.js verify` and confirm ok:true with no error 1215, (5) DESCRIBE shifts to confirm active_terminal_cashier_key generated column exists.",
+      "context": "Blocks UAT Test 1, which in turn blocks Tests 2 and 3 (both explicitly blocked_by Test 1 in 08-UAT.md). This is the last blocker before Phase 08 can pass verification.",
+      "blocking": true
+    },
+    {
+      "action": "After Test 1 resolves, decide UAT Test 6: accept the current in-place migration fix as sufficient (one-off manual cleanup of lima-dgfy-dev) vs. commission a follow-up plan for an idempotent FK-repair guard (information_schema.referential_constraints check) for future environments.",
+      "context": "Product/risk-acceptance judgment call the verifier flagged but should not decide unilaterally — see 08-VERIFICATION.md 'A New, Independently-Confirmed Risk' section and 08-UAT.md Test 6.",
+      "blocking": false
+    }
+  ],
+  "decisions": [],
+  "uncommitted_files": [],
+  "next_action": "Wait for operator to run the Test 1 runbook against lima-dgfy-dev and report the verify output / SHOW CREATE TABLE findings. Then resume with /gsd-verify-work 08 to record the Test 1 result and continue to Tests 2, 3, 6.",
+  "context_notes": "No code or plan changes this session — this was purely a UAT verification session that got blocked on sandbox network access. 08-UAT.md is unchanged (Test 1 still 'pending'). Tests 4 and 5 (judgment-call decisions) were already resolved in a prior session and remain recorded in 08-UAT.md. Do not attempt docker/mysql commands again from a fresh Claude Code sandbox without first confirming network/docker availability — this sandbox definitively lacks both."
+}
