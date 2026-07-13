@@ -115,8 +115,8 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 
 ### Storefront Discovery And Online Ordering
 
-- [ ] **STF-01**: Consumer can browse and search DGFY stores and Products via the map-based storefront discovery surface.
-- [ ] **STF-02**: Consumer can view a store's storefront page and add its Products to a cart.
+- [x] **STF-01**: Consumer can browse and search DGFY stores and Products via the map-based storefront discovery surface.
+- [x] **STF-02**: Consumer can view a store's storefront page and add its Products to a cart.
 - [ ] **STF-03**: Consumer can complete a purchase as a guest (with durable contact info) or as a logged-in DGFY Account, without forced account creation.
 - [ ] **STF-04**: Consumer can choose pickup or delivery, immediate or scheduled, and a payment method (cash on pickup/delivery, or GCash/Credit Card via PayMongo where available) at checkout.
 - [ ] **STF-05**: A storefront order is durably recorded on the Landlord side and finalized into the correct tenant's Availment idempotently, safe against an interrupted cross-database write.
@@ -235,8 +235,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CHK-05 | Phase 9 | Complete |
 | CHK-06 | Phase 9 | Complete |
 | FSC-03 | Phase 9 | Complete |
-| STF-01 | Phase 10 | Pending |
-| STF-02 | Phase 10 | Pending |
+| STF-01 | Phase 10 | Complete |
+| STF-02 | Phase 10 | Complete |
 | STF-03 | Phase 10 | Pending |
 | STF-04 | Phase 10 | Pending |
 | STF-05 | Phase 10 | Pending |
