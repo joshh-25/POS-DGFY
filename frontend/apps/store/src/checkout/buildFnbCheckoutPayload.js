@@ -25,7 +25,7 @@ export const buildFnbCheckoutPayload = ({
   customer_phone: String(customerPhone || '').trim(),
   customer_email: String(customerEmail || '').trim(),
   promo_code: String(promoCode || '').trim().toUpperCase(),
-  delivery_address: isDeliveryOrder ? String(deliveryAddress || '').trim() : '',
+  delivery_address: String(deliveryAddress || '').trim(),
   delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
   delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
   scheduled_for: fnbScheduleMode === 'schedule' && fnbScheduledFor ? new Date(fnbScheduledFor).toISOString() : null,

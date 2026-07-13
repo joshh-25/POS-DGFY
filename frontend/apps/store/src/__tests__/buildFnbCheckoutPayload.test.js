@@ -42,4 +42,18 @@ describe('buildFnbCheckoutPayload', () => {
     expect(payload.customer_phone).toBe('+639171234567');
     expect(payload.customer_email).toBe('bob@example.com');
   });
+
+  it('keeps a selected customer address on pickup orders', () => {
+    const payload = buildFnbCheckoutPayload({
+      orderMethod: 'pickup',
+      isDeliveryOrder: false,
+      deliveryAddress: '123 Test Street, Iloilo City',
+      customerPin: { latitude: 10.7, longitude: 122.5 },
+      cart: []
+    });
+
+    expect(payload.delivery_address).toBe('123 Test Street, Iloilo City');
+    expect(payload.delivery_latitude).toBeNull();
+    expect(payload.delivery_longitude).toBeNull();
+  });
 });
