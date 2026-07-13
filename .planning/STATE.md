@@ -5,10 +5,10 @@ milestone_name: Commerce Domain — Product, Checkout & Fulfillment
 current_phase: 08
 current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
-stopped_at: context exhaustion at 100% (2026-07-13)
-last_updated: "2026-07-13T02:31:37.097Z"
+stopped_at: Phase 08 UAT complete, all 6 tests passed (2026-07-13)
+last_updated: "2026-07-13T03:20:00.000Z"
 last_activity: 2026-07-13
-last_activity_desc: Phase 08 execution started
+last_activity_desc: Phase 08 UAT completed live against lima-dgfy-dev — 08-VERIFICATION.md canonicalized to passed
 progress:
   total_phases: 11
   completed_phases: 7
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 
 ## Current Position
 
-Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — EXECUTING
-Plan: 2 of 13
-Status: Ready to execute
-Last activity: 2026-07-13 — Phase 08 execution started
+Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — UAT COMPLETE, PASSED
+Plan: 13 of 13
+Status: 08-VERIFICATION.md passed (8/8 must-haves, all live-confirmed); ready to transition to Phase 9
+Last activity: 2026-07-13 — Phase 08 UAT completed live against lima-dgfy-dev (all 6 tests passed)
 
 Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overall roadmap 6/11 phases complete, Phase 7 paused independently)
 
@@ -140,6 +140,8 @@ Recent decisions affecting current work:
 - [Phase 08]: P11: state-demotion is the single source of truth for FSC-01 — no parallel verification_status branch added to complianceGate.js/evaluateComplianceDecision()
 - [Phase 08]: P12: cancelBooking/closeShift guard reads row-locked (lock: transaction.LOCK.UPDATE) to close CR-02/CR-03 concurrent double-submit races, mirroring the create-path's atomic-guard discipline
 - [Phase 08]: P13: edited 20260712100000 directly (rather than a corrective forward-dated migration) to fix CASCADE-on-generated-column-base-column FKs, since it was never successfully applied to any real business database — least-collateral-change option per plan's own diagnosis; only three of eleven FKs in the file touched
+- [Phase 08]: UAT — closed WR-01 as a one-off operational cleanup (not a code-level guard) after live evidence on two real lima-dgfy-dev tenants showed the stale-CASCADE risk never materialized; see 08-UAT.md Test 6.
+- [Phase 08]: UAT — fixed two pre-existing infra gaps on lima-dgfy-dev unrelated to Phase 8 code: `infrastructure/docker/docker-compose.yml`'s `dgfy-api` service was missing `DB_NAME: dgfy_core` (was inheriting `backend`'s legacy `sku_inventory_manager`), and MySQL's `sku_inventory_user` lacked a `dgfy_business_%` wildcard grant for newly-provisioned tenants. Both fixed directly (compose edit + container restart; GRANT statement) rather than deferred, since they blocked all live UAT fixture-building.
 
 ### Pending Todos
 
@@ -150,7 +152,7 @@ Recent decisions affecting current work:
 - [Phase 4] `business_database_registry.business_id` has no unique constraint — a duplicate-row bug was found and fixed at every production-reachable call site (`findOrCreateForBusiness()`), but the underlying schema gap remains as defense-in-depth debt; also left unfixed in one test helper (`businessRoutes.test.js`), tracked in `deferred-items.md`. Non-blocking (no exploitable production path confirmed by security audit), worth closing before more registry write paths are added.
 - [Roadmap v2.0] Open design decisions flagged by research, to resolve during phase planning: (1) whether `ComplianceModeState` is Landlord- or Tenant-scoped (resolve before/during Phase 8 planning — currently assumed Tenant-scoped); (2) fulfillment status shape, two-field event-sourced vs. single-field state machine (resolve during Phase 11 planning); (3) PayMongo storefront payment flow design needs phase-specific research when Phase 10 is planned.
 - [Phase 8] FSC-01 gap (blocking, needs gap-closure plan): `buildReviewComplianceStateUseCase` (complianceUseCases.js:274-329) never demotes `compliance_mode_state.state` when a review outcome is `rejected`/`revoked` — only verification metadata is patched. `evaluateComplianceDecision()` branches solely on `state`, never `verification_status`, and `complianceGate.js` never forwards `verification_status` into the decision context at all. Net effect: a `compliant_active` business whose fiscal paperwork is later revoked keeps `ALLOW` for Fiscal POS_CHECKOUT indefinitely. HTTP-reachable today via `POST /compliance/review`. Independently confirmed by 08-REVIEW.md (CR-01) and 08-VERIFICATION.md's third pass. Recommended: a focused gap-closure plan analogous to 08-09/08-10.
-- [Phase 8] CR-02/CR-03 (Critical, non-blocking for Phase 8's literal must-haves but flagged before Phase 9 builds on these modules): `bookingRepository.cancelBooking()` and `shiftRepository.closeShift()` both read their guard row without a transaction lock (`lock: transaction.LOCK.UPDATE`), unlike `complianceModeStateRepository`'s equivalent read-then-write path. Concurrent cancel/close calls for the same booking/shift can double-release capacity or double-write the cash-drawer ledger with a lost-update on reconciliation figures. See 08-REVIEW.md and 08-VERIFICATION.md Anti-Patterns for fixes (row lock or guarded atomic UPDATE, mirroring Pattern D).
+- ~~[Phase 8] CR-02/CR-03 row-lock race~~ — RESOLVED by P12 (row-locked reads via `lock: transaction.LOCK.UPDATE`) and live-confirmed 2026-07-13 via 08-UAT.md Test 3: concurrent `cancelBooking()`/`closeShift()` calls against lima-dgfy-dev showed exactly one success + one clean rejection each, no double capacity release, no duplicate close event.
 
 ## Deferred Items
 
@@ -164,7 +166,6 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-13T02:31:37.090Z
-Stopped at: context exhaustion at 100% (2026-07-13)
-Resume file: 
-None
+Last session: 2026-07-13T03:20:00.000Z
+Stopped at: Phase 08 UAT fully passed (6/6 tests) and 08-VERIFICATION.md canonicalized to `passed`. Ready for phase 08 → phase 9 transition (not yet performed — run the phase-transition workflow next).
+Resume file: None

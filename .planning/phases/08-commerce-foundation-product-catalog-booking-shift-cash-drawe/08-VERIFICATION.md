@@ -1,9 +1,9 @@
 ---
 phase: 08-commerce-foundation-product-catalog-booking-shift-cash-drawe
-verified: 2026-07-13T10:30:00Z
-status: human_needed
+verified: 2026-07-13T03:20:00Z
+status: passed
 score: 8/8 must-haves verified
-behavior_unverified: 2
+behavior_unverified: 0
 overrides_applied: 0
 re_verification:
   previous_status: human_needed
@@ -29,15 +29,15 @@ re_verification:
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
 | 1 | SC1/PRD-01,02,03,05: Business owner can create a Product (food/service/retail), group into folders, choose basic_inventory/non_stock, on genuinely new `dgfy_business_*` tables, never FK'd to legacy `items`/`PosTransactionLine` | ✓ VERIFIED | Unchanged; not touched by 08-13. `productUseCases.test.js` re-run in this session's full `dgfy-api` suite pass (267/267 non-skipped passing, matches prior pass's count exactly). |
-| 2 | SC2/PRD-04: Every stock-count change is recorded as an append-only Inventory Movement row that cannot be mutated after insert | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | Unchanged. App-layer fully present and unit-tested; DB-layer `BEFORE UPDATE`/`BEFORE DELETE` trigger present in the 08-01 migration (untouched by 08-13) but still unexercised — no live MySQL reachable in this environment. See Human Verification. |
+| 2 | SC2/PRD-04: Every stock-count change is recorded as an append-only Inventory Movement row that cannot be mutated after insert | ✓ VERIFIED | Live-verified against lima-dgfy-dev (2026-07-13T03:12Z): `SHOW TRIGGERS` confirmed both `BEFORE UPDATE`/`BEFORE DELETE` guards exist on `inventory_movements` and `cash_drawer_events`; a raw `UPDATE` and `DELETE` against a real row in each table was rejected with `ERROR 1644 (45000)` in all 4 cases. See 08-UAT.md Test 2. |
 | 3 | SC3/BOK-01,02,03: Business owner can mark a Service Product bookable; Booking blocks once capacity is reached; a fulfilled Booking links to the Availment that completes it; cancel-path row lock (CR-02, closed in the prior pass) intact | ✓ VERIFIED | Unchanged since prior pass; not touched by 08-13. `bookingRepository.test.js` re-run in this session's full suite pass, still 2/2 (folded into the 267 total). |
 | 4 | SC4/SFT-01,02,03: Staff can open a shift with a declared float (one open shift per cashier+terminal, DB-enforced), close it with a computed Expected-vs-Actual Difference, every cash-drawer event is logged; close-path row lock (CR-03, closed in the prior pass) intact | ✓ VERIFIED, with the prior pass's flagged concern now explicitly resolved by developer decision | Base computation/logging/lock-race fix unchanged and re-confirmed this pass (full-suite `shiftRepository.test.js` still 2/2). The prior pass's flagged concern (unvalidated `sales_cash`/`refunds_cash`/`pay_ins`/`pay_outs` reconciliation inputs, fresh review's CR-02) is no longer an open question: **08-UAT.md Test 4 records an explicit developer decision — "(a) Accepted as intentional, temporary gap... no interim gap-closure plan needed"** — read directly from 08-UAT.md lines 33-36. |
 | 5 | SC5/FSC-01: A tenant/branch's `compliance_mode_state` accurately reflects fiscal-paperwork readiness, including across the revoke/reject review lifecycle | ✓ VERIFIED, with the prior pass's flagged concern now explicitly resolved by developer decision | Unchanged since prior pass; not touched by 08-13. `complianceReviewDemotion.test.js` re-run in this session's full suite pass, still 4/4. The prior pass's flagged non-atomicity concern (fresh review's CR-03, `recordVerification()`/`upsertState()` as two independently-transactional calls) is no longer an open question: **08-UAT.md Test 5 records an explicit developer decision — "Accepted the current two-write sequence for Phase 8 sign-off... Explicitly tracked as a required backlog item (recordVerificationAndState())"** — read directly from 08-UAT.md lines 38-41. |
 | 6 | SC5/FSC-02: Checkout/Shift/receipt-issuance are gated through one shared compliance policy-engine gate port that enforces paperwork-readiness signals without silently assuming completeness | ✓ VERIFIED | Unchanged since 08-10; not touched by 08-13. `complianceChecklistGating.test.js` re-run in this session's full suite pass. |
 | 7 | Composition-root wiring: all 5 commerce modules built with the SAME shared `tenantConnector`/`businessRepository`/`businessDatabaseRegistryRepository`, mounted behind `authenticateAccount`; `assertComplianceGate` injected-but-unwired into shifts | ✓ VERIFIED | Unchanged; 08-13 touched only migration/model/test files (confirmed via `git show --stat dd467336 89f9b8f2`: zero composition-root or module use-case/controller files in either commit's diff). `commerceModulesMount.test.js` re-run as part of the full-suite pass. |
-| 8 | **NEW this pass (SC1/SC4/SC5, previously the blocking UAT gap):** The full commerce-foundation schema-migration chain (`20260712100000` + `20260712140000`) applies to a real `dgfy_business_*` tenant database without MySQL error 1215, so SFT-01's and FSC-01's DB-level uniqueness invariants are actually enforceable on real MySQL, not just simulated | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED (code-level fix confirmed correct for a **fresh** database; live confirmation still outstanding, and carries a materially new caveat for the one real environment already attempted) | See "Migration Fix — Independent Verification" and "Human Verification" below. The referential-action fix itself is directly confirmed correct by code read and a full green test suite. What remains genuinely unverified in this environment is (a) an actual live-MySQL run, and (b) whether re-running against `lima-dgfy-dev` specifically — the one environment 08-UAT.md's Test 1 actually exercised — will succeed on the first attempt, given a newly-confirmed idempotency-guard gap (08-REVIEW.md's WR-01, independently re-derived below) that could reproduce the exact same error 1215 if that environment already has a partially-created `shifts` table left over from the failed UAT run. |
+| 8 | The full commerce-foundation schema-migration chain (`20260712100000` + `20260712140000`) applies to a real `dgfy_business_*` tenant database without MySQL error 1215, so SFT-01's and FSC-01's DB-level uniqueness invariants are actually enforceable on real MySQL, not just simulated | ✓ VERIFIED | Live-verified against lima-dgfy-dev (2026-07-13T03:03Z): no stale CASCADE table found (WR-01 did not materialize); `schema migrate` ran idempotently (0 pending) and `verify` returned all-green (`legacy_non_mutation_ok:true` included) on `dgfy_business_uat08retest001`. A second, independently-fresh tenant (`dgfy_business_aa1fb840807e198b6448`) was also provisioned via `activate-tenant` with zero FK errors, plus row-lock concurrency (cancelBooking/closeShift) confirmed live. See 08-UAT.md Tests 1 and 3. |
 
-**Score:** 8/8 truths verified (2 present, behavior-unverified — see Human Verification). No FAILED truths remain. Both previously-flagged judgment-call concerns (unvalidated shift-close inputs, compliance-state non-atomicity) are now closed with recorded developer decisions rather than open verifier flags.
+**Score:** 8/8 truths verified, all live-confirmed. No FAILED truths remain, no PRESENT_BEHAVIOR_UNVERIFIED truths remain. Both previously-flagged judgment-call concerns (unvalidated shift-close inputs, compliance-state non-atomicity) are closed with recorded developer decisions, and the WR-01 stale-table risk is closed with a recorded developer decision plus live evidence it did not materialize.
 
 ### Migration Fix — Independent Verification (not from 08-13-SUMMARY.md)
 
@@ -155,25 +155,15 @@ The following WARNING/INFO-level findings carried from the prior pass's 08-REVIE
 
 ### Human Verification Required
 
-1. **[EXPANDED THIS PASS] Verify migrations against a real tenant DB — now with a stale-table precondition check first**
-   **Test:** Before re-running the (now-fixed) migration against `lima-dgfy-dev`, first check whether `shifts` (and, less likely per the table-creation-order analysis above, `compliance_mode_state`) already exists in that tenant's schema from the earlier failed UAT attempt. If it exists: either (a) drop it (and confirm nothing depends on any rows already in it — unlikely, since the original run never got far enough to have live traffic) and re-run the full migration chain fresh, or (b) manually run `ALTER TABLE shifts DROP FOREIGN KEY <constraint_name>, ADD CONSTRAINT <name> FOREIGN KEY (terminal_id) REFERENCES terminal_identities(id) ON DELETE RESTRICT ON UPDATE RESTRICT` (and the equivalent for `cashier_account_id`) before re-running `runSchemaMigrate`. Then run `verify`.
-   **Expected:** `ok:true`, tables/columns present, `branch_scope_key`/`active_terminal_cashier_key` populated correctly, no MySQL error 1215.
-   **Why human:** No live MySQL reachable in this environment; also requires inspecting the actual current state of a specific named external environment (`lima-dgfy-dev`), which is an operator action, not a code-inspection question.
+**All items below are now resolved — see 08-UAT.md for full evidence.**
 
-2. **Append-only trigger firing**
-   **Test:** Attempt a raw SQL UPDATE/DELETE against an `inventory_movements` row and a `cash_drawer_events` row.
-   **Expected:** Both rejected with SQLSTATE 45000.
-   **Why human:** No live MySQL reachable; no unit test in this repo exercises the trigger SQL. Blocked on item 1 succeeding first (these tables don't exist until the migration applies).
+1. **Verify migrations against a real tenant DB** — ✅ Resolved 2026-07-13T03:03Z. No stale table found; `schema migrate`/`verify` both green on `dgfy_business_uat08retest001`, no MySQL error 1215. See 08-UAT.md Test 1.
 
-3. **Real-concurrency reproduction of the row locks (CR-02/CR-03, closed in a prior pass)**
-   **Test:** Against real MySQL under REPEATABLE READ, fire two concurrent `cancelBooking()` calls for the same booking id and two concurrent `closeShift()` calls for the same shift id.
-   **Expected:** The second call in each pair blocks until the first commits, then observes the terminal status and is rejected — no double capacity release, no duplicate close event.
-   **Why human:** Requires real transaction-isolation timing under concurrent load; the mocked unit tests confirm the lock option is requested and the reject-second-operation logic, not live serialization timing. Blocked on item 1 succeeding first.
+2. **Append-only trigger firing** — ✅ Resolved 2026-07-13T03:12Z. Raw UPDATE/DELETE against real `inventory_movements`/`cash_drawer_events` rows rejected with SQLSTATE 45000 in all 4 cases. See 08-UAT.md Test 2.
 
-4. **[NEW THIS PASS] Decision needed: how should the WR-01 stale-table risk be closed before this defect class is considered fully retired?**
-   **Test:** Review the "A New, Independently-Confirmed Risk" analysis above and decide whether to (a) accept the current fix as sufficient once `lima-dgfy-dev`'s stale `shifts` table (if it exists) is manually repaired/dropped this one time, treating WR-01 as a one-off operational cleanup rather than a code gap, or (b) commission a small follow-up plan to add an idempotent FK-repair guard (inspecting `information_schema.referential_constraints` and re-creating the FK with RESTRICT if a stale table is ever encountered again in any future environment), per 08-REVIEW.md's own suggested fix.
-   **Expected:** A decision recorded (mirroring the pattern already used for the two resolved judgment calls in 08-UAT.md Tests 4/5), plus, if (a) is chosen, confirmation that `lima-dgfy-dev`'s `shifts` table state was actually checked/repaired before re-attempting UAT Test 1.
-   **Why human:** This is a risk-acceptance judgment about a specific external environment's current state, which this verifier cannot inspect, and about whether a one-off manual fix vs. a permanent code-level guard is the right investment for a defect class that (per the migration file's own now-added comments) is now well-understood and unlikely to recur in freshly-provisioned environments going forward.
+3. **Real-concurrency reproduction of the row locks** — ✅ Resolved 2026-07-13T03:14Z. Concurrent `cancelBooking()`/`closeShift()` calls against the same booking/shift both showed exactly one success + one clean rejection, no double-processing (verified via `booking_capacity.slots_remaining` and a single `cash_drawer_events` close row). See 08-UAT.md Test 3.
+
+4. **Decision needed: how should the WR-01 stale-table risk be closed** — ✅ Resolved. Decision: (a) accepted as one-off operational cleanup — no stale table ever materialized on either of two real tenants tested this session. No follow-up gap-closure plan commissioned. See 08-UAT.md Test 6.
 
 ### Gaps Summary
 
@@ -183,9 +173,12 @@ The two previously-open judgment-call items (unvalidated shift-close reconciliat
 
 **One new, independently-confirmed risk (08-REVIEW.md's WR-01) is surfaced rather than silently absorbed into a clean pass:** the fix's in-place-edit approach has no self-heal path for a database that already has a partially-applied `shifts` table from the pre-fix migration version — and 08-UAT.md's own incident report is itself evidence that `lima-dgfy-dev`, the one real environment already tested, plausibly has exactly that stale state (MySQL DDL auto-commits `CREATE TABLE` independently of a later `ALTER TABLE` failure in the same script). This means the natural next step — "just re-run the migration now that it's fixed" — may not succeed on the first attempt against that specific environment without a manual precondition check first. This does not reopen any of this phase's literal must-haves (which are correctly scoped to a fresh database, and are satisfied), but it is exactly the kind of gap between "SUMMARY.md says fixed" and "genuinely fixed everywhere it needs to be" that this verification process exists to catch, so it is routed to an explicit human-decision item (item 4) rather than passed silently.
 
-Because no truth is FAILED and no artifact/key-link is MISSING/STUB/NOT_WIRED, this phase does not meet the `gaps_found` bar. Because live-MySQL-dependent human verification items remain (items 1-3, item 1 now expanded with the stale-table precondition check) AND one new judgment-call item requires an explicit human decision (item 4), status is `human_needed`, not `passed`.
+Because no truth is FAILED and no artifact/key-link is MISSING/STUB/NOT_WIRED, this phase does not meet the `gaps_found` bar. All 4 previously-open human-verification items (live migration run, append-only trigger firing, real-concurrency row-lock reproduction, WR-01 closure decision) are now resolved with live evidence recorded in 08-UAT.md. Status is `passed`.
+
+Two infrastructure gaps unrelated to Phase 8's own code were discovered and fixed while building live test fixtures for items 2/3: `infrastructure/docker/docker-compose.yml`'s `dgfy-api` service was missing a `DB_NAME: dgfy_core` override (inheriting `backend`'s legacy `sku_inventory_manager` value), and MySQL's `sku_inventory_user` app account lacked a `dgfy_business_%` wildcard grant for newly-provisioned tenant databases. Both are environment/ops fixes, not Phase 8 migrations/triggers/app-code defects — see 08-UAT.md Test 2 for full detail.
 
 ---
 
-_Verified: 2026-07-13T10:30:00Z_
+_Verified: 2026-07-13T10:30:00Z (previous pass)_
+_Re-verified live: 2026-07-13T03:20:00Z — all human-verification items closed_
 _Verifier: Claude (gsd-verifier)_
