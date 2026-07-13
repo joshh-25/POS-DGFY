@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 7: Cutover Runbook and Deferred Domain Split** - Production cutover remains gated by a rehearsal-backed runbook and later domain plans stay out of v1. (paused 2026-07-12 — requires real Docker/GHCR rehearsal infra and operator-run docker login; parked in favor of starting the next milestone. Resume with `/gsd-execute-phase 7` once prerequisites are ready.)
 - [x] **Phase 8: Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating** - Businesses can define what they sell/service and staff can run accountable cash shifts under a compliance-mode gate, without any new table referencing legacy `items`/IMS data. (gaps found 2026-07-13 — see 08-VERIFICATION.md; FSC-02 closed by 08-10 and independently re-verified; new gap FSC-01 — revoke/reject review outcome never demotes compliance_mode_state, so a revoked business keeps ALLOW) (completed 2026-07-13)
 - [ ] **Phase 9: POS Checkout & Payment** - Staff can run a complete, trustworthy checkout — line items, discounts incl. SC/PWD, payment method, server-verified totals/change, receipts — gated by an open shift and the compliance policy engine.
-- [ ] **Phase 10: Storefront Discovery & Online Ordering** - Consumers can discover stores/Products and complete a guest-or-account online order that durably and idempotently becomes a real tenant Availment.
+- [x] **Phase 10: Storefront Discovery & Online Ordering** - Consumers can discover stores/Products and complete a guest-or-account online order that durably and idempotently becomes a real tenant Availment. (completed 2026-07-13)
 - [ ] **Phase 11: Order Fulfillment & Delivery Coordination** - Business staff can process incoming online orders through a shared fulfillment pipeline, including manual courier assignment and payout tracking.
 
 ## Phase Details
@@ -378,7 +378,7 @@ Plans:
   3. Consumer can choose pickup or delivery, immediate or scheduled, and a payment method (cash on pickup/delivery, or GCash/Credit Card via PayMongo where available) at checkout.
   4. A storefront order is durably recorded on the Landlord side first, then finalized into the correct tenant's Availment idempotently — an interrupted or retried cross-database write never produces a duplicate or lost order, and any unresolved case lands in an explicit manual-resolution state rather than failing silently.
 
-**Plans**: 7/8 plans executed
+**Plans**: 8/8 plans complete
 
 - [x] 10-01-PLAN.md — Landlord commerce schema (orders/sessions/guest identity) + discovery geo/search enablement + models + core contract
 - [x] 10-02-PLAN.md — Inventory-owned stock reservation capability (tenant table + reserve/commit/release/expiry ports, D-07..D-10)
@@ -387,7 +387,7 @@ Plans:
 - [x] 10-05-PLAN.md — PayMongo QR Ph client (native fetch) + landlord session creation, no split (STF-04, D-01/D-02)
 - [x] 10-06-PLAN.md — Scheduling validation + placeOrder orchestration (durable-first → reserve → session), STF-04 + landlord half of STF-05
 - [x] 10-07-PLAN.md — Non-POS storefront Availment finalize path + reservation→sale + unique source_reference (tenant half of STF-05)
-- [ ] 10-08-PLAN.md — Raw-body webhook + idempotent cross-DB finalize + manual-resolution state + retry + composition wiring (STF-05, D-04)
+- [x] 10-08-PLAN.md — Raw-body webhook + idempotent cross-DB finalize + manual-resolution state + retry + composition wiring (STF-05, D-04)
 
 ### Phase 11: Order Fulfillment & Delivery Coordination
 
@@ -418,5 +418,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |
 | 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 13/13 | Complete   | 2026-07-13 |
 | 9. POS Checkout & Payment | 0/8 | Not started | - |
-| 10. Storefront Discovery & Online Ordering | 7/8 | In Progress|  |
+| 10. Storefront Discovery & Online Ordering | 8/8 | Complete   | 2026-07-13 |
 | 11. Order Fulfillment & Delivery Coordination | 0/TBD | Not started | - |
