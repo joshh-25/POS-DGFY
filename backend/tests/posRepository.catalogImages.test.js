@@ -57,11 +57,24 @@ describe('posRepository catalog image mapping', () => {
         }
       ])
     };
+    const ItemBarcode = {
+      findAll: jest.fn().mockResolvedValue([
+        {
+          toJSON: () => ({
+            item_barcode_id: 501,
+            item_id: 101,
+            code: 'CHEESE-101',
+            is_primary: true
+          })
+        }
+      ])
+    };
 
     jest.spyOn(dbStore, 'get').mockImplementation((name) => {
       if (name === 'Item') return Item;
       if (name === 'PosCatalogOverride') return PosCatalogOverride;
       if (name === 'StorefrontCatalogOverride') return StorefrontCatalogOverride;
+      if (name === 'ItemBarcode') return ItemBarcode;
       if (name === 'ItemLocationStock') return null;
       if (['ServiceItemDetail', 'FnbModifierGroup', 'FnbModifierOption', 'FnbItemKitchenRoute', 'FnbKitchenStation'].includes(name)) return null;
       return {};
@@ -73,8 +86,14 @@ describe('posRepository catalog image mapping', () => {
     expect(result[0]).toEqual(expect.objectContaining({
       item_id: 101,
       pos_image_url: '/uploads/storefront/cheese-sauce.png',
-      storefront_image_url: '/uploads/storefront/cheese-sauce.png'
+      storefront_image_url: '/uploads/storefront/cheese-sauce.png',
+      primary_barcode: {
+        item_barcode_id: 501,
+        code: 'CHEESE-101',
+        is_primary: true
+      }
     }));
+    expect(ItemBarcode.findAll).toHaveBeenCalledTimes(1);
   });
 
   it('never returns a stale pos_catalog_overrides image once a storefront image exists', async () => {
