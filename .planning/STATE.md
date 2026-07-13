@@ -4,16 +4,16 @@ milestone: v2.0
 milestone_name: Commerce Domain — Product, Checkout & Fulfillment
 current_phase: 10
 current_phase_name: storefront-discovery-online-ordering
-status: planned
+status: executing
 stopped_at: Phase 10 planned (8 plans, plan-checker PASS)
-last_updated: "2026-07-13T09:30:00.000Z"
+last_updated: "2026-07-13T12:53:25.298Z"
 last_activity: 2026-07-13
-last_activity_desc: Phase 10 planned — 8 coarse plans across 5 waves, plan-checker PASS; Phase 09 previously verified (all 5 truths, live-MySQL reproduced)
+last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 11
   completed_phases: 8
-  total_plans: 56
-  completed_plans: 53
+  total_plans: 64
+  completed_plans: 59
   percent: 73
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 
 ## Current Position
 
-Phase: 10 (storefront-discovery-online-ordering) — PLANNED, ready to execute
-Plan: 0 of 8 executed (8 plans created, plan-checker PASS)
-Status: 10-PLAN.md ×8 created across 5 waves; RESEARCH + CONTEXT complete. Phase 08 & 09 both verified (VERIFICATION.md status: passed).
-Last activity: 2026-07-13 — Phase 10 planned (Research→Plan→Verify); plan-checker returned PASS with 2 D-09 robustness fixes folded in
+Phase: 10 (storefront-discovery-online-ordering) — EXECUTING
+Plan: 1 of 8
+Status: Executing Phase 10
+Last activity: 2026-07-13 — Phase 10 execution started
 
 Progress: overall roadmap 8/11 phases complete (Phase 7 paused independently); Phase 10 planned, execution not started
 
