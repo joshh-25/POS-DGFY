@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-06-29
+Last updated: 2026-07-13
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -48,10 +48,12 @@ Overall status: in_progress
 9. Incoming queue polling now suppresses duplicate global error toasts during silent refresh while keeping explicit on-screen error state.
 10. Incoming order status actions are disabled when `pos:transact` is missing.
 11. Locked terminal disables navigation mode switching until terminal unlock.
+    - The mobile POS layout remounts across terminal unlock with an opaque sticky header so Safari/PWA clients repaint navigation without requiring a page refresh; while locked, the header remains non-interactive.
 12. POS history supports direct handoff to Sales (`Open in Sales Report`) with preserved query context.
 13. Sales export now provides explicit export completion feedback tied to active filters.
 14. POS/store checkout validation errors (`422`) now surface structured field-level messages instead of generic failure copy.
 15. POS/Sales transaction tables no longer rely on row-level `role="button"` semantics for primary detail actions.
+    - Optional governed-discount approver IDs are serialized as a positive integer or `null`; statutory and promo discounts do not submit an empty approver ID.
 16. Settings remediation navigation is deterministic across POS/compliance surfaces:
 - known `/settings?tab=...#...` targets are normalized/resolved
 - malformed hash targets fail safely without blocking page actions

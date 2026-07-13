@@ -11,7 +11,7 @@ topic: pr_39_promo_and_storefront_change_inventory
 
 ## Purpose
 
-This document inventories the committed promo-related and Storefront-related changes on the `POS-Development` branch for PR #39. It is a change reference and does not replace the authoritative backend promotion, checkout, payment, or fiscal contracts.
+This document inventories the committed promo-related and Storefront-related changes on the `POS-Development` branch for PR #39, including later checkout and tracking hardening commits. It is a change reference and does not replace the authoritative backend promotion, checkout, payment, or fiscal contracts.
 
 ## Promo Schedule Updates
 
@@ -56,11 +56,14 @@ This document inventories the committed promo-related and Storefront-related cha
 
 | File | Purpose | Change summary |
 | --- | --- | --- |
-| `frontend/apps/store/src/StorefrontApp.jsx` | Storefront checkout and tracking behavior. | Restores F&B cart content when the cart drawer opens, preserves a manually cleared guest email, restricts selectable checkout payment to cash, expands tracking-drawer order details, and adds OTP resend cooldown handling. |
-| `frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx` | Customer account drawer presentation. | Renders the drawer above the Discovery header without changing standalone account-page presentation. |
-| `backend/src/middleware/rateLimiter.js` | Guest checkout OTP protection. | Separates code-send and code-verification rate-limit buckets while retaining tenant/IP/email scoping and server `Retry-After` responses. |
-| `backend/src/routes/store.js` | Store checkout OTP transport. | Wires request and verification routes to their respective rate limiters. |
-| `frontend/apps/store/src/__tests__/*`, `backend/tests/rateLimiter.behavior.test.js` | Regression coverage. | Covers tracking-drawer expansion, account-drawer stacking, checkout payment availability, guest-email hydration, OTP cooldown UI, and independent OTP rate-limit buckets. |
+| `frontend/apps/store/src/StorefrontApp.jsx` | Storefront checkout and tracking behavior. | Forces an open F&B drawer to the Cart tab, fixes array-based tracking-card expansion state wiring, hydrates saved guest details once per guest checkout session, limits selectable payment to cash, and adds OTP resend cooldown handling. |
+| `frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx` | Customer account drawer presentation. | Adds explicit `drawer` and `page` presentation modes. The drawer is fixed, scrollable, and layered above Discovery navigation; the standalone account page retains normal layout. |
+| `frontend/apps/store/src/__tests__/fnbStorefront.contract.test.js` | Storefront regression coverage. | Covers tracking drawer prop wiring, cart-tab normalization, one-time guest-detail hydration, and cash-only checkout payment selection. |
+| `frontend/apps/store/src/__tests__/DgfyCustomerAccountPage.dashboard.test.jsx` | Customer account presentation test. | Confirms drawer presentation uses fixed positioning and a stacking layer above the Discovery header. |
+| `frontend/apps/store/src/__tests__/guestCheckoutOtp.contract.test.js` | Guest OTP UI contract test. | Confirms cooldown state, the 60-second post-send cooldown, and resend countdown copy. |
+| `backend/src/middleware/rateLimiter.js` | Guest checkout OTP protection. | Creates separate tenant/IP/email rate-limit buckets for code sends and code verification attempts while preserving server `Retry-After` responses. |
+| `backend/src/routes/store.js` | Store checkout OTP transport. | Applies the request limiter only to the send endpoint and the verification limiter only to the verify endpoint. |
+| `backend/tests/rateLimiter.behavior.test.js` | Backend OTP limiter test. | Proves a guest code send and a guest code verification use independent limiter buckets. |
 
 ### Current Storefront Behavior
 
@@ -74,6 +77,7 @@ This document inventories the committed promo-related and Storefront-related cha
 | File | Purpose | Change summary |
 | --- | --- | --- |
 | `docs/compliance/impact-declarations/2026-07-13-pos-storefront-promo-and-order-address-ui.md` | Compliance impact declaration. | Records that the work is frontend-only and does not alter fiscal calculations, payment collection, receipt issuance, API routes, persisted transaction records, or database migrations. |
+| `docs/features/DGFY_CUSTOMER_ACCOUNT.md` | Authoritative Storefront customer checkout contract. | Documents guest OTP resend/rate-limit behavior and cash-only Storefront payment availability until online-payment readiness is established. |
 | `Implementation.md` | Engineering implementation log. | Records implementation details for the promo and Storefront/POS UI work. |
 | `Plan.md` | Engineering planning log. | Records planning context for the related implementation work. |
 
