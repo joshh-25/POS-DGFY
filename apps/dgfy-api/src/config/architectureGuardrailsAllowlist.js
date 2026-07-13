@@ -66,7 +66,11 @@ export const ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST = Object.freeze([
     // event ingestion + operator retry-finalization) controller follows the
     // same locked apps/dgfy-api Clean-Architecture naming (*Controller.js,
     // not backend/'s *Handlers.js convention) as the entries above.
-    '../apps/dgfy-api/src/modules/commercePayments/controllers/webhookController.js'
+    '../apps/dgfy-api/src/modules/commercePayments/controllers/webhookController.js',
+    // Phase 11 (11-02-PLAN.md): fulfillment module controller follows the
+    // same locked apps/dgfy-api Clean-Architecture naming (*Controller.js,
+    // not backend/'s *Handlers.js convention) as the entries above.
+    '../apps/dgfy-api/src/modules/fulfillment/controllers/fulfillmentController.js'
 ]);
 
 // apps/dgfy-api has no usecase-layer legacy-service-import exceptions yet.
