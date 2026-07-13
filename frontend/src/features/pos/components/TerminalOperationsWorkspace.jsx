@@ -86,6 +86,7 @@ import { getAllUsers, updatePosApprovalPin, updateProfile } from '@/services/use
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
+import { getStorefrontPromoScheduleValidationError } from '@/src/features/pos/utils/storefrontPromoSchedule.js';
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
@@ -4418,24 +4419,9 @@ function SettingsWorkspace({
       const seenPromoCodes = new Set();
       for (const promo of storefrontPromos) {
         const promoCode = String(promo.promo_code || '').trim().toUpperCase();
-        const invalidTime = [promo.valid_time_start, promo.valid_time_end]
-          .find((value) => String(value || '').trim() && !PROMO_TIME_24_HOUR_PATTERN.test(String(value).trim()));
-        if (invalidTime) {
-          toast.error('Promo times must use the 24-hour HH:mm format, for example 14:30.');
-          return;
-        }
-        const from = buildPromoDateTimeValue(promo.valid_from, promo.valid_time_start);
-        const to = buildPromoDateTimeValue(promo.valid_until, promo.valid_time_end);
-        if ((promo.valid_from || promo.valid_time_start) && !from) {
-          toast.error('Promo From must include both a date and a 24-hour time.');
-          return;
-        }
-        if ((promo.valid_until || promo.valid_time_end) && !to) {
-          toast.error('Promo To must include both a date and a 24-hour time.');
-          return;
-        }
-        if (from && to && from > to) {
-          toast.error('Promo From must be earlier than Promo To.');
+        const scheduleValidationError = getStorefrontPromoScheduleValidationError(promo);
+        if (scheduleValidationError) {
+          toast.error(scheduleValidationError);
           return;
         }
         if (!promoCode) continue;
