@@ -12,6 +12,12 @@ import defineBookingCapacityModel from '../models/Tenant/BookingCapacity.js';
 import defineShiftModel from '../models/Tenant/Shift.js';
 import defineCashDrawerEventModel from '../models/Tenant/CashDrawerEvent.js';
 import defineComplianceModeStateModel from '../models/Tenant/ComplianceModeState.js';
+import defineAvailmentModel from '../models/Tenant/Availment.js';
+import defineAvailmentItemModel from '../models/Tenant/AvailmentItem.js';
+import defineAvailmentDiscountModel from '../models/Tenant/AvailmentDiscount.js';
+import definePaymentModel from '../models/Tenant/Payment.js';
+import defineReceiptModel from '../models/Tenant/Receipt.js';
+import defineComplianceEvidenceModel from '../models/Tenant/ComplianceEvidence.js';
 
 // Minimal per-tenant-database connection cache for apps/dgfy-api (Wave 4,
 // 04-04-PLAN.md's key_links: "TenantConnector -> resolves per-tenant
@@ -118,7 +124,7 @@ export class TenantConnector {
      * — the plan explicitly forbids that); this method only wires them
      * together into one reachable registry with associations applied.
      * @param {string} databaseName
-     * @returns {{Location, StaffAccount, StaffInvitation, AccountStaffAssignment, TerminalIdentity, Product, ProductFolder, InventoryMovement, Booking, BookingCapacity, Shift, CashDrawerEvent, ComplianceModeState}}
+     * @returns {{Location, StaffAccount, StaffInvitation, AccountStaffAssignment, TerminalIdentity, Product, ProductFolder, InventoryMovement, Booking, BookingCapacity, Shift, CashDrawerEvent, ComplianceModeState, Availment, AvailmentItem, AvailmentDiscount, Payment, Receipt, ComplianceEvidence}}
      */
     getModels(databaseName) {
         if (this.modelsByDatabase.has(databaseName)) {
@@ -143,7 +149,19 @@ export class TenantConnector {
             BookingCapacity: defineBookingCapacityModel,
             Shift: defineShiftModel,
             CashDrawerEvent: defineCashDrawerEventModel,
-            ComplianceModeState: defineComplianceModeStateModel
+            ComplianceModeState: defineComplianceModeStateModel,
+            // Phase 9 (09-01): POS Checkout & Payment tenant models — see
+            // apps/dgfy-api/src/models/Tenant/{Availment,AvailmentItem,
+            // AvailmentDiscount,Payment,Receipt,ComplianceEvidence}.js.
+            // (Deviation, Rule 2: these six models existed but were never
+            // registered here — every availments-module repository call
+            // would have resolved `undefined` at runtime; see 09-06-SUMMARY.md.)
+            Availment: defineAvailmentModel,
+            AvailmentItem: defineAvailmentItemModel,
+            AvailmentDiscount: defineAvailmentDiscountModel,
+            Payment: definePaymentModel,
+            Receipt: defineReceiptModel,
+            ComplianceEvidence: defineComplianceEvidenceModel
         };
 
         const models = {};
