@@ -5,16 +5,16 @@ milestone_name: Commerce Domain — Product, Checkout & Fulfillment
 current_phase: 08
 current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
-stopped_at: Completed 08-11-PLAN.md (FSC-01 closed) -- 08-11-SUMMARY.md written; 08-12 gap-closure plan (CR-02/CR-03 lock-race hardening) next
-last_updated: "2026-07-13T00:07:50.879Z"
+stopped_at: Completed 08-12-PLAN.md (CR-02/CR-03 lock-race hardening closed) -- 08-12-SUMMARY.md written; Phase 08 gap-closure complete
+last_updated: "2026-07-13T00:13:53.065Z"
 last_activity: 2026-07-13
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 11
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 47
-  completed_plans: 43
-  percent: 55
+  completed_plans: 44
+  percent: 64
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 ## Current Position
 
 Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 Status: Ready to execute
 Last activity: 2026-07-13 — Phase 08 execution started
 
@@ -101,6 +101,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overa
 | Phase 08 P08 | 12min | 2 tasks | 2 files |
 | Phase 08 P09 | 22min | 3 tasks | 9 files |
 | Phase 08 P11 | 10min | 2 tasks | 2 files |
+| Phase 08 P12 | 15min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,7 @@ Recent decisions affecting current work:
 - [Phase 08]: P09: reused checklist.activation_blockers[0]'s already-assembled reason code in the new compliant_active full-checklist gate guard rather than duplicating a per-signal mapping table, since profile/settings/artifacts/peripherals are already proven complete by the four checks above it
 - [Phase 08]: P11: reject/revoke demotion to non_compliant_active is unconditional — no explicit newState required or consulted for these two outcomes (FSC-01)
 - [Phase 08]: P11: state-demotion is the single source of truth for FSC-01 — no parallel verification_status branch added to complianceGate.js/evaluateComplianceDecision()
+- [Phase 08]: P12: cancelBooking/closeShift guard reads row-locked (lock: transaction.LOCK.UPDATE) to close CR-02/CR-03 concurrent double-submit races, mirroring the create-path's atomic-guard discipline
 
 ### Pending Todos
 
@@ -160,7 +162,7 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-13T00:07:50.872Z
-Stopped at: Completed 08-11-PLAN.md (FSC-01 closed) -- 08-11-SUMMARY.md written; 08-12 gap-closure plan (CR-02/CR-03 lock-race hardening) next
+Last session: 2026-07-13T00:13:53.058Z
+Stopped at: Completed 08-12-PLAN.md (CR-02/CR-03 lock-race hardening closed) -- 08-12-SUMMARY.md written; Phase 08 gap-closure complete
 Resume file: 
 None
