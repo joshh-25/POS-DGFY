@@ -337,7 +337,34 @@ Plans:
   4. Staff can select a payment method (Cash, GCash, Credit Card) per Availment, with the method and amount recorded (not a live gateway charge); an Availment is rejected unless the cashier and terminal have an open shift.
   5. A completed Availment produces a receipt reflecting every applied discount and tax, gated by the Phase 8 compliance policy engine.
 
-**Plans**: TBD
+**Plans**: 8 plans
+
+Plans:
+**Wave 1** *(parallel — no shared files)*
+
+- [ ] 09-01-PLAN.md — Schema foundation: availment-checkout migration (availments/availment_items/payments/receipts/compliance_evidence) + 5 Tenant models + tenantConnector registration + dgfyBusinessContract entries (CHK-01, CHK-04, CHK-05, CHK-06, FSC-03)
+- [ ] 09-02-PLAN.md — money.js integer-centavo engine (VAT-inclusive decomposition, SC/PWD VAT-exempt 20%, independent stacking, server-side change) + golden tests (CHK-02, FSC-03)
+- [ ] 09-03-PLAN.md — Finalize integration seams: inventory sale usecase + txn-aware stock sync, ShiftRepository.findOpenShift + repo exposure, compliance-gate context passthrough, device-bridge HTTP client (CHK-04, CHK-06)
+
+**Wave 2** *(blocked on 09-01)*
+
+- [ ] 09-04-PLAN.md — Availments persistence: entity + tenant repository (scaffold, line CRUD, soft-delete/restore, atomic finalizePersist) + module shell (CHK-01)
+
+**Wave 3** *(blocked on 09-04, 09-02)*
+
+- [ ] 09-05-PLAN.md — Availment line-editing + permission-gated manual discount usecases + controller + routes + module wiring + CRUD tests (CHK-01, CHK-03)
+
+**Wave 4** *(blocked on 09-05, 09-03)*
+
+- [ ] 09-06-PLAN.md — finalizeAvailment orchestration (server-side money, compliance gate + evidence bundle, open-shift bind, atomic persist + sale effects, best-effort print) + interim compliance-evidence attestation store + finalize integration test (CHK-02, CHK-03, CHK-04, CHK-05, CHK-06, FSC-03)
+
+**Wave 5** *(blocked on 09-06)*
+
+- [ ] 09-07-PLAN.md — Composition-root wiring + /v1/availments mount + mount transport test (CHK-04, CHK-05)
+
+**Wave 6** *(blocked on 09-07; [BLOCKING] live-MySQL schema apply, non-autonomous)*
+
+- [ ] 09-08-PLAN.md — Apply Phase 9 schema to a real tenant DB via migration-runner + verify evidence + live-gated end-to-end finalize test (CHK-01, CHK-05, CHK-06)
 
 ### Phase 10: Storefront Discovery & Online Ordering
 
@@ -381,6 +408,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 6. Release Evidence and Rehearsal Gates | 3/3 | Complete    | 2026-07-12 |
 | 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |
 | 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 13/13 | Complete   | 2026-07-13 |
-| 9. POS Checkout & Payment | 0/TBD | Not started | - |
+| 9. POS Checkout & Payment | 0/8 | Not started | - |
 | 10. Storefront Discovery & Online Ordering | 0/TBD | Not started | - |
 | 11. Order Fulfillment & Delivery Coordination | 0/TBD | Not started | - |
