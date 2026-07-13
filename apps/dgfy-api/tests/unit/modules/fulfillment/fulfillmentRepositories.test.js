@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { StageEventRepository } from '../../../../src/modules/fulfillment/repositories/stageEventRepository.js';
 import { CourierAssignmentRepository } from '../../../../src/modules/fulfillment/repositories/courierAssignmentRepository.js';
+import { AvailmentReadRepository } from '../../../../src/modules/fulfillment/repositories/availmentReadRepository.js';
 
 // Mirrors tests/unit/modules/inventory/inventoryMovementUseCases.test.js's
 // mock-Sequelize style: makeModels() returns Model stubs with
@@ -47,6 +48,33 @@ const makeCourierRow = (overrides = {}) => {
     row.get = ({ plain } = {}) => (plain ? { ...row } : row);
     return row;
 };
+
+const makeAvailmentRow = (overrides = {}) => {
+    const row = {
+        id: 20,
+        business_id: 'biz-1',
+        branch_id: null,
+        fulfillment_mode: 'pickup',
+        fulfillment_status: 'placed',
+        fulfillment_stage: null,
+        status: 'finalized',
+        customer_account_id: null,
+        total_amount: 250,
+        created_at: new Date('2026-07-14T00:00:00Z'),
+        updated_at: new Date('2026-07-14T00:00:00Z'),
+        ...overrides
+    };
+    row.get = ({ plain } = {}) => (plain ? { ...row } : row);
+    return row;
+};
+
+function makeAvailmentModel({ findAllImpl, findOneImpl, updateImpl } = {}) {
+    return {
+        findAll: jest.fn(findAllImpl || (async () => [makeAvailmentRow()])),
+        findOne: jest.fn(findOneImpl || (async () => makeAvailmentRow())),
+        update: jest.fn(updateImpl || (async () => [1]))
+    };
+}
 
 function makeStageEventModel({ createImpl, bulkCreateImpl } = {}) {
     return {
@@ -277,6 +305,137 @@ describe('CourierAssignmentRepository — payout mutable, identity append-only',
             availmentId: 10,
             courierName: 'Juan Dela Cruz'
         })).rejects.toMatchObject({ name: 'TenantDatabaseUnavailableError', reason: 'missing' });
+    });
+});
+
+describe('AvailmentReadRepository — FUL-01 read path (D-08) + FUL-02 single-availment load/sync', () => {
+    it('exposes findIncomingAvailments/findById/updateFulfillmentState (no generic create/destroy)', () => {
+        const models = { Availment: makeAvailmentModel() };
+        const repository = new AvailmentReadRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        expect(typeof repository.findIncomingAvailments).toBe('function');
+        expect(typeof repository.findById).toBe('function');
+        expect(typeof repository.updateFulfillmentState).toBe('function');
+        expect(repository.create).toBeUndefined();
+        expect(repository.destroy).toBeUndefined();
+    });
+
+    it('builds a where clause scoped to online in-progress statuses/modes with no filters', async () => {
+        const models = { Availment: makeAvailmentModel() };
+        const repository = new AvailmentReadRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        await repository.findIncomingAvailments('biz-1');
+
+        const callArgs = models.Availment.findAll.mock.calls[0][0];
+        expect(callArgs.where.business_id).toBe('biz-1');
+        expect(callArgs.where.fulfillment_mode[Object.getOwnPropertySymbols(callArgs.where.fulfillment_mode)[0]]).toEqual(['pickup', 'delivery']);
+        expect(callArgs.where.fulfillment_status[Object.getOwnPropertySymbols(callArgs.where.fulfillment_status)[0]]).toEqual(['placed', 'confirmed', 'preparing']);
+        expect(callArgs.where.branch_id).toBeUndefined();
+    });
+
+    it('narrows to a single mode when fulfillmentMode is provided', async () => {
+        const models = { Availment: makeAvailmentModel() };
+        const repository = new AvailmentReadRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        await repository.findIncomingAvailments('biz-1', { fulfillmentMode: 'delivery' });
+
+        const callArgs = models.Availment.findAll.mock.calls[0][0];
+        expect(callArgs.where.fulfillment_mode).toBe('delivery');
+    });
+
+    it('narrows to a single branch when branchId is provided', async () => {
+        const models = { Availment: makeAvailmentModel() };
+        const repository = new AvailmentReadRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        await repository.findIncomingAvailments('biz-1', { branchId: 7 });
+
+        const callArgs = models.Availment.findAll.mock.calls[0][0];
+        expect(callArgs.where.branch_id).toBe(7);
+    });
+
+    it('returns only the mocked online in-progress rows', async () => {
+        const models = { Availment: makeAvailmentModel({ findAllImpl: async () => [makeAvailmentRow({ id: 21, fulfillment_mode: 'delivery', fulfillment_status: 'confirmed' })] }) };
+        const repository = new AvailmentReadRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        const rows = await repository.findIncomingAvailments('biz-1');
+
+        expect(rows).toHaveLength(1);
+        expect(rows[0].id).toBe(21);
+        expect(rows[0].fulfillment_mode).toBe('delivery');
+    });
+
+    it('findById loads a single availment by id, unfiltered by D-08 in-progress scope (e.g. a completed row)', async () => {
+        const models = { Availment: makeAvailmentModel({ findOneImpl: async () => makeAvailmentRow({ id: 20, fulfillment_status: 'completed' }) }) };
+        const repository = new AvailmentReadRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        const row = await repository.findById('biz-1', 20);
+
+        expect(models.Availment.findOne).toHaveBeenCalledWith({ where: { id: 20, business_id: 'biz-1' } });
+        expect(row.fulfillment_status).toBe('completed');
+    });
+
+    it('updateFulfillmentState issues a real Model.update scoped to only fulfillment_status/fulfillment_stage', async () => {
+        const models = { Availment: makeAvailmentModel() };
+        const repository = new AvailmentReadRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        await repository.updateFulfillmentState('biz-1', 20, { fulfillmentStatus: 'confirmed', fulfillmentStage: 'confirmed' });
+
+        expect(models.Availment.update).toHaveBeenCalledWith(
+            { fulfillment_status: 'confirmed', fulfillment_stage: 'confirmed' },
+            expect.objectContaining({ where: { id: 20, business_id: 'biz-1' } })
+        );
+    });
+
+    it('updateFulfillmentState passes an injected transaction straight through', async () => {
+        const models = { Availment: makeAvailmentModel() };
+        const repository = new AvailmentReadRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+        const fakeTransaction = { id: 'txn-3' };
+
+        await repository.updateFulfillmentState('biz-1', 20, { fulfillmentStatus: 'confirmed' }, { transaction: fakeTransaction });
+
+        expect(models.Availment.update).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.objectContaining({ transaction: fakeTransaction })
+        );
+    });
+
+    it('surfaces a missing tenant database registry row as TenantDatabaseUnavailableError', async () => {
+        const models = { Availment: makeAvailmentModel() };
+        const repository = new AvailmentReadRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository({
+                findByBusinessId: jest.fn(async () => null)
+            })
+        });
+
+        await expect(repository.findIncomingAvailments('biz-1')).rejects.toMatchObject({
+            name: 'TenantDatabaseUnavailableError',
+            reason: 'missing'
+        });
     });
 });
 
