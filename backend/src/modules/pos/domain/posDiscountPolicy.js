@@ -8,6 +8,7 @@ const positiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
+const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 
 const validationError = (message, reasonCode, details = {}) => {
     throw new DomainError(DomainErrorCode.VALIDATION_FAILED, message, {
@@ -95,7 +96,7 @@ export const resolvePosGovernedDiscount = async ({
         const selectedIds = [...new Set(selectedItems.map((entry) => entry.item_id))];
         if (selectedIds.length === 0) validationError('Select at least one eligible item.', 'STATUTORY_ITEM_SELECTION_REQUIRED');
         const linesByItemId = new Map(preparedLines.map((line) => [positiveInt(line.item_id), line]));
-        const invalidIds = selectedIds.filter((itemId) => linesByItemId.get(itemId)?.senior_pwd_discount_eligible !== true);
+        const invalidIds = selectedIds.filter((itemId) => !isSeniorPwdDiscountEligible(linesByItemId.get(itemId)?.senior_pwd_discount_eligible));
         if (invalidIds.length > 0) {
             validationError('One or more selected items are not eligible for Senior/PWD discount.', 'STATUTORY_ITEM_NOT_ELIGIBLE', { item_ids: invalidIds });
         }

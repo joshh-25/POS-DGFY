@@ -168,6 +168,7 @@ const parsePositiveInt = (value) => {
     if (!Number.isInteger(normalized) || normalized <= 0) return null;
     return normalized;
 };
+const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 
 const nowInManilaBusinessDate = () => (
     new Intl.DateTimeFormat('en-CA', {
@@ -2519,7 +2520,7 @@ export const buildCheckoutPosUseCase = ({
                     line_subtotal: lineSubtotal,
                     vat_type_snapshot: item.vat_type || 'vatable',
                     vat_rate_snapshot: VAT_RATE,
-                    senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
+                    senior_pwd_discount_eligible: isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible),
                     fnb_course_snapshot: normalizeFnbCourse(line.course),
                     fnb_modifiers_snapshot: modifierResolution.modifiersSnapshot,
                     fnb_special_instructions: String(line.special_instructions || '').trim().slice(0, 1000) || null,

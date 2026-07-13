@@ -31,6 +31,16 @@ describe('POS governed discount calculator', () => {
         expect(result.vat_removed).toBe(0);
     });
 
+    test('treats the MySQL boolean value 1 as Senior/PWD eligible', () => {
+        const result = calculatePosDiscount({
+            lines: [{ item_id: 1, quantity: 1, sale_price: 112, vat_type_snapshot: 'vatable', senior_pwd_discount_eligible: 1 }],
+            application: { type: 'senior', method: 'percentage', lines: [{ item_id: 1 }] }
+        });
+
+        expect(result.discount_amount).toBe(20);
+        expect(result.vat_removed).toBe(12);
+    });
+
     test('applies commercial promo only to configured target lines', () => {
         const result = calculatePosDiscount({
             lines,

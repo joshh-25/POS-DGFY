@@ -82,7 +82,7 @@ import {
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
 import { deleteStorefrontAsset, getCompanyInfo, getAllSettings, updateSettingByKey, updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
-import { updateProfile } from '@/services/userService.js';
+import { getAllUsers, updatePosApprovalPin, updateProfile } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
@@ -1562,7 +1562,7 @@ function ItemsWorkspace({
       default_sale_price: String(item?.default_sale_price ?? ''),
       cost_per_unit: String(item?.cost_per_unit ?? ''),
       pos_always_available: item?.pos_always_available === true,
-      senior_pwd_discount_eligible: item?.senior_pwd_discount_eligible === true,
+      senior_pwd_discount_eligible: item?.senior_pwd_discount_eligible === true || Number(item?.senior_pwd_discount_eligible) === 1,
       description: String(item?.description || ''),
       // Item lists do not always hydrate the nested folder name. Resolve by saved ID first.
       pos_category: matchedActiveCategory?.value || (savedFolderId
@@ -3362,6 +3362,7 @@ function SettingsWorkspace({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const canManageCashiers = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('users:manage');
+  const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
   const canManageCategories = terminalUser?.is_master_admin === true
     || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -3378,6 +3379,11 @@ function SettingsWorkspace({
   const [cashierUsers, setCashierUsers] = useState([]);
   const [cashiersLoading, setCashiersLoading] = useState(false);
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
+  const [discountApprovers, setDiscountApprovers] = useState([]);
+  const [discountApproversLoading, setDiscountApproversLoading] = useState(false);
+  const [approvalPinUser, setApprovalPinUser] = useState(null);
+  const [approvalPin, setApprovalPin] = useState('');
+  const [savingApprovalPin, setSavingApprovalPin] = useState(false);
   const [storefrontPromoItemOptions, setStorefrontPromoItemOptions] = useState([]);
   const [storefrontPromoItemsLoading, setStorefrontPromoItemsLoading] = useState(false);
   const [storefrontPromoCandidateItemId, setStorefrontPromoCandidateItemId] = useState('');
@@ -3642,6 +3648,57 @@ function SettingsWorkspace({
     }
   }, [canManageCashiers]);
 
+  const loadDiscountApprovers = useCallback(async ({ silent = false } = {}) => {
+    if (!canManageDiscountApprovalPins) {
+      setDiscountApprovers([]);
+      return;
+    }
+    if (!silent) setDiscountApproversLoading(true);
+    try {
+      const rows = await getAllUsers({ include_invitations: false });
+      setDiscountApprovers((Array.isArray(rows) ? rows : [])
+        .filter((user) => user?.is_active !== false && !user?.deleted_at)
+        .filter((user) => ['admin', 'manager'].includes(String(user?.role || '').trim().toLowerCase()))
+        .sort((left, right) => String(left?.username || '').localeCompare(String(right?.username || ''))));
+    } catch (error) {
+      if (!silent) {
+        toast.error(error?.response?.data?.message || 'Failed to load discount approvers.');
+      }
+    } finally {
+      setDiscountApproversLoading(false);
+    }
+  }, [canManageDiscountApprovalPins]);
+
+  const closeApprovalPinDialog = useCallback(() => {
+    if (savingApprovalPin) return;
+    setApprovalPinUser(null);
+    setApprovalPin('');
+  }, [savingApprovalPin]);
+
+  const saveApprovalPin = useCallback(async ({ clear = false } = {}) => {
+    if (!approvalPinUser) return;
+    if (!clear && !/^\d{4,12}$/.test(approvalPin)) {
+      toast.error('POS approval PIN must contain 4 to 12 digits.');
+      return;
+    }
+    setSavingApprovalPin(true);
+    try {
+      const updated = await updatePosApprovalPin(approvalPinUser.user_id, { pin: approvalPin, clear });
+      setDiscountApprovers((current) => current.map((user) => (
+        user.user_id === approvalPinUser.user_id
+          ? { ...user, pos_approval_pin_configured: updated.pos_approval_pin_configured === true }
+          : user
+      )));
+      toast.success(clear ? 'POS approval PIN cleared.' : 'POS approval PIN configured.');
+      setApprovalPinUser(null);
+      setApprovalPin('');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update POS approval PIN.');
+    } finally {
+      setSavingApprovalPin(false);
+    }
+  }, [approvalPin, approvalPinUser]);
+
   const loadStorefrontPromoItems = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setStorefrontPromoItemsLoading(true);
@@ -3809,6 +3866,10 @@ function SettingsWorkspace({
   useEffect(() => {
     loadCashierAccounts({ silent: true });
   }, [loadCashierAccounts]);
+
+  useEffect(() => {
+    loadDiscountApprovers({ silent: true });
+  }, [loadDiscountApprovers]);
 
   useEffect(() => {
     loadStorefrontPromoItems({ silent: true });
@@ -5264,8 +5325,9 @@ function SettingsWorkspace({
               </div>
             </div>
             {terminalUser?.is_master_admin === true ? (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="grid gap-3 md:grid-cols-[minmax(0,280px)_auto] md:items-start">
+              <div className="mt-4 grid gap-3">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,280px)_auto] md:items-start">
                   <div className="grid gap-1.5">
                     <Label className="text-[12px] font-black text-[#0F172A]">Settings Access PIN</Label>
                     <Input
@@ -5312,6 +5374,50 @@ function SettingsWorkspace({
                       >
                         Clear PIN
                       </Button>
+                    ) : null}
+                  </div>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[12px] font-black text-[#0F172A]">POS Discount Approval PINs</p>
+                      <p className="mt-1 text-[11px] text-[#64748B]">Configure the write-only PIN used by Admin and Manager approvers for Employee and Manual discounts.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-lg px-3 text-[12px] font-extrabold"
+                      onClick={() => loadDiscountApprovers()}
+                      disabled={locked || loading || discountApproversLoading}
+                    >
+                      {discountApproversLoading ? 'Refreshing...' : 'Refresh'}
+                    </Button>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {discountApprovers.map((user) => (
+                      <div key={`discount-approver-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
+                          <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {user.pos_approval_pin_configured ? 'PIN configured' : 'PIN not set'}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-teal-700"
+                          onClick={() => {
+                            setApprovalPinUser(user);
+                            setApprovalPin('');
+                          }}
+                          disabled={locked || loading}
+                        >
+                          <KeyRound className="mr-1.5 h-4 w-4" />
+                          {user.pos_approval_pin_configured ? 'Reset PIN' : 'Set PIN'}
+                        </Button>
+                      </div>
+                    ))}
+                    {!discountApproversLoading && discountApprovers.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active Admin or Manager approvers are available.</p>
                     ) : null}
                   </div>
                 </div>
@@ -6390,6 +6496,57 @@ function SettingsWorkspace({
         submitLabel="Send Cashier Invitation"
         locationOptions={locations}
       />
+      <Dialog open={Boolean(approvalPinUser)} onOpenChange={(open) => !open && closeApprovalPinDialog()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-teal-600" />
+              POS Discount Approval PIN
+            </DialogTitle>
+            <DialogDescription>
+              This PIN is used only to approve Employee and Manual discounts. It cannot be viewed after saving.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <p className="font-semibold">{approvalPinUser?.username || approvalPinUser?.email}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {approvalPinUser?.pos_approval_pin_configured
+                  ? 'A PIN is configured. Enter a new PIN to replace it.'
+                  : 'Configure a PIN this approver will enter for Employee and Manual discounts.'}
+              </p>
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-slate-800">New approval PIN</Label>
+              <Input
+                value={approvalPin}
+                onChange={(event) => setApprovalPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                placeholder="4 to 12 digits"
+                className="mt-1"
+                disabled={savingApprovalPin}
+              />
+            </div>
+          </div>
+          <DialogFooter className="mt-4 flex-row justify-between gap-2 border-t pt-4 sm:justify-between">
+            <div>
+              {approvalPinUser?.pos_approval_pin_configured ? (
+                <Button type="button" variant="outline" onClick={() => saveApprovalPin({ clear: true })} disabled={savingApprovalPin} className="text-rose-600">
+                  Clear PIN
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={closeApprovalPinDialog} disabled={savingApprovalPin}>Cancel</Button>
+              <Button type="button" onClick={() => saveApprovalPin()} disabled={savingApprovalPin} className="bg-teal-600 hover:bg-teal-700">
+                {savingApprovalPin ? 'Saving...' : 'Save PIN'}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

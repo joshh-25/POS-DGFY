@@ -107,6 +107,7 @@ const RECEIPT_PAPER_OPTIONS = [
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toArray = (value) => (Array.isArray(value) ? value : []);
+const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 const normalizePromoCode = (value) => String(value || '').trim().toUpperCase().slice(0, 40);
 const normalizeCommercialPromoConfigs = (settings = {}) => {
     const promos = Array.isArray(settings?.storefront_promos?.value) ? settings.storefront_promos.value : [];
@@ -128,7 +129,7 @@ const resolveCompanyIconFallbackUrl = (settings = {}) => (
 );
 const EMPTY_DISCOUNT_DRAFT = {
     type: 'senior', method: 'percentage', rate: '20', amount: '', customer_name: '',
-    id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], promo_code: ''
+    id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], promo_code: ''
 };
 const DISCOUNT_TYPE_OPTIONS = [
     { value: 'senior', label: 'Senior Citizen', icon: UserRound },
@@ -147,6 +148,7 @@ const DISCOUNT_INFO_MESSAGES = {
 const calculateGovernedDiscount = (cart, application) => {
     const cartRows = toArray(cart);
     const eligibleItemIds = toArray(application?.eligible_item_ids);
+    const eligibleItems = toArray(application?.eligible_items);
     const subtotal = round4(cartRows.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.sale_price || 0), 0));
     if (!application) return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: 0, total: subtotal };
     const statutory = application.type === 'senior' || application.type === 'pwd';
@@ -164,12 +166,18 @@ const calculateGovernedDiscount = (cart, application) => {
             : Math.min(discountBase, discountBase * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
         return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: round4(discountAmount), total: round4(subtotal - discountAmount) };
     }
-    const selected = new Set(eligibleItemIds.map(Number));
+    const selected = new Map(eligibleItems.length > 0
+        ? eligibleItems.map((entry) => [Number(entry?.item_id), Number(entry?.eligible_quantity)])
+        : eligibleItemIds.map((itemId) => [Number(itemId), null]));
     let vatRemoved = 0;
     let vatExemptAmount = 0;
     cartRows.forEach((line) => {
-        if (!selected.has(Number(line.item_id))) return;
-        const gross = round4(Number(line.quantity || 0) * Number(line.sale_price || 0));
+        const selectedQuantity = selected.get(Number(line.item_id));
+        if (selectedQuantity === undefined) return;
+        const quantity = selectedQuantity == null
+            ? Number(line.quantity || 0)
+            : Math.min(Number(line.quantity || 0), Math.max(0, selectedQuantity));
+        const gross = round4(quantity * Number(line.sale_price || 0));
         const exempt = (line.vat_type || 'vatable') === 'vatable' ? round4(gross / 1.12) : gross;
         vatExemptAmount = round4(vatExemptAmount + exempt);
         vatRemoved = round4(vatRemoved + gross - exempt);
@@ -803,8 +811,15 @@ export default function POSCheckoutTerminal({
     const safeQueuedCheckouts = toArray(queuedCheckouts);
     const safeHistoryRows = toArray(historyRows);
     const safeEligibleDiscountItemIds = toArray(discountDraft?.eligible_item_ids);
+    const safeEligibleDiscountItems = toArray(discountDraft?.eligible_items);
+    const isCartLineSeniorPwdEligible = (line) => (
+        isSeniorPwdDiscountEligible(line?.senior_pwd_discount_eligible)
+        || isSeniorPwdDiscountEligible(safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id))?.senior_pwd_discount_eligible)
+    );
     const signedInUserIsAdminLike = terminalUser?.is_master_admin === true
         || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
+    const signedInUserCanApproveManualDiscount = terminalUser?.is_master_admin === true
+        || ['admin', 'manager'].includes(String(terminalUser?.role || '').trim().toLowerCase());
     const terminalPermissionList = useMemo(() => {
         if (Array.isArray(terminalUser?.permissions)) return terminalUser.permissions;
         if (typeof terminalUser?.permissions !== 'string') return [];
@@ -817,7 +832,7 @@ export default function POSCheckoutTerminal({
     }, [terminalUser?.permissions]);
     const canVoidTransactions = signedInUserIsAdminLike || terminalPermissionList.includes('pos:void');
     const safeAppliedDiscount = appliedDiscount && typeof appliedDiscount === 'object'
-        ? { ...appliedDiscount, eligible_item_ids: toArray(appliedDiscount.eligible_item_ids) }
+        ? { ...appliedDiscount, eligible_item_ids: toArray(appliedDiscount.eligible_item_ids), eligible_items: toArray(appliedDiscount.eligible_items) }
         : null;
     const catalogCardClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
@@ -1804,7 +1819,7 @@ export default function POSCheckoutTerminal({
                             ...line,
                             quantity: safeQty,
                             vat_type: line.vat_type || item.vat_type || 'vatable',
-                            senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
+                            senior_pwd_discount_eligible: isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible),
                             scan_metadata: options.scanMetadata || line.scan_metadata || null
                         }
                         : line
@@ -1823,7 +1838,7 @@ export default function POSCheckoutTerminal({
                     unit_of_measure: item.unit_of_measure,
                     category: item.category,
                     vat_type: item.vat_type || 'vatable',
-                    senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
+                    senior_pwd_discount_eligible: isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible),
                     course: routed.course || normalizedFnbContext?.default_course || 'main',
                     kitchen_station_id: routed.kitchen_station_id || null,
                     fnbKitchenRoutes: Array.isArray(item.fnbKitchenRoutes) ? item.fnbKitchenRoutes : [],
@@ -2069,12 +2084,8 @@ export default function POSCheckoutTerminal({
     }, [safeCart.length, checkoutBlockedReason, normalizedTerminalId]);
 
     const openDiscountModal = async () => {
-        const eligibleItemIds = cart
-            .filter((line) => line.senior_pwd_discount_eligible === true)
-            .map((line) => Number(line.item_id));
         setDiscountDraft(appliedDiscount ? { ...EMPTY_DISCOUNT_DRAFT, ...appliedDiscount, manager_pin: '' } : {
-            ...EMPTY_DISCOUNT_DRAFT,
-            eligible_item_ids: eligibleItemIds
+            ...EMPTY_DISCOUNT_DRAFT
         });
         setDiscountModalOpen(true);
         setDiscountApproversLoading(true);
@@ -2094,6 +2105,10 @@ export default function POSCheckoutTerminal({
         const employeeDiscountRequiresApproval = type === 'employee' && !signedInUserIsAdminLike;
         const manualDiscountRequiresApproval = type === 'manual';
         const discountRequiresApproval = employeeDiscountRequiresApproval || manualDiscountRequiresApproval;
+        const manualDiscountUsesCurrentPosApprover = type === 'manual' && signedInUserCanApproveManualDiscount;
+        const approvalUserId = manualDiscountUsesCurrentPosApprover
+            ? Number(terminalUser?.user_id)
+            : Number(discountDraft.approver_user_id);
         if (!statutory && !discountDraft.customer_name.trim()) {
             toast.error('Customer name is required for this discount.');
             return;
@@ -2106,11 +2121,7 @@ export default function POSCheckoutTerminal({
             toast.error('Select at least one eligible item.');
             return;
         }
-        if (type === 'manual' && !discountDraft.reason.trim()) {
-            toast.error('A discount reason is required.');
-            return;
-        }
-        if (discountRequiresApproval && !Number(discountDraft.approver_user_id)) {
+        if (discountRequiresApproval && !approvalUserId) {
             toast.error('Select the manager or admin approving this discount.');
             return;
         }
@@ -2133,7 +2144,7 @@ export default function POSCheckoutTerminal({
             const verifiedApprover = discountRequiresApproval
                 ? await verifyPosDiscountApproval({
                     discount_type: type,
-                    approver_user_id: Number(discountDraft.approver_user_id),
+                    approver_user_id: approvalUserId,
                     manager_pin: discountDraft.manager_pin,
                     employee_user_id: type === 'employee' ? Number(discountDraft.employee_id) : null
                 })
@@ -2175,9 +2186,10 @@ export default function POSCheckoutTerminal({
                 rate: statutory ? 20 : (type === 'promo' ? configuredPromoRate : rate),
                 amount: type !== 'promo' && discountDraft.method === 'fixed' ? amount : null,
                 promo_code: type === 'promo' ? enteredPromoCode : discountDraft.promo_code,
-                approver_user_id: verifiedApprover?.user_id || discountDraft.approver_user_id,
+                approver_user_id: verifiedApprover?.user_id || approvalUserId || discountDraft.approver_user_id,
                 approver_name: verifiedApprover?.username || null,
-                eligible_item_ids: type === 'promo' ? promoEligibleItemIds : safeEligibleDiscountItemIds
+                eligible_item_ids: type === 'promo' ? promoEligibleItemIds : safeEligibleDiscountItemIds,
+                eligible_items: statutory ? safeEligibleDiscountItems : []
             });
             setSelectedDiscountProfile('');
             setManualDiscountMode('none');
@@ -3585,31 +3597,31 @@ export default function POSCheckoutTerminal({
                                 disabled={!canViewHistory}
                             >
                                 Go to History
-                            </Button>
-                        </div>
+                        </Button>
+                    </div>
                     )}
                 </div>
             )}
             </section>
 
             <Dialog open={discountModalOpen} onOpenChange={setDiscountModalOpen}>
-                <DialogContent className="relative flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-[900px] flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white p-0 shadow-xl shadow-slate-950/20 sm:w-[calc(100vw-2rem)]">
+                <DialogContent className="relative flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-[480px] flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white p-0 shadow-xl shadow-slate-950/20 sm:w-[calc(100vw-2rem)]">
                     <button
                         type="button"
                         onClick={() => setDiscountModalOpen(false)}
-                        className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-slate-100 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors focus-visible:outline-none"
+                        className="absolute right-3.5 top-3.5 flex h-7 w-7 items-center justify-center rounded-full border border-slate-100 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors focus-visible:outline-none"
                         aria-label="Close discount modal"
                     >
                         <X className="h-4 w-4" />
                     </button>
 
-                    <DialogHeader className="shrink-0 border-b border-slate-100 px-5 py-4 text-left sm:px-6 sm:py-4.5">
-                        <DialogTitle className="text-lg font-extrabold tracking-tight text-[#0F172A] sm:text-xl">Apply Discount</DialogTitle>
-                        <DialogDescription className="mt-0.5 text-xs text-[#64748B] sm:text-[13px]">Select the discount and complete all required verification details.</DialogDescription>
+                    <DialogHeader className="shrink-0 border-b border-slate-100 px-4 py-3 text-left">
+                        <DialogTitle className="text-base font-bold tracking-tight text-[#0F172A]">Apply Discount</DialogTitle>
+                        <DialogDescription className="mt-0.5 text-[11px] text-[#64748B]">Select the discount and complete all required verification details.</DialogDescription>
                     </DialogHeader>
 
-                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
-                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-5" role="tablist" aria-label="Discount Type">
+                    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+                        <div className="grid grid-cols-5 gap-1" role="tablist" aria-label="Discount Type">
                             {DISCOUNT_TYPE_OPTIONS.map((option) => {
                                 const TypeIcon = option.icon;
                                 const active = discountDraft.type === option.value;
@@ -3620,7 +3632,7 @@ export default function POSCheckoutTerminal({
                                         role="tab"
                                         aria-selected={active}
                                         aria-controls="discount-type-panel"
-                                        className={`flex h-[46px] items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 ${
+                                        className={`flex h-[48px] flex-col items-center justify-center gap-0.5 rounded-xl border p-1 text-[10px] font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 ${
                                             active
                                                 ? 'border-teal-600 bg-teal-50/20 text-teal-600 font-extrabold shadow-sm'
                                                 : 'border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-slate-50/50'
@@ -3631,49 +3643,69 @@ export default function POSCheckoutTerminal({
                                             rate: ['senior', 'pwd'].includes(option.value) ? '20' : previous.rate
                                         }))}
                                     >
-                                        <TypeIcon className={`h-4.5 w-4.5 shrink-0 transition-colors ${active ? 'text-teal-600' : 'text-slate-500'}`} aria-hidden="true" />
-                                        <span>{option.label}</span>
+                                        <TypeIcon className={`h-4 w-4 shrink-0 transition-colors ${active ? 'text-teal-600' : 'text-slate-500'}`} aria-hidden="true" />
+                                        <span className="truncate w-full text-center">{option.label}</span>
                                     </button>
                                 );
                             })}
                         </div>
 
-                        <div className="flex items-center gap-2.5 rounded-xl border border-blue-100 bg-blue-50/40 px-3.5 py-2.5 text-xs text-blue-700 font-medium">
-                            <Info className="h-4.5 w-4.5 shrink-0 text-blue-500" aria-hidden="true" />
+                        <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2 text-[11px] text-blue-700 font-medium leading-normal">
+                            <Info className="h-4 w-4 shrink-0 text-blue-500 mt-0.5" aria-hidden="true" />
                             <p>{DISCOUNT_INFO_MESSAGES[discountDraft.type]}</p>
                         </div>
 
-                        <div id="discount-type-panel" role="tabpanel" className="space-y-4">
-                            <div className="space-y-1.5">
-                                <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
-                                <div className="relative">
-                                    <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                    <Input
-                                        className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
-                                        placeholder="Enter customer name"
-                                        value={discountDraft.customer_name}
-                                        onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))}
-                                    />
+                        <div id="discount-type-panel" role="tabpanel" className="space-y-3">
+                            <div className="grid gap-2.5 grid-cols-2">
+                                <div className={`space-y-1 ${['senior', 'pwd', 'promo'].includes(discountDraft.type) ? 'col-span-1' : 'col-span-2'}`}>
+                                    <label className="text-xs font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
+                                    <div className="relative">
+                                        <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                        <Input
+                                            className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
+                                            placeholder="Enter customer name"
+                                            value={discountDraft.customer_name}
+                                            onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))}
+                                        />
+                                    </div>
                                 </div>
+
+                                {['senior', 'pwd'].includes(discountDraft.type) && (
+                                    <div className="space-y-1 col-span-1">
+                                        <label className="text-xs font-semibold text-[#0F172A]">Senior/PWD ID Number <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter ID number" value={discountDraft.id_number} onChange={(e) => setDiscountDraft((p) => ({ ...p, id_number: e.target.value }))} />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {discountDraft.type === 'promo' && (
+                                    <div className="space-y-1 col-span-1">
+                                        <label className="text-xs font-semibold text-[#0F172A]">Promo Code <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <Tag className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input
+                                                className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
+                                                placeholder="Enter promo code"
+                                                value={discountDraft.promo_code || ''}
+                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, promo_code: e.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {['senior', 'pwd'].includes(discountDraft.type) && (
-                                <div className="space-y-4">
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Senior/PWD ID Number <span className="text-rose-500">*</span></label>
-                                            <div className="relative">
-                                                <CreditCard className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                                <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter ID number" value={discountDraft.id_number} onChange={(e) => setDiscountDraft((p) => ({ ...p, id_number: e.target.value }))} />
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div className="space-y-2.5">
                                     <div>
-                                        <p className="mb-2 text-xs sm:text-[13px] font-semibold text-[#0F172A]">Eligible Items</p>
-                                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                                            {safeCart.map((line) => {
-                                                const itemEligible = line.senior_pwd_discount_eligible === true;
-                                                const checked = itemEligible && safeEligibleDiscountItemIds.includes(Number(line.item_id));
+                                        <p className="mb-1 text-xs font-semibold text-[#0F172A]">Eligible Items</p>
+                                        <p className="mb-2 text-[11px] text-slate-500">Select only items and quantities for this Senior/PWD customer.</p>
+                                        <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                                            {safeCart.some(isCartLineSeniorPwdEligible) ? safeCart.filter(isCartLineSeniorPwdEligible).map((line) => {
+                                                const checked = safeEligibleDiscountItemIds.includes(Number(line.item_id));
+                                                const selectedEntry = safeEligibleDiscountItems.find((entry) => Number(entry?.item_id) === Number(line.item_id));
+                                                const selectedQuantity = selectedEntry?.eligible_quantity ?? 1;
                                                 const catalogItem = safeCatalog.find((item) => item.item_id === line.item_id);
                                                 const imageSrc = catalogItem?.pos_image_url || catalogItem?.image_url || line.pos_image_url || '';
                                                 const resolvedSrc = imageSrc ? resolveAssetVariantUrl(imageSrc, 'thumbnail') : '';
@@ -3681,33 +3713,31 @@ export default function POSCheckoutTerminal({
                                                 return (
                                                     <label
                                                         key={`discount-line-${line.item_id}`}
-                                                        className={`flex min-h-[46px] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs sm:text-sm transition-all ${
-                                                            !itemEligible
-                                                                ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-55'
-                                                                : 'cursor-pointer'
-                                                        } ${
+                                                        className={`flex min-h-[32px] items-center justify-between gap-2.5 rounded-lg border px-2 py-1 text-xs transition-all cursor-pointer ${
                                                             checked
                                                                 ? 'border-teal-200 bg-teal-50/10'
                                                                 : 'border-slate-200 bg-white hover:border-slate-300'
                                                         }`}
                                                     >
-                                                        <div className="flex min-w-0 items-center gap-2.5">
+                                                        <div className="flex min-w-0 items-center gap-2">
                                                             <input
                                                                 type="checkbox"
-                                                                disabled={!itemEligible}
-                                                                className="h-4 w-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500 accent-teal-600 cursor-pointer"
+                                                                className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500 accent-teal-600 cursor-pointer"
                                                                 checked={checked}
                                                                 onChange={(e) =>
                                                                     setDiscountDraft((p) => ({
                                                                         ...p,
                                                                         eligible_item_ids: e.target.checked
                                                                             ? [...new Set([...toArray(p.eligible_item_ids), Number(line.item_id)])]
-                                                                            : toArray(p.eligible_item_ids).filter((id) => id !== Number(line.item_id))
+                                                                            : toArray(p.eligible_item_ids).filter((id) => id !== Number(line.item_id)),
+                                                                        eligible_items: e.target.checked
+                                                                            ? [...toArray(p.eligible_items).filter((entry) => Number(entry?.item_id) !== Number(line.item_id)), { item_id: Number(line.item_id), eligible_quantity: 1 }]
+                                                                            : toArray(p.eligible_items).filter((entry) => Number(entry?.item_id) !== Number(line.item_id))
                                                                     }))
                                                                 }
                                                             />
 
-                                                            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-md border border-slate-100 bg-slate-50 flex items-center justify-center">
+                                                            <div className="h-6 w-6 shrink-0 overflow-hidden rounded border border-slate-100 bg-slate-50 flex items-center justify-center">
                                                                 {resolvedSrc ? (
                                                                     <img
                                                                         src={resolvedSrc}
@@ -3715,7 +3745,7 @@ export default function POSCheckoutTerminal({
                                                                         className="h-full w-full object-cover"
                                                                     />
                                                                 ) : (
-                                                                    <div className="text-[10px] font-bold text-slate-400 uppercase">
+                                                                    <div className="text-[9px] font-bold text-slate-400 uppercase">
                                                                         {line.item_name ? line.item_name.substring(0, 2) : 'IT'}
                                                                     </div>
                                                                 )}
@@ -3724,65 +3754,101 @@ export default function POSCheckoutTerminal({
                                                             <span className="truncate font-semibold text-slate-700">{line.item_name}</span>
                                                         </div>
 
-                                                        <span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
-                                                            Qty: {formatQuantity(line.quantity)}
-                                                        </span>
+                                                        {checked ? (
+                                                            <div className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-slate-600">
+                                                                <span>Eligible:</span>
+                                                                <Input
+                                                                    aria-label={`Eligible quantity for ${line.item_name}`}
+                                                                    className="h-6 w-14 rounded-md px-1 text-center text-[10px]"
+                                                                    type="number"
+                                                                    min="1"
+                                                                    max={line.quantity}
+                                                                    step="0.001"
+                                                                    value={selectedQuantity}
+                                                                    onClick={(event) => event.stopPropagation()}
+                                                                    onChange={(event) => {
+                                                                        const requestedQuantity = Number(event.target.value);
+                                                                        const cartQuantity = Number(line.quantity || 0);
+                                                                        const eligibleQuantity = Number.isFinite(requestedQuantity)
+                                                                            ? Math.min(Math.max(requestedQuantity, 1), cartQuantity)
+                                                                            : 1;
+                                                                        setDiscountDraft((previous) => ({
+                                                                            ...previous,
+                                                                            eligible_items: toArray(previous.eligible_items).map((entry) => (
+                                                                                Number(entry?.item_id) === Number(line.item_id)
+                                                                                    ? { ...entry, eligible_quantity: eligibleQuantity }
+                                                                                    : entry
+                                                                            ))
+                                                                        }));
+                                                                    }}
+                                                                />
+                                                                <span>of {formatQuantity(line.quantity)}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                                                                Qty: {formatQuantity(line.quantity)}
+                                                            </span>
+                                                        )}
                                                     </label>
                                                 );
-                                            })}
+                                            }) : (
+                                                <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800" role="status">
+                                                    No eligible items are in this cart. In Items, enable Senior/PWD Eligible and save the item, then remove and re-add it to this cart.
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
                             )}
 
                             {discountDraft.type === 'employee' && (
-                                <div className="grid gap-3 sm:grid-cols-2 mb-3">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Employee Name <span className="font-medium text-slate-400">(optional)</span></label>
+                                <div className="grid gap-2.5 grid-cols-2">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-[#0F172A]">Employee Name <span className="font-medium text-slate-400">(optional)</span></label>
                                         <div className="relative">
-                                            <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee name" value={discountDraft.employee_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_name: e.target.value }))} />
+                                            <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee name" value={discountDraft.employee_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_name: e.target.value }))} />
                                         </div>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Employee ID <span className="font-medium text-slate-400">(optional)</span></label>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-[#0F172A]">Employee ID <span className="font-medium text-slate-400">(optional)</span></label>
                                         <div className="relative">
-                                            <CreditCard className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee ID" value={discountDraft.employee_id} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_id: e.target.value }))} />
+                                            <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee ID" value={discountDraft.employee_id} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_id: e.target.value }))} />
                                         </div>
                                     </div>
                                 </div>
                             )}
 
                             {['employee', 'manual'].includes(discountDraft.type) && (
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Method <span className="text-rose-500">*</span></label>
+                                <div className="grid gap-2.5 grid-cols-2">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-[#0F172A]">Method <span className="text-rose-500">*</span></label>
                                         <div className="relative">
-                                            <CreditCard className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                             <select
                                                 value={discountDraft.method}
                                                 onChange={(e) => setDiscountDraft((p) => ({ ...p, method: e.target.value }))}
-                                                className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                                                className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
                                             >
                                                 <option value="percentage">Percentage</option>
                                                 <option value="fixed">Fixed Amount</option>
                                             </select>
-                                            <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                         </div>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-[#0F172A]">
                                             {discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'} <span className="text-rose-500">*</span>
                                         </label>
                                         <div className="relative">
                                             {discountDraft.method === 'fixed' ? (
-                                                <CreditCard className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                                <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                             ) : (
-                                                <Percent className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                                <Percent className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                             )}
                                             <Input
-                                                className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
+                                                className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
                                                 placeholder={discountDraft.method === 'fixed' ? 'Enter amount' : 'Enter rate'}
                                                 type="number"
                                                 min="0"
@@ -3796,85 +3862,58 @@ export default function POSCheckoutTerminal({
                             )}
 
                             {discountDraft.type === 'promo' && (
-                                <div className="space-y-1.5 sm:col-span-2 mt-3">
-                                    <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Promo Code <span className="text-rose-500">*</span></label>
-                                    <div className="relative">
-                                        <Tag className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        <Input
-                                            className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
-                                            placeholder="Enter promo code"
-                                            value={discountDraft.promo_code || ''}
-                                            onChange={(e) => setDiscountDraft((p) => ({ ...p, promo_code: e.target.value }))}
-                                        />
-                                    </div>
-                                    <p className="text-[11px] text-[#64748B] font-medium">Enter a valid promo or campaign code</p>
+                                <div className="text-[10px] text-[#64748B] font-medium -mt-1">
+                                    Enter a valid promo or campaign code
                                 </div>
                             )}
 
-                            {['employee', 'manual'].includes(discountDraft.type) && (
-                                <div className="grid gap-3 sm:grid-cols-2 mt-3">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">
-                                            Reason {discountDraft.type === 'manual' ? <span className="text-rose-500">*</span> : <span className="font-medium text-slate-400">(optional)</span>}
-                                        </label>
+                            {discountDraft.type === 'employee' && (
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-[#0F172A]">Reason <span className="font-medium text-slate-400">(optional)</span></label>
+                                    <div className="relative">
+                                        <MessageSquare className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                        <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter reason" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
+                                    </div>
+                                </div>
+                            )}
+                            {(discountDraft.type === 'manual' || (discountDraft.type === 'employee' && !signedInUserIsAdminLike)) && (
+                                <div className="grid gap-2.5 grid-cols-2">
+                                    {discountDraft.type === 'manual' && signedInUserCanApproveManualDiscount ? (
+                                        <div className="space-y-1 col-span-2">
+                                            <label className="text-xs font-semibold text-[#0F172A]">Approving as</label>
+                                            <div className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold leading-8 text-slate-700">
+                                                {String(terminalUser?.username || 'Current POS approver').trim() || 'Current POS approver'}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1 col-span-2">
+                                            <label className="text-xs font-semibold text-[#0F172A]">Approver <span className="text-rose-500">*</span></label>
+                                            <div className="relative">
+                                                <BadgeCheck className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                                <select value={discountDraft.approver_user_id} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))} disabled={discountApproversLoading} className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2">
+                                                    <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select manager or admin'}</option>
+                                                    {safeDiscountApprovers.map((approver) => <option key={approver.user_id} value={approver.user_id}>{approver.username} ({approver.role})</option>)}
+                                                </select>
+                                                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            </div>
+                                            {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-[10px] font-medium text-amber-700 mt-0.5">No approver PIN configured.</p>}
+                                        </div>
+                                    )}
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-xs font-semibold text-[#0F172A]">Approver PIN <span className="text-rose-500">*</span></label>
                                         <div className="relative">
-                                            <MessageSquare className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter reason" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
+                                            <Lock className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input className="h-8 rounded-lg border-slate-200 pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter approver PIN" type={showDiscountPin ? 'text' : 'password'} inputMode="numeric" value={discountDraft.manager_pin} onChange={(e) => setDiscountDraft((p) => ({ ...p, manager_pin: e.target.value }))} />
+                                            <button type="button" onClick={() => setShowDiscountPin((prev) => !prev)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none">
+                                                {showDiscountPin ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                            </button>
                                         </div>
                                     </div>
-                                    {(discountDraft.type === 'manual' || !signedInUserIsAdminLike) && (
-                                        <>
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Approver <span className="text-rose-500">*</span></label>
-                                                <div className="relative">
-                                                    <BadgeCheck className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                                    <select
-                                                        value={discountDraft.approver_user_id}
-                                                        onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))}
-                                                        disabled={discountApproversLoading}
-                                                        className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 sm:text-sm"
-                                                    >
-                                                        <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select manager or admin'}</option>
-                                                        {safeDiscountApprovers.map((approver) => (
-                                                            <option key={approver.user_id} value={approver.user_id}>
-                                                                {approver.username} ({approver.role})
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                    <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                                </div>
-                                                {!discountApproversLoading && safeDiscountApprovers.length === 0 && (
-                                                    <p className="text-[11px] font-medium text-amber-700">No approver PIN is configured. Ask the Master Admin to configure one in Manage Users.</p>
-                                                )}
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs sm:text-[13px] font-semibold text-[#0F172A]">Approver PIN <span className="text-rose-500">*</span></label>
-                                                <div className="relative">
-                                                    <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                                    <Input
-                                                        className="h-11 rounded-xl border-slate-200 pl-10 pr-10 text-xs sm:text-sm font-medium focus:border-teal-500 focus:ring-teal-500"
-                                                        placeholder="Enter approver PIN"
-                                                        type={showDiscountPin ? 'text' : 'password'}
-                                                        inputMode="numeric"
-                                                        value={discountDraft.manager_pin}
-                                                        onChange={(e) => setDiscountDraft((p) => ({ ...p, manager_pin: e.target.value }))}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowDiscountPin((prev) => !prev)}
-                                                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
-                                                    >
-                                                        {showDiscountPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
                                 </div>
                             )}
                         </div>
 
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 text-xs sm:text-sm text-[#334155] space-y-2">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 text-[11px] text-[#334155] space-y-1">
                             <div className="flex justify-between items-center">
                                 <span className="font-medium text-slate-500">VAT Removed</span>
                                 <span className="font-semibold tabular-nums text-slate-800">PHP {money(calculateGovernedDiscount(safeCart, { ...discountDraft, eligible_item_ids: safeEligibleDiscountItemIds }).vatRemoved)}</span>
@@ -3884,32 +3923,32 @@ export default function POSCheckoutTerminal({
                                 <span className="font-semibold tabular-nums text-slate-800">PHP {money(calculateGovernedDiscount(safeCart, { ...discountDraft, eligible_item_ids: safeEligibleDiscountItemIds }).discountAmount)}</span>
                             </div>
 
-                            <div className="border-t border-slate-200/60 my-1.5" />
+                            <div className="border-t border-slate-200/60 my-1" />
 
                             <div className="flex justify-between items-center pt-0.5">
                                 <span className="font-extrabold text-slate-800">Total Amount Due</span>
-                                <span className="text-lg font-black tabular-nums text-teal-600 sm:text-xl">
+                                <span className="text-sm font-bold tabular-nums text-teal-600">
                                     PHP {money(calculateGovernedDiscount(safeCart, { ...discountDraft, eligible_item_ids: safeEligibleDiscountItemIds }).total)}
                                 </span>
                             </div>
                         </div>
                     </div>
-                    <DialogFooter className="shrink-0 border-t border-slate-100 bg-white px-5 py-3 sm:px-6 flex justify-end gap-2.5">
+                    <DialogFooter className="shrink-0 border-t border-slate-100 bg-white px-4 py-2.5 flex justify-end gap-2">
                         <Button
                             type="button"
                             variant="outline"
-                            className="h-[42px] rounded-xl px-5 text-xs sm:text-sm font-semibold text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
+                            className="h-8 rounded-lg px-3 text-xs font-semibold text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
                             onClick={() => setDiscountModalOpen(false)}
                         >
                             Cancel
                         </Button>
                         <Button
                             type="button"
-                            className="h-[42px] rounded-xl bg-teal-600 px-5 text-xs sm:text-sm font-bold text-white hover:bg-teal-700 transition-colors flex items-center justify-center"
+                            className="h-8 rounded-lg bg-teal-600 px-3 text-xs font-bold text-white hover:bg-teal-700 transition-colors flex items-center justify-center"
                             onClick={handleApplyGovernedDiscount}
                             disabled={discountApplying}
                         >
-                            <Tag className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                            <Tag className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                             {discountApplying ? 'Verifying...' : 'Apply Discount'}
                         </Button>
                     </DialogFooter>

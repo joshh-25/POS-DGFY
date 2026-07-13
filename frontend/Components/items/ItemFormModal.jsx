@@ -466,7 +466,7 @@ export default function ItemFormModal({
         cost_per_unit: parseNum(item.cost_per_unit, 0),
         default_sale_price: parseNum(item.default_sale_price, 0),
         vat_type: item.vat_type || modeItemDefaults.vat_type || 'vatable',
-        senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true,
+        senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true || Number(item.senior_pwd_discount_eligible) === 1,
         pos_always_available: posConfig?.pos_always_available === true,
         max_capacity: parseNum(item.max_capacity, Number(modeItemDefaults.max_capacity || 0)),
         current_stock: initialLocationStock,
