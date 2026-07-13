@@ -2331,6 +2331,7 @@ List sellable POS catalog items.
 **Notes:**
 - Response enforces `pos_visible !== false`.
 - Response includes out-of-stock rows. POS clients should display unavailable state for stock-controlled products with `current_stock <= 0`.
+- Each row includes `primary_barcode` (`item_barcode_id`, `code`, and `is_primary`) when the item has an active barcode. POS catalog clients must use this field for display and must not request `/items/:item_id/barcodes` once per catalog row.
 - Services Mode rows (`category=service`) are visible when service metadata exists and `service_item_details.visible_in_pos` is not false. They remain addable even when `current_stock=0`.
 - `pos_always_available=true` is an explicit POS-only stock exemption. It does not change `pos_visible`, Storefront visibility, or Inventory balances.
 - POS folder chips should only show folders where `show_in_pos_filter = true`.
