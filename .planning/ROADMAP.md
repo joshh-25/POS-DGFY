@@ -281,7 +281,7 @@ Plans:
   4. Staff can open a shift with a declared starting cash float (one open shift per cashier+terminal enforced at the database level), close it with a computed Expected-vs-Actual cash Difference, and every cash-drawer event — including a no-sale drawer pop — is logged.
   5. A tenant/branch carries a compliance-mode state reflecting whether required fiscal paperwork is present and verified, checked through one shared policy-engine gate port rather than duplicated per surface (wired into Checkout, Shift, and receipt issuance in Phase 9).
 
-**Plans**: 10/10 plans complete
+**Plans**: 11/12 plans executed
 
 Plans:
 **Wave 1**
@@ -317,7 +317,7 @@ Plans:
 
 **Wave 8** *(gap closure — three Critical findings from the post-08-10 08-REVIEW.md / 08-VERIFICATION.md; disjoint modules, run in parallel)*
 
-- [ ] 08-11-PLAN.md — compliance gap closure (FSC-01): reject/revoke review outcomes now demote compliance_mode_state.state to non_compliant_active so a revoked/rejected compliant_active business no longer reaches ALLOW for a Fiscal POS_CHECKOUT (state-demotion as single source of truth), D-05 preserved (FSC-01)
+- [x] 08-11-PLAN.md — compliance gap closure (FSC-01): reject/revoke review outcomes now demote compliance_mode_state.state to non_compliant_active so a revoked/rejected compliant_active business no longer reaches ALLOW for a Fiscal POS_CHECKOUT (state-demotion as single source of truth), D-05 preserved (FSC-01)
 - [ ] 08-12-PLAN.md — booking/shift concurrency hardening (CR-02, CR-03): row-lock (FOR UPDATE) the cancelBooking and closeShift guard reads so concurrent double-submits serialize — a second cancel cannot double-release capacity, a second close cannot write a duplicate 'close' event or lose the reconciliation update (BOK-02, SFT-02, SFT-03)
 
 ### Phase 9: POS Checkout & Payment
@@ -376,7 +376,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 5. Compatibility and Backend-First Cutover Seam | 3/3 | Complete    | 2026-07-12 |
 | 6. Release Evidence and Rehearsal Gates | 3/3 | Complete    | 2026-07-12 |
 | 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |
-| 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 10/10 | Gaps Found | - |
+| 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 11/12 | In Progress|  |
 | 9. POS Checkout & Payment | 0/TBD | Not started | - |
 | 10. Storefront Discovery & Online Ordering | 0/TBD | Not started | - |
 | 11. Order Fulfillment & Delivery Coordination | 0/TBD | Not started | - |

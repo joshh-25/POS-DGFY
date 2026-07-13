@@ -5,16 +5,16 @@ milestone_name: Commerce Domain — Product, Checkout & Fulfillment
 current_phase: 08
 current_phase_name: commerce-foundation-product-catalog-booking-shift-cash-drawe
 status: executing
-stopped_at: Completed 08-10-PLAN.md and re-verified — FSC-02 closed (checklist fail-open bug fixed); code review + re-verification independently found a NEW gap, FSC-01 (revoke/reject review outcome never demotes compliance_mode_state), plus two Critical warnings (CR-02 booking-cancel race, CR-03 shift-close race); see 08-VERIFICATION.md, gap-closure plan needed
-last_updated: "2026-07-13T00:35:00.000Z"
+stopped_at: Completed 08-11-PLAN.md (FSC-01 closed) -- 08-11-SUMMARY.md written; 08-12 gap-closure plan (CR-02/CR-03 lock-race hardening) next
+last_updated: "2026-07-13T00:07:50.879Z"
 last_activity: 2026-07-13
-last_activity_desc: Phase 08 — 08-10 gap-closure executed (FSC-02 closed); re-verification found new gap FSC-01
+last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 11
   completed_phases: 6
-  total_plans: 45
-  completed_plans: 42
-  percent: 56
+  total_plans: 47
+  completed_plans: 43
+  percent: 55
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 
 ## Current Position
 
-Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — GAPS FOUND
-Plan: 10 of 10 (all plans executed; phase verification found new gap FSC-01 — see 08-VERIFICATION.md)
-Status: Awaiting gap-closure plan (/gsd-plan-phase 08 --gaps)
-Last activity: 2026-07-13 — 08-10 gap-closure executed (FSC-02 closed), re-verification found new gap FSC-01
+Phase: 08 (commerce-foundation-product-catalog-booking-shift-cash-drawe) — EXECUTING
+Plan: 2 of 12
+Status: Ready to execute
+Last activity: 2026-07-13 — Phase 08 execution started
 
 Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overall roadmap 6/11 phases complete, Phase 7 paused independently)
 
@@ -100,6 +100,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0 milestone not started; overa
 | Phase 08 P07 | 22min | 2 tasks | 9 files |
 | Phase 08 P08 | 12min | 2 tasks | 2 files |
 | Phase 08 P09 | 22min | 3 tasks | 9 files |
+| Phase 08 P11 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -133,6 +134,8 @@ Recent decisions affecting current work:
 - [Phase Phase 08]: P08: staleThresholdMinutes passed straight from process.env.SHIFT_STALE_THRESHOLD_MINUTES into buildShiftsModule(); the module's own resolveStaleThresholdMinutes() owns the override/env/default fallback chain.
 - [Phase 08]: P09: used a STORED generated column (branch_scope_key = COALESCE(branch_id, 0)) instead of a branch_id=0 sentinel to make compliance_mode_state uniqueness enforceable for NULL branches, since a literal sentinel would violate branch_id's FK into locations.id
 - [Phase 08]: P09: reused checklist.activation_blockers[0]'s already-assembled reason code in the new compliant_active full-checklist gate guard rather than duplicating a per-signal mapping table, since profile/settings/artifacts/peripherals are already proven complete by the four checks above it
+- [Phase 08]: P11: reject/revoke demotion to non_compliant_active is unconditional — no explicit newState required or consulted for these two outcomes (FSC-01)
+- [Phase 08]: P11: state-demotion is the single source of truth for FSC-01 — no parallel verification_status branch added to complianceGate.js/evaluateComplianceDecision()
 
 ### Pending Todos
 
@@ -157,7 +160,7 @@ Items acknowledged and carried forward from milestone scope control:
 
 ## Session Continuity
 
-Last session: 2026-07-13T00:35:00.000Z
-Stopped at: Completed 08-10-PLAN.md (FSC-02 closed) and re-verified — new gap FSC-01 found (compliance state not demoted on revoke/reject); gap-closure plan needed before Phase 8 can be marked complete
+Last session: 2026-07-13T00:07:50.872Z
+Stopped at: Completed 08-11-PLAN.md (FSC-01 closed) -- 08-11-SUMMARY.md written; 08-12 gap-closure plan (CR-02/CR-03 lock-race hardening) next
 Resume file: 
 None
