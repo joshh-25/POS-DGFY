@@ -109,6 +109,19 @@ export class CommercePaymentRepository {
     }
 
     /**
+     * Resolves the session paired with a landlord storefront_orders row
+     * (10-08's auto-release sweep, T-10-08-07): the sweep starts from
+     * orders due for expiry, not sessions, so it needs the reverse FK
+     * lookup findSessionByPublicReference/etc. don't provide.
+     * @param {string} storefrontOrderId
+     */
+    async findSessionByStorefrontOrderId(storefrontOrderId) {
+        if (!storefrontOrderId) return null;
+        const row = await this.model.findOne({ where: { storefront_order_id: storefrontOrderId } });
+        return toPlain(row);
+    }
+
+    /**
      * Partial update by primary key (id). Used by 10-08's webhook
      * finalize/expire flow — NOT invoked by this plan's createQrphSession.
      * @param {string} id

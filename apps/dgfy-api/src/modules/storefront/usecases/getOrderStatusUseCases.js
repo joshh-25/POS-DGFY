@@ -38,9 +38,20 @@ const authorizationError = (message, details = null) => new DomainError(
  * `{reference, requesterEmail?}` interface (no `authenticatedAccountId`
  * parameter is part of this plan's contract).
  *
- * @param {{orderRepository, guestIdentityRepository?: Object}} deps
+ * `onReadExpiryCheck` (10-08-PLAN.md, T-10-08-07) is an OPTIONAL,
+ * fire-and-forget hook: when the read order is still `awaiting_payment`
+ * and its shared D-08 `expires_at` has already passed, this usecase
+ * invokes it (never awaited, never allowed to affect the response) so a
+ * consumer polling their own order status is one of the two independent
+ * mechanisms that reclaim stock even when PayMongo's `qrph.expired`
+ * webhook is missed/never-delivered — the OTHER being 10-08's recurring
+ * interval sweep. A caller that omits this dependency (10-06's own
+ * construction, before 10-08 wires it in) gets byte-identical behavior to
+ * before this parameter existed.
+ *
+ * @param {{orderRepository, guestIdentityRepository?: Object, onReadExpiryCheck?: Function}} deps
  */
-export function buildGetOrderStatusUseCase({ orderRepository, guestIdentityRepository = null } = {}) {
+export function buildGetOrderStatusUseCase({ orderRepository, guestIdentityRepository = null, onReadExpiryCheck = null } = {}) {
     if (!orderRepository) {
         throw new Error('buildGetOrderStatusUseCase requires an orderRepository.');
     }
@@ -53,6 +64,25 @@ export function buildGetOrderStatusUseCase({ orderRepository, guestIdentityRepos
         const order = await orderRepository.findByPublicReference(reference);
         if (!order) {
             return ApplicationResult.failure(notFoundError('Order not found.'));
+        }
+
+        if (
+            typeof onReadExpiryCheck === 'function'
+            && order.status === 'awaiting_payment'
+            && order.expires_at
+            && new Date(order.expires_at).getTime() <= Date.now()
+        ) {
+            // Fire-and-forget: never await, never let a sweep failure
+            // affect this read's response.
+            try {
+                Promise.resolve(onReadExpiryCheck(order)).catch((sweepError) => {
+                    // eslint-disable-next-line no-console
+                    console.warn('[getOrderStatus] opportunistic expiry sweep failed.', sweepError);
+                });
+            } catch (sweepError) {
+                // eslint-disable-next-line no-console
+                console.warn('[getOrderStatus] opportunistic expiry sweep threw synchronously.', sweepError);
+            }
         }
 
         if (order.guest_identity_id) {

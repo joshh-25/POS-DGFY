@@ -100,3 +100,17 @@ export const STOREFRONT_MAX_ADVANCE_DAYS = Number.parseInt(process.env.STOREFRON
 // Same 30-minute default as the legacy QR Ph session fallback
 // (paymongoService.js's Date.now() + 30*60*1000, 10-RESEARCH.md:389).
 export const STOREFRONT_HOLD_FALLBACK_MINUTES = Number.parseInt(process.env.STOREFRONT_HOLD_FALLBACK_MINUTES || '30', 10);
+
+// --- D-09 auto-release sweep cadence (Phase 10 Plan 08, T-10-08-07) ---
+//
+// How often the in-process interval timer (commercePayments/index.js's
+// buildCommercePaymentsModule) invokes expireDueSessions() to reclaim
+// stock for orders whose PayMongo session expired WITHOUT ever receiving
+// a `qrph.expired` webhook. A production deployment can swap this
+// in-process timer for a real scheduler/cron calling the SAME
+// expireDueSessions use case without any usecase-layer change — this is
+// purely a composition-root wiring choice.
+export const STOREFRONT_EXPIRY_SWEEP_INTERVAL_SECONDS = Number.parseInt(
+    process.env.STOREFRONT_EXPIRY_SWEEP_INTERVAL_SECONDS || '300',
+    10
+);

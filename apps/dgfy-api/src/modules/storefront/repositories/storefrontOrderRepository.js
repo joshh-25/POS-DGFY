@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { Op } from 'sequelize';
 
 // storefrontOrderRepository.js — Phase 10 Plan 06 Task 1 (STF-05, D-04).
 //
@@ -149,6 +150,38 @@ export class StorefrontOrderRepository {
         if (!publicReference) return null;
         const row = await this.model.findOne({ where: { public_reference: publicReference } });
         return row ? this.toPlain(row) : null;
+    }
+
+    /**
+     * Internal-id lookup (10-08's webhook finalize path only — a
+     * CommercePaymentSession row carries `storefront_order_id`, the
+     * order's internal UUID primary key, not its opaque public_reference;
+     * that FK is server-generated and never caller-supplied, so a
+     * primary-key lookup here does not reopen the T-10-06-05 IDOR guard
+     * findByPublicReference exists for).
+     * @param {string} id
+     */
+    async findById(id) {
+        if (!id) return null;
+        const row = await this.model.findByPk(id);
+        return row ? this.toPlain(row) : null;
+    }
+
+    /**
+     * Lists landlord orders still `awaiting_payment` whose shared D-08
+     * `expires_at` has passed (10-08's auto-release sweep, T-10-08-07).
+     * Spans ALL tenants — the sweep is a landlord-side, cross-tenant
+     * concern, unlike 10-02's per-business `expireDueReservations`.
+     * @param {Date} [now]
+     */
+    async findDueAwaitingPayment(now = new Date()) {
+        const rows = await this.model.findAll({
+            where: {
+                status: 'awaiting_payment',
+                expires_at: { [Op.lte]: now }
+            }
+        });
+        return rows.map((row) => this.toPlain(row));
     }
 }
 
