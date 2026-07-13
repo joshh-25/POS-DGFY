@@ -12,7 +12,7 @@ import {
     createPublicReservation as createPublicFnbReservation
 } from '../modules/fnb/controllers/fnbHandlers.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
-import { storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
+import { emailOtpLimiter, storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
 import { validateInventoryPush } from '../validators/geoSearchValidator.js';
 import { enqueueInventoryPush } from '../workers/geoInventoryWorker.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
@@ -24,6 +24,8 @@ import {
     validateStoreCatalogQuery,
     validateStoreQuote,
     validateStoreCheckout,
+    validateStoreGuestCheckoutOtpRequest,
+    validateStoreGuestCheckoutOtpVerify,
     validateStoreCheckoutPaymentSession,
     validateStoreCreateAddress,
     validateStoreUpdateAddress,
@@ -91,6 +93,8 @@ router.patch('/addresses/:id/default', setNoStoreCacheControl, authenticateStore
 router.delete('/addresses/:id', setNoStoreCacheControl, authenticateStoreCustomer, validateStoreAddressIdParam, storeController.deleteStoreCustomerAddress);
 
 router.post('/cart/quote', setNoStoreCacheControl, optionalStoreCustomer, validateStoreQuote, storeController.cartQuote);
+router.post('/checkout/guest-otp/request', setNoStoreCacheControl, emailOtpLimiter, validateStoreGuestCheckoutOtpRequest, storeController.requestGuestCheckoutOtp);
+router.post('/checkout/guest-otp/verify', setNoStoreCacheControl, emailOtpLimiter, validateStoreGuestCheckoutOtpVerify, storeController.verifyGuestCheckoutOtp);
 router.post('/checkout/payment-sessions', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckoutPaymentSession, storeController.createCheckoutPaymentSession);
 router.get('/checkout/payment-sessions/:payment_session_id', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.getCheckoutPaymentSession);
 router.post('/checkout', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckout, storeController.checkout);

@@ -11,6 +11,8 @@ import {
     setDefaultStoreCustomerAddressUseCase,
     deleteStoreCustomerAddressUseCase,
     storeCartQuoteUseCase,
+    requestStoreGuestCheckoutOtpUseCase,
+    verifyStoreGuestCheckoutOtpUseCase,
     storeCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase,
     storeCheckoutUseCase,
@@ -301,6 +303,38 @@ export const cartQuote = async (req, res, next) => {
     }
 };
 
+export const requestGuestCheckoutOtp = async (req, res, next) => {
+    try {
+        const result = await requestStoreGuestCheckoutOtpUseCase({
+            tenantId: resolveTenantId(req),
+            payload: req.validatedData || req.body
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 202,
+            successPayloadResolver: () => ({ success: true, data: result.data, message: 'Verification code sent', timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const verifyGuestCheckoutOtp = async (req, res, next) => {
+    try {
+        const result = await verifyStoreGuestCheckoutOtpUseCase({
+            tenantId: resolveTenantId(req),
+            payload: req.validatedData || req.body
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, message: 'Guest email verified', timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const checkout = async (req, res, next) => {
     try {
         const result = await storeCheckoutUseCase({
@@ -541,6 +575,8 @@ export default {
     setDefaultStoreCustomerAddress,
     deleteStoreCustomerAddress,
     cartQuote,
+    requestGuestCheckoutOtp,
+    verifyGuestCheckoutOtp,
     createCheckoutPaymentSession,
     getCheckoutPaymentSession,
     checkout,

@@ -73,6 +73,10 @@ const governedDiscountSchema = Joi.object({
     reason: Joi.string().trim().max(500).allow('', null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     eligible_item_ids: Joi.array().items(Joi.number().integer().positive()).unique().default([]),
+    eligible_items: Joi.array().items(Joi.object({
+        item_id: Joi.number().integer().positive().required(),
+        eligible_quantity: Joi.number().positive().required()
+    }).unknown(false)).max(100).default([]),
     vat_removed: Joi.number().min(0).optional(),
     vat_exempt_amount: Joi.number().min(0).optional(),
     discount_amount: Joi.number().min(0).optional()

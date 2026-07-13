@@ -215,6 +215,7 @@ export const authenticateStoreCustomer = async (req, res, next) => {
 
         req.storeCustomer = {
             customer_id: customer.customer_id,
+            dgfy_account_id: customer.dgfy_account_id || null,
             email: customer.email,
             name: customer.name,
             phone: customer.phone,

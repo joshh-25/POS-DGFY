@@ -33,6 +33,7 @@ Major. This change adds server-side validation to the existing commercial promo 
 - Promo end dates are optional and use `YYYY-MM-DD` in the configured storefront timezone.
 - An active promo with an end date before the current storefront date is rejected with `PROMO_EXPIRED`.
 - Existing promos without date fields retain their existing active, usage-limit, and time-window behavior.
+- Existing promos without channel, fulfillment, or timing controls remain eligible for every supported surface and order mode. Scheduled Storefront orders evaluate any configured promo window at the requested fulfillment time.
 
 ## Verification Evidence
 

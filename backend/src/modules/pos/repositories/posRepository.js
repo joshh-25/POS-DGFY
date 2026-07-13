@@ -134,6 +134,7 @@ const BASE_POS_ITEM_ATTRIBUTES = [
     'current_stock',
     'cost_per_unit',
     'default_sale_price',
+    // The POS item editor uses the catalog row to preselect its saved category.
     'folder_id',
     'product_folder'
 ];
@@ -220,6 +221,18 @@ const buildServiceDetailInclude = () => {
             model: ServiceItemDetail,
             as: 'serviceDetail',
             attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront'],
+            required: false
+        }]
+        : [];
+};
+
+const buildItemFolderInclude = () => {
+    const ItemFolder = safeGetModel('ItemFolder');
+    return ItemFolder
+        ? [{
+            model: ItemFolder,
+            as: 'folder',
+            attributes: ['folder_id', 'name', 'is_active', 'show_in_pos_filter'],
             required: false
         }]
         : [];
@@ -2847,7 +2860,6 @@ export const posRepository = {
 
     async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null } = {}) {
         const Item = dbStore.get('Item');
-        const ItemFolder = dbStore.get('ItemFolder');
         const where = buildVisibleWhere(
             {},
             { statusField: 'status', excludeInactiveStatus: true }
@@ -2868,14 +2880,9 @@ export const posRepository = {
             where,
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
             include: [
+                ...buildItemFolderInclude(),
                 ...buildServiceDetailInclude(),
-                ...buildFnbCatalogIncludes(),
-                {
-                    model: ItemFolder,
-                    as: 'folder',
-                    attributes: ['folder_id', 'name', 'show_in_pos_filter'],
-                    required: false
-                }
+                ...buildFnbCatalogIncludes()
             ],
             order: [['name', 'ASC']],
             limit: Math.min(Number.parseInt(limit, 10) || 100, 500)
