@@ -256,6 +256,10 @@ export class BookingRepository {
     /**
      * Cancels a booking, releasing its branch-capacity slot atomically
      * (mirror `+ 1`) in the SAME transaction as the status write (D-08).
+     * The guard read is row-locked (`lock: transaction.LOCK.UPDATE`, CR-02)
+     * so two concurrent cancels of the SAME booking serialize: the second
+     * blocks until the first commits, then sees status === 'cancelled' and
+     * throws BookingAlreadyCancelledError WITHOUT a second capacity release.
      * Returns null if the booking does not exist; throws
      * BookingAlreadyCancelledError if it is already cancelled (never
      * double-releases the slot).
@@ -270,7 +274,10 @@ export class BookingRepository {
             const sequelize = Booking.sequelize;
 
             return sequelize.transaction(async (transaction) => {
-                const record = await Booking.findByPk(Number(id), { transaction });
+                const record = await Booking.findByPk(Number(id), {
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
                 if (!record) return null;
                 if (record.status === 'cancelled') {
                     throw new BookingAlreadyCancelledError('This booking is already cancelled.');
