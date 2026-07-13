@@ -364,6 +364,8 @@ export default function TerminalPage() {
   });
   const [locked, setLocked] = useState(() => readStoredTerminalLock() || !getAccessToken());
   const [drawerOpen, setDrawerOpen] = useState(() => readStoredTerminalLock() || !getAccessToken());
+  const [terminalLayoutEpoch, setTerminalLayoutEpoch] = useState(0);
+  const terminalLayoutLockedRef = useRef(locked);
   const [loadingUser, setLoadingUser] = useState(false);
   const [terminalUser, setTerminalUser] = useState(null);
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
@@ -3462,6 +3464,24 @@ export default function TerminalPage() {
   }, [isDesktopWide]);
 
   useEffect(() => {
+    const wasLocked = terminalLayoutLockedRef.current;
+    terminalLayoutLockedRef.current = locked;
+    if (!wasLocked || locked || typeof window === 'undefined') return undefined;
+
+    let secondFrameId = null;
+    const firstFrameId = window.requestAnimationFrame(() => {
+      secondFrameId = window.requestAnimationFrame(() => {
+        setTerminalLayoutEpoch((current) => current + 1);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrameId);
+      if (secondFrameId !== null) window.cancelAnimationFrame(secondFrameId);
+    };
+  }, [locked]);
+
+  useEffect(() => {
     let active = true;
     const bootstrapQueueStore = async () => {
       await hydrateTerminalOperationQueueStore();
@@ -4209,6 +4229,7 @@ export default function TerminalPage() {
           printLoading={incomingOrderPrintLoading}
         />
         <TerminalPageLayout
+          key={locked ? 'terminal-layout-locked' : `terminal-layout-unlocked-${terminalLayoutEpoch}`}
           locked={locked}
           isOnline={isOnline}
           activeTerminalId={activeTerminalId}

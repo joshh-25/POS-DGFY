@@ -142,8 +142,18 @@ describe('POS terminal view-mode contracts', () => {
   it('blurs all non-login POS shell surfaces while locked', () => {
     expect(terminalPageLayoutContent).toContain("const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';");
     expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSurfaceClassName}`');
-    expect(terminalPageLayoutContent).toContain('lg:px-7 ${lockedSurfaceClassName}');
+    expect(terminalPageLayoutContent).toContain("const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';");
+    expect(terminalPageLayoutContent).toContain('dgfy-pos-panel dgfy-pos-panel-strong sticky top-0');
+    expect(terminalPageLayoutContent).not.toContain('sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 backdrop-blur');
     expect(terminalPageLayoutContent).toContain('touch-pan-y ${workspaceDesktopOverflowClassName} ${lockedSurfaceClassName}');
+  });
+
+  it('remounts the POS layout after terminal unlock for Safari and PWA rendering', () => {
+    expect(terminalPageContent).toContain('const [terminalLayoutEpoch, setTerminalLayoutEpoch] = useState(0);');
+    expect(terminalPageContent).toContain('const terminalLayoutLockedRef = useRef(locked);');
+    expect(terminalPageContent).toContain('window.requestAnimationFrame(() => {');
+    expect(terminalPageContent).toContain('setTerminalLayoutEpoch((current) => current + 1);');
+    expect(terminalPageContent).toContain("key={locked ? 'terminal-layout-locked' : `terminal-layout-unlocked-${terminalLayoutEpoch}`}");
   });
 
   it('persists manual POS terminal lock across refresh until login succeeds', () => {
