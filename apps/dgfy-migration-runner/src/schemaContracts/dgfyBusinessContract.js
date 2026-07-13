@@ -459,6 +459,81 @@ export const dgfyBusinessContract = {
         { column: 'branch_id', referencesTable: 'locations', referencesColumn: 'id' }
       ],
       projectionOnly: false
+    },
+
+    // CHK-01..CHK-06, D-01/D-15 (Phase 9, 20260713120000-create-availment-
+    // checkout.cjs). NOTE: this entry, plus `payments` below, close a
+    // pre-existing Phase 9 gap discovered while implementing 10-07 —
+    // 09-01-SUMMARY.md claimed six new contract entries (availments,
+    // availment_items, availment_discounts, payments, receipts,
+    // compliance_evidence) were added here, but git history shows no Phase 9
+    // commit ever touched this file. Only the two tables 10-07 itself
+    // modifies (availments, payments) are backfilled here; the other four
+    // (availment_items, availment_discounts, receipts, compliance_evidence)
+    // remain missing and are logged in deferred-items.md as out-of-scope for
+    // this plan.
+    //
+    // source_reference (10-07, T-10-07-01): cross-DB idempotency guard for
+    // the storefront-order -> tenant-Availment finalize seam. NULL for every
+    // POS availment; UNIQUE per business so a lost-guard duplicate-finalize
+    // race collapses to one row.
+    availments: {
+      columns: [
+        'id',
+        'business_id',
+        'branch_id',
+        'customer_account_id',
+        'shift_id',
+        'terminal_id',
+        'cashier_account_id',
+        'cashier_dgfy_account_id',
+        'status',
+        'document_context',
+        'subtotal_amount',
+        'discount_amount',
+        'vat_amount',
+        'vat_exempt_amount',
+        'total_amount',
+        'sc_pwd_id_number',
+        'sc_pwd_metadata',
+        'finalized_at',
+        'source_reference',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['idx_availments_business_status', 'unique_availments_source_reference'],
+      uniqueConstraints: ['unique_availments_source_reference'],
+      foreignKeys: [
+        { column: 'branch_id', referencesTable: 'locations', referencesColumn: 'id' },
+        { column: 'shift_id', referencesTable: 'shifts', referencesColumn: 'id' },
+        { column: 'terminal_id', referencesTable: 'terminal_identities', referencesColumn: 'id' },
+        { column: 'cashier_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // D-08/D-09/D-10 (Phase 9). payment_reference (10-07, T-10-07-04): opaque
+    // external gateway reference (e.g. PayMongo `pay_...`), stored separately
+    // from the payment_method ENUM so mapping the QR Ph rail onto
+    // cash/gcash/credit_card (A4) never requires an ENUM migration.
+    payments: {
+      columns: [
+        'id',
+        'business_id',
+        'availment_id',
+        'payment_method',
+        'amount_received',
+        'change_due',
+        'payment_handoff_mode',
+        'payment_reference',
+        'created_at'
+      ],
+      indexes: ['idx_payments_business_availment'],
+      uniqueConstraints: [],
+      foreignKeys: [
+        { column: 'availment_id', referencesTable: 'availments', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
     }
   },
 

@@ -61,6 +61,15 @@ export default (sequelize) => {
         payment_handoff_mode: {
             type: DataTypes.STRING(32),
             allowNull: true
+        },
+        // Phase 10 (10-07, T-10-07-04): opaque external gateway reference
+        // (e.g. PayMongo's `pay_...` id) stored SEPARATELY from
+        // payment_method so mapping the QR Ph rail onto the existing
+        // cash/gcash/credit_card ENUM (A4) never requires an ENUM migration.
+        // NULL for cash and for every pre-Phase-10 (POS) payment row.
+        payment_reference: {
+            type: DataTypes.STRING(191),
+            allowNull: true
         }
     }, {
         sequelize,

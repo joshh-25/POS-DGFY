@@ -185,6 +185,17 @@ export default (sequelize) => {
         finalized_at: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        // Phase 10 (10-07, RESEARCH Pitfall 2, T-10-07-01): cross-DB
+        // idempotency guard for the storefront-order -> tenant-Availment
+        // finalize seam. Set ONLY by finalizeStorefrontOrder (the landlord
+        // order's public_reference); NULL for every POS/Phase-9 availment.
+        // UNIQUE per business (unique_availments_source_reference) — MySQL
+        // permits multiple NULLs under a unique index, so this is additive
+        // and non-breaking for the existing POS finalize path.
+        source_reference: {
+            type: DataTypes.STRING(64),
+            allowNull: true
         }
     }, {
         sequelize,
@@ -195,7 +206,8 @@ export default (sequelize) => {
         createdAt: 'created_at',
         updatedAt: 'updated_at',
         indexes: [
-            { fields: ['business_id', 'status'], name: 'idx_availments_business_status' }
+            { fields: ['business_id', 'status'], name: 'idx_availments_business_status' },
+            { fields: ['source_reference'], name: 'unique_availments_source_reference', unique: true }
         ]
     });
 
