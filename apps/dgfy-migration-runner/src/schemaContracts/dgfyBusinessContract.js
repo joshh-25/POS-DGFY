@@ -299,6 +299,32 @@ export const dgfyBusinessContract = {
       projectionOnly: false
     },
 
+    // D-07/D-09/D-10: stock-reservation ledger, sole writer modules/inventory
+    // (ADR 0029). Storefront orders place temporary holds; expired holds
+    // excluded from availability on-read (D-09); failed reserve throws
+    // TenantDatabaseUnavailableError (D-10); convert to sale via recordSale
+    // (ADR 0029).
+    inventory_reservations: {
+      columns: [
+        'id',
+        'business_id',
+        'product_id',
+        'quantity',
+        'reference_type',
+        'reference_id',
+        'status',
+        'expires_at',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['idx_inventory_reservations_product_status', 'idx_inventory_reservations_reference', 'idx_inventory_reservations_expiry'],
+      uniqueConstraints: [],
+      foreignKeys: [
+        { column: 'product_id', referencesTable: 'products', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
     // BOK-01/BOK-02/BOK-03: availment_id reserved, no FK (Availment table is
     // Phase 9). customer_account_id opaque UUID, no cross-DB FK (D-09).
     bookings: {
