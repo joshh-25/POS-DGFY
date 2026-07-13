@@ -20,6 +20,10 @@ export {
     InsufficientStockError,
     InventoryProductNotFoundError
 } from './repositories/inventoryMovementRepository.js';
+export {
+    InventoryReservationRepository,
+    buildInventoryReservationRepository
+} from './repositories/inventoryReservationRepository.js';
 export { InventoryMovementEntity, createInventoryMovementEntity } from './entities/inventoryMovementEntity.js';
 export { recordSaleEffect, recordBookingEffect } from './usecases/inventoryEffectContracts.js';
 export {
@@ -30,10 +34,19 @@ export {
     buildRecordAdjustmentUseCase,
     buildListMovementsUseCase
 } from './usecases/inventoryMovementUseCases.js';
+export {
+    buildAvailableToSellUseCase,
+    buildReserveStockUseCase,
+    buildCommitReservationUseCase,
+    buildReleaseReservationUseCase,
+    buildExpireDueReservationsUseCase,
+    buildSetReservationExpiryUseCase
+} from './usecases/inventoryReservationUseCases.js';
 export { buildInventoryMovementController } from './controllers/inventoryMovementController.js';
 export { createInventoryRoutes } from './routes.js';
 
 import { InventoryMovementRepository } from './repositories/inventoryMovementRepository.js';
+import { InventoryReservationRepository } from './repositories/inventoryReservationRepository.js';
 import { recordSaleEffect, recordBookingEffect } from './usecases/inventoryEffectContracts.js';
 import {
     buildRecordRestockUseCase,
@@ -42,17 +55,31 @@ import {
     buildRecordAdjustmentUseCase,
     buildListMovementsUseCase
 } from './usecases/inventoryMovementUseCases.js';
+import {
+    buildAvailableToSellUseCase,
+    buildReserveStockUseCase,
+    buildCommitReservationUseCase,
+    buildReleaseReservationUseCase,
+    buildExpireDueReservationsUseCase,
+    buildSetReservationExpiryUseCase
+} from './usecases/inventoryReservationUseCases.js';
 
 /**
  * Builds the fully wired inventory module: one InventoryMovementRepository
  * instance (tenant-scoped, resolved via the injected tenantConnector) plus
- * every manual-movement usecase closed over it and the injected
- * businessRepository (used ONLY for membership/staff-or-owner access
- * control). Also re-exposes the reserved (unwired) D-06 effect contracts so
- * 08-08's composition root and Phase 9 can reach them from one place.
+ * every manual-movement usecase closed over it; PLUS one
+ * InventoryReservationRepository instance and all reservation usecases
+ * (10-02: D-07/D-09/D-10, ADR 0029) closed over it and the injected
+ * recordSale single-writer effect. Also re-exposes the reserved (unwired)
+ * D-06 effect contracts so 08-08's composition root and Phase 9 can reach
+ * them from one place.
+ *
+ * Exposes reservationPorts object ({ reserveStock, commitReservation,
+ * releaseReservation, expireDueReservations, availableToSell,
+ * setReservationExpiry }) so 10-06/10-08's composition can inject them.
  *
  * @param {{tenantConnector, businessDatabaseRegistryRepository?, businessRepository}} deps
- * @returns {{repository: InventoryMovementRepository, useCases: Object, effectContracts: {recordSaleEffect: Function, recordBookingEffect: Function}}}
+ * @returns {{repository: InventoryMovementRepository, useCases: Object, effectContracts: {recordSaleEffect: Function, recordBookingEffect: Function}, reservationRepository: InventoryReservationRepository, reservationPorts: Object}}
  */
 export function buildInventoryModule({
     tenantConnector,
@@ -60,17 +87,31 @@ export function buildInventoryModule({
     businessRepository
 } = {}) {
     const repository = new InventoryMovementRepository({ tenantConnector, businessDatabaseRegistryRepository });
+    const reservationRepository = new InventoryReservationRepository({ tenantConnector, businessDatabaseRegistryRepository });
+
+    // Build the recordSale single-writer to pass to reservation usecases
+    const recordSaleUseCase = buildRecordSaleUseCase({ repository, businessRepository });
 
     return {
         repository,
         useCases: {
             recordRestock: buildRecordRestockUseCase({ repository, businessRepository }),
             recordLoss: buildRecordLossUseCase({ repository, businessRepository }),
-            recordSale: buildRecordSaleUseCase({ repository, businessRepository }),
+            recordSale: recordSaleUseCase,
             recordAdjustment: buildRecordAdjustmentUseCase({ repository, businessRepository }),
             listMovements: buildListMovementsUseCase({ repository, businessRepository })
         },
-        effectContracts: { recordSaleEffect, recordBookingEffect }
+        effectContracts: { recordSaleEffect, recordBookingEffect },
+        // 10-02: Reservation capability (D-07/D-09/D-10, ADR 0029)
+        reservationRepository,
+        reservationPorts: {
+            reserveStock: buildReserveStockUseCase({ repository: reservationRepository, businessRepository }),
+            commitReservation: buildCommitReservationUseCase({ repository: reservationRepository, recordSaleUseCase }),
+            releaseReservation: buildReleaseReservationUseCase({ repository: reservationRepository }),
+            expireDueReservations: buildExpireDueReservationsUseCase({ repository: reservationRepository }),
+            availableToSell: buildAvailableToSellUseCase({ repository: reservationRepository }),
+            setReservationExpiry: buildSetReservationExpiryUseCase({ repository: reservationRepository })
+        }
     };
 }
 
