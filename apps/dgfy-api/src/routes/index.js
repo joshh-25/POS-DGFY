@@ -7,6 +7,7 @@ import defineAccountModel from '../models/Landlord/Account.js';
 import defineBusinessModel from '../models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../models/Landlord/BusinessDatabaseRegistry.js';
+import defineStorefrontGuestIdentityModel from '../models/Landlord/StorefrontGuestIdentity.js';
 import {
     buildAccountsModule,
     createAccountRoutes,
@@ -19,6 +20,7 @@ import { buildComplianceModule, createComplianceRoutes } from '../modules/compli
 import { buildShiftsModule, createShiftRoutes } from '../modules/shifts/index.js';
 import { buildBookingModule, createBookingRoutes } from '../modules/booking/index.js';
 import { buildAvailmentsModule, createAvailmentRoutes } from '../modules/availments/index.js';
+import { buildStorefrontModule, createStorefrontRoutes } from '../modules/storefront/index.js';
 import { buildDeviceBridgeClient } from '../infra/deviceBridgeClient.js';
 
 // Composition root for the accounts + businesses modules (Wave 2/3,
@@ -134,6 +136,18 @@ const { useCases: availmentUseCases } = buildAvailmentsModule({
     deviceBridgeClient
 });
 
+// Phase 10 (10-03-PLAN.md built the module skeleton in isolation; 10-04-
+// PLAN.md, STF-03/D-06, mounts it here — mirrors the staged composition
+// split documented in 10-03-SUMMARY.md's "Next Phase Readiness"): reuses
+// the SAME productRepository instance built above (Phase 8), and a
+// dedicated StorefrontGuestIdentity model against this service's own
+// dgfy_core connection (matching every other Landlord model in this file).
+const StorefrontGuestIdentityModel = defineStorefrontGuestIdentityModel(sequelize);
+const { useCases: storefrontUseCases } = buildStorefrontModule({
+    productRepository,
+    storefrontGuestIdentityModel: StorefrontGuestIdentityModel
+});
+
 const router = Router();
 
 router.use('/', healthRoutes);
@@ -147,5 +161,6 @@ router.use('/compliance', createComplianceRoutes(complianceUseCases, { authentic
 router.use('/shifts', createShiftRoutes(shiftUseCases, { authenticateAccount }));
 router.use('/bookings', createBookingRoutes(bookingUseCases, { authenticateAccount }));
 router.use('/availments', createAvailmentRoutes(availmentUseCases, { authenticateAccount }));
+router.use('/storefront', createStorefrontRoutes(storefrontUseCases, { authenticateAccount }));
 
 export default router;
