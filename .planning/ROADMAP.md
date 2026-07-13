@@ -281,7 +281,7 @@ Plans:
   4. Staff can open a shift with a declared starting cash float (one open shift per cashier+terminal enforced at the database level), close it with a computed Expected-vs-Actual cash Difference, and every cash-drawer event — including a no-sale drawer pop — is logged.
   5. A tenant/branch carries a compliance-mode state reflecting whether required fiscal paperwork is present and verified, checked through one shared policy-engine gate port rather than duplicated per surface (wired into Checkout, Shift, and receipt issuance in Phase 9).
 
-**Plans**: 12/12 plans complete
+**Plans**: 12/13 plans complete
 
 Plans:
 **Wave 1**
@@ -319,6 +319,10 @@ Plans:
 
 - [x] 08-11-PLAN.md — compliance gap closure (FSC-01): reject/revoke review outcomes now demote compliance_mode_state.state to non_compliant_active so a revoked/rejected compliant_active business no longer reaches ALLOW for a Fiscal POS_CHECKOUT (state-demotion as single source of truth), D-05 preserved (FSC-01)
 - [x] 08-12-PLAN.md — booking/shift concurrency hardening (CR-02, CR-03): row-lock (FOR UPDATE) the cancelBooking and closeShift guard reads so concurrent double-submits serialize — a second cancel cannot double-release capacity, a second close cannot write a duplicate 'close' event or lose the reconciliation update (BOK-02, SFT-02, SFT-03)
+
+**Wave 9** *(gap closure — 08-UAT.md Test 1 blocker, real-MySQL migration failure)*
+
+- [ ] 08-13-PLAN.md — migration gap closure: switch shifts.terminal_id/cashier_account_id and compliance_mode_state.branch_id FKs from CASCADE to RESTRICT (MySQL error 1215 — a base column of a STORED generated column cannot carry a CASCADE referential action), fixing both the diagnosed shifts blocker and a second, previously-unexercised instance of the same defect in compliance_mode_state.branch_scope_key; adds a real-MySQL-gated regression test (SFT-01, FSC-01, PRD-04, PRD-05)
 
 ### Phase 9: POS Checkout & Payment
 
