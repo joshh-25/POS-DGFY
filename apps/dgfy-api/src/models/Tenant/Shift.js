@@ -53,21 +53,29 @@ export default (sequelize) => {
             type: DataTypes.CHAR(36),
             allowNull: false
         },
+        // RESTRICT (not CASCADE): base column of the
+        // active_terminal_cashier_key STORED generated column — MySQL 8.0
+        // forbids CASCADE/SET NULL/SET DEFAULT on a foreign key whose
+        // column feeds a STORED generated column. Mirrors
+        // 20260712100000-create-commerce-foundation.cjs exactly.
         terminal_id: {
             type: DataTypes.INTEGER,
             allowNull: false,
             references: { model: 'terminal_identities', key: 'id' },
-            onDelete: 'CASCADE',
-            onUpdate: 'CASCADE'
+            onDelete: 'RESTRICT',
+            onUpdate: 'RESTRICT'
         },
         // D-13: tenant-local staff_accounts.id (INTEGER), NOT the landlord
         // dgfy_account_id (UUID) — keeps the one-open-shift key same-DB.
+        // RESTRICT (not CASCADE): also a base column of
+        // active_terminal_cashier_key — same generated-column restriction
+        // as terminal_id above.
         cashier_account_id: {
             type: DataTypes.INTEGER,
             allowNull: false,
             references: { model: 'staff_accounts', key: 'id' },
-            onDelete: 'CASCADE',
-            onUpdate: 'CASCADE'
+            onDelete: 'RESTRICT',
+            onUpdate: 'RESTRICT'
         },
         // Opaque UUID pointing at dgfy_core.accounts.id — never a real FK
         // (cross-database); kept alongside for audit only (D-13).

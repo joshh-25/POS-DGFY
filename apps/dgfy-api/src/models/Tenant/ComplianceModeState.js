@@ -60,12 +60,18 @@ export default (sequelize) => {
             type: DataTypes.CHAR(36),
             allowNull: false
         },
+        // RESTRICT (not CASCADE): base column of the branch_scope_key
+        // STORED generated column (added by
+        // 20260712140000-harden-compliance-mode-state-uniqueness.cjs) —
+        // MySQL 8.0 forbids CASCADE/SET NULL/SET DEFAULT on a foreign key
+        // whose column feeds a STORED generated column. Mirrors
+        // 20260712100000-create-commerce-foundation.cjs exactly.
         branch_id: {
             type: DataTypes.INTEGER,
             allowNull: true,
             references: { model: 'locations', key: 'id' },
-            onDelete: 'CASCADE',
-            onUpdate: 'CASCADE'
+            onDelete: 'RESTRICT',
+            onUpdate: 'RESTRICT'
         },
         // D-02: full port of legacy's 3-state COMPLIANCE_MODE_STATE model.
         state: {

@@ -292,21 +292,30 @@ module.exports = {
         // Opaque UUID pointing at dgfy_core.businesses.id — never a real FK
         // (cross-database).
         business_id: { type: Sequelize.CHAR(36), allowNull: false },
+        // RESTRICT (not CASCADE): this column is the base column of the
+        // active_terminal_cashier_key STORED generated column below. MySQL
+        // 8.0 forbids CASCADE/SET NULL/SET DEFAULT (in either ON UPDATE or
+        // ON DELETE) on a foreign key whose column feeds a STORED generated
+        // column — see MySQL 8.0 Reference Manual, "Generated Columns" and
+        // "Foreign Key Constraints" (error 1215 otherwise).
         terminal_id: {
           type: Sequelize.INTEGER,
           allowNull: false,
           references: { model: 'terminal_identities', key: 'id' },
-          onDelete: 'CASCADE',
-          onUpdate: 'CASCADE'
+          onDelete: 'RESTRICT',
+          onUpdate: 'RESTRICT'
         },
         // D-13: tenant-local staff_accounts.id (INTEGER), NOT the landlord
         // dgfy_account_id (UUID) — keeps the one-open-shift key same-DB.
+        // RESTRICT (not CASCADE): also a base column of
+        // active_terminal_cashier_key — same MySQL generated-column
+        // restriction as terminal_id above.
         cashier_account_id: {
           type: Sequelize.INTEGER,
           allowNull: false,
           references: { model: 'staff_accounts', key: 'id' },
-          onDelete: 'CASCADE',
-          onUpdate: 'CASCADE'
+          onDelete: 'RESTRICT',
+          onUpdate: 'RESTRICT'
         },
         // Opaque UUID pointing at dgfy_core.accounts.id — never a real FK
         // (cross-database); kept alongside for audit only (D-13).
@@ -401,12 +410,19 @@ module.exports = {
         // Opaque UUID pointing at dgfy_core.businesses.id — never a real FK
         // (cross-database). D-01: tenant-scoped, not dgfy_core.
         business_id: { type: Sequelize.CHAR(36), allowNull: false },
+        // RESTRICT (not CASCADE): this column is the base column of the
+        // branch_scope_key STORED generated column added by
+        // 20260712140000-harden-compliance-mode-state-uniqueness.cjs. MySQL
+        // 8.0 forbids CASCADE/SET NULL/SET DEFAULT (in either ON UPDATE or
+        // ON DELETE) on a foreign key whose column feeds a STORED generated
+        // column — see MySQL 8.0 Reference Manual, "Generated Columns" and
+        // "Foreign Key Constraints" (error 1215 otherwise).
         branch_id: {
           type: Sequelize.INTEGER,
           allowNull: true,
           references: { model: 'locations', key: 'id' },
-          onDelete: 'CASCADE',
-          onUpdate: 'CASCADE'
+          onDelete: 'RESTRICT',
+          onUpdate: 'RESTRICT'
         },
         // D-02: full port of legacy's 3-state COMPLIANCE_MODE_STATE model.
         state: {

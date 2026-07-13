@@ -13,11 +13,23 @@
  * NULL, because MySQL/InnoDB treats every NULL value in a unique index as
  * distinct from every other NULL — two concurrent inserts for the same
  * business with branch_id = NULL both succeed. This is a SEPARATE, additive
- * forward-dated migration rather than an edit to the already-shipped
- * 20260712100000 migration, which stays untouched (idempotent-rerun safety
- * for every already-migrated dgfy_business_* database, matching the
- * established precedent set by 20260711143000-add-dgfy-business-staff-
- * invitations.cjs).
+ * forward-dated migration rather than an edit to 20260712100000, matching
+ * the established precedent set by 20260711143000-add-dgfy-business-staff-
+ * invitations.cjs (additive forward-dated migrations over editing prior
+ * ones, for idempotent-rerun safety against any already-migrated
+ * dgfy_business_* database).
+ *
+ * Correction (08-13-PLAN.md gap-closure): 20260712100000 was NOT, in fact,
+ * "already-shipped" when this migration was originally written —
+ * confirmed never applied to any real business database (only mocked-
+ * queryInterface/grep verification existed). 08-13-PLAN.md edits
+ * 20260712100000 directly (switching compliance_mode_state.branch_id's FK
+ * from CASCADE to RESTRICT) so that this file's own
+ * `ALTER TABLE ... ADD COLUMN branch_scope_key ... STORED` below can
+ * succeed at all — branch_id is branch_scope_key's base column, and MySQL
+ * 8.0 forbids CASCADE on a base column of a STORED generated column. This
+ * file's own up()/down() DDL is unchanged by that fix; only this header's
+ * factual framing is corrected.
  *
  * Fix: add a STORED generated column `branch_scope_key` =
  * COALESCE(branch_id, 0), mirroring the exact pattern this phase's own
