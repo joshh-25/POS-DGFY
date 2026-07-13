@@ -27,6 +27,32 @@ const CORE_TABLE_NAMES = [
   'storefront_discovery_index'
 ];
 
+// Indexes added onto an existing CORE_TABLE_NAMES table by a LATER migration
+// (e.g. Phase 10's geo/full-text search indexes on storefront_discovery_index,
+// added by 20260714101000-enable-storefront-discovery-geo-search.cjs) — this
+// original foundation migration never requests them.
+const INDEXES_ADDED_BY_LATER_MIGRATIONS = {
+  storefront_discovery_index: ['idx_storefront_discovery_geo_spatial', 'ftx_storefront_discovery_search_text']
+};
+
+// This migration file (20260710020000) is Phase 02's foundation migration — it only
+// ever creates CORE_TABLE_NAMES (with their original indexes). Later phases (e.g.
+// Phase 10) add their own tables/indexes to dgfyCoreContract.tables via separate
+// additive migrations, so tests about THIS migration's up()/down() must scope to
+// CORE_TABLE_NAMES and their original indexes, not the full growing contract.
+const CORE_CONTRACT_TABLES = Object.fromEntries(
+  CORE_TABLE_NAMES.map((name) => {
+    const table = dgfyCoreContract.tables[name];
+    const laterIndexes = INDEXES_ADDED_BY_LATER_MIGRATIONS[name] || [];
+    return [
+      name,
+      laterIndexes.length
+        ? { ...table, indexes: table.indexes.filter((indexName) => !laterIndexes.includes(indexName)) }
+        : table
+    ];
+  })
+);
+
 const OUT_OF_SCOPE_TABLE_NAMES = [
   'items',
   'products',
@@ -169,10 +195,10 @@ describe('dgfy_core foundation migration (20260710020000-create-dgfy-core-founda
   test('up() creates exactly the contract core tables and no out-of-scope tables', async () => {
     await migration.up(queryInterface, Sequelize);
 
-    Object.keys(dgfyCoreContract.tables).forEach((name) => {
+    Object.keys(CORE_CONTRACT_TABLES).forEach((name) => {
       expect(createdTables).toContain(name);
     });
-    expect(createdTables.sort()).toEqual(Object.keys(dgfyCoreContract.tables).sort());
+    expect(createdTables.sort()).toEqual(Object.keys(CORE_CONTRACT_TABLES).sort());
 
     dgfyCoreContract.rejectedTables.forEach((name) => {
       expect(createdTables).not.toContain(name);
@@ -191,7 +217,7 @@ describe('dgfy_core foundation migration (20260710020000-create-dgfy-core-founda
     await migration.up(queryInterface, Sequelize);
     const byName = new Map(createdIndexes.map((entry) => [entry.name, entry]));
 
-    Object.values(dgfyCoreContract.tables).forEach((table) => {
+    Object.values(CORE_CONTRACT_TABLES).forEach((table) => {
       table.indexes.forEach((indexName) => {
         expect(byName.has(indexName)).toBe(true);
         const expectedUnique = table.uniqueConstraints.includes(indexName);
@@ -204,7 +230,7 @@ describe('dgfy_core foundation migration (20260710020000-create-dgfy-core-founda
     await migration.up(queryInterface, Sequelize);
     const columnsByTable = new Map(createTableCalls.map((entry) => [entry.name, entry.columns]));
 
-    Object.entries(dgfyCoreContract.tables).forEach(([tableName, table]) => {
+    Object.entries(CORE_CONTRACT_TABLES).forEach(([tableName, table]) => {
       table.foreignKeys.forEach((fk) => {
         const columnDef = columnsByTable.get(tableName)?.[fk.column];
         expect(columnDef).toBeDefined();
@@ -230,7 +256,7 @@ describe('dgfy_core foundation migration (20260710020000-create-dgfy-core-founda
   test('down() drops every contract table', async () => {
     await migration.down(queryInterface, Sequelize);
 
-    Object.keys(dgfyCoreContract.tables).forEach((name) => {
+    Object.keys(CORE_CONTRACT_TABLES).forEach((name) => {
       expect(queryInterface.dropTable).toHaveBeenCalledWith(name);
     });
   });
