@@ -1,0 +1,1 @@
+[schema:migrate] status=success generated_at=2026-07-13T03:03:26.050Z total_pending=0 executed=0
