@@ -57,6 +57,23 @@ export default (sequelize) => {
                     as: 'receipt'
                 });
             }
+            // Phase 11 (11-01): fulfillment event ledger + courier-assignment
+            // history. Availment.fulfillment_mode/fulfillment_status/
+            // fulfillment_stage below are a denormalized read cache of the
+            // LATEST stageEvents row — these two tables are the source of
+            // truth (D-05/D-06/D-15).
+            if (models.AvailmentStageEvent && !Availment.associations?.stageEvents) {
+                Availment.hasMany(models.AvailmentStageEvent, {
+                    foreignKey: 'availment_id',
+                    as: 'stageEvents'
+                });
+            }
+            if (models.CourierAssignment && !Availment.associations?.courierAssignments) {
+                Availment.hasMany(models.CourierAssignment, {
+                    foreignKey: 'availment_id',
+                    as: 'courierAssignments'
+                });
+            }
         }
 
         isFinalized() {
@@ -195,6 +212,25 @@ export default (sequelize) => {
         // and non-breaking for the existing POS finalize path.
         source_reference: {
             type: DataTypes.STRING(64),
+            allowNull: true
+        },
+        // Phase 11 (11-01, FUL-01..FUL-03): denormalized read-cache columns
+        // mirroring the LATEST availment_stage_events row — source of truth
+        // is the event ledger, not this cache (D-05/D-06/D-15). Additive/
+        // nullable, no backfill of pre-migration availments (A4). Distinct
+        // from `status` above (Landmine 1) — `status` is the draft/
+        // finalized/voided checkout lifecycle, `fulfillment_status` is the
+        // separate coarse fulfillment pipeline.
+        fulfillment_mode: {
+            type: DataTypes.ENUM('pickup', 'delivery', 'dine_in'),
+            allowNull: true
+        },
+        fulfillment_status: {
+            type: DataTypes.ENUM('placed', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'completed'),
+            allowNull: true
+        },
+        fulfillment_stage: {
+            type: DataTypes.STRING(32),
             allowNull: true
         }
     }, {

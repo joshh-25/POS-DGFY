@@ -18,6 +18,8 @@ import defineAvailmentDiscountModel from '../models/Tenant/AvailmentDiscount.js'
 import definePaymentModel from '../models/Tenant/Payment.js';
 import defineReceiptModel from '../models/Tenant/Receipt.js';
 import defineComplianceEvidenceModel from '../models/Tenant/ComplianceEvidence.js';
+import defineAvailmentStageEventModel from '../models/Tenant/AvailmentStageEvent.js';
+import defineCourierAssignmentModel from '../models/Tenant/CourierAssignment.js';
 
 // Minimal per-tenant-database connection cache for apps/dgfy-api (Wave 4,
 // 04-04-PLAN.md's key_links: "TenantConnector -> resolves per-tenant
@@ -124,7 +126,7 @@ export class TenantConnector {
      * — the plan explicitly forbids that); this method only wires them
      * together into one reachable registry with associations applied.
      * @param {string} databaseName
-     * @returns {{Location, StaffAccount, StaffInvitation, AccountStaffAssignment, TerminalIdentity, Product, ProductFolder, InventoryMovement, Booking, BookingCapacity, Shift, CashDrawerEvent, ComplianceModeState, Availment, AvailmentItem, AvailmentDiscount, Payment, Receipt, ComplianceEvidence}}
+     * @returns {{Location, StaffAccount, StaffInvitation, AccountStaffAssignment, TerminalIdentity, Product, ProductFolder, InventoryMovement, Booking, BookingCapacity, Shift, CashDrawerEvent, ComplianceModeState, Availment, AvailmentItem, AvailmentDiscount, Payment, Receipt, ComplianceEvidence, AvailmentStageEvent, CourierAssignment}}
      */
     getModels(databaseName) {
         if (this.modelsByDatabase.has(databaseName)) {
@@ -161,7 +163,14 @@ export class TenantConnector {
             AvailmentDiscount: defineAvailmentDiscountModel,
             Payment: definePaymentModel,
             Receipt: defineReceiptModel,
-            ComplianceEvidence: defineComplianceEvidenceModel
+            ComplianceEvidence: defineComplianceEvidenceModel,
+            // Phase 11 (11-01): Order Fulfillment & Delivery Coordination
+            // tenant models — see apps/dgfy-api/src/models/Tenant/
+            // {AvailmentStageEvent,CourierAssignment}.js. This is the exact
+            // registration step Phase 9 originally missed (Pitfall 1) —
+            // without it, repositories resolve `undefined` at runtime.
+            AvailmentStageEvent: defineAvailmentStageEventModel,
+            CourierAssignment: defineCourierAssignmentModel
         };
 
         const models = {};
