@@ -1425,12 +1425,11 @@ const STOREFRONT_CHECKOUT_AUTH_RESUME_KEY = 'dgfy_store_checkout_auth_resume_v1'
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
 const STOREFRONT_CHECKOUT_PAYMENT_OPTIONS = [
-  { value: 'cash', label: 'Cash on delivery/pickup' },
-  { value: 'gcash', label: 'GCash' },
-  { value: 'maya', label: 'Maya' },
-  { value: 'card', label: 'Card' },
-  { value: 'bank_transfer', label: 'Bank transfer' }
+  { value: 'cash', label: 'Cash on delivery/pickup' }
 ];
+const isEnabledStorefrontCheckoutPaymentType = (value) => (
+  STOREFRONT_CHECKOUT_PAYMENT_OPTIONS.some((option) => option.value === value)
+);
 const TERMINAL_TRACKING_STATUSES = TERMINAL_CUSTOMER_TRACKING_STATUSES;
 const DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES = new Set(['order', 'pos_order', 'fnb_order']);
 const DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
@@ -6175,8 +6174,10 @@ export default function StorefrontApp() {
   const [guestCheckoutProof, setGuestCheckoutProof] = useState(null);
   const [guestCheckoutOtpLoading, setGuestCheckoutOtpLoading] = useState(false);
   const [guestCheckoutOtpError, setGuestCheckoutOtpError] = useState('');
+  const [guestCheckoutOtpCooldownSeconds, setGuestCheckoutOtpCooldownSeconds] = useState(0);
   const [rememberCustomerDetails, setRememberCustomerDetails] = useState(() => Boolean(readStoreAuthToken()));
   const [savedCustomerDetails, setSavedCustomerDetails] = useState(() => readSavedCustomerDetails());
+  const [hasHydratedGuestCheckoutDetails, setHasHydratedGuestCheckoutDetails] = useState(false);
   const [customerAddress, setCustomerAddress] = useState('');
   const [serviceUnitType, setServiceUnitType] = useState('');
   const [customerPin, setCustomerPin] = useState(null);
@@ -6220,7 +6221,7 @@ export default function StorefrontApp() {
   const [trackingCooldownNowMs, setTrackingCooldownNowMs] = useState(() => Date.now());
   const [isTrackingRefreshing, setIsTrackingRefreshing] = useState(false);
   const [guestTrackedOrders, setGuestTrackedOrders] = useState([]);
-  const [expandedGuestDrawerPin, setExpandedGuestDrawerPin] = useState(null);
+  const [expandedGuestDrawerPins, setExpandedGuestDrawerPins] = useState([]);
   const [selectedTrackingPin, setSelectedTrackingPin] = useState('');
   const [showCompletedTrackingCard, setShowCompletedTrackingCard] = useState(false);
   const completedTrackingDelayTimerRef = useRef(null);
@@ -6422,6 +6423,8 @@ export default function StorefrontApp() {
   );
   const isTrackingCooldownActive = trackingCooldownRemainingSeconds > 0;
   const trackingCooldownLabel = formatTrackingCooldown(trackingCooldownRemainingSeconds);
+  const isGuestCheckoutOtpCooldownActive = guestCheckoutOtpCooldownSeconds > 0;
+  const guestCheckoutOtpCooldownLabel = formatTrackingCooldown(guestCheckoutOtpCooldownSeconds);
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
@@ -6692,7 +6695,12 @@ export default function StorefrontApp() {
     setGuestCheckoutDraftNotice('');
   }, [selectedStore?.slug, routeSlug]);
   useEffect(() => {
-    if (isDgfyCustomerSignedIn || !guestCheckoutUnlocked || !savedCustomerDetails) return;
+    if (!guestCheckoutUnlocked) {
+      setHasHydratedGuestCheckoutDetails(false);
+      return;
+    }
+    if (isDgfyCustomerSignedIn || hasHydratedGuestCheckoutDetails || !savedCustomerDetails) return;
+    setHasHydratedGuestCheckoutDetails(true);
     const splitName = splitCustomerName(savedCustomerDetails.name || '');
     const nextFirstName = String(savedCustomerDetails.firstName || splitName.firstName || '').trim();
     const nextLastName = String(savedCustomerDetails.lastName || splitName.lastName || '').trim();
@@ -6715,12 +6723,8 @@ export default function StorefrontApp() {
       setCustomerEmail(nextEmail);
     }
   }, [
-    customerEmail,
-    customerFirstName,
-    customerLastName,
-    customerName,
-    customerPhone,
     guestCheckoutUnlocked,
+    hasHydratedGuestCheckoutDetails,
     isDgfyCustomerSignedIn,
     savedCustomerDetails
   ]);
@@ -6781,7 +6785,7 @@ export default function StorefrontApp() {
                 <input value={guestCheckoutOtpCode} onChange={(event) => setGuestCheckoutOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="Enter 6-digit code" style={{ minHeight: 42, borderRadius: 10, border: '1px solid #bfdbfe', padding: '0 12px', fontSize: 16 }} />
                 <button type="button" onClick={handleVerifyGuestCheckoutOtp} disabled={guestCheckoutOtpLoading || guestCheckoutOtpCode.length !== 6} style={{ minHeight: 42, borderRadius: 10, border: 'none', background: '#1a4e8d', color: '#fff', fontWeight: 700, cursor: guestCheckoutOtpLoading || guestCheckoutOtpCode.length !== 6 ? 'not-allowed' : 'pointer', padding: '0 14px' }}>{guestCheckoutOtpLoading ? 'Verifying...' : 'Verify code'}</button>
               </div>
-              <button type="button" onClick={handleRequestGuestCheckoutOtp} disabled={guestCheckoutOtpLoading || !String(customerEmail || '').trim()} style={{ justifySelf: 'start', border: 'none', background: 'transparent', color: '#1a4e8d', fontWeight: 700, cursor: guestCheckoutOtpLoading || !String(customerEmail || '').trim() ? 'not-allowed' : 'pointer', padding: 0 }}>Send verification code</button>
+              <button type="button" onClick={handleRequestGuestCheckoutOtp} disabled={guestCheckoutOtpLoading || isGuestCheckoutOtpCooldownActive || !String(customerEmail || '').trim()} style={{ justifySelf: 'start', border: 'none', background: 'transparent', color: '#1a4e8d', fontWeight: 700, cursor: guestCheckoutOtpLoading || isGuestCheckoutOtpCooldownActive || !String(customerEmail || '').trim() ? 'not-allowed' : 'pointer', padding: 0 }}>{isGuestCheckoutOtpCooldownActive ? `Send again in ${guestCheckoutOtpCooldownLabel}` : 'Send verification code'}</button>
             </>
           )}
           {guestCheckoutOtpError && <div style={{ color: '#b91c1c', fontSize: 13 }}>{guestCheckoutOtpError}</div>}
@@ -9253,6 +9257,11 @@ export default function StorefrontApp() {
   }, [isBookingSubpage]);
 
   useEffect(() => {
+    if (!isFnbMode || !isCheckoutOpen || isFnbOrderSubpage || checkoutTab === 'cart') return;
+    setCheckoutTab('cart');
+  }, [checkoutTab, isCheckoutOpen, isFnbMode, isFnbOrderSubpage]);
+
+  useEffect(() => {
     if (!filteredDiscoveryStores.length) {
       setHighlightedStoreSlug('');
       setHighlightedDiscoveryMarkerKey('');
@@ -9943,12 +9952,21 @@ export default function StorefrontApp() {
     }
   }, [customerEmail, guestCheckoutProof]);
 
+  useEffect(() => {
+    if (guestCheckoutOtpCooldownSeconds <= 0) return undefined;
+    const timer = window.setInterval(() => {
+      setGuestCheckoutOtpCooldownSeconds((previous) => Math.max(0, previous - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [guestCheckoutOtpCooldownSeconds]);
+
   const handleRequestGuestCheckoutOtp = async () => {
     const email = String(customerEmail || '').trim().toLowerCase();
     if (!email) {
       setGuestCheckoutOtpError('Enter your Gmail address first.');
       return;
     }
+    if (isGuestCheckoutOtpCooldownActive) return;
     setGuestCheckoutOtpLoading(true);
     setGuestCheckoutOtpError('');
     try {
@@ -9957,9 +9975,14 @@ export default function StorefrontApp() {
         storeSlug: selectedStore?.slug,
         body: { email, idempotency_key: guestCheckoutIntentId }
       });
+      setGuestCheckoutOtpCooldownSeconds(60);
       toast.success('Verification code sent to your Gmail address.');
     } catch (error) {
-      const message = String(error?.message || 'Unable to send the verification code.');
+      const retryAfterSeconds = getTrackingRetryAfterSeconds(error);
+      if (retryAfterSeconds > 0) setGuestCheckoutOtpCooldownSeconds(retryAfterSeconds);
+      const message = retryAfterSeconds > 0
+        ? `${String(error?.message || 'Unable to send the verification code.')} Try again in ${formatTrackingCooldown(retryAfterSeconds)}.`
+        : String(error?.message || 'Unable to send the verification code.');
       setGuestCheckoutOtpError(message);
       toast.error(message);
     } finally {
@@ -11794,7 +11817,7 @@ export default function StorefrontApp() {
   const fnbHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
   const guestCheckoutOtpVerified = isDgfyCustomerSignedIn || Boolean(guestCheckoutProof?.proof);
   const fnbCustomerStepComplete = fnbHasCustomerIdentity && fnbHasPrimaryIdentityContact && guestCheckoutOtpVerified;
-  const hasValidCheckoutPaymentType = isValidStorePaymentType(fnbPaymentType);
+  const hasValidCheckoutPaymentType = isEnabledStorefrontCheckoutPaymentType(fnbPaymentType);
   const renderPromoCodePanel = useCallback((options = {}) => (
     <PromoCodePanel
       code={promoCodeDraft}
@@ -11879,7 +11902,7 @@ export default function StorefrontApp() {
     }
   }, [checkoutResult, fnbOrderStep, isFnbOrderResponsiveFlow]);
   useEffect(() => {
-    if (!isValidStorePaymentType(fnbPaymentType)) {
+    if (!isEnabledStorefrontCheckoutPaymentType(fnbPaymentType)) {
       setFnbPaymentType('cash');
     }
   }, [fnbPaymentType]);
@@ -18340,13 +18363,7 @@ return (
                   label="Payment Type"
                   value={fnbPaymentType}
                   onChange={setFnbPaymentType}
-                  options={[
-                    { value: 'cash', label: 'Cash on delivery/pickup' },
-                    { value: 'gcash', label: 'GCash' },
-                    { value: 'maya', label: 'Maya' },
-                    { value: 'card', label: 'Card' },
-                    { value: 'bank_transfer', label: 'Bank transfer' }
-                  ]}
+                  options={STOREFRONT_CHECKOUT_PAYMENT_OPTIONS}
                   DropdownComponent={StorefrontDropdown}
                   triggerStyle={{ minHeight: 44, borderRadius: 12 }}
                   bodyFont={servicesBodyFont}
@@ -22455,8 +22472,8 @@ return (
           selectedStore={selectedStore}
           guestTrackedOrders={trackingDrawerOrders}
           trackingError={trackingError}
-          expandedGuestDrawerPin={expandedGuestDrawerPin}
-          onExpandedGuestDrawerPinChange={setExpandedGuestDrawerPin}
+          expandedGuestDrawerPins={expandedGuestDrawerPins}
+          onExpandedGuestDrawerPinsChange={setExpandedGuestDrawerPins}
           onClose={() => setIsGuestTrackingDrawerOpen(false)}
           openFullTrackingForPin={openFullTrackingForPin}
           withAssetOrigin={withAssetOrigin}
