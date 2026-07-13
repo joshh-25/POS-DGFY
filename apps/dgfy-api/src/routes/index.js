@@ -91,7 +91,8 @@ const {
 const {
     useCases: inventoryUseCases,
     effectContracts: inventoryEffectContracts,
-    reservationPorts: inventoryReservationPorts
+    reservationPorts: inventoryReservationPorts,
+    reservationRepository: inventoryReservationRepository
 } = buildInventoryModule({
     tenantConnector,
     businessDatabaseRegistryRepository,
@@ -178,13 +179,27 @@ const commercePaymentsModule = buildCommercePaymentsModule({
     businessRepository
 });
 
+// CR-01 fix (10-REVIEW.md): placeOrderUseCases.js's own doc comment
+// (usecases/placeOrderUseCases.js:118-137) states reserveStock/
+// releaseReservation/setReservationExpiry are thin PORT functions matching
+// InventoryReservationRepository's own method signatures directly, and
+// deliberately bypass buildReserveStockUseCase's staff-membership gate
+// (there is no staff accountId for a consumer storefront order). Wire the
+// raw repository methods here, not inventoryReservationPorts.* (those are
+// the staff-gated usecase wrappers, wrong layer for a consumer checkout).
+// reserveStock needs a thin positional-args adapter because
+// InventoryReservationRepository.reserveStock(businessId, lines,
+// referenceId, expiresAt) takes positional args while placeOrderUseCases.js
+// calls it with a single ({businessId, lines, referenceId, expiresAt})
+// options object.
 const { useCases: storefrontUseCases } = buildStorefrontModule({
     productRepository,
     storefrontGuestIdentityModel: StorefrontGuestIdentityModel,
     storefrontOrderModel: StorefrontOrderModel,
-    reserveStock: inventoryReservationPorts.reserveStock,
-    releaseReservation: inventoryReservationPorts.releaseReservation,
-    setReservationExpiry: inventoryReservationPorts.setReservationExpiry,
+    reserveStock: ({ businessId, lines, referenceId, expiresAt }) =>
+        inventoryReservationRepository.reserveStock(businessId, lines, referenceId, expiresAt),
+    releaseReservation: inventoryReservationRepository.releaseReservation.bind(inventoryReservationRepository),
+    setReservationExpiry: inventoryReservationRepository.setReservationExpiry.bind(inventoryReservationRepository),
     createQrphSession: commercePaymentsModule.useCases.createQrphSession,
     finalizeCashOrder: availmentUseCases.finalizeStorefrontOrder,
     onReadExpiryCheck: commercePaymentsModule.expireDueSessions
