@@ -191,3 +191,11 @@ None - no external service configuration required. `EMAIL_OTP_SECRET`/`EMAIL_OTP
 ---
 *Phase: 10-storefront-discovery-online-ordering*
 *Completed: 2026-07-13*
+
+## Self-Check: PASSED
+
+- All 11 created/modified files confirmed present on disk
+- All 5 commits (`89e25a4e`, `97d2aec4`, `43bd0c78`, `a147952f`, `014cbe49`) confirmed in `git log`
+- 19/19 new tests pass (44/44 across `tests/storefront/`); full `apps/dgfy-api` suite: 650 total, 457 passed, 193 skipped (live-DB-gated), 0 failed
+- `check:architecture:dgfy-api` passes (11 modules, 105 code files checked; 15 controller files, no unauthorized model imports)
+- `git diff --stat` against the pre-plan commit confirms zero `backend/` writes
