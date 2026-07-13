@@ -25,7 +25,8 @@ describe('Commerce modules mount (Phase 8 composition root, 08-08)', () => {
         { module: 'inventory', method: 'get', path: '/v1/inventory/movements' },
         { module: 'compliance', method: 'get', path: '/v1/compliance/state' },
         { module: 'shifts', method: 'get', path: '/v1/shifts' },
-        { module: 'bookings', method: 'get', path: '/v1/bookings' }
+        { module: 'bookings', method: 'get', path: '/v1/bookings' },
+        { module: 'availments', method: 'get', path: '/v1/availments/1' }
     ];
 
     it.each(commerceEndpoints)(
