@@ -12,12 +12,18 @@ import * as emailService from './emailService.js';
 // rather than shared, and the parity test this duplication depends on.
 export const EMAIL_OTP_PURPOSES = Object.freeze({
     DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification',
-    DGFY_PASSWORD_RESET: 'dgfy_password_reset'
+    DGFY_PASSWORD_RESET: 'dgfy_password_reset',
+    // Phase 10 (10-04-PLAN.md, STF-03/D-05/D-06): guest storefront checkout
+    // email verification. Additive only — reuses the exact same
+    // hashing/TTL/attempt-limit/enforcement logic above via isValidPurpose(),
+    // no behavior change to the two existing purposes.
+    STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout'
 });
 
 const PURPOSE_LABELS = Object.freeze({
     [EMAIL_OTP_PURPOSES.DGFY_ACCOUNT_VERIFICATION]: 'DGFY account verification',
-    [EMAIL_OTP_PURPOSES.DGFY_PASSWORD_RESET]: 'DGFY password reset'
+    [EMAIL_OTP_PURPOSES.DGFY_PASSWORD_RESET]: 'DGFY password reset',
+    [EMAIL_OTP_PURPOSES.STOREFRONT_GUEST_CHECKOUT]: 'storefront guest checkout'
 });
 
 const OTP_TTL_MINUTES = Number.parseInt(process.env.EMAIL_OTP_TTL_MINUTES || '10', 10);
