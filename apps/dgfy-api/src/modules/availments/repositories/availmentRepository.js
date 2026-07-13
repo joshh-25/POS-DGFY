@@ -514,6 +514,181 @@ export class AvailmentRepository {
         });
     }
 
+    /**
+     * Finalizes a STOREFRONT order into a NON-POS Availment — no shift,
+     * terminal, or cashier (RESEARCH structural gap #1: finalizePersist
+     * above cannot be reused here because it hard-requires those three POS
+     * preconditions). Creates the Availment with a cross-DB
+     * customer_account_id reference (no FK) and a unique source_reference
+     * keyed to the landlord order, converts the stock reservation into a
+     * sale via the injected commitReservation single-writer port (10-02,
+     * ADR 0029), and creates the Payment row — all inside ONE
+     * sequelize.transaction.
+     *
+     * Idempotent on (business_id, source_reference):
+     *   (a) a row-locked lookup for an existing Availment with this
+     *       source_reference returns it as a no-op (no second Payment/
+     *       AvailmentItem/commitReservation call — no second stock
+     *       deduction);
+     *   (b) a lost-guard concurrent race (two calls both miss the lookup
+     *       because neither row exists yet) collapses to one row via the
+     *       UNIQUE unique_availments_source_reference index — the loser's
+     *       insert throws SequelizeUniqueConstraintError, caught here and
+     *       re-resolved to the winner's row (RESEARCH Pitfall 2
+     *       belt-and-suspenders, T-10-07-01).
+     *
+     * A non-success (or thrown) commitReservation result rolls back the
+     * WHOLE transaction — the Availment/AvailmentItem/Payment rows never
+     * commit for a failed sale effect (mirrors finalizePersist's Phase 9
+     * P04/P06 atomicity discipline; nothing partial is ever persisted).
+     *
+     * @param {string} businessId
+     * @param {{sourceReference, customerAccountId, lines, header, payment, commitReservation}} input
+     *   - sourceReference: unique-per-business key (the landlord order's public_reference)
+     *   - customerAccountId: opaque UUID cross-DB reference (no FK), or null for a guest order
+     *   - lines: [{productId, productName?, quantity, unitPrice}, ...] — AvailmentItem snapshot
+     *   - header: {subtotal_amount, discount_amount, vat_amount, vat_exempt_amount, total_amount} (formatted DECIMAL strings)
+     *   - payment: {payment_method, amount_received, change_due, payment_handoff_mode, payment_reference}
+     *   - commitReservation: (transaction) => Promise<ApplicationResult|void> — the injected 10-02 single-writer stock-effect port
+     * @returns {Promise<{availment: Object, payment: Object, idempotent: boolean}>}
+     *
+     * NOTE (deviation, Rule 1): deliberately does NOT go through this.withModel()
+     * the way every other method in this file does. withModel()'s catch-all
+     * re-wraps ANY non-whitelisted thrown error into
+     * TenantDatabaseUnavailableError('unreachable', ...) — correct for a
+     * genuine connectivity failure, but wrong here: it would mask a real
+     * business-logic rollback reason (a failed reservation commit, e.g.
+     * insufficient stock) behind a misleading "tenant database unreachable"
+     * 503, exactly the kind of silent-downgrade this plan's atomicity
+     * guarantee must not do. resolveDatabaseName() below still throws a
+     * genuine TenantDatabaseUnavailableError for real registry/connectivity
+     * problems (missing/provisioning/inactive/unverified) — that error type
+     * propagates unmodified, same as every other method; only the blanket
+     * re-wrap of OTHER errors is skipped for this method. (finalizePersist()
+     * above has this same latent masking behavior for its own sale-effect
+     * failures — a pre-existing Phase 9 issue, out of this task's scope,
+     * logged in deferred-items.md rather than changed here.)
+     */
+    async finalizeStorefrontOrder(businessId, {
+        sourceReference, customerAccountId = null, lines = [], header, payment, commitReservation
+    } = {}) {
+        if (!businessId) throw new Error('AvailmentRepository.finalizeStorefrontOrder requires businessId.');
+        if (!sourceReference) throw new Error('AvailmentRepository.finalizeStorefrontOrder requires sourceReference.');
+        if (typeof commitReservation !== 'function') {
+            throw new Error('AvailmentRepository.finalizeStorefrontOrder requires a commitReservation function.');
+        }
+
+        // Throws TenantDatabaseUnavailableError directly (not caught/
+        // re-wrapped here) for missing/provisioning/inactive/unverified —
+        // propagates to the usecase layer exactly like every other method.
+        const databaseName = await this.resolveDatabaseName(businessId);
+        const models = this.tenantConnector.getModels(databaseName);
+        const { Availment: AvailmentModel, AvailmentItem: AvailmentItemModel, Payment: PaymentModel } = models;
+        const sequelize = AvailmentModel.sequelize;
+
+        const findExistingByReference = async (transaction) => AvailmentModel.findOne({
+            where: { business_id: businessId, source_reference: sourceReference },
+            include: [{ association: 'items' }, { association: 'payments' }],
+            ...(transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {})
+        });
+
+        try {
+            return await sequelize.transaction(async (transaction) => {
+                    // (a) idempotent no-op: row-locked lookup by (business_id, source_reference)
+                    const existing = await findExistingByReference(transaction);
+                    if (existing) {
+                        return {
+                            availment: this.toPlain(existing),
+                            payment: this.toPlainPayment((existing.payments || [])[0]),
+                            idempotent: true
+                        };
+                    }
+
+                    // (b) create the finalized Availment — NO shift_id/terminal_id/cashier fields
+                    const availment = await AvailmentModel.create({
+                        business_id: businessId,
+                        branch_id: null,
+                        customer_account_id: customerAccountId,
+                        shift_id: null,
+                        terminal_id: null,
+                        cashier_account_id: null,
+                        cashier_dgfy_account_id: null,
+                        status: 'finalized',
+                        document_context: null,
+                        source_reference: sourceReference,
+                        subtotal_amount: header.subtotal_amount,
+                        discount_amount: header.discount_amount,
+                        vat_amount: header.vat_amount,
+                        vat_exempt_amount: header.vat_exempt_amount,
+                        total_amount: header.total_amount,
+                        finalized_at: new Date()
+                    }, { transaction });
+
+                    for (const line of (lines || [])) {
+                        await AvailmentItemModel.create({
+                            business_id: businessId,
+                            availment_id: availment.id,
+                            product_id: line.productId,
+                            product_name: line.productName || null,
+                            quantity: line.quantity,
+                            unit_price: line.unitPrice,
+                            stock_effect_type: 'inventory_issue',
+                            tax_treatment: 'vatable',
+                            tax_rate: '0.1200'
+                        }, { transaction });
+                    }
+
+                    // (d) reservation -> sale, injected single-writer port
+                    // (ADR 0029), SAME transaction — a non-success result
+                    // throws so the whole finalize rolls back.
+                    const commitResult = await commitReservation(transaction);
+                    if (commitResult && typeof commitResult.isSuccess === 'boolean' && !commitResult.isSuccess) {
+                        throw new Error(
+                            `Reservation commit failed for source_reference ${sourceReference}: ${
+                                commitResult.error?.message || 'unknown error'
+                            }`
+                        );
+                    }
+
+                    // (c) Payment row — payment_reference stored separately
+                    // from the payment_method ENUM (T-10-07-04, A4).
+                    const paymentRow = await PaymentModel.create({
+                        business_id: businessId,
+                        availment_id: availment.id,
+                        payment_method: payment.payment_method,
+                        amount_received: payment.amount_received,
+                        change_due: payment.change_due || null,
+                        payment_handoff_mode: payment.payment_handoff_mode || null,
+                        payment_reference: payment.payment_reference || null
+                    }, { transaction });
+
+                    return {
+                        availment: this.toPlain(availment),
+                        payment: this.toPlainPayment(paymentRow),
+                        idempotent: false
+                    };
+                });
+            } catch (error) {
+                // Lost-guard race: two concurrent calls both missed the
+                // row-locked lookup (neither row existed yet) and both
+                // attempted an insert; the UNIQUE unique_availments_source_
+                // reference index lets exactly one win. Re-resolve the
+                // loser to the winner's row instead of surfacing a raw DB
+                // error (RESEARCH Pitfall 2 belt-and-suspenders).
+                if (error && error.name === 'SequelizeUniqueConstraintError') {
+                    const existing = await findExistingByReference(null);
+                    if (existing) {
+                        return {
+                            availment: this.toPlain(existing),
+                            payment: this.toPlainPayment((existing.payments || [])[0]),
+                            idempotent: true
+                        };
+                    }
+                }
+                throw error;
+            }
+    }
+
     // ============================================================================
     // Plain/projection helpers
     // ============================================================================
@@ -539,6 +714,7 @@ export class AvailmentRepository {
             sc_pwd_id_number: availmentRow.sc_pwd_id_number,
             sc_pwd_metadata: availmentRow.sc_pwd_metadata,
             finalized_at: availmentRow.finalized_at,
+            source_reference: availmentRow.source_reference,
             created_at: availmentRow.created_at,
             updated_at: availmentRow.updated_at,
             items: (availmentRow.items || []).map(item => this.toPlainLine(item)),
@@ -594,6 +770,7 @@ export class AvailmentRepository {
             amount_received: paymentRow.amount_received,
             change_due: paymentRow.change_due,
             payment_handoff_mode: paymentRow.payment_handoff_mode,
+            payment_reference: paymentRow.payment_reference,
             created_at: paymentRow.created_at
         };
     }

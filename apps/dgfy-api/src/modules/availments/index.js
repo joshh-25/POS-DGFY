@@ -25,6 +25,10 @@ export { AvailmentEntity, createAvailmentEntity } from './entities/availmentEnti
 export { createAvailmentRoutes } from './routes.js';
 export { buildAvailmentController } from './controllers/availmentController.js';
 export { assembleEvidenceBundle } from './usecases/complianceEvidenceUseCases.js';
+export {
+    buildFinalizeStorefrontOrderUseCase,
+    normalizeStorefrontPaymentMethod
+} from './usecases/storefrontFinalizeUseCases.js';
 
 import { AvailmentRepository } from './repositories/availmentRepository.js';
 import { ComplianceEvidenceRepository } from './repositories/complianceEvidenceRepository.js';
@@ -39,6 +43,7 @@ import {
     buildFinalizeAvailmentUseCase
 } from './usecases/availmentUseCases.js';
 import { buildAttestComplianceEvidenceUseCase } from './usecases/complianceEvidenceUseCases.js';
+import { buildFinalizeStorefrontOrderUseCase } from './usecases/storefrontFinalizeUseCases.js';
 
 /**
  * Builds the fully wired availments module: one AvailmentRepository instance
@@ -54,7 +59,8 @@ import { buildAttestComplianceEvidenceUseCase } from './usecases/complianceEvide
  *   assertComplianceGate,
  *   recordSaleEffect,
  *   shiftRepository,
- *   deviceBridgeClient
+ *   deviceBridgeClient,
+ *   commitReservation
  * }} deps
  * @returns {{repository: AvailmentRepository, complianceEvidenceRepository: ComplianceEvidenceRepository, useCases: Object}}
  */
@@ -66,7 +72,14 @@ export function buildAvailmentsModule({
     assertComplianceGate,
     recordSaleEffect,
     shiftRepository,
-    deviceBridgeClient
+    deviceBridgeClient,
+    // 10-07: the 10-02 reservationPorts.commitReservation single-writer
+    // port. OPTIONAL here so existing composition roots (routes/index.js,
+    // finalizeLive.test.js) that don't yet wire inventory reservations keep
+    // building the module without a breaking constructor change;
+    // finalizeStorefrontOrder is only exposed on useCases when this is
+    // supplied (10-06/10-08 inject it once they compose this module).
+    commitReservation
 } = {}) {
     const repository = new AvailmentRepository({ tenantConnector, businessDatabaseRegistryRepository });
     // D-23: the interim per-business compliance-evidence attestation store
@@ -105,7 +118,15 @@ export function buildAvailmentsModule({
                 shiftRepository,
                 complianceEvidenceRepository,
                 deviceBridgeClient
-            })
+            }),
+            // 10-07: storefront-order -> tenant-Availment finalize seam (no
+            // shift/terminal/cashier, cross-DB customer_account_id,
+            // reservation->sale via the injected commitReservation port).
+            // Exported for 10-06 (cash/COD immediate finalize) and 10-08
+            // (payment.paid webhook finalize) to reuse directly.
+            ...(typeof commitReservation === 'function'
+                ? { finalizeStorefrontOrder: buildFinalizeStorefrontOrderUseCase({ repository, commitReservation }) }
+                : {})
         }
     };
 }
