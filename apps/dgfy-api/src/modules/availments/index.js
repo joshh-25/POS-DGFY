@@ -17,9 +17,28 @@ export {
     NoOpenShiftError,
     TenantDatabaseUnavailableError
 } from './repositories/availmentRepository.js';
+export {
+    ComplianceEvidenceRepository,
+    DuplicateComplianceEvidenceError
+} from './repositories/complianceEvidenceRepository.js';
 export { AvailmentEntity, createAvailmentEntity } from './entities/availmentEntity.js';
+export { createAvailmentRoutes } from './routes.js';
+export { buildAvailmentController } from './controllers/availmentController.js';
+export { assembleEvidenceBundle } from './usecases/complianceEvidenceUseCases.js';
 
 import { AvailmentRepository } from './repositories/availmentRepository.js';
+import { ComplianceEvidenceRepository } from './repositories/complianceEvidenceRepository.js';
+import {
+    buildCreateAvailmentUseCase,
+    buildGetByIdUseCase,
+    buildAddLineUseCase,
+    buildUpdateLineUseCase,
+    buildRemoveLineUseCase,
+    buildRestoreLineUseCase,
+    buildApplyDiscountUseCase,
+    buildFinalizeAvailmentUseCase
+} from './usecases/availmentUseCases.js';
+import { buildAttestComplianceEvidenceUseCase } from './usecases/complianceEvidenceUseCases.js';
 
 /**
  * Builds the fully wired availments module: one AvailmentRepository instance
@@ -37,7 +56,7 @@ import { AvailmentRepository } from './repositories/availmentRepository.js';
  *   shiftRepository,
  *   deviceBridgeClient
  * }} deps
- * @returns {{repository: AvailmentRepository, useCases: Object}}
+ * @returns {{repository: AvailmentRepository, complianceEvidenceRepository: ComplianceEvidenceRepository, useCases: Object}}
  */
 export function buildAvailmentsModule({
     tenantConnector,
@@ -50,12 +69,43 @@ export function buildAvailmentsModule({
     deviceBridgeClient
 } = {}) {
     const repository = new AvailmentRepository({ tenantConnector, businessDatabaseRegistryRepository });
+    // D-23: the interim per-business compliance-evidence attestation store
+    // finalize reads for compliant_active checkout (see complianceEvidenceUseCases.js).
+    const complianceEvidenceRepository = new ComplianceEvidenceRepository({
+        tenantConnector,
+        businessDatabaseRegistryRepository
+    });
 
     return {
         repository,
+        complianceEvidenceRepository,
         useCases: {
-            // 09-05 will add: createAvailment, addLine, updateLine, removeLine, restoreLine, applyDiscount
-            // 09-06 will add: finalizeAvailment
+            // 09-05: Line-editing and discount usecases
+            createAvailment: buildCreateAvailmentUseCase({ repository, businessRepository }),
+            getById: buildGetByIdUseCase({ repository, businessRepository }),
+            addLine: buildAddLineUseCase({ repository, businessRepository, productRepository }),
+            updateLine: buildUpdateLineUseCase({ repository, businessRepository }),
+            removeLine: buildRemoveLineUseCase({ repository, businessRepository }),
+            restoreLine: buildRestoreLineUseCase({ repository, businessRepository }),
+            applyDiscount: buildApplyDiscountUseCase({ repository, businessRepository }),
+            // 09-06: operator attestation endpoint for the D-23 evidence store
+            attestComplianceEvidence: buildAttestComplianceEvidenceUseCase({
+                repository: complianceEvidenceRepository,
+                businessRepository
+            }),
+            // 09-06: finalize orchestration usecase (money recompute, compliance
+            // gating + evidence assembly, open-shift binding, atomic persist with
+            // sale effects, best-effort print)
+            finalizeAvailment: buildFinalizeAvailmentUseCase({
+                repository,
+                businessRepository,
+                productRepository,
+                assertComplianceGate,
+                recordSaleEffect,
+                shiftRepository,
+                complianceEvidenceRepository,
+                deviceBridgeClient
+            })
         }
     };
 }

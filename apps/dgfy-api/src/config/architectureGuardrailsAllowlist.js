@@ -46,7 +46,11 @@ export const ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST = Object.freeze([
     // Phase 8 (08-07-PLAN.md): booking module controller follows the same
     // locked apps/dgfy-api Clean-Architecture naming (*Controller.js, not
     // backend/'s *Handlers.js convention) as the entries above.
-    '../apps/dgfy-api/src/modules/booking/controllers/bookingController.js'
+    '../apps/dgfy-api/src/modules/booking/controllers/bookingController.js',
+    // Phase 9 (09-05-PLAN.md): availments module controller follows the same
+    // locked apps/dgfy-api Clean-Architecture naming (*Controller.js, not
+    // backend/'s *Handlers.js convention) as the entries above.
+    '../apps/dgfy-api/src/modules/availments/controllers/availmentController.js'
 ]);
 
 // apps/dgfy-api has no usecase-layer legacy-service-import exceptions yet.
