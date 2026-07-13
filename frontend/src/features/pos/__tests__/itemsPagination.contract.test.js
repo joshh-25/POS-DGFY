@@ -1,0 +1,30 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+
+describe('POS item list pagination', () => {
+  it('limits the rendered item list to fifteen records and exposes page navigation', () => {
+    const workspace = fs.readFileSync(workspacePath, 'utf8');
+
+    expect(workspace).toContain('const POS_ITEMS_PAGE_SIZE = 15;');
+    expect(workspace).toContain('filteredItems.slice(start, start + POS_ITEMS_PAGE_SIZE)');
+    expect(workspace).toContain('{paginatedItems.map((item) => {');
+    expect(workspace).toContain('Previous items page');
+    expect(workspace).toContain('Next items page');
+  });
+
+  it('keeps a blocking save screen visible until item persistence completes', () => {
+    const workspace = fs.readFileSync(workspacePath, 'utf8');
+
+    expect(workspace).toContain('const [itemSaveInFlight, setItemSaveInFlight] = useState(false);');
+    expect(workspace).toContain('setItemSaveInFlight(true);');
+    expect(workspace).toContain('setItemSaveInFlight(false);');
+    expect(workspace).toContain('{itemSaveInFlight && typeof document !== \'undefined\' && createPortal((');
+    expect(workspace).toContain('Saving item…');
+    expect(workspace).toContain('[border-radius:50%_50%_50%_0]');
+  });
+});
