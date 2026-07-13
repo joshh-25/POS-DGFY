@@ -400,12 +400,12 @@ Plans:
   2. Staff can progress an order's fulfillment status through a shared core pipeline (placed to confirmed to preparing to ready/out-for-delivery to completed), with handoff steps specific to pickup, delivery, and dine-in.
   3. Staff can manually assign a courier/delivery partner to an order and track courier payout through to fulfillment completion.
 
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 11-01-PLAN.md — Schema foundation: additive migration (fulfillment columns + append-only stage-event table + mutable-payout courier table) + two Tenant models + registration + verify contract
+- [x] 11-01-PLAN.md — Schema foundation: additive migration (fulfillment columns + append-only stage-event table + mutable-payout courier table) + two Tenant models + registration + verify contract
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -436,4 +436,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 13/13 | Complete   | 2026-07-13 |
 | 9. POS Checkout & Payment | 0/8 | Not started | - |
 | 10. Storefront Discovery & Online Ordering | 8/8 | Complete    | 2026-07-13 |
-| 11. Order Fulfillment & Delivery Coordination | 0/4 | Not started | - |
+| 11. Order Fulfillment & Delivery Coordination | 1/4 | In Progress|  |
