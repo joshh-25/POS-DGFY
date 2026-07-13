@@ -1257,6 +1257,104 @@ const createFoodCategoryOption = (folder = {}) => {
   };
 };
 
+function EditableFoodCategoryCombobox({
+  id,
+  value,
+  options = [],
+  onChange,
+  onSelect,
+  disabled = false
+}) {
+  const [open, setOpen] = useState(false);
+  const [isFiltering, setIsFiltering] = useState(false);
+  const containerRef = useRef(null);
+  const normalizedValue = normalizeFolderNameKey(value);
+  const normalizedQuery = isFiltering ? normalizedValue : '';
+  const filteredOptions = options.filter((option) => (
+    !normalizedQuery || normalizeFolderNameKey(option.name).includes(normalizedQuery)
+  ));
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!containerRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, []);
+
+  const selectOption = (option) => {
+    onChange(option.name);
+    onSelect(option);
+    setIsFiltering(false);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Input
+        id={id}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-controls={`${id}-listbox`}
+        aria-expanded={open}
+        value={value}
+        onFocus={() => {
+          setIsFiltering(false);
+          setOpen(true);
+        }}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setIsFiltering(true);
+          setOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setOpen(false);
+          if (event.key === 'ArrowDown') setOpen(true);
+        }}
+        className="h-11 rounded-xl border-slate-200 pr-10 text-xs font-medium focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+        disabled={disabled}
+        placeholder="Select or create a category"
+      />
+      <button
+        type="button"
+        className="absolute inset-y-0 right-0 grid w-10 place-items-center text-slate-500 hover:text-[#1A4E8D] disabled:cursor-not-allowed disabled:opacity-50"
+        onClick={() => {
+          setIsFiltering(false);
+          setOpen((current) => !current);
+        }}
+        disabled={disabled}
+        aria-label="Show food categories"
+        aria-expanded={open}
+      >
+        <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open ? (
+        <div
+          id={`${id}-listbox`}
+          role="listbox"
+          aria-label="Food categories"
+          className="absolute z-30 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+        >
+          {filteredOptions.length > 0 ? filteredOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={normalizeFolderNameKey(option.name) === normalizedValue}
+              className="flex w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-[#0F172A] hover:bg-blue-50 focus:bg-blue-50 focus:outline-none sm:text-sm"
+              onClick={() => selectOption(option)}
+            >
+              {option.label}
+            </button>
+          )) : (
+            <p className="px-3 py-2 text-xs text-slate-500">No existing category matches. Save to create “{value.trim()}”.</p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const createEmptyPosItemForm = () => ({
   name: '',
   default_sale_price: '',
@@ -2493,11 +2591,10 @@ function ItemsWorkspace({
                       </label>
                       {canManageCategories ? (
                         <>
-                          <Input
-                            list="pos-items-create-category-options"
+                          <EditableFoodCategoryCombobox
+                            id="pos-items-create-category"
                             value={createCategoryInput}
-                            onChange={(event) => {
-                              const nextValue = event.target.value;
+                            onChange={(nextValue) => {
                               const matchedCategory = foodCategoryOptions.find((option) => (
                                 normalizeFolderNameKey(option.name) === normalizeFolderNameKey(nextValue)
                               ));
@@ -2507,13 +2604,13 @@ function ItemsWorkspace({
                                 pos_category: matchedCategory?.value || ''
                               }));
                             }}
-                            className="h-11 rounded-xl border-slate-200 text-xs font-medium focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                            onSelect={(option) => {
+                              setCreateCategoryInput(option.name);
+                              setCreateForm((current) => ({ ...current, pos_category: option.value }));
+                            }}
+                            options={foodCategoryOptions}
                             disabled={creatingItem || postCreateSaving}
-                            placeholder="Select or create a category"
                           />
-                          <datalist id="pos-items-create-category-options">
-                            {foodCategoryOptions.map((option) => <option key={option.value} value={option.name} />)}
-                          </datalist>
                           <p className="text-[11px] text-slate-500">Select an existing category, or enter a new name to create it when this item is saved.</p>
                         </>
                       ) : (
@@ -2801,11 +2898,10 @@ function ItemsWorkspace({
                       </label>
                       {canManageCategories ? (
                         <>
-                          <Input
-                            list="pos-items-edit-category-options"
+                          <EditableFoodCategoryCombobox
+                            id="pos-items-edit-category"
                             value={editCategoryInput}
-                            onChange={(event) => {
-                              const nextValue = event.target.value;
+                            onChange={(nextValue) => {
                               const matchedCategory = foodCategoryOptions.find((option) => (
                                 normalizeFolderNameKey(option.name) === normalizeFolderNameKey(nextValue)
                               ));
@@ -2815,13 +2911,13 @@ function ItemsWorkspace({
                                 pos_category: matchedCategory?.value || ''
                               }));
                             }}
-                            className="h-11 rounded-xl border-slate-200 text-xs font-medium focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                            onSelect={(option) => {
+                              setEditCategoryInput(option.name);
+                              setEditForm((current) => ({ ...current, pos_category: option.value }));
+                            }}
+                            options={foodCategoryOptions}
                             disabled={savingItem || persistingEditAssets}
-                            placeholder="Select or create a category"
                           />
-                          <datalist id="pos-items-edit-category-options">
-                            {foodCategoryOptions.map((option) => <option key={option.value} value={option.name} />)}
-                          </datalist>
                           <p className="text-[11px] text-slate-500">Select an existing category, or enter a new name to create it when this item is saved.</p>
                         </>
                       ) : (
