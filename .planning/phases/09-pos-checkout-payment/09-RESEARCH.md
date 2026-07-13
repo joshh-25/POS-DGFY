@@ -450,23 +450,21 @@ Apply to a tenant: `node apps/dgfy-migration-runner/src/cli.js activate-tenant -
 
 **If all assumptions are confirmed by the user in discuss/plan, this research is execution-ready.**
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **VAT inclusive vs. exclusive + SC/PWD VAT-exemption (A1/A2/A6).**
-   - What we know: columns are `DECIMAL(14,4)`; D-07 says VAT-exclusive base, 20%; D-13 says uniform 12%.
-   - What's unclear: are stored prices VAT-inclusive, and does an SC/PWD sale zero the VAT?
-   - Recommendation: get one worked example from the user (e.g., "₱112 item, SC/PWD → show me the exact receipt lines you expect") and lock it as a golden test.
+> All four open questions are now resolved by locked decisions and the Phase 9 plan set. Inline resolutions below.
 
-2. **Multi-line + sale-movement atomicity (A5).**
-   - What we know: `recordMovementWithStockSync` opens its own txn per call.
-   - What's unclear: whether inventory should expose a transaction-aware/batch sale method or availments owns the outer txn.
-   - Recommendation: add a transaction-accepting sale write path so finalize is one atomic unit.
+1. **VAT inclusive vs. exclusive + SC/PWD VAT-exemption (A1/A2/A6).** → **RESOLVED by D-19 + D-20.** Stored prices are VAT-INCLUSIVE (VAT decomposed per line as `L − L/1.12`, D-19); an SC/PWD sale is VAT-EXEMPT (zero the 12% VAT AND take 20% off the net base, D-20). Locked as the money.js golden-test basis in plan 09-02.
+   - Original: are stored prices VAT-inclusive, and does an SC/PWD sale zero the VAT?
 
-3. **Which compliance business states must checkout support (A4)?**
-   - Recommendation: confirm Phase 9 targets `non_compliant_active`/`non_fiscal` only; defer fiscal-evidence gathering.
+2. **Multi-line + sale-movement atomicity (A5).** → **RESOLVED: availments owns the outer transaction (09-04 `finalizePersist`).** Finalize opens ONE `sequelize.transaction`, threads the transaction into each `recordSaleEffect`, and re-throws any non-success sale-effect `ApplicationResult` so an insufficient-stock decrement rolls the whole sale back (single atomic unit, Pitfall 7).
+   - Original: should inventory expose a transaction-aware sale method, or does availments own the outer txn?
 
-4. **Promo codes: DB table or omitted?** D-04 lists codes but Claude's discretion says storage is undecided.
-   - Recommendation: for MVP, support the SC/PWD + manual discount paths fully; make promo-code an optional `availment_discounts` row keyed by a free-text code with no validation table (like D-06 stores-but-doesn't-validate), or defer codes if the user has no code list yet.
+3. **Which compliance business states must checkout support (A4)?** → **RESOLVED by D-21 (supersedes A4).** Phase 9 supports BOTH `non_compliant_active`/`non_fiscal` AND `compliant_active`/fiscal checkout; the finalize usecase (09-06) assembles and passes the full evidence bundle via the interim per-business attestation store (option B / A8). Fiscal checkout hard-fails on incomplete evidence (D-24), never a silent downgrade.
+   - Original: confirm which compliance business states checkout must support.
+
+4. **Promo codes: DB table or omitted?** → **RESOLVED: dedicated `availment_discounts` table (plan 09-01).** Each discount (promo_code | manual | sc_pwd) is one row carrying `discount_type`, `code` (free-text, stored-not-validated per D-06 precedent), `amount`/`percent`, `applied_by_staff_account_id`, and `reason`. This satisfies CHK-03 (staff id + reason) and D-14 (each discount listed separately on the receipt) — a single aggregate `discount_amount` column could not.
+   - Original: DB table or omitted, and how are codes stored/validated?
 
 ## Environment Availability
 
