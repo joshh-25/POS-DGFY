@@ -94,12 +94,12 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 
 ### POS Checkout And Payment
 
-- [ ] **CHK-01**: Staff can add Products to an Availment, adjust line-item quantities, and remove lines before finalizing a sale.
-- [ ] **CHK-02**: The system computes order totals AND cash change server-side (`change_due = cash_received − total`); the client cannot submit an arbitrary total or `change_amount`.
-- [ ] **CHK-03**: Staff can apply a discount code or a permission-gated manual discount to an Availment, recorded with the applying staff ID and a reason.
-- [ ] **CHK-04**: Staff can select a payment method (Cash, GCash, Credit Card) per Availment; the system records the method and amount, not a live gateway charge.
-- [ ] **CHK-05**: A completed Availment produces a receipt reflecting every applied discount and tax, gated by fiscal/compliance state.
-- [ ] **CHK-06**: An Availment cannot be recorded without an open shift for the cashier and terminal.
+- [x] **CHK-01**: Staff can add Products to an Availment, adjust line-item quantities, and remove lines before finalizing a sale.
+- [x] **CHK-02**: The system computes order totals AND cash change server-side (`change_due = cash_received − total`); the client cannot submit an arbitrary total or `change_amount`.
+- [x] **CHK-03**: Staff can apply a discount code or a permission-gated manual discount to an Availment, recorded with the applying staff ID and a reason.
+- [x] **CHK-04**: Staff can select a payment method (Cash, GCash, Credit Card) per Availment; the system records the method and amount, not a live gateway charge.
+- [x] **CHK-05**: A completed Availment produces a receipt reflecting every applied discount and tax, gated by fiscal/compliance state.
+- [x] **CHK-06**: An Availment cannot be recorded without an open shift for the cashier and terminal.
 
 ### Shift And Cash Drawer
 
@@ -111,7 +111,7 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 
 - [x] **FSC-01**: A tenant/branch has a compliance-mode state reflecting whether required fiscal paperwork is present and verified.
 - [ ] **FSC-02**: Checkout, shift opening, and receipt issuance are all gated through one shared compliance policy-engine check, not duplicated per surface. (gaps found 2026-07-12 — compliant_active gate fails open on 5 of 7 evidence signals when omitted, see 08-VERIFICATION.md)
-- [ ] **FSC-03**: Senior Citizen / PWD discounts are computed server-side per BIR rules (VAT-exclusive base, 20% discount, MEMC group-meal rule) and produce the correct separate receipt lines.
+- [x] **FSC-03**: Senior Citizen / PWD discounts are computed server-side per BIR rules (VAT-exclusive base, 20% discount, MEMC group-meal rule) and produce the correct separate receipt lines. (MEMC group-meal rule deferred per 09-CONTEXT.md D-07 — not implemented in Phase 9, tracked separately)
 
 ### Storefront Discovery And Online Ordering
 
@@ -228,13 +228,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SFT-03 | Phase 8 | Complete |
 | FSC-01 | Phase 8 | Complete |
 | FSC-02 | Phase 8 | Gaps found |
-| CHK-01 | Phase 9 | Pending |
-| CHK-02 | Phase 9 | Pending |
-| CHK-03 | Phase 9 | Pending |
-| CHK-04 | Phase 9 | Pending |
-| CHK-05 | Phase 9 | Pending |
-| CHK-06 | Phase 9 | Pending |
-| FSC-03 | Phase 9 | Pending |
+| CHK-01 | Phase 9 | Complete |
+| CHK-02 | Phase 9 | Complete |
+| CHK-03 | Phase 9 | Complete |
+| CHK-04 | Phase 9 | Complete |
+| CHK-05 | Phase 9 | Complete |
+| CHK-06 | Phase 9 | Complete |
+| FSC-03 | Phase 9 | Complete |
 | STF-01 | Phase 10 | Pending |
 | STF-02 | Phase 10 | Pending |
 | STF-03 | Phase 10 | Pending |

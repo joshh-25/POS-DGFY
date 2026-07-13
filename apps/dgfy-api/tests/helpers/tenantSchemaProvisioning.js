@@ -1,6 +1,7 @@
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { readdirSync } from 'fs';
 import { Sequelize } from 'sequelize';
 
 /**
@@ -46,17 +47,28 @@ import { Sequelize } from 'sequelize';
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationRunnerRoot = path.resolve(__dirname, '../../../dgfy-migration-runner');
+const migrationsSchemaDir = path.join(migrationRunnerRoot, 'src/migrations/schema');
 
-// The real migration-runner schema migration files (CommonJS, per
-// apps/dgfy-migration-runner's own sequelize-cli migration convention) —
-// required (not imported) via createRequire so this ESM test helper can
-// load them cross-package without adding a new package dependency.
-const businessFoundationMigration = require(
-    path.join(migrationRunnerRoot, 'src/migrations/schema/20260710021000-create-dgfy-business-foundation.cjs')
-);
-const staffInvitationsMigration = require(
-    path.join(migrationRunnerRoot, 'src/migrations/schema/20260711143000-add-dgfy-business-staff-invitations.cjs')
-);
+/**
+ * Loads every business-target schema migration (meta.targetKind === 'business')
+ * under apps/dgfy-migration-runner's migrations/schema directory, in the same
+ * filename-sorted (timestamp-prefixed) order the real migration-runner's
+ * buildMigrationsForKind() applies them in. Required (not imported) via
+ * createRequire so this ESM test helper can load the CommonJS migration
+ * modules cross-package without adding a new package dependency.
+ *
+ * Dynamic (not hardcoded to a fixed list of files) so this helper never goes
+ * stale again as new business-target migrations land in later phases — the
+ * prior hardcoded two-migration list silently drifted behind Phase 8/9's
+ * additions and broke every consumer's dgfyBusinessContract verification.
+ */
+function loadBusinessTargetMigrations() {
+    return readdirSync(migrationsSchemaDir)
+        .filter((file) => file.endsWith('.cjs'))
+        .sort()
+        .map((file) => require(path.join(migrationsSchemaDir, file)))
+        .filter((migration) => (migration.meta?.targetKind || 'core') === 'business');
+}
 
 /**
  * Applies the REAL migration-runner dgfy_business_* schema migrations
@@ -69,8 +81,11 @@ const staffInvitationsMigration = require(
 export async function applyAndVerifyBusinessSchema(tenantConnection) {
     const queryInterface = tenantConnection.getQueryInterface();
 
-    await businessFoundationMigration.up(queryInterface, Sequelize);
-    await staffInvitationsMigration.up(queryInterface, Sequelize);
+    const migrations = loadBusinessTargetMigrations();
+    for (const migration of migrations) {
+        // eslint-disable-next-line no-await-in-loop -- migrations must apply in order
+        await migration.up(queryInterface, Sequelize);
+    }
 
     const { dgfyBusinessContract } = await import(
         path.join(migrationRunnerRoot, 'src/schemaContracts/dgfyBusinessContract.js')
