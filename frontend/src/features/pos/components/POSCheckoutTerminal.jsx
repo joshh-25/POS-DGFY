@@ -2214,6 +2214,10 @@ export default function POSCheckoutTerminal({
                     }
                     : null);
             const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', manual: 'Manual Discount' };
+            const resolvedApproverUserId = Number(verifiedApprover?.user_id ?? approvalUserId);
+            const governedDiscountApproverUserId = Number.isInteger(resolvedApproverUserId) && resolvedApproverUserId > 0
+                ? resolvedApproverUserId
+                : null;
             const enteredPromoCode = normalizePromoCode(discountDraft.promo_code);
             const matchedPromoConfig = type === 'promo'
                 ? safeCommercialPromoConfig.find((entry) => normalizePromoCode(entry?.promo_code) === enteredPromoCode)
@@ -2244,7 +2248,7 @@ export default function POSCheckoutTerminal({
                 rate: statutory ? 20 : (type === 'promo' ? configuredPromoRate : rate),
                 amount: type !== 'promo' && discountDraft.method === 'fixed' ? amount : null,
                 promo_code: type === 'promo' ? enteredPromoCode : discountDraft.promo_code,
-                approver_user_id: verifiedApprover?.user_id || approvalUserId || discountDraft.approver_user_id,
+                approver_user_id: governedDiscountApproverUserId,
                 approver_name: verifiedApprover?.username || null,
                 eligible_item_ids: type === 'promo' ? promoEligibleItemIds : safeEligibleDiscountItemIds,
                 eligible_items: statutory ? safeEligibleDiscountItems : []
