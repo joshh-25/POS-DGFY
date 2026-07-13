@@ -190,6 +190,27 @@ const formatQuantity = (value) => {
     if (!Number.isFinite(quantity)) return '0';
     return Number.isInteger(quantity) ? String(quantity) : String(round4(quantity));
 };
+// "Best Seller" is a mobile-only, client-side-only marker (no backend field) - persisted to
+// localStorage and shared with the item form via a custom event for same-tab instant sync
+// (native "storage" events only fire across tabs, not within the same page).
+const BEST_SELLER_STORAGE_KEY = 'pos_best_seller_item_ids';
+const BEST_SELLER_EVENT_NAME = 'pos:best-seller-updated';
+
+const readBestSellerItemIds = () => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+        const raw = window.localStorage.getItem(BEST_SELLER_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return new Set(
+            (Array.isArray(parsed) ? parsed : [])
+                .map((id) => Number(id))
+                .filter((id) => Number.isInteger(id) && id > 0)
+        );
+    } catch {
+        return new Set();
+    }
+};
+
 // Mobile-only catalog name color: always-available items are always green; otherwise
 // green stock > 100, yellow 0 < stock < 100, red for stock <= 0 and for
 // null/undefined/non-numeric stock (safe default).
@@ -776,6 +797,16 @@ export default function POSCheckoutTerminal({
     const [isTabletViewport, setIsTabletViewport] = useState(false);
     // Drives the mobile-only category-dropdown availability filter below.
     const [isMobile, setIsMobile] = useState(false);
+    const [bestSellerItemIds, setBestSellerItemIds] = useState(() => readBestSellerItemIds());
+    useEffect(() => {
+        const handleBestSellerUpdate = () => setBestSellerItemIds(readBestSellerItemIds());
+        window.addEventListener(BEST_SELLER_EVENT_NAME, handleBestSellerUpdate);
+        window.addEventListener('storage', handleBestSellerUpdate);
+        return () => {
+            window.removeEventListener(BEST_SELLER_EVENT_NAME, handleBestSellerUpdate);
+            window.removeEventListener('storage', handleBestSellerUpdate);
+        };
+    }, []);
     const [catalogPage, setCatalogPage] = useState(1);
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
@@ -794,8 +825,8 @@ export default function POSCheckoutTerminal({
                 : 'mt-4 grid grid-cols-3 auto-rows-[11rem] gap-1.5';
         }
         return sidebarCollapsed
-            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[6.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
-            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[6.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
+            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
+            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
     }, [isTabletViewport, sidebarCollapsed]);
     const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-visible pr-0 pb-3 xl:overflow-hidden';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
@@ -858,7 +889,7 @@ export default function POSCheckoutTerminal({
         ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
         : isTabletViewport
             ? 'group flex h-[11rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[6.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-full';
+            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[7.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-full';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
         : isTabletViewport
@@ -2992,6 +3023,7 @@ export default function POSCheckoutTerminal({
                         {visibleCatalogItems.map((item) => {
                             const isServiceItem = isServiceCatalogItem(item);
                             const isAlwaysAvailable = item?.pos_always_available === true;
+                            const isBestSeller = bestSellerItemIds.has(Number(item?.item_id));
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
                             const configuredPosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail');
                             const mappedPosImageSrc = resolveAppAssetUrl(resolveMappedPosItemImage(item));
@@ -3097,10 +3129,19 @@ export default function POSCheckoutTerminal({
                                             <p className={`min-w-0 text-[13px] font-black leading-tight ${mobileStockNameColorClassName}`}>{item.name}</p>
                                             <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
                                                 <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                                                    {isAlwaysAvailable && (
-                                                        <span className="line-clamp-2 rounded-md border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-[#1A4E8D]">
-                                                            Always available
-                                                        </span>
+                                                    {(isAlwaysAvailable || isBestSeller) && (
+                                                        <div className="flex flex-wrap items-center gap-1">
+                                                            {isAlwaysAvailable && (
+                                                                <span className="rounded-md border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-[#1A4E8D]">
+                                                                    Always available
+                                                                </span>
+                                                            )}
+                                                            {isBestSeller && (
+                                                                <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-700 sm:hidden">
+                                                                    best seller
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     )}
                                                     <span className="font-black text-[#1A4E8D] whitespace-nowrap text-[10.5px]">
                                                         {Number(item.default_sale_price || 0) > 0 ? `PHP ${money(item.default_sale_price)}` : 'Not set'}
