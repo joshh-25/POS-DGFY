@@ -67,6 +67,38 @@ describe('GuestIdentityRepository', () => {
         });
     });
 
+    describe('findById', () => {
+        it('returns null for a blank id without querying', async () => {
+            const model = makeModel({ findByPk: jest.fn(async () => null) });
+            const repository = new GuestIdentityRepository({ storefrontGuestIdentityModel: model });
+
+            const result = await repository.findById('');
+
+            expect(result).toBeNull();
+            expect(model.findByPk).not.toHaveBeenCalled();
+        });
+
+        it('returns the matching identity row (plain object) when the id resolves', async () => {
+            const record = makeRecord({ id: 'guest-42' });
+            const model = makeModel({ findByPk: jest.fn(async () => record) });
+            const repository = new GuestIdentityRepository({ storefrontGuestIdentityModel: model });
+
+            const result = await repository.findById('guest-42');
+
+            expect(result.id).toBe('guest-42');
+            expect(model.findByPk).toHaveBeenCalledWith('guest-42');
+        });
+
+        it('returns null when the id does not resolve to a real row (CR-03)', async () => {
+            const model = makeModel({ findByPk: jest.fn(async () => null) });
+            const repository = new GuestIdentityRepository({ storefrontGuestIdentityModel: model });
+
+            const result = await repository.findById('unknown-or-forged-id');
+
+            expect(result).toBeNull();
+        });
+    });
+
     describe('upsertByVerifiedEmail', () => {
         it('creates a new identity when none exists for this email, returns its id', async () => {
             const created = makeRecord({ id: 'guest-new' });
@@ -188,6 +220,12 @@ const makeEmailOtp = (overrides = {}) => ({
 const makeGuestIdentityRepository = (overrides = {}) => ({
     upsertByVerifiedEmail: jest.fn(async () => 'guest-identity-1'),
     findByEmail: jest.fn(async () => null),
+    // CR-03 fix (10-REVIEW.md): resolveCheckoutIdentity now looks up a
+    // supplied guestIdentityId via findById before trusting it — default
+    // fake resolves any id to a matching verified identity row so existing
+    // happy-path tests below (which don't care about this lookup) keep
+    // passing; individual tests override this to prove the rejection path.
+    findById: jest.fn(async (id) => (id ? { id, verified_email: 'guest@example.com' } : null)),
     ...overrides
 });
 
@@ -288,12 +326,14 @@ describe('buildGuestCheckoutUseCases', () => {
         });
 
         it('resolves to guest_identity_id when no account is authenticated — never forces account creation', async () => {
-            const { resolveCheckoutIdentity } = buildGuestCheckoutUseCases({ guestIdentityRepository: makeGuestIdentityRepository(), emailOtp: makeEmailOtp() });
+            const guestIdentityRepository = makeGuestIdentityRepository();
+            const { resolveCheckoutIdentity } = buildGuestCheckoutUseCases({ guestIdentityRepository, emailOtp: makeEmailOtp() });
 
             const result = await resolveCheckoutIdentity({ authenticatedAccountId: null, guestIdentityId: 'guest-1' });
 
             expect(result.isSuccess).toBe(true);
             expect(result.data).toEqual({ guest_identity_id: 'guest-1' });
+            expect(guestIdentityRepository.findById).toHaveBeenCalledWith('guest-1');
         });
 
         it('rejects with 401 CHECKOUT_IDENTITY_REQUIRED when neither an account nor a guest identity is present', async () => {
@@ -304,6 +344,20 @@ describe('buildGuestCheckoutUseCases', () => {
             expect(result.isSuccess).toBe(false);
             expect(result.statusCode).toBe(401);
             expect(result.error.details.error_code).toBe('CHECKOUT_IDENTITY_REQUIRED');
+        });
+
+        it('CR-03: rejects with 401 GUEST_IDENTITY_NOT_VERIFIED when the supplied guestIdentityId does not resolve to a real, OTP-verified identity row (never trusts a bare client-supplied id)', async () => {
+            const guestIdentityRepository = makeGuestIdentityRepository({
+                findById: jest.fn(async () => null)
+            });
+            const { resolveCheckoutIdentity } = buildGuestCheckoutUseCases({ guestIdentityRepository, emailOtp: makeEmailOtp() });
+
+            const result = await resolveCheckoutIdentity({ authenticatedAccountId: null, guestIdentityId: 'leaked-or-guessed-id' });
+
+            expect(result.isSuccess).toBe(false);
+            expect(result.statusCode).toBe(401);
+            expect(result.error.details.error_code).toBe('GUEST_IDENTITY_NOT_VERIFIED');
+            expect(guestIdentityRepository.findById).toHaveBeenCalledWith('leaked-or-guessed-id');
         });
     });
 });

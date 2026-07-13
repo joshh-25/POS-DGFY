@@ -60,6 +60,21 @@ export class GuestIdentityRepository {
     }
 
     /**
+     * CR-03 fix (10-REVIEW.md): looks up a guest identity by its opaque
+     * UUID primary key. Used by resolveCheckoutIdentity to confirm a
+     * client-supplied guestIdentityId actually corresponds to a real,
+     * previously-OTP-verified identity row before writing it onto an
+     * order, rather than trusting a bare client-supplied id. Returns null
+     * for a blank/unknown id — never queries with an empty value.
+     * @param {string} id
+     */
+    async findById(id) {
+        if (!id) return null;
+        const record = await this.model.findByPk(id);
+        return record ? this.toPlain(record) : null;
+    }
+
+    /**
      * Finds the existing identity by the UNIQUE verified_email or inserts a
      * new one, then refreshes phone/display_name/last_order_at — one
      * persistent identity per verified email (D-06, STF-03).

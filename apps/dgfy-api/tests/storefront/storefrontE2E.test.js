@@ -76,7 +76,13 @@ const makeEmailOtp = () => ({
 
 const makeGuestIdentityRepository = () => ({
     upsertByVerifiedEmail: jest.fn(async () => 'guest-e2e-0001'),
-    findByEmail: jest.fn(async (email) => (email === 'buyer@example.com' ? { id: 'guest-e2e-0001' } : null))
+    findByEmail: jest.fn(async (email) => (email === 'buyer@example.com' ? { id: 'guest-e2e-0001' } : null)),
+    // CR-03 fix (10-REVIEW.md): resolveCheckoutIdentity now looks up a
+    // supplied guestIdentityId via findById before trusting it — this
+    // suite's fixture guest ('guest-e2e-0001') is the only id every test
+    // below supplies, mirroring the single identity verifyGuestOtp would
+    // have produced in a real flow.
+    findById: jest.fn(async (id) => (id === 'guest-e2e-0001' ? { id: 'guest-e2e-0001' } : null))
 });
 
 // ---- Landlord storefront_orders (10-06) ------------------------------------
