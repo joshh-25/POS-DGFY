@@ -378,12 +378,12 @@ Plans:
   3. Consumer can choose pickup or delivery, immediate or scheduled, and a payment method (cash on pickup/delivery, or GCash/Credit Card via PayMongo where available) at checkout.
   4. A storefront order is durably recorded on the Landlord side first, then finalized into the correct tenant's Availment idempotently — an interrupted or retried cross-database write never produces a duplicate or lost order, and any unresolved case lands in an explicit manual-resolution state rather than failing silently.
 
-**Plans**: 5/8 plans executed
+**Plans**: 6/8 plans executed
 
 - [x] 10-01-PLAN.md — Landlord commerce schema (orders/sessions/guest identity) + discovery geo/search enablement + models + core contract
 - [x] 10-02-PLAN.md — Inventory-owned stock reservation capability (tenant table + reserve/commit/release/expiry ports, D-07..D-10)
 - [x] 10-03-PLAN.md — Storefront module: map discovery/search (STF-01) + store page + server-side cart validation (STF-02)
-- [ ] 10-04-PLAN.md — Guest email-OTP identity + persistent guest identity + account checkout resolution (STF-03)
+- [x] 10-04-PLAN.md — Guest email-OTP identity + persistent guest identity + account checkout resolution (STF-03)
 - [x] 10-05-PLAN.md — PayMongo QR Ph client (native fetch) + landlord session creation, no split (STF-04, D-01/D-02)
 - [ ] 10-06-PLAN.md — Scheduling validation + placeOrder orchestration (durable-first → reserve → session), STF-04 + landlord half of STF-05
 - [x] 10-07-PLAN.md — Non-POS storefront Availment finalize path + reservation→sale + unique source_reference (tenant half of STF-05)
@@ -418,5 +418,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |
 | 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 13/13 | Complete   | 2026-07-13 |
 | 9. POS Checkout & Payment | 0/8 | Not started | - |
-| 10. Storefront Discovery & Online Ordering | 5/8 | In Progress|  |
+| 10. Storefront Discovery & Online Ordering | 6/8 | In Progress|  |
 | 11. Order Fulfillment & Delivery Coordination | 0/TBD | Not started | - |
