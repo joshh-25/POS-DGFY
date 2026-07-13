@@ -1256,12 +1256,45 @@ const createFoodCategoryOption = (folder = {}) => {
   };
 };
 
+// "Best Seller" is a mobile-only, client-side-only marker (no backend field) - persisted to
+// localStorage and shared with the Sell Catalog card via a custom event for same-tab instant
+// sync (native "storage" events only fire across tabs, not within the same page).
+const BEST_SELLER_STORAGE_KEY = 'pos_best_seller_item_ids';
+const BEST_SELLER_EVENT_NAME = 'pos:best-seller-updated';
+
+const readBestSellerItemIds = () => {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(BEST_SELLER_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(
+      (Array.isArray(parsed) ? parsed : [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    );
+  } catch {
+    return new Set();
+  }
+};
+
+const writeBestSellerItemIds = (idsSet) => {
+  if (typeof window === 'undefined') return;
+  const ids = Array.from(idsSet);
+  try {
+    window.localStorage.setItem(BEST_SELLER_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // Storage unavailable (e.g. private mode) - best seller marking is best-effort only.
+  }
+  window.dispatchEvent(new CustomEvent(BEST_SELLER_EVENT_NAME, { detail: ids }));
+};
+
 const createEmptyPosItemForm = () => ({
   name: '',
   default_sale_price: '',
   cost_per_unit: '',
   current_stock: '0',
   pos_always_available: false,
+  pos_best_seller: false,
   senior_pwd_discount_eligible: false,
   description: '',
   sku_code: '',
@@ -1319,10 +1352,48 @@ function ItemsWorkspace({
     default_sale_price: '',
     cost_per_unit: '',
     pos_always_available: false,
+    pos_best_seller: false,
     senior_pwd_discount_eligible: false,
     description: '',
     pos_category: ''
   });
+  const [isMobile, setIsMobile] = useState(false);
+  const [bestSellerItemIds, setBestSellerItemIds] = useState(() => readBestSellerItemIds());
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mediaQuery = window.matchMedia('(max-width: 639.98px)');
+    const handleChange = () => setIsMobile(mediaQuery.matches);
+    handleChange();
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+  useEffect(() => {
+    const handleBestSellerUpdate = () => setBestSellerItemIds(readBestSellerItemIds());
+    window.addEventListener(BEST_SELLER_EVENT_NAME, handleBestSellerUpdate);
+    window.addEventListener('storage', handleBestSellerUpdate);
+    return () => {
+      window.removeEventListener(BEST_SELLER_EVENT_NAME, handleBestSellerUpdate);
+      window.removeEventListener('storage', handleBestSellerUpdate);
+    };
+  }, []);
+  const setItemBestSeller = (itemId, isBestSeller) => {
+    const numericId = Number(itemId);
+    if (!Number.isInteger(numericId) || numericId <= 0) return;
+    setBestSellerItemIds((current) => {
+      const next = new Set(current);
+      if (isBestSeller) {
+        next.add(numericId);
+      } else {
+        next.delete(numericId);
+      }
+      writeBestSellerItemIds(next);
+      return next;
+    });
+  };
   const [savedMessage, setSavedMessage] = useState({ name: '', barcode: '', action: 'updated' });
   const [deletedItemName, setDeletedItemName] = useState('');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
@@ -1563,6 +1634,7 @@ function ItemsWorkspace({
       default_sale_price: String(item?.default_sale_price ?? ''),
       cost_per_unit: String(item?.cost_per_unit ?? ''),
       pos_always_available: item?.pos_always_available === true,
+      pos_best_seller: bestSellerItemIds.has(Number(item?.item_id)),
       senior_pwd_discount_eligible: item?.senior_pwd_discount_eligible === true || Number(item?.senior_pwd_discount_eligible) === 1,
       description: String(item?.description || ''),
       // Item lists do not always hydrate the nested folder name. Resolve by saved ID first.
@@ -1584,6 +1656,7 @@ function ItemsWorkspace({
       default_sale_price: '',
       cost_per_unit: '',
       pos_always_available: false,
+      pos_best_seller: false,
       senior_pwd_discount_eligible: false,
       description: '',
       pos_category: ''
@@ -1695,6 +1768,7 @@ function ItemsWorkspace({
       await updatePosCatalogOverride(activeEditItem.item_id, {
         pos_always_available: editForm.pos_always_available === true
       });
+      setItemBestSeller(activeEditItem.item_id, editForm.pos_best_seller === true);
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
       setSavedMessage({ name, barcode: primaryBarcodes[String(activeEditItem.item_id)]?.code || '', action: 'updated' });
@@ -1789,7 +1863,11 @@ function ItemsWorkspace({
     }
   };
 
-  const runPostCreateStages = async ({ itemId, itemName, imageFiles, posAlwaysAvailable }) => {
+  const runPostCreateStages = async ({ itemId, itemName, imageFiles, posAlwaysAvailable, posBestSeller = false }) => {
+    // Best Seller is a client-side-only marker (localStorage), so it can't fail like the
+    // network-backed stages below - set it directly rather than as a retryable stage.
+    setItemBestSeller(itemId, posBestSeller === true);
+
     const failedStages = [];
     let barcodeCode = '';
 
@@ -1831,6 +1909,7 @@ function ItemsWorkspace({
         name: itemName,
         imageFiles,
         posAlwaysAvailable,
+        posBestSeller,
         failedStages
       });
       const labels = failedStages.map((stage) => stage.label).join(', ');
@@ -1949,7 +2028,8 @@ function ItemsWorkspace({
           itemId: pendingCreateRecovery.itemId,
           itemName: recoveryName,
           imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
-          posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable
+          posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
+          posBestSeller: pendingCreateRecovery.posBestSeller
         });
         await finalizeCreatedItem({
           barcode: result.barcodeCode,
@@ -1977,7 +2057,8 @@ function ItemsWorkspace({
         itemId,
         itemName: name,
         imageFiles: selectedImageFiles,
-        posAlwaysAvailable: createForm.pos_always_available === true
+        posAlwaysAvailable: createForm.pos_always_available === true,
+        posBestSeller: createForm.pos_best_seller === true
       });
 
       await finalizeCreatedItem({ barcode: result.barcodeCode });
@@ -2568,6 +2649,27 @@ function ItemsWorkspace({
                       />
                     </div>
 
+                    {/* Best Seller Toggle Switch - mobile-only; renders a "best seller" tag in the Sell Catalog */}
+                    {isMobile && (
+                      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                        <div className="min-w-0">
+                          <label htmlFor="pos-items-create-best-seller" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                            Best Seller
+                          </label>
+                          <span className="block text-[10px] text-[#64748B]">Shows a "best seller" tag in the Sell Catalog.</span>
+                        </div>
+                        <Switch
+                          id="pos-items-create-best-seller"
+                          checked={createForm.pos_best_seller === true}
+                          onCheckedChange={(checked) => setCreateForm((current) => ({
+                            ...current,
+                            pos_best_seller: Boolean(checked)
+                          }))}
+                          disabled={creatingItem || postCreateSaving}
+                        />
+                      </div>
+                    )}
+
                     {/* Selling Price */}
                     <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
@@ -2876,6 +2978,27 @@ function ItemsWorkspace({
                         disabled={savingItem || persistingEditAssets}
                       />
                     </div>
+
+                    {/* Best Seller Toggle Switch - mobile-only; renders a "best seller" tag in the Sell Catalog */}
+                    {isMobile && (
+                      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                        <div className="min-w-0">
+                          <label htmlFor="pos-items-edit-best-seller" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                            Best Seller
+                          </label>
+                          <span className="block text-[10px] text-[#64748B]">Shows a "best seller" tag in the Sell Catalog.</span>
+                        </div>
+                        <Switch
+                          id="pos-items-edit-best-seller"
+                          checked={editForm.pos_best_seller === true}
+                          onCheckedChange={(checked) => setEditForm((current) => ({
+                            ...current,
+                            pos_best_seller: Boolean(checked)
+                          }))}
+                          disabled={savingItem || persistingEditAssets}
+                        />
+                      </div>
+                    )}
 
                     <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
@@ -5731,6 +5854,26 @@ function SettingsWorkspace({
               ) : null}
             </div>
           </div>
+
+          {/* Best Seller Auto-Tagging - mobile only (sm:hidden), plain checkboxes/labels only.
+              No state, no persistence, no evaluation logic. */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:hidden">
+            <p className="text-[13px] font-black text-[#0F172A]">Best Seller Auto-Tagging</p>
+            <div className="mt-3 grid gap-2">
+              <label className="flex items-start gap-2">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1A4E8D]" />
+                <span className="text-[12px] font-semibold text-[#0F172A]">
+                  Add a "Best Seller" tag if an item is sold more than 100 times last day.
+                </span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1A4E8D]" />
+                <span className="text-[12px] font-semibold text-[#0F172A]">
+                  Add a "Best Seller" tag if the item was among the top 3 best sold items overall.
+                </span>
+              </label>
+            </div>
+          </div>
       </div>
     </div>
   );
@@ -6459,7 +6602,7 @@ function SettingsWorkspace({
           })}
         </div>
 
-        <div className="flex items-center gap-2 sm:hidden">
+        <div className="grid grid-cols-2 gap-2 sm:hidden">
           {SETTINGS_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -6468,7 +6611,7 @@ function SettingsWorkspace({
                 key={`mobile-${tab.id}`}
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
-                className={`flex min-h-14 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-extrabold transition ${
+                className={`flex min-h-14 min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-extrabold transition ${
                   active
                     ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
                     : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
