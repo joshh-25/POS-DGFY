@@ -403,9 +403,20 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 11-01-PLAN.md — Schema foundation: additive migration (fulfillment columns + append-only stage-event table + mutable-payout courier table) + two Tenant models + registration + verify contract
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 11-02-PLAN.md — Fulfillment module: repositories + usecases (STAGE_SEQUENCES app-logic validation) + controller + routes + DI + unit tests (FUL-01/02/03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 11-03-PLAN.md — Finalize-seam integration: inject recordStageEvents into both finalize transactions (D-05/D-06), persist dropped fulfillmentMode, mount /fulfillment
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 11-04-PLAN.md — [BLOCKING] Live tenant-DB migration apply + verify + ENV-gated end-to-end finalize proof
 
 ## Progress
