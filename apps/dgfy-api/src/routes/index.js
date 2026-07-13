@@ -8,6 +8,8 @@ import defineBusinessModel from '../models/Landlord/Business.js';
 import defineBusinessMembershipModel from '../models/Landlord/BusinessMembership.js';
 import defineBusinessDatabaseRegistryModel from '../models/Landlord/BusinessDatabaseRegistry.js';
 import defineStorefrontGuestIdentityModel from '../models/Landlord/StorefrontGuestIdentity.js';
+import defineStorefrontOrderModel from '../models/Landlord/StorefrontOrder.js';
+import defineCommercePaymentSessionModel from '../models/Landlord/CommercePaymentSession.js';
 import {
     buildAccountsModule,
     createAccountRoutes,
@@ -21,6 +23,7 @@ import { buildShiftsModule, createShiftRoutes } from '../modules/shifts/index.js
 import { buildBookingModule, createBookingRoutes } from '../modules/booking/index.js';
 import { buildAvailmentsModule, createAvailmentRoutes } from '../modules/availments/index.js';
 import { buildStorefrontModule, createStorefrontRoutes } from '../modules/storefront/index.js';
+import { buildCommercePaymentsModule, createCommercePaymentRoutes } from '../modules/commercePayments/index.js';
 import { buildDeviceBridgeClient } from '../infra/deviceBridgeClient.js';
 
 // Composition root for the accounts + businesses modules (Wave 2/3,
@@ -85,7 +88,11 @@ const {
     businessRepository
 });
 
-const { useCases: inventoryUseCases, effectContracts: inventoryEffectContracts } = buildInventoryModule({
+const {
+    useCases: inventoryUseCases,
+    effectContracts: inventoryEffectContracts,
+    reservationPorts: inventoryReservationPorts
+} = buildInventoryModule({
     tenantConnector,
     businessDatabaseRegistryRepository,
     businessRepository
@@ -125,6 +132,11 @@ const { useCases: bookingUseCases } = buildBookingModule({
 // env-configured deviceBridgeClient for best-effort receipt printing (D-22).
 const deviceBridgeClient = buildDeviceBridgeClient();
 
+// Phase 10 (10-08-PLAN.md, STF-05): commitReservation (10-02's
+// reservationPorts.commitReservation single-writer port, built above)
+// wires finalizeStorefrontOrder onto availmentUseCases — the reservation ->
+// sale conversion 10-07's storefront finalize seam and this plan's
+// finalizePaidOrder/cash-branch finalize both call.
 const { useCases: availmentUseCases } = buildAvailmentsModule({
     tenantConnector,
     businessDatabaseRegistryRepository,
@@ -133,19 +145,49 @@ const { useCases: availmentUseCases } = buildAvailmentsModule({
     assertComplianceGate,
     recordSaleEffect: inventoryUseCases.recordSale,
     shiftRepository,
-    deviceBridgeClient
+    deviceBridgeClient,
+    commitReservation: inventoryReservationPorts.commitReservation
 });
 
 // Phase 10 (10-03-PLAN.md built the module skeleton in isolation; 10-04-
 // PLAN.md, STF-03/D-06, mounts it here — mirrors the staged composition
 // split documented in 10-03-SUMMARY.md's "Next Phase Readiness"): reuses
-// the SAME productRepository instance built above (Phase 8), and a
-// dedicated StorefrontGuestIdentity model against this service's own
-// dgfy_core connection (matching every other Landlord model in this file).
+// the SAME productRepository instance built above (Phase 8), and dedicated
+// StorefrontGuestIdentity/StorefrontOrder/CommercePaymentSession models
+// against this service's own dgfy_core connection (matching every other
+// Landlord model in this file).
 const StorefrontGuestIdentityModel = defineStorefrontGuestIdentityModel(sequelize);
+const StorefrontOrderModel = defineStorefrontOrderModel(sequelize);
+const CommercePaymentSessionModel = defineCommercePaymentSessionModel(sequelize);
+
+// Phase 10 (10-08-PLAN.md, STF-05): build commercePayments BEFORE
+// storefront (per the plan's own stated build order) — its
+// `useCases.createQrphSession` is one of storefront's `placeOrder` ports
+// below, and its `expireDueSessions` sweep is storefront's `getOrderStatus`
+// opportunistic on-read port (T-10-08-07 mechanism 2/2). Reuses the SAME
+// businessRepository built above (owner/staff membership gate on the
+// retry-finalization endpoint, T-10-08-05) and the SAME
+// inventoryReservationPorts.releaseReservation/availmentUseCases.
+// finalizeStorefrontOrder every other consumer of those ports already uses
+// — never a second, divergent set.
+const commercePaymentsModule = buildCommercePaymentsModule({
+    commercePaymentSessionModel: CommercePaymentSessionModel,
+    storefrontOrderModel: StorefrontOrderModel,
+    finalizeStorefrontOrder: availmentUseCases.finalizeStorefrontOrder,
+    releaseReservation: inventoryReservationPorts.releaseReservation,
+    businessRepository
+});
+
 const { useCases: storefrontUseCases } = buildStorefrontModule({
     productRepository,
-    storefrontGuestIdentityModel: StorefrontGuestIdentityModel
+    storefrontGuestIdentityModel: StorefrontGuestIdentityModel,
+    storefrontOrderModel: StorefrontOrderModel,
+    reserveStock: inventoryReservationPorts.reserveStock,
+    releaseReservation: inventoryReservationPorts.releaseReservation,
+    setReservationExpiry: inventoryReservationPorts.setReservationExpiry,
+    createQrphSession: commercePaymentsModule.useCases.createQrphSession,
+    finalizeCashOrder: availmentUseCases.finalizeStorefrontOrder,
+    onReadExpiryCheck: commercePaymentsModule.expireDueSessions
 });
 
 const router = Router();
@@ -162,5 +204,10 @@ router.use('/shifts', createShiftRoutes(shiftUseCases, { authenticateAccount }))
 router.use('/bookings', createBookingRoutes(bookingUseCases, { authenticateAccount }));
 router.use('/availments', createAvailmentRoutes(availmentUseCases, { authenticateAccount }));
 router.use('/storefront', createStorefrontRoutes(storefrontUseCases, { authenticateAccount }));
+// Phase 10 (10-08-PLAN.md, STF-05): PayMongo webhook (raw-body HMAC
+// verified inside the usecase, unauthenticated at the Express layer — see
+// modules/commercePayments/routes.js) + the operator retry-finalization
+// endpoint (authenticateAccount + staff-or-owner membership gate).
+router.use('/commerce-payments', createCommercePaymentRoutes(commercePaymentsModule.useCases, { authenticateAccount }));
 
 export default router;

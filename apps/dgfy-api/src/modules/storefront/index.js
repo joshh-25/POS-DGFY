@@ -86,8 +86,15 @@ export { createStorefrontRoutes } from './routes.js';
  *   releaseReservation?: Function,
  *   setReservationExpiry?: Function,
  *   createQrphSession?: Function,
- *   finalizeCashOrder?: Function
+ *   finalizeCashOrder?: Function,
+ *   onReadExpiryCheck?: Function
  * }} deps
+ *   `onReadExpiryCheck` (10-08-PLAN.md, T-10-08-07): OPTIONAL, forwarded
+ *   verbatim to `buildGetOrderStatusUseCase` — see that file's doc comment.
+ *   Fire-and-forget opportunistic auto-release, the SECOND of D-09's two
+ *   independent missed-webhook mechanisms (the first being 10-08's own
+ *   recurring interval sweep). Omitted here, `getOrderStatus` behaves
+ *   byte-identically to before this parameter existed.
  * @returns {{repository: StorefrontDiscoveryRepository, guestIdentityRepository: GuestIdentityRepository, orderRepository?: StorefrontOrderRepository, useCases: {searchDiscovery: Function, getStorePage: Function, validateCart: Function, requestGuestOtp: Function, verifyGuestOtp: Function, resolveCheckoutIdentity: Function, placeOrder?: Function, getOrderStatus?: Function}, validateCart: Function, resolveCheckoutIdentity: Function}}
  */
 export function buildStorefrontModule({
@@ -101,7 +108,8 @@ export function buildStorefrontModule({
     releaseReservation,
     setReservationExpiry,
     createQrphSession,
-    finalizeCashOrder = null
+    finalizeCashOrder = null,
+    onReadExpiryCheck = null
 } = {}) {
     if (!productRepository) {
         throw new Error('buildStorefrontModule requires a productRepository.');
@@ -133,7 +141,7 @@ export function buildStorefrontModule({
     let getOrderStatus;
     if (storefrontOrderModel) {
         orderRepository = new StorefrontOrderRepository({ storefrontOrderModel });
-        getOrderStatus = buildGetOrderStatusUseCase({ orderRepository, guestIdentityRepository });
+        getOrderStatus = buildGetOrderStatusUseCase({ orderRepository, guestIdentityRepository, onReadExpiryCheck });
 
         if (
             typeof reserveStock === 'function'

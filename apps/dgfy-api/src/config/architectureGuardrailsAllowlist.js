@@ -61,7 +61,12 @@ export const ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST = Object.freeze([
     // Phase 10 (10-06-PLAN.md): storefront module's checkout (order
     // placement + status) controller follows the same locked naming
     // convention.
-    '../apps/dgfy-api/src/modules/storefront/controllers/checkoutController.js'
+    '../apps/dgfy-api/src/modules/storefront/controllers/checkoutController.js',
+    // Phase 10 (10-08-PLAN.md): commercePayments module's webhook (PayMongo
+    // event ingestion + operator retry-finalization) controller follows the
+    // same locked apps/dgfy-api Clean-Architecture naming (*Controller.js,
+    // not backend/'s *Handlers.js convention) as the entries above.
+    '../apps/dgfy-api/src/modules/commercePayments/controllers/webhookController.js'
 ]);
 
 // apps/dgfy-api has no usecase-layer legacy-service-import exceptions yet.
