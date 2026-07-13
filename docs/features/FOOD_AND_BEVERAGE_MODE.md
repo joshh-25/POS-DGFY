@@ -76,6 +76,8 @@ F&B create-item UI and backend validation use restaurant-native presets:
 
 New F&B rows persist `items.mode_item_preset` with the selected preset key. This is required because `Menu Item` and `Packaged Beverage / Retail Item` can both be `category=product` and `product_type=finished_goods`; the persisted preset preserves restaurant-native intent instead of relying on UOM inference during later edits.
 
+POS item create and edit forms present active food categories through an editable combobox. Operators may select an existing active category from the explicit dropdown or type a new category name; only authorized category managers can create that typed category when the item is saved.
+
 During tenant onboarding, the starter item selector intentionally presents only `Menu Item` for F&B merchants. The submitted and persisted preset remains `menu_item`; the created starter row remains a product item internally and appears as a customer-facing menu item on Storefront/POS surfaces. Ingredients, packaging, and retail beverage/product setup remain available after onboarding in full item management.
 
 F&B accepts valid presentation and packaging UOMs such as `serving`, `portion`, `bottle`, `can`, `pack`, and `case`, but automatic conversion remains limited to weight, volume, and count units. Legacy rows outside the F&B presets remain editable until the operator changes category, product type, mode preset, UOM, or finalizes a draft.

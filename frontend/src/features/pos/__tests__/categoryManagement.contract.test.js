@@ -19,6 +19,20 @@ describe('POS category management contract', () => {
     expect(source).not.toContain('ensureFoodCategoryFolder');
   });
 
+  it('uses an editable category combobox instead of browser datalist suggestions', () => {
+    const source = fs.readFileSync(workspacePath, 'utf8');
+
+    expect(source).toContain('function EditableFoodCategoryCombobox');
+    expect(source).toContain('role="combobox"');
+    expect(source).toContain('role="listbox"');
+    expect(source).toContain('Show food categories');
+    expect(source).toContain('const [isFiltering, setIsFiltering] = useState(false);');
+    expect(source).toContain('const normalizedQuery = isFiltering ? normalizedValue : \'\';');
+    expect(source).toContain('No existing category matches. Save to create');
+    expect(source).not.toContain('pos-items-create-category-options');
+    expect(source).not.toContain('pos-items-edit-category-options');
+  });
+
   it('keeps category lifecycle controls inside the admin-only settings tab', () => {
     const source = fs.readFileSync(workspacePath, 'utf8');
 
