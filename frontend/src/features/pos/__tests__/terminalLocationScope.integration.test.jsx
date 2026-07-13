@@ -232,7 +232,7 @@ describe('POS terminal location UX integration', () => {
     expect(screen.getByText('Loading shared tenant settings...')).toBeTruthy();
   });
 
-  it('shows address, coordinates, and map link for incoming delivery orders with a saved pin', () => {
+  it('shows the address and map link without exposing coordinates for incoming delivery orders with a saved pin', () => {
     const props = buildBaseProps({
       viewMode: 'incoming_queue',
       incomingOrdersState: {
@@ -253,8 +253,9 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
+    expect(screen.getByText('Address')).toBeTruthy();
     expect(screen.getByText('123 Test Street')).toBeTruthy();
-    expect(screen.getByText('Coords: 10.720200, 122.562100')).toBeTruthy();
+    expect(screen.queryByText(/Coords:/)).toBeNull();
     const mapLink = screen.getByRole('link', { name: 'Open pin in map' });
     expect(mapLink.getAttribute('href')).toBe('https://maps.google.com/?q=10.7202,122.5621');
   });

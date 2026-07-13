@@ -122,10 +122,21 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain("const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');");
     expect(source).toContain('setIsGuestTrackingDrawerOpen(true);');
     expect(source).toContain('trackingError={trackingError}');
+    expect(source).toContain('expandedGuestDrawerPins={expandedGuestDrawerPins}');
+    expect(source).toContain('onExpandedGuestDrawerPinsChange={setExpandedGuestDrawerPins}');
     expect(source).not.toContain('In-progress orders are tracked automatically on this device.');
     expect(source).not.toContain("key={`guest-track-order-${entry.tracking_pin}`}");
     expect(drawerSource).toContain('Active orders linked to your DGFY account.');
     expect(drawerSource).toContain('trackingError =');
+  });
+
+  it('hydrates saved guest details once so manual email clears are preserved', () => {
+    const source = appSource();
+
+    expect(source).toContain('const [hasHydratedGuestCheckoutDetails, setHasHydratedGuestCheckoutDetails] = useState(false);');
+    expect(source).toContain('if (isDgfyCustomerSignedIn || hasHydratedGuestCheckoutDetails || !savedCustomerDetails) return;');
+    expect(source).toContain('setHasHydratedGuestCheckoutDetails(true);');
+    expect(source).toContain('if (!guestCheckoutUnlocked) {');
   });
 
   it('keeps /track routes mode-independent and limiter-safe', () => {
@@ -198,17 +209,26 @@ describe('Food & Beverage storefront contract', () => {
     expect(serviceBookingStepsSource()).toContain('Use guest booking now, or create a DGFY account later with these same details.');
   });
 
-  it('keeps F&B checkout payment values backend-valid and excludes the old online placeholder', () => {
+  it('offers only the enabled cash payment method until online checkout is configured', () => {
     const source = appSource();
 
     expect(source).toContain('STOREFRONT_CHECKOUT_PAYMENT_OPTIONS');
     expect(source).toContain("{ value: 'cash', label: 'Cash on delivery/pickup' }");
-    expect(source).toContain("{ value: 'gcash', label: 'GCash' }");
-    expect(source).toContain("{ value: 'maya', label: 'Maya' }");
-    expect(source).toContain("{ value: 'card', label: 'Card' }");
-    expect(source).toContain("{ value: 'bank_transfer', label: 'Bank transfer' }");
+    expect(source).not.toContain("{ value: 'gcash', label: 'GCash' }");
+    expect(source).not.toContain("{ value: 'maya', label: 'Maya' }");
+    expect(source).not.toContain("{ value: 'card', label: 'Card' }");
+    expect(source).not.toContain("{ value: 'bank_transfer', label: 'Bank transfer' }");
     expect(source).not.toContain("{ value: 'online', label: 'Online payment' }");
+    expect(source).toContain('const isEnabledStorefrontCheckoutPaymentType = (value) => (');
+    expect(source).toContain('if (!isEnabledStorefrontCheckoutPaymentType(fnbPaymentType)) {');
     expect(source).toContain('payment_type: fnbPaymentType');
+  });
+
+  it('forces an open F&B drawer back to the cart tab so cart lines are never hidden', () => {
+    const source = appSource();
+
+    expect(source).toContain("if (!isFnbMode || !isCheckoutOpen || isFnbOrderSubpage || checkoutTab === 'cart') return;");
+    expect(source).toContain("setCheckoutTab('cart');");
   });
 
   it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {

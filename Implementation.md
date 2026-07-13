@@ -1,3 +1,113 @@
+# Implementation — Order Details Card Button Grid Layout (Follow-up 3)
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsPanels.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsPanels.jsx)
+
+- **Implement a symmetric 2-column grid for action buttons**:
+  - Gather all conditional buttons (Collect Cash, nextActions status buttons, Print Order, and Open Order) into a dynamic `buttons` React elements array inside the mapping loop.
+  - Render the buttons list wrapped in a `<div className="mt-4 pt-3 border-t border-slate-200 grid grid-cols-2 gap-2">` grid.
+  - Dynamically inject the `col-span-2` grid span class onto the last button if the total button count is odd, creating a balanced and centered layout for 3 or 1 buttons.
+
+## Verification Plan
+
+### Automated Tests
+- Run ESLint to ensure no syntax/import errors:
+  `npm run lint` in `frontend` folder.
+
+### Manual Verification
+- Visual inspection of the redesigned button layout when 4 buttons are present (Confirm, Reject, Print Order, Open Order) to ensure they form a balanced 2-column grid.
+- Visual inspection of the button layout when 3 buttons are present (Start Preparing, Print Order, Open Order) to verify the last button stretches across both columns.
+
+---
+
+# Implementation — Order Details Card Tablet Adjustments (Follow-up 2)
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsPanels.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsPanels.jsx)
+
+- **Adjust details layout and button wrapping for tablet queue cards**:
+  - Switch the inner details grid class back from `xl:grid-cols-2` to `md:grid-cols-2`.
+  - Tighten label width class on field rows from responsive `w-20 sm:w-24` to `w-16 md:w-20`.
+  - Update action buttons wrapper classes to enforce min-width `min-w-[125px]` with flex-grow (`flex-grow flex-1`) to enable clean multi-row wrapping on tablet columns.
+
+## Verification Plan
+
+### Automated Tests
+- Run ESLint to ensure no syntax/import errors:
+  `npm run lint` in `frontend` folder.
+
+### Manual Verification
+- Visual inspection of the redesigned card layout on tablet screen width (768px to 1024px) in portrait and landscape.
+- Verify that card fields layout in 2 columns on tablets, reducing card vertical height.
+- Verify that buttons wrap cleanly when 3 or 4 action buttons are present.
+
+---
+
+# Implementation — Order Details Card Tablet Responsiveness (Follow-up)
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsPanels.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsPanels.jsx)
+
+- **Optimize grid responsiveness inside `IncomingQueueWorkspace` order details card**:
+  - Switch the inner details grid class from `md:grid-cols-2` to `xl:grid-cols-2`.
+  - Adjust card padding to use responsive padding (`p-4 xl:p-5`).
+  - Use responsive label width (`w-20 sm:w-24 shrink-0`) in rows to give values more breathing room on tablet/mobile screens.
+  - Decrease field row vertical padding from static `py-2` to compact `py-1.5`.
+
+## Verification Plan
+
+### Automated Tests
+- Run ESLint to ensure no syntax/import errors:
+  `npm run lint` in `frontend` folder.
+
+### Manual Verification
+- Visual inspection of the redesigned card layout on tablet screen width (768px to 1024px).
+- Verify that card fields stack nicely in a single column on tablet viewports and split into two columns on large screens.
+
+---
+
+# Implementation — Order Details Card Redesign
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsPanels.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsPanels.jsx)
+
+- **Import required icons from `lucide-react`**:
+  Add the following icons: `Tag`, `User`, `Wallet`, `Receipt`, `ShoppingBag`, `Calendar`, `MapPin`, `Clipboard`, `Printer`, `ExternalLink`, `Check`, `Ban`, `Truck`.
+- **Refactor `IncomingQueueWorkspace` order details mapping**:
+  - Replace the old list layout (lines 180 to 260) with a responsive two-column grid.
+  - Implement dynamic rendering of rows for the left and right columns:
+    - **Left Column**: PIN, Cashier, Customer, Payment, Payment Status, and (conditional) Collected by.
+    - **Right Column**: Mode, Order Time, (conditional) Delivery info, and Address.
+  - Apply clean styling to field rows with icon wrappers and visual horizontal dividers (`border-b border-slate-100 pb-2`).
+  - Align values cleanly using a fixed label width (`w-24 shrink-0`).
+  - Format status action buttons with proper icons based on their status labels.
+  - Place "Print Order" before "Open Order" inside the footer actions row.
+
+## Verification Plan
+
+### Automated Tests
+- Run ESLint to ensure no syntax/import errors:
+  `npm run lint` in `frontend` folder.
+
+### Manual Verification
+- Visual inspection of the redesigned card layout inside the standalone POS application dashboard.
+- Verify that resizing the viewport switches smoothly from 2-column layout on desktop to single column stacked layout on mobile.
+- Verify all order actions function normally.
+
+---
+
 # Implementation — POS Category Management
 
 ## Follow-up: iMin APK Notification Policy

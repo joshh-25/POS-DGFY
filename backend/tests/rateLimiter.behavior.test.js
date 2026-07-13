@@ -11,6 +11,8 @@ let lookupLimiter;
 let tenantRegistrationLimiter;
 let storeTrackingLimiter;
 let storeTrackingReadLimiter;
+let storeGuestCheckoutOtpRequestLimiter;
+let storeGuestCheckoutOtpVerifyLimiter;
 let logger;
 let defaultAuthRateLimitWindowMs;
 
@@ -42,6 +44,8 @@ beforeAll(async () => {
   tenantRegistrationLimiter = limiterModule.tenantRegistrationLimiter;
   storeTrackingLimiter = limiterModule.storeTrackingLimiter;
   storeTrackingReadLimiter = limiterModule.storeTrackingReadLimiter;
+  storeGuestCheckoutOtpRequestLimiter = limiterModule.storeGuestCheckoutOtpRequestLimiter;
+  storeGuestCheckoutOtpVerifyLimiter = limiterModule.storeGuestCheckoutOtpVerifyLimiter;
 });
 
 afterAll(() => {
@@ -91,6 +95,23 @@ describe('Rate limiter behavior', () => {
         }),
       })
     );
+  });
+
+  it('keeps guest checkout OTP sends and verification attempts in separate rate-limit buckets', async () => {
+    const app = express();
+    app.use(express.json());
+    app.post('/guest-otp/request', storeGuestCheckoutOtpRequestLimiter, (_req, res) => res.status(200).json({ ok: true }));
+    app.post('/guest-otp/verify', storeGuestCheckoutOtpVerifyLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+    await request(app)
+      .post('/guest-otp/request')
+      .send({ email: 'guest-otp-bucket@example.com' })
+      .expect(200);
+
+    await request(app)
+      .post('/guest-otp/verify')
+      .send({ email: 'guest-otp-bucket@example.com', code: '123456' })
+      .expect(200);
   });
 
   it('keys auth limiter by ip+email so different emails do not share the same bucket', async () => {

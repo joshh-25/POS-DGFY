@@ -544,6 +544,49 @@ export const emailOtpLimiter = rateLimit({
   },
 });
 
+const createStoreGuestCheckoutOtpLimiter = ({ operation, message }) => rateLimit({
+  windowMs: emailOtpWindowMs,
+  max: emailOtpMaxRequests,
+  message: createRateLimitError(message),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore(`store_guest_checkout_otp_${operation}`),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const email = normalizeEmail(req.body?.email || req.validatedData?.email) || 'unknown-email';
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'global';
+    return `store_guest_checkout_otp:${operation}:${tenantKey}:${ip}:${email}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      message,
+      `store_guest_checkout_otp_${operation}`,
+      'tenant_ip_email'
+    );
+    logRateLimitEvent(req, `store_guest_checkout_otp_${operation}`, response.retryAfterSeconds, 'tenant_ip_email');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  }
+});
+
+export const storeGuestCheckoutOtpRequestLimiter = createStoreGuestCheckoutOtpLimiter({
+  operation: 'request',
+  message: 'Too many email verification code requests, please try again later.'
+});
+
+export const storeGuestCheckoutOtpVerifyLimiter = createStoreGuestCheckoutOtpLimiter({
+  operation: 'verify',
+  message: 'Too many verification attempts, please try again later.'
+});
+
 // Strict admin auth limiter. Uses ip + username keying to reduce brute-force risk.
 export const adminAuthLimiter = rateLimit({
   windowMs: adminAuthWindowMs,

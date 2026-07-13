@@ -12,5 +12,8 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(source).toContain('Verify the Gmail code before placing this guest order.');
     expect(source).toContain('guest_checkout_proof: isDgfyCustomerSignedIn ? null : guestCheckoutProof?.proof || null');
     expect(source).toContain('idempotency_key: isDgfyCustomerSignedIn ?');
+    expect(source).toContain('const [guestCheckoutOtpCooldownSeconds, setGuestCheckoutOtpCooldownSeconds] = useState(0);');
+    expect(source).toContain('setGuestCheckoutOtpCooldownSeconds(60);');
+    expect(source).toContain('Send again in ${guestCheckoutOtpCooldownLabel}');
   });
 });
