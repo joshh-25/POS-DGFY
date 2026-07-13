@@ -57,7 +57,11 @@ export const ARCHITECTURE_CONTROLLER_NAMING_ALLOWLIST = Object.freeze([
     '../apps/dgfy-api/src/modules/storefront/controllers/discoveryController.js',
     // Phase 10 (10-04-PLAN.md): storefront module's guest checkout
     // controller follows the same locked naming convention.
-    '../apps/dgfy-api/src/modules/storefront/controllers/guestCheckoutController.js'
+    '../apps/dgfy-api/src/modules/storefront/controllers/guestCheckoutController.js',
+    // Phase 10 (10-06-PLAN.md): storefront module's checkout (order
+    // placement + status) controller follows the same locked naming
+    // convention.
+    '../apps/dgfy-api/src/modules/storefront/controllers/checkoutController.js'
 ]);
 
 // apps/dgfy-api has no usecase-layer legacy-service-import exceptions yet.

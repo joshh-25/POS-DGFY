@@ -2,6 +2,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { buildDiscoveryController } from './controllers/discoveryController.js';
 import { buildGuestCheckoutController } from './controllers/guestCheckoutController.js';
+import { buildCheckoutController } from './controllers/checkoutController.js';
 
 // Wires Express routing for the storefront module's PUBLIC discovery
 // surface (Interface Adapter). Routes are thin: define paths/methods and
@@ -38,6 +39,19 @@ const discoveryLimiter = rateLimit({
 const guestOtpLimiter = rateLimit({
     windowMs: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_GUEST_OTP_WINDOW_MS || '', 10) || 60 * 1000,
     max: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_GUEST_OTP_MAX_REQUESTS || '', 10) || 10,
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+// Dedicated limiter for POST /checkout (10-06-PLAN.md, T-10-06 threat
+// register: "no new packages" — matches discoveryLimiter/guestOtpLimiter's
+// existing express-rate-limit pattern, no new dependency). Order placement
+// touches a tenant DB write (stock reservation) and an external PayMongo
+// call, so it gets its own tighter budget rather than sharing
+// discoveryLimiter's browse-traffic allowance.
+const checkoutLimiter = rateLimit({
+    windowMs: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_CHECKOUT_WINDOW_MS || '', 10) || 60 * 1000,
+    max: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_CHECKOUT_MAX_REQUESTS || '', 10) || 20,
     standardHeaders: true,
     legacyHeaders: false
 });
@@ -79,6 +93,7 @@ export function createStorefrontRoutes(useCases = {}, { authenticateAccount } = 
     const router = express.Router();
     const discoveryController = buildDiscoveryController(useCases);
     const guestCheckoutController = buildGuestCheckoutController(useCases);
+    const checkoutController = buildCheckoutController(useCases);
     const optionalAuthenticateAccount = typeof authenticateAccount === 'function'
         ? buildOptionalAuthenticateAccount(authenticateAccount)
         : (req, res, next) => next();
@@ -90,6 +105,15 @@ export function createStorefrontRoutes(useCases = {}, { authenticateAccount } = 
     router.post('/guest/otp/verify', guestOtpLimiter, (req, res, next) => guestCheckoutController.verifyOtp(req, res).catch(next));
 
     router.post('/checkout/identity', guestOtpLimiter, optionalAuthenticateAccount, (req, res, next) => guestCheckoutController.resolveIdentity(req, res).catch(next));
+
+    // POST /storefront/checkout (STF-04/STF-05, 10-06-PLAN.md): account
+    // OPTIONAL, same optionalAuthenticateAccount contract as
+    // /checkout/identity above — a logged-in DGFY Account's identity always
+    // wins, a verified guest supplies guestIdentityId in the body instead.
+    router.post('/checkout', checkoutLimiter, optionalAuthenticateAccount, (req, res, next) => checkoutController.placeOrder(req, res).catch(next));
+    // GET /storefront/orders/:reference: PUBLIC — IDOR guard (opaque
+    // reference + optional guest email binding) lives in the use case.
+    router.get('/orders/:reference', discoveryLimiter, (req, res, next) => checkoutController.getOrderStatus(req, res).catch(next));
 
     return router;
 }
