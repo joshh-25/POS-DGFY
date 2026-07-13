@@ -102,3 +102,6 @@ bun.lock
 
 # Migration runner report output (apps/dgfy-migration-runner local invocations)
 /tmp/dgfy-migration-reports/
+
+# Verification and test reports (generated locally, environment-specific)
+/reports/
