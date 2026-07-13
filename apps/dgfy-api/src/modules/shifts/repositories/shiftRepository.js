@@ -242,8 +242,13 @@ export class ShiftRepository {
      * are pre-computed by the usecase layer (shiftUseCases.js's
      * computeExpectedCash reconciliation helper) — this repository is a pure
      * persistence adapter and does not itself derive the reconciliation
-     * math. Writes the shift update + a 'close' cash-drawer event in one
-     * transaction (key_link).
+     * math. The guard read is row-locked (`lock: transaction.LOCK.UPDATE`,
+     * CR-03) so two concurrent closes of the SAME shift serialize: the
+     * second blocks until the first commits, then sees status !== 'open'
+     * and is rejected with ShiftNotOpenError, writing NO second 'close'
+     * cash-drawer event and losing no reconciliation update. Writes the
+     * shift update + a 'close' cash-drawer event in one transaction
+     * (key_link).
      * @param {string} businessId
      * @param {number|string} shiftId
      * @param {{closingCashAmount, expectedCashAmount, cashVarianceAmount}} input
@@ -259,7 +264,8 @@ export class ShiftRepository {
             return await sequelize.transaction(async (transaction) => {
                 const shift = await Shift.findOne({
                     where: { id: Number(shiftId), business_id: businessId },
-                    transaction
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
                 });
                 if (!shift) throw new ShiftNotFoundError();
                 if (shift.status !== 'open') throw new ShiftNotOpenError();
