@@ -68,21 +68,42 @@ const checkoutLimiter = rateLimit({
  * account, never REJECTS a request for lacking one.
  * @param {Function} authenticateAccount
  */
-const buildOptionalAuthenticateAccount = (authenticateAccount) => (req, res, next) => {
+// Exported so WR-05's double-next() fix is directly unit-testable without
+// needing to drive a full Express request/response cycle through supertest
+// (mirrors emailOtp.js's getHashSecret export-for-testability convention).
+export const buildOptionalAuthenticateAccount = (authenticateAccount) => (req, res, next) => {
     if (!req.headers.authorization) {
         return next();
     }
+    // WR-05 fix (10-REVIEW.md): `next()` must be invoked at most once per
+    // request. Previously the real `next` was passed directly to
+    // authenticateAccount AND the `.catch()` handler below could also call
+    // it — if authenticateAccount's success path called `next()`
+    // synchronously and its returned promise LATER rejected for an
+    // unrelated reason (e.g. a downstream `.then()` inside
+    // authenticateAccount throwing after already calling `next()`), the
+    // `.catch()` here would invoke `next()` a SECOND time for the same
+    // request (classic double-next() Express bug). guardedNext() tracks
+    // whether it has already fired and no-ops every subsequent call —
+    // every path below (success, the passthroughRes failure interception,
+    // and the catch handler) now routes through it exclusively.
+    let nextCalled = false;
+    const guardedNext = (...args) => {
+        if (nextCalled) return;
+        nextCalled = true;
+        next(...args);
+    };
     // Intercept authenticateAccount's failure response (it calls
     // res.status(401).json(...) directly) by handing it a stand-in `res`
-    // that routes the failure into `next()` (guest path) instead of
+    // that routes the failure into `guardedNext()` (guest path) instead of
     // terminating the request. The success path never touches `res` — it
-    // just sets req.account and calls the real `next` closed over here.
+    // just sets req.account and calls `guardedNext` closed over here.
     const passthroughRes = {
         status: () => passthroughRes,
-        json: () => next()
+        json: () => guardedNext()
     };
-    Promise.resolve(authenticateAccount(req, passthroughRes, next))
-        .catch(() => next());
+    Promise.resolve(authenticateAccount(req, passthroughRes, guardedNext))
+        .catch(() => guardedNext());
 };
 
 /**
