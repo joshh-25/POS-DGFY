@@ -98,12 +98,16 @@ const isPositiveNumber = (value) => Number.isFinite(Number(value)) && Number(val
  *      non-success commitReservation result (or a thrown error from it)
  *      rolls back the ENTIRE transaction — nothing partial is ever
  *      persisted (mirrors Phase 9 P04/P06 atomicity discipline).
- * @param {{repository, commitReservation}} deps
+ * @param {{repository, commitReservation, recordStageEvents?}} deps
  *   - repository: AvailmentRepository (exposes finalizeStorefrontOrder)
  *   - commitReservation: the injected 10-02 reservationPorts.commitReservation
  *     port — `(input: {businessId, referenceId, transaction}) => Promise<ApplicationResult>`
+ *   - recordStageEvents: OPTIONAL Phase 11 (11-03-PLAN.md, D-06) fulfillment
+ *     stage-event auto-write port — threaded straight through to
+ *     repository.finalizeStorefrontOrder(...), which writes ONE 'placed'
+ *     stage event inside the same finalize transaction when supplied.
  */
-export function buildFinalizeStorefrontOrderUseCase({ repository, commitReservation }) {
+export function buildFinalizeStorefrontOrderUseCase({ repository, commitReservation, recordStageEvents }) {
     if (typeof commitReservation !== 'function') {
         throw new Error('buildFinalizeStorefrontOrderUseCase requires a commitReservation port function.');
     }
@@ -117,13 +121,13 @@ export function buildFinalizeStorefrontOrderUseCase({ repository, commitReservat
             totalCentavos = null,
             paymentMethod,
             paymentReference = null,
-            // Accepted for interface completeness (10-06/10-08 callers already
-            // carry these on the landlord storefront_orders row, which is the
-            // durable source of truth for fulfillment data) but NOT persisted
-            // onto the tenant Availment — no column exists for them and this
-            // plan's own Task 1 migration does not add one (out of scope; the
-            // tenant Availment already has everything it needs: money +
-            // customer_account_id + source_reference).
+            // 10-06/10-08 callers already carry these on the landlord
+            // storefront_orders row (the durable source of truth for
+            // fulfillment data). Phase 11 (11-03-PLAN.md, D-06/L2):
+            // fulfillmentMode is now PERSISTED onto the tenant Availment
+            // (previously dropped here) plus one 'placed' stage event;
+            // requestedFor remains accepted for interface completeness only
+            // — no column exists for it and this plan does not add one.
             fulfillmentMode = null,
             requestedFor = null
         } = input;
@@ -182,7 +186,11 @@ export function buildFinalizeStorefrontOrderUseCase({ repository, commitReservat
                     businessId,
                     referenceId: sourceReference,
                     transaction
-                })
+                }),
+                // D-06/L2: persist the mode + auto-write the 'placed' stage
+                // event inside the same finalize transaction.
+                fulfillmentMode,
+                recordStageEvents
             });
         } catch (repoError) {
             if (isTenantDatabaseUnavailableError(repoError)) {

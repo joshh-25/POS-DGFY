@@ -578,7 +578,7 @@ const isNumericStatusCodeError = (error) => Boolean(error) && Number.isInteger(e
  *   9. AFTER the DB commit, best-effort deviceBridgeClient.printReceipt(...);
  *      a non-ok/timeout/thrown result becomes a `print_warning` on an
  *      otherwise-successful result — never a rollback (D-22).
- * @param {{repository, businessRepository, productRepository?, assertComplianceGate, recordSaleEffect, shiftRepository, complianceEvidenceRepository, deviceBridgeClient}} deps
+ * @param {{repository, businessRepository, productRepository?, assertComplianceGate, recordSaleEffect, shiftRepository, complianceEvidenceRepository, deviceBridgeClient, recordStageEvents?, posFulfillmentModeDefault?}} deps
  */
 export function buildFinalizeAvailmentUseCase({
     repository,
@@ -589,7 +589,13 @@ export function buildFinalizeAvailmentUseCase({
     recordSaleEffect,
     shiftRepository,
     complianceEvidenceRepository,
-    deviceBridgeClient
+    deviceBridgeClient,
+    // Phase 11 (11-03-PLAN.md, D-05/D-06): OPTIONAL fulfillment stage-event
+    // auto-write port + POS fulfillment_mode default (A1) — mirrors
+    // recordSaleEffect's injection style; absent in existing test
+    // composition, both finalize seams simply skip the auto-write.
+    recordStageEvents,
+    posFulfillmentModeDefault = 'dine_in'
 }) {
     return async (input = {}) => {
         const {
@@ -601,7 +607,12 @@ export function buildFinalizeAvailmentUseCase({
             paymentMethod,
             cashReceived = null,
             terminalId = null,
-            cashierAccountId = null
+            cashierAccountId = null,
+            // A1: optional controller-supplied override of the POS
+            // fulfillment_mode default (dine_in/pickup); NOT client-trusted
+            // for anything beyond this — finalizePersist still writes the
+            // full sequence server-side regardless of the value chosen here.
+            fulfillmentMode = null
         } = input;
 
         // ---- 1. Validate input + active-member access -----------------
@@ -844,7 +855,11 @@ export function buildFinalizeAvailmentUseCase({
                     payload: receiptPayload
                 },
                 saleEffectLines,
-                recordSaleEffect
+                recordSaleEffect,
+                recordStageEvents,
+                fulfillmentMode: fulfillmentMode || posFulfillmentModeDefault,
+                actorStaffAccountId: cashierAccountId,
+                actorAccountId: requestingAccountId || null
             });
         } catch (repoError) {
             if (isTenantDatabaseUnavailableError(repoError)) {
