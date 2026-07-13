@@ -267,8 +267,14 @@ const VALID_VERIFIER_ACTOR_TYPES = new Set(Object.values(COMPLIANCE_VERIFIER_ACT
  * output. When verificationStatus === 'verified', `newState` is REQUIRED
  * and must be a valid COMPLIANCE_MODE_STATE value: the reviewer manually
  * decides the resulting state (no automatic completeness-based computation,
- * per D-04). For 'rejected'/'revoked', `newState` is ignored — only the
- * verification metadata changes.
+ * per D-04). For 'rejected'/'revoked' (FSC-01), `newState` is NOT consulted
+ * — the state is unconditionally demoted to
+ * COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE, the fail-closed default (per
+ * D-02/D-05 and this gap-closure's locked decision), so
+ * evaluateComplianceDecision() (which branches only on the state column, not
+ * verification_status) correctly blocks Fiscal POS_CHECKOUT once required
+ * fiscal paperwork is revoked/rejected instead of leaving a stale
+ * compliant_active row that still ALLOWs it.
  * @param {{repository, businessRepository}} deps
  */
 export function buildReviewComplianceStateUseCase({ repository, businessRepository }) {
@@ -299,15 +305,19 @@ export function buildReviewComplianceStateUseCase({ repository, businessReposito
         if (error) return ApplicationResult.failure(error);
 
         try {
-            const verified = await repository.recordVerification(businessId, branchId, {
+            await repository.recordVerification(businessId, branchId, {
                 verification_status: verificationStatus,
                 verified_by_actor_type: verifierActorType,
                 verified_at: new Date()
             });
 
+            // FSC-01: reject/revoke must demote state to non_compliant_active
+            // unconditionally (not merely leave verified/recorded metadata in
+            // place) — a stale compliant_active row after a revocation is a
+            // fail-open authorization bypass for Fiscal POS_CHECKOUT.
             const finalRow = verificationStatus === COMPLIANCE_VERIFICATION_STATUS.VERIFIED
                 ? await repository.upsertState(businessId, branchId, { state: newState })
-                : verified;
+                : await repository.upsertState(businessId, branchId, { state: COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE });
 
             const compliance = createComplianceEntity(finalRow);
             return ApplicationResult.success({ compliance: compliance.toPlain() });
