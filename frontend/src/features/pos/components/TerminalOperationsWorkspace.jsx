@@ -1333,6 +1333,7 @@ function ItemsWorkspace({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
   const [createCategoryInput, setCreateCategoryInput] = useState('');
+  const [editCategoryInput, setEditCategoryInput] = useState('');
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
@@ -1569,12 +1570,14 @@ function ItemsWorkspace({
         ? createFolderFilterValue({ folder_id: savedFolderId, name: item?.folder?.name || item?.product_folder })
         : '')
     });
+    setEditCategoryInput(String(item?.folder?.name || item?.product_folder || ''));
   };
 
   const closeEdit = ({ force = false } = {}) => {
     if (!force && (savingItem || persistingEditAssets)) return;
     setEditingItemId(null);
     setPersistingEditAssets(false);
+    setEditCategoryInput('');
     setEditForm({
       name: '',
       current_stock: '0',
@@ -1646,15 +1649,30 @@ function ItemsWorkspace({
     try {
       setPersistingEditAssets(true);
       const resolvedStock = category === 'product' || category === 'supplies' ? stock : 0;
-      const foodCategory = resolveFoodCategorySelection(editForm.pos_category);
       const currentFolderId = Number(activeEditItem.folder_id || 0);
-      if (!foodCategory && !currentFolderId) {
+      const currentFolderName = String(activeEditItem?.folder?.name || activeEditItem?.product_folder || '').trim();
+      const typedCategoryName = String(editCategoryInput || '').trim().replace(/\s+/g, ' ');
+      const foodCategory = resolveFoodCategorySelection(editForm.pos_category)
+        || foodCategoryOptions.find((option) => normalizeFolderNameKey(option.name) === normalizeFolderNameKey(typedCategoryName));
+      // Admins can type a brand-new category name (mirrors handleCreateItem) - but only treat it
+      // as "create a new one" when it actually differs from the item's current category, so an
+      // untouched field never gets misread as a create request.
+      const categoryUnchanged = !foodCategory && normalizeFolderNameKey(typedCategoryName) === normalizeFolderNameKey(currentFolderName);
+      const isTypingNewCategory = canManageCategories && !foodCategory && !categoryUnchanged && Boolean(typedCategoryName);
+      if (!foodCategory && !currentFolderId && !isTypingNewCategory) {
         toast.error('Select an active category managed by an administrator.');
         return;
       }
+      // foodCategory resolves to null whenever the item's current category is inactive
+      // (foodCategoryOptions only lists active folders) even though the item still legitimately
+      // has that folder assigned. Previously that silently dropped product_folder/folder_id from
+      // the payload entirely, which cleared the item's category on every save. Fall back to the
+      // item's existing folder so an untouched (inactive) category is preserved instead of wiped.
       const categoryPayload = foodCategory
         ? { product_folder: foodCategory.name, folder_id: foodCategory.folder_id }
-        : {};
+        : isTypingNewCategory
+          ? { create_category_name: typedCategoryName }
+          : { product_folder: currentFolderName, folder_id: currentFolderId };
       await updateItem(activeEditItem.item_id, {
         name,
         category,
@@ -1678,7 +1696,7 @@ function ItemsWorkspace({
         pos_always_available: editForm.pos_always_available === true
       });
       closeEdit({ force: true });
-      await loadItems();
+      await Promise.all([loadItems(), loadPosFolders()]);
       setSavedMessage({ name, barcode: primaryBarcodes[String(activeEditItem.item_id)]?.code || '', action: 'updated' });
     } catch (updateError) {
       toast.error(updateError?.response?.data?.message || 'Failed to update item.');
@@ -2249,7 +2267,10 @@ function ItemsWorkspace({
                           </div>
                           <div className="min-w-0">
                             <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Category</p>
-                            <p className="mt-0.5 text-xs font-bold capitalize text-[#0F172A]">{item.category || 'Uncategorized'}</p>
+                            {/* Reflects the item's food category (POS folder) - item.category is
+                                a fixed inventory enum (always "product" here), not what the Food
+                                Category field on the item form actually sets. */}
+                            <p className="mt-0.5 truncate text-xs font-bold text-[#0F172A]">{item.folder?.name || item.product_folder || 'Uncategorized'}</p>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-2">
@@ -2777,21 +2798,50 @@ function ItemsWorkspace({
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Food Category <span className="text-rose-500">*</span>
                       </label>
-                      <select
-                        value={editForm.pos_category}
-                        onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
-                        disabled={savingItem || persistingEditAssets}
-                      >
-                        {!editForm.pos_category && <option value="">Select an active category</option>}
-                        {editForm.pos_category && !foodCategoryOptions.some((option) => option.value === editForm.pos_category) && (
-                          <option value={editForm.pos_category} disabled>Current category is inactive</option>
-                        )}
-                        {foodCategoryOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                      <p className="text-[11px] text-slate-500">Inactive categories remain on existing items but cannot be selected again.</p>
+                      {canManageCategories ? (
+                        <>
+                          <Input
+                            list="pos-items-edit-category-options"
+                            value={editCategoryInput}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              const matchedCategory = foodCategoryOptions.find((option) => (
+                                normalizeFolderNameKey(option.name) === normalizeFolderNameKey(nextValue)
+                              ));
+                              setEditCategoryInput(nextValue);
+                              setEditForm((current) => ({
+                                ...current,
+                                pos_category: matchedCategory?.value || ''
+                              }));
+                            }}
+                            className="h-11 rounded-xl border-slate-200 text-xs font-medium focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                            disabled={savingItem || persistingEditAssets}
+                            placeholder="Select or create a category"
+                          />
+                          <datalist id="pos-items-edit-category-options">
+                            {foodCategoryOptions.map((option) => <option key={option.value} value={option.name} />)}
+                          </datalist>
+                          <p className="text-[11px] text-slate-500">Select an existing category, or enter a new name to create it when this item is saved.</p>
+                        </>
+                      ) : (
+                        <>
+                          <select
+                            value={editForm.pos_category}
+                            onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
+                            disabled={savingItem || persistingEditAssets}
+                          >
+                            {!editForm.pos_category && <option value="">Select an active category</option>}
+                            {editForm.pos_category && !foodCategoryOptions.some((option) => option.value === editForm.pos_category) && (
+                              <option value={editForm.pos_category} disabled>Current category is inactive</option>
+                            )}
+                            {foodCategoryOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <p className="text-[11px] text-slate-500">Inactive categories remain on existing items but cannot be selected again. Only an administrator can create new categories.</p>
+                        </>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">

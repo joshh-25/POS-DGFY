@@ -774,6 +774,8 @@ export default function POSCheckoutTerminal({
     const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
+    // Drives the mobile-only category-dropdown availability filter below.
+    const [isMobile, setIsMobile] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
@@ -804,6 +806,24 @@ export default function POSCheckoutTerminal({
     const currentSalePaneHeightClassName = 'h-full max-h-full';
     const safeCatalog = toArray(catalog);
     const safePosFolders = toArray(posFolders);
+    // Mobile-only category dropdown filter: a category is only offered if it has at least one
+    // item with stock > 0, or at least one item tagged pos_always_available. Desktop/tablet
+    // (isMobile === false) always show the full, unfiltered safePosFolders list - unchanged.
+    const availableCategories = useMemo(() => {
+        if (!isMobile) return safePosFolders;
+        return safePosFolders.filter((folder) => {
+            const folderId = Number(folder?.folder_id);
+            if (!Number.isInteger(folderId) || folderId <= 0) return false;
+            // Match by folder_id (the actual food-category/POS-folder assignment), not
+            // item.category - that's an unrelated fixed inventory enum (always "product" here).
+            return safeCatalog.some((item) => {
+                if (Number(item?.folder_id) !== folderId) return false;
+                const hasStock = Number(item?.current_stock || 0) > 0;
+                const isAlwaysAvailable = item?.pos_always_available === true;
+                return hasStock || isAlwaysAvailable;
+            });
+        });
+    }, [isMobile, safePosFolders, safeCatalog]);
     const safeDiscountProfiles = toArray(discountProfiles);
     const safeCommercialPromoConfig = toArray(commercialPromoConfig);
     const safeDiscountApprovers = toArray(discountApprovers);
@@ -855,19 +875,30 @@ export default function POSCheckoutTerminal({
     const selectedFolder = useMemo(() => (
         safePosFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
     ), [safePosFolders, selectedFolderId]);
+    // When browsing a specific category, drop out-of-stock items from the list entirely
+    // (service items and always-available items are exempt). "All Items" is unaffected.
+    const catalogForDisplay = useMemo(() => {
+        if (!selectedFolderId) return safeCatalog;
+        return safeCatalog.filter((item) => {
+            const isService = isServiceCatalogItem(item);
+            const isAlwaysAvailable = item?.pos_always_available === true;
+            if (isService || isAlwaysAvailable) return true;
+            return Number(item?.current_stock || 0) > 0;
+        });
+    }, [safeCatalog, selectedFolderId]);
     const totalCatalogPages = useMemo(() => (
-        Math.max(1, Math.ceil(safeCatalog.length / catalogPageSize))
-    ), [safeCatalog.length, catalogPageSize]);
+        Math.max(1, Math.ceil(catalogForDisplay.length / catalogPageSize))
+    ), [catalogForDisplay.length, catalogPageSize]);
     const visibleCatalogItems = useMemo(() => {
         const pageStart = (catalogPage - 1) * catalogPageSize;
-        return safeCatalog.slice(pageStart, pageStart + catalogPageSize);
-    }, [safeCatalog, catalogPage, catalogPageSize]);
+        return catalogForDisplay.slice(pageStart, pageStart + catalogPageSize);
+    }, [catalogForDisplay, catalogPage, catalogPageSize]);
     const visibleCatalogRange = useMemo(() => {
-        if (safeCatalog.length === 0) return { start: 0, end: 0 };
+        if (catalogForDisplay.length === 0) return { start: 0, end: 0 };
         const start = (catalogPage - 1) * catalogPageSize + 1;
         const end = start + visibleCatalogItems.length - 1;
         return { start, end };
-    }, [safeCatalog.length, catalogPage, catalogPageSize, visibleCatalogItems.length]);
+    }, [catalogForDisplay.length, catalogPage, catalogPageSize, visibleCatalogItems.length]);
     const handleCatalogPageChange = useCallback((direction) => {
         setCatalogPage((previous) => {
             if (direction === 'previous') {
@@ -1506,6 +1537,15 @@ export default function POSCheckoutTerminal({
         loadDeviceStatus();
     }, [loadDeviceStatus, loadReceiptSettings, loadPosFolders, sessionLocked]);
 
+    // Folders/catalog are otherwise only loaded once on mount, so a category added or edited
+    // elsewhere (e.g. Items management) after this terminal session started would never appear.
+    // Re-fetch both whenever the category filter panel is opened, so it's always current.
+    useEffect(() => {
+        if (sessionLocked || !catalogFiltersOpen) return;
+        loadPosFolders();
+        loadCatalog();
+    }, [catalogFiltersOpen, loadPosFolders, loadCatalog, sessionLocked]);
+
     useEffect(() => {
         let active = true;
         const bootstrapQueueStore = async () => {
@@ -1539,6 +1579,24 @@ export default function POSCheckoutTerminal({
         }
         tabletMedia.addListener(syncTabletViewport);
         return () => tabletMedia.removeListener(syncTabletViewport);
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        if (typeof window.matchMedia !== 'function') return undefined;
+
+        const mobileMedia = window.matchMedia('(max-width: 639.98px)');
+        const syncIsMobile = (event) => {
+            setIsMobile(Boolean(event.matches));
+        };
+        syncIsMobile(mobileMedia);
+
+        if (typeof mobileMedia.addEventListener === 'function') {
+            mobileMedia.addEventListener('change', syncIsMobile);
+            return () => mobileMedia.removeEventListener('change', syncIsMobile);
+        }
+        mobileMedia.addListener(syncIsMobile);
+        return () => mobileMedia.removeListener(syncIsMobile);
     }, []);
 
     useEffect(() => {
@@ -2838,7 +2896,7 @@ export default function POSCheckoutTerminal({
                             <span>All Items</span>
                             {!selectedFolderId && <X className="h-3.5 w-3.5 opacity-70" />}
                         </button>
-                        {safePosFolders.map((folder) => {
+                        {availableCategories.map((folder) => {
                             const active = selectedFolderId === folder.folder_id;
                             return (
                                 <button
@@ -2885,6 +2943,13 @@ export default function POSCheckoutTerminal({
                     {!posFoldersLoading && !posFoldersError && canViewHistory && safePosFolders.length === 0 && (
                         <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
                             No POS folder filters available yet.
+                        </p>
+                    )}
+                    {/* Mobile-only edge case: categories exist, but every item in every category
+                        is out of stock and none are marked always-available. */}
+                    {!posFoldersLoading && !posFoldersError && canViewHistory && isMobile && safePosFolders.length > 0 && availableCategories.length === 0 && (
+                        <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
+                            No categories currently have available items.
                         </p>
                     )}
                 </div>
@@ -3188,7 +3253,7 @@ export default function POSCheckoutTerminal({
                                 <div className="text-center sm:text-left">
                                     <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#64748B]">Catalog Footer</p>
                                     <p className="text-xs font-semibold text-[#334155]">
-                                    Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {safeCatalog.length || 0} items
+                                    Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {catalogForDisplay.length || 0} items
                                     </p>
                                 </div>
                                 <div className="flex items-center justify-center gap-3">
