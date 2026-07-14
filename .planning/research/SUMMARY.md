@@ -1,182 +1,129 @@
 # Project Research Summary
 
-**Project:** DGFY Standalone Refactor — v2.0 Commerce Domain
-**Domain:** SMB multi-vertical POS + storefront commerce backend (Philippines market), built as new module code inside `apps/dgfy-api`
-**Researched:** 2026-07-12
-**Confidence:** HIGH
+**Project:** DGFY v2.1 Legacy Data Migration (Product/Inventory + Sales-History)
+**Domain:** Legacy-to-new data migration engineering — product/inventory catalog + AI embeddings + POS sales-transaction history, single-tenant-at-a-time, "as if nothing happened" fidelity goal
+**Researched:** 2026-07-14
+**Confidence:** HIGH (stack, architecture, pitfalls all codebase-grounded) / MEDIUM-HIGH (features, general ETL best-practice claims are directional web corroboration only)
 
 ## Executive Summary
 
-This milestone adds a Commerce Domain (Product Catalog, POS Checkout & Payment, Shift/Cash-Drawer, Fiscal/Compliance, Storefront Online Ordering, Order Fulfillment) as new module code inside `apps/dgfy-api`, following the exact `routes -> controllers -> usecases -> repositories -> models` layering and per-module folder shape already proven in Phases 1-6 (Accounts/Businesses/Tenancy). The single biggest advantage this project has is that almost every hard problem in scope — PayMongo integration with HMAC-verified webhooks, a fiscal/compliance policy engine, MySQL generated-column tricks for partial-unique constraints, DB-trigger-enforced append-only ledgers, server-side discount/tax math for SC/PWD compliance — already has a hardened, production-tested implementation in the legacy `backend/` app. The correct strategy is to port these proven patterns into the new Clean-Architecture module structure rather than inventing new approaches or reaching for new dependencies; the only net-new package needed is `joi` for payload validation.
+This milestone is not a greenfield migration project — it is an extension of a proven, already-shipped Phase 3 migration pattern (`apps/dgfy-migration-runner`: pure-function mappers, checkpoint/dry-run/apply/verify, `legacy_id_map`) into two new legacy table families: `items`/`item_folders`/`stock_movements`/8 satellite tables/`item_embeddings` → `products`/`product_folders`/`inventory_movements`/new `product_embeddings`, and `pos_transactions` → `availments` (with a new `source_system` provenance column). Zero new libraries, zero engine changes, and zero new architecture shape are required: MySQL 8.0 stays JSON-blob-plus-app-side-cosine-search for embeddings (no native `VECTOR` type until 9.0), and the target `products`/`product_folders`/`inventory_movements`/`availments` tables already exist (Phase 8/9) but are empty because `mappings.js`'s `OUT_OF_SCOPE_LEGACY_TABLES` blocklist and `legacySource.js`'s read scope both currently exclude these legacy sources.
 
-The recommended build order is dependency-driven: Product Catalog + Inventory ledger first (nothing else has a `product_id` to reference), Shift & Cash Drawer in parallel (no Product dependency), Booking after Product, Fiscal/Compliance policy engine/gate port built in parallel with all of the above (so its contract is stable before Checkout is written against it), then POS Checkout & Payment, then Storefront Online Ordering (the first module to legitimately cross Landlord/Tenant databases in one usecase), then Order Fulfillment. Feature scope is essentially backend API parity with legacy plus explicit legal requirements (SC/PWD discount, BIR-compliant receipts) — no new frontends, and several tempting features (live courier APIs, loyalty programs, N-way split-tender, staff calendars) are explicitly out of scope given the sub-100-active-user target.
+The recommended approach is a two-wave build strictly following dependency order: Wave 0 (additive schema — `products` columns + `attributes` JSON, new `product_embeddings` table, a natural-key unique index on `inventory_movements`) → Wave 1 (catalog/inventory data path: folders → products → inventory_movements/embeddings) → re-rehearse and prove Wave 1 → Wave 2 (sales-history: `availments.source_system` column, then `pos_transactions` → `availments`, which has a real FK dependency on Wave 1's migrated products). This mirrors PROJECT.md's own phase framing (sales-history is "its own phase," sequenced after product/inventory) and the runner's actual constraint: `buildDryRunPlan()`/`runApplyTransformations()` are a single hard-coded per-tenant sequence, not a pluggable registry, so entity types must be added to both in lockstep.
 
-The dominant risk category is regression of already-known legacy bugs under a new schema name — client-trusted change/tender arithmetic, client-declared payment status, stock double-decrement races, no-shift checkouts, compliance gate under/over-gating, and (new to this milestone) unsafe cross-database Landlord/Tenant writes for storefront orders. Every one of these has a concrete, codebase-grounded mitigation pattern (atomic guarded `UPDATE`, server-side `change_due` computation, DB-level unique constraints via generated columns, landlord-durable-record + idempotent tenant finalization) that must be designed in from the start of the relevant phase, not retrofitted. The second-order risk is architectural: recreating the "DGFY shares schema with legacy IMS" coupling problem inside the new system by taking data-modeling shortcuts (reading legacy `items` directly "just for one field").
+The key risks are all fidelity risks in lossy N→M enum/schema collapses, not technical/library risks: legacy `items.category` (5 values) → `products.category` (3-value native ENUM, hard-fails on unmapped input, not soft-skips); `stock_movements.movement_type` (8 values) → `inventory_movements.movement_type` (5 values, with `loss_reason`/`weighted_average_cost` having no target column at all); multi-location stock/transfers having no location dimension in the new schema at all; a self-referential `product_composition` (BOM/recipe) table with zero settled decision; embeddings carrying no model-version provenance; and `pos_transactions` being a live, continuously-growing table with no watermark mechanism in the existing checkpoint pattern (which was only ever proven against small, largely-static Phase 3 tables). Every one of these is mitigable with the codebase's own existing idioms (frozen lookup tables + `classifyMappingConflict` findings, JSON snapshot columns already present, explicit out-of-scope declarations) — the risk is skipping the explicit-decision step and letting a mapping happen ad hoc.
 
 ## Key Findings
 
 ### Recommended Stack
 
-No framework changes are needed — Express 4.22.2, Sequelize 6.37.8, mysql2, and MySQL 8.0 stay exactly as pinned in `apps/dgfy-api`. The only new dependency is `joi@^18.2.3` for validating the commerce domain's more complex nested payloads (cart line items, discount applications, payment attributes). PayMongo integration uses Node 22's native `fetch` and `crypto` (no SDK, no axios) — porting `backend/src/services/paymongoService.js`'s proven HMAC-SHA256 webhook verification and REST client logic. Money math stays as `DECIMAL` columns + a small rounding helper (no `decimal.js`/`dinero.js`), and shift lifecycle stays as an enum + guarded usecase transitions (no `xstate`) — both proven sufficient at this codebase's existing scale.
+No new libraries or engine changes. MySQL 8.0 (pinned), Sequelize `^6.37.8`, `mysql2` `^3.6.5`, and Umzug `^3.8.3` are all already sufficient — `JSON`/`TEXT` column types, additive `addColumn`/`createTable`, and upsert are already proven in this exact repo. The embeddings-storage pattern (JSON-stringified float array in a `JSON` column, app-side cosine similarity) is a direct port of `backend/src/services/embeddingService.js`'s already-production-proven approach, upgraded from `TEXT` to native `JSON` for free write-time validation.
 
 **Core technologies:**
-- Express 4.22.2 + Sequelize 6.37.8 + mysql2 + MySQL 8.0 — unchanged; new commerce tables/routes slot into the existing layered structure
-- `joi@^18.2.3` — request schema validation for checkout/cart/discount/shift/fulfillment payloads (new dependency, one package total)
-- Native `fetch`/`crypto` (Node 22 builtins) — PayMongo REST calls and webhook HMAC verification, replacing any need for axios or a PayMongo SDK
-- MySQL `GENERATED ALWAYS AS (...) STORED` + `UNIQUE INDEX` — enforces "one open shift per cashier+terminal" (MySQL has no native partial/filtered unique index)
-- MySQL `BEFORE UPDATE`/`BEFORE DELETE` triggers with `SIGNAL SQLSTATE` — enforces true DB-level append-only immutability for ledger tables
+- MySQL 8.0 — no `VECTOR` type until 9.0 (an Innovation-track release, not LTS); native JSON storage is sufficient at this data scale (~23KB/vector, few hundred vectors/tenant)
+- Sequelize `^6.37.8` + Umzug `^3.8.3` — additive, idempotent, `describeTable`-guarded migrations, same idiom as `20260714103000-add-availment-source-reference.cjs`
+- `mappings.js` pure-function mapper pattern — zero I/O, `{operation, entity_type, target_payload, legacy_id_map_key, related_targets, findings}` contract, extend with 5 new exported functions, never edit the 7 existing ones
 
 ### Expected Features
 
-Feature scope is backend API parity with the legacy system plus PH-specific legal requirements. The SC/PWD statutory discount (RA 9994, RR 7-2010, RMC 71-2022) is the highest-stakes table-stakes item — it directly shapes BIR-compliant receipt structure and must be treated as a fiscal-domain concern sharing the same tax/discount computation module as Fiscal/Compliance, not a generic manual discount. Guest checkout is a hard requirement (forced signup measurably hurts conversion); shift-open is a hard precondition for checkout; fiscal/compliance gating is a genuine differentiator vs. Square/Shopify/Loyverse (none of them model "can't legally issue a receipt yet" as a first-class state) and must not regress in the rebuild.
+**Must have (table stakes / MVP, v2.1):**
+- ADR 0029 amendment removing `items`/`item_folders`/`stock_movements`/`pos_transactions` from `OUT_OF_SCOPE_LEGACY_TABLES` — hard blocker for everything else
+- `products` schema extension (6 typed columns + `attributes` JSON), with the 1:1-vs-1:many satellite-table folding design documented before mapper code
+- `item_folders` → `product_folders`, `items` → `products` (incl. 8 satellite tables folded into `attributes`), `stock_movements` → `inventory_movements` mappers
+- Documented, reviewed 8→5 `movement_type` remapping decision, with findings for lossy collapses
+- `item_embeddings` → new `product_embeddings` storage mapper (carry-over, same model/format, no re-embedding)
+- `availments.source_system` additive column + `pos_transactions` → `availments` mapper (own phase, after Product/Inventory)
+- Dry-run/apply/idempotency-retry/verify wiring for every new entity type; extended per-tenant verification (sum-by-type, not just row counts)
+- Re-rehearsal against the disposable production-parity environment
 
-**Must have (table stakes):**
-- Product Catalog (Food/Service/Retail, stock/non-stock, folders, Basic Inventory ledger)
-- Server-verified checkout totals, line items, discounts, tax, change (non-negotiable per PROJECT.md scope)
-- Discount codes + permission-gated manual discounts + SC/PWD regulatory discount
-- Payment method selection recorded on Availment (Cash/GCash/Card) — record only, no live gateway capture required
-- Shift open/close with starting cash float + cash-drawer reconciliation (Expected/Actual/Difference, Loyverse's 3-field model)
-- Fiscal/compliance policy-engine gating on checkout, shift-open, and receipt issuance
-- Storefront browse/search/cart, guest-or-account checkout, pickup/delivery scheduling
-- Order fulfillment status tracking (shared core pipeline + type-specific handoff leg) + manual courier assignment/payout tracking
-- BIR-compliant receipt generation reflecting all discounts/taxes, gated by compliance state
+**Should have (P2, cheap now / expensive later):**
+- Line-item/movement-level `source_system` provenance tagging, not just header-level
+- Human-readable per-tenant migration summary report
+- Embedding-model metadata tagging on carried-over vectors
 
-**Should have (competitive/differentiators):**
-- Fiscal/compliance policy-engine gating itself — the standout competitive differentiator vs. international platforms
-- Unified Product model spanning Food/Service/Retail under one entity (simplifies hybrid-vertical onboarding)
-- Branch-level booking capacity without staff calendars (right-sized MVP cut for service businesses)
-
-**Defer (v2.x / v3+):**
-- Blind-count shift closing, 2-way split-tender payments (add only once real demand is observed)
-- Live PayMongo capture/settlement, real courier API integration (Grab/Lalamove), staff-level appointment calendars, loyalty/rewards program, multi-channel order routing, comprehensive Inventory/IMS integration — all explicitly out of scope per `.planning/PROJECT.md`
+**Defer (v3+, explicitly out of scope):**
+- Re-embedding through a newer model (separate AI-quality milestone)
+- Raw-material-vs-finished-good distinction (deferred to unscoped IMS integration)
+- FIFO batch/supplier/PO migration, live dual-write/CDC sync, full EAV schema — all explicitly rejected
 
 ### Architecture Approach
 
-Commerce Domain is entirely new module code inside `apps/dgfy-api` (never touching legacy `backend/`), organized as one module per bounded concern (`products`, `inventory`, `booking`, `shifts`, `compliance`, `availment`, `storefrontOrdering`, `fulfillment`) mirroring the existing `modules/accounts`/`modules/businesses` shape exactly. Two architectural rules are enforced structurally, not by convention: (1) fiscal/compliance gating lives behind a narrow injected port called from inside each gated usecase's own body (never middleware, never scattered per-call checks); (2) each mutable/append-only resource has exactly one writer module (`modules/inventory` is the only writer of stock-movement rows, `modules/availment` the only writer of stage-event rows) — everyone else calls a port. Storefront Ordering is the first usecase in the codebase to legitimately cross Landlord and Tenant databases in one flow, resolved at the application layer (no DB FK, no 2PC) via a landlord-durable-record-first + idempotent-tenant-finalization pattern that mirrors the existing `CommercePaymentSession` precedent.
+New mapper functions plug into the existing five-layer pipeline unchanged in shape: `legacySource.js` (new read functions, same tenant-scoped connection factory) → `mappings.js` (new pure-function mappers) → `dryRun.js`/`apply.js` (both must be extended in lockstep — no shared pluggable registry exists) → `verifyData.js` (new count + relationship checks) → new additive schema migration files. The `products`/`product_folders`/`inventory_movements`/`availments` tables already exist and are empty; only `product_embeddings` is genuinely new.
 
 **Major components:**
-1. `modules/products` + `modules/inventory` — Product identity/catalog and the single-writer stock-movement ledger (atomic guarded UPDATE, not read-then-write)
-2. `modules/shifts` — shift open/close, cash-drawer events, one-open-shift-per-terminal DB-level invariant
-3. `modules/compliance` — compliance-mode state machine exposed as a narrow gate port (`assertComplianceGate`) consumed by checkout, shift, and receipt usecases
-4. `modules/availment` — POS checkout usecases, `AVAILMENT`/`AVAILMENT_ITEM`/`AVAILMENT_STAGE_EVENT`, server-computed totals/change
-5. `modules/storefrontOrdering` — cart, guest-or-account checkout, first real Landlord↔Tenant crossing, first mount of the already-built-but-unmounted `tenantContextResolver`
-6. `modules/fulfillment` — order status/stage-event lifecycle, manual courier assignment, payout tracking
+1. `src/data/mappings.js` — add `mapLegacyItemFolderToProductFolder`, `mapLegacyItemToProduct`, `mapStockMovementToInventoryMovement`, `mapItemEmbeddingToEmbeddingRow`, and (Wave 2) `mapLegacyPosTransactionToAvailment`
+2. `src/data/dryRun.js` + `src/data/apply.js` — extend the single hard-coded per-tenant sequence in lockstep: `product_folder → product → inventory_movement → product_embedding` (Wave 1), then `availment` (Wave 2, after products exist)
+3. `src/migrations/schema/*.cjs` — additive-only: `products` ALTER, `product_embeddings` CREATE, `inventory_movements` natural-key index ALTER, `availments.source_system` ALTER (Wave 2, kept separate)
+4. `src/data/verifyData.js` — extend with count and relationship checks (`products.folder_id`→`product_folders`, `inventory_movements.product_id`→`products`), reusing existing generic check functions
 
 ### Critical Pitfalls
 
-1. **Server verifies order totals but still trusts client-submitted `change_amount`/`cash_received`** — treat cash tender as first-class checkout input; compute `change_due` server-side and reject if `cash_received < total`; never accept a client-computed `change_amount` on the write path.
-2. **`payment_status` stays client-declared under a new name for non-gateway methods** — split into gateway-verified (`paid`, webhook-confirmed only) vs. attested (`cashier_attested`, requires `attested_by_staff_id`/`shift_id`) tiers; never let a plain client PATCH set the paid-equivalent status.
-3. **Stock double-decrement / oversell between concurrent POS and Storefront sales** — route all stock effects through one centralized command service using an atomic guarded `UPDATE ... WHERE quantity >= :qty` (check `affectedRows === 1`), never read-then-write; same pattern for booking slot capacity.
-4. **Checkout succeeds with no open shift, or a shift silently spans days** — enforce shift-open as a server-side precondition inside the checkout usecase itself (not a UI guard), backed by a DB-level unique constraint (generated-column trick); flag (don't auto-close) stale shifts.
-5. **Fiscal/compliance gate mis-calibration (over- or under-gating)** — centralize the gate call in shared usecase code every sale-completing path must call (POS, Storefront, Fulfillment), with a mechanical guardrail test asserting coverage; model gating as multiple named modes, not one boolean.
-6. **Cross-database (Landlord↔Tenant) storefront-order writes treated as a single transaction** — no native cross-DB transaction exists; use landlord-durable-record-first + idempotent tenant finalization + explicit manual-resolution fallback state, mirroring the existing `CommercePaymentSession` pattern.
+1. **`products.category` ENUM collapse fails hard, not soft** — a native SQL ENUM with only 3 target values against 5 legacy values throws a raw MySQL truncation error mid-batch if unmapped. Prevention: frozen exhaustive lookup table + `CATEGORY_FALLBACK_APPLIED` finding on every fallback.
+2. **`movement_type` 8→5 collapse silently conflates operationally distinct events**, and `loss_reason`/`weighted_average_cost` have no target column at all. Prevention: explicit frozen lookup table + fold detail into existing `before_snapshot`/`after_snapshot` JSON columns rather than discarding.
+3. **Multi-location stock and inter-location transfers have no target in the new schema at all** (`products.stock_count` is a single scalar, no location dimension, no `transfer` movement type). Requires an explicit Key Decision in PROJECT.md before mapper code, not an implicit inference.
+4. **`pos_transactions` is a live, continuously-growing table with no watermark mechanism** in the existing checkpoint pattern — without an explicit run-start watermark, dry-run/apply/verify race against a moving target and idempotent re-migration becomes non-reproducible.
+5. **`attributes` JSON is many-to-one derived and must be fully recomputed-and-overwritten on every apply retry**, never read-modify-appended — the existing `legacy_id_map` idempotency guard protects entity identity, not nested JSON field growth.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on combined research, the milestone naturally splits into 3 phases matching the dependency graph and PROJECT.md's own explicit phase framing.
 
-### Phase 1: Product Catalog + Basic Inventory Ledger
-**Rationale:** Nothing else in scope has a `product_id` to reference; this is the true root dependency. Also the phase where the "no legacy `items` coupling" boundary must be locked in before anything else builds on Product.
-**Delivers:** `modules/products`, `modules/inventory` with a centralized, concurrency-safe stock command service (atomic guarded UPDATE), append-only `InventoryMovement` ledger (insert-only Sequelize model + DB trigger).
-**Addresses:** Product Catalog (Food/Service/Retail, stock/non-stock, folders), Basic Inventory ledger — both P1 table stakes.
-**Avoids:** Pitfall 3 (stock double-decrement) via the atomic-guard contract shipped with a concurrency test up front; Pitfall 7 (IMS coupling) via a manifest-registered seam requirement and guardrail grep test — no FK/model import into legacy `items`/`PosTransactionLine`.
+### Phase 1: Scope Unblock + Schema Extension (Wave 0)
+**Rationale:** Everything else is structurally blocked until the ADR amendment lands and target schema exists; this is pure additive DDL + governance, independently reviewable and low-risk.
+**Delivers:** ADR 0029 amendment (remove `items`/`item_folders`/`stock_movements`/`pos_transactions` from `OUT_OF_SCOPE_LEGACY_TABLES`); `products` ALTER (6 typed columns + `attributes` JSON + `UNIQUE(business_id, sku_code)`); new `product_embeddings` CREATE; `inventory_movements` natural-key `UNIQUE(business_id, reference_type, reference_id)` index; `dgfyBusinessContract.js` updates.
+**Addresses:** ADR amendment + schema-extension items from FEATURES.md P1 list.
+**Avoids:** Pitfall 3 (no natural key for `products`/`inventory_movements` — closed here before any data path exists).
 
-### Phase 2: Shift & Cash Drawer (can run parallel to Phase 1)
-**Rationale:** Only depends on existing Business/Location/StaffAccount/TerminalIdentity — no Product dependency — so it can be built alongside Phase 1. Must land before or alongside Checkout since it's a hard checkout precondition.
-**Delivers:** `modules/shifts` — open/close usecases, cash-drawer event log (insert-only), close-time Expected/Actual/Difference reconciliation, one-open-shift-per-terminal+cashier DB-level generated-column unique index.
-**Uses:** MySQL `GENERATED ALWAYS AS (...) STORED` + `UNIQUE INDEX` pattern from STACK.md; `sequelize.transaction()` + guard read convention.
-**Implements:** the shift-gating port that Checkout will call as a precondition.
+### Phase 2: Product/Inventory Migration (Wave 1)
+**Rationale:** Depends on Phase 1's schema; must land and be re-rehearsed before Phase 3 because `availment_items.product_id` (if scoped) has a real FK dependency on migrated products existing in `legacy_id_map`.
+**Delivers:** `item_folders`→`product_folders`, `items`→`products` (incl. 8 satellite tables folded into `attributes`, with the 1:1-vs-1:many shape decision made up front), `stock_movements`→`inventory_movements` (with the 8→5 remapping table designed as its own reviewed artifact before mapper code), `item_embeddings`→`product_embeddings` (with model-version metadata column, even if hardcoded). Extended verify (sum-by-type checks). Re-rehearsal against production-parity environment.
+**Addresses:** FEATURES.md's full P1 catalog/inventory list.
+**Avoids:** Pitfalls 1, 2, 3 (BOM), 5 (flat folder collisions), 6, 7, 10 — all flagged as "Product/Inventory Migration phase" in the pitfalls-to-phase mapping. Requires explicit design decisions (not implicit code) for multi-location stock and `product_composition` scope before mapper code is written.
 
-### Phase 3: Booking (after Product Catalog)
-**Rationale:** A bookable Service is presented as a Product subtype/category, so the catalog's category model must exist first.
-**Delivers:** `modules/booking` — branch-level slot capacity checks against Product's slot/capacity fields, using the same atomic-decrement-with-guard pattern as inventory for `slots_remaining`.
-**Addresses:** Booking (branch-level capacity, no staff calendar) — correctly scoped MVP cut per FEATURES.md.
-
-### Phase 4: Fiscal/Compliance Policy Engine + Gate Port (parallel with Phases 1-3)
-**Rationale:** Zero data dependency on Product/Availment, but its gate-port contract must be stable before Checkout/Shift-close usecases are written against it — build in parallel and have it ready by the time Phase 5 starts, not retrofitted afterward.
-**Delivers:** `modules/compliance` — compliance-mode state machine, `assertComplianceGate({ businessId, operation })` port with multiple named gate modes (`blocks_checkout`, `blocks_receipt_issuance`, `blocks_shift_open`), versioned `policyPacks.js`.
-**Addresses:** Fiscal/compliance gating — the standout competitive differentiator per FEATURES.md.
-**Avoids:** Pitfall 5 (over/under-gating) by designing the port contract and multi-mode gating from the start, plus flagging the open decision on whether `ComplianceModeState` is Landlord- or Tenant-scoped for roadmap/phase-planning confirmation.
-
-### Phase 5: POS Checkout & Payment (Availment/AvailmentItem)
-**Rationale:** Depends on Phase 1 (Product), Phase 2 (Shift, for terminal/cashier attach and the gating precondition), Phase 4 (compliance gate). This is the core commerce primitive everything downstream hangs off.
-**Delivers:** `modules/availment` — checkout usecase (compliance gate → shift check → server-computed totals/change → Availment+AvailmentItem write → inventory effect request → first stage-event row, all in one transaction), SC/PWD discount math, receipts.
-**Addresses:** Availment + server-verified totals/change, discount codes + manual + SC/PWD discounts, payment method recording, receipts — all P1.
-**Avoids:** Pitfall 1 (client-trusted change/tender), Pitfall 2 (client-declared payment status), Pitfall 8 (name the new payment entity `AvailmentPayment`/`PosPaymentAttestation`, never bare `Payment` — collides with existing landlord subscription-billing model).
-
-### Phase 6: Storefront Discovery & Online Ordering
-**Rationale:** Depends on Phase 1 (catalog to browse) and Phase 5 (Availment shape to write into). This is the first real Landlord↔Tenant crossing in the whole codebase — genuinely new risk surface, budget extra time.
-**Delivers:** `modules/storefrontOrdering` — guest-or-account checkout, first mount of the already-built `tenantContextResolver` middleware, landlord-durable-order-record + idempotent tenant-Availment-finalization pattern with an explicit manual-resolution state.
-**Addresses:** Storefront browse/search/cart, guest checkout (P1), pickup/delivery scheduling.
-**Avoids:** Pitfall 6 (cross-DB write consistency) — this phase must design the order-creation flow around the landlord-first/idempotent-finalization pattern from the start, including a reconciliation/retry sweep as part of the phase, not a later TODO.
-
-### Phase 7: Order Fulfillment & Delivery Coordination
-**Rationale:** Depends on Phase 5 (POS-originated fulfillment) and mainly Phase 6 (online orders are its primary source) — orders must exist before they can be fulfilled.
-**Delivers:** `modules/fulfillment` — full `AVAILMENT_STAGE_EVENT` lifecycle, manual delivery/courier assignment, payout tracking (mirrors legacy's "outbound links" capability, not live courier API integration).
-**Addresses:** Order fulfillment status tracking + manual courier assignment (P1), correctly scoped as non-integration.
-**Avoids:** Pitfall 5 (compliance gate must also cover any new sale-completing/receipt-issuing transitions this phase introduces) and inherits Pitfall 6 risk if Phase 6's cross-DB pattern isn't solid first.
+### Phase 3: Sales-History Migration (Wave 2)
+**Rationale:** Explicitly sequenced after Phase 2 per PROJECT.md ("its own phase"); has a hard FK dependency on migrated products if line items are in scope, and introduces genuinely new problems (live-growing table, dangling operational FKs) that Phase 3's small-table-oriented checkpoint pattern was never proven against.
+**Delivers:** `availments.source_system` additive column; `pos_transactions`→`availments` mapper with an explicit per-field FK classification (resolvable / nulled-with-finding / opaque-snapshot) for `shift_id`/`terminal_id`/`fnb_check_id`/`fnb_table_id`; a persisted per-run watermark extending `dataState.js`'s checkpoint shape; extended verify + migration-map doc.
+**Uses:** existing `legacy_id_map`/checkpoint mechanism, extended with a watermark field.
+**Implements:** the `legacySource.js`/`mappings.js`/`dryRun.js`/`apply.js`/`verifyData.js` extension pattern from Phase 2, applied to a new entity type.
+**Avoids:** Pitfalls 8 (no watermark → non-reproducible idempotent re-migration against a live table) and 9 (dangling operational FKs).
 
 ### Phase Ordering Rationale
 
-- Dependency-driven: Product Catalog is the true root (nothing else has a `product_id`); Shift has zero Product dependency so it runs in parallel; Fiscal/Compliance has zero data dependency but a hard contract-timing dependency (must be ready before Checkout is written, not after).
-- Storefront Ordering is deliberately its own phase, not folded into Checkout, because it's the only place that legitimately crosses Landlord and Tenant databases in one usecase — genuinely different risk shape, not just "checkout with a different UI."
-- This ordering directly avoids the two most expensive-to-recover-from pitfalls identified in PITFALLS.md: shipping Checkout before Shift-gating exists (Pitfall 4, recovery cost LOW-MEDIUM but preventable at zero cost by sequencing), and shipping any new sale-completing path without the compliance gate wired in from day one (Pitfall 5, recovery cost HIGH — compliance exposure).
+- Schema must exist before any mapper can write to it (Phase 1 → Phase 2/3).
+- Products must be migrated before sales-history line items can resolve their `product_id` FK (Phase 2 → Phase 3) — this is a real FK dependency, not just an organizational preference, and PROJECT.md already states this ordering explicitly.
+- The runner's orchestration is a single hard-coded sequence per tenant (not independently pluggable pipelines), so Wave 1 and Wave 2 cannot be built in parallel even if team capacity allowed it — `dryRun.js`/`apply.js` would need conflicting simultaneous edits.
+- Several critical pitfalls (category ENUM, movement-type collapse, multi-location stock, BOM/composition scope) require an explicit reviewed design decision *before* mapper code — these should be resolved in phase discussion/spec, not discovered mid-implementation, and are the primary reason Phase 2 needs a `--research-phase` / discuss-phase pass rather than jumping straight to planning.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Storefront Discovery & Online Ordering (Phase 6):** first real Landlord↔Tenant cross-database write pattern in this codebase; PayMongo storefront QR Ph payment integration is explicitly flagged in ARCHITECTURE.md as out of that research's depth — flag for phase-specific research when this phase is planned.
-- **Fiscal/Compliance (Phase 4):** open decision on whether `ComplianceModeState` is Landlord-scoped or Tenant-scoped is unresolved and must be confirmed before building `modules/compliance` — flagged explicitly in ARCHITECTURE.md's "Open Decisions."
-- **Order Fulfillment (Phase 7):** fulfillment status shape (two-field `status`+`fulfillment_stage` vs. legacy's single-field state machine) is an assumed-not-confirmed design decision per ARCHITECTURE.md.
+Phases likely needing deeper research or an explicit discuss-phase/spec pass during planning:
+- **Phase 2 (Product/Inventory Migration):** highest research need — requires resolving the movement-type 8→5 mapping table, the multi-location stock-count derivation rule, and the `product_composition`/BOM scope decision, none of which are settled in PROJECT.md today. Needs its own short design pass before mapper code, per PITFALLS.md's explicit recommendation.
+- **Phase 3 (Sales-History Migration):** needs research into watermark/checkpoint extension design (no existing precedent in this codebase for a continuously-growing source table) and the per-field FK classification for `pos_transactions`' ~15 FK-shaped fields. Also has one open scope question (`pos_transaction_lines`/`availment_items` in or out of scope) that changes whether this phase has a hard Phase-2 dependency at all.
 
-Phases with standard patterns (skip research-phase):
-- **Product Catalog + Inventory (Phase 1):** stock command service pattern is a direct, well-documented port of `backend/src/modules/inventory/commands/stockCommandService.js` and ADR 0029.
-- **Shift & Cash Drawer (Phase 2):** generated-column unique-index pattern and Loyverse's 3-field reconciliation model are both fully specified with working SQL in STACK.md.
-- **POS Checkout & Payment (Phase 5):** server-verified totals/change and payment-status tiering patterns are fully specified in PITFALLS.md and STACK.md with direct legacy precedent (`posDiscountCalculator.js`, `commercePaymentRepository.js`).
+Phases with standard patterns (skip deep research-phase, straightforward extension of proven idiom):
+- **Phase 1 (Schema Extension):** mechanical, additive-only DDL following the exact `describeTable`-guarded pattern already used repeatedly in this repo; low ambiguity.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Every recommendation grounded in either an already-shipped legacy implementation in this exact monorepo, current PayMongo API docs verified via Context7, or npm registry version checks run 2026-07-12 |
-| Features | MEDIUM | PH regulatory findings (BIR/SC-PWD) cross-checked across multiple official + vendor sources (HIGH-confidence primary sources cited); competitor UX/data-model findings are single-search web-sourced and directional, not authoritative |
-| Architecture | HIGH | Grounded directly in the live codebase (`apps/dgfy-api/src`, migration-runner schema contracts, `backend/src/modules/*`) and four authoritative ADRs (0003, 0024, 0029, 0034), not external ecosystem research |
-| Pitfalls | HIGH | Grounded in this codebase's own reconciliation findings and `.planning/codebase/*` mapping; MEDIUM specifically where a pitfall extrapolates to the not-yet-built Fulfillment/Delivery surface |
+| Stack | HIGH | Corroborated against official MySQL reference manuals plus direct reads of already-shipped, production-proven code in this exact repo (`embeddingService.js`, existing migration files) |
+| Features | MEDIUM-HIGH | Migration *pattern* (mappers/checkpoint/dry-run/apply/verify) is HIGH — proven in this repo's Phase 3. General ETL/embedding-drift best-practice claims are MEDIUM — cross-checked against a small number of web sources, not exhaustive |
+| Architecture | HIGH | Every finding read directly from the current codebase (`apps/dgfy-migration-runner/src/**`, `schemaContracts/**`), not inferred from general patterns |
+| Pitfalls | HIGH (codebase-grounded pitfalls) / LOW (general-ETL/embedding web corroboration) | Codebase-specific pitfalls (ENUM collisions, missing FK targets, checkpoint granularity) read directly from Sequelize models and migration files; general-pattern corroboration (offset pagination, embedding drift) is LOW-confidence web search only |
 
-**Overall confidence:** HIGH
-
-### Gaps to Address
-
-- **Compliance-mode state ownership (Landlord vs. Tenant scope):** ARCHITECTURE.md assumes Tenant-scoped but flags this as unconfirmed against where `Business` billing state ultimately lives — resolve explicitly during Phase 4 planning, before `modules/compliance` schema is finalized.
-- **Fulfillment status shape (two-field event-sourced vs. legacy single-field):** ARCHITECTURE.md assumes the two-field/event-sourced design because it satisfies the milestone's explicit `AVAILMENT_STAGE_EVENT` requirement, but flags this as a real design decision for the roadmap to confirm, not assume — resolve during Phase 7 planning.
-- **PayMongo storefront payment integration depth:** explicitly out of ARCHITECTURE.md's research depth; STACK.md covers the REST/webhook mechanics but the full storefront payment flow design needs phase-specific research when Phase 6 is planned.
-- **Competitor/UX feature findings (FEATURES.md):** several claims (e.g., Square split-tender API limits, Chowbus OMS patterns) are single-search web-sourced at MEDIUM/LOW confidence — treat as directional inputs to prioritization, not hard requirements; the PH-regulatory findings (SC/PWD, BIR) are the parts of FEATURES.md that are load-bearing and HIGH confidence.
+**Gaps to address during planning:**
+1. Multi-location stock/transfer target design (Pitfall 2) — no non-lossy target exists in the new schema; needs an explicit Key Decision in PROJECT.md, not implicit code.
+2. `product_composition` (BOM/recipe) in-scope/out-of-scope decision (Pitfall 4) — currently undecided anywhere in settled decisions; silence risks undetected data loss.
+3. Whether `pos_transaction_lines`→`availment_items` is in scope for Phase 3 (Open Question 1 in ARCHITECTURE.md) — changes whether Phase 3 has a hard FK dependency on Phase 2 at all.
+4. `item_location_stocks` mapping target (Open Question 2) — informs either `products.stock_count` or an opening-balance `inventory_movements` row; not a pure architecture-layer call.
+5. `product_embeddings` cardinality — one row per product, or per product-per-model-version (affects the recommended unique constraint shape).
+6. Voided `pos_transactions` (`status = 'voided'`) — whether these migrate into `availments` with a void marker or are excluded needs to be an explicit, documented decision.
 
 ## Sources
 
-### Primary (HIGH confidence)
-- Context7 `/websites/developers_paymongo` — payment_intents, sources, webhooks endpoint shapes, amount-in-smallest-currency-unit convention (queried 2026-07-12)
-- Context7 `/sequelize/website` — Sequelize v6 hooks (`beforeUpdate`/`beforeBulkUpdate`) as the correct mechanism for insert-only model enforcement
-- `backend/src/services/paymongoService.js`, `backend/tests/paymongoWebhookSignature.test.js` — production-proven PayMongo REST client + webhook HMAC verification
-- `backend/src/modules/compliance/policy/compliancePolicyEngine.js`, `policyPacks.js` — proven fiscal/compliance policy-gating engine
-- `backend/migrations/20260703000002-enforce-one-open-shift-per-terminal.cjs`, `20260408000003-harden-compliance-audit-immutability.cjs` — proven MySQL generated-column and trigger patterns
-- `backend/src/modules/pos/domain/posDiscountCalculator.js`, `backend/src/models/PosTerminalShift.js` — proven server-side discount/total calculation and shift field shapes
-- `apps/dgfy-api/src/infra/tenantConnector.js`, `middleware/tenantContextResolver.js`, `models/Landlord/Account.js`, `modules/dgfyAuth/models/DgfyAccount.js`, `config/db.js` — current dgfy-api implementation baseline
-- `docs/architecture/ARCHITECTURE_BOUNDARIES.md`, ADRs 0003, 0024, 0029, 0034 — authoritative governance and precedent
-- `refactor-do-not-commit/DGFY_Domain_02_Product.md`, `DGFY_Plan_vs_Reality_Reconciliation.md` — target ER shape and plan-vs-reality gap findings
-- `.planning/PROJECT.md`, `.planning/codebase/ARCHITECTURE.md`, `CONCERNS.md`, `INTEGRATIONS.md` — milestone scope and codebase mapping
-- BIR Revenue Regulation No. 7-2010, RMC No. 71-2022, RR No. 16-2018 — primary PH regulatory sources for SC/PWD discount compliance
-- npm registry version checks (`npm view`, run 2026-07-12) — confirmed current package versions
-
-### Secondary (MEDIUM confidence)
-- Shopify/Square/Loyverse/Toast official vendor documentation — discount management, split-tender limits, shift reconciliation, fulfillment status patterns
-- Hashmicro PH, Respicio & Co., StoreHub Care — PH-market BIR/SC-PWD compliance implementation guidance, cross-referenced against primary regulatory sources
-- Idempotency-key and inventory-reservation pattern articles (dev.to, Adyen docs, dasroot.net) — corroborate existing codebase patterns for cross-DB writes and stock concurrency
-
-### Tertiary (LOW confidence)
-- Qashier Help Center SC/PWD guide — summarized secondhand via search results only (direct fetch returned HTTP 403), treat corroborating detail as unverified
-- Cointab cash-drawer reconciliation blog, Chowbus OMS blog — general industry commentary, directional only
+Aggregated from all four research files — primarily direct codebase reads (`apps/dgfy-migration-runner/src/**`, `backend/src/models/*.js` read-only reference, `.planning/PROJECT.md`, existing schema migration files), corroborated where noted against official MySQL 8.0/9.0/9.7 reference-manual pages and a small set of MEDIUM/LOW-confidence web sources on embedding-model versioning/drift and general ETL/pagination best practices. See individual STACK.md, FEATURES.md, ARCHITECTURE.md, and PITFALLS.md files for full source lists.
 
 ---
-*Research completed: 2026-07-12*
-*Ready for roadmap: yes*
+*Research synthesized for: DGFY v2.1 Legacy Data Migration milestone*
+*Synthesized: 2026-07-14*

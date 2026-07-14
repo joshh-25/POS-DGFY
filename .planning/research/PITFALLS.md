@@ -1,198 +1,200 @@
 # Pitfalls Research
 
-**Domain:** Adding a Commerce Domain (Product Catalog, POS Checkout/Payment, Shift/Cash-Drawer, Fiscal/Compliance, Storefront Online Ordering, Order Fulfillment/Delivery) to an existing multi-tenant Landlord+Tenant POS/Storefront platform (DGFY)
-**Researched:** 2026-07-12
-**Confidence:** HIGH (grounded in this codebase's own reconciliation findings, `.planning/codebase/*` mapping, and ADR-documented precedent; MEDIUM where a pitfall extrapolates to the not-yet-built Fulfillment/Delivery surface)
+**Domain:** Legacy product-catalog / inventory-movement / sales-transaction data migration into a live, already-shipped multi-tenant schema (DGFY v2.1)
+**Researched:** 2026-07-14
+**Confidence:** HIGH (codebase-grounded — Sequelize models, migration schema files, and the existing `mappings.js`/`dataState.js` pattern were read directly) with LOW-confidence general-ETL/embedding corroboration from web search where noted.
 
-This document is written against the specific milestone in `.planning/PROJECT.md` ("v2.0 Commerce Domain") and the specific known-risk findings in `refactor-do-not-commit/DGFY_Plan_vs_Reality_Reconciliation.md` §6. It intentionally does not re-litigate those findings as discoveries — it treats each as a starting constraint and asks "what new mistake would re-introduce this same failure shape while building the *new* Product/Availment domain?"
-
----
+This research is scoped to the two concrete v2.1 target features: `items`/`item_folders`/`stock_movements`/satellite tables/`item_embeddings` → `products`/`product_folders`/`inventory_movements`, and `pos_transactions` → `availments`. It assumes and does not re-litigate the settled decisions in `.planning/PROJECT.md` (5-value legacy `category` → 3-value `products.category` treated as generic sellable products; simpler 5-type `inventory_movements` taxonomy accepted as sufficient).
 
 ## Critical Pitfalls
 
-### Pitfall 1: Server "verifies" totals but still trusts client-submitted change/tender amounts
+### Pitfall 1: Category ENUM collapse fails hard, not soft
 
 **What goes wrong:**
-The legacy bug was `change_amount == cash_received − total_amount` never being checked server-side. The natural way to "fix" this while building the new Availment checkout is to add server-side total calculation (line items → discounts → tax → grand total) but still accept `cash_received` and `change_amount` as opaque fields on the checkout payload, only using them for the receipt. That reproduces the exact bug under a new schema, because "server-verified totals" (a target feature explicitly named in `PROJECT.md`) is easy to satisfy for the *order total* while leaving the *cash-tender arithmetic* unchecked.
+`products.category` is a native SQL `ENUM('food','service','retail')` (see `20260712100000-create-commerce-foundation.cjs`), not a `VARCHAR`. Legacy `items.category` has 5 values (`raw_material`, `packaging`, `product`, `supplies`, `service`). If the mapper doesn't have an explicit, exhaustive lookup table covering all 5 (plus any value from an older schema version some of the 26 real tenant DBs might still carry — the legacy `category` enum was changed at least once historically via `UPDATE items SET category = 'supplies' WHERE category = 'service'`), an unmapped or unexpected value doesn't get skipped gracefully — it throws a raw MySQL `Data truncated for column 'category'` error mid-batch INSERT, potentially aborting an entire apply run partway through a tenant.
 
 **Why it happens:**
-Total calculation (discounts, senior/PWD, promo codes) is the part everyone remembers to move server-side because it's revenue-correctness-visible. Change-making feels like "just arithmetic the cashier already did in their head" and gets left as a display-only client computation, especially because the POS UI needs instant change feedback while the cashier is still counting cash — nobody wants a network round-trip blocking that UX. This produces "verify the total, forget to verify the tender."
+The existing `mappings.js` pattern (accounts/businesses/memberships) mostly maps optional/free-text fields, so its authors haven't needed an ENUM-to-ENUM mapping with a **smaller** target set before. It's easy to write `category === 'product' ? 'retail' : 'food'`-style ad hoc logic that silently mishandles anything outside the two cases considered.
 
 **How to avoid:**
-Make cash tender a first-class part of the checkout payload contract, not a receipt-only field: `POST /checkout` accepts `{ payment_method, cash_received? }`; the use case computes `change_due = cash_received - total` server-side and rejects the request (`422`) if `cash_received < total` for cash payments, or if a caller tries to pass `change_amount` directly instead of `cash_received`. Never accept a client-computed `change_amount` field on the write path — compute it, don't validate it. Client-side "instant" display is fine; it's just a UI hint, and the server response is the source of truth echoed back onto the receipt.
+Build a single frozen `ITEM_CATEGORY_TO_PRODUCT_CATEGORY` lookup object (mirroring the `TENANT_STATUS_MAP` / `BUSINESS_MEMBERSHIP_ROLE_MAP` pattern already used in `mappings.js`) that explicitly lists all 5 legacy values and their target, with a documented fallback (e.g. default to `retail` per the "generic sellable product" decision) plus a `classifyMappingConflict` finding (new reason code, e.g. `CATEGORY_FALLBACK_APPLIED`) whenever the fallback path is hit — so it's visible in the migration report, not just correct by accident.
 
 **Warning signs:**
-- The checkout DTO/contract has a `change_amount` input field at all (it should be an output-only field, never accepted from the client).
-- The POS use-case test suite has no test asserting "checkout is rejected when `cash_received < total`".
-- Any place `cash_received - total` is computed in more than one layer (frontend AND backend) without the backend result being the one persisted.
+Dry-run report shows zero `category`-related findings across 26 tenants with real, years-old legacy data — that absence is itself suspicious; it usually means the fallback path was never exercised, or is exercised but not being logged as a finding.
 
 **Phase to address:**
-POS Checkout & Payment phase — must be closed before that phase is considered done, not deferred to a later hardening pass.
+Product/Inventory Migration phase — must be closed before any `products` insert is attempted, since it can abort mid-batch.
 
 ---
 
-### Pitfall 2: Non-gateway `payment_status` stays client-declared under a new name
+### Pitfall 2: Multi-location stock and inter-location transfers have no target in the new schema
 
 **What goes wrong:**
-The known risk is that cash/card/bank_transfer payments are marked `paid` purely because the client said so, with no independent confirmation. Renaming the field (e.g. `Availment.payment_status` instead of legacy's field) without changing *who sets it* doesn't fix anything — it just moves the same trust bug into new code. This is a realistic failure mode here specifically because `INTEGRATIONS.md` confirms GCash/Maya/Card/Bank are POS payment-method *labels*, not gateway integrations — only cash vs. "external hardware/app" is meaningfully distinguishable server-side today. There is no oracle to independently confirm a card payment happened; the honest fix is procedural, not technical.
+Legacy `item_location_stocks` tracks per-location `quantity_on_hand` (unique per `item_id`+`location_id`), and `stock_movements` has `source_location_id`/`destination_location_id` plus a `transfer` movement type. The new `products.stock_count` is a single scalar per product (no location dimension at all), and `inventory_movements` has no location column and no `transfer`-equivalent in its 5-value `movement_type` ENUM (`restock`, `loss`, `adjustment`, `sale`, `booking`). For any tenant with more than one location that actually used per-location stock or transfers, there is no non-lossy target — this is bigger than the accepted "simpler taxonomy" gap in the settled decision and needs an explicit resolution, not an implicit one.
 
 **Why it happens:**
-Engineers reach for "add a webhook/gateway check" as the fix, but for offline/external card terminals there frequently is no webhook to check. Without a deliberate decision, the easiest path is "trust the terminal's report" — same shape as before.
+The settled decision ("`inventory_movements`' simpler taxonomy... is intentionally treated as sufficient") is about movement *type* richness, not about the *location* dimension disappearing entirely. It's easy to read that decision as covering this case too and skip designing for it.
 
 **How to avoid:**
-Split payment confirmation into two explicit tiers instead of one `payment_status` boolean:
-1. **Gateway-verified** (QR Ph/PayMongo): `payment_status` transitions to `paid` only from a webhook-confirmed or server-polled provider event — mirror the existing `commercePayments` module's landlord-owned `CommercePaymentSession` pattern (`verification_reference`, `verified_at`), which already does this correctly for storefront QR Ph.
-2. **Attested cash/external**: introduce a distinct status such as `cashier_attested` (not `paid`) for cash/card/bank_transfer, recorded with the authenticated cashier/staff account ID and terminal ID performing the attestation, and require an open shift (Pitfall 4) as a precondition — the audit trail (who attested, when, under which shift) is the actual mitigation, not a false sense of independent verification. Reserve `paid` in the schema for states where the platform genuinely has independent evidence; don't let a cash sale and a webhook-confirmed QR Ph sale collapse into the same status value.
+Decide explicitly (before mapper code is written) whether migrated `products.stock_count` is: (a) summed across all legacy locations, (b) taken from a single "primary" location, or (c) something else — and record it as a Key Decision in `.planning/PROJECT.md`, not just infer it in code. Whatever is chosen, `transfer` movements should still be migrated as two `adjustment` rows (or dropped with an explicit `classifyMappingConflict` finding) rather than silently vanishing, so the historical movement count/sum is auditable.
 
 **Warning signs:**
-- A single `payment_status` enum with `paid` reachable from both a webhook handler and a plain client-submitted PATCH.
-- No `attested_by_staff_id` / `attested_at` / `shift_id` columns on the payment record for non-gateway methods.
-- Any endpoint that lets a client set `payment_status: 'paid'` directly in the request body.
+Migrated `products.stock_count` doesn't match legacy `items.current_stock` (or the sum of `item_location_stocks.quantity_on_hand`) for multi-location tenants — this is a natural verification assertion to add, and its absence during rehearsal is a red flag.
 
 **Phase to address:**
-POS Checkout & Payment phase for the schema/status-model decision; Fiscal/Compliance phase should audit that receipts/fiscal documents only issue against `paid` or `cashier_attested` (never a client-only-declared field with no audit trail).
+Product/Inventory Migration phase — needs a design decision before mapper code, and a verification check after.
 
 ---
 
-### Pitfall 3: Stock double-decrement / oversell between concurrent POS and Storefront sales on the same Product
+### Pitfall 3: `movement_type` N→M collapse silently conflates operationally distinct events
 
 **What goes wrong:**
-POS and Storefront are two independent write paths hitting the same Product's stock. A naive implementation reads current stock, checks `stock >= quantity`, then writes `stock - quantity` in a separate statement — classic check-then-act race. Under concurrency (a popular item sold in-store while also being ordered online at the same moment), two transactions can both read the same pre-decrement stock value and both succeed, driving stock negative and creating phantom sales the business can't fulfill. Booking/slot capacity (bookable Services, branch-level capacity) has the identical race shape — two customers booking the last slot simultaneously.
+Legacy `stock_movements.movement_type` has 8 values (`production_consumption`, `purchase_receipt`, `return`, `transfer`, `calculated_loss`, `adjustment`, `production_output`, `goods_issue`) mapping onto the new 5 (`restock`, `loss`, `adjustment`, `sale`, `booking`). A naive mapping (e.g. anything stock-increasing → `restock`) conflates `purchase_receipt` (bought from supplier) with `production_output` (manufactured in-house) with `return` (customer/supplier return) — three financially and operationally different events that a business owner would expect to distinguish in a stock history view. Additionally, `loss_reason` (`waste`/`spoilage`/`damage`/`pilferage`) and `weighted_average_cost` (a per-movement cost snapshot) have **no target column at all** in `inventory_movements` and will be dropped unless explicitly folded into `before_snapshot`/`after_snapshot` JSON.
 
 **Why it happens:**
-It works perfectly in every manual QA pass and in isolated integration tests because there's no real concurrency in a single-threaded local test run. The bug only appears under real concurrent load, which is exactly the load pattern this milestone is trying to enable (POS + Storefront selling from the same catalog simultaneously) — so it's the kind of bug that ships clean and fails in production during a busy period.
+Same failure mode as Pitfall 1 but for a bigger enum — 8→5 has more room for an implicit "close enough" mapping that nobody actually enumerated field-by-field.
 
 **How to avoid:**
-This codebase already has the right ownership boundary for this — reuse it rather than inventing a new one. `ARCHITECTURE.md` documents `backend/src/modules/inventory/commands/stockCommandService.js` as the single owner of stock truth/effects (ADR 0029: "POS or Storefront Updating Stock Truth" is a named anti-pattern already). The new Product/Availment stock effects must go through an equivalent centralized command service, and that service must do the decrement atomically:
-- Prefer a single atomic SQL statement: `UPDATE item_location_stocks SET quantity = quantity - :qty WHERE item_id = :id AND location_id = :loc AND quantity >= :qty` and check `affectedRows === 1`; if `0`, the decrement failed (insufficient stock) and the use case aborts the sale line before any payment/receipt step runs.
-- Where business logic needs to read-then-decide between the read and the write (e.g. combining multiple lines, applying partial-fulfillment rules), wrap in `SELECT ... FOR UPDATE` inside a transaction rather than a bare `SELECT`.
-- For booking/slot capacity, apply the same atomic-decrement-with-guard pattern against a `slots_remaining` counter rather than counting existing bookings on every request.
-- Keep the append-only `StockMovement` ledger as the audit trail (this pattern is already correct in the legacy system per the reconciliation doc's §2 validations) — the atomic guard prevents overselling; the ledger proves what happened afterward.
+Build an explicit frozen lookup table for all 8 legacy values (again mirroring the existing `mappings.js` pattern), and use `inventory_movements.before_snapshot`/`after_snapshot` (already JSON columns on that table) to carry `loss_reason` and `weighted_average_cost` forward rather than discarding them — those two columns exist specifically to hold point-in-time detail, so use them.
 
 **Warning signs:**
-- Any stock/slot check implemented as `const current = await Model.findOne(...); if (current.qty >= n) { await current.update(...) }` — two round trips, no lock, no WHERE-clause guard.
-- Load/concurrency tests absent from the phase's test suite (a single concurrent-request test firing N simultaneous checkout calls against a fixed-stock item is a cheap, high-value regression test to require).
-- POS and Storefront checkout use cases each importing their own stock-mutation logic instead of both calling one shared command service.
+Post-migration, a tenant's inventory history in the new UI shows a wall of undifferentiated `restock` entries where the legacy system showed `purchase_receipt`/`production_output`/`return` — a UAT reviewer familiar with the old POS will notice this immediately.
 
 **Phase to address:**
-Product Catalog domain phase must establish the centralized stock command service and its atomic-decrement contract; POS Checkout & Payment and Storefront Online Ordering phases must both be required to consume it rather than write stock directly — this is a cross-phase dependency the roadmap should make explicit (Product Catalog phase should ship its stock command service with a concurrency-safety test before either checkout-writing phase is considered done).
+Product/Inventory Migration phase.
 
 ---
 
-### Pitfall 4: Checkout succeeds with no open shift, or a shift silently spans days
+### Pitfall 4: Recursive product composition (BOM) graph has no settled target and risks silent, undetected data loss
 
 **What goes wrong:**
-Two related edge cases: (1) a sale is completed while no shift is open for that cashier/terminal — orphaning the transaction from cash-drawer reconciliation entirely; (2) a shift is opened and never explicitly closed (cashier forgets, app crashes, terminal loses network), so it silently spans into the next business day, corrupting per-day reconciliation math and potentially allowing a "yesterday's shift" to keep absorbing today's sales.
+`ProductComposition` (`product_composition` table) is a self-referential graph: `product_id` → `ingredient_id` (both FKs into `items`), with `composition_type` (`ingredient`/`packaging`) and `quantity_required`. This "recipe"/BOM feature is not mentioned anywhere in the v2.1 settled decisions (which only cover `items`/`item_folders`/`stock_movements`/satellite tables/`item_embeddings`). If the migration team doesn't explicitly decide "composition is dropped" (and log it as a finding per legacy item, not silently), any tenant that used recipe/composition data loses it with zero migration-report trace — indistinguishable from a bug.
 
 **Why it happens:**
-Shift-open enforcement is easy to bolt on as a UI guard ("disable the checkout button if no shift") but that's client-side and bypassable/racy exactly like Pitfalls 1–2 — a client that thinks a shift is open (stale cache, offline queue replay) can still submit a checkout call after the shift was closed by another action. Cross-day drift happens because "close the shift" is a manual cashier action with no forcing function; nothing in a typical implementation asks "has this shift been open longer than a business day?"
+"Satellite tables" in the settled-decisions language is vague enough that a developer might assume `product_composition` is either in-scope (and get surprised there's no non-lossy target since the new schema has no BOM concept) or out-of-scope (and never write a finding for it, so its omission is undocumented).
 
 **How to avoid:**
-- Enforce shift-open as a server-side precondition inside the checkout use case itself (not just a route guard) — look up the active shift for `(cashier_id, terminal_id)` inside the same transaction that writes the sale, and reject with a specific `error_code` (e.g. `NO_OPEN_SHIFT`) if none exists. This mirrors the existing legacy pattern (`docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md`, and `CONCERNS.md`'s note that new POS mutations must stay behind "selected active terminal, terminal-location binding, location grants, compliance state, and open-shift checks") — carry that same discipline into the new Availment checkout path rather than assuming it'll be added later.
-- Preserve the existing DB-level constraint pattern noted in the reconciliation doc ("one open shift per cashier and per terminal enforced with DB-level constraints") in the new schema — a unique partial index on `(terminal_id) WHERE status = 'open'` (or equivalent) is stronger than an application-level check.
-- Add an explicit **stale-shift detection** job/check: flag (don't silently auto-close) any shift open past a configurable threshold (e.g. > 20 hours, or past local midnight) for operator/manager attention — auto-closing risks corrupting reconciliation math the same way a hidden bug would; surfacing it forces a human decision.
-- Log manual "no-sale" drawer pops explicitly — the reconciliation doc flags this as a confirmed gap in the legacy system ("a manual 'no-sale' drawer pop isn't logged anywhere"); the new Shift/Cash-Drawer module should not repeat this, since unlogged drawer opens are a well-known internal-theft blind spot in POS systems generally.
+Explicitly decide and document whether `product_composition` is out-of-scope for v2.1 (mirroring the `OUT_OF_SCOPE_LEGACY_TABLES` pattern already used for `pos_transactions` etc. in Phase 3's `mappings.js`, which correctly emits a `classifyOutOfScopeRecord` finding rather than silently ignoring it) or folded into `products.attributes` as an opaque, unqueryable snapshot. Either is defensible; silence is not.
 
 **Warning signs:**
-- Shift-open checks exist only in a frontend route guard or disabled-button state, not in the checkout use case's own validation.
-- No unique constraint (DB-level) preventing two simultaneously-open shifts for the same terminal.
-- No query/report that can answer "which shifts are still open and how long has each been open" without manually scanning transaction timestamps.
+No `product_composition` rows appear anywhere in dry-run/apply output (as skipped, out-of-scope, or migrated) — meaning the mapper never even looked at the table.
 
 **Phase to address:**
-Shift & Cash Drawer phase must ship before or alongside POS Checkout & Payment — not after. Per the downstream roadmap concern, shift-gating is a checkout precondition, so sequencing checkout ahead of shift enforcement means checkout initially ships with no gate at all (or a bolted-on gate added under time pressure, which tends to be the client-side-only version of this pitfall). The two phases should either be combined or explicitly ordered with Shift gating landing first.
+Product/Inventory Migration phase — this decision belongs in phase discussion/spec, before mapper code.
 
 ---
 
-### Pitfall 5: Fiscal/compliance gate mis-calibration — either blocks legitimate sales or lets ungated sales through
+### Pitfall 5: Flat `product_folders` unique constraint collides with legacy folder structure
 
 **What goes wrong:**
-Two opposite failure modes, both real:
-- **Over-gating:** the policy engine treats "compliance not yet fully verified" as "block all checkout," which is fine for a business that genuinely can't legally sell yet, but wrong if it also blocks businesses mid-verification from doing *any* commerce, including modes that don't require BIR paperwork (e.g., internal testing, non-fiscal transaction types, or a grace period the business is explicitly allowed).
-- **Under-gating:** a new checkout/receipt/shift code path (particularly ones added for Storefront online ordering, which didn't exist when the original `compliancePolicyEngine.js` was scoped to POS-only) forgets to call the gate at all, letting a fully ungated sale through a mode nobody thought to wire the check into.
+`product_folders` has a `unique(business_id, name)` constraint and is explicitly flat, no `parent_id` nesting (per the D-14 comment in `20260712100000-create-commerce-foundation.cjs`). If any tenant's legacy `item_folders` has nested folders, or simply two folders with the same display name in different contexts, squashing to a flat namespace produces a real constraint violation on `apply` (not a soft skip) — and which folder "wins" needs to be deterministic and reported, not whichever row happens to be processed first in iteration order.
 
 **Why it happens:**
-Over-gating happens because "block on any non-`verified` state" is the simplest implementation and nobody stress-tests the false-positive cases (grace periods, non-fiscal modes) until a real vendor is blocked mid-onboarding. Under-gating happens because the gate lives at the POS checkout call site today; when a second entry point to "complete a sale" is added (Storefront checkout, or a new Availment-based flow that isn't literally the old `checkoutPosUseCase`), it's easy to build the new use case by copying checkout/payment/receipt logic without also copying the compliance-gate call, since the gate isn't structurally forced to be present.
+Nested-to-flat folder collapsing is an easy detail to overlook because it only breaks on data that has the collision — which may not appear in every tenant, so it can pass rehearsal against some tenants and then break on a tenant with real duplicate-name folders.
 
 **How to avoid:**
-- Put the compliance gate check *inside* the shared use-case layer that all checkout paths (POS, Storefront, any future Availment entry point) funnel through — not duplicated per-entry-point. If POS Checkout and Storefront Checkout end up as genuinely separate use cases (likely, given different preconditions), both must call the same policy-engine service function, and a contract/integration test should assert every checkout-completing code path calls it (a grep-based architecture guardrail, in the spirit of the existing `check:architecture` scripts, is a cheap way to enforce this mechanically rather than trusting review).
-- Model gating as multiple named modes, not one boolean: e.g. `blocks_checkout`, `blocks_receipt_issuance`, `blocks_shift_open`, each independently evaluable against the specific compliance-mode state, so a business in a legitimate grace period isn't collapsed into the same "blocked" bucket as one with zero compliance evidence.
-- Explicitly do **not** repeat the "paperwork presence, not correctness" limitation while it's fresh in scope for this milestone: if the new Fiscal/Compliance phase implements real BIR-rule validation (TIN/PTU/MIN format + cross-field checks) as scoped, make sure that validation runs at the point evidence is submitted (fail fast, actionable error) — not only as a background check that silently marks something "unverified" without telling the vendor why.
+Before writing to `product_folders`, dedupe/rename collisions deterministically (e.g. suffix disambiguation) and emit a `classifyMappingConflict` finding for every rename, so it's visible and correctable rather than a mystery constraint-violation stack trace during apply.
 
 **Warning signs:**
-- Grep for calls into the compliance policy engine turns up exactly one call site (POS checkout) when Storefront/Fulfillment also complete sales.
-- No test fixture exercises "business in grace period, non-fiscal transaction type" as a should-not-be-blocked case.
-- Compliance verification failures return a generic "not verified" without which specific rule failed.
+An `apply` run against one of the 26 real tenants throws a duplicate-key error on `product_folders` that didn't appear in `dry-run` (dry-run typically doesn't hit unique constraints the same way apply's actual `INSERT` does) — this exact "dry-run doesn't fully predict apply" gap has already bitten this project once (the MySQL `addIndex` DDL bug found last session was only caught during a real apply-equivalent step).
 
 **Phase to address:**
-Fiscal/Compliance phase owns the policy engine and its gate modes; every phase that adds a new "sale completes" code path (Storefront Online Ordering, Order Fulfillment) must be checked against this gate as part of that phase's own acceptance criteria, not assumed to inherit it for free.
+Product/Inventory Migration phase.
 
 ---
 
-### Pitfall 6: Cross-database (Landlord ↔ Tenant) writes for storefront orders treated as a single transaction
+### Pitfall 6: `item_embeddings` carries no model-version provenance — migrating it verbatim seeds a future silent search-quality regression
 
 **What goes wrong:**
-A Storefront order originates from a Landlord-side DGFY Account (or guest) and must ultimately create/update a Tenant-side Availment (the sale record living in that business's `dgfy_business_*`/tenant schema). Landlord and Tenant are separate MySQL databases/connections (`TenantConnector.js`), so there is no native cross-database transaction — MySQL cannot atomically commit a write to the landlord DB and a write to a tenant DB as one unit. A naive implementation writes to one DB, then the other, and either has no failure handling for "first write succeeded, second write failed" (leaving an orphaned/dangling record), or worse, wraps both in application-level try/catch and treats a failure to roll back the first write as an edge case that "shouldn't happen."
+`ItemEmbedding` stores only `item_id` and a raw `vector` (`TEXT`, JSON-stringified array, comment says "OpenAI 1536-dim vector") — there is no `model_name`, `model_version`, or `dimension` column at all. If these vectors are migrated verbatim into whatever new embeddings storage v2.1 builds, and DGFY's product/AI system later regenerates embeddings for new products using a different model (a near-certainty over the platform's life), cosine-similarity search will silently mix vectors from two different semantic spaces. This doesn't error — it just makes search results for migrated (old) vs. newly-created (new) products subtly, inconsistently wrong, which is extremely hard to diagnose after the fact because there's no data trail pointing at "this vector is stale/mismatched."
 
 **Why it happens:**
-This looks like an ordinary two-step service call during development against a healthy local DB where the second call basically never fails, so the missing compensation/reconciliation logic is invisible until a real network blip, deploy-time restart, or tenant DB unavailability window hits in production between step one and step two.
+The legacy schema was built for a single model era and never anticipated migration to a system that might rotate embedding models. Vector data "just works" in isolation, so its lack of provenance metadata isn't visible until two model generations coexist.
 
 **How to avoid:**
-Don't invent a new cross-DB pattern — this platform already has a proven one for exactly this shape of problem, documented in `ARCHITECTURE.md`'s "Storefront Commerce Payment Flow" and `CONCERNS.md`'s PayMongo fragile-area notes: **landlord-owned payment/order-intent session as the durable source of truth, with idempotent tenant-side finalization as a separate, retryable step**, keeping any session that fails to finalize in an explicit **manual-resolution state** rather than silently lost. Apply the same shape to the new Storefront-order → tenant-Availment write:
-1. Create the order/payment intent as a landlord-owned record first (this is the durable, reconciliation-visible source of truth — mirrors `CommercePaymentSession`).
-2. Finalize into the tenant Availment as a second, **idempotent** step (safe to retry — keyed on the landlord order/session ID so a retry doesn't create a duplicate Availment).
-3. If tenant-side finalization fails or the tenant DB is unreachable, leave the landlord record in a `paid_pending_finalization`-style manual-resolution state (exactly as already done for "paid-but-not-finalized" PayMongo sessions per `CONCERNS.md`) rather than silently dropping it or blocking the customer-facing payment confirmation on tenant DB availability.
-4. Build the reconciliation/retry job (even a simple periodic sweep) as part of this phase, not as a "later" TODO — this is the exact category of gap `CONCERNS.md` already flags as a live test-coverage and fragility risk for the existing PayMongo flow, so it should not be quietly repeated for the broader Storefront-order case.
+Add a `model_version` (or `embedding_source`) column to the new embeddings storage as part of this migration — even if the value is a hardcoded constant like `"openai-text-embedding-<version>-migrated-2026"` for every migrated row. This makes future model-rotation logic (re-embed anything not matching the current model version) possible; without it, there's no way to even identify which rows need re-embedding later.
 
 **Warning signs:**
-- Storefront order creation code performs a landlord write then a tenant write inside a single `try { ... } catch` with no persisted "pending" state in between.
-- No idempotency key on the tenant-finalization step (a retried finalize call would create two Availment rows for one order).
-- No operator-visible view of "stuck" storefront orders that got landlord-recorded but never became a tenant Availment.
+New embeddings storage schema has no version/model column — check this explicitly during phase spec/design review, since its absence won't surface as a bug until much later (when a second model is introduced).
 
 **Phase to address:**
-Storefront Discovery & Online Ordering phase must design the order-creation flow around this pattern from the start; Order Fulfillment & Delivery Coordination phase depends on tenant Availments existing reliably, so it inherits risk if this isn't solved first — sequence Storefront Online Ordering's write-path design before Fulfillment work begins consuming it.
+Product/Inventory Migration phase (embeddings ride along with product migration per the settled decision).
 
 ---
 
-### Pitfall 7: New Product/Availment schema quietly recreates the legacy Item/IMS coupling
+### Pitfall 7: Embedding staleness is invisible without a content-hash or timestamp comparison
 
 **What goes wrong:**
-The single most emphasized known risk in the reconciliation doc (§1, "The Most Important Finding First") is that DGFY and SKUpervisor IMS don't just share a backend — they share the literal `items` table, with `PosTransactionLine.item_id` FK-ing into the same table the IMS uses for raw materials/purchase orders/FIFO costing. The milestone context explicitly requires the new schema NOT repeat this. The realistic way this mistake creeps back in isn't a deliberate decision to reuse the table — it's an incremental one: a developer building the new Product catalog needs "cost price" or "FIFO-costed value" or some other IMS-adjacent concept, finds it's easier to read from the existing IMS tables (or, worse, to reuse the existing item repository/model directly) "just for this one lookup," and that one seam becomes load-bearing.
+`item_embeddings.updated_at` (Sequelize `timestamps: true`) is independent of `items.updated_at` — nothing enforces that an embedding was regenerated after its item's `name`/`description`/`category` last changed. Migrating embeddings verbatim (as the settled decision implies — "`item_embeddings` migrated alongside product data") carries forward any staleness that already existed in the legacy system, and once migrated, there's no automatic signal that a given migrated embedding no longer matches its migrated product's current content.
 
 **Why it happens:**
-Reimplementing a genuinely new Product/Availment domain is a lot of work; the IMS tables already have real data (cost prices, categories) that's tempting to read directly rather than re-model. Under phase-deadline pressure, "just query `items` for this field" feels like a shortcut, not an architecture violation, especially since IMS and DGFY still share one backend process and one Sequelize instance today.
+Staleness is a pre-existing legacy-system property, not something the migration introduces — but migration is the one moment where it's cheap to detect (both `items` and `item_embeddings` are being read together) and expensive to ignore (once split across systems, cross-referencing is harder).
 
 **How to avoid:**
-- Treat this the same way Phase 5 of this project already treated legacy-code coupling: govern it mechanically, not by review discipline alone. This project already has the tooling pattern for exactly this problem — CMP-01/02/03's manifest-governed compatibility seams, the compat-import ESLint ban, and the `entities/` architecture guardrail scan (`ARCHITECTURE.md`/`Phase 5 complete` note in `PROJECT.md`). Extend that same seam-governance approach to the new `Product`/`Availment` models: no repository in the new Product/Availment modules imports IMS `Item`/`PosTransactionLine` models directly; any genuinely-needed cross-reference (e.g., "this Product used to be this legacy Item, for migration/reporting purposes") goes through an explicit, manifest-registered compatibility seam, not an ad hoc import.
-- Decide deliberately (this is called out as still-open in the reconciliation doc §8) whether stock/non-stock and Food/Service/Retail categorization live on the new Product record or per-line — and once decided, make sure the new schema's FKs point only at new DGFY-owned tables, never at `items`.
-- Since ADR 0029 already assigns Catalog/Inventory/POS/Storefront ownership boundaries for the *existing* system, write the equivalent boundary statement for the *new* Product domain as its own ADR before implementation starts, explicitly stating "Product/Availment tables are DGFY-owned; no FK or Sequelize model reference into `sku_*`/legacy `items`/`PosTransactionLine`."
+During dry-run, compare `item_embeddings.updated_at` against the source item's last content-affecting update timestamp and emit a `stale_embedding` finding (informational, not necessarily a skip) for anything where the embedding predates the item edit — giving the team a concrete, sized backlog of "regenerate these N embeddings post-migration" rather than an unknown unknown.
 
 **Warning signs:**
-- Any new repository under the Product/Availment modules imports a model from `backend/src/models` that isn't itself a new `dgfy_*`-schema model.
-- A migration or data-access path that reads `cost_per_unit`, FIFO batch data, or `Item.category` directly from the legacy table instead of through an explicit, reviewed migration/seam.
-- The new Product schema's foreign keys reference `items.id` anywhere.
+No staleness check exists anywhere in the dry-run report structure — this needs to be designed in, since it doesn't come for free from the "migrate embeddings alongside products" requirement.
 
 **Phase to address:**
-Product Catalog domain phase — this is a foundational decision that must be locked in before Booking, POS Checkout, or Storefront phases build on top of the Product model, since all of them will reference Product/Availment records and inherit whatever coupling mistake ships here.
+Product/Inventory Migration phase.
 
 ---
 
-### Pitfall 8: Payment/entity naming collisions with existing landlord-scoped models
+### Pitfall 8: Idempotent re-migration of `pos_transactions` against a table that never stops growing
 
 **What goes wrong:**
-The reconciliation doc already flags that a `Payment` model exists but means *tenant subscription billing*, not order payment. If the new commerce-domain payment/order-payment entities are named generically (`Payment`, `PaymentRecord`, `Transaction`) without checking existing landlord models, they either collide at the model-registration level or — worse — pass code review individually while creating genuine confusion later about which "payment" a given piece of code means (subscription billing vs. an actual sale's tender). `INTEGRATIONS.md` confirms this is a real, populated area: `backend/src/models/Landlord/Payment.js`, `WebhookLog.js`, `CommercePaymentSession.js`, `CommercePaymentRefund.js`, `TenantPaymentAccount.js` already exist for PayPal subscriptions and PayMongo commerce sessions.
+The legacy system stays live throughout this milestone (explicit project constraint: "legacy stays live until replacement paths prove parity"). `pos_transactions` is very likely the single highest-row-count table per tenant across all 26 real tenants (every sale, void, and refund is logged). Without an explicit snapshot boundary captured at the *start* of a run (e.g. `SELECT MAX(pos_transaction_id)` recorded once, then only processing rows `<= watermark` for that run), every rehearsal or real cutover attempt sees a different "current" state of the table — dry-run, apply, and verify are no longer looking at the same data if any wall-clock time passes between them while the POS keeps taking live sales. This defeats the whole point of the existing dry-run → apply → verify idempotency contract, and makes rehearsal results non-reproducible (a rerun looks like it "found new data" when it actually just raced ahead of a moving target).
 
 **Why it happens:**
-Naming is done locally within the new module without a deliberate cross-check against existing landlord models, especially since the new Product/Availment work is explicitly being built "beside legacy," which can create a false sense that the new domain's naming is a clean slate.
+The existing Phase 3 migration (accounts/businesses/tenancy) targets much lower-volume, much lower-churn tables (a handful of accounts/tenants/memberships change per rehearsal window). Sales transactions accrue continuously and in volume, so the "read legacy, migrate, done" mental model that worked for Phase 3 breaks down for this data.
 
 **How to avoid:**
-Adopt domain-qualified names from the start: `AvailmentPayment` / `PosPaymentAttestation` (or similar) for the new POS/checkout payment record, reserving unqualified `Payment` for the existing subscription-billing meaning. Do a one-time grep across `backend/src/models/Landlord/*` and the new `dgfy_*` schema definitions before finalizing entity names for this milestone.
+Capture and persist a per-run watermark (max legacy `pos_transaction_id` or a timestamp cutoff) at the start of each migration run scope, store it alongside the existing checkpoint row (`dataState.js`'s `markDataCheckpoint` already has a `run_scope` concept to extend), and have dry-run/apply/verify all bound their queries to that watermark rather than "everything currently in the table." A real cutover run picks a final watermark at the actual cutover moment (with legacy writes stopped or redirected, per the existing cutover-rehearsal constraints).
 
 **Warning signs:**
-- A new model file named exactly `Payment.js` anywhere outside the existing subscription-billing module.
-- Code comments or PR descriptions that need to clarify "payment (the sale kind), not payment (the subscription kind)."
+Re-running dry-run twice in a row against the same tenant (with no new sales in between) produces a different row count or different findings — a very concrete, cheap smoke test to add to rehearsal.
 
 **Phase to address:**
-POS Checkout & Payment phase, at schema-design time — cheap to fix now, expensive later once API contracts and receipts reference the name.
+Sales-History Migration phase — this is the phase where table growth-during-migration first becomes a real problem at this project's scale (Phase 3's tables don't have this property).
+
+---
+
+### Pitfall 9: `pos_transactions`' operational FKs (`shift_id`, `terminal_id`, `fnb_check_id`, `fnb_table_id`) have no established or only a partial migration target
+
+**What goes wrong:**
+`pos_transactions.cashier_id` can be resolved through the ID map already populated by Phase 3 (legacy tenant `users` → `staff_accounts`). But `shift_id` references `shifts`/`cashier_sessions` — tables the Phase 3 `mappings.js` explicitly lists as `OUT_OF_SCOPE_LEGACY_TABLES` (`shifts`, `cashier_sessions`, `terminal_sessions`), meaning no `legacy_id_map` rows exist for them and never will unless a new mapper is written. `terminal_id` on `pos_transactions` is a free-text `STRING(100)`, not an FK — it may or may not match the `terminal_code` values already migrated via `mapTerminalRegistryEntryToTerminalIdentity` in Phase 3 (that mapper reads from `system_settings.pos_terminal_registry`, a different source than whatever free-text value ended up on individual transactions historically). `fnb_check_id`/`fnb_table_id` (dine-in/restaurant mode) have no migration target discussed at all. Naively carrying these values forward as-is on `availments` creates dangling references that look like FKs but aren't validated against anything.
+
+**Why it happens:**
+The settled decision only names `pos_transactions` → `availments` with a `source_system` field — it doesn't enumerate `pos_transactions`' ~15 FK-shaped fields individually, so it's easy to assume "the row maps over" without auditing which referenced entities actually have (or lack) a target.
+
+**How to avoid:**
+Before writing the `pos_transactions` → `availments` mapper, explicitly classify every FK-shaped field on `pos_transactions` into "resolvable via existing legacy_id_map" (e.g. `cashier_id`), "no target — null it out with a finding" (e.g. `shift_id`), or "carry forward as opaque snapshot text, not a live reference" (e.g. `terminal_id`, `fnb_table_label_snapshot`-style fields already do this correctly in the legacy schema itself — reuse that snapshot pattern rather than inventing new FK columns).
+
+**Warning signs:**
+Migrated `availments` rows have populated `shift_id`/`terminal_id`-equivalent columns that don't resolve to anything in the new schema, and nothing in the migration report flagged this as an intentional decision.
+
+**Phase to address:**
+Sales-History Migration phase.
+
+---
+
+### Pitfall 10: `attributes` JSON blob is many-to-one derived — retried `apply` must fully recompute it, never append to it
+
+**What goes wrong:**
+The planned `products.attributes` JSON column is meant to absorb everything category-specific: `packaging_specs` (JSON), `wizard_metadata` (JSON), `product_composition` rows (if not dropped per Pitfall 4), and possibly per-location `item_location_stocks` detail (per Pitfall 2's resolution). All of these are **many-to-one** relative to a single `items` row — several satellite rows feed into one `attributes` blob. The existing idempotency primitive in `dataState.js` (`recordLegacyIdMap`) is a clean "look up before insert, one row maps to one row" pattern that works perfectly for `mappings.js`'s existing 1:1 entity mappers. It does not, by itself, protect against a **retried apply re-deriving the same JSON blob and appending to an array field inside it** (e.g. a `composition` array inside `attributes` growing to double length on a second apply run for the same product) — because the idempotency guard is keyed on "does a target row exist," not on "is this specific nested JSON field already populated."
+
+**Why it happens:**
+The project's idempotency pattern was designed and proven against simple scalar-column entities (Phase 3). JSON-column aggregation from multiple satellite sources is a new shape of problem this pattern hasn't been exercised against yet.
+
+**How to avoid:**
+Treat `attributes` construction as a pure function of "all currently-known satellite rows for this item" and always **fully replace** the column value on every apply run (recompute-and-overwrite, not read-modify-append), the same way the existing `mappings.js` mapper functions are documented as pure, side-effect-free transforms. Never structure the mapper as "fetch existing `attributes`, merge in new data" — that read-modify-write shape is exactly what breaks idempotent retries.
+
+**Warning signs:**
+Running `apply` twice in a row against the same tenant produces a different (larger) `attributes` payload the second time for any product — this is a concrete, cheap regression test to add (mirroring the "idempotent reruns" verification already proven in Phase 2/Phase 3).
+
+**Phase to address:**
+Product/Inventory Migration phase.
 
 ---
 
@@ -200,97 +202,93 @@ POS Checkout & Payment phase, at schema-design time — cheap to fix now, expens
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|-----------------|------------------|
-| Client-side-only change/tender display without server verification | Instant UI feedback, no round-trip | Reproduces the exact known client-trust bug this milestone must close | Never for the write path; fine as a non-authoritative UI preview only |
-| Reading IMS `items`/`PosTransactionLine` directly "just for one field" instead of building the new Product equivalent | Saves re-modeling cost/price or category data | Recreates the shared-schema coupling this milestone exists to remove | Never without an explicit, manifest-registered compatibility seam |
-| Skipping `SELECT ... FOR UPDATE` / atomic guarded UPDATE for stock decrement in favor of read-then-write | Simpler code, works in every non-concurrent test | Oversell/negative-stock bugs that only appear under real concurrent load | Never for the shared stock command service; acceptable only for advisory/estimate reads that don't mutate stock |
-| Single-step landlord+tenant write with no pending/manual-resolution state | Simpler happy-path code | Orphaned or duplicated records when the second write fails mid-flight | Never for money-moving or Availment-creating flows; low-risk read-only cross-DB lookups can stay simple |
-| Auto-closing shifts that exceed a time threshold instead of flagging them | Avoids a manual-intervention UI | Silently corrupts reconciliation math for a shift the system guessed the boundary of | Acceptable only as an operator-triggered "force close with reason" action, never a silent background auto-close |
-| Presence-only compliance evidence checks (cert uploaded + marked verified, no rule validation) | Faster to ship the gating engine | Repeats the exact "paperwork presence not correctness" limitation this milestone is meant to improve on | Acceptable as an interim state only if visibly labeled `presence_verified` (not `compliant`) and the roadmap has a follow-up phase for rule validation |
+| Fold `loss_reason`/`weighted_average_cost`/composition/per-location detail into `attributes`/`before_snapshot`/`after_snapshot` JSON instead of typed columns | Ships faster, matches "attributes JSON for everything category-specific" decision | Unqueryable at scale without deliberately promoting fields to MySQL generated columns (see Sources) — reporting/analytics features later need real SQL work to unlock this data again | Acceptable for v2.1 if the specific fields are genuinely long-tail and not needed for near-term reporting; not acceptable for fields the roadmap already knows will need filtering/sorting soon (e.g. category-derived facets) |
+| Hardcode a single embedding `model_version` constant for all migrated rows instead of inspecting actual generation metadata | No new metadata to infer or backfill | If the legacy system silently changed embedding models at some point in its history (undetectable from the stored data itself), some migrated rows get a wrong/misleading version tag | Acceptable only if a spot-check confirms the legacy system only ever used one embedding model in production — verify before assuming |
+| Skip `product_composition`/multi-location stock migration entirely for v2.1, defer to a later milestone | Matches "already-settled, don't re-litigate" instinct and unblocks the rest of the migration faster | Silent feature loss for tenants that relied on recipes or multi-branch stock — support burden later when a vendor asks "where did my recipe go" | Acceptable only if explicitly decided and logged as an out-of-scope finding per Pitfall 4/2 — never acceptable as an undocumented gap |
+| Use offset-based `LIMIT`/`OFFSET` pagination for large `pos_transactions` batches instead of cursor-based | Simpler to write first | Skipped/duplicated rows against a live, actively-written table (see Sources) — directly undermines the idempotent re-migration goal this milestone is validating | Never acceptable for `pos_transactions`/`stock_movements` given they're read from a live production table during rehearsal and cutover; acceptable for one-shot bounded reads of small, mostly-static tables like `item_folders` |
 
 ## Integration Gotchas
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|-------------------|
-| PayMongo (Storefront QR Ph) | Marking an order paid from the redirect/return URL instead of the webhook | Only transition to `paid` from a verified webhook event (or authenticated server-side poll), exactly as the existing `commercePayments` module already does — extend, don't bypass, that pattern for any new Availment-linked payment |
-| PayMongo webhook | Treating webhook delivery as guaranteed exactly-once | Webhook handling must be idempotent (keyed on PayMongo event/session ID) since providers retry; this is already a documented fragile area in `CONCERNS.md` — the new Availment finalization step must inherit the same idempotency discipline, not just the payment session step |
-| Cash/card/bank_transfer "gateway" (device bridge / external terminal) | Treating a card/bank_transfer POS sale as equivalently verified to a QR Ph sale because both eventually reach `payment_status = paid` | Use a distinct status tier (Pitfall 2) — don't let the UI or reporting treat attested and gateway-verified payments as the same trust level |
-| Landlord ↔ Tenant DB boundary | Treating a Landlord-side write followed by a Tenant-side write as one logical transaction | Landlord-durable-record-first + idempotent tenant finalization + manual-resolution fallback state (Pitfall 6) — no native cross-DB transaction exists in this architecture |
-| Device bridge (printer/cash drawer) | Backend or POS client directly manipulating drawer/printer instead of going through the bridge, or trusting a client claim that a drawer action happened | Authorize/audit drawer-open server-side, execute physically only via `backend/device-bridge` (existing boundary per `ARCHITECTURE.md`); log every drawer-open event including manual "no-sale" pops (Pitfall 4) |
+Common mistakes integrating with the *existing* checkpoint/idempotent-retry pattern (`dataState.js`, `mappings.js`) when extending it to these new entities.
+
+| Integration Point | Common Mistake | Correct Approach |
+|--------------------|-----------------|-------------------|
+| `legacy_id_map` (`recordLegacyIdMap`) | Assuming it protects many-to-one JSON aggregation (Pitfall 10) the same way it protects 1:1 entity inserts | Use it only for the entity-identity mapping (e.g. `items.item_id` → `products.id`); build a separate, explicitly-idempotent "recompute and overwrite" step for the derived `attributes` blob |
+| `markDataCheckpoint` (`run_scope`, `legacy_tenant_id`, `entity_type`) | Reusing the exact same checkpoint shape for `pos_transactions` without adding a watermark/cursor field, since the existing shape (`last_processed_legacy_id`, `records_processed`) was built for smaller, largely-static tables | Extend the checkpoint concept with an explicit run-start watermark (Pitfall 8) rather than assuming "process everything not yet in the ID map" is safe for a continuously-growing table |
+| `OUT_OF_SCOPE_LEGACY_TABLES` list in `mappings.js` | Forgetting that `items`, `stock_movements`, and `pos_transactions` are *currently* listed as out-of-scope from Phase 3 — v2.1 must explicitly remove them from that list (and add new entries for whatever satellite tables v2.1 itself decides to skip, e.g. possibly `product_composition`) | Update `OUT_OF_SCOPE_LEGACY_TABLES` deliberately as part of this milestone's first plan, with a comment explaining the scope change, so the manifest stays an accurate source of truth |
+| `classifyMappingConflict` reason codes (`MAPPING_REASON_CODES`) | Inventing ad hoc skip/error messages for the new category/movement-type/embedding pitfalls instead of adding new frozen reason codes | Add new entries to `MAPPING_REASON_CODES` (e.g. `CATEGORY_FALLBACK_APPLIED`, `NO_LOCATION_TARGET`, `STALE_EMBEDDING`, `COMPOSITION_OUT_OF_SCOPE`) so findings stay structurally consistent with the existing report tooling |
+| Destructive-op / pending-migration schema gate (Phase 1/2 hardening) | Assuming the schema-migration DDL bugs already found and fixed (MySQL `addIndex` `type:` vs `using:`) can't recur — new schema-extension migrations (adding `attributes`, `sku_code`, etc. columns, and any new generated/functional indexes on `attributes`) are exactly the kind of DDL work that bug class hit before | Re-run the same DDL smoke pattern (idempotent-rerun + information_schema fingerprint check) that caught the original bug, specifically against the new v2.1 schema-extension migration file(s) |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|-----------------|
-| Row-level `SELECT ... FOR UPDATE` on a single hot Product row for every stock decrement | Checkout latency spikes and lock-wait timeouts during high-traffic windows (promotions, peak hours) for popular items sold from both POS and Storefront simultaneously | Prefer a single atomic guarded `UPDATE ... WHERE quantity >= :qty` over `SELECT FOR UPDATE` + separate `UPDATE` where possible; consider per-unit/reservation-row locking (`SKIP LOCKED`) only if a specific item becomes a proven hot-key bottleneck | Noticeable once concurrent checkout volume against the same SKU exceeds roughly tens of requests/second on one row — unlikely at this project's current beta/production scale, but worth designing for since Storefront + POS concurrency is the whole point of this milestone |
-| Compliance policy-engine evaluation re-querying full compliance-mode state on every checkout call | Checkout latency grows as compliance evidence volume grows per tenant | Cache the resolved gate decision per tenant/session with a short TTL or invalidate-on-write, rather than re-evaluating full evidence chains per checkout | Only matters once compliance evidence records per tenant grow large or the policy engine's evaluation becomes non-trivial (multiple joined tables) |
-| Tenant-by-tenant reconciliation/audit jobs (already a documented scaling limit in `CONCERNS.md` for schema-sync/audit scripts) extended to cover new Availment/stock-ledger audits | Job runtime grows linearly with tenant count; maintenance windows lengthen | Keep new audit/reconciliation jobs bounded-concurrency and per-tenant-reportable from day one, following the existing pattern already established for `audit-fifo-drift.js`/`audit-location-stock-parity.js` | Becomes visible once tenant count grows past what a single sequential sweep can finish inside an acceptable window |
+| Reading `stock_movements`/`pos_transactions` in one unbounded `SELECT *` per tenant during dry-run | Dry-run against a real tenant with years of history runs very slowly or exhausts memory; migration-runner's JSON reports (`checksum.js`, report writers) balloon in size | Batch reads with cursor-based pagination (PK range chunks), and never embed full row payloads (especially embedding vectors) verbatim into human-readable dry-run/apply report JSON — summarize/truncate | Breaks first on the tenant(s) with the longest operational history among the 26 real tenants — likely the ones already used for rehearsal |
+| Full-vector `item_embeddings.vector` (≈23KB TEXT per row) included in migration reports or checksums | Report files become unexpectedly large; checksum computation over full vector payloads adds needless CPU/time per row | Hash or omit vector content from dry-run/apply summary reports; only the fact "N embeddings migrated for tenant X" and any staleness findings need to appear in human-facing output | Noticeable once report generation is timed/reviewed at real multi-tenant scale, not during small synthetic test fixtures |
+| Reading from a live legacy production database during business hours for the highest-volume tables | Migration reads compete with real POS traffic for MySQL connections/IO on the legacy database, risking latency for actual in-progress sales | Prefer running large-table reads (`stock_movements`, `pos_transactions`) off-peak or against a read replica/point-in-time snapshot if available, matching the "explicit snapshot boundary" principle from Pitfall 8 | Only becomes visible under real tenant load, which is exactly the condition next real rehearsal/cutover will hit — likely invisible in low-traffic rehearsal windows |
+| Unindexed/un-promoted JSON `attributes` fields used in later reporting or filtering (dogfooding the Pitfall 10/technical-debt gap) | Slow queries once product-catalog features (search/filter by category-specific fields) are built on top of migrated data | Identify up front which `attributes` fields are likely to need filtering soon and promote those specific ones to MySQL generated+indexed columns rather than leaving the whole blob opaque | Breaks once catalog UI/reporting features that filter on category-specific attributes are built in a later milestone — not this one, but the schema choice made now determines the cost then |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Accepting `change_amount` as client input on checkout | Cashier or compromised client can pocket/misreport change; direct financial-integrity bug | Compute `change_due` server-side from `cash_received` and the server-computed total; never accept `change_amount` as write input (Pitfall 1) |
-| Trusting client-declared `payment_status: 'paid'` for non-gateway methods | Orders/receipts issued for sales that never actually collected payment | Split into gateway-verified vs. attested tiers with an audit trail; never allow a plain client PATCH to set `paid` (Pitfall 2) |
-| Fiscal/receipt issuance without checking the compliance gate on every sale-completing code path | Ungated sales issue fiscal-looking receipts for a business that isn't legally cleared to issue them | Centralize the gate call in shared use-case code, not per-entry-point; add a mechanical guardrail test asserting all checkout paths call it (Pitfall 5) |
-| New Product/Availment repositories importing legacy IMS models directly | Recreates the exact schema-coupling risk this milestone exists to remove, and creates an unreviewed privilege/data-boundary crossing between DGFY commerce data and IMS raw-material/costing data | Manifest-governed seam requirement, ESLint compat-import ban extended to the new modules (Pitfall 7) |
-| Orphaned "paid" landlord payment/order records with no corresponding tenant Availment after a cross-DB failure | Customer believes they paid; business never sees the order; support/finance discrepancy with real money implications | Manual-resolution state + idempotent retry/finalize + operator-visible stuck-order view (Pitfall 6) |
+| Carrying forward `pos_transactions` PII (`customer_name`, `customer_phone`, `customer_email`, `buyer_tin`, `buyer_address`, `delivery_address`/coordinates) into `availments` without the same explicit allow-list discipline Phase 3 used for terminal identities | Broader PII surface migrated than strictly needed; harder to reason about retention/consent obligations across 26 real tenants' real customer data | Reuse the Phase 3 pattern (`mapTerminalRegistryEntryToTerminalIdentity`'s explicit field-by-field allow-list, never reading secret/unlisted fields) for the `pos_transactions` → `availments` mapper — build `target_payload` from an explicit allow-list, not a spread/passthrough of the whole legacy row |
+| Embedding vector data treated as inert/non-sensitive | Vectors can leak information about product descriptions/names (embedding inversion is a known research risk); migrating and exposing them in reports without the same access controls as the source data underestimates this | Apply the same access-control assumptions to migrated embedding storage as the source `item_embeddings` table had — don't widen exposure (e.g. via debug endpoints or verbose reports) as a side effect of migration |
+| Fiscal/compliance-sensitive fields on `pos_transactions` (`fiscal_document_hash`, `fiscal_void_event_hash`, `fiscal_document_snapshot`) carried into `availments` without preserving their integrity semantics | If `source_system` provenance isn't tied tightly enough to the original fiscal document hash chain, downstream fiscal/compliance verification could be ambiguous about which system originated a receipt | Treat fiscal snapshot/hash fields as immutable, opaque, provenance-tagged data — migrate them verbatim (not re-derived) and make `source_system` + original `invoice_number`/`fiscal_document_hash` jointly sufficient to prove chain of custody back to the legacy record |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-------------------|
-| Compliance over-gating blocks all checkout during a legitimate grace/verification-in-progress period | A newly onboarded, legitimately-in-progress vendor can't sell at all, damaging first-week trust in the platform | Mode-scoped gating (`blocks_checkout` vs `blocks_receipt_issuance` vs `blocks_shift_open`) evaluated against the actual compliance-mode state, not a single blanket boolean (Pitfall 5) |
-| Checkout silently fails or gives a generic error when no shift is open | Cashier doesn't know *why* checkout failed mid-rush, escalates to "the system is broken" | Return a specific `NO_OPEN_SHIFT` error code the frontend can render as an actionable "open a shift first" prompt, not a generic 400/500 |
-| Stock decrement failure surfaces after payment/receipt steps have already started | Customer is told they've paid for an item that turns out to be unavailable, or a receipt prints for an item that wasn't actually deducted | Perform the atomic stock guard (Pitfall 3) before any payment-commit or receipt-render step in the checkout use case's ordering, so an oversell attempt fails fast and cleanly |
-| Storefront order appears "confirmed" to the customer before the tenant-side Availment is guaranteed to exist | Customer sees a paid/confirmed order; business staff never sees it appear in their POS/Availment list because tenant finalization silently failed | Only surface "confirmed" to the customer once tenant finalization succeeds, or clearly communicate a "processing" interim state if the landlord record is durable but tenant finalization hasn't completed yet (Pitfall 6) |
+| Migrated products all showing a generic `retail` category regardless of original raw-material/service distinction (per the settled decision) with no visual cue that they're migrated | Vendors browsing their catalog post-cutover see all old items lumped together, losing the mental model they had in the legacy system, and can't tell which products came from migration vs. were created fresh | Consider a lightweight provenance marker (e.g. `attributes.migrated_from_legacy: true` or similar) so a future catalog UI can optionally group/label migrated items, even if category itself stays simplified |
+| Sales-history reports post-migration show a discontinuity or duplication around the cutover boundary if the watermark (Pitfall 8) isn't chosen carefully | Business owners reviewing historical sales reports across the cutover date see gaps or double-counted transactions | Verify the watermark boundary is exact and reconciled (one system's data ends exactly where the other's begins) before considering sales-history migration complete |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Server-verified totals:** Often verifies the order/line total but not the cash-tender/change arithmetic — verify a checkout test exists asserting rejection when `cash_received < total`.
-- [ ] **Payment confirmation:** Often has a `payment_status` field that "looks" server-owned but is still writable via a plain client PATCH for non-gateway methods — verify only gateway-webhook code paths and explicitly-attesting authenticated staff actions can set the paid-equivalent status.
-- [ ] **Stock/slot decrement:** Often passes every manual/local test but uses a read-then-write pattern — verify there's a concurrency test firing simultaneous checkout/booking requests against one fixed-stock item/slot and asserting no oversell.
-- [ ] **Shift gating:** Often exists as a frontend disabled-button guard — verify the checkout use case itself rejects a sale server-side when no shift is open, independent of what the UI allowed the client to attempt.
-- [ ] **Compliance gate coverage:** Often wired into the original POS checkout call site only — verify every sale-completing code path (POS, Storefront, any Fulfillment-triggered status transition that issues a receipt) calls the same shared gate function.
-- [ ] **Cross-DB order finalization:** Often "works" in every local dev run because the tenant DB never goes down mid-request — verify there's a manual-resolution/pending state and an idempotent retry path, not just a happy-path two-step write.
-- [ ] **Product/Availment schema independence:** Often "new" at the model-definition level while still importing or FK-referencing legacy IMS `items`/`PosTransactionLine` under the hood for a "just this one field" convenience lookup — verify with a grep/guardrail, not a read-through of the schema file alone.
-- [ ] **Cash-drawer audit completeness:** Often logs drawer-open events triggered by a completed sale but not manual "no-sale" pops — verify every drawer-open code path (sale-triggered and manual) writes an audit event.
+- [ ] **`products.category` mapping:** Often "done" after handling the 2-3 most common legacy values seen in test fixtures — verify all 5 legacy `ENUM` values (`raw_material`, `packaging`, `product`, `supplies`, `service`) have an explicit mapping entry and a finding on fallback.
+- [ ] **`inventory_movements` migration:** Often "done" once counts match — verify migrated `created_at` uses the *original* legacy `stock_movements.timestamp`, not the migration run's wall-clock time, and that summed migrated movements reconcile against each product's final `current_stock`.
+- [ ] **`item_embeddings` migration:** Often "done" once vector bytes round-trip correctly — verify a model-version/provenance field exists on the new storage and a staleness check ran against `items.updated_at`.
+- [ ] **`pos_transactions` → `availments` idempotent re-migration:** Often "done" after one clean dry-run/apply/verify pass — verify a *second* full re-run against the same tenant (with zero new legacy sales in between) produces zero new inserts and zero changed findings; then verify a second re-run *with* new legacy sales in between only picks up the new rows, not a re-scan of everything.
+- [ ] **`attributes` JSON population:** Often "done" once the JSON looks right on first apply — verify a second `apply` run against the same tenant doesn't grow/duplicate any array fields inside `attributes`.
+- [ ] **Schema-extension migration for `products.attributes`/`sku_code`/etc.:** Often "done" once `migrate` succeeds once — verify idempotent re-run (already the project's own bar for schema migrations) and that no `addIndex` `type:`/`using:`-class DDL bug was reintroduced (this bug class has already occurred once in this repo).
+- [ ] **Sales-history scope decision (voided transactions):** Often "done" without an explicit call — verify whether `pos_transactions.status = 'voided'` rows are migrated into `availments` (with an equivalent void marker) or excluded, and that this is a documented decision, not an accidental side effect of the mapper's filter logic.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|----------------|------------------|
-| Client-trusted change/`payment_status` shipped and later discovered | MEDIUM | Add server-side computation/verification behind a feature flag, backfill an audit query flagging historical mismatches for manual review, then flip enforcement on; no schema change needed if fields already exist, just move authority server-side |
-| Stock oversell already occurred in production | MEDIUM–HIGH | Reconcile via the append-only `StockMovement`/equivalent ledger (source of truth for what actually happened) against current on-hand counts; manually resolve negative-stock items; then ship the atomic-guard fix and a regression test before reopening the affected flow |
-| Shift left open across a day boundary already happened | LOW–MEDIUM | Add the stale-shift detection/flagging job retroactively; operator manually force-closes flagged shifts with a documented reason; audit reconciliation reports for the affected date range |
-| Fiscal gate found to be under-gating a live code path | HIGH (compliance exposure) | Immediately wire the missing gate call behind a fast-follow deploy; audit which sales/receipts were issued ungated during the exposure window for compliance reporting; this is the most expensive pitfall to recover from late, which is the strongest argument for the mechanical guardrail test up front |
-| Landlord/tenant orphaned records discovered in production | MEDIUM | Build the reconciliation sweep (if not already built) to find landlord records with no matching tenant Availment; replay idempotent finalization against each; escalate genuinely stuck ones through the existing manual-resolution operator flow already established for PayMongo |
-| Product schema found to have quietly FK'd into legacy `items` | HIGH | This is effectively re-doing the coupling extraction — requires a dedicated migration to move the data/FK onto a genuinely new table plus a compatibility-seam bridge for any code still depending on the old reference during the transition; treat as its own mini-project, not a quick patch |
+| Category ENUM insert failure mid-batch (Pitfall 1) | LOW | Fix the lookup table, re-run `apply` — the existing lookup-before-insert idempotency guard means already-migrated rows in the same batch aren't re-processed; only the previously-failing rows need to succeed on retry |
+| Discovered post-hoc that multi-location stock/transfers were silently collapsed wrong (Pitfall 2) | MEDIUM | Since `dgfy_*` schemas are additive/beside-legacy and legacy stays live, the authoritative source data still exists — a corrective re-derivation pass can recompute `products.stock_count`/`inventory_movements` from legacy `item_location_stocks`/`stock_movements` again as long as the legacy tables haven't been archived yet |
+| `attributes` JSON duplication from a non-idempotent retry (Pitfall 10) | LOW–MEDIUM | Because `attributes` should be a pure recompute (once fixed per the prevention strategy), a corrective migration run that overwrites `attributes` from scratch for affected products resolves it without needing per-row manual repair |
+| Embedding model-version ambiguity discovered late (Pitfall 6/7) | MEDIUM–HIGH | Requires a bulk re-embedding pass against whichever embedding provider is current, gated by a newly-added version column retrofitted onto already-migrated rows — cost scales with catalog size across all 26 tenants, so cheaper to prevent than to fix |
+| Non-reproducible sales-history re-migration due to missing watermark (Pitfall 8) | MEDIUM | Retrofit a watermark onto existing checkpoint rows using the max `dgfy_id` already recorded in `legacy_id_map` for that entity type as a proxy boundary, then re-verify going forward — doesn't require re-deriving already-migrated data, just closes the gap for future runs |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|-------------------|----------------|
-| 1. Client-trusted change/tender arithmetic | POS Checkout & Payment | Test: checkout rejects when `cash_received < total`; `change_amount` not accepted as input anywhere in the DTO |
-| 2. Client-declared `payment_status` for non-gateway methods | POS Checkout & Payment (schema); Fiscal/Compliance (receipt-issuance audit) | Test: no route allows a plain client PATCH to set the paid-equivalent status; attested payments carry `attested_by`/`shift_id` |
-| 3. Concurrent stock/slot double-decrement | Product Catalog (stock command service); consumed by POS Checkout & Payment and Storefront Online Ordering | Concurrency test: N simultaneous checkout/booking calls against one fixed-stock item/slot never oversell |
-| 4. No-shift checkout / cross-day shift drift | Shift & Cash Drawer, sequenced before or with POS Checkout & Payment | Test: checkout use case (not just route/UI) rejects with `NO_OPEN_SHIFT`; DB-level unique constraint prevents two open shifts per terminal; stale-shift flag job exists |
-| 5. Fiscal gate over/under-gating | Fiscal/Compliance; re-checked in Storefront Online Ordering and Order Fulfillment as new sale-completing paths land | Guardrail test asserting every sale-completing code path calls the shared gate function; fixture tests for grace-period and non-fiscal-mode should-not-block cases |
-| 6. Landlord↔Tenant cross-DB write consistency | Storefront Discovery & Online Ordering (design); Order Fulfillment & Delivery Coordination (depends on it) | Test: simulated tenant-DB failure mid-finalization leaves a manual-resolution record, not an orphan or duplicate; idempotent retry produces exactly one Availment |
-| 7. Product/Availment schema recreating IMS coupling | Product Catalog domain (foundational, before Booking/POS/Storefront build on it) | Guardrail/grep test: no new Product/Availment repository imports legacy `Item`/`PosTransactionLine` models or FKs into `items` outside a manifest-registered seam |
-| 8. Payment entity naming collision with existing landlord `Payment` (subscription billing) | POS Checkout & Payment, at schema-design time | Review checklist item: new payment-record model names are domain-qualified and don't collide with `backend/src/models/Landlord/Payment.js`'s existing meaning |
+| Category ENUM collapse fails hard (1) | Product/Inventory Migration phase | Dry-run against all 26 real tenants shows an explicit finding (or none) for every one of the 5 legacy category values; apply never throws a truncation error |
+| Multi-location stock/transfer has no target (2) | Product/Inventory Migration phase | Migrated `products.stock_count` reconciles against legacy `current_stock`/summed `item_location_stocks` for every multi-location tenant in rehearsal |
+| `movement_type` N→M collapse drops detail (3) | Product/Inventory Migration phase | `loss_reason`/`weighted_average_cost` appear in migrated `before_snapshot`/`after_snapshot`, not silently dropped; report shows the full 8→5 mapping exercised |
+| Recursive composition (BOM) has no target (4) | Product/Inventory Migration phase (spec/design step, before mapper code) | Every `product_composition` row for a migrated tenant appears in the report as either migrated or an explicit out-of-scope finding — never absent |
+| Flat `product_folders` collide with nested legacy structure (5) | Product/Inventory Migration phase | `apply` against a tenant with duplicate/nested folder names produces zero unhandled unique-constraint errors; renames are logged as findings |
+| No embedding model-version provenance (6) | Product/Inventory Migration phase | New embeddings storage schema includes a model-version column populated on every migrated row |
+| Embedding staleness invisible (7) | Product/Inventory Migration phase | Dry-run report includes a sized "N stale embeddings" finding per tenant |
+| Idempotent re-migration vs. a growing `pos_transactions` table (8) | Sales-History Migration phase | Two consecutive dry-runs against the same tenant with no new legacy sales in between produce identical results; a dry-run with new sales in between only reports the delta |
+| Dangling operational FKs on `availments` (`shift_id`/`terminal_id`/`fnb_*`) (9) | Sales-History Migration phase | Every FK-shaped field on `pos_transactions` has a documented resolution (resolved / nulled-with-finding / snapshot-text) before the mapper is written |
+| `attributes` JSON non-idempotent aggregation (10) | Product/Inventory Migration phase | Two consecutive `apply` runs against the same tenant produce byte-identical `attributes` JSON for every product |
 
 ## Sources
 
-- `.planning/PROJECT.md` — current milestone scope, phase history, architecture constraints (project source, HIGH confidence)
-- `refactor-do-not-commit/DGFY_Plan_vs_Reality_Reconciliation.md` — §1, §5, §6, §8 known-risk findings and open questions (project source, HIGH confidence)
-- `.planning/codebase/ARCHITECTURE.md` — stock-effect ownership (ADR 0029), Storefront Commerce Payment Flow, module/layer boundaries (project source, HIGH confidence)
-- `.planning/codebase/CONCERNS.md` — PayMongo readiness/manual-resolution fragile-area notes, tenant schema drift precedent, fragile POS fiscal/terminal area notes (project source, HIGH confidence)
-- `.planning/codebase/INTEGRATIONS.md` — PayMongo/PayPal payment integration boundaries, landlord-owned commerce payment models (project source, HIGH confidence)
-- [Idempotency Keys: The API Pattern That Saves You From Duplicate Payments and Phantom Records](https://dev.to/apikumo/idempotency-keys-the-api-pattern-that-saves-you-from-duplicate-payments-and-phantom-records-51b2) — general idempotent-payment-flow pattern (web, MEDIUM confidence, corroborates existing codebase pattern)
-- [API idempotency | Adyen Docs](https://docs.adyen.com/development-resources/api-idempotency) — payment-provider idempotency-key convention reference (web, MEDIUM confidence)
-- [Replacing Redis with MySQL: Scaling Inventory Reservations with SKIP LOCKED](https://dasroot.net/posts/2026/06/replacing-redis-mysql-scaling-inventory-reservations-skip-locked/) — atomic guarded UPDATE / SKIP LOCKED pattern for inventory race conditions (web, MEDIUM confidence)
-- [Implementing Concurrent Control with ORM — Pessimistic and Optimistic Locking](https://leapcell.io/blog/implementing-concurrent-control-with-orm-a-deep-dive-into-pessimistic-and-optimistic-locking) — SELECT FOR UPDATE vs. optimistic-locking tradeoffs (web, MEDIUM confidence)
+- Direct codebase inspection (HIGH confidence — this is the authoritative source for this project-specific research): `apps/dgfy-migration-runner/src/data/mappings.js`, `apps/dgfy-migration-runner/src/metadata/dataState.js`, `apps/dgfy-migration-runner/src/migrations/schema/20260712100000-create-commerce-foundation.cjs`, `apps/dgfy-migration-runner/src/migrations/schema/20260713120000-create-availment-checkout.cjs`, `backend/src/models/Item.js`, `backend/src/models/StockMovement.js`, `backend/src/models/PosTransaction.js`, `backend/src/models/ItemLocationStock.js`, `backend/src/models/ItemEmbedding.js`, `backend/src/models/ProductComposition.js`, `.planning/PROJECT.md`.
+- [MySQL :: Indexing JSON documents via Virtual Columns](https://dev.mysql.com/blog-archive/indexing-json-documents-via-virtual-columns/) — LOW confidence (general web search, not project-specific), corroborates the JSON-attributes queryability tradeoff in Pitfall 10 and the Technical Debt table.
+- [MySQL 8.4 Reference Manual — Secondary Indexes and Generated Columns](https://dev.mysql.com/doc/refman/8.4/en/create-table-secondary-indexes.html) — LOW confidence, same corroboration.
+- [I Updated My Embedding Model and My RAG Broke: A Post-Mortem](https://decompressed.io/learn/rag-observability-postmortem) — LOW confidence, corroborates Pitfall 6 (silent semantic-space mismatch across embedding model versions).
+- [Migrating vector embeddings in production without downtime](https://medium.com/google-cloud/migrating-vector-embeddings-in-production-without-downtime-8a0464af6f55) — LOW confidence, corroborates the re-embed-before-cutover practice referenced in Pitfall 6's prevention strategy.
+- [Paginating large datasets in production: Why OFFSET fails and cursors win](https://blog.sentry.io/paginating-large-datasets-in-production-why-offset-fails-and-cursors-win/) — LOW confidence, corroborates Pitfall 8's offset-vs-cursor pagination risk against a live table.
+- [Understanding Idempotency: A Key to Reliable and Scalable Data Pipelines](https://airbyte.com/data-engineering-resources/idempotency-in-data-pipelines) — LOW confidence, general corroboration of the checkpoint/watermark pattern recommended in Pitfall 8.
+- Project session history (`.planning/` commit log, referenced in git status): the MySQL `addIndex` `type:` vs `using:` DDL bug found and fixed during last session's live rehearsal is cited directly as precedent in the Integration Gotchas table — this is a HIGH-confidence, already-proven-real project fact, not a hypothetical.
 
 ---
-*Pitfalls research for: DGFY v2.0 Commerce Domain (Product, POS Checkout/Payment, Shift/Cash-Drawer, Fiscal/Compliance, Storefront Online Ordering, Order Fulfillment/Delivery)*
-*Researched: 2026-07-12*
+*Pitfalls research for: Legacy product-catalog, inventory-movement, and sales-transaction data migration (DGFY v2.1)*
+*Researched: 2026-07-14*
