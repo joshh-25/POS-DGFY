@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Commerce Domain — Product, Checkout & Fulfillment
-current_phase: 11
-status: executing
-stopped_at: Phase 11 context gathered
-last_updated: "2026-07-14T01:45:01.324Z"
+milestone: v2.1
+milestone_name: Legacy Data Migration
+status: planning
+last_updated: "2026-07-14T07:47:19.489Z"
 last_activity: 2026-07-14
-last_activity_desc: Phase 11 complete
 progress:
-  total_phases: 11
-  completed_phases: 10
-  total_plans: 68
-  completed_plans: 65
-  percent: 91
-current_phase_name: order-fulfillment-delivery-coordination
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,12 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-12)
 
 ## Current Position
 
-Phase: 11
-Plan: Not started
-Status: Executing Phase 11
-Last activity: 2026-07-14 — Phase 11 complete
-
-Progress: overall roadmap 8/11 phases complete (Phase 7 paused independently); Phase 10 planned, execution not started
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-14 — Milestone v2.1 started
 
 ## Performance Metrics
 

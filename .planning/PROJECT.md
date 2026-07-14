@@ -17,20 +17,21 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - **Success metric**: Existing users experience no regression while new DGFY Accounts, Businesses, Tenancy, and migration scripts prove a clean path away from the IMS-backed schema.
 - **Strategy notes**: See `refactor/DGFY_Project_Status_and_Proposal.md`, `refactor/DGFY_Implementation_Phases.md`, and `refactor/DGFY_Migration_Cutover_Strategy.md`.
 
-## Current Milestone: v2.0 Commerce Domain — Product, Checkout & Fulfillment
+## Current Milestone: v2.1 Legacy Data Migration
 
-**Goal:** Backend API parity with the current legacy system's full commerce flow — product catalog, POS checkout/payment, storefront online ordering, and order fulfillment — built beside legacy on `dgfy_*` schemas the same way Accounts/Businesses/Tenancy was, extending that now-stable foundation. Existing frontends keep talking to the old backend; no new frontend apps this milestone.
+**Goal:** Close the empirically-confirmed gap where the existing Accounts/Businesses/Tenancy migration leaves every tenant with zero products, availments, and inventory movements — build the schema extension and mapper functions to migrate legacy `items`/`item_folders`/`stock_movements` (plus satellite tables and `item_embeddings`) into the new `products`/`product_folders`/`inventory_movements` schema, and migrate `pos_transactions` sales history into `availments`, proven via re-rehearsal against a live production-parity environment.
 
 **Target features:**
-- Product Catalog (Food/Service/Retail, stock/non-stock, folders/grouping, Basic Inventory ledger)
-- Booking (bookable Services, branch-level slot capacity, no staff calendar yet)
-- POS Checkout & Payment (Availment + line items, discount codes, manual discounts incl. senior/PWD, server-verified totals/change, payment method selection, receipts)
-- Shift & Cash Drawer (open/close shift per cashier/terminal, cash-drawer auditing, close-time reconciliation)
-- Fiscal/Compliance (policy-engine gating checkout/receipts/shift on compliance-mode state)
-- Storefront Discovery & Online Ordering (map browse/search, storefront page, cart, guest-or-account checkout, pickup/delivery immediate-or-scheduled, payment method incl. PayMongo where available)
-- Order Fulfillment & Delivery Coordination (business/staff process online orders, status updates, manual delivery/courier assignment and payout tracking through completion)
+- `products` schema extension: 6 universal typed columns (`sku_code`, `cost_per_unit`, `vat_type`, `senior_pwd_discount_eligible`, `description`, `unit_of_measure`) plus one `attributes` JSON column for everything else category-specific
+- `item_embeddings` (AI vector search data) migrated alongside product data
+- New mapper functions following the existing `mappings.js` pattern: `items`→`products`, `item_folders`→`product_folders`, `stock_movements`→`inventory_movements`, satellite tables→`products.attributes`, `item_embeddings`→new embeddings storage
+- Sales-history migration: `pos_transactions`→`availments` with a new `source_system` provenance field, as its own phase
+- Legacy `category` (5 values, raw-material-centric) treated as generic sellable products for migration purposes; the raw-material-vs-finished-good distinction is explicitly deferred to a future, not-yet-scoped DGFY↔IMS integration contract
+- Validation via re-rehearsal against a disposable production-parity environment (real GHCR images, real domains, real legacy data volume) using a tested snapshot/reset mechanism
 
-**Deferred to later milestones:** new frontend apps (dgfy-storefront/pos/business), the actual Product data-cutover migration + production cutover (Phase 7 stays paused, likely revisited once this domain is proven), Comprehensive Inventory/IMS integration, co-ownership exposure, Hospitality/Ticketing/Jobs ecosystem integrations.
+**Deferred to later milestones:** new frontend apps (dgfy-storefront/pos/business), production cutover itself (Phase 7 stays paused until this migration is proven, then likely resumed), Comprehensive Inventory/IMS integration, co-ownership exposure, Hospitality/Ticketing/Jobs ecosystem integrations.
+
+**Previous milestone (v2.0 Commerce Domain — Product, Checkout & Fulfillment):** Backend API parity with the legacy system's full commerce flow — product catalog, POS checkout/payment, storefront online ordering, and order fulfillment — built beside legacy on `dgfy_*` schemas. Completed across Phases 8-11 (see Validated requirements below).
 
 ## Requirements
 
@@ -55,12 +56,9 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 ### Active
 
 - [ ] Preserve current POS/Storefront behavior until replacement paths have parity evidence and rollback options.
-- [ ] Cutover rehearsal, data-volume evidence, backup/restore proof, and abort thresholds before production cutover is scheduled — CMP-05, Phase 7 (paused 2026-07-12, pending real Docker/GHCR rehearsal infra; will likely be revisited once the Commerce Domain below is proven, since the real production migration must move Product/Availment data too, not just Accounts/Businesses/Tenancy).
-- [ ] Product Catalog domain (Food/Service/Retail, stock/non-stock, folders, Basic Inventory) built beside legacy — v2.0.
-- [ ] Booking domain (bookable Services, branch-level capacity) — v2.0.
-- [ ] POS Checkout & Payment (Availment, discounts, senior/PWD, server-verified totals, payment method selection, receipts) — v2.0.
-- [ ] Shift & Cash Drawer (open/close shift, cash-drawer auditing, reconciliation) — v2.0.
-- [ ] Fiscal/Compliance policy-engine gating (checkout/receipts/shift) — v2.0.
+- [ ] Cutover rehearsal, data-volume evidence, backup/restore proof, and abort thresholds before production cutover is scheduled — CMP-05, Phase 7 (paused 2026-07-12, pending real Docker/GHCR rehearsal infra; will likely be revisited once this Legacy Data Migration milestone is proven, since the real production migration must move Product/Availment data too, not just Accounts/Businesses/Tenancy). Rehearsal infra itself has since been proven independently via a disposable EC2 environment during v2.1 kickoff — Phase 7 can likely reuse that approach when resumed.
+- [ ] Product/Inventory data migration (`items`/`item_folders`/`stock_movements`/satellite tables/`item_embeddings` → `products`/`product_folders`/`inventory_movements`) — v2.1.
+- [ ] Sales-history migration (`pos_transactions` → `availments` with `source_system` provenance) — v2.1.
 
 ### Out of Scope
 
@@ -142,4 +140,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Update Context with current state
 
 ---
-*Last updated: 2026-07-14 after Phase 11 complete (Order Fulfillment & Delivery Coordination)*
+*Last updated: 2026-07-14 — v2.1 Legacy Data Migration milestone started*
