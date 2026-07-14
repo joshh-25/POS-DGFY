@@ -20,6 +20,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     pos_catalog_overrides: Object.freeze({
         pos_always_available: Object.freeze({
             sql: "ALTER TABLE `pos_catalog_overrides` ADD COLUMN `pos_always_available` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'POS-only stock exemption; never changes Storefront visibility or Inventory stock truth'"
+        }),
+        pos_best_seller_mode: Object.freeze({
+            sql: "ALTER TABLE `pos_catalog_overrides` ADD COLUMN `pos_best_seller_mode` VARCHAR(10) NOT NULL DEFAULT 'auto' COMMENT 'POS best seller override: auto uses completed paid sales, force always tags, never suppresses the tag'"
         })
     }),
     users: Object.freeze({

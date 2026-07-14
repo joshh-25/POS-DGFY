@@ -26,6 +26,14 @@ const PosCatalogOverride = sequelize.define('PosCatalogOverride', {
     allowNull: false,
     defaultValue: false
   },
+  pos_best_seller_mode: {
+    type: DataTypes.STRING(10),
+    allowNull: false,
+    defaultValue: 'auto',
+    validate: {
+      isIn: [['auto', 'force', 'never']]
+    }
+  },
   pos_image_path: {
     type: DataTypes.STRING(500),
     allowNull: true

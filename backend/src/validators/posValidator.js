@@ -272,8 +272,9 @@ const posCatalogOverrideParamSchema = Joi.object({
 
 const updatePosCatalogOverrideSchema = Joi.object({
     pos_visible: Joi.boolean().optional(),
-    pos_always_available: Joi.boolean().optional()
-}).or('pos_visible', 'pos_always_available');
+    pos_always_available: Joi.boolean().optional(),
+    pos_best_seller_mode: Joi.string().trim().lowercase().valid('auto', 'force', 'never').optional()
+}).or('pos_visible', 'pos_always_available', 'pos_best_seller_mode');
 
 const zReadingDateParamSchema = Joi.object({
     date: Joi.date().iso().required()

@@ -357,6 +357,7 @@ const POS_JSON_SETTING_KEYS = new Set([
     'pos_discount_profiles',
     'pos_order_method_fees',
     'pos_terminal_registry',
+    'pos_best_seller_settings',
     'storefront_categories',
     'storefront_gallery_images',
     'storefront_delivery_partners',
