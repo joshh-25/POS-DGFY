@@ -9,9 +9,9 @@
  * only orchestration entry point that opens connections/issues queries.
  *
  * Hard contract (per the plan's threat model and must_haves):
- * - Missing accepted membership conflicts (and any other open
- *   skip/conflict/orphan finding) are reported as unresolved, never treated
- *   as clean — `data_migration_ok` is false while any finding is open.
+ * - Staff-linkage findings are reported under `staff_auth` and remain
+ *   auditable, but they do not block product/inventory data fidelity.
+ *   Non-staff findings still block `data_migration_ok`.
  * - Optional storefront discovery projection evidence is informational only
  *   and never controls `data_migration_ok`.
  */
@@ -32,6 +32,12 @@ export { DEFAULT_RUN_SCOPE };
 export const EXPECTED_LOSSY_REASON_CODES = Object.freeze(new Set([
     MAPPING_REASON_CODES.LOSSY_CATEGORY_COLLAPSE,
     MAPPING_REASON_CODES.FOLDER_NESTING_FLATTENED
+]));
+
+export const STAFF_LINKAGE_REASON_CODES = Object.freeze(new Set([
+    MAPPING_REASON_CODES.MISSING_ACCEPTED_MEMBERSHIP,
+    MAPPING_REASON_CODES.ORPHAN_TENANT_USER_LINK,
+    MAPPING_REASON_CODES.STAFF_CREDENTIAL_RESET_REQUIRED
 ]));
 
 /**
@@ -146,6 +152,7 @@ export function checkMapCompleteness({ expectedLegacyKeys = [], mappedLegacyKeys
 export function checkOpenFindings(openFindings = []) {
     const bySeverity = { conflict: 0, skip: 0, orphan: 0 };
     const expectedLossyFindings = [];
+    const staffLinkageFindings = [];
     const blockingFindings = [];
 
     openFindings.forEach((finding) => {
@@ -154,6 +161,8 @@ export function checkOpenFindings(openFindings = []) {
         }
         if (EXPECTED_LOSSY_REASON_CODES.has(finding.reason_code)) {
             expectedLossyFindings.push(finding);
+        } else if (STAFF_LINKAGE_REASON_CODES.has(finding.reason_code)) {
+            staffLinkageFindings.push(finding);
         } else {
             blockingFindings.push(finding);
         }
@@ -164,10 +173,65 @@ export function checkOpenFindings(openFindings = []) {
         open_count: openFindings.length,
         blocking_count: blockingFindings.length,
         expected_lossy_count: expectedLossyFindings.length,
+        staff_linkage_count: staffLinkageFindings.length,
         by_severity: bySeverity,
         blocking_findings: blockingFindings,
         expected_lossy_findings: expectedLossyFindings,
+        staff_linkage_findings: staffLinkageFindings,
         findings: openFindings
+    };
+}
+
+function countByCredentialStatus(staffCredentials = [], status) {
+    return staffCredentials.filter((credential) => credential.credential_status === status).length;
+}
+
+function staffLinkageFindingsForTenant(openFindingsCheck = {}, legacyTenantId) {
+    return (openFindingsCheck.staff_linkage_findings || [])
+        .filter((finding) => String(finding.legacy_tenant_id) === String(legacyTenantId));
+}
+
+/**
+ * Pure: builds the non-blocking `staff_auth` evidence section. It reports
+ * counts/statuses only; credential hash fields are never echoed.
+ */
+export function summarizeStaffAuth({
+    targets = [],
+    openFindingsCheck = {},
+    relationshipViolations = []
+} = {}) {
+    const tenants = targets.map((target) => {
+        if (target.staff_auth) {
+            return {
+                ...target.staff_auth,
+                staff_linkage_findings: staffLinkageFindingsForTenant(openFindingsCheck, target.legacy_tenant_id)
+            };
+        }
+
+        const staffCredentials = Array.isArray(target.staffCredentials) ? target.staffCredentials : [];
+        return {
+            legacy_tenant_id: target.legacy_tenant_id,
+            target_business_db_name: target.target_business_db_name,
+            staff_account_count: (target.staffAccounts || []).length,
+            credential_count: staffCredentials.length,
+            active_credential_count: countByCredentialStatus(staffCredentials, 'active'),
+            reset_required_count: countByCredentialStatus(staffCredentials, 'reset_required'),
+            assignment_count: (target.accountStaffAssignments || []).length,
+            staff_credentials_table_missing: target.staffCredentialsTableMissing === true,
+            staff_linkage_findings: staffLinkageFindingsForTenant(openFindingsCheck, target.legacy_tenant_id)
+        };
+    });
+
+    const relationshipViolationCount = relationshipViolations.length;
+    const staffLinkageFindings = openFindingsCheck.staff_linkage_findings || [];
+    return {
+        blocking: false,
+        staff_linkage_ok: staffLinkageFindings.length === 0 && relationshipViolationCount === 0,
+        staff_linkage_count: staffLinkageFindings.length,
+        relationship_violation_count: relationshipViolationCount,
+        staff_linkage_findings: staffLinkageFindings,
+        relationship_violations: relationshipViolations,
+        tenants
     };
 }
 
@@ -208,6 +272,21 @@ async function fetchMappedLegacyKeys(metaSequelize, runScope) {
 async function selectAll(connection, tableName) {
     const [rows] = await connection.query(`SELECT * FROM ${tableName}`);
     return rows || [];
+}
+
+async function selectStaffCredentialsCoverage(connection) {
+    try {
+        const [rows] = await connection.query(`
+            SELECT id, staff_account_id, credential_status
+            FROM staff_credentials
+        `);
+        return { rows: rows || [], tableMissing: false };
+    } catch (error) {
+        if (/staff_credentials/i.test(error.message || '')) {
+            return { rows: [], tableMissing: true };
+        }
+        throw error;
+    }
 }
 
 function toNumber(value) {
@@ -354,6 +433,7 @@ async function buildTargetDataVerification({
         businessSequelize = createBusinessTargetConnection(config, target.target_business_db_name);
         const [
             staffAccounts,
+            staffCredentialsCoverage,
             accountStaffAssignments,
             locations,
             terminalIdentities,
@@ -363,6 +443,7 @@ async function buildTargetDataVerification({
             productEmbeddings
         ] = await Promise.all([
             selectAll(businessSequelize, 'staff_accounts'),
+            selectStaffCredentialsCoverage(businessSequelize),
             selectAll(businessSequelize, 'account_staff_assignments'),
             selectAll(businessSequelize, 'locations'),
             selectAll(businessSequelize, 'terminal_identities'),
@@ -473,6 +554,7 @@ async function buildTargetDataVerification({
             products,
             productEmbeddings
         });
+        const staffCredentials = staffCredentialsCoverage.rows;
 
         return {
             legacy_tenant_id: legacyTenantId,
@@ -481,6 +563,16 @@ async function buildTargetDataVerification({
             data_counts: dataCounts,
             map_completeness: mapCompleteness,
             required_relationships: relationships,
+            staff_auth: {
+                legacy_tenant_id: legacyTenantId,
+                target_business_db_name: target.target_business_db_name,
+                staff_account_count: staffAccounts.length,
+                credential_count: staffCredentialsCoverage.tableMissing ? null : staffCredentials.length,
+                active_credential_count: staffCredentialsCoverage.tableMissing ? null : countByCredentialStatus(staffCredentials, 'active'),
+                reset_required_count: staffCredentialsCoverage.tableMissing ? null : countByCredentialStatus(staffCredentials, 'reset_required'),
+                assignment_count: accountStaffAssignments.length,
+                staff_credentials_table_missing: staffCredentialsCoverage.tableMissing
+            },
             product_reconciliation: productReconciliation
         };
     } catch (error) {
@@ -547,6 +639,13 @@ export async function buildDataVerificationSections({ config, targetSequelize, m
 
         targetVerifications.push(targetVerification);
     }
+    const relationshipViolations = targetVerifications
+        .flatMap((targetVerification) => targetVerification.required_relationships?.violations || []);
+    const staffAuth = summarizeStaffAuth({
+        targets: targetVerifications,
+        openFindingsCheck,
+        relationshipViolations
+    });
 
     let storefrontProjection;
     try {
@@ -563,6 +662,7 @@ export async function buildDataVerificationSections({ config, targetSequelize, m
             run_scope: runScope,
             targets: targetVerifications,
             open_findings: openFindingsCheck,
+            staff_auth: staffAuth,
             storefront_discovery_projection: storefrontProjection,
             ok: dataMigrationOk
         }

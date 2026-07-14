@@ -527,7 +527,10 @@ export async function runVerify({} = {}) {
       tenant_coverage_ok: tenantCoverage.ok,
       idempotency_ok: idempotency.every((result) => result.ok),
       legacy_non_mutation_ok: legacyNonMutation.ok,
-      data_migration_ok: dataMigration.ok
+      data_migration_ok: dataMigration.ok,
+      staff_auth_linkage_ok: dataMigration.staff_auth?.staff_linkage_ok ?? true,
+      staff_auth_linkage_findings: dataMigration.staff_auth?.staff_linkage_count ?? 0,
+      staff_auth_relationship_violations: dataMigration.staff_auth?.relationship_violation_count ?? 0
     }
   };
 
