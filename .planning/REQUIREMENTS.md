@@ -141,12 +141,12 @@ Committed scope for the v2.1 Legacy Data Migration milestone. Migration-runner-o
 
 ### Product & Inventory Migration
 
-- [ ] **PIM-01**: `item_folders` → `product_folders` mapper migrates legacy folders before item migration begins.
-- [ ] **PIM-02**: `items` → `products` mapper migrates the 6 promoted fields plus all 8 satellite tables (including `product_composition`/BOM) folded into `attributes` JSON, with `attributes.barcodes` as an array for the 1:many `ItemBarcode` table.
-- [ ] **PIM-03**: A documented, reviewed 8-legacy-type → 5-target-type `stock_movements.movement_type` category-remapping decision exists, with `findings` raised for any lossy collapse.
-- [ ] **PIM-04**: `stock_movements` → `inventory_movements` mapper is idempotency-safe against the append-only target table (skip-if-mapped, never re-insert).
-- [ ] **PIM-05**: Legacy per-location stock sums into the single `products.stock_count` scalar; `item_location_stocks` migrates as an opening-balance `inventory_movements` row per product, not a direct `stock_count` write.
-- [ ] **PIM-06**: `item_embeddings` → `product_embeddings` mapper carries vectors over as-is (same model/format, no re-embedding).
+- [x] **PIM-01**: `item_folders` → `product_folders` mapper migrates legacy folders before item migration begins.
+- [x] **PIM-02**: `items` → `products` mapper migrates the 6 promoted fields plus all 8 satellite tables (including `product_composition`/BOM) folded into `attributes` JSON, with `attributes.barcodes` as an array for the 1:many `ItemBarcode` table.
+- [x] **PIM-03**: A documented, reviewed 8-legacy-type → 5-target-type `stock_movements.movement_type` category-remapping decision exists, with `findings` raised for any lossy collapse.
+- [x] **PIM-04**: `stock_movements` → `inventory_movements` mapper is idempotency-safe against the append-only target table (skip-if-mapped, never re-insert).
+- [x] **PIM-05**: Legacy per-location stock sums into the single `products.stock_count` scalar; `item_location_stocks` migrates as an opening-balance `inventory_movements` row per product, not a direct `stock_count` write.
+- [x] **PIM-06**: `item_embeddings` → `product_embeddings` mapper carries vectors over as-is (same model/format, no re-embedding).
 
 ### Sales History Migration
 
@@ -286,12 +286,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LDM-02 | Phase 12 | Complete |
 | LDM-03 | Phase 12 | Complete |
 | LDM-04 | Phase 12 | Complete |
-| PIM-01 | Phase 13 | Pending |
-| PIM-02 | Phase 13 | Pending |
-| PIM-03 | Phase 13 | Pending |
-| PIM-04 | Phase 13 | Pending |
-| PIM-05 | Phase 13 | Pending |
-| PIM-06 | Phase 13 | Pending |
+| PIM-01 | Phase 13 | Complete |
+| PIM-02 | Phase 13 | Complete |
+| PIM-03 | Phase 13 | Complete |
+| PIM-04 | Phase 13 | Complete |
+| PIM-05 | Phase 13 | Complete |
+| PIM-06 | Phase 13 | Complete |
 | LDM-05 | Phase 14 | Pending (sequenced with Sales History per its own requirement text, not Phase 12) |
 | SHM-01 | Phase 14 | Pending |
 | SHM-02 | Phase 14 | Pending |

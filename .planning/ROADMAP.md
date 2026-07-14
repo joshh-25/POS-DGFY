@@ -463,12 +463,12 @@ Plans:
   4. Re-running apply against an already-migrated tenant inserts zero duplicate `inventory_movements` rows (skip-if-mapped, never re-insert), and verification's sum-by-type totals show each product's `stock_count` equal to the sum of its legacy `item_location_stocks`, represented by a single summed opening-balance `inventory_movements` row per product (per-location breakdown discarded after summing, per D-10) rather than a direct `stock_count` write.
   5. Re-rehearsal against the disposable production-parity environment migrates a real tenant's `product_folders`, `products`, and `inventory_movements` end-to-end, and every migrated product has exactly one `product_embeddings` row carrying its original vector unchanged (same model/format, no re-embedding).
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 **Wave 1** *(parallel — disjoint files)*
 
-- [ ] 13-01-PLAN.md — 5 pure mappers + 3 reason codes + MOVEMENT_TYPE_MAP + scope-unblock + committed movement-remap doc (PIM-01..06; D-01..D-10)
+- [x] 13-01-PLAN.md — 5 pure mappers + 3 reason codes + MOVEMENT_TYPE_MAP + scope-unblock + committed movement-remap doc (PIM-01..06; D-01..D-10)
 - [ ] 13-02-PLAN.md — readLegacyProductSnapshot raw-SELECT reader + satellite stitch (PIM-01/02/05/06)
 
 **Wave 2** *(blocked on Wave 1; parallel — apply.js / dryRun.js / verifyData.js are disjoint)*
@@ -515,5 +515,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 10. Storefront Discovery & Online Ordering | 8/8 | Complete    | 2026-07-13 |
 | 11. Order Fulfillment & Delivery Coordination | 4/4 | Complete    | 2026-07-14 |
 | 12. Scope Unblock + Schema Extension | 4/4 | Complete    | 2026-07-14 |
-| 13. Product & Inventory Migration | 0/TBD | Not started | - |
+| 13. Product & Inventory Migration | 1/6 | In Progress|  |
 | 14. Sales History Migration & Full Verification | 0/TBD | Not started | - |
