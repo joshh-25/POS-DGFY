@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: POS Checkout & Payment** - Staff can run a complete, trustworthy checkout — line items, discounts incl. SC/PWD, payment method, server-verified totals/change, receipts — gated by an open shift and the compliance policy engine. (completed 2026-07-13)
 - [x] **Phase 10: Storefront Discovery & Online Ordering** - Consumers can discover stores/Products and complete a guest-or-account online order that durably and idempotently becomes a real tenant Availment. (completed 2026-07-13)
 - [x] **Phase 11: Order Fulfillment & Delivery Coordination** - Business staff can process incoming online orders through a shared fulfillment pipeline, including manual courier assignment and payout tracking. (completed 2026-07-14)
-- [ ] **Phase 12: Scope Unblock + Schema Extension** - ADR 0029 amendment and additive schema changes unblock every new legacy-data mapper.
+- [x] **Phase 12: Scope Unblock + Schema Extension** - ADR 0029 amendment and additive schema changes unblock every new legacy-data mapper. (completed 2026-07-14)
 - [ ] **Phase 13: Product & Inventory Migration** - Legacy items/folders/stock-movements/embeddings migrate into the new products/inventory schema with proven fidelity, re-rehearsed before sales-history begins.
 - [ ] **Phase 14: Sales History Migration & Full Verification** - Legacy POS sales history migrates into availments with provenance and void-state fidelity, and the full milestone is proven end-to-end via re-rehearsal.
 
@@ -437,7 +437,7 @@ Plans:
   3. A new `product_embeddings` table exists in the tenant schema (one row reserved per product), confirmed via schema verification output.
   4. `inventory_movements` carries a natural-key unique index on (`business_id`, `reference_type`, `reference_id`), confirmed via schema verification, and re-running the schema migration is idempotent — no duplicate-index error, no data loss, no drift against the pre-migration baseline for unrelated tables.
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans complete
 
 Plans:
 **Wave 1** *(parallel — zero file overlap)*
@@ -448,7 +448,7 @@ Plans:
 
 **Wave 2** *(blocked on 12-02)*
 
-- [ ] 12-04-PLAN.md — [BLOCKING] apply migration + verify against a tenant DB + idempotent re-run proof (LDM-02, LDM-03, LDM-04; autonomous:false)
+- [x] 12-04-PLAN.md — [BLOCKING] apply migration + verify against a tenant DB + idempotent re-run proof (LDM-02, LDM-03, LDM-04; autonomous:false)
 
 ### Phase 13: Product & Inventory Migration
 
@@ -498,6 +498,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 9. POS Checkout & Payment | 8/8 | Complete    | 2026-07-13 |
 | 10. Storefront Discovery & Online Ordering | 8/8 | Complete    | 2026-07-13 |
 | 11. Order Fulfillment & Delivery Coordination | 4/4 | Complete    | 2026-07-14 |
-| 12. Scope Unblock + Schema Extension | 3/4 | In Progress|  |
+| 12. Scope Unblock + Schema Extension | 4/4 | Complete   | 2026-07-14 |
 | 13. Product & Inventory Migration | 0/TBD | Not started | - |
 | 14. Sales History Migration & Full Verification | 0/TBD | Not started | - |
