@@ -9,7 +9,7 @@ requires:
   - phase: 12-scope-unblock-schema-extension (12-02)
     provides: additive migration 20260716100000-extend-schema-for-legacy-migration.cjs and updated dgfyBusinessContract.js
 provides:
-  - Diagnostic evidence that the configured tenant DB target cannot currently be reached with the migration-runner's configured credentials — blocking proof of success criteria #2-#4
+  - "Proven, DB-verified evidence: migration 20260716100000 applied to real dgfy_business_r0001/r0002/r0003 tenant DBs on the EC2 rehearsal host, business_schemas_ok=true with all new shapes confirmed, and a clean idempotent no-op re-run"
 affects: [12-scope-unblock-schema-extension, 13-product-inventory-migration]
 
 # Tech tracking
@@ -21,33 +21,47 @@ key-files:
   created:
     - apps/dgfy-migration-runner/reports/2026-07-14T10-08-06-983Z-verify.json
     - apps/dgfy-migration-runner/reports/2026-07-14T10-08-06-983Z-verify.summary.txt
+    - apps/dgfy-migration-runner/reports/2026-07-14T10-47-10-108Z-schema-migrate.json
+    - apps/dgfy-migration-runner/reports/2026-07-14T10-47-10-108Z-schema-migrate.summary.txt
+    - apps/dgfy-migration-runner/reports/2026-07-14T10-47-56-096Z-verify.json
+    - apps/dgfy-migration-runner/reports/2026-07-14T10-47-56-096Z-verify.summary.txt
+    - apps/dgfy-migration-runner/reports/2026-07-14T10-49-03-413Z-schema-migrate.json
+    - apps/dgfy-migration-runner/reports/2026-07-14T10-49-03-413Z-schema-migrate.summary.txt
+    - apps/dgfy-migration-runner/reports/2026-07-14T10-49-30-980Z-verify.json
+    - apps/dgfy-migration-runner/reports/2026-07-14T10-49-30-980Z-verify.summary.txt
   modified: []
 
 key-decisions:
-  - "Did not fabricate success — routed to the human-verify checkpoint with exact command output per the plan's explicit instruction, rather than guessing/rotating DB credentials"
-  - "ROADMAP/requirements NOT marked complete; this plan remains open pending operator resolution of the tenant DB credential/config blocker"
+  - "Local lima-dgfy-dev credential mismatch (sieitzsqladmin vs sku_inventory_user) was a dead end — the operator's actual intent was to verify against the EC2 rehearsal host (dgfy-temp), which already has a prepared docker-compose.migration.yml harness with real dgfy_business_r0001..r0026 tenant DBs"
+  - "Synced apps/dgfy-migration-runner/src + package.json to the EC2 host (it was a stale pre-Wave-1 snapshot with no .git) before building the migration-runner image, so the image actually contained migration 20260716100000"
+  - "Temporarily set DGFY_BUSINESS_DB_NAMES to 3 real tenant DBs in the EC2 compose override (was empty, which is the documented vacuous-pass trap) to run a non-vacuous verify, then reverted the override back to its original empty state afterward"
+  - "Did not self-approve the blocking human-verify checkpoint — orchestrator gathered and presented the evidence; the operator typed 'approved' after reviewing it"
 
 patterns-established: []
 
-requirements-completed: []  # NOT completed — plan is blocked, see below. LDM-02/03/04 remain open pending re-run.
+requirements-completed: [LDM-02, LDM-03, LDM-04]
 
 coverage:
   - id: D1
     description: "Apply migration 20260716100000 to a tenant DB via `schema migrate`, confirm via `verify` (business_schemas_ok true with real shapes), and prove idempotency on re-run"
     requirement: "LDM-02"
-    verification: []
-    human_judgment: true
-    rationale: "Blocked before any migration could be applied — `schema migrate` and `verify` both fail with a MySQL access-denied error against the currently running lima-dgfy-dev tenant DB, and no DGFY_BUSINESS_DB_NAMES tenant target is configured, so even a successful connection would only prove the vacuous zero-tenant case. Requires operator to fix migration-runner DB credentials/target config, not something safely auto-fixable."
+    verification:
+      - "apps/dgfy-migration-runner/reports/2026-07-14T10-47-10-108Z-schema-migrate.json — 20260716100000 executed against dgfy_business_r0001/r0002/r0003"
+      - "apps/dgfy-migration-runner/reports/2026-07-14T10-47-56-096Z-verify.json — business_schemas_ok=true, products/product_embeddings/inventory_movements all confirmed, zero missing_*"
+      - "apps/dgfy-migration-runner/reports/2026-07-14T10-49-03-413Z-schema-migrate.json — second run: total_pending=0, executed=0 (clean no-op)"
+      - "apps/dgfy-migration-runner/reports/2026-07-14T10-49-30-980Z-verify.json — idempotency_ok=true (pending_migrations=[] on all 4 targets), legacy_non_mutation.unchanged=true"
+    human_judgment: false
+    rationale: "Full command sequence run against real tenant DBs on the EC2 rehearsal host, operator reviewed the evidence and approved the checkpoint"
 
 # Metrics
-duration: 12min
+duration: 12min (initial blocked attempt) + orchestrator-led EC2 verification + operator approval
 completed: 2026-07-14
-status: blocked
+status: complete
 ---
 
 # Phase 12 Plan 04: Apply + Verify Additive Schema Against Tenant DB Summary
 
-**Blocked before migration apply: migration-runner's configured DB user (`sieitzsqladmin`) is rejected by the currently running lima-dgfy-dev MySQL container, and no tenant DB target (`DGFY_BUSINESS_DB_NAMES`) is configured, so `schema migrate`/`verify` cannot prove success criteria #2-#4.**
+**Schema proven against real tenant DBs on the EC2 rehearsal host (`dgfy-temp`): migration applied cleanly to `dgfy_business_r0001/r0002/r0003`, `verify` confirms all new shapes with `business_schemas_ok=true`, and a second `schema migrate` + `verify` proves a clean idempotent no-op. Operator approved the checkpoint.**
 
 ## Performance
 
@@ -115,22 +129,42 @@ None — plan executed exactly as written up to the point of the documented bloc
 
    **Conclusion:** the migration-runner's `.env` currently points at a DB user (`sieitzsqladmin`) that does not exist in the currently running `lima-dgfy-dev` MySQL container. This is either (a) a stale/rotated credential in `apps/dgfy-migration-runner/.env`, or (b) an expectation that a separate elevated admin user should have been provisioned in this tenant MySQL instance and wasn't. Resolving this requires operator action — either updating `apps/dgfy-migration-runner/.env` to use working credentials (e.g., the `sku_inventory_user`/root credentials the app containers use, if that account has sufficient DDL privileges) or creating the expected `sieitzsqladmin` user in the tenant MySQL instance — plus setting `DGFY_BUSINESS_DB_NAMES` to a real tenant database name so `verify`'s `business_schemas_ok` check is non-vacuous.
 
+## Checkpoint Resolution (post-block)
+
+The local `lima-dgfy-dev` credential mismatch was never fixed directly — the operator clarified the intent was to test against the EC2 rehearsal host (`dgfy-temp`, `54.169.107.105`) instead, which already had a prepared `docker-compose.migration.yml` harness in `~/dgfy-rehearsal-template` wiring a one-shot `migration-runner` container onto the same Docker network as the real `dgfy_business_r0001..r0026` tenant DBs.
+
+Two gaps closed to use it:
+1. `~/dgfy-platform` on EC2 was a stale deployed snapshot (no `.git`, predates Wave 1) — `rsync`'d current `apps/dgfy-migration-runner/src` + `package.json`/`package-lock.json` over before rebuilding the image.
+2. `DGFY_BUSINESS_DB_NAMES` in the compose override was empty (the documented vacuous-pass trap) — temporarily set to 3 real tenant DBs for the run, then reverted to empty afterward so the shared rehearsal template returns to its prior state.
+
+Full sequence run via `docker compose -f docker-compose.yml -f docker-compose.migration.yml run --rm migration-runner node src/cli.js <cmd>`:
+
+1. `schema migrate` → `20260716100000-extend-schema-for-legacy-migration.cjs` executed against `dgfy_business_r0001/r0002/r0003` (business targets, not core), no errors.
+2. `verify` → `business_schemas_ok: true`; `products` (7 new columns incl. `attributes`), `product_embeddings` (+ `unique_product_embeddings_product`), `inventory_movements` (+ `unique_inventory_movements_natural_key`) all confirmed with zero `missing_*` across all 3 tenants.
+3. `schema migrate` (2nd run) → `total_pending=0, executed=0` — clean no-op, no duplicate-index/column error.
+4. `verify` (2nd run) → `idempotency_ok: true` (`pending_migrations: []` on `dgfy_core` + all 3 business targets), `legacy_non_mutation.unchanged: true`.
+
+One unrelated flag noted: `data_migration_ok: false` in both verify reports — pre-existing legacy data-migration count-mismatch noise in the shared rehearsal DB from earlier phase work, out of scope for this plan's acceptance criteria (schema shapes + idempotency only).
+
+Operator reviewed this evidence and typed **"approved"**.
+
 ## User Setup Required
 
-**Operator action required before this plan's checkpoint can be approved:**
-1. Fix `apps/dgfy-migration-runner/.env` DB credentials so `node src/cli.js status` (or `schema migrate`) succeeds against the intended tenant DB (currently `lima-dgfy-dev`'s `dgfy-platform-mysql-1` container, or a different configured target).
-2. Confirm `DGFY_BUSINESS_DB_NAMES` is set to at least one real `dgfy_business_*` tenant database name so `verify`'s `business_schemas_ok` reflects a genuine check, not the vacuous zero-tenant pass.
-3. Re-run the Task 1 sequence (`schema migrate` → `verify` → `schema migrate` again → `verify`) and report the result to resume this plan.
+None further — checkpoint approved. (Original local `.env`/`lima-dgfy-dev` credential mismatch remains unresolved but is now understood to be a dead end for this verification path, not a blocker for Phase 12.)
 
 ## Next Phase Readiness
 
-Blocked. Success criteria #2-#4 (schema applied + verified + proven idempotent against a real tenant DB) are NOT yet proven. This plan (12-04) must be resumed and its checkpoint approved before Phase 12 can be considered complete, since Phase 13's mapper work assumes the Plan 02 schema is confirmed present in a real tenant DB.
+Complete. Success criteria #2-#4 (schema applied + verified + proven idempotent against a real tenant DB) are proven. Phase 13's mapper work can proceed on the assumption that the Plan 02 schema is confirmed present in a real tenant DB.
 
 ---
 *Phase: 12-scope-unblock-schema-extension*
-*Completed: BLOCKED — not completed, pending operator DB credential/config fix*
+*Completed: 2026-07-14*
 
 ## Self-Check: PASSED
 - FOUND: apps/dgfy-migration-runner/reports/2026-07-14T10-08-06-983Z-verify.json
-- FOUND: apps/dgfy-migration-runner/reports/2026-07-14T10-08-06-983Z-verify.summary.txt
-- FOUND: 30b195ec (chore commit)
+- FOUND: apps/dgfy-migration-runner/reports/2026-07-14T10-47-10-108Z-schema-migrate.json
+- FOUND: apps/dgfy-migration-runner/reports/2026-07-14T10-47-56-096Z-verify.json
+- FOUND: apps/dgfy-migration-runner/reports/2026-07-14T10-49-03-413Z-schema-migrate.json
+- FOUND: apps/dgfy-migration-runner/reports/2026-07-14T10-49-30-980Z-verify.json
+- FOUND: 30b195ec (chore commit, initial blocked evidence)
+- CONFIRMED: operator approval received for the blocking human-verify checkpoint
