@@ -89,6 +89,18 @@ function targetSequelize() {
 function businessConnection({ duplicateEmbedding = false, stockMismatch = false } = {}) {
   return fakeConnection({
     queryImpl: (sql) => {
+      if (sql.includes('SUM(quantity) AS total_quantity')) {
+        return Promise.resolve([[{ movement_type: 'adjustment', total_quantity: '9.000000000000' }]]);
+      }
+      if (sql.includes('COUNT(*) AS count')) {
+        return Promise.resolve([[{ category: 'retail', count: '2' }]]);
+      }
+      if (sql.includes("WHERE reference_type = 'legacy_opening_balance'")) {
+        return Promise.resolve([[
+          { product_id: 11, stock_count: stockMismatch ? '6.000000000000' : '7.000000000000', opening_balance_quantity: '7.000000000000' },
+          { product_id: 12, stock_count: null, opening_balance_quantity: '0.000000000000' }
+        ]]);
+      }
       if (sql.includes('FROM staff_accounts')) return Promise.resolve([[]]);
       if (sql.includes('FROM account_staff_assignments')) return Promise.resolve([[]]);
       if (sql.includes('FROM locations')) return Promise.resolve([[]]);
@@ -103,7 +115,8 @@ function businessConnection({ duplicateEmbedding = false, stockMismatch = false 
       if (sql.includes('FROM inventory_movements')) {
         return Promise.resolve([[
           { id: 21, product_id: 11, movement_type: 'adjustment', quantity: '7.000000000000', reference_type: 'legacy_opening_balance' },
-          { id: 22, product_id: 11, movement_type: 'adjustment', quantity: '2.000000000000', reference_type: 'legacy_stock_movement' }
+          { id: 22, product_id: 11, movement_type: 'adjustment', quantity: '2.000000000000', reference_type: 'legacy_stock_movement' },
+          { id: 23, product_id: 12, movement_type: 'adjustment', quantity: '0.000000000000', reference_type: 'legacy_opening_balance' }
         ]]);
       }
       if (sql.includes('FROM product_embeddings')) {

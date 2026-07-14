@@ -23,7 +23,7 @@ import {
     createLegacyTenantSourceConnection,
     createBusinessTargetConnection
 } from '../config/db.js';
-import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot } from './legacySource.js';
+import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot, readLegacyProductSnapshot } from './legacySource.js';
 import { MAPPING_REASON_CODES } from './mappings.js';
 import { DEFAULT_RUN_SCOPE } from './dryRun.js';
 
@@ -210,6 +210,122 @@ async function selectAll(connection, tableName) {
     return rows || [];
 }
 
+function toNumber(value) {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function normalizeQuantity(value) {
+    return toNumber(value).toFixed(12);
+}
+
+function normalizeCount(value) {
+    return Number(value || 0);
+}
+
+function summarizeMovementTypeTotals(rows = []) {
+    return rows.map((row) => ({
+        movement_type: row.movement_type,
+        total_quantity: normalizeQuantity(row.total_quantity)
+    }));
+}
+
+function summarizeProductCategoryDistribution(rows = []) {
+    return rows.map((row) => ({
+        category: row.category,
+        count: normalizeCount(row.count)
+    }));
+}
+
+function checkProductEmbeddingCoverage(products = [], productEmbeddings = []) {
+    const productIds = new Set(products.map((product) => String(product.id)));
+    const embeddingCounts = new Map();
+    productEmbeddings.forEach((embedding) => {
+        const productId = String(embedding.product_id);
+        embeddingCounts.set(productId, (embeddingCounts.get(productId) || 0) + 1);
+    });
+
+    const violations = [];
+    products.forEach((product) => {
+        const productId = String(product.id);
+        const embeddingCount = embeddingCounts.get(productId) || 0;
+        if (embeddingCount !== 1) {
+            violations.push({
+                product_id: product.id,
+                embedding_count: embeddingCount,
+                reason: 'Each migrated product must have exactly one product_embeddings row.'
+            });
+        }
+    });
+    productEmbeddings.forEach((embedding) => {
+        if (!productIds.has(String(embedding.product_id))) {
+            violations.push({
+                product_id: embedding.product_id,
+                embedding_id: embedding.id,
+                reason: 'product_embeddings row references a product_id that is not present in products.'
+            });
+        }
+    });
+
+    return { ok: violations.length === 0, violations };
+}
+
+async function checkStockOpeningBalance(businessSequelize) {
+    const [rows] = await businessSequelize.query(`
+        SELECT
+            p.id AS product_id,
+            COALESCE(p.stock_count, 0) AS stock_count,
+            COALESCE(opening_balances.opening_balance_quantity, 0) AS opening_balance_quantity
+        FROM products p
+        LEFT JOIN (
+            SELECT product_id, SUM(quantity) AS opening_balance_quantity
+            FROM inventory_movements
+            WHERE reference_type = 'legacy_opening_balance'
+            GROUP BY product_id
+        ) opening_balances ON opening_balances.product_id = p.id
+    `);
+
+    const mismatches = (rows || [])
+        .filter((row) => normalizeQuantity(row.stock_count) !== normalizeQuantity(row.opening_balance_quantity))
+        .map((row) => ({
+            product_id: row.product_id,
+            stock_count: normalizeQuantity(row.stock_count),
+            opening_balance_quantity: normalizeQuantity(row.opening_balance_quantity)
+        }));
+
+    return {
+        ok: mismatches.length === 0,
+        checked_reference_type: 'legacy_opening_balance',
+        checked_products: (rows || []).length,
+        mismatches
+    };
+}
+
+async function buildProductReconciliation({ businessSequelize, products, productEmbeddings }) {
+    const [movementTypeRows] = await businessSequelize.query(`
+        SELECT movement_type, SUM(quantity) AS total_quantity
+        FROM inventory_movements
+        GROUP BY movement_type
+        ORDER BY movement_type
+    `);
+    const [categoryRows] = await businessSequelize.query(`
+        SELECT category, COUNT(*) AS count
+        FROM products
+        GROUP BY category
+        ORDER BY category
+    `);
+    const embeddingCoverage = checkProductEmbeddingCoverage(products, productEmbeddings);
+    const stockOpeningBalance = await checkStockOpeningBalance(businessSequelize);
+
+    return {
+        ok: embeddingCoverage.ok && stockOpeningBalance.ok,
+        movement_type_totals: summarizeMovementTypeTotals(movementTypeRows),
+        product_category_distribution: summarizeProductCategoryDistribution(categoryRows),
+        embedding_coverage: embeddingCoverage,
+        stock_opening_balance: stockOpeningBalance
+    };
+}
+
 /**
  * Builds one target's full data verification entry: source/target entity
  * counts (net of this run's own skip/conflict findings), `legacy_id_map`
@@ -230,17 +346,43 @@ async function buildTargetDataVerification({
 
     try {
         const tenantSequelize = createLegacyTenantSourceConnection(config, target.legacy_tenant_db_name);
-        const tenantSnapshot = await readLegacyTenantSnapshot(tenantSequelize);
+        const [tenantSnapshot, productSnapshot] = await Promise.all([
+            readLegacyTenantSnapshot(tenantSequelize),
+            readLegacyProductSnapshot(tenantSequelize)
+        ]);
 
         const businessSequelize = createBusinessTargetConnection(config, target.target_business_db_name);
-        const [staffAccounts, accountStaffAssignments, locations, terminalIdentities] = await Promise.all([
+        const [
+            staffAccounts,
+            accountStaffAssignments,
+            locations,
+            terminalIdentities,
+            productFolders,
+            products,
+            inventoryMovements,
+            productEmbeddings
+        ] = await Promise.all([
             selectAll(businessSequelize, 'staff_accounts'),
             selectAll(businessSequelize, 'account_staff_assignments'),
             selectAll(businessSequelize, 'locations'),
-            selectAll(businessSequelize, 'terminal_identities')
+            selectAll(businessSequelize, 'terminal_identities'),
+            selectAll(businessSequelize, 'product_folders'),
+            selectAll(businessSequelize, 'products'),
+            selectAll(businessSequelize, 'inventory_movements'),
+            selectAll(businessSequelize, 'product_embeddings')
         ]);
 
-        const skippedByEntity = { staff_account: 0, business_membership: 0, account_staff_assignment: 0, location: 0, terminal_identity: 0 };
+        const skippedByEntity = {
+            staff_account: 0,
+            business_membership: 0,
+            account_staff_assignment: 0,
+            location: 0,
+            terminal_identity: 0,
+            product_folder: 0,
+            product: 0,
+            inventory_movement: 0,
+            product_embedding: 0
+        };
         openFindings
             .filter((finding) => String(finding.legacy_tenant_id) === String(legacyTenantId))
             .forEach((finding) => {
@@ -273,13 +415,39 @@ async function buildTargetDataVerification({
                 source_count: tenantSnapshot.terminalRegistry.length,
                 expected_target_count: tenantSnapshot.terminalRegistry.length - skippedByEntity.terminal_identity,
                 target_count: terminalIdentities.length
+            },
+            {
+                entity: 'product_folders',
+                source_count: productSnapshot.itemFolders.length,
+                expected_target_count: productSnapshot.itemFolders.length - skippedByEntity.product_folder,
+                target_count: productFolders.length
+            },
+            {
+                entity: 'products',
+                source_count: productSnapshot.items.length,
+                expected_target_count: productSnapshot.items.length - skippedByEntity.product,
+                target_count: products.length
+            },
+            {
+                entity: 'inventory_movements',
+                source_count: productSnapshot.stockMovements.length + productSnapshot.items.length,
+                expected_target_count: productSnapshot.stockMovements.length + productSnapshot.items.length - skippedByEntity.inventory_movement,
+                target_count: inventoryMovements.length
+            },
+            {
+                entity: 'product_embeddings',
+                source_count: productSnapshot.itemEmbeddings.length,
+                expected_target_count: productSnapshot.itemEmbeddings.length - skippedByEntity.product_embedding,
+                target_count: productEmbeddings.length
             }
         ]);
 
         const legacyTenantSource = target.legacy_tenant_db_name;
         const expectedLegacyKeys = [
             ...tenantSnapshot.users.map((user) => `${legacyTenantSource}|users|${user.user_id}`),
-            ...tenantSnapshot.locations.map((location) => `${legacyTenantSource}|tenant_locations|${location.location_id}`)
+            ...tenantSnapshot.locations.map((location) => `${legacyTenantSource}|tenant_locations|${location.location_id}`),
+            ...productSnapshot.items.map((item) => `${legacyTenantSource}|items|${item.item_id}`),
+            ...productSnapshot.itemFolders.map((folder) => `${legacyTenantSource}|item_folders|${folder.folder_id}`)
         ];
         const mapCompleteness = checkMapCompleteness({ expectedLegacyKeys, mappedLegacyKeys });
 
@@ -290,14 +458,20 @@ async function buildTargetDataVerification({
             terminalIdentities,
             locationIds: locations.map((location) => location.id)
         });
+        const productReconciliation = await buildProductReconciliation({
+            businessSequelize,
+            products,
+            productEmbeddings
+        });
 
         return {
             legacy_tenant_id: legacyTenantId,
             target_business_db_name: target.target_business_db_name,
-            ok: dataCounts.ok && mapCompleteness.ok && relationships.ok,
+            ok: dataCounts.ok && mapCompleteness.ok && relationships.ok && productReconciliation.ok,
             data_counts: dataCounts,
             map_completeness: mapCompleteness,
-            required_relationships: relationships
+            required_relationships: relationships,
+            product_reconciliation: productReconciliation
         };
     } catch (error) {
         return {
