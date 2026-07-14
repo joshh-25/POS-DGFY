@@ -112,7 +112,7 @@ module.exports = {
     // radius of (lat, lng)").
     await addIndexIfMissing('storefront_discovery_index', ['latitude', 'longitude'], {
       name: 'idx_storefront_discovery_geo_spatial',
-      type: 'BTREE'
+      using: 'BTREE'
     });
 
     // --- Add FULLTEXT index on search_text ----
