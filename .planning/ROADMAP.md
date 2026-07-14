@@ -495,7 +495,24 @@ Plans:
   4. DGFY account membership/assignment migration becomes optional linkage evidence rather than the only way staff can access a business; accepted memberships still link when present, but missing DGFY membership does not invalidate tenant-local staff.
   5. Verification distinguishes product/inventory migration fidelity from staff-auth linkage repair, so Phase 13 data proof is not blocked by pending DGFY invites while accepted staff credential migration remains auditable.
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 13.5-01-PLAN.md — ADR 0028 tenant-local-staff-first amendment + dgfy-foundation.md/dgfy-data-migration-map.md updates (governance: ADR before implementation)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 13.5-02-PLAN.md — Additive staff_credentials migration + dgfyBusinessContract entry (same commit) + StaffCredential model + dgfy-api assumption corrections + blocking schema-apply gate
+
+**Wave 3** *(blocked on Wave 2 — mapper payload must match applied DDL)*
+
+- [ ] 13.5-03-PLAN.md — Mapper credential classification (bcrypt vs placeholder → reset_required finding), enum defect fix, apply.js staff related-target writes with idempotent staff_account_id injection
+
+**Wave 4** *(blocked on Wave 3 — verify set consumes new reason codes)*
+
+- [ ] 13.5-04-PLAN.md — Dry-run report credential redaction (closes existing entity-1 hash leak) + verifyData staff_auth split so Phase 13 proof turns green without hiding linkage findings
 
 ### Phase 14: Sales History Migration & Full Verification
 
