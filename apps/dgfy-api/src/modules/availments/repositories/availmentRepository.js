@@ -153,18 +153,26 @@ export class AvailmentRepository {
 
     /**
      * Resolves businessId's active/verified tenant database, then runs
-     * `fn(Availment)` against it. Any error surfaced while resolving the model
-     * or running the query is normalized to
+     * `fn(Availment, databaseName)` against it. Any error surfaced while
+     * resolving the model or running the query is normalized to
      * TenantDatabaseUnavailableError('unreachable', ...) unless it is
      * already one of the known domain errors (never double-wrapped).
+     *
+     * WR-04 fix (09-REVIEW.md): `databaseName` is passed to `fn` so callers
+     * that need sibling models (AvailmentItem, AvailmentDiscount, etc.) can
+     * derive them via `this.tenantConnector.getModels(databaseName)`
+     * directly, instead of calling `this.resolveDatabaseName(businessId)` a
+     * SECOND time inside the callback — a redundant extra registry lookup
+     * on every write path whose result was not guaranteed to observe the
+     * same registry state as the first lookup above.
      * @param {string} businessId
-     * @param {(model: Object) => Promise<any>} fn
+     * @param {(model: Object, databaseName: string) => Promise<any>} fn
      */
     async withModel(businessId, fn) {
         const databaseName = await this.resolveDatabaseName(businessId);
         try {
             const model = this.resolveModel(databaseName);
-            return await fn(model);
+            return await fn(model, databaseName);
         } catch (error) {
             if (
                 error instanceof TenantDatabaseUnavailableError
@@ -250,8 +258,7 @@ export class AvailmentRepository {
     } = {}) {
         if (!businessId) throw new Error('AvailmentRepository.addLine requires businessId.');
 
-        return this.withModel(businessId, async (Availment) => {
-            const databaseName = await this.resolveDatabaseName(businessId);
+        return this.withModel(businessId, async (Availment, databaseName) => {
             const models = this.tenantConnector.getModels(databaseName);
             const { AvailmentItem } = models;
 
@@ -289,8 +296,7 @@ export class AvailmentRepository {
     async updateLine(businessId, availmentId, lineId, { quantity, stockEffectType } = {}) {
         if (!businessId) throw new Error('AvailmentRepository.updateLine requires businessId.');
 
-        return this.withModel(businessId, async (Availment) => {
-            const databaseName = await this.resolveDatabaseName(businessId);
+        return this.withModel(businessId, async (Availment, databaseName) => {
             const models = this.tenantConnector.getModels(databaseName);
             const { AvailmentItem } = models;
 
@@ -327,8 +333,7 @@ export class AvailmentRepository {
     async cancelLine(businessId, availmentId, lineId) {
         if (!businessId) throw new Error('AvailmentRepository.cancelLine requires businessId.');
 
-        return this.withModel(businessId, async (Availment) => {
-            const databaseName = await this.resolveDatabaseName(businessId);
+        return this.withModel(businessId, async (Availment, databaseName) => {
             const models = this.tenantConnector.getModels(databaseName);
             const { AvailmentItem } = models;
 
@@ -360,8 +365,7 @@ export class AvailmentRepository {
     async restoreLine(businessId, availmentId, lineId) {
         if (!businessId) throw new Error('AvailmentRepository.restoreLine requires businessId.');
 
-        return this.withModel(businessId, async (Availment) => {
-            const databaseName = await this.resolveDatabaseName(businessId);
+        return this.withModel(businessId, async (Availment, databaseName) => {
             const models = this.tenantConnector.getModels(databaseName);
             const { AvailmentItem } = models;
 
@@ -394,8 +398,7 @@ export class AvailmentRepository {
     async recordDiscount(businessId, availmentId, discount = {}) {
         if (!businessId) throw new Error('AvailmentRepository.recordDiscount requires businessId.');
 
-        return this.withModel(businessId, async (Availment) => {
-            const databaseName = await this.resolveDatabaseName(businessId);
+        return this.withModel(businessId, async (Availment, databaseName) => {
             const models = this.tenantConnector.getModels(databaseName);
             const { AvailmentDiscount } = models;
 
@@ -451,8 +454,7 @@ export class AvailmentRepository {
         const resolvedFulfillmentMode = fulfillmentMode || 'dine_in';
         if (!businessId) throw new Error('AvailmentRepository.finalizePersist requires businessId.');
 
-        return this.withModel(businessId, async (Availment) => {
-            const databaseName = await this.resolveDatabaseName(businessId);
+        return this.withModel(businessId, async (Availment, databaseName) => {
             const models = this.tenantConnector.getModels(databaseName);
             const { Availment: AvailmentModel, Payment: PaymentModel, Receipt: ReceiptModel } = models;
             const sequelize = AvailmentModel.sequelize;
