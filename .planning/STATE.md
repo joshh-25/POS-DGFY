@@ -5,16 +5,16 @@ milestone_name: Legacy Data Migration
 current_phase: 12
 current_phase_name: scope-unblock-schema-extension
 status: executing
-stopped_at: Phase 12 context gathered
-last_updated: "2026-07-14T09:50:22.683Z"
+stopped_at: "Phase 12 Plan 04 blocked: tenant DB auth failure, awaiting operator fix"
+last_updated: "2026-07-14T10:11:37.038Z"
 last_activity: 2026-07-14
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 14
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 72
-  completed_plans: 65
-  percent: 71
+  completed_plans: 69
+  percent: 79
 ---
 
 # Project State
@@ -138,6 +138,7 @@ Recent decisions affecting current work:
 - ~~[Phase 8] CR-02/CR-03 row-lock race~~ — RESOLVED by P12 (row-locked reads via `lock: transaction.LOCK.UPDATE`) and live-confirmed 2026-07-13 via 08-UAT.md Test 3: concurrent `cancelBooking()`/`closeShift()` calls against lima-dgfy-dev showed exactly one success + one clean rejection each, no double capacity release, no duplicate close event.
 - [Roadmap v2.1] Open design decisions flagged by research, to resolve during Phase 13 planning (per SUMMARY.md's explicit recommendation for a discuss-phase/spec pass before mapper code): (1) multi-location stock/transfer target design — no non-lossy target exists in the new schema (`products.stock_count` is a single scalar, no location dimension, no `transfer` movement type); (2) `product_composition`/BOM in/out-of-scope decision — currently undecided; (3) `item_location_stocks` mapping target — informs whether it becomes an opening-balance `inventory_movements` row (current LDM/PIM wording) or something else; (4) `product_embeddings` cardinality (one row per product vs. per product-per-model-version) affects the recommended unique constraint shape.
 - [Roadmap v2.1] Open design decisions flagged by research, to resolve during Phase 14 planning: (1) whether `pos_transaction_lines` → `availment_items` is definitively in scope (REQUIREMENTS.md's SHM-02 says yes, confirming this — but the per-field FK classification for `pos_transactions`' ~15 FK-shaped fields, e.g. `shift_id`/`terminal_id`/`fnb_check_id`/`fnb_table_id`, still needs an explicit resolvable/nulled-with-finding/opaque-snapshot decision per field); (2) watermark/checkpoint extension design for a live, continuously-growing source table — no existing precedent in this codebase (Phase 3's checkpoint pattern was only proven against small, static tables).
+- [Phase 12 Plan 04] Tenant DB blocked: migration-runner .env DB user 'sieitzsqladmin' rejected by lima-dgfy-dev MySQL (only sku_inventory_user provisioned) and DGFY_BUSINESS_DB_NAMES not configured -- schema migrate/verify cannot prove success criteria #2-#4 until operator fixes credentials/target config. See 12-04-SUMMARY.md.
 
 ## Deferred Items
 
@@ -152,6 +153,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-14T09:01:07.812Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-scope-unblock-schema-extension/12-CONTEXT.md
+Last session: 2026-07-14T10:11:37.031Z
+Stopped at: Phase 12 Plan 04 blocked: tenant DB auth failure, awaiting operator fix
+Resume file: .planning/phases/12-scope-unblock-schema-extension/12-04-PLAN.md
