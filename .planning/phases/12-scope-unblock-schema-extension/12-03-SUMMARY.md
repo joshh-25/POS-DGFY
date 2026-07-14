@@ -144,3 +144,13 @@ None - no external service configuration required.
 ---
 *Phase: 12-scope-unblock-schema-extension*
 *Completed: 2026-07-14*
+
+## Self-Check: PASSED
+
+- FOUND: apps/dgfy-api/src/modules/compliance/repositories/complianceModeStateRepository.js
+- FOUND: apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js
+- FOUND: apps/dgfy-api/tests/unit/modules/compliance/complianceModeStateRepository.test.js
+- FOUND: apps/dgfy-api/tests/unit/modules/compliance/complianceReviewDemotion.test.js
+- FOUND commit 1201158f (Task 1)
+- FOUND commit ca77bdbb (Task 2)
+- FOUND commit 5af50e74 (docs: SUMMARY.md)
