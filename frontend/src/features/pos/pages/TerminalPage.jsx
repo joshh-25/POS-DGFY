@@ -25,14 +25,17 @@ import {
   completeDgfyLegacyLink,
   getStoredDgfyToken,
   listDgfyAccountCompanies,
+  listDgfyAccountCompaniesForTenantSession,
   loginDgfyAccount,
   logoutDgfyAccount,
   requestDgfyLegacyLinkEmailOtp,
   startDgfyPosSession,
   startDgfyTenantSession,
-  startDgfyLegacyRegistrationHandoff
+  startDgfyLegacyRegistrationHandoff,
+  switchDgfyCompanyForTenantSession
 } from '@/services/dgfyAuthService.js';
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
+import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
 import { createItem } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
@@ -40,7 +43,13 @@ import { getAllUsers } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import api from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
-import { clearBrowserSession, getAccessToken, getCompanyToken, refreshBrowserSession } from '@/services/browserSession.js';
+import {
+  clearBrowserSession,
+  getAccessToken,
+  getCompanyToken,
+  preparePosCompanySwitchHandoff,
+  refreshBrowserSession
+} from '@/services/browserSession.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
 import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
@@ -128,6 +137,22 @@ const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
 const TERMINAL_OPERATION_REPLAY_BATCH_SIZE = 25;
 const DESKTOP_TERMINAL_BREAKPOINT_PX = IS_DGFY_POS_SURFACE ? 1024 : 1280;
+
+const normalizeAccessibleCompanies = (payload = {}) => {
+  const candidates = [
+    ...(Array.isArray(payload?.companies) ? payload.companies : []),
+    ...(Array.isArray(payload?.owned_companies) ? payload.owned_companies : []),
+    ...(Array.isArray(payload?.invited_companies) ? payload.invited_companies : [])
+  ];
+  const seenTenantIds = new Set();
+
+  return candidates.filter((company) => {
+    const tenantId = String(company?.tenant_id || '').trim();
+    if (!tenantId || seenTenantIds.has(tenantId)) return false;
+    seenTenantIds.add(tenantId);
+    return true;
+  });
+};
 const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt'];
 const OPERATIONS_VIEW_MODES = [
   'incoming_queue',
@@ -463,6 +488,7 @@ export default function TerminalPage() {
     companies: [],
     loadingCompanies: false
   });
+  const [companySwitching, setCompanySwitching] = useState(false);
   const [adminShiftPromptSkipped, setAdminShiftPromptSkipped] = useState(false);
   const [cashierUnlockSession, setCashierUnlockSession] = useState(null);
   const [dgfyAdminBypassActive, setDgfyAdminBypassActive] = useState(false);
@@ -680,6 +706,32 @@ export default function TerminalPage() {
   const canAdminBypassShiftPrompt = userIsAdminLike || dgfyAdminBypassActive;
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
+
+  useEffect(() => {
+    if (locked || !isOnline || !userIsAdminLike) return undefined;
+
+    let cancelled = false;
+    setDgfyPosState((previous) => ({ ...previous, loadingCompanies: true }));
+    listDgfyAccountCompaniesForTenantSession()
+      .then((payload) => {
+        if (cancelled) return;
+        setDgfyPosState((previous) => ({
+          ...previous,
+          authenticated: true,
+          companies: normalizeAccessibleCompanies(payload),
+          loadingCompanies: false
+        }));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // A legacy IMS account may not have DGFY memberships. Keep its profile usable.
+        setDgfyPosState((previous) => ({ ...previous, loadingCompanies: false }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOnline, locked, terminalUser?.user_id, userIsAdminLike]);
   const setupFlowSearchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const tenantSetupFlowRequested = useMemo(
     () => isTenantSetupFlowRequested(setupFlowSearchParams),
@@ -1907,6 +1959,9 @@ export default function TerminalPage() {
   }, [canTransactPos, locked, shiftState.shift]);
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
+  const companySwitchBlockedReason = activeShiftId
+    ? 'Close the active shift before switching companies.'
+    : '';
   const requiresOpenShift = !locked && !shiftState.loading && !activeShiftId;
   const shiftOpenPromptBlockedBySetup = setupFlowActive || !setupFlowState.posRequirements.terminalRegistryReady;
   const suppressAdminShiftPrompt = canAdminBypassShiftPrompt && adminShiftPromptSkipped;
@@ -1914,6 +1969,36 @@ export default function TerminalPage() {
     && terminalUser.dgfy_link_status
     && terminalUser.dgfy_link_status !== 'linked'
     && !legacyDgfyLinkBannerDismissed;
+
+  const handleCompanySwitch = useCallback(async (nextTenantId) => {
+    const normalizedTenantId = String(nextTenantId || '').trim();
+    const currentTenantId = String(terminalUser?.company?.id || '').trim();
+    if (!normalizedTenantId || normalizedTenantId === currentTenantId) return;
+    if (!userIsAdminLike) {
+      toast.error('Only an administrator can switch companies from POS.');
+      return;
+    }
+    if (companySwitchBlockedReason) {
+      toast.error(companySwitchBlockedReason);
+      return;
+    }
+
+    setCompanySwitching(true);
+    try {
+      await switchDgfyCompanyForTenantSession({ tenantId: normalizedTenantId });
+      if (typeof window !== 'undefined') {
+        // Terminal and shift-lock state are tenant-owned and must not cross company boundaries.
+        setStoredTerminalLock(false);
+        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+        preparePosCompanySwitchHandoff({ tenantId: normalizedTenantId });
+        window.location.assign('/terminal');
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Unable to switch companies. Please try again.');
+    } finally {
+      setCompanySwitching(false);
+    }
+  }, [companySwitchBlockedReason, terminalUser?.company?.id, userIsAdminLike]);
 
   const handleRequestLegacyLinkOtp = async () => {
     setLegacyLinkState((prev) => ({ ...prev, loading: true }));
@@ -4375,6 +4460,10 @@ export default function TerminalPage() {
           canCloseDay={canCloseShift}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           terminalUser={terminalUser}
+          accessibleCompanies={mergeCurrentCompanyWithMemberships(terminalUser, dgfyPosState.companies)}
+          companySwitching={companySwitching}
+          companySwitchBlockedReason={companySwitchBlockedReason}
+          onSwitchCompany={handleCompanySwitch}
           posViewMode={posViewMode}
           workflowMode={workflowMode}
           isMsmeMode={isMsmeMode}

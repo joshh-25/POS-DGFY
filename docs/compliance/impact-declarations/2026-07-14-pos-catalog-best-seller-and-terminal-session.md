@@ -25,7 +25,7 @@ Major. This adds a server-owned POS best-seller catalog projection, catalog avai
 ## Affected Surfaces
 
 - POS catalog and catalog-override settings.
-- POS terminal setup, availability filtering, and company switching.
+- POS terminal setup, availability filtering, starter-item image confirmation, and company switching.
 - Tenant schema repair and runtime schema readiness checks.
 
 ## Compliance Preconditions
