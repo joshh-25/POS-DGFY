@@ -110,6 +110,7 @@ const ENTITY_TARGET_CONFIG = {
     tenant_ownership_metadata: { primaryKey: 'id', naturalKeyColumns: ['business_id'] },
     business_membership: { primaryKey: 'id', naturalKeyColumns: ['business_id', 'account_id'] },
     staff_account: { primaryKey: 'id', naturalKeyColumns: ['email'] },
+    staff_credential: { primaryKey: 'id', naturalKeyColumns: ['staff_account_id'] },
     account_staff_assignment: { primaryKey: 'id', naturalKeyColumns: ['dgfy_account_id'] },
     location: { primaryKey: 'id', naturalKeyColumns: ['name'] },
     terminal_identity: { primaryKey: 'id', naturalKeyColumns: ['terminal_code'] },
@@ -458,6 +459,7 @@ async function applyBatchAndRecord({ metaSequelize, targetSequelize, runScope, l
     });
     batchResults.forEach(({ entry, status, dgfyId }) => recordResult(summary, results, entry, status, dgfyId));
     summary.checkpoints_marked += 1;
+    return batchResults;
 }
 
 function parseProductAttributes(value) {
@@ -705,11 +707,28 @@ export async function runApplyTransformations({ config, metaSequelize, coreSeque
             return { legacy_tenant_id: target.legacy_tenant_id, ...staffResult };
         });
         // eslint-disable-next-line no-await-in-loop
-        await applyBatchAndRecord({
+        const staffBatchResults = await applyBatchAndRecord({
             metaSequelize, targetSequelize: businessSequelize, runScope,
             legacyTenantId: target.legacy_tenant_id, entityType: 'staff_account',
             entries: staffEntries, dgfyDatabase: target.target_business_db_name, summary, results
         });
+
+        for (const { entry, status, dgfyId } of staffBatchResults) {
+            if (status !== 'inserted' && status !== 'reconciled') {
+                continue; // eslint-disable-line no-continue
+            }
+            for (const related of entry.related_targets || []) {
+                const relatedWithStaffId = {
+                    ...related,
+                    target_payload: {
+                        ...related.target_payload,
+                        staff_account_id: Number(dgfyId)
+                    }
+                };
+                // eslint-disable-next-line no-await-in-loop
+                await writeRelatedTargetRow(businessSequelize, relatedWithStaffId);
+            }
+        }
 
         // business_membership
         const tenantMemberships = landlordSnapshot.memberships.filter(
