@@ -42,6 +42,7 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260711000001-add-pickup-cash-collection-fields.cjs',
     '20260711000002-add-item-folder-active-contract.cjs',
     '20260711000003-repair-pickup-cash-collection-columns.cjs',
+    '20260714000002-add-pos-best-seller-contract.cjs',
     '20260502000001-add-services-mode-booking-tables.cjs'
 ]);
 
@@ -66,7 +67,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
     items: ['item_id', 'vat_type'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter', 'is_active'],
-    pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available'],
+    pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available', 'pos_best_seller_mode'],
     pos_transactions: [
         'pos_transaction_id',
         'document_type',
@@ -170,7 +171,8 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
         }
     },
     pos_catalog_overrides: {
-        pos_always_available: { allowNull: false }
+        pos_always_available: { allowNull: false },
+        pos_best_seller_mode: { allowNull: false }
     },
     pos_transaction_lines: {
         stock_effect_type: { allowNull: false },

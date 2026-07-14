@@ -39,6 +39,8 @@ const toPositiveInt = (value) => {
 };
 const TERMINAL_REGISTRY_MODE_VALUES = new Set(['warn', 'enforce']);
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const POS_BEST_SELLER_SETTINGS_KEY = 'pos_best_seller_settings';
+const DEFAULT_BEST_SELLER_SETTINGS = Object.freeze({ enabled: true, lookback_days: 30, top_limit: 3 });
 const LOW_CONFIDENCE_BACKFILL_SOURCES = new Set(['active_location_fallback', 'no_resolution']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const parseJsonLoosely = (value) => {
@@ -143,9 +145,19 @@ const POS_CATALOG_OVERRIDE_ATTRIBUTES = [
     'item_id',
     'pos_visible',
     'pos_always_available',
+    'pos_best_seller_mode',
     'pos_image_path',
     'pos_image_url'
 ];
+
+const normalizeBestSellerSettings = (value) => {
+    const parsed = parseJsonLoosely(value);
+    return {
+        enabled: parsed?.enabled !== false,
+        lookback_days: DEFAULT_BEST_SELLER_SETTINGS.lookback_days,
+        top_limit: DEFAULT_BEST_SELLER_SETTINGS.top_limit
+    };
+};
 
 const safeGetModel = (name) => {
     try {
@@ -311,6 +323,58 @@ const loadCatalogOverridesMap = async (itemIds = [], options = {}) => {
     }
 };
 
+const loadBestSellerItemIds = async (itemIds = [], options = {}) => {
+    const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+        .map((itemId) => Number.parseInt(itemId, 10))
+        .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+    if (normalizedItemIds.length === 0) return new Set();
+
+    const SystemSetting = safeGetModel('SystemSetting');
+    const PosTransaction = safeGetModel('PosTransaction');
+    const PosTransactionLine = safeGetModel('PosTransactionLine');
+    const sequelize = dbStore.getStore()?.sequelize || safeGetModel('sequelize');
+    if (
+        !SystemSetting || typeof SystemSetting.findOne !== 'function'
+        || !PosTransaction || !PosTransactionLine || typeof PosTransactionLine.findAll !== 'function'
+        || !sequelize || typeof sequelize.fn !== 'function' || typeof sequelize.col !== 'function' || typeof sequelize.literal !== 'function'
+    ) return new Set();
+
+    const settingsRow = await SystemSetting.findOne({
+        where: { setting_key: POS_BEST_SELLER_SETTINGS_KEY },
+        attributes: ['setting_value']
+    });
+    const settings = normalizeBestSellerSettings(settingsRow?.setting_value);
+    if (settings.enabled !== true) return new Set();
+
+    const since = new Date(Date.now() - (settings.lookback_days * 24 * 60 * 60 * 1000));
+    const rows = await PosTransactionLine.findAll({
+        where: { item_id: { [Op.in]: normalizedItemIds } },
+        include: [{
+            model: PosTransaction,
+            as: 'transaction',
+            attributes: [],
+            required: true,
+            where: {
+                status: 'completed',
+                payment_status: 'paid',
+                created_at: { [Op.gte]: since }
+            }
+        }],
+        attributes: [
+            'item_id',
+            [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('PosTransactionLine.quantity')), 0), 'sold_quantity']
+        ],
+        group: ['PosTransactionLine.item_id'],
+        order: [[sequelize.literal('sold_quantity'), 'DESC'], ['item_id', 'ASC']],
+        limit: settings.top_limit,
+        raw: true,
+        transaction: options.transaction
+    });
+    return new Set(rows
+        .filter((row) => Number(row?.sold_quantity || 0) > 0)
+        .map((row) => Number(row.item_id)));
+};
+
 const loadStorefrontCatalogImageMap = async (itemIds = [], options = {}) => {
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
         return new Map();
@@ -385,6 +449,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
     const normalizedItems = (Array.isArray(items) ? items : []).map((item) => toPlain(item));
     const itemIds = normalizedItems.map((item) => item.item_id);
     const overrideMap = await loadCatalogOverridesMap(itemIds, options);
+    const autoBestSellerItemIds = await loadBestSellerItemIds(itemIds, options);
     const storefrontImageMap = await loadStorefrontCatalogImageMap(itemIds, options);
     const primaryBarcodeMap = options.includePrimaryBarcode === true
         ? await loadPrimaryBarcodeMap(itemIds, options)
@@ -395,10 +460,16 @@ const applyCatalogOverrides = async (items, options = {}) => {
             const override = overrideMap.get(item.item_id);
             const storefrontImage = storefrontImageMap.get(item.item_id);
             const posVisible = resolveCatalogVisibility({ item, override, surface: 'pos' });
+            const bestSellerMode = ['force', 'never'].includes(override?.pos_best_seller_mode)
+                ? override.pos_best_seller_mode
+                : 'auto';
             return {
                 ...item,
                 pos_visible: posVisible,
                 pos_always_available: override?.pos_always_available === true,
+                pos_best_seller_mode: bestSellerMode,
+                is_best_seller: bestSellerMode === 'force'
+                    || (bestSellerMode === 'auto' && autoBestSellerItemIds.has(Number(item.item_id))),
                 pos_image_path: override?.pos_image_path || null,
                 pos_image_url: storefrontImage?.storefront_image_url || null,
                 pos_image_variants: deriveImageAssetVariantUrls({
@@ -2894,6 +2965,9 @@ export const posRepository = {
                 ...itemWithLocationStock,
                 pos_visible: posVisible,
                 pos_always_available: override?.pos_always_available === true,
+                pos_best_seller_mode: ['force', 'never'].includes(override?.pos_best_seller_mode)
+                    ? override.pos_best_seller_mode
+                    : 'auto',
                 pos_image_path: override?.pos_image_path || null,
                 pos_image_url: override?.pos_image_url || null,
                 pos_image_variants: deriveImageAssetVariantUrls({
@@ -3139,6 +3213,9 @@ export const posRepository = {
             pos_always_available: Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
                 ? payload.pos_always_available === true
                 : (existing?.pos_always_available ?? false),
+            pos_best_seller_mode: Object.prototype.hasOwnProperty.call(payload, 'pos_best_seller_mode')
+                ? payload.pos_best_seller_mode
+                : (existing?.pos_best_seller_mode || 'auto'),
             pos_image_path: payload.pos_image_path ?? (existing?.pos_image_path ?? null),
             pos_image_url: payload.pos_image_url ?? (existing?.pos_image_url ?? null)
         };

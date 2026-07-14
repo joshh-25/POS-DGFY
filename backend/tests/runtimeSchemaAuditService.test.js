@@ -42,6 +42,7 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260711000001-add-pickup-cash-collection-fields.cjs' },
         { name: '20260711000002-add-item-folder-active-contract.cjs' },
         { name: '20260711000003-repair-pickup-cash-collection-columns.cjs' },
+        { name: '20260714000002-add-pos-best-seller-contract.cjs' },
         { name: '20260502000001-add-services-mode-booking-tables.cjs' }
     ])),
     getQueryInterface: () => ({
@@ -91,7 +92,8 @@ const buildHealthySequelizeMock = () => ({
                     item_id: {},
                     pos_visible: {},
                     pos_image_url: {},
-                    pos_always_available: { allowNull: false }
+                    pos_always_available: { allowNull: false },
+                    pos_best_seller_mode: { allowNull: false }
                 },
                 pos_transactions: {
                     pos_transaction_id: {},

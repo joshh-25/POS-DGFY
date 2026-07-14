@@ -84,14 +84,16 @@ describe('tenant schema sync script contracts', () => {
   it('builds declared additive repair SQL for required POS schema columns', () => {
     const repairs = buildTenantSchemaRepairSql([
       { table: 'pos_catalog_overrides', column: 'pos_always_available' },
+      { table: 'pos_catalog_overrides', column: 'pos_best_seller_mode' },
       { table: 'pos_transaction_lines', column: 'stock_effect_type' },
       { table: 'pos_transaction_lines', column: 'stock_exempt_reason' }
     ]);
 
-    expect(repairs).toHaveLength(3);
+    expect(repairs).toHaveLength(4);
     expect(repairs[0].sql).toContain('ADD COLUMN `pos_always_available`');
-    expect(repairs[1].sql).toContain("ENUM('inventory_issue','stock_exempt')");
-    expect(repairs[2].sql).toContain('ADD COLUMN `stock_exempt_reason`');
+    expect(repairs[1].sql).toContain('ADD COLUMN `pos_best_seller_mode`');
+    expect(repairs[2].sql).toContain("ENUM('inventory_issue','stock_exempt')");
+    expect(repairs[3].sql).toContain('ADD COLUMN `stock_exempt_reason`');
   });
 
   it('preserves missing-column evidence in tenant sync failure records', () => {

@@ -4240,6 +4240,9 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
                     : {}),
                 ...(Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
                     ? { pos_always_available: payload.pos_always_available === true }
+                    : {}),
+                ...(Object.prototype.hasOwnProperty.call(payload, 'pos_best_seller_mode')
+                    ? { pos_best_seller_mode: payload.pos_best_seller_mode }
                     : {})
             });
             return ok(toSerializable(data));
