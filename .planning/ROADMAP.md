@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 11: Order Fulfillment & Delivery Coordination** - Business staff can process incoming online orders through a shared fulfillment pipeline, including manual courier assignment and payout tracking. (completed 2026-07-14)
 - [x] **Phase 12: Scope Unblock + Schema Extension** - ADR 0029 amendment and additive schema changes unblock every new legacy-data mapper. (completed 2026-07-14)
 - [ ] **Phase 13: Product & Inventory Migration** - Legacy items/folders/stock-movements/embeddings migrate into the new products/inventory schema with proven fidelity. Product/inventory data passed rehearsal across 26 targets, but final phase completion is blocked by the staff-auth model correction discovered during verify.
-- [ ] **Phase 13.5: Staff Authentication Model Correction (INSERTED)** - Correct ADR 0028, tenant schema, API model assumptions, and migration rules so tenant-local staff credentials remain supported and DGFY account linking is optional.
+- [x] **Phase 13.5: Staff Authentication Model Correction (INSERTED)** - Correct ADR 0028, tenant schema, API model assumptions, and migration rules so tenant-local staff credentials remain supported and DGFY account linking is optional. (completed 2026-07-14)
 - [ ] **Phase 14: Sales History Migration & Full Verification** - Legacy POS sales history migrates into availments with provenance and void-state fidelity, and the full milestone is proven end-to-end via re-rehearsal after Phase 13.5.
 
 ## Phase Details
@@ -495,7 +495,7 @@ Plans:
   4. DGFY account membership/assignment migration becomes optional linkage evidence rather than the only way staff can access a business; accepted memberships still link when present, but missing DGFY membership does not invalidate tenant-local staff.
   5. Verification distinguishes product/inventory migration fidelity from staff-auth linkage repair, so Phase 13 data proof is not blocked by pending DGFY invites while accepted staff credential migration remains auditable.
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -512,7 +512,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 — verify set consumes new reason codes)*
 
-- [ ] 13.5-04-PLAN.md — Dry-run report credential redaction (closes existing entity-1 hash leak) + verifyData staff_auth split so Phase 13 proof turns green without hiding linkage findings
+- [x] 13.5-04-PLAN.md — Dry-run report credential redaction (closes existing entity-1 hash leak) + verifyData staff_auth split so Phase 13 proof turns green without hiding linkage findings
 
 ### Phase 14: Sales History Migration & Full Verification
 

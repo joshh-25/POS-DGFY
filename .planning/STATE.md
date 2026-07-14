@@ -6,15 +6,15 @@ current_phase: 13.5
 current_phase_name: Staff Authentication Model Correction
 status: executing
 stopped_at: Phase 13 rehearsal exposed wrong staff-auth architecture assumption
-last_updated: "2026-07-14T22:27:09Z"
+last_updated: "2026-07-14T22:36:07Z"
 last_activity: 2026-07-14
-last_activity_desc: Phase 13.5 Plan 03 complete
+last_activity_desc: Phase 13.5 Plan 04 complete
 progress:
   total_phases: 15
   completed_phases: 11
   total_plans: 82
-  completed_plans: 77
-  percent: 94
+  completed_plans: 78
+  percent: 95
 ---
 
 # Project State
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 
 Phase: 13.5 (Staff Authentication Model Correction) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
-Last activity: 2026-07-14 — Phase 13.5 Plan 03 complete
+Status: Complete — ready for Phase 14 planning/execution
+Last activity: 2026-07-14 — Phase 13.5 Plan 04 complete
 
-Progress: [█████████░] 94%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
@@ -111,6 +111,7 @@ Progress: [█████████░] 94%
 | Phase 13.5 P01 | 5min | 2 tasks | 4 files |
 | Phase 13.5 P02 | 4min | 3 tasks | 8 files |
 | Phase 13.5 P03 | 22min | 2 tasks | 5 files |
+| Phase 13.5 P04 | 45min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,8 @@ Recent decisions affecting current work:
 - [Phase 13.5]: [Phase 13.5 Plan 02]: dgfy-api adds a persistence-only StaffCredential model but no credential write/read endpoint in this plan.
 - [Phase 13.5]: [Phase 13.5 Plan 03]: Real bcrypt staff password/PIN values migrate byte-for-byte into staff_credentials; placeholder or non-bcrypt password values become reset_required with value-free reinvite findings.
 - [Phase 13.5]: [Phase 13.5 Plan 03]: staff_credentials apply idempotency uses natural-key lookup on staff_account_id after parent staff_account id resolution.
+- [Phase 13.5]: [Phase 13.5 Plan 04]: Dry-run reports redact credential-bearing payload fields into boolean evidence flags.
+- [Phase 13.5]: [Phase 13.5 Plan 04]: staff_auth verification keeps staff-linkage findings visible but non-blocking for product/inventory data_migration_ok; corrupt existing assignment rows still block.
 
 ### Pending Todos
 
@@ -156,7 +159,7 @@ Recent decisions affecting current work:
 - [Roadmap v2.1] Open design decisions flagged by research, to resolve during Phase 13 planning (per SUMMARY.md's explicit recommendation for a discuss-phase/spec pass before mapper code): (1) multi-location stock/transfer target design — no non-lossy target exists in the new schema (`products.stock_count` is a single scalar, no location dimension, no `transfer` movement type); (2) `product_composition`/BOM in/out-of-scope decision — currently undecided; (3) `item_location_stocks` mapping target — informs whether it becomes an opening-balance `inventory_movements` row (current LDM/PIM wording) or something else; (4) `product_embeddings` cardinality (one row per product vs. per product-per-model-version) affects the recommended unique constraint shape.
 - [Roadmap v2.1] Open design decisions flagged by research, to resolve during Phase 14 planning: (1) whether `pos_transaction_lines` → `availment_items` is definitively in scope (REQUIREMENTS.md's SHM-02 says yes, confirming this — but the per-field FK classification for `pos_transactions`' ~15 FK-shaped fields, e.g. `shift_id`/`terminal_id`/`fnb_check_id`/`fnb_table_id`, still needs an explicit resolvable/nulled-with-finding/opaque-snapshot decision per field); (2) watermark/checkpoint extension design for a live, continuously-growing source table — no existing precedent in this codebase (Phase 3's checkpoint pattern was only proven against small, static tables).
 - [Phase 12 Plan 04] Tenant DB blocked: migration-runner .env DB user 'sieitzsqladmin' rejected by lima-dgfy-dev MySQL (only sku_inventory_user provisioned) and DGFY_BUSINESS_DB_NAMES not configured -- schema migrate/verify cannot prove success criteria #2-#4 until operator fixes credentials/target config. See 12-04-SUMMARY.md.
-- [Phase 13 Plan 06 / Phase 13.5] Blocking architecture correction: current `dgfy_business_*.staff_accounts` has no credential target and ADR 0028 says invited staff must use DGFY accounts. This is wrong for the product requirement. Do not treat pending DGFY memberships as the core issue; correct the tenant-local staff auth model first.
+- ~~[Phase 13 Plan 06 / Phase 13.5] Blocking architecture correction: current `dgfy_business_*.staff_accounts` has no credential target and ADR 0028 says invited staff must use DGFY accounts.~~ RESOLVED by Phase 13.5 Plans 01-04: ADR/docs/schema/API assumptions/mapper/apply/reporting/verify now support tenant-local staff credentials with optional DGFY account linking. Phase 14 owns the live re-verify/re-rehearsal.
 
 ## Deferred Items
 
@@ -171,6 +174,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-14T22:27:09Z
-Stopped at: Completed 13.5-03-PLAN.md. Phase 13.5 Plan 04 remains.
+Last session: 2026-07-14T22:36:07Z
+Stopped at: Completed 13.5-04-PLAN.md. Phase 13.5 complete; Phase 14 remains.
 Resume file: None
