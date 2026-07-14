@@ -3483,12 +3483,21 @@ function CategoryManagementWorkspace() {
   const confirmLifecycleAction = async () => {
     const folder = pendingAction?.folder;
     if (!folder?.folder_id) return;
-    const replacementFolderId = Number(pendingAction?.replacementFolderId);
+    const replacementFolderId = String(pendingAction?.replacementFolderId || '').trim();
+    const replacementFolderIdNumber = Number(replacementFolderId);
+
+    if (pendingAction.type === 'delete' && folder.item_count > 0 && (!Number.isInteger(replacementFolderIdNumber) || replacementFolderIdNumber <= 0)) {
+      toast.error('Select an active replacement category before deleting this category.');
+      return;
+    }
 
     setBusy(true);
     try {
       if (pendingAction.type === 'delete') {
-        const result = await deleteFolder(folder.folder_id, Number.isInteger(replacementFolderId) ? { replacement_folder_id: replacementFolderId } : {});
+        const payload = replacementFolderId && Number.isInteger(replacementFolderIdNumber) && replacementFolderIdNumber > 0
+          ? { replacement_folder_id: replacementFolderIdNumber }
+          : {};
+        const result = await deleteFolder(folder.folder_id, payload);
         toast.success(result?.data?.message || 'Category deleted.');
       } else {
         await updateFolder(folder.folder_id, { is_active: pendingAction.type === 'activate' });
@@ -3628,13 +3637,13 @@ function CategoryManagementWorkspace() {
                 {pendingAction.type === 'delete'
                   ? (pendingAction.folder?.item_count > 0
                     ? `Delete ${pendingAction.folder?.name || 'this category'}? Its ${pendingAction.folder.item_count} assigned item(s) must move to another active category first.`
-                    : `Delete ${pendingAction.folder?.name || 'this category'} permanently? Select a replacement below if any assigned items need to move.`)
+                    : `Delete ${pendingAction.folder?.name || 'this category'}? It has no assigned active items, so no reassignment is required.`)
                   : (pendingAction.type === 'activate'
                     ? `Make ${pendingAction.folder?.name || 'this category'} available again for new POS items?`
                     : `Remove ${pendingAction.folder?.name || 'this category'} from new item selection while retaining existing item assignments?`)}
               </p>
             </div>
-            {pendingAction.type === 'delete' ? (
+            {pendingAction.type === 'delete' && pendingAction.folder?.item_count > 0 ? (
               <div className="space-y-2 px-5 py-4">
                 <Label htmlFor="pos-category-replacement">Move assigned items to <span className="font-normal text-slate-400">(required only when items are assigned)</span></Label>
                 {replacementFolders.length > 0 ? (

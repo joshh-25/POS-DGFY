@@ -363,6 +363,8 @@ export const provisionTenant = async (options) => {
             const { getTenantModels } = await import('../utils/tenantModelFactory.js');
             getTenantModels(tenantSequelize);
             await tenantSequelize.sync({ alter: true });
+            const { repairItemFolderCategoryLifecycleSchema } = await import('../../scripts/sync-tenant-schemas.js');
+            await repairItemFolderCategoryLifecycleSchema(tenantSequelize, dbName);
             logger.info(`[Provisioning] Schema synced successfully`);
 
             // 4. Seed Admin User
