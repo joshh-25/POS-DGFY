@@ -165,7 +165,7 @@ Committed scope for the v2.1 Legacy Data Migration milestone. Migration-runner-o
 
 - [x] **STAFF-01**: Tenant-local staff authentication remains supported in the DGFY tenant schema. A staff user must be able to authenticate to one business without requiring a global DGFY account.
 - [x] **STAFF-02**: Linking a tenant-local staff profile to a global DGFY account is optional. When linked, the DGFY account can support unified identity/company switching; when unlinked, tenant-local staff login still works.
-- [ ] **STAFF-03**: Legacy tenant `users.password_hash`, invitation/setup state, and POS PIN implications have an explicit migration target or intentionally documented reset/reinvite flow; they are not silently discarded.
+- [x] **STAFF-03**: Legacy tenant `users.password_hash`, invitation/setup state, and POS PIN implications have an explicit migration target or intentionally documented reset/reinvite flow; they are not silently discarded.
 - [x] **STAFF-04**: ADR 0028, `docs/database/dgfy-foundation.md`, the migration map, schema contracts, and verification gates are amended to replace the current DGFY-only staff invitation assumption with the tenant-local-staff-first model.
 
 ## v3 Requirements
@@ -309,7 +309,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VER-03 | Phase 14 | Pending (milestone-wide final re-rehearsal proof) |
 | STAFF-01 | Phase 13.5 | Complete |
 | STAFF-02 | Phase 13.5 | Complete |
-| STAFF-03 | Phase 13.5 | Pending |
+| STAFF-03 | Phase 13.5 | Complete |
 | STAFF-04 | Phase 13.5 | Complete |
 
 **Coverage:**

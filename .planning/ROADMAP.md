@@ -495,7 +495,7 @@ Plans:
   4. DGFY account membership/assignment migration becomes optional linkage evidence rather than the only way staff can access a business; accepted memberships still link when present, but missing DGFY membership does not invalidate tenant-local staff.
   5. Verification distinguishes product/inventory migration fidelity from staff-auth linkage repair, so Phase 13 data proof is not blocked by pending DGFY invites while accepted staff credential migration remains auditable.
 
-**Plans**: 2/4 plans executed
+**Plans**: 3/4 plans executed
 
 Plans:
 **Wave 1**
@@ -508,7 +508,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 — mapper payload must match applied DDL)*
 
-- [ ] 13.5-03-PLAN.md — Mapper credential classification (bcrypt vs placeholder → reset_required finding), enum defect fix, apply.js staff related-target writes with idempotent staff_account_id injection
+- [x] 13.5-03-PLAN.md — Mapper credential classification (bcrypt vs placeholder → reset_required finding), enum defect fix, apply.js staff related-target writes with idempotent staff_account_id injection
 
 **Wave 4** *(blocked on Wave 3 — verify set consumes new reason codes)*
 
@@ -549,5 +549,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 11. Order Fulfillment & Delivery Coordination | 4/4 | Complete    | 2026-07-14 |
 | 12. Scope Unblock + Schema Extension | 4/4 | Complete    | 2026-07-14 |
 | 13. Product & Inventory Migration | 5/6 | Blocked at rehearsal completion by STAFF-01..04 architecture correction |  |
-| 13.5. Staff Authentication Model Correction | 2/4 | In Progress|  |
+| 13.5. Staff Authentication Model Correction | 3/4 | In Progress|  |
 | 14. Sales History Migration & Full Verification | 0/TBD | Not started | - |
