@@ -194,6 +194,19 @@ export function computeAvailmentTotals(lines, options = {}) {
 		totalVat = 0; // VAT-exempt: no VAT for SC/PWD sales
 	} else {
 		// Standard VAT path: decompose each line and sum VAT
+		//
+		// WR-01 (09-REVIEW.md): vat_amount is computed purely from the
+		// undiscounted per-line gross, independent of appliedDiscount below —
+		// intentionally. Per Philippine BIR convention, discounts OTHER than
+		// the statutory SC/PWD exemption (promo_code, manual) do NOT reduce
+		// the VATable base; only SC/PWD sales get the VAT-exempt branch
+		// above (zero VAT + 20% off net). This means a large/100% promo_code
+		// or manual discount can legitimately produce a receipt where
+		// total_amount approaches/equals 0 while vat_amount remains
+		// positive (VAT is still owed on the undiscounted gross sale even
+		// though the discount reduces what the customer pays) — this is
+		// documented, expected BIR behavior, not a bug. Pinned by the
+		// "100%-off promo code" golden test in money.test.js.
 		totalVat = lines.reduce((sum, line) => {
 			const qty = Number(line.quantity);
 			const unitPriceCentavos = parseAmountToCentavos(line.unit_price);

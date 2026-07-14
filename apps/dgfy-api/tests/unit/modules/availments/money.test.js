@@ -480,5 +480,25 @@ describe('money.js - Integer-Centavo Money Engine', () => {
 			const ccResult = computeChange(999999, totals.total_amount, 'credit_card');
 			expect(ccResult.change_due_amount).toBeNull();
 		});
+
+		// WR-01 fix (09-REVIEW.md): pins the intentional BIR-convention
+		// behavior — a 100%-off promo_code discount zeroes total_amount but
+		// vat_amount stays positive, because ordinary (non-SC/PWD)
+		// discounts never reduce the VATable base. If this ever changes
+		// (e.g. someone "fixes" vat_amount to track the discount), this
+		// test will catch the regression.
+		it('Golden Case 7: 100%-off promo code zeroes total_amount but leaves vat_amount positive (BIR convention)', () => {
+			const lines = [{ quantity: 1, unit_price: '112.00' }];
+			const totals = computeAvailmentTotals(lines, {
+				codeDiscounts: [{ percent: 100 }]
+			});
+
+			expect(totals.subtotal_amount).toBe(11200);
+			expect(totals.discount_amount).toBe(11200); // fully capped at subtotal
+			expect(totals.total_amount).toBe(0);
+			// vat_amount remains the undiscounted-gross VAT — not reduced
+			// alongside the discount (documented BIR convention, WR-01).
+			expect(totals.vat_amount).toBe(1200);
+		});
 	});
 });
