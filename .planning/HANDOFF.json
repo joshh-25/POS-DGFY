@@ -1,8 +1,8 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-14T03:37:52.293Z",
+  "timestamp": "2026-07-14T07:35:42.631Z",
   "phase": null,
-  "phase_name": "cross-cutting: phase-09 review-fix, audit-fix, and Phase 7 rescoping discussion",
+  "phase_name": "cross-cutting: live rehearsal (Stage 1+2 proven) + v2.1 milestone kickoff paused mid-workflow",
   "phase_dir": null,
   "plan": null,
   "task": null,
@@ -10,121 +10,147 @@
   "status": "paused",
   "completed_tasks": [
     {
-      "id": "09-review-fix",
-      "name": "Phase 09 (POS Checkout & Payment) retroactive code-review fix — all 7 findings (CR-01, CR-02, WR-01..WR-05)",
+      "id": "ec2-stage1-rehearsal",
+      "name": "Built and validated a full production-parity rehearsal environment on a dedicated EC2 (ssh alias: dgfy-temp) -- real GHCR :beta amd64 images, real domains (dgfy.nicenature.space + subdomains), real Let's Encrypt TLS, real 41-tenant legacy data import, real 403MB uploads seed, real login/checkout/OTP flow confirmed working by the user",
       "status": "done",
-      "commit": "3b3bf0d2..76743ce7 (7 commits) + a9bb8aa5 (fix report) + 5f698347 (VERIFICATION.md closure note, made by orchestrator)"
-    },
-    {
-      "id": "audit-fix-F01-F03",
-      "name": "F-01 (activate-tenant registry status precondition) + F-03 (missing happy-path/idempotent test coverage)",
-      "status": "done",
-      "commit": "13e06260"
-    },
-    {
-      "id": "audit-fix-F02",
-      "name": "F-02 (verify.js never closed opened Sequelize connections — connection leak)",
-      "status": "done",
-      "commit": "7439750b"
-    },
-    {
-      "id": "audit-fix-F05-F06",
-      "name": "F-05 (activate-tenant post-mutation report-write failure misreported as exitStatus:'failed') + F-06 (extracted duplicated report-build/write/record logic into finishActivation() helper)",
-      "status": "done",
-      "commit": "8879d14f"
-    },
-    {
-      "id": "phase7-discussion",
-      "name": "Discussed and clarified real migration scope (accounts required, businesses optional/manual, inventory non-negotiable if business migrated, sales optional+tag-as-legacy, movements important/TBD) and Phase 7's actual planned scope (07-01/07-02/07-03) vs. what's really needed",
-      "status": "done (discussion only, no artifact written yet)",
       "commit": null
+    },
+    {
+      "id": "bugs-found-fixed",
+      "name": "3 real bugs found and fixed during rehearsal: (1) tenant_premium orphan-active-status-no-schema row hard-blocked legacy backend boot -- archived on rehearsal DB only; (2) migration-runner BTREE index bug (type:'BTREE' should be using:'BTREE', invalid MySQL DDL) blocked schema migrate against any fresh dgfy_core -- fixed in real repo source, UNCOMMITTED; (3) frontend :beta image bakes VITE_DGFY_AUTH_URL/VITE_SKUPERVISOR_BASE_URL to beta.dgfy.ph at build time -- rebuilt frontend locally on the EC2 with those args left empty so window.location-based sibling-domain derivation works correctly",
+      "status": "done",
+      "commit": null
+    },
+    {
+      "id": "baseline-snapshot-mechanism",
+      "name": "Snapshotted the validated Stage-1 state (mysqldump of all 43 DBs -> baseline.sql, uploads -> baseline-uploads.tar) and built+TESTED reset-to-baseline.sh on the EC2 -- confirmed it genuinely restores healthy state (all domains 200, frontend still local build, tenant_premium fix persisted, dgfy_core intact, known upload still serves)",
+      "status": "done",
+      "commit": null
+    },
+    {
+      "id": "stage2-migration-proof",
+      "name": "Ran the real Stage 2 data migration end-to-end against 26 real active tenants: schema migrate (dgfy_core + 26 business DBs, 208/208 migrations), data dry-run, data apply (176 rows written, 0 conflicts, 22.3s wall-clock), idempotency retry (0 new rows), verify (all core checks true; only open finding is 1 legitimate ADR-0028-correct pending-membership skip). Verified real resulting data directly: dgfy_core has 19 accounts/26 businesses/32 memberships/26 active registry rows; sample tenant has 1 staff/1 location/1 terminal but 0 products/0 availments/0 inventory_movements -- confirming the real, now-empirically-proven gap",
+      "status": "done",
+      "commit": null
+    },
+    {
+      "id": "gen-manifest-pending-fix",
+      "name": "Found + fixed a real manifest-generation gap: gen-manifest.sh treated 'pending'-status tenants as migratable, but confirmed in backend source (registerCompanyRequestUseCase.js) that a pending tenant reserves a db_name at registration but has NO provisioned schema until a later activation step -- can sit pending indefinitely with no real database. Fixed the rehearsal harness's SQL filter to require status='active'; this same fix is needed in the real cutover manifest logic, not just the harness",
+      "status": "done",
+      "commit": null
+    },
+    {
+      "id": "schema-gap-scoping",
+      "name": "Extensive real-schema-vs-legacy-schema comparison (products/product_folders/inventory_movements vs items/item_folders/stock_movements + all item satellite tables, fields verified via live DESCRIBE, not guessed). Reached design decisions with the user: (1) restore sku_code/cost_per_unit/vat_type/senior_pwd_discount_eligible/description/unit_of_measure as real typed columns on products (universal to any item type); (2) add ONE products.attributes JSON column for everything else variable/category-specific (nutrition, allergens, packaging, physical properties, regulatory compliance, quality control, cost breakdown, shelf life, barcodes array, min_threshold, purchase_allowance) -- rejected EAV table and rejected rigid per-concern tables, following this codebase's OWN existing precedent (Phase 10's storefront_discovery_index JSON + generated-column pattern), promote a JSON field to generated+indexed column only when it needs to be queryable; (3) legacy items.category (raw_material/packaging/product/supplies/service) does not map to new category (food/service/retail) -- resolved by treating all migrated items as generic sellable products, explicitly deferring the raw-material-vs-finished-good distinction to a future not-yet-scoped DGFY<->IMS contract, since legacy only conflates both concerns because DGFY was historically built as a module inside the SKUpervisor Food Manufacturing IMS; (4) inventory_movements' simpler taxonomy (restock/loss/adjustment/sale/booking, single stock_count, no per-location breakdown) is intentionally sufficient for DGFY's finished-goods-selling need -- legacy's manufacturing-only movement types and multi-location/FIFO/batch tracking are out of scope, not a gap to close",
+      "status": "done",
+      "commit": null
+    },
+    {
+      "id": "v21-milestone-decision",
+      "name": "Decided (with user) this work becomes a NEW v2.1 milestone, not a Phase-7 rescope (Phase 7 is a different-charter v1.0 phase) and not a plain Phase 12 tacked onto v2.0 (which is already marked complete in STATE.md/git history). Invoked /gsd-new-milestone with full context in the args; loaded init JSON (research_enabled=true, current_milestone=v2.0, phase_dir_count=11, agents_installed=true)",
+      "status": "in_progress",
+      "progress": "Init context loaded only. NOTHING WRITTEN YET to PROJECT.md/STATE.md/REQUIREMENTS.md/ROADMAP.md. Paused here on a context-budget warning (65% used) before spawning the heavy multi-agent steps (research: 4 parallel agents + synthesizer; roadmap: gsd-roadmapper agent)."
     }
   ],
   "remaining_tasks": [
     {
-      "id": "F-04-decision",
-      "name": "User must decide whether to proceed with F-04 (activate-tenant concurrency guard via GET_LOCK/RELEASE_LOCK) given the connection-pinning correctness caveat — see decisions/blockers below",
+      "id": "resume-new-milestone-workflow",
+      "name": "Resume /gsd-new-milestone (v2.1 -- Legacy Data Migration) from Step 3.5 (Verify Milestone Understanding summary + confirm), through research decision, requirements definition, and roadmap creation via gsd-roadmapper. All the context needed is already in this handoff -- do NOT re-discover the schema/design decisions above, they are settled, not open questions.",
       "status": "not_started"
     },
     {
-      "id": "phase7-rescope",
-      "name": "Draft a rescoped Phase 7 (or a fresh phase) reflecting: (a) run the real account migration once against realistic volume and verify — a lighter version of 07-01, (b) skip or lighten 07-02's full cutover-runbook ceremony since the user wants an incremental rollout, not a hard cutover, (c) fold 07-03's deferred-domain register into documenting the new inventory/sales/movements migration scope instead of the now-moot original product/POS/frontend framing",
+      "id": "confirm-item-embeddings",
+      "name": "One micro-decision was floated but never explicitly confirmed by the user: should item_embeddings (AI vector, model-specific derived artifact) be excluded from the metadata migration? Claude recommended excluding it (a future semantic-search feature should regenerate its own embeddings); the user moved on without explicitly saying yes/no. Confirm before finalizing the mapper scope.",
       "status": "not_started"
     },
     {
-      "id": "inventory-sales-movements-migration-scope",
-      "name": "New migration scope not yet built: product-catalog/inventory-items mapper (Phase 3's mappers only cover accounts/tenants/staff/branch/terminal), a sales-history mapper with a 'legacy' provenance tag/field (no such field exists yet — Availment.source_reference is scoped for storefront-order idempotency, not provenance), and an inventory_movements mapper (target table exists from Phase 8, no source mapper yet)",
+      "id": "commit-uncommitted-fixes",
+      "name": "Two real fixes sit uncommitted in the working tree: apps/dgfy-migration-runner/src/migrations/schema/20260714101000-enable-storefront-discovery-geo-search.cjs (type:'BTREE' -> using:'BTREE') and docs/database/dgfy-migration-rehearsal-progressive.md (untracked, the two-stage beta-parity-then-migration runbook written early this session). Neither has been committed yet.",
       "status": "not_started"
     },
     {
-      "id": "small-cleanup-items",
-      "name": "FSC-02 checkbox stale in REQUIREMENTS.md (already fixed in code, verified 3x independently, just needs [ ] -> [x]); compliance verification+state non-atomic write backlog item (.planning/todos/pending/2026-07-13-wrap-compliance-verification-and-state-writes-in-one-transac.md, explicitly 'required before milestone ships', small fix mirroring shiftRepository.js's transactional pattern)",
+      "id": "build-mappers",
+      "name": "The actual v2.1 milestone work once roadmapped: migration-runner schema migration adding the 6 columns + attributes JSON to products; apps/dgfy-api Product model/API updates to expose them; new pure mapper functions (items->products, item_folders->product_folders, stock_movements->inventory_movements, satellite tables folded into products.attributes) following the existing mappings.js pattern; re-rehearse against the EC2 baseline to validate.",
+      "status": "not_started"
+    },
+    {
+      "id": "sales-history-followon",
+      "name": "Sales-history migration (pos_transactions -> availments) and its needed legacy/source_system provenance field was identified as a likely-related but not-yet-scoped follow-on -- probably its own phase within v2.1, discussed only at a high level, not designed.",
       "status": "not_started"
     }
   ],
   "blockers": [
     {
-      "description": "F-04 (activate-tenant concurrency guard, 04-REVIEW.md WR-02): MySQL GET_LOCK/RELEASE_LOCK are session-scoped; Sequelize connection pooling means a naive implementation could silently run GET_LOCK and RELEASE_LOCK on different pooled connections, making the lock a no-op. Correct implementation requires pinning both calls to one connection via Sequelize's unmanaged-transaction-as-connection-affinity-handle technique, PLUS updating 7 existing test mocks in tests/activateTenant.test.js that currently stub createTargetConnection minimally. No real MySQL is available in this sandbox to empirically prove the lock actually prevents a real concurrent race — only mocked call-shape assertions are possible, which for a concurrency-correctness fix specifically gives false confidence if any detail is wrong.",
-      "type": "human_action",
-      "workaround": "Awaiting explicit user go-ahead before implementing. If approved: implement with the connection-pinning technique, add mocked tests for acquire/release/timeout paths, and explicitly document in the commit message and test file that real-concurrency behavior remains unverified in this sandbox (same convention as this repo's other RUN_*_INTEGRATION-gated live-DB tests)."
+      "description": "Context budget ran low (65% used) mid-way through /gsd-new-milestone, before any heavy subagent spawns (research researchers/synthesizer, roadmapper). Not a technical blocker -- a deliberate pause to avoid leaving the milestone half-initialized if context ran out mid-subagent-orchestration.",
+      "type": "technical",
+      "workaround": "Resume /gsd-new-milestone fresh next session; all decisions needed are captured in this handoff and in PROJECT.md once read."
     },
     {
-      "description": "Phase 7 is paused on infra: 07-01-PLAN.md's production-volume migration rehearsal requires `docker login ghcr.io` (private registry, ghcr.io/sieitzz/dgfy-platform/*:develop images) plus a working Docker/Lima rehearsal harness (refactor-do-not-commit/local-test/). This is an operator access/infra blocker, not a code gap.",
+      "description": "F-04 (activate-tenant concurrency guard, 04-REVIEW.md WR-02) go/no-go decision -- carried forward from BEFORE this entire rehearsal session started, still never answered. Unrelated to v2.1 scope but should not be lost.",
       "type": "human_action",
-      "workaround": "None available in this session — needs operator-run docker login + infra access before 07-01 can execute, regardless of how Phase 7 gets rescoped."
+      "workaround": "Ask the user directly when there's a natural opening; not blocking anything else. Note: dgfy-temp EC2 now provides real MySQL access, so the original 'cannot empirically verify concurrency in this sandbox' caveat may no longer fully apply if revisited."
     }
   ],
   "async_jobs": [],
   "human_actions_pending": [
     {
-      "action": "Decide whether to proceed with F-04 (activate-tenant concurrency guard) given the connection-pinning correctness caveat described in blockers above",
-      "context": "Last thing asked of the user before the topic shifted to Phase 7/migration scope discussion; never answered",
+      "action": "Confirm whether item_embeddings should be excluded from the products.attributes migration (Claude's recommendation: yes, exclude -- it's a derived/model-specific artifact)",
+      "context": "Floated at the end of the schema-gap-scoping discussion; user moved on to 'add it to GSD plans' without explicitly answering",
       "blocking": false
     },
     {
-      "action": "Decide how to rescope Phase 7 (or confirm a fresh phase) based on the discussion: accounts migration proof is still important per the user's own 'users can login' bar, but the full original 07-01/07-02/07-03 ceremony is heavier than the incremental, non-hard-cutover rollout the user described",
-      "context": "User's own words: 'if we decide to push this and this is the new api, users can login and businesses can login as usual and we slowly transfer everything from the old legacy db to the new one' — an incremental rollout model, not a hard cutover",
+      "action": "F-04 concurrency guard go/no-go (carried forward, pre-dates this session)",
+      "context": "MySQL GET_LOCK/RELEASE_LOCK + Sequelize connection-pooling correctness caveat, previously could not be empirically verified without real concurrent MySQL access -- dgfy-temp EC2 now exists with real MySQL, so this constraint may no longer apply if revisited",
       "blocking": false
     },
     {
-      "action": "Decide whether to close the two small, zero-risk-to-low-risk cleanup items now (FSC-02 checkbox flip, compliance verification+state atomicity fix) before frontend work starts",
-      "context": "Neither blocks frontend development, but both are cheap to close and get the backend to a genuinely clean state",
+      "action": "Two small pre-existing cleanup items: stale FSC-02 checkbox in REQUIREMENTS.md (already fixed in code, verified 3x), and the compliance-verification-and-state-write transaction wrap noted in .planning/todos/pending/2026-07-13-wrap-compliance-verification-and-state-writes-in-one-transac.md",
+      "context": "Belong to v2.0 cleanup, unrelated to v2.1, should not be lost",
       "blocking": false
     },
     {
-      "action": "docker login ghcr.io + Lima/Docker rehearsal harness access, needed if/when Phase 7's 07-01 (or its rescoped equivalent) actually executes",
-      "context": "Infra-only blocker on the original Phase 7 plan, independent of the rescoping decision",
+      "action": "Decide whether to keep the dgfy-temp EC2 running (real money cost) or tear it down between sessions",
+      "context": "It currently holds the full validated Stage 1+2 rehearsal environment plus the baseline snapshot/reset mechanism -- valuable to keep until v2.1 mapper work is built and re-rehearsed against it, but it is a running, billed resource",
       "blocking": false
     }
   ],
   "decisions": [
     {
-      "decision": "During the gsd-audit-fix run, classified F-01 (activate-tenant status precondition), F-02 (verify.js connection leak), F-03 (missing test coverage), F-05 (post-mutation misreport), and F-06 (duplicated report/record logic) as auto-fixable and safely implemented all five, after initially over-classifying F-05/F-06 as manual-only on first pass — re-examination showed both had single, well-defined fixes with existing in-codebase precedent (verify.js's reportWriteError pattern).",
-      "rationale": "User explicitly asked 'can these manual-only findings be done automatically? can you check?' which prompted re-examination and reclassification.",
+      "decision": "Real GHCR :beta images used for backend/dgfy-api/frontend on the rehearsal EC2 (not :develop) -- corrected mid-session after read-only recon of the actual production server (ssh alias: dgfy) confirmed :beta is what's really deployed.",
+      "rationale": "Fidelity to the real deployed artifact matters more than convenience for a beta-parity proof.",
       "phase": null
     },
     {
-      "decision": "F-12 (08-VERIFICATION.md WR-01, self-heal path for a partially-applied commerce-foundation migration) will NOT be auto-fixed.",
-      "rationale": "Not just complex — there is an explicit, recorded developer decision in 08-UAT.md (Test 6) to accept the current fix as a one-off operational cleanup and NOT commission a permanent code-level guard ('No follow-up gap-closure plan commissioned'). Building it anyway would override that recorded decision.",
+      "decision": "Frontend rebuilt locally on the EC2 (not pulled from GHCR) with VITE_DGFY_AUTH_URL/VITE_SKUPERVISOR_BASE_URL left empty.",
+      "rationale": "The :beta frontend bakes these to beta.dgfy.ph at Vite build time; no runtime config can override a compiled-in value. Source confirmed byte-identical to develop's tip (git diff origin/develop HEAD -- backend/ frontend/ is empty), so building from this repo IS building from develop.",
       "phase": null
     },
     {
-      "decision": "F-04 (concurrency guard) is technically automatable but was paused pending explicit user go-ahead rather than being implemented unilaterally.",
-      "rationale": "Genuine MySQL-connection-pooling correctness subtlety (GET_LOCK/RELEASE_LOCK session-scoping vs. Sequelize's connection pool) that cannot be empirically verified against real concurrent MySQL in this sandbox — only mocked call-shape proof is possible, which risks false confidence for a concurrency-correctness fix specifically.",
+      "decision": "products schema gets 6 new typed columns (sku_code, cost_per_unit, vat_type, senior_pwd_discount_eligible, description, unit_of_measure) plus one attributes JSON column for everything else variable.",
+      "rationale": "The 6 are universal to any item type (not IMS-manufacturing-specific); the rest varies too much across item types (food nutrition vs. future apparel sizing etc.) to justify rigid columns or tables, and EAV is a known anti-pattern. Follows this codebase's own existing JSON+generated-column precedent (storefront_discovery_index, Phase 10).",
       "phase": null
     },
     {
-      "decision": "Migration scope for the actual legacy cutover was narrowed, per the user, to: DGFY accounts (required, everyone can log in), businesses (optional, manual per-client, blank-slate otherwise), inventory items/folders (non-negotiable IF a business is migrated), sales history (optional, tag as 'legacy'/'source_system' if not fully compatible), inventory movements (important, mechanism TBD).",
-      "rationale": "User's own framing: the bar for shipping the new API is 'users can login, businesses can continue work as usual, record of sales are historically accurate (with caveats)' — then slowly backfill everything else from the old legacy DB, not a big-bang full-parity cutover.",
+      "decision": "Legacy items.category (5 values, raw-material-centric) does not map to new products.category (3 values, food/service/retail) -- migrated items are treated as generic sellable products; the raw-material-vs-finished-good distinction is explicitly deferred to a future DGFY<->IMS integration contract.",
+      "rationale": "User's own framing: DGFY's items table only lives inside the IMS's schema because DGFY was historically built as a module inside the SKUpervisor Food Manufacturing IMS -- this migration is re-importing DGFY's own sale items, not building the DGFY<->IMS contract itself.",
       "phase": null
     },
     {
-      "decision": "Recommended NOT executing Phase 7 as originally scoped, and NOT skipping it either — recommended rescoping it around the narrower goal above.",
-      "rationale": "The full original Phase 7 (07-01 repeated clone-loop rehearsal to N clean attempts + 07-02 formal backup/restore/abort/reopen-on-legacy runbook + 07-03 product/POS/frontend deferred-domain register) is heavier ceremony than an incremental, non-hard-cutover rollout needs, and 07-03's original framing (product/POS/frontend) is now moot since v2.0 (Phases 8-11) already built that domain fresh, not via migration. However, the CORE intent of 07-01 (prove the accounts migration is safe before real users depend on it) is still directly load-bearing under the user's own 'users can login' requirement and should not be skipped outright.",
+      "decision": "inventory_movements' simpler 5-type taxonomy and single stock_count (no per-location breakdown, no FIFO/batch) is treated as intentionally sufficient, not a gap.",
+      "rationale": "Legacy's richer model (multi-location transfers, production_consumption/output, FIFO batches, weighted-average-cost) is manufacturing-grade tracking that belongs to IMS, not to DGFY selling a finished product -- matches PROJECT.md's own already-documented 'Comprehensive Inventory / external IMS integration -- contract not yet defined technically' Out of Scope entry.",
+      "phase": null
+    },
+    {
+      "decision": "This work becomes a new v2.1 milestone, not a Phase-7 rescope and not a new integer phase tacked onto the already-completed v2.0.",
+      "rationale": "Phase 7 is a v1.0-milestone phase with a genuinely different charter (cutover rehearsal/runbook, CMP-05, depends on Phase 6) -- ruled out. v2.0 (phases 8-11) is already marked complete in STATE.md and git history -- reopening it with a bare Phase 12 was rejected in favor of a clean new milestone, echoing an option floated earlier in the session before the rehearsal detour, now backed by real findings instead of a guess.",
       "phase": null
     }
   ],
-  "uncommitted_files": [],
-  "next_action": "Ask the user which of the 4 pending human_actions_pending items they want to address first: (1) F-04 go/no-go, (2) Phase 7 rescoping direction, (3) closing the two small cleanup items (FSC-02 checkbox + compliance atomicity fix), or (4) something else entirely. Do not assume — the user paused the conversation specifically to hand off to a fresh agent, likely to continue the strategic Phase 7/migration-scope discussion with fresh context budget.",
-  "context_notes": "This session covered three distinct bodies of work in sequence: (1) a full retroactive code-review-fix pass for Phase 9 (POS Checkout & Payment) run in an isolated git worktree per the gsd-code-fixer protocol — all 7 findings fixed, tested, committed, worktree cleaned up transactionally, REVIEW-FIX.md handed to orchestrator; (2) a gsd-audit-fix run against UAT/VERIFICATION reports across all 11 completed phases, which found 13 candidate findings, discovered 3 were already fixed in later phases (stale review findings), fixed 5 for real (F-01, F-02, F-03, F-05, F-06), correctly declined 1 due to a recorded developer decision (F-12), and paused 1 (F-04) pending user go-ahead on a real correctness/verification caveat; (3) an open-ended strategic conversation, initiated by the user mid-audit-fix-work, about what's actually needed to go live with the new API against real legacy data — narrower than the original Phase 7 scope, and about whether the API/backend is ready for frontend teams to start building against it (answer: yes for the new v2.0 commerce domain on blank-slate tenants; no new frontend apps exist yet, only old legacy ones talking to the old API, so this would be a fresh build, not a migration). The user then asked to hand off to a fresh agent to continue this conversation. IMPORTANT: no phase/spike/sketch/deliberation was 'active' in the traditional GSD sense during the discussion portion — this is a cross-cutting handoff, not a mid-phase-execution pause. The resuming agent should primarily be ready to continue the Phase 7/migration-scope strategic conversation, with the audit-fix and phase-09-review-fix work fully complete and already committed (no risk of losing that work)."
+  "uncommitted_files": [
+    "apps/dgfy-migration-runner/src/migrations/schema/20260714101000-enable-storefront-discovery-geo-search.cjs (modified, real bug fix, not yet committed)",
+    "docs/database/dgfy-migration-rehearsal-progressive.md (untracked, new runbook doc)",
+    "refactor-do-not-commit/ (untracked, pre-existing, deliberately gitignored harness material -- not for commit)"
+  ],
+  "next_action": "Resume /gsd-new-milestone for v2.1 'Legacy Data Migration'. Do NOT restart context-gathering from scratch -- read this HANDOFF.json and .planning/.continue-here.md first, then proceed straight to Step 3.5 (present the milestone summary using the decisions already captured here) through requirements and roadmap creation. Confirm the item_embeddings question with the user along the way. Separately, commit the two uncommitted fixes once the user is ready (they may want to bundle that commit with roadmap creation or do it standalone).",
+  "context_notes": "This was an exceptionally long, hands-on session: built a real EC2 rehearsal environment from nothing, found and fixed 3 genuine bugs (one in shipped migration-runner source, one a legacy data-quality issue, one a frontend build-arg issue), proved the existing accounts/tenancy migration end-to-end against real ~26-tenant production-shaped data with a tested reset-to-baseline mechanism, then used that same rehearsal rig to empirically prove the product/inventory/sales migration gap that was only hypothesized at the very start of the session. The user is deeply invested in migration fidelity ('as if nothing happened') and pushed back constructively when Claude's first schema-gap answer wasn't concrete enough -- real field-level DESCRIBE comparisons, not guesses, is what earned trust throughout. The EC2 (ssh alias dgfy-temp) is currently UP with the full Stage 2 migrated state loaded (26 real tenants, real accounts/businesses/staff, zero products) -- this is NOT the same as baseline.sql/baseline-uploads.tar, which were snapshotted BEFORE the Stage 2 apply. Don't conflate 'current live EC2 state' with 'the baseline snapshot' when resuming -- current state = baseline + successful migration proof layered on top."
 }
