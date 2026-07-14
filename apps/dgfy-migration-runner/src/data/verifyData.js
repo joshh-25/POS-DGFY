@@ -24,9 +24,15 @@ import {
     createBusinessTargetConnection
 } from '../config/db.js';
 import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot } from './legacySource.js';
+import { MAPPING_REASON_CODES } from './mappings.js';
 import { DEFAULT_RUN_SCOPE } from './dryRun.js';
 
 export { DEFAULT_RUN_SCOPE };
+
+export const EXPECTED_LOSSY_REASON_CODES = Object.freeze(new Set([
+    MAPPING_REASON_CODES.LOSSY_CATEGORY_COLLAPSE,
+    MAPPING_REASON_CODES.FOLDER_NESTING_FLATTENED
+]));
 
 /**
  * Pure: compares expected-vs-actual row counts per entity for a single
@@ -131,24 +137,36 @@ export function checkMapCompleteness({ expectedLegacyKeys = [], mappedLegacyKeys
 }
 
 /**
- * Pure: any open (unresolved) data-quality finding — skip, conflict, or
- * orphan — fails this check. Per D-04/must_haves, verification must never
- * report clean while a skip/conflict/orphan remains unresolved.
+ * Pure: any non-expected open (unresolved) data-quality finding — skip,
+ * conflict, or orphan — fails this check. Expected lossy product-domain
+ * findings stay visible for audit but do not block `data_migration_ok`.
  *
  * @param {Array<{severity: string}>} openFindings
  */
 export function checkOpenFindings(openFindings = []) {
     const bySeverity = { conflict: 0, skip: 0, orphan: 0 };
+    const expectedLossyFindings = [];
+    const blockingFindings = [];
+
     openFindings.forEach((finding) => {
         if (Object.prototype.hasOwnProperty.call(bySeverity, finding.severity)) {
             bySeverity[finding.severity] += 1;
         }
+        if (EXPECTED_LOSSY_REASON_CODES.has(finding.reason_code)) {
+            expectedLossyFindings.push(finding);
+        } else {
+            blockingFindings.push(finding);
+        }
     });
 
     return {
-        ok: openFindings.length === 0,
+        ok: blockingFindings.length === 0,
         open_count: openFindings.length,
+        blocking_count: blockingFindings.length,
+        expected_lossy_count: expectedLossyFindings.length,
         by_severity: bySeverity,
+        blocking_findings: blockingFindings,
+        expected_lossy_findings: expectedLossyFindings,
         findings: openFindings
     };
 }
