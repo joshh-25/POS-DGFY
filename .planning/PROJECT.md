@@ -52,6 +52,7 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - ✓ Release evidence (architecture checks, migration verification, tenant drift checks, targeted smoke/contract checks) before cutover — validated in Phase 6: Release Evidence and Rehearsal Gates (CMP-04).
 - ✓ Storefront Discovery & Online Ordering (map browse/search, store page, cart, guest-or-account checkout, pickup/delivery immediate-or-scheduled, PayMongo QR Ph payment) is built with a durable landlord-first order record that finalizes idempotently into the correct tenant's Availment, safely crossing the Landlord/Tenant database boundary for the first time — validated in Phase 10: Storefront Discovery & Online Ordering (STF-01..STF-05, 8/8 plans, code review found and fixed 4 critical bugs including a stock-reservation composition-root wiring defect, 16/16 must-haves independently re-verified against current code).
 - ✓ Order Fulfillment & Delivery Coordination (business/staff retrieve and process incoming online orders, progress fulfillment status through a shared core pipeline with pickup/delivery/dine-in handoffs, manually assign courier/delivery partners and track payout through completion) — validated in Phase 11: Order Fulfillment & Delivery Coordination (FUL-01/02/03, 4/4 plans, code review found and fixed 2 critical bugs — non-atomic stage-progression writes and unvalidated fulfillmentMode — 14/14 must-haves re-verified against current code, migration applied and finalize paths proven end-to-end against a live tenant MySQL database).
+- ✓ ADR 0029's legacy-table scope gate unblocked (`items`/`item_folders`/`stock_movements`/`pos_transactions` removed from `OUT_OF_SCOPE_LEGACY_TABLES`) and the extended target schema (`products` +7 columns incl. `attributes` JSON, new `product_embeddings` 1:1 table, `inventory_movements` natural-key unique index) exists and is proven against real tenant databases — validated in Phase 12: Scope Unblock + Schema Extension (LDM-01..04, 4/4 plans, code review found and fixed 1 critical bug — the natural-key index initially omitted `product_id`, which would have broken any multi-product checkout — re-verified against 3 real EC2 tenant DBs after the fix, 7/7 must-haves independently re-verified against current code).
 
 ### Active
 
@@ -140,4 +141,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Update Context with current state
 
 ---
-*Last updated: 2026-07-14 — v2.1 Legacy Data Migration milestone started*
+*Last updated: 2026-07-14 — Phase 12: Scope Unblock + Schema Extension complete*
