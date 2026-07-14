@@ -102,6 +102,7 @@ Expected POS behavior:
 - Only the cashier who opened the active shift can resume it.
 - If another cashier signs in while the first cashier's shift is still open, the UI blocks continuation and instructs the operator to close the current shift first.
 - After shift close, cashier login is required before the next shift can begin.
+- When an administrator switches companies, POS clears the previous company's terminal and lock state, retains the newly issued tenant session, and loads the selected company's workspace. A one-time same-tab handoff permits the selected POS workspace to restore that newly issued cookie-backed session without showing login. The target company never inherits the previous company's terminal, shift, or `shift_closed` lock marker.
 
 ## What cashiers can do by default
 
