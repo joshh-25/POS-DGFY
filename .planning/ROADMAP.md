@@ -498,6 +498,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 9. POS Checkout & Payment | 8/8 | Complete    | 2026-07-13 |
 | 10. Storefront Discovery & Online Ordering | 8/8 | Complete    | 2026-07-13 |
 | 11. Order Fulfillment & Delivery Coordination | 4/4 | Complete    | 2026-07-14 |
-| 12. Scope Unblock + Schema Extension | 4/4 | Complete   | 2026-07-14 |
+| 12. Scope Unblock + Schema Extension | 4/4 | Complete    | 2026-07-14 |
 | 13. Product & Inventory Migration | 0/TBD | Not started | - |
 | 14. Sales History Migration & Full Verification | 0/TBD | Not started | - |
