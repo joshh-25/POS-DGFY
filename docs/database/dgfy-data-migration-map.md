@@ -12,7 +12,7 @@ topic: dgfy_data_migration_map
 This document is the authoritative MIG-01 evidence for Phase 03
 (`old-to-new-migration-proof`): it defines, for every legacy/current record
 type in scope, the exact source fields, target fields, transform rule,
-`legacy_id_map` key shape, skip/conflict/orphan reason codes, and the
+`legacy_id_map` key shape, skip/conflict/orphan/staff-linkage reason codes, and the
 verification check that later plans (03-03 dry-run, 03-04 apply, 03-05
 verify) must implement against. It is the single source of truth the pure
 mapper functions in `apps/dgfy-migration-runner/src/data/mappings.js`
@@ -24,7 +24,9 @@ cannot drift (Pitfall 2 in `03-RESEARCH.md`).
 - `docs/database/dgfy-foundation.md` — authoritative `dgfy_core`/
   `dgfy_business_*` target schema contract (Phase 02).
 - `docs/architecture/adr/0028-dgfy-account-company-switching.md` — explicit
-  accepted-membership authorization contract. Email/phone matches are never
+  tenant-local-staff-first authentication model and explicit
+  accepted-membership authorization contract. Staff credentials are tenant
+  local; DGFY account linkage is optional. Email/phone matches are never
   authorization; migration must not create membership or assignment rows by
   inferring a link from matching contact fields.
 - `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md`
@@ -34,9 +36,10 @@ cannot drift (Pitfall 2 in `03-RESEARCH.md`).
   — product, inventory, POS, fiscal, promo, and Storefront-operational
   domains are out of scope for this phase (see "Explicit Exclusions" below).
 
-**ADR impact:** Not needed. This document implements Phase 02's accepted
-schema contracts and ADR 0028/0029 boundaries; it introduces no new
-architectural decision.
+**ADR impact:** ADR 0028 is amended by Phase 13.5 before this document's
+staff-authentication rules are applied. This document mirrors that accepted
+tenant-local-staff-first model; it introduces no additional architectural
+decision beyond the ADR amendment.
 
 ## Conventions
 
@@ -76,10 +79,11 @@ stable `reason_code`, a human-readable `message`, and `remediation` guidance.
 | `reason_code` | Severity | Meaning |
 |---|---|---|
 | `missing_required_field` | `skip` | A required source field (email, phone, name, address, ...) is blank; the record is skipped, not guessed at. |
-| `missing_accepted_membership` | `skip` | The legacy `dgfy_account_tenant_memberships` row is not `status: accepted`; ADR 0028 forbids creating membership/assignment rows from anything else, including matching email/phone. |
+| `missing_accepted_membership` | `skip` | The legacy `dgfy_account_tenant_memberships` row is not `status: accepted`; ADR 0028 forbids creating DGFY membership/assignment rows from anything else, including matching email/phone. This is a staff-linkage finding and is non-blocking for tenant-local staff existence/authentication. |
 | `missing_owner_evidence` | `conflict` | `tenants.owner_dgfy_account_id` is blank; `tenant_ownership_metadata` cannot be written without explicit owner evidence. |
 | `owner_mismatch` | `conflict` | `tenants.owner_dgfy_account_id` does not match the migration target manifest's `expected_owner_account_id`; the manifest and legacy data disagree and must be reconciled by an operator. |
 | `duplicate_email` | `conflict` | A staff account email collides with an email already mapped to a `staff_accounts` row in the same run. |
+| `staff_credential_reset_required` | `skip` | A legacy staff password/POS PIN value is a placeholder or non-bcrypt value; no hash is copied, a `staff_credentials` row is written with `credential_status='reset_required'`, and remediation is reinvite/reset through `staff_invitations`. |
 | `invalid_terminal_id` | `skip` | A `pos_terminal_registry` entry's `terminal_id` does not match the required terminal code pattern. |
 | `orphan_tenant_user_link` | `orphan` | An accepted membership has no resolvable tenant-local staff account link (missing `tenant_user_id`, or the staff account has not been migrated/ID-mapped yet). |
 | `location_not_mapped` | `orphan` | A terminal registry entry references a legacy `location_id` that has no resolved target `locations.id` yet; the terminal is still migrated with `location_id: null`. |
@@ -99,7 +103,7 @@ stable `reason_code`, a human-readable `message`, and `remediation` guidance.
 | `email` | `email` | Trimmed + lowercased (defensive re-normalization; legacy setter already lowercases on write). |
 | `phone` | `phone` | Trimmed passthrough. |
 | `password_hash` | `password_hash` | Copied unchanged. Never re-hashed, never logged (ASVS V2/V6). |
-| `is_active`, `deleted_at` | `status` | `deleted_at` present -> `deleted`; else `is_active === false` -> `inactive`; else `active`. |
+| `is_active`, `deleted_at` | `status` | `deleted_at` present -> `deleted`; else `is_active === false` -> `suspended`; else `active`. |
 | `email_verified_at` | `email_verified_at` | Passthrough. |
 | `phone_verified_at` | `phone_verified_at` | Passthrough. |
 | `last_login_at` | `last_login_at` | Passthrough. |
@@ -158,10 +162,10 @@ stable `reason_code`, a human-readable `message`, and `remediation` guidance.
 
 **Verification check (MIG-05):** every `dgfy_core.business_memberships` row traces to exactly one `accepted` legacy membership row via `legacy_id_map`; zero membership rows exist whose only evidence is a legacy email/phone match without an accepted membership row.
 
-## 4. Staff Account
+## 4. Staff Account and Credential Related Write
 
 **Source:** tenant-local `users` (`backend/src/models/User.js`), read per migration target's `legacy_tenant_db_name`.
-**Target:** `dgfy_business_*.staff_accounts`.
+**Target:** `dgfy_business_*.staff_accounts` plus a 1:1 related write to `dgfy_business_*.staff_credentials`.
 **Mapper:** `mapLegacyUserToStaffAccount()`.
 
 | Source field | Target field | Transform rule |
@@ -169,10 +173,32 @@ stable `reason_code`, a human-readable `message`, and `remediation` guidance.
 | `username` (fallback: `email` local-part) | `display_name` | Trimmed `username`, or the part of `email` before `@` when `username` is blank. |
 | `email` | `email` | Trimmed + lowercased. |
 | `phone_number` | `phone` | Trimmed passthrough, `null` when blank. |
-| `is_active`, `deleted_at` | `status` | `deleted_at` present -> `removed`; `is_active === false` -> `inactive`; else `active`. |
+| `is_active`, `deleted_at` | `status` | `deleted_at` present -> `removed`; `is_active === false` -> `suspended`; else `active`. |
 | `is_master_admin` | `is_master_admin` | Boolean passthrough. |
 
-**Never migrated:** `password_hash`, `pos_approval_pin_hash` — tenant-local login/identity is retired under ADR 0028; DGFY account authentication owns identity, and `staff_accounts` has no password column to receive a copied hash.
+**Credential related write:** `password_hash` and `pos_approval_pin_hash` are
+not written to `staff_accounts`. They are produced as a related_targets entry
+for `staff_credentials`, a direct 1:1 derived write from the staff mapper's own
+inputs, not an independently ID-mapped entity. Apply injects the resolved
+`staff_accounts.id` into `staff_credentials.staff_account_id` after the parent
+staff row is inserted or reconciled. Idempotency is the unique
+`staff_account_id` key, with lookup-before-insert on retry.
+
+Credential classification:
+
+- Values matching bcrypt format `^\$2[abxy]\$\d{2}\$` are copied unchanged
+  into `staff_credentials.password_hash` or
+  `staff_credentials.pos_approval_pin_hash`. Copied unchanged. Never re-hashed,
+  never logged (ASVS V2/V6).
+- The legacy pending-invitation placeholder value (the literal non-hash marker
+  string written by legacy invite creation in
+  `backend/src/services/userService.js:1688`) and any non-bcrypt value are not
+  copied as hashes. The mapper writes a credential row with
+  `credential_status='reset_required'`, leaves the non-bcrypt hash field null,
+  and emits structured finding `staff_credential_reset_required`.
+- Legacy invitation tokens are never carried over. They are legacy-URL-bound
+  secrets; pending legacy invites resolve through the new reinvite/reset path
+  via `staff_invitations`, not token migration.
 
 **Deferred fields:** `role`, `role_preset_key`, `permissions` (Phase 02 role/permission seeding for `dgfy_business_*.roles`/`role_permissions` is a separate, later concern — not lost, just not part of this table's payload).
 
@@ -180,13 +206,20 @@ stable `reason_code`, a human-readable `message`, and `remediation` guidance.
 
 **`legacy_id_map` key:** `{ legacy_source: <legacy_tenant_db_name>, legacy_table: 'users', legacy_id: <user.user_id> }`.
 
-**Verification check (MIG-05):** every migrated `staff_accounts` row has a `legacy_id_map` row scoped to its tenant's `legacy_tenant_db_name`; no two `staff_accounts` rows in the same `dgfy_business_*` database share an email; no `staff_accounts` row contains a password hash or PIN hash field.
+**Verification check (MIG-05 / `staff_auth`):** every migrated `staff_accounts` row has a `legacy_id_map` row scoped to its tenant's `legacy_tenant_db_name`; no two `staff_accounts` rows in the same `dgfy_business_*` database share an email; no `staff_accounts` row contains a password hash or PIN hash field; every active bcrypt legacy credential has a `staff_credentials` row with copied hash coverage, and every placeholder/non-bcrypt source credential has a `staff_credential_reset_required` finding plus `credential_status='reset_required'`.
 
 ## 5. Account-Staff Assignment
 
 **Source:** `dgfy_account_tenant_memberships` (accepted rows only) joined to tenant-local `users` via `tenant_user_id`.
 **Target:** `dgfy_business_*.account_staff_assignments`.
 **Mapper:** `mapLegacyAccountStaffAssignment()`.
+
+This entity is optional DGFY-linkage evidence. Accepted DGFY memberships still
+produce `account_staff_assignments` links, and the accepted-status evidence
+rule is unchanged: never infer a link from email or phone matching. Missing or
+pending membership produces a non-blocking staff-linkage finding reported under
+`staff_auth`; it is not a staff-existence or tenant-local-authentication
+failure.
 
 | Source field | Target field | Transform rule |
 |---|---|---|
@@ -196,13 +229,13 @@ stable `reason_code`, a human-readable `message`, and `remediation` guidance.
 | `status` | `status` | Only `status: 'accepted'` produces `insert` with target `status: 'active'`. |
 
 **Skip/conflict rule (ADR 0028, D-04 must-have — same non-inference guarantee as entity 3):**
-- `status !== 'accepted'` -> `skip` (`missing_accepted_membership`).
+- `status !== 'accepted'` -> `skip` (`missing_accepted_membership`) reported as staff-linkage, non-blocking for `data_migration_ok`.
 - `status === 'accepted'` but `tenant_user_id` is blank -> `skip` (`orphan_tenant_user_link`) — there is no legacy tenant-local user link to resolve a staff account from, and the mapper does not fall back to matching by email (that fallback exists in `backend/src/services/dgfyTenantSessionService.js` only as a gated runtime repair escape hatch behind `DGFY_TENANT_USER_EMAIL_REPAIR_ENABLED`, and migration planning treats it as exactly that — not a general linking rule).
 - `status === 'accepted'`, `tenant_user_id` present, but no resolved `staff_account_id` was supplied -> `skip` (`orphan_tenant_user_link`) — the tenant user has not been migrated (or ID-mapped) yet; this models the required apply-time ordering `accounts -> businesses/registry -> locations -> staff -> assignments -> terminals`.
 
 **`legacy_id_map` key:** `{ legacy_source: 'landlord', legacy_table: 'dgfy_account_tenant_memberships', legacy_id: <membership.id> }` (same legacy row as entity 3, different target table).
 
-**Verification check (MIG-05):** every `account_staff_assignments` row traces to exactly one accepted legacy membership row with a resolved `tenant_user_id` -> `staff_accounts.id` chain; zero assignment rows exist without that full chain.
+**Verification check (MIG-05 / `staff_auth`):** every existing `account_staff_assignments` row traces to exactly one accepted legacy membership row with a resolved `tenant_user_id` -> `staff_accounts.id` chain; zero assignment rows exist without that full chain. Pending or missing membership findings stay visible under `staff_auth`, but do not block staff-account or credential migration completion.
 
 ## 6. Location / Branch
 
@@ -283,13 +316,23 @@ These domains are deferred to later milestones once Accounts, Businesses, and Te
 
 ## Verification Checks Summary
 
+Verification separates `staff_auth` from core/product/inventory fidelity.
+`staff_auth` reports credential coverage by tenant, optional DGFY-linkage
+status, non-blocking staff-linkage findings, and a no-secrets-in-report check
+that rejects password/POS PIN hashes, raw invite tokens, reset tokens, and
+temporary passwords in generated reports. `data_migration_ok` is computed from
+product, inventory, and core fidelity only; pending/missing DGFY linkage does
+not make tenant-local staff migration fail. Existing `account_staff_assignments`
+rows without accepted-membership evidence remain a blocking relationship
+violation because corrupt linkage is different from absent/pending linkage.
+
 | Entity | `legacy_table` | Target table(s) | MIG-05 verification check |
 |---|---|---|---|
-| Account identity | `dgfy_accounts` | `accounts` | `legacy_id_map` completeness; email/phone uniqueness; `password_hash` unchanged. |
+| Account identity | `dgfy_accounts` | `accounts` | `legacy_id_map` completeness; email/phone uniqueness; `password_hash` unchanged; `is_active=false` maps to `suspended`. |
 | Tenant/business | `tenants` | `businesses`, `business_database_registry` | `legacy_id_map` completeness; one registry row per business matching the manifest. |
 | Business membership | `dgfy_account_tenant_memberships` | `business_memberships` | Every row traces to an accepted legacy membership; no email/phone-inferred rows. |
-| Staff account | `users` | `staff_accounts` | `legacy_id_map` completeness (per-tenant scoped); no duplicate emails; no password/PIN fields present. |
-| Account-staff assignment | `dgfy_account_tenant_memberships` | `account_staff_assignments` | Full accepted-membership -> `tenant_user_id` -> `staff_accounts.id` chain present for every row. |
+| Staff auth | `users` | `staff_accounts`, `staff_credentials` | `legacy_id_map` completeness (per-tenant scoped); no duplicate emails; no password/PIN fields present on `staff_accounts`; bcrypt credential coverage copied unchanged; placeholder/non-bcrypt credentials reported as `staff_credential_reset_required`; `is_active=false` maps to `suspended`. |
+| Account-staff assignment | `dgfy_account_tenant_memberships` | `account_staff_assignments` | Existing rows require the full accepted-membership -> `tenant_user_id` -> `staff_accounts.id` chain; missing/pending membership is a non-blocking `staff_auth` linkage finding, not a staff existence failure. |
 | Location/branch | `tenant_locations` | `locations` | `legacy_id_map` completeness (per-tenant scoped); every source row with required fields has a target row or an open finding. |
 | Terminal identity | `system_settings.pos_terminal_registry` | `terminal_identities` | `legacy_id_map` completeness; zero secret fields present; `location_id` chain valid when non-null. |
 | Tenant ownership metadata | `tenants` (related write) | `tenant_ownership_metadata` | Exactly one row per business with confirmed owner evidence. |

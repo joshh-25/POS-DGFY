@@ -29,6 +29,7 @@ the new canonical DGFY schema.
 - `docs/architecture/adr/0001-modular-monolith-boundaries.md` — modular monolith boundary decision; future backend API code consuming this schema must go through module boundaries.
 - `docs/architecture/adr/0003-migration-facade-strategy.md` — beside-legacy migration strategy this foundation follows.
 - `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md` — landlord discovery index projection/read-model contract this foundation's `storefront_discovery_index` follows.
+- `docs/architecture/adr/0028-dgfy-account-company-switching.md` — tenant-local-staff-first authentication model; DGFY account linkage is optional for staff and accepted-membership evidence is still required for DGFY linking.
 - `docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md` — product/inventory/POS/Storefront operational ownership boundaries; explicitly out of scope here.
 - `docs/architecture/adr/0029-standalone-native-hardware-pos-runtime.md` — terminal identity/policy is backend-authoritative later; this foundation stores only the identity/status/location-binding foundation.
 - `docs/architecture/adr/0032-standalone-dgfy-api-service.md` — standalone DGFY API service boundary and `apps/*` convention.
@@ -130,8 +131,9 @@ foundation tables:
 | Table | Purpose | Key fields |
 |---|---|---|
 | `locations` | Canonical tenant-local branches/locations (D-10) | `id`, `name`, `address_line`, `latitude`/`longitude`, `is_active`, `is_primary` |
-| `staff_accounts` | Tenant-local staff authorization profile | `id`, `display_name`, `email` (unique), `phone`, `status`, `is_master_admin` |
-| `account_staff_assignments` | DGFY account-to-staff assignment/link metadata (D-14) | `dgfy_account_id` (opaque UUID, see below), `staff_account_id` → `staff_accounts.id`, `role` (`owner`/`manager`/`staff`), `status` (`invited`/`active`/`removed`), unique on `dgfy_account_id` |
+| `staff_accounts` | Tenant-local staff authorization profile; login is tenant-local via `staff_credentials`, with optional DGFY account linkage through `account_staff_assignments` | `id`, `display_name`, `email` (unique), `phone`, `status`, `is_master_admin` |
+| `staff_credentials` | Tenant-local staff credential record kept separate from staff profile serialization | `id` INTEGER PK autoincrement, `staff_account_id` INTEGER NOT NULL UNIQUE FK → `staff_accounts.id` ON DELETE CASCADE, `password_hash` STRING(255) NULL, `pos_approval_pin_hash` STRING(255) NULL, `credential_status` ENUM(`active`,`reset_required`,`disabled`) NOT NULL DEFAULT `active`, `password_updated_at`, `created_at`, `updated_at`; indexes `unique_staff_credentials_staff_account` and `idx_staff_credentials_status` |
+| `account_staff_assignments` | Optional DGFY account-to-staff assignment/link metadata (D-14) | `dgfy_account_id` (opaque UUID, see below), `staff_account_id` → `staff_accounts.id`, `role` (`owner`/`manager`/`staff`), `status` (`invited`/`active`/`removed`), unique on `dgfy_account_id` |
 | `roles` / `role_permissions` | Role/permission basics for future tenant session checks | `roles.name` (unique); `role_permissions` unique on `(role_id, permission_key)` |
 | `terminal_identities` | Terminal identity/status/location-binding foundation (no checkout/payment behavior) | `terminal_code` (unique), `label`, `location_id` → `locations.id` (nullable), `status`, `last_seen_at` |
 | `tenant_ownership_metadata` | Tenant-local owner/business linkage | `business_id` (opaque UUID, unique), `business_handle`, `stable_opaque_suffix`, `owner_dgfy_account_id` (opaque UUID) |
@@ -151,6 +153,16 @@ This is the same canonical-tenant-local / landlord-projection split described
 in "Branches, Locations, and Discovery" above: `locations` here is the
 canonical source of truth ADR 0010 expects `storefront_discovery_index` to
 eventually project from.
+
+`staff_credentials` is intentionally separate from `staff_accounts` so staff
+profile serializers and list endpoints can never leak password or POS approval
+PIN hashes by returning a staff profile row. Real legacy bcrypt values are
+copied byte-for-byte during migration, never re-hashed, and never logged.
+Placeholder or pending credential values are represented as
+`credential_status='reset_required'` for the reset/reinvite flow. The
+credential status values are active/reset_required/disabled.
+`account_staff_assignments` remains useful for linked DGFY identities and
+company switching, but it is not the only staff access path.
 
 ## Runner Target Selection for `dgfy_business_*` Databases (D-02, D-08, Plan 03 Task 2)
 
