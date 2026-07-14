@@ -64,6 +64,23 @@ const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
 const mockLoadMigrationTargetManifest = jest.fn();
 const mockRunDryRunTransformations = jest.fn();
 const mockRunApplyTransformations = jest.fn();
+const mockRedactTargetPayload = jest.fn((entry) => ({
+  ...entry,
+  target_payload: entry.target_payload
+    ? {
+        ...Object.fromEntries(
+          Object.entries(entry.target_payload)
+            .filter(([key]) => key !== 'password_hash' && key !== 'pos_approval_pin_hash')
+        ),
+        ...(Object.hasOwn(entry.target_payload, 'password_hash')
+          ? { has_password_hash: typeof entry.target_payload.password_hash === 'string' && entry.target_payload.password_hash.length > 0 }
+          : {}),
+        ...(Object.hasOwn(entry.target_payload, 'pos_approval_pin_hash')
+          ? { has_pos_approval_pin_hash: typeof entry.target_payload.pos_approval_pin_hash === 'string' && entry.target_payload.pos_approval_pin_hash.length > 0 }
+          : {})
+      }
+    : entry.target_payload
+}));
 
 jest.unstable_mockModule('../src/config/db.js', () => ({
   createSourceConnection: jest.fn(),
@@ -95,7 +112,8 @@ jest.unstable_mockModule('../src/data/dryRun.js', () => ({
   DEFAULT_RUN_SCOPE: 'data-migration',
   runDryRunTransformations: mockRunDryRunTransformations,
   buildDryRunPlan: jest.fn(),
-  summarizeDryRunReport: jest.fn()
+  summarizeDryRunReport: jest.fn(),
+  redactTargetPayload: mockRedactTargetPayload
 }));
 
 jest.unstable_mockModule('../src/data/apply.js', () => ({
@@ -144,6 +162,7 @@ describe('data commands', () => {
         entities_planned: 0
       }]
     });
+    mockRedactTargetPayload.mockClear();
     mockRunApplyTransformations.mockReset().mockResolvedValue({
       run_scope: 'data-migration',
       summary: {
@@ -292,6 +311,76 @@ describe('data commands', () => {
     expect(report.tenant_coverage).toHaveLength(1);
     expect(report.results).toEqual([]);
     expect(mockRunDryRunTransformations).toHaveBeenCalledTimes(1);
+  });
+
+  test('runDataDryRun({}) redacts credential-bearing payload fields before returning and writing reports', async () => {
+    mockRunDryRunTransformations.mockResolvedValue({
+      run_scope: 'data-migration',
+      entries: [{
+        legacy_tenant_id: null,
+        entity_type: 'account',
+        operation: 'insert',
+        target_table: 'accounts',
+        target_database: 'dgfy_core',
+        target_payload: {
+          id: 'acct-uuid-1',
+          email: 'owner@example.com',
+          password_hash: '$2a$10$accountbcryptfixture',
+          status: 'active'
+        },
+        findings: []
+      }, {
+        legacy_tenant_id: 'tenant-1',
+        entity_type: 'staff_credential',
+        operation: 'insert',
+        target_table: 'staff_credentials',
+        target_database: 'dgfy_business_alpha',
+        target_payload: {
+          staff_account_id: 42,
+          password_hash: '$2b$10$staffbcryptfixture',
+          pos_approval_pin_hash: '$2y$10$pinbcryptfixture',
+          credential_status: 'active'
+        },
+        findings: []
+      }],
+      summary: {
+        planned_inserts: 2,
+        planned_updates: 0,
+        planned_skips: 0,
+        planned_conflicts: 0,
+        orphan_records: 0,
+        tenant_coverage_count: 1
+      },
+      tenant_coverage: [{
+        legacy_tenant_id: 'tenant-1',
+        legacy_tenant_db_name: 'sku_tenant_1',
+        target_business_db_name: 'dgfy_business_alpha',
+        entities_planned: 1
+      }]
+    });
+
+    const report = await runDataDryRun({});
+    const serializedReport = JSON.stringify(report);
+    const reportFile = (await fs.readdir(reportDir)).find((file) => file.endsWith('data-dry-run.json'));
+    const writtenReport = await fs.readFile(path.join(reportDir, reportFile), 'utf8');
+
+    expect(serializedReport).not.toMatch(/\$2[abxy]\$/);
+    expect(writtenReport).not.toMatch(/\$2[abxy]\$/);
+    expect(report.summary.planned_inserts).toBe(2);
+    expect(report.results[0].target_payload).toMatchObject({
+      email: 'owner@example.com',
+      status: 'active',
+      has_password_hash: true
+    });
+    expect(report.results[1].target_payload).toMatchObject({
+      staff_account_id: 42,
+      credential_status: 'active',
+      has_password_hash: true,
+      has_pos_approval_pin_hash: true
+    });
+    expect(report.results[0].target_payload.password_hash).toBeUndefined();
+    expect(report.results[1].target_payload.pos_approval_pin_hash).toBeUndefined();
+    expect(mockRedactTargetPayload).toHaveBeenCalledTimes(2);
   });
 
   test('runDataDryRun({}) records the report paths in command_executions on success', async () => {

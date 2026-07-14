@@ -24,7 +24,7 @@ jest.unstable_mockModule('../src/config/db.js', () => ({
 }));
 
 const { readLegacyLandlordSnapshot, readLegacyTenantSnapshot } = await import('../src/data/legacySource.js');
-const { buildDryRunPlan, summarizeDryRunReport, runDryRunTransformations, DEFAULT_RUN_SCOPE } = await import('../src/data/dryRun.js');
+const { buildDryRunPlan, summarizeDryRunReport, runDryRunTransformations, DEFAULT_RUN_SCOPE, redactTargetPayload } = await import('../src/data/dryRun.js');
 const {
     legacyDgfyAccountFixture,
     legacyTenantFixture,
@@ -388,6 +388,89 @@ describe('summarizeDryRunReport', () => {
             { legacy_tenant_id: 'tenant-1', legacy_tenant_db_name: 'sku_tenant_1', target_business_db_name: 'dgfy_business_alpha', entities_planned: 3 },
             { legacy_tenant_id: 'tenant-2', legacy_tenant_db_name: 'sku_tenant_2', target_business_db_name: 'dgfy_business_beta', entities_planned: 2 }
         ]);
+    });
+});
+
+describe('redactTargetPayload', () => {
+    test('removes bcrypt password and POS PIN hashes from account and staff credential report entries while preserving non-secret fields', () => {
+        const accountEntry = {
+            legacy_tenant_id: null,
+            operation: 'insert',
+            entity_type: 'account',
+            target_table: 'accounts',
+            target_database: 'dgfy_core',
+            target_payload: {
+                id: 'acct-uuid-1',
+                email: 'owner@example.com',
+                display_name: 'Owner',
+                password_hash: '$2a$10$accountbcryptfixture',
+                status: 'active'
+            },
+            findings: []
+        };
+        const credentialEntry = {
+            legacy_tenant_id: 'tenant-1',
+            operation: 'insert',
+            entity_type: 'staff_credential',
+            target_table: 'staff_credentials',
+            target_database: 'dgfy_business_alpha',
+            target_payload: {
+                staff_account_id: 42,
+                password_hash: '$2b$10$staffbcryptfixture',
+                pos_approval_pin_hash: '$2y$10$pinbcryptfixture',
+                credential_status: 'active'
+            },
+            findings: [{ reason_code: 'staff_credential_reset_required', message: 'Reset required' }]
+        };
+
+        const redactedAccount = redactTargetPayload(accountEntry);
+        const redactedCredential = redactTargetPayload(credentialEntry);
+        const serialized = JSON.stringify([redactedAccount, redactedCredential]);
+
+        expect(serialized).not.toMatch(/\$2[abxy]\$/);
+        expect(redactedAccount.target_payload).toEqual({
+            id: 'acct-uuid-1',
+            email: 'owner@example.com',
+            display_name: 'Owner',
+            status: 'active',
+            has_password_hash: true
+        });
+        expect(redactedCredential.target_payload).toEqual({
+            staff_account_id: 42,
+            credential_status: 'active',
+            has_password_hash: true,
+            has_pos_approval_pin_hash: true
+        });
+        expect(redactedCredential.findings).toEqual(credentialEntry.findings);
+    });
+
+    test('adds false evidence flags for credential-bearing tables when hash fields are null or absent', () => {
+        const redactedAccount = redactTargetPayload({
+            entity_type: 'account',
+            target_table: 'accounts',
+            target_payload: {
+                email: 'owner@example.com',
+                password_hash: null
+            }
+        });
+        const redactedCredential = redactTargetPayload({
+            entity_type: 'staff_credential',
+            target_table: 'staff_credentials',
+            target_payload: {
+                credential_status: 'reset_required',
+                password_hash: null
+            }
+        });
+
+        expect(redactedAccount.target_payload).toEqual({
+            email: 'owner@example.com',
+            has_password_hash: false
+        });
+        expect(redactedCredential.target_payload).toEqual({
+            credential_status: 'reset_required',
+            has_password_hash: false,
+            has_pos_approval_pin_hash: false
+        });
     });
 });
 
