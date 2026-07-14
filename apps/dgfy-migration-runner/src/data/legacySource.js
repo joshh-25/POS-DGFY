@@ -4,29 +4,34 @@
  *
  * Every function here issues only `SELECT` statements, scoped strictly to
  * the migration target manifest's entries (D-01, 03-01) — never enumerates
- * every legacy tenant/account, and never reads product, inventory, checkout,
- * POS operational, payment, shift, or fiscal tables (ADR 0029). Zero backend
- * runtime imports — the runner stays isolated from `backend/`'s dependency
- * surface (Phase 1 D-01); this module only issues raw SQL against whatever
- * Sequelize connection the caller (`src/data/dryRun.js`) already opened via
- * `src/config/db.js`'s factories (`createSourceConnection()` for the legacy
- * landlord DB, `createLegacyTenantSourceConnection()` for a single legacy
- * tenant DB — both already reject any `dgfy_*`-named database before this
- * module ever sees a connection).
+ * every legacy tenant/account. Phase 13 expands the allowed tenant-local read
+ * surface to the product and inventory source tables approved by ADR 0029's
+ * v2.1 amendment. Zero runtime imports from the legacy application — the
+ * runner stays dependency-isolated (Phase 1 D-01); this module only issues raw
+ * SQL against whatever Sequelize connection the caller (`src/data/dryRun.js`)
+ * already opened via `src/config/db.js`'s factories (`createSourceConnection()`
+ * for the legacy landlord DB, `createLegacyTenantSourceConnection()` for a
+ * single legacy tenant DB — both already reject any `dgfy_*`-named database
+ * before this module ever sees a connection).
  *
  * Allowed source tables (docs/database/dgfy-data-migration-map.md):
  * - landlord: `tenants`, `dgfy_accounts`, `dgfy_account_tenant_memberships`
- * - tenant-local: `users`, `tenant_locations`, `user_location_grants`,
- *   `system_settings` (only the row whose `setting_key` is
- *   `'pos_terminal_registry'`)
+ * - tenant-local (identity): `users`, `tenant_locations`,
+ *   `user_location_grants`, `system_settings` (only the row whose
+ *   `setting_key` is `'pos_terminal_registry'`)
+ * - tenant-local (Phase 13 product domain): `items`, `item_nutrition`,
+ *   `item_allergens`, `item_physical_properties`, `item_shelf_life`,
+ *   `item_packaging`, `item_quality_control`,
+ *   `item_regulatory_compliance`, `item_cost_breakdown`, `item_barcodes`,
+ *   `product_composition`, `item_folders`, `stock_movements`,
+ *   `item_location_stocks`, `item_embeddings`
  *
- * Never queried: `pos_transactions`, `pos_terminal_shifts`,
- * `cashier_sessions`, `terminal_sessions`, `fiscal_receipts`,
- * `fiscal_compliance_logs`, `items`, `products`, `skus`, `purchase_orders`,
- * `job_orders`, `stock_movements`, or any other table in
- * `mappings.js`'s `OUT_OF_SCOPE_LEGACY_TABLES` list (ADR 0029) — this module
- * simply never issues a query naming those tables, so the exclusion is
- * structural, not a runtime filter.
+ * Still never queried in this reader: `pos_transactions`,
+ * `pos_terminal_shifts`, `cashier_sessions`, `terminal_sessions`,
+ * `fiscal_receipts`, `fiscal_compliance_logs`, `products`, `skus`,
+ * `purchase_orders`, `job_orders`, or any other table that remains in
+ * `mappings.js`'s `OUT_OF_SCOPE_LEGACY_TABLES` list (ADR 0029). The exclusion
+ * is structural, not a runtime filter.
  */
 
 const POS_TERMINAL_REGISTRY_SETTING_KEY = 'pos_terminal_registry';
@@ -88,8 +93,8 @@ export async function readLegacyLandlordSnapshot(landlordSequelize, targets = []
 /**
  * Parses the single `system_settings` row for `pos_terminal_registry` into
  * an array of registry entries, matching the shape
- * `backend/src/modules/settings/repositories/settingsRepository.js` stores
- * (`setting_value` is the `JSON.stringify()`-encoded array directly, not
+ * the legacy settings repository stores (`setting_value` is the
+ * `JSON.stringify()`-encoded array directly, not
  * wrapped in a `{ value: [...] }` envelope) — while defensively also
  * accepting a `{ value: [...] }` envelope shape, since
  * `posTerminalRegistrySecrets.js` reads it either way depending on caller.
@@ -115,6 +120,29 @@ function parseTerminalRegistrySetting(settingRow) {
         return parsed.value;
     }
     return [];
+}
+
+function keyBy(rows, key) {
+    const lookup = new Map();
+    rows.forEach((row) => {
+        const value = row?.[key];
+        if (value !== undefined && value !== null && !lookup.has(value)) {
+            lookup.set(value, row);
+        }
+    });
+    return lookup;
+}
+
+function groupBy(rows, key) {
+    const lookup = new Map();
+    rows.forEach((row) => {
+        const value = row?.[key];
+        if (value === undefined || value === null) return;
+        const bucket = lookup.get(value) || [];
+        bucket.push(row);
+        lookup.set(value, bucket);
+    });
+    return lookup;
 }
 
 /**
@@ -144,4 +172,67 @@ export async function readLegacyTenantSnapshot(tenantSequelize) {
     const terminalRegistry = parseTerminalRegistrySetting(settingsRows[0]);
 
     return { users, locations, userLocationGrants, terminalRegistry };
+}
+
+/**
+ * Reads tenant-local Phase 13 product/inventory source rows from one already-
+ * scoped legacy tenant connection and stitches the satellite tables onto each
+ * item using the same association aliases documented in the legacy product
+ * attributes folding design.
+ *
+ * @param {import('sequelize').Sequelize} tenantSequelize
+ * @returns {Promise<{ items: object[], itemFolders: object[], stockMovements: object[], itemEmbeddings: object[] }>}
+ */
+export async function readLegacyProductSnapshot(tenantSequelize) {
+    const [items] = await tenantSequelize.query('SELECT * FROM items');
+    const [nutritionRows] = await tenantSequelize.query('SELECT * FROM item_nutrition');
+    const [allergenRows] = await tenantSequelize.query('SELECT * FROM item_allergens');
+    const [physicalPropertyRows] = await tenantSequelize.query('SELECT * FROM item_physical_properties');
+    const [shelfLifeRows] = await tenantSequelize.query('SELECT * FROM item_shelf_life');
+    const [packagingRows] = await tenantSequelize.query('SELECT * FROM item_packaging');
+    const [qualityControlRows] = await tenantSequelize.query('SELECT * FROM item_quality_control');
+    const [regulatoryComplianceRows] = await tenantSequelize.query('SELECT * FROM item_regulatory_compliance');
+    const [costBreakdownRows] = await tenantSequelize.query('SELECT * FROM item_cost_breakdown');
+    const [barcodeRows] = await tenantSequelize.query('SELECT * FROM item_barcodes');
+    const [productCompositionRows] = await tenantSequelize.query('SELECT * FROM product_composition');
+    const [itemFolders] = await tenantSequelize.query('SELECT * FROM item_folders');
+    const [stockMovements] = await tenantSequelize.query('SELECT * FROM stock_movements');
+    const [itemLocationStockRows] = await tenantSequelize.query('SELECT * FROM item_location_stocks');
+    const [itemEmbeddings] = await tenantSequelize.query('SELECT * FROM item_embeddings');
+
+    const oneToOneLookups = {
+        nutrition: keyBy(nutritionRows, 'item_id'),
+        physicalProperties: keyBy(physicalPropertyRows, 'item_id'),
+        shelfLife: keyBy(shelfLifeRows, 'item_id'),
+        packaging: keyBy(packagingRows, 'item_id'),
+        qualityControl: keyBy(qualityControlRows, 'item_id'),
+        regulatoryCompliance: keyBy(regulatoryComplianceRows, 'item_id'),
+        costBreakdown: keyBy(costBreakdownRows, 'item_id')
+    };
+    const allergenLookup = groupBy(allergenRows, 'item_id');
+    const barcodeLookup = groupBy(barcodeRows, 'item_id');
+    const itemLocationStockLookup = groupBy(itemLocationStockRows, 'item_id');
+    const productCompositionLookup = groupBy(productCompositionRows, 'product_id');
+
+    const stitchedItems = items.map((item) => {
+        const stitchedItem = { ...item };
+        Object.entries(oneToOneLookups).forEach(([alias, lookup]) => {
+            const row = lookup.get(item.item_id);
+            if (row) {
+                stitchedItem[alias] = row;
+            }
+        });
+        stitchedItem.allergens = allergenLookup.get(item.item_id) || [];
+        stitchedItem.barcodes = barcodeLookup.get(item.item_id) || [];
+        stitchedItem.itemLocationStocks = itemLocationStockLookup.get(item.item_id) || [];
+        stitchedItem.productCompositions = productCompositionLookup.get(item.item_id) || [];
+        return stitchedItem;
+    });
+
+    return {
+        items: stitchedItems,
+        itemFolders,
+        stockMovements,
+        itemEmbeddings
+    };
 }
