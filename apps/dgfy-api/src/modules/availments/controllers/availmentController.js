@@ -54,7 +54,11 @@ export function buildAvailmentController(useCases = {}) {
                 requestingAccountId: req.account.id,
                 availmentId: req.params.id,
                 lineId: req.params.lineId,
-                quantity: body.quantity || null,
+                // WR-03 fix (09-REVIEW.md): `||` treats a legitimate `0`
+                // the same as undefined/null — use explicit nullish checks
+                // so a client-supplied `quantity: 0` is not silently
+                // coerced away.
+                quantity: body.quantity !== undefined && body.quantity !== null ? body.quantity : null,
                 stockEffectType: body.stock_effect_type || null
             });
             return sendUseCaseResult(res, result, 200);
@@ -140,7 +144,14 @@ export function buildAvailmentController(useCases = {}) {
                 availmentId: req.params.id,
                 requestedDocumentContext: body.requested_document_context || 'non_fiscal',
                 paymentMethod: body.payment_method,
-                cashReceived: body.cash_received || null,
+                // WR-03 fix (09-REVIEW.md): `||` treats a legitimate `0`
+                // the same as undefined/null — a fully-discounted (PHP 0.00
+                // total) cash sale where the client correctly submits
+                // `cash_received: 0` must not be silently converted to
+                // null (which would make buildFinalizeAvailmentUseCase
+                // reject it with "cashReceived is required for cash
+                // payment" even though nothing is owed or paid).
+                cashReceived: body.cash_received !== undefined && body.cash_received !== null ? body.cash_received : null,
                 terminalId: body.terminal_id || null,
                 cashierAccountId: body.cashier_account_id || null,
                 branchId: body.branch_id || null
