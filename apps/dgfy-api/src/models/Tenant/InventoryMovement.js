@@ -102,7 +102,17 @@ export default (sequelize) => {
         updatedAt: false,
         indexes: [
             { fields: ['business_id', 'product_id'], name: 'idx_inventory_movements_business_product' },
-            { fields: ['movement_type'], name: 'idx_inventory_movements_movement_type' }
+            { fields: ['movement_type'], name: 'idx_inventory_movements_movement_type' },
+            // Phase 12 (12-02-PLAN.md, LDM-04, D-10): additive natural-key
+            // unique index — makes Phase 13's migrated-row apply retries
+            // idempotent. NULL reference_type/reference_id on existing
+            // organic rows are distinct under MySQL's unique-index NULL
+            // semantics, so no backfill/data migration is needed.
+            {
+                fields: ['business_id', 'reference_type', 'reference_id'],
+                name: 'unique_inventory_movements_natural_key',
+                unique: true
+            }
         ],
         hooks: {
             beforeUpdate() {
