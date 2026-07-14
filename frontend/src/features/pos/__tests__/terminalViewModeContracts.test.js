@@ -99,6 +99,32 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('resumeTenantSetupFlow();');
   });
 
+  it('waits for session and onboarding hydration before rendering the POS workspace', () => {
+    expect(terminalPageContent).toContain('const [loadingUser, setLoadingUser] = useState(true);');
+    expect(terminalPageContent).toContain('const [terminalStartupReady, setTerminalStartupReady] = useState(false);');
+    expect(terminalPageContent).toContain('const terminalStartupLoading = !terminalStartupReady');
+    expect(terminalPageContent).toContain('useLayoutEffect(() => {');
+    expect(terminalPageContent).toContain('Restoring POS workspace...');
+  });
+
+  it('restores the last POS page once on page load, without overriding navigation clicks', () => {
+    expect(terminalPageContent).toContain("const POS_LAST_VIEW_STORAGE_PREFIX = 'pos_terminal_last_view_v1';");
+    expect(terminalPageContent).toContain("const POS_VIEW_MODE_QUERY_KEY = 'view';");
+    expect(terminalPageContent).toContain('buildPosLastViewStorageKey');
+    expect(terminalPageContent).toContain('readRequestedPosView() || \'checkout\'');
+    expect(terminalPageContent).toContain('readStoredPosView(posLastViewStorageKey)');
+    expect(terminalPageContent).toContain('updatePosViewQuery(persistableView);');
+    expect(terminalPageContent).toContain("window.history.replaceState(window.history.state, '', url);");
+    expect(terminalPageContent).toContain('const hasInitializedPosViewRef = useRef(false);');
+    expect(terminalPageContent).toContain('if (hasInitializedPosViewRef.current) return;');
+    expect(terminalPageContent).toContain('hasInitializedPosViewRef.current = true;');
+    expect(terminalPageContent).not.toContain("PIN_PROTECTED_VIEW_MODES.has(normalizedView) && (terminalMeta.loading");
+    expect(terminalPageContent).toContain("const nextView = restoredView || 'checkout';");
+    expect(terminalPageContent).toContain('writeStoredPosView(posLastViewStorageKey, persistableView);');
+    expect(terminalPageContent).toContain("if (setupFlowActive) {");
+    expect(terminalPageContent).toContain("normalizedView === 'receipt'");
+  });
+
   it('gives a saved full-auth terminal lock precedence over onboarding state', () => {
     expect(terminalPageContent).toContain("if (storedLockActiveAtStart && ['full_auth', 'shift_closed'].includes(storedReasonAtStart)) {");
     expect(terminalPageContent).toContain("if (storedLockReason === 'full_auth' || storedLockReason === 'shift_closed') {");

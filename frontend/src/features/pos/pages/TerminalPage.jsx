@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
@@ -117,6 +117,8 @@ const PosTenantSetupModal = lazy(() => import('../components/PosTenantSetupModal
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
+const POS_LAST_VIEW_STORAGE_PREFIX = 'pos_terminal_last_view_v1';
+const POS_VIEW_MODE_QUERY_KEY = 'view';
 const ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY = 'pos_online_order_sound_enabled_v1';
 const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';
 const TERMINAL_LOCK_REASON_STORAGE_KEY = 'pos_terminal_lock_reason_v1';
@@ -240,6 +242,28 @@ const readInitialTerminalId = () => resolvePreferredTerminalId(
   readStoredTerminalId(),
   { registryMode: 'warn' }
 );
+
+const buildPosLastViewStorageKey = ({ userId, companyToken, terminalId } = {}) => {
+  const userScope = String(userId || 'anonymous').trim() || 'anonymous';
+  const companyScope = String(companyToken || 'default').trim() || 'default';
+  const terminalScope = sanitizeTerminalId(terminalId || '') || 'unassigned';
+  return `${POS_LAST_VIEW_STORAGE_PREFIX}:${encodeURIComponent(companyScope)}:${encodeURIComponent(userScope)}:${encodeURIComponent(terminalScope)}`;
+};
+
+const readStoredPosView = (storageKey) => {
+  if (typeof window === 'undefined' || !storageKey) return '';
+  return String(window.localStorage.getItem(storageKey) || '').trim();
+};
+
+const writeStoredPosView = (storageKey, viewMode) => {
+  if (typeof window === 'undefined' || !storageKey) return;
+  window.localStorage.setItem(storageKey, String(viewMode || '').trim());
+};
+
+const readRequestedPosView = () => {
+  if (typeof window === 'undefined') return '';
+  return String(new URLSearchParams(window.location.search).get(POS_VIEW_MODE_QUERY_KEY) || '').trim();
+};
 
 const isRetryableTerminalOperationError = (error) => {
   if (!error?.response) return true;
@@ -366,7 +390,8 @@ export default function TerminalPage() {
   const [drawerOpen, setDrawerOpen] = useState(() => readStoredTerminalLock() || !getAccessToken());
   const [terminalLayoutEpoch, setTerminalLayoutEpoch] = useState(0);
   const terminalLayoutLockedRef = useRef(locked);
-  const [loadingUser, setLoadingUser] = useState(false);
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [terminalStartupReady, setTerminalStartupReady] = useState(false);
   const [terminalUser, setTerminalUser] = useState(null);
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
   const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
@@ -520,7 +545,9 @@ export default function TerminalPage() {
     [TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED]: 0
   });
   const [replayingQueuedTerminalOperations, setReplayingQueuedTerminalOperations] = useState(false);
-  const [posViewMode, setPosViewMode] = useState('checkout');
+  const [posViewMode, setPosViewMode] = useState(() => readRequestedPosView() || 'checkout');
+  const hasInitializedPosViewRef = useRef(false);
+  const previousSetupFlowActiveRef = useRef(null);
   const [itemsStockFilterPreset, setItemsStockFilterPreset] = useState('');
   const [stockAlertSummary, setStockAlertSummary] = useState({
     open: false,
@@ -687,6 +714,23 @@ export default function TerminalPage() {
   ]);
   const setupFlowActive = tenantSetupIncomplete
     && tenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE;
+  const terminalStartupLoading = !terminalStartupReady || (
+    !locked
+    && terminalUser?.is_master_admin === true
+    && setupFlowState.loading
+  );
+  const posLastViewStorageKey = useMemo(() => buildPosLastViewStorageKey({
+    userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email,
+    companyToken: getCompanyToken(),
+    terminalId: activeTerminalId
+  }), [activeTerminalId, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
+  const resolveRestorablePosView = useCallback((candidateView) => {
+    const normalizedView = String(candidateView || '').trim();
+    if (!normalizedView || normalizedView === 'receipt' || !activeViewModes.includes(normalizedView)) return '';
+    if (isCashierRole && !CASHIER_ALLOWED_VIEW_MODES.has(normalizedView)) return '';
+    if (normalizedView === 'incoming_queue' && !canViewPos) return '';
+    return normalizedView;
+  }, [activeViewModes, canViewPos, isCashierRole]);
 
   const replaceTenantSetupQuery = useCallback((nextStep = '') => {
     const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep);
@@ -704,6 +748,21 @@ export default function TerminalPage() {
       hash: location.hash
     }, { replace: true });
   }, [location.hash, location.pathname, location.search, navigate]);
+
+  const updatePosViewQuery = useCallback((viewMode) => {
+    if (typeof window === 'undefined') return;
+    const normalizedView = String(viewMode || '').trim();
+    const url = new URL(window.location.href);
+    const params = url.searchParams;
+    if (!normalizedView || normalizedView === 'checkout') {
+      params.delete(POS_VIEW_MODE_QUERY_KEY);
+    } else {
+      params.set(POS_VIEW_MODE_QUERY_KEY, normalizedView);
+    }
+    if (url.href === window.location.href) return;
+    // Persist the current POS page for refresh without triggering route navigation.
+    window.history.replaceState(window.history.state, '', url);
+  }, []);
 
   const openTenantSetupStep = useCallback((step = '') => {
     const normalizedStep = resolveTenantSetupStepValue(step || tenantSetupStep);
@@ -830,11 +889,16 @@ export default function TerminalPage() {
 
   const commitViewModeSelection = useCallback((nextMode) => {
     setPosViewMode(nextMode);
+    const persistableView = resolveRestorablePosView(nextMode);
+    if (!setupFlowActive && !setupFlowState.loading && persistableView) {
+      writeStoredPosView(posLastViewStorageKey, persistableView);
+      updatePosViewQuery(persistableView);
+    }
     if (workspacePaneRef.current) {
       workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setMobileNavOpen(false);
-  }, []);
+  }, [posLastViewStorageKey, resolveRestorablePosView, setupFlowActive, setupFlowState.loading, updatePosViewQuery]);
 
   const hydrateTerminalMeta = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     setTerminalMeta((prev) => ({ ...prev, loading: true }));
@@ -1353,6 +1417,7 @@ export default function TerminalPage() {
       setTerminalUser(null);
       setLocked(true);
       setDrawerOpen(true);
+      setLoadingUser(false);
       return;
     }
 
@@ -1495,7 +1560,7 @@ export default function TerminalPage() {
     }
   }, [locked, refreshOperationalContext]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (setupFlowState.loading || !tenantSetupFlowRequested || locked || terminalUser?.is_master_admin !== true) return;
 
     if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {
@@ -1515,7 +1580,7 @@ export default function TerminalPage() {
     terminalUser?.is_master_admin
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (locked || readStoredTerminalLock()) {
       setTenantSetupModalOpen(false);
       return;
@@ -1535,6 +1600,54 @@ export default function TerminalPage() {
     setTenantSetupDismissedThisSession(false);
     setTenantSetupModalOpen(true);
   }, [locked, openTenantSetupStep, setupFlowActive, setupFlowState.loading, tenantSetupFlowRequested, tenantSetupStep]);
+
+  useEffect(() => {
+    if (loadingUser) {
+      setTerminalStartupReady(false);
+      return;
+    }
+    if (locked) {
+      setTerminalStartupReady(true);
+      return;
+    }
+    if (!terminalUser) return;
+    if (terminalUser.is_master_admin === true && setupFlowState.loading) return;
+    setTerminalStartupReady(true);
+  }, [loadingUser, locked, setupFlowState.loading, terminalUser]);
+
+  useEffect(() => {
+    if (locked || !terminalUser || setupFlowState.loading || terminalMeta.loading) return;
+
+    if (setupFlowActive) {
+      previousSetupFlowActiveRef.current = true;
+      return;
+    }
+
+    if (hasInitializedPosViewRef.current) return;
+
+    const onboardingJustCompleted = previousSetupFlowActiveRef.current === true;
+    previousSetupFlowActiveRef.current = false;
+    const restoredView = onboardingJustCompleted
+      ? ''
+      : (
+        resolveRestorablePosView(readRequestedPosView())
+        || resolveRestorablePosView(readStoredPosView(posLastViewStorageKey))
+      );
+    const nextView = restoredView || 'checkout';
+    hasInitializedPosViewRef.current = true;
+    setPosViewMode(nextView);
+    writeStoredPosView(posLastViewStorageKey, nextView);
+    updatePosViewQuery(nextView);
+  }, [
+    locked,
+    posLastViewStorageKey,
+    resolveRestorablePosView,
+    setupFlowActive,
+    setupFlowState.loading,
+    terminalMeta.loading,
+    terminalUser,
+    updatePosViewQuery
+  ]);
 
   useEffect(() => {
     if (locked || terminalUser?.is_master_admin !== true) return;
@@ -3568,6 +3681,16 @@ export default function TerminalPage() {
 
   const cashierResumeUnlock = terminalUnlockMode === 'cashier_resume';
   const adminReauthUnlock = terminalUnlockMode === 'admin_reunlock';
+
+  if (terminalStartupLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-100 px-6" aria-busy="true" aria-live="polite">
+        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-sm font-semibold text-slate-700 shadow-sm">
+          Restoring POS workspace...
+        </div>
+      </main>
+    );
+  }
 
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
