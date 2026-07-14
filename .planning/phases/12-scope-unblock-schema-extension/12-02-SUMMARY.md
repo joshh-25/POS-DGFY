@@ -158,6 +158,19 @@ None - no external service configuration required.
 - Phase 13's `items` → `products` mapper (PIM-02) has a written contract (`docs/database/legacy-product-attributes-folding-design.md`) to read before implementing `attributes` JSON population logic.
 - Recommend a CI/dev-environment run with `node_modules` installed to execute the full `apps/dgfy-migration-runner` test suite and the dgfy-api module-load check as a supplementary confirmation (see Issues Encountered above) — not blocking, since Plan 04 provides the authoritative DB-backed proof.
 
+## Post-hoc Correction (12-REVIEW.md CR-01)
+
+The `unique_inventory_movements_natural_key` index as originally shipped by this plan —
+`(business_id, reference_type, reference_id)`, no `product_id` — was found by the phase's
+code-review gate to break any multi-product order: Phase 9/10's checkout-finalize
+(`availmentRepository.js`) and reservation-commit (`inventoryReservationRepository.js`) both
+write one `InventoryMovement` row per product line sharing the same
+`(business_id, reference_type, reference_id)`, so the second product line in any order would
+hit a unique-constraint violation. Fixed post-hoc (same feature branch, unreleased) by adding
+`product_id` to the index in the migration, `InventoryMovement.js`, and the
+`dgfyBusinessContract.js` comment — see commit `4a83f1e7` and `12-04-SUMMARY.md`'s "CR-01
+Fix Verification" section for the corrected, re-verified shape.
+
 ## Self-Check: PASSED
 
 All 8 created/modified files confirmed present on disk; all 4 commit hashes (`f9ccede2`, `ba7fdca7`, `b416f980`, `cc7f866a`) confirmed present in git log.

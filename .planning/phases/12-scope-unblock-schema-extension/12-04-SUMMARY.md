@@ -152,9 +152,41 @@ Operator reviewed this evidence and typed **"approved"**.
 
 None further — checkpoint approved. (Original local `.env`/`lima-dgfy-dev` credential mismatch remains unresolved but is now understood to be a dead end for this verification path, not a blocker for Phase 12.)
 
+## CR-01 Fix Verification (post-checkpoint-approval)
+
+The phase's code-review gate (`12-REVIEW.md`) found that the index this plan had just proven —
+`unique_inventory_movements_natural_key` on `(business_id, reference_type, reference_id)` —
+breaks any multi-product order, because Phase 9/10's checkout-finalize and reservation-commit
+write one `InventoryMovement` row per product line sharing the same
+`(business_id, reference_type, reference_id)`. The operator approved fixing this immediately
+rather than deferring it, since the wrong shape was already live on the 3 EC2 tenant DBs used
+for this plan's proof.
+
+Fix applied (source, commit `4a83f1e7`): added `product_id` to the index in the migration,
+`InventoryMovement.js`, and `dgfyBusinessContract.js`'s comment.
+
+Environment reconciliation + re-verification against the same EC2 tenant DBs:
+1. `ALTER TABLE ... DROP INDEX ... ADD UNIQUE INDEX ...` run directly against
+   `dgfy_business_r0001/r0002/r0003` (operator-approved — this bypassed Umzug's tracking since
+   `addIndexIfMissing` only checks index *name*, not column composition, so simply re-running
+   the migration would not have fixed an existing same-named index).
+2. Rebuilt the migration-runner image with the corrected source, re-ran `schema migrate` →
+   clean no-op (`total_pending=0, executed=0`, migration already tracked as executed) —
+   confirms the fixed migration is still idempotent.
+3. Re-ran `verify` → still `business_schemas_ok: true` (report:
+   `2026-07-14T11-41-38-152Z-verify.json`). **Caveat:** `verify`'s `checkContractSchema` only
+   asserts index *existence by name*, not column composition, so this alone does not prove the
+   fix — see next point.
+4. Directly queried `SHOW INDEX FROM inventory_movements` against all 3 tenant DBs and captured
+   the result as supplementary evidence (`2026-07-14T11-41-38-152Z-cr01-index-composition-proof.txt`):
+   all 3 confirm the corrected 4-column composite `(business_id, product_id, reference_type,
+   reference_id)`.
+5. Local test suites re-run after the source fix: `dgfy-migration-runner` 335/344 (unchanged),
+   `dgfy-api` 625/821 (unchanged) — no regressions from the index-column change.
+
 ## Next Phase Readiness
 
-Complete. Success criteria #2-#4 (schema applied + verified + proven idempotent against a real tenant DB) are proven. Phase 13's mapper work can proceed on the assumption that the Plan 02 schema is confirmed present in a real tenant DB.
+Complete. Success criteria #2-#4 (schema applied + verified + proven idempotent against a real tenant DB) are proven, **and** the CR-01 index-composition defect found by code review is fixed and independently re-verified (not just re-checked via the name-only `verify` command). Phase 13's mapper work can proceed on the assumption that the Plan 02 schema — including the corrected `inventory_movements` natural-key index — is confirmed present and functionally correct in a real tenant DB.
 
 ---
 *Phase: 12-scope-unblock-schema-extension*
@@ -166,5 +198,9 @@ Complete. Success criteria #2-#4 (schema applied + verified + proven idempotent 
 - FOUND: apps/dgfy-migration-runner/reports/2026-07-14T10-47-56-096Z-verify.json
 - FOUND: apps/dgfy-migration-runner/reports/2026-07-14T10-49-03-413Z-schema-migrate.json
 - FOUND: apps/dgfy-migration-runner/reports/2026-07-14T10-49-30-980Z-verify.json
+- FOUND: apps/dgfy-migration-runner/reports/2026-07-14T11-41-12-415Z-schema-migrate.json
+- FOUND: apps/dgfy-migration-runner/reports/2026-07-14T11-41-38-152Z-verify.json
+- FOUND: apps/dgfy-migration-runner/reports/2026-07-14T11-41-38-152Z-cr01-index-composition-proof.txt
 - FOUND: 30b195ec (chore commit, initial blocked evidence)
+- FOUND: 4a83f1e7 (fix commit, CR-01 correction + re-verification evidence)
 - CONFIRMED: operator approval received for the blocking human-verify checkpoint
