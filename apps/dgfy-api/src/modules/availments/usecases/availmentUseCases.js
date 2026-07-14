@@ -433,6 +433,31 @@ export function buildApplyDiscountUseCase({ repository, businessRepository }) {
             }
         }
 
+        // CR-02 fix (09-REVIEW.md): a negative amount/percent is never
+        // floored by computeAvailmentTotals's Math.min() cap (which only
+        // bounds the UPPER end), so an unvalidated negative value can
+        // inflate a customer's total beyond the subtotal — reachable via
+        // discountType 'promo_code'/'sc_pwd' with no permission check at
+        // all. Validate sign/range here, before repository.recordDiscount.
+        if (amount !== null && amount !== undefined) {
+            const amountNum = Number(amount);
+            if (!Number.isFinite(amountNum) || amountNum < 0) {
+                return ApplicationResult.failure(validationError('amount must be a non-negative number.'));
+            }
+        }
+        if (percent !== null && percent !== undefined) {
+            const percentNum = Number(percent);
+            if (!Number.isFinite(percentNum) || percentNum < 0 || percentNum > 100) {
+                return ApplicationResult.failure(validationError('percent must be between 0 and 100.'));
+            }
+        }
+        // WR-05 fix (09-REVIEW.md): statutory SC/PWD discounts require ID
+        // verification — reject an sc_pwd discount with no ID number rather
+        // than silently persisting an unverifiable statutory discount.
+        if (discountType === 'sc_pwd' && (!scPwdIdNumber || scPwdIdNumber.trim() === '')) {
+            return ApplicationResult.failure(validationError('scPwdIdNumber is required for an SC/PWD discount.'));
+        }
+
         try {
             const result = await repository.recordDiscount(businessId, availmentId, {
                 discountType,

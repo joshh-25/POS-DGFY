@@ -280,6 +280,29 @@ describe('buildAddLineUseCase', () => {
         expect(result.isSuccess).toBe(false);
         expect(result.statusCode).toBe(400);
     });
+
+    // CR-01 fix (09-REVIEW.md): a caller-supplied stockEffectType override
+    // must be validated against the DB's ENUM('inventory_issue',
+    // 'stock_exempt') before it ever reaches repository.addLine.
+    it('rejects an out-of-set stockEffectType override (400)', async () => {
+        const repository = baseRepository();
+        const businessRepository = baseBusinessRepository();
+        const productRepository = baseProductRepository();
+        const useCase = buildAddLineUseCase({ repository, businessRepository, productRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            availmentId: 'avl-1',
+            productId: 101,
+            quantity: 1,
+            stockEffectType: 'bogus_effect_type'
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(400);
+        expect(repository.addLine).not.toHaveBeenCalled();
+    });
 });
 
 describe('buildUpdateLineUseCase', () => {
@@ -335,6 +358,26 @@ describe('buildUpdateLineUseCase', () => {
 
         expect(result.isSuccess).toBe(false);
         expect(result.statusCode).toBe(400);
+    });
+
+    // CR-01 fix (09-REVIEW.md): mirrors buildAddLineUseCase's allowlist
+    // check for the same ENUM('inventory_issue', 'stock_exempt') column.
+    it('rejects an out-of-set stockEffectType override (400)', async () => {
+        const repository = baseRepository();
+        const businessRepository = baseBusinessRepository();
+        const useCase = buildUpdateLineUseCase({ repository, businessRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            availmentId: 'avl-1',
+            lineId: 1,
+            stockEffectType: 'bogus_effect_type'
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(400);
+        expect(repository.updateLine).not.toHaveBeenCalled();
     });
 });
 
@@ -576,5 +619,112 @@ describe('buildApplyDiscountUseCase', () => {
 
         expect(result.isSuccess).toBe(false);
         expect(result.statusCode).toBe(409);
+    });
+
+    // CR-01 fix (09-REVIEW.md): discountType must be validated against the
+    // DB's ENUM('promo_code', 'manual', 'sc_pwd') allowlist, not just
+    // checked for truthiness.
+    it('rejects an out-of-set discountType (400)', async () => {
+        const repository = baseRepository();
+        const businessRepository = baseBusinessRepository();
+        const useCase = buildApplyDiscountUseCase({ repository, businessRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            availmentId: 'avl-1',
+            discountType: 'bogus_discount_type'
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(400);
+        expect(repository.recordDiscount).not.toHaveBeenCalled();
+    });
+
+    // CR-02 fix (09-REVIEW.md): an unpermissioned negative discount amount
+    // must never reach repository.recordDiscount — it is not floored by
+    // computeAvailmentTotals's Math.min() cap and can inflate the total
+    // beyond the subtotal.
+    it('rejects a negative discount amount (400) — reachable with no permission check via promo_code', async () => {
+        const repository = baseRepository();
+        const businessRepository = baseBusinessRepository({
+            getMembership: jest.fn().mockResolvedValue(makeMembership({ role: 'member' }))
+        });
+        const useCase = buildApplyDiscountUseCase({ repository, businessRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            availmentId: 'avl-1',
+            discountType: 'promo_code',
+            amount: -500
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(400);
+        expect(repository.recordDiscount).not.toHaveBeenCalled();
+    });
+
+    it('rejects a negative discount percent (400)', async () => {
+        const repository = baseRepository();
+        const businessRepository = baseBusinessRepository({
+            getMembership: jest.fn().mockResolvedValue(makeMembership({ role: 'member' }))
+        });
+        const useCase = buildApplyDiscountUseCase({ repository, businessRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            availmentId: 'avl-1',
+            discountType: 'promo_code',
+            percent: -10
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(400);
+        expect(repository.recordDiscount).not.toHaveBeenCalled();
+    });
+
+    it('rejects a discount percent above 100 (400)', async () => {
+        const repository = baseRepository();
+        const businessRepository = baseBusinessRepository({
+            getMembership: jest.fn().mockResolvedValue(makeMembership({ role: 'member' }))
+        });
+        const useCase = buildApplyDiscountUseCase({ repository, businessRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            availmentId: 'avl-1',
+            discountType: 'promo_code',
+            percent: 150
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(400);
+        expect(repository.recordDiscount).not.toHaveBeenCalled();
+    });
+
+    // WR-05 fix (09-REVIEW.md): statutory SC/PWD discounts require ID
+    // verification.
+    it('rejects an sc_pwd discount with no scPwdIdNumber (400)', async () => {
+        const repository = baseRepository();
+        const businessRepository = baseBusinessRepository({
+            getMembership: jest.fn().mockResolvedValue(makeMembership({ role: 'member' }))
+        });
+        const useCase = buildApplyDiscountUseCase({ repository, businessRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            availmentId: 'avl-1',
+            discountType: 'sc_pwd',
+            percent: 0.20
+            // scPwdIdNumber is missing
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(400);
+        expect(repository.recordDiscount).not.toHaveBeenCalled();
     });
 });

@@ -209,7 +209,14 @@ export function computeAvailmentTotals(lines, options = {}) {
 	// If SC/PWD, the discount is applied to the net base (VAT-exclusive)
 	// Otherwise, discounts apply to the full VAT-inclusive subtotal
 	const discountBase = scPwd ? totalVatExempt : subtotalCentavos;
-	const appliedDiscount = Math.min(totalDiscountCentavos, discountBase); // never negative
+	// CR-02 fix (09-REVIEW.md): Math.min() alone only bounds the UPPER end —
+	// it does nothing to stop a negative totalDiscountCentavos (from an
+	// unvalidated negative discount term) from making appliedDiscount
+	// negative, which would make totalCentavos EXCEED subtotalCentavos
+	// (an undisclosed surcharge). Math.max(0, ...) floors it as
+	// defense-in-depth, even though buildApplyDiscountUseCase now also
+	// rejects negative amount/percent at the usecase layer.
+	const appliedDiscount = Math.max(0, Math.min(totalDiscountCentavos, discountBase));
 
 	// Compute final total
 	const totalCentavos = subtotalCentavos - appliedDiscount;

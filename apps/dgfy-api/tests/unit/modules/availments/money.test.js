@@ -332,6 +332,23 @@ describe('money.js - Integer-Centavo Money Engine', () => {
 			expect(result.discount_amount).toBe(10000);
 			// Total would be zero (or close to it due to VAT complexity)
 		});
+
+		// CR-02 fix (09-REVIEW.md) defense-in-depth: Math.min() alone only
+		// bounds the UPPER end — a negative discount term must be floored
+		// at 0, never allowed to make total_amount EXCEED subtotal_amount
+		// (an undisclosed surcharge). This is a belt-and-suspenders check;
+		// buildApplyDiscountUseCase now also rejects negative amount/
+		// percent before a term ever reaches this function.
+		it('should floor a negative discount at zero rather than inflate the total beyond subtotal', () => {
+			const lines = [{ quantity: 1, unit_price: '112.00' }];
+			const result = computeAvailmentTotals(lines, {
+				codeDiscounts: [{ amount: -50000 }] // -500.00 pesos in centavos, a "surcharge"
+			});
+
+			expect(result.discount_amount).toBe(0);
+			expect(result.total_amount).toBe(result.subtotal_amount);
+			expect(result.total_amount).toBeLessThanOrEqual(result.subtotal_amount);
+		});
 	});
 
 	describe('computeChange', () => {
