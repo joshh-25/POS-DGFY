@@ -44,7 +44,10 @@ export const MAPPING_REASON_CODES = Object.freeze({
     INVALID_TERMINAL_ID: 'invalid_terminal_id',
     ORPHAN_TENANT_USER_LINK: 'orphan_tenant_user_link',
     LOCATION_NOT_MAPPED: 'location_not_mapped',
-    OUT_OF_SCOPE_ENTITY: 'out_of_scope_entity'
+    OUT_OF_SCOPE_ENTITY: 'out_of_scope_entity',
+    LOSSY_CATEGORY_COLLAPSE: 'lossy_category_collapse',
+    FOLDER_NESTING_FLATTENED: 'folder_nesting_flattened',
+    UNRESOLVED_INGREDIENT: 'unresolved_ingredient'
 });
 
 // D-15/ADR 0029: mirrors dgfyCoreContract.js / dgfyBusinessContract.js
@@ -172,6 +175,65 @@ function skipResult({ entityType, targetTable, legacyIdMapKeyValue, finding }) {
         related_targets: [],
         findings: [finding]
     };
+}
+
+function toDecimalNumber(value) {
+    if (value === undefined || value === null || String(value).trim() === '') return null;
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function toDecimalString(value) {
+    const numberValue = toDecimalNumber(value);
+    return numberValue === null ? null : numberValue.toFixed(12);
+}
+
+export function computeOpeningBalanceQuantity(legacyItem = {}, itemLocationStocks = []) {
+    if (Array.isArray(itemLocationStocks) && itemLocationStocks.length > 0) {
+        const total = itemLocationStocks.reduce((sum, row) => {
+            const quantity = toDecimalNumber(row?.quantity_on_hand);
+            return sum + (quantity === null ? 0 : quantity);
+        }, 0);
+        return total.toFixed(12);
+    }
+
+    return toDecimalString(legacyItem.current_stock);
+}
+
+function addAttributeIfPresent(attributes, key, value) {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+        if (value.length > 0) attributes[key] = value;
+        return;
+    }
+    attributes[key] = value;
+}
+
+function buildProductAttributes(legacyItem = {}) {
+    const attributes = {};
+    const objectAttributeSources = [
+        ['nutrition', 'nutrition'],
+        ['physicalProperties', 'physicalProperties'],
+        ['shelfLife', 'shelfLife'],
+        ['packaging', 'packaging'],
+        ['qualityControl', 'qualityControl'],
+        ['compliance', 'regulatoryCompliance'],
+        ['costBreakdown', 'costBreakdown']
+    ];
+    const arrayAttributeSources = [
+        ['allergens', 'allergens'],
+        ['barcodes', 'barcodes'],
+        ['composition', 'productCompositions']
+    ];
+
+    objectAttributeSources.forEach(([attributeKey, sourceKey]) => {
+        addAttributeIfPresent(attributes, attributeKey, legacyItem[sourceKey]);
+    });
+    arrayAttributeSources.forEach(([attributeKey, sourceKey]) => {
+        addAttributeIfPresent(attributes, attributeKey, legacyItem[sourceKey]);
+    });
+
+    return attributes;
 }
 
 // ---------------------------------------------------------------------------
@@ -751,5 +813,135 @@ export function mapTerminalRegistryEntryToTerminalIdentity(entry = {}, context =
         legacy_id_map_key: legacyIdMapKeyValue,
         related_targets: [],
         findings
+    };
+}
+
+// ---------------------------------------------------------------------------
+// 8. Product folder — item_folders -> dgfy_business_*.product_folders
+// ---------------------------------------------------------------------------
+
+export function mapItemFolderToProductFolder(legacyFolder = {}, context = {}) {
+    const {
+        legacyTenantDbName = 'legacy_tenant',
+        targetBusinessDbName = null,
+        expectedBusinessId = null
+    } = context;
+    const legacyId = legacyFolder.folder_id;
+    const legacyIdMapKeyValue = legacyIdMapKey({
+        legacySource: legacyTenantDbName,
+        legacyTable: 'item_folders',
+        legacyId
+    });
+
+    const name = toTrimmedString(legacyFolder.name);
+
+    if (isBlank(name)) {
+        return skipResult({
+            entityType: 'product_folder',
+            targetTable: 'product_folders',
+            legacyIdMapKeyValue,
+            finding: classifyMappingConflict(MAPPING_REASON_CODES.MISSING_REQUIRED_FIELD, {
+                entityType: 'product_folder',
+                legacyTable: 'item_folders',
+                legacyId,
+                severity: 'skip',
+                message: `Legacy item_folders row ${legacyId} is missing a required name.`,
+                remediation: 'Backfill the legacy folder name before retrying product-folder migration.'
+            })
+        });
+    }
+
+    const findings = [];
+    if (!isBlank(legacyFolder.parent_id)) {
+        findings.push(classifyMappingConflict(MAPPING_REASON_CODES.FOLDER_NESTING_FLATTENED, {
+            entityType: 'product_folder',
+            legacyTable: 'item_folders',
+            legacyId,
+            severity: 'skip',
+            message: `Legacy item_folders row ${legacyId} has parent_id ${legacyFolder.parent_id}; product_folders is flat, so nesting is discarded while preserving the folder row.`,
+            remediation: 'No migration action required; folder nesting is intentionally flattened for Phase 13.'
+        }));
+    }
+
+    return {
+        operation: 'insert',
+        entity_type: 'product_folder',
+        target_table: 'product_folders',
+        target_database: targetBusinessDbName,
+        target_payload: {
+            business_id: expectedBusinessId,
+            name,
+            description: legacyFolder.description ?? null,
+            show_in_pos_filter: true,
+            is_active: true
+        },
+        legacy_id_map_key: legacyIdMapKeyValue,
+        related_targets: [],
+        findings
+    };
+}
+
+// ---------------------------------------------------------------------------
+// 9. Product — items -> dgfy_business_*.products
+// ---------------------------------------------------------------------------
+
+export function mapItemToProduct(legacyItem = {}, context = {}) {
+    const {
+        legacyTenantDbName = 'legacy_tenant',
+        targetBusinessDbName = null,
+        expectedBusinessId = null,
+        resolvedFolderId = null,
+        itemLocationStocks = []
+    } = context;
+    const legacyId = legacyItem.item_id;
+    const legacyIdMapKeyValue = legacyIdMapKey({
+        legacySource: legacyTenantDbName,
+        legacyTable: 'items',
+        legacyId
+    });
+
+    const name = toTrimmedString(legacyItem.name);
+
+    if (isBlank(name)) {
+        return skipResult({
+            entityType: 'product',
+            targetTable: 'products',
+            legacyIdMapKeyValue,
+            finding: classifyMappingConflict(MAPPING_REASON_CODES.MISSING_REQUIRED_FIELD, {
+                entityType: 'product',
+                legacyTable: 'items',
+                legacyId,
+                severity: 'skip',
+                message: `Legacy items row ${legacyId} is missing a required name.`,
+                remediation: 'Backfill the legacy item name before retrying product migration.'
+            })
+        });
+    }
+
+    return {
+        operation: 'insert',
+        entity_type: 'product',
+        target_table: 'products',
+        target_database: targetBusinessDbName,
+        target_payload: {
+            business_id: expectedBusinessId,
+            folder_id: resolvedFolderId ?? null,
+            name,
+            // D-09: legacy inventory/material categories collapse to one
+            // sellable DGFY category. Do not reintroduce a whitelist switch.
+            category: 'retail',
+            inventory_mode: 'basic_inventory',
+            stock_count: computeOpeningBalanceQuantity(legacyItem, itemLocationStocks),
+            sku_code: legacyItem.sku_code ?? null,
+            description: legacyItem.description ?? null,
+            unit_of_measure: legacyItem.unit_of_measure ?? null,
+            cost_per_unit: legacyItem.cost_per_unit ?? null,
+            vat_type: 'vatable',
+            senior_pwd_discount_eligible: false,
+            attributes: buildProductAttributes(legacyItem)
+        },
+        legacy_id_map_key: legacyIdMapKeyValue,
+        related_targets: [],
+        findings: []
     };
 }
