@@ -50,6 +50,7 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - ✓ Legacy code touches are limited to approved, manifest-governed compatibility seams with a mechanical CI acceptance gate (schema + completeness + code↔manifest reconciliation) and an ESLint compat-import ban backing the guardrail scan — validated in Phase 5: Compatibility and Backend-First Cutover Seam (CMP-01/02/03).
 - ✓ Release evidence (architecture checks, migration verification, tenant drift checks, targeted smoke/contract checks) before cutover — validated in Phase 6: Release Evidence and Rehearsal Gates (CMP-04).
 - ✓ Storefront Discovery & Online Ordering (map browse/search, store page, cart, guest-or-account checkout, pickup/delivery immediate-or-scheduled, PayMongo QR Ph payment) is built with a durable landlord-first order record that finalizes idempotently into the correct tenant's Availment, safely crossing the Landlord/Tenant database boundary for the first time — validated in Phase 10: Storefront Discovery & Online Ordering (STF-01..STF-05, 8/8 plans, code review found and fixed 4 critical bugs including a stock-reservation composition-root wiring defect, 16/16 must-haves independently re-verified against current code).
+- ✓ Order Fulfillment & Delivery Coordination (business/staff retrieve and process incoming online orders, progress fulfillment status through a shared core pipeline with pickup/delivery/dine-in handoffs, manually assign courier/delivery partners and track payout through completion) — validated in Phase 11: Order Fulfillment & Delivery Coordination (FUL-01/02/03, 4/4 plans, code review found and fixed 2 critical bugs — non-atomic stage-progression writes and unvalidated fulfillmentMode — 14/14 must-haves re-verified against current code, migration applied and finalize paths proven end-to-end against a live tenant MySQL database).
 
 ### Active
 
@@ -60,7 +61,6 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - [ ] POS Checkout & Payment (Availment, discounts, senior/PWD, server-verified totals, payment method selection, receipts) — v2.0.
 - [ ] Shift & Cash Drawer (open/close shift, cash-drawer auditing, reconciliation) — v2.0.
 - [ ] Fiscal/Compliance policy-engine gating (checkout/receipts/shift) — v2.0.
-- [ ] Order Fulfillment & Delivery Coordination (process online orders, delivery/courier assignment, payout tracking) — v2.0.
 
 ### Out of Scope
 
@@ -142,4 +142,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Update Context with current state
 
 ---
-*Last updated: 2026-07-13 after Phase 10 complete (Storefront Discovery & Online Ordering)*
+*Last updated: 2026-07-14 after Phase 11 complete (Order Fulfillment & Delivery Coordination)*
