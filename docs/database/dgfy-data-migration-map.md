@@ -269,13 +269,15 @@ Per ADR 0010 and `docs/database/dgfy-foundation.md`, `storefront_discovery_index
 
 The following legacy domains are **never** read as migration sources and **never** produce a target write in Phase 03. `apps/dgfy-migration-runner/src/data/mappings.js` exports `OUT_OF_SCOPE_LEGACY_TABLES` (mirroring `dgfyCoreContract.js`/`dgfyBusinessContract.js`'s `rejectedTables` lists) and `classifyOutOfScopeRecord()`, which dry-run/apply call to record a structured `skip` finding (`out_of_scope_entity`) instead of silently ignoring an encountered record:
 
-- Products/items, SKUs, product variants, categories.
-- Purchase orders, job orders, stock movements, item/location stock, FIFO batches, suppliers/supplier-items (Inventory/Catalog ownership, ADR 0029).
-- POS transactions/lines, shifts, cashier sessions, terminal sessions (POS ownership, ADR 0029 — **note:** terminal *identity* from `pos_terminal_registry` is in scope per entity 7; terminal *operational* history is not).
+- Products, SKUs, product variants, categories.
+- Purchase orders, job orders, item/location stock, FIFO batches, suppliers/supplier-items (Inventory/Catalog ownership, ADR 0029).
+- POS transaction lines, shifts, cashier sessions, terminal sessions (POS ownership, ADR 0029 — **note:** terminal *identity* from `pos_terminal_registry` is in scope per entity 7; terminal *operational* history is not).
 - Discounts, promos, promotions.
 - Fiscal receipts and fiscal compliance logs.
 - Checkout sessions, Storefront pages, Storefront orders/carts (Storefront operational ownership, ADR 0029).
 - Any frontend/compatibility seam migration (deferred to Phase 05 per `.planning/PROJECT.md`).
+
+**v2.1 amendment (Phase 12, ADR 0029 Amendment):** legacy `items`, `stock_movements`, and `pos_transactions` are no longer permanently excluded. Starting Phase 13, `items` is migrated into `dgfy_business_*.products` and `stock_movements` into `dgfy_business_*.inventory_movements`; starting Phase 14, `pos_transactions` sales history is migrated into `dgfy_business_*.availments`. `pos_transaction_lines` remains excluded until Phase 14 (SHM-02).
 
 These domains are deferred to later milestones once Accounts, Businesses, and Tenancy are stable (see `.planning/PROJECT.md` Out of Scope, and `docs/database/dgfy-foundation.md`'s "Explicit Out-of-Scope Domains").
 
