@@ -188,8 +188,9 @@ describe('dgfy_business foundation migration (20260710021000-create-dgfy-busines
     // (04-07-PLAN.md) added a `staff_invitations` contract entry backed by a
     // SEPARATE additive migration (20260711143000-add-dgfy-business-staff-
     // invitations.cjs), so this historical foundation migration file is
-    // correctly expected to NOT create it (see dgfyBusinessStaffInvitations
-    // describe block below for that migration's own equivalent assertions).
+    // correctly expected to NOT create it. Phase 13.5 added staff_credentials
+    // the same way. See the additive migration describe blocks below for each
+    // table's own equivalent assertions.
     BUSINESS_TABLE_NAMES.forEach((name) => {
       expect(createdTables).toContain(name);
     });
@@ -214,8 +215,8 @@ describe('dgfy_business foundation migration (20260710021000-create-dgfy-busines
     const byName = new Map(createdIndexes.map((entry) => [entry.name, entry]));
 
     // Scoped to BUSINESS_TABLE_NAMES — see the "creates exactly the original
-    // foundation tenant tables" test above for why `staff_invitations` (a
-    // separate, later additive migration) is excluded here.
+    // foundation tenant tables" test above for why `staff_invitations` and
+    // `staff_credentials` (separate, later additive migrations) are excluded here.
     BUSINESS_TABLE_NAMES.forEach((name) => {
       const table = dgfyBusinessContract.tables[name];
       table.indexes.forEach((indexName) => {
@@ -231,8 +232,8 @@ describe('dgfy_business foundation migration (20260710021000-create-dgfy-busines
     const columnsByTable = new Map(createTableCalls.map((entry) => [entry.name, entry.columns]));
 
     // Scoped to BUSINESS_TABLE_NAMES — see the "creates exactly the original
-    // foundation tenant tables" test above for why `staff_invitations` (a
-    // separate, later additive migration) is excluded here.
+    // foundation tenant tables" test above for why `staff_invitations` and
+    // `staff_credentials` (separate, later additive migrations) are excluded here.
     BUSINESS_TABLE_NAMES.forEach((tableName) => {
       const table = dgfyBusinessContract.tables[tableName];
       table.foreignKeys.forEach((fk) => {
@@ -371,6 +372,118 @@ describe('dgfy_business staff_invitations additive migration (20260711143000-add
     await migration.down(queryInterface, Sequelize);
 
     expect(queryInterface.dropTable).toHaveBeenCalledWith('staff_invitations');
+    expect(queryInterface.dropTable).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('dgfy_business staff_credentials additive migration (20260717000000-add-dgfy-business-staff-credentials.cjs)', () => {
+  const STAFF_CREDENTIALS_MIGRATION_PATH = join(
+    __dirname,
+    '..',
+    'src',
+    'migrations',
+    'schema',
+    '20260717000000-add-dgfy-business-staff-credentials.cjs'
+  );
+
+  let migration;
+  let queryInterface;
+  let createdTables;
+  let createdIndexes;
+  let createTableCalls;
+
+  beforeEach(() => {
+    delete require.cache[require.resolve(STAFF_CREDENTIALS_MIGRATION_PATH)];
+    // eslint-disable-next-line global-require, import/no-dynamic-require
+    migration = require(STAFF_CREDENTIALS_MIGRATION_PATH);
+
+    createdTables = [];
+    createdIndexes = [];
+    createTableCalls = [];
+
+    queryInterface = {
+      showAllTables: jest.fn().mockResolvedValue([]),
+      showIndex: jest.fn().mockResolvedValue([]),
+      createTable: jest.fn().mockImplementation(async (name, columns) => {
+        createdTables.push(name);
+        createTableCalls.push({ name, columns });
+      }),
+      addIndex: jest.fn().mockImplementation(async (table, columns, options) => {
+        createdIndexes.push({ table, columns, name: options?.name, unique: Boolean(options?.unique) });
+      }),
+      dropTable: jest.fn().mockResolvedValue(undefined)
+    };
+  });
+
+  test('contract declares staff_credentials columns, indexes, unique constraint, and staff_accounts foreign key', () => {
+    expect(dgfyBusinessContract.tables.staff_credentials).toEqual({
+      columns: [
+        'id',
+        'staff_account_id',
+        'password_hash',
+        'pos_approval_pin_hash',
+        'credential_status',
+        'password_updated_at',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: [
+        'unique_staff_credentials_staff_account',
+        'idx_staff_credentials_status'
+      ],
+      uniqueConstraints: ['unique_staff_credentials_staff_account'],
+      foreignKeys: [
+        { column: 'staff_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    });
+  });
+
+  test('exports non-destructive meta with targetKind "business"', () => {
+    expect(migration.meta).toBeDefined();
+    expect(migration.meta.destructive).toBe(false);
+    expect(migration.meta.targetKind).toBe('business');
+    expect(typeof migration.meta.rollbackDescription).toBe('string');
+  });
+
+  test('up() creates staff_credentials with contract columns, foreign key, enum, and indexes', async () => {
+    await migration.up(queryInterface, Sequelize);
+
+    expect(createdTables).toEqual(['staff_credentials']);
+    const contractTable = dgfyBusinessContract.tables.staff_credentials;
+    const columns = createTableCalls[0].columns;
+
+    expect(Object.keys(columns)).toEqual(contractTable.columns);
+    expect(columns.staff_account_id.allowNull).toBe(false);
+    expect(columns.staff_account_id.references).toEqual({ model: 'staff_accounts', key: 'id' });
+    expect(columns.staff_account_id.onDelete).toBe('CASCADE');
+    expect(columns.credential_status.allowNull).toBe(false);
+    expect(columns.credential_status.defaultValue).toBe('active');
+
+    const byName = new Map(createdIndexes.map((entry) => [entry.name, entry]));
+    contractTable.indexes.forEach((indexName) => {
+      expect(byName.has(indexName)).toBe(true);
+      const expectedUnique = contractTable.uniqueConstraints.includes(indexName);
+      expect(byName.get(indexName).unique).toBe(expectedUnique);
+    });
+  });
+
+  test('up() is idempotent: skips createTable/addIndex when staff_credentials already exists with indexes', async () => {
+    queryInterface.showAllTables.mockResolvedValue(['staff_credentials']);
+    queryInterface.showIndex.mockResolvedValue(
+      dgfyBusinessContract.tables.staff_credentials.indexes.map((name) => ({ name }))
+    );
+
+    await migration.up(queryInterface, Sequelize);
+
+    expect(queryInterface.createTable).not.toHaveBeenCalled();
+    expect(queryInterface.addIndex).not.toHaveBeenCalled();
+  });
+
+  test('down() drops staff_credentials only', async () => {
+    await migration.down(queryInterface, Sequelize);
+
+    expect(queryInterface.dropTable).toHaveBeenCalledWith('staff_credentials');
     expect(queryInterface.dropTable).toHaveBeenCalledTimes(1);
   });
 });

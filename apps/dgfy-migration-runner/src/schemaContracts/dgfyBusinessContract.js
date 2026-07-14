@@ -54,9 +54,10 @@ export const dgfyBusinessContract = {
       projectionOnly: false
     },
 
-    // D-14: tenant-local staff authorization profile. Login/identity itself
-    // is DGFY-account-based (landlord dgfy_core.accounts); this table is the
-    // tenant-local staff record an account_staff_assignments row links to.
+    // D-14 / Phase 13.5: tenant-local staff authorization profile. Login is
+    // tenant-local via staff_credentials; optional DGFY account linkage is
+    // represented by account_staff_assignments (D-13.5-01, D-13.5-03; ADR
+    // 0028 Amendment).
     staff_accounts: {
       columns: [
         'id',
@@ -71,6 +72,33 @@ export const dgfyBusinessContract = {
       indexes: ['unique_staff_accounts_email', 'idx_staff_accounts_status'],
       uniqueConstraints: ['unique_staff_accounts_email'],
       foreignKeys: [],
+      projectionOnly: false
+    },
+
+    // Phase 13.5 (STAFF-01): tenant-local staff credentials live in the same
+    // tenant database, separated from staff_accounts profile serialization.
+    // Additive migration 20260717000000-add-dgfy-business-staff-credentials.cjs
+    // implements this entry and only stores bcrypt hashes copied from legacy,
+    // never raw passwords, PINs, tokens, or reset secrets.
+    staff_credentials: {
+      columns: [
+        'id',
+        'staff_account_id',
+        'password_hash',
+        'pos_approval_pin_hash',
+        'credential_status',
+        'password_updated_at',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: [
+        'unique_staff_credentials_staff_account',
+        'idx_staff_credentials_status'
+      ],
+      uniqueConstraints: ['unique_staff_credentials_staff_account'],
+      foreignKeys: [
+        { column: 'staff_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
       projectionOnly: false
     },
 
