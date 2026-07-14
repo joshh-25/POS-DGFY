@@ -6,6 +6,7 @@ import {
     OUT_OF_SCOPE_LEGACY_TABLES,
     classifyMappingConflict,
     classifyOutOfScopeRecord,
+    isRealBcryptHash,
     isInScopeLegacyTable,
     mapLegacyAccountToDgfyAccount,
     mapLegacyTenantToBusiness,
@@ -168,9 +169,10 @@ describe('mapLegacyAccountToDgfyAccount', () => {
         expect(result.target_payload.status).toBe('deleted');
     });
 
-    test('derives status: is_active false -> inactive', () => {
+    test('derives status: is_active false -> suspended', () => {
         const result = mapLegacyAccountToDgfyAccount(legacyDgfyAccountFixture({ is_active: false }));
-        expect(result.target_payload.status).toBe('inactive');
+        expect(result.target_payload.status).toBe('suspended');
+        expect(['active', 'suspended', 'deleted']).toContain(result.target_payload.status);
     });
 
     test('missing required field (blank email) -> skip with missing_required_field finding', () => {
@@ -333,6 +335,9 @@ describe('mapLegacyMembershipToBusinessMembership', () => {
 // ---------------------------------------------------------------------------
 
 describe('mapLegacyUserToStaffAccount', () => {
+    const bcryptPasswordHash = '$2a$10$tenantlocalhashvalue';
+    const bcryptPinHash = '$2b$10$pinhashvalue';
+
     test('happy path: insert with normalized email, no password/PIN fields in payload', () => {
         const result = mapLegacyUserToStaffAccount(legacyTenantUserFixture(), {
             legacyTenantDbName: 'sku_tenant_1',
@@ -356,6 +361,96 @@ describe('mapLegacyUserToStaffAccount', () => {
             legacy_table: 'users',
             legacy_id: '9001'
         });
+    });
+
+    test('exports the pure bcrypt hash classifier used by staff credentials', () => {
+        expect(isRealBcryptHash('$2a$10$tenantlocalhashvalue')).toBe(true);
+        expect(isRealBcryptHash('$2b$12$tenantlocalhashvalue')).toBe(true);
+        expect(isRealBcryptHash('$2x$08$tenantlocalhashvalue')).toBe(true);
+        expect(isRealBcryptHash('$2y$10$tenantlocalhashvalue')).toBe(true);
+        expect(isRealBcryptHash('PENDING_INVITATION')).toBe(false);
+        expect(isRealBcryptHash('$argon2id$v=19$m=4096')).toBe(false);
+        expect(isRealBcryptHash(null)).toBe(false);
+    });
+
+    test('real bcrypt password_hash emits one staff_credential related target with copied hash and active status', () => {
+        const result = mapLegacyUserToStaffAccount(legacyTenantUserFixture({
+            password_hash: bcryptPasswordHash,
+            pos_approval_pin_hash: null
+        }), {
+            legacyTenantDbName: 'sku_tenant_1',
+            targetBusinessDbName: 'dgfy_business_alpha'
+        });
+
+        expect(result.related_targets).toHaveLength(1);
+        expect(result.related_targets[0]).toEqual({
+            operation: 'insert',
+            entity_type: 'staff_credential',
+            target_table: 'staff_credentials',
+            target_database: 'dgfy_business_alpha',
+            target_payload: {
+                password_hash: bcryptPasswordHash,
+                pos_approval_pin_hash: null,
+                credential_status: 'active',
+                password_updated_at: null
+            }
+        });
+        expect(result.findings).toEqual([]);
+    });
+
+    test('pending-invitation placeholder password creates reset-required credential and reinvite finding', () => {
+        const result = mapLegacyUserToStaffAccount(legacyTenantUserFixture({
+            password_hash: 'PENDING_INVITATION',
+            pos_approval_pin_hash: null
+        }), {
+            targetBusinessDbName: 'dgfy_business_alpha'
+        });
+
+        expect(result.related_targets).toHaveLength(1);
+        expect(result.related_targets[0].target_payload).toEqual({
+            password_hash: null,
+            pos_approval_pin_hash: null,
+            credential_status: 'reset_required',
+            password_updated_at: null
+        });
+        expect(result.findings).toHaveLength(1);
+        expect(result.findings[0].reason_code).toBe(MAPPING_REASON_CODES.STAFF_CREDENTIAL_RESET_REQUIRED);
+        expect(result.findings[0].message).toMatch(/pending legacy invitation/i);
+        expect(result.findings[0].remediation).toMatch(/staff_invitations/i);
+    });
+
+    test('real bcrypt POS approval PIN is copied even when placeholder password requires reset', () => {
+        const result = mapLegacyUserToStaffAccount(legacyTenantUserFixture({
+            password_hash: 'PENDING_INVITATION',
+            pos_approval_pin_hash: bcryptPinHash
+        }), {
+            targetBusinessDbName: 'dgfy_business_alpha'
+        });
+
+        expect(result.related_targets[0].target_payload).toEqual({
+            password_hash: null,
+            pos_approval_pin_hash: bcryptPinHash,
+            credential_status: 'reset_required',
+            password_updated_at: null
+        });
+        expect(result.findings[0].reason_code).toBe(MAPPING_REASON_CODES.STAFF_CREDENTIAL_RESET_REQUIRED);
+    });
+
+    test('staff credential reset findings never include bcrypt hashes in message or remediation', () => {
+        const result = mapLegacyUserToStaffAccount(legacyTenantUserFixture({
+            password_hash: 'legacy-md5-ish-value',
+            pos_approval_pin_hash: '$2y$10$syntheticpinhashvalue'
+        }), {
+            targetBusinessDbName: 'dgfy_business_alpha'
+        });
+
+        const findingText = result.findings
+            .flatMap((finding) => [finding.message, finding.remediation])
+            .filter(Boolean)
+            .join('\n');
+
+        expect(findingText).not.toMatch(/\$2[abxy]\$/);
+        expect(findingText).not.toMatch(/legacy-md5-ish-value/);
     });
 
     test('duplicate email conflict when the email was already seen in this run', () => {
@@ -385,6 +480,30 @@ describe('mapLegacyUserToStaffAccount', () => {
     test('deleted_at present -> removed status', () => {
         const result = mapLegacyUserToStaffAccount(legacyTenantUserFixture({ deleted_at: '2026-07-01T00:00:00.000Z' }));
         expect(result.target_payload.status).toBe('removed');
+    });
+
+    test('is_active false -> suspended and staff statuses stay within target enum', () => {
+        const inactive = mapLegacyUserToStaffAccount(legacyTenantUserFixture({ is_active: false }));
+        const removed = mapLegacyUserToStaffAccount(legacyTenantUserFixture({ deleted_at: '2026-07-01T00:00:00.000Z' }));
+        const active = mapLegacyUserToStaffAccount(legacyTenantUserFixture());
+
+        [inactive, removed, active].forEach((result) => {
+            expect(['active', 'suspended', 'removed']).toContain(result.target_payload.status);
+        });
+        expect(inactive.target_payload.status).toBe('suspended');
+    });
+
+    test('calling staff mapper twice with same input yields deeply equal output', () => {
+        const input = legacyTenantUserFixture({
+            password_hash: bcryptPasswordHash,
+            pos_approval_pin_hash: bcryptPinHash
+        });
+        const context = {
+            legacyTenantDbName: 'sku_tenant_1',
+            targetBusinessDbName: 'dgfy_business_alpha'
+        };
+
+        expect(mapLegacyUserToStaffAccount(input, context)).toEqual(mapLegacyUserToStaffAccount(input, context));
     });
 });
 
