@@ -240,8 +240,15 @@ async function checkLegacyNonMutation(config) {
 
   const legacyDatabase = baseline.legacy_database || config.sourceDb.name;
 
+  // WR-01 fix (06-VERIFICATION.md): sourceSequelize was opened here but
+  // never closed on either the success or error path — a pooled MySQL
+  // connection leak on every verify() run. Close it in a finally, wrapped
+  // in its own try/catch so a close() failure never masks the real
+  // result/error above (matches this function's own fail-closed-but-never-
+  // throws contract).
+  let sourceSequelize;
   try {
-    const sourceSequelize = createSourceConnection(config);
+    sourceSequelize = createSourceConnection(config);
     const currentFingerprint = await computeLegacySchemaFingerprint(sourceSequelize, legacyDatabase);
     const unchanged = JSON.stringify(baseline.fingerprint) === JSON.stringify(currentFingerprint);
 
@@ -261,6 +268,15 @@ async function checkLegacyNonMutation(config) {
       legacy_database: legacyDatabase,
       error: error.message
     };
+  } finally {
+    if (sourceSequelize) {
+      try {
+        await sourceSequelize.close();
+      } catch (closeError) {
+        // best-effort — never let a close() failure surface from this
+        // never-throws function.
+      }
+    }
   }
 }
 
@@ -328,6 +344,14 @@ export async function runVerify({} = {}) {
 
   const targetSequelize = createTargetConnection(config);
   const metaSequelize = createMetaConnection(config);
+  // WR-01 fix (06-VERIFICATION.md): every Sequelize connection opened by
+  // this function (targetSequelize/metaSequelize here, plus one
+  // businessSequelize per configured business target below) is tracked here
+  // and closed in a best-effort cleanup pass right before this function
+  // returns — see the closeOpenConnections() call near the end. Previously
+  // none of these were ever closed, leaking pooled MySQL connections on
+  // every verify() run.
+  const openConnections = [targetSequelize, metaSequelize];
 
   let metadataSchemaOk = true;
   try {
@@ -366,6 +390,7 @@ export async function runVerify({} = {}) {
     try {
       // eslint-disable-next-line no-await-in-loop
       const businessSequelize = createBusinessTargetConnection(config, name);
+      openConnections.push(businessSequelize);
       // eslint-disable-next-line no-await-in-loop
       businessSchemas.push(await checkContractSchema({
         connection: businessSequelize,
@@ -537,6 +562,21 @@ export async function runVerify({} = {}) {
       // never-throws contract.
     }
   }
+
+  // WR-01 fix (06-VERIFICATION.md): close every Sequelize connection opened
+  // during this run (targetSequelize/metaSequelize + one businessSequelize
+  // per configured business target). Closed only now, after every use above
+  // (including the recordCommandComplete call, which needs metaSequelize)
+  // has completed. Each close is independently best-effort so one failing
+  // close never masks the real report/error or breaks this function's
+  // never-throws contract.
+  await Promise.all(openConnections.map(async (connection) => {
+    try {
+      await connection.close();
+    } catch (closeError) {
+      // best-effort — swallow.
+    }
+  }));
 
   return report;
 }
