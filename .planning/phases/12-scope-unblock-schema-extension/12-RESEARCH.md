@@ -506,17 +506,19 @@ product_embeddings: {
 
 **Everything in the Decisions/type/scope/verification analysis is `[VERIFIED]` against source — the four assumptions above are discretionary recommendations, not unverified facts.**
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Success-criterion #1 phrasing vs. artifact reality**
+1. **Success-criterion #1 phrasing vs. artifact reality** — **RESOLVED**
    - What we know: ADR 0029 has no `OUT_OF_SCOPE_LEGACY_TABLES` list; that array is in `mappings.js`. D-11 already prescribes the correct triple-amendment.
    - What's unclear: only whether the planner writes acceptance criteria against the literal (wrong) phrasing or the real artifacts.
    - Recommendation: acceptance criteria should assert (a) `mappings.js` array no longer contains the 3 names, (b) ADR prose amended, (c) migration-map §10 amended — not "the ADR's array."
+   - **RESOLVED:** Adopted by Plan 12-01 Task 2 — acceptance criteria assert against the real artifacts (mappings.js array + ADR prose + migration-map §10), not the ADR's array.
 
-2. **dgfy-api model updates: in-scope this phase?**
+2. **dgfy-api model updates: in-scope this phase?** — **RESOLVED**
    - What we know: models are comment-enforced to match migrations; no feature reads the new columns yet.
    - What's unclear: whether the milestone wants parity now or at Phase 13.
    - Recommendation: update now (cheap, prevents drift); if deferred, record as a conscious deferral in the plan.
+   - **RESOLVED:** Plan 12-02 Task 2 updates the dgfy-api Tenant models NOW for read-path parity (recorded as a conscious decision, per RESEARCH A3 / Open Question 2).
 
 ## Environment Availability
 
