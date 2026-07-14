@@ -94,7 +94,7 @@ describe('isInScopeLegacyTable / classifyOutOfScopeRecord (ADR 0029)', () => {
     });
 
     test('in-scope tables are not flagged out of scope', () => {
-        ['dgfy_accounts', 'tenants', 'dgfy_account_tenant_memberships', 'users', 'tenant_locations'].forEach((table) => {
+        ['dgfy_accounts', 'tenants', 'dgfy_account_tenant_memberships', 'users', 'tenant_locations', 'item_location_stocks'].forEach((table) => {
             expect(isInScopeLegacyTable(table)).toBe(true);
         });
     });
@@ -117,11 +117,11 @@ describe('isInScopeLegacyTable / classifyOutOfScopeRecord (ADR 0029)', () => {
         expect(classifyOutOfScopeRecord('fiscal_receipts', fiscalFixture.fiscal_receipt_id).operation).toBe('skip');
     });
 
-    test('mappings.js exports no mapper function for excluded POS/product/fiscal domains', () => {
+    test('mappings.js exports no mapper function for excluded POS line, fiscal, discount, or checkout domains', () => {
         const source = readFileSync(join(__dirname, '..', 'src', 'data', 'mappings.js'), 'utf8');
         const exportedFunctionNames = [...source.matchAll(/export function (\w+)/g)].map((match) => match[1]);
 
-        expect(exportedFunctionNames.some((name) => /PosTransaction|Product|FiscalReceipt|Discount|Checkout|StockMovement/i.test(name))).toBe(false);
+        expect(exportedFunctionNames.some((name) => /PosTransactionLine|FiscalReceipt|Discount|Checkout/i.test(name))).toBe(false);
     });
 });
 
