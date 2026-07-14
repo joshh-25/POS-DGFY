@@ -5,16 +5,16 @@ milestone_name: Legacy Data Migration
 current_phase: 13
 current_phase_name: Product & Inventory Migration
 status: executing
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-07-14T13:23:37.120Z"
+stopped_at: Completed 13-03-PLAN.md
+last_updated: "2026-07-14T13:42:39.962Z"
 last_activity: 2026-07-14
-last_activity_desc: Phase 13 execution started
+last_activity_desc: Completed 13-03-PLAN.md
 progress:
   total_phases: 14
   completed_phases: 11
   total_plans: 78
-  completed_plans: 70
-  percent: 90
+  completed_plans: 72
+  percent: 92
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 ## Current Position
 
 Phase: 13 (Product & Inventory Migration) — EXECUTING
-Plan: 2 of 6
+Plan: 4 of 6
 Status: Ready to execute
-Last activity: 2026-07-14 — Phase 13 execution started
+Last activity: 2026-07-14 — Completed 13-03-PLAN.md
 
-Progress: [█████████░] 90%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -107,6 +107,7 @@ Progress: [█████████░] 90%
 | Phase 08 P12 | 15min | 2 tasks | 4 files |
 | Phase 08 P13 | 20min | 2 tasks | 5 files |
 | Phase 13 P01 | 8min | 3 tasks | 6 files |
+| Phase 13 P03 | 4min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,8 @@ Recent decisions affecting current work:
 - [Roadmap v2.1]: VER-01/VER-02 mapped fully to Phase 14 rather than split across Phase 13 as research's draft phrased it ("scoped to this phase's entity types") — both requirements' own text names `availment`/`availment_item`, which only exist once Phase 14 lands, so assigning either to Phase 13 would claim completion before it's literally true. Phase 13 still carries its own product/inventory-side dry-run/apply/verify rehearsal success criteria without formally owning the VER-* REQ-IDs, preserving the "map to exactly one phase" rule.
 - [Phase 13 Plan 01]: Legacy transfer stock movements emit LOSSY_CATEGORY_COLLAPSE findings and insert no inventory_movements row per D-08.
 - [Phase 13 Plan 01]: Legacy item categories map unconditionally to products.category='retail' per D-09.
+- [Phase 13 Plan 03]: Product apply uses legacy_id_map as the idempotency guard for products because products.id is auto-increment and sku_code is non-unique.
+- [Phase 13 Plan 03]: BOM composition is resolved in apply pass 2 with JSON bound through Sequelize replacements.
 
 ### Pending Todos
 
@@ -157,6 +160,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-14T13:23:10.185Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-07-14T13:42:39.955Z
+Stopped at: Completed 13-03-PLAN.md
 Resume file: None
