@@ -497,6 +497,7 @@ describe('runApplyTransformations', () => {
         expect(coreSequelize.tables.business_memberships).toHaveLength(1);
         expect(businessSequelize.tables.tenant_ownership_metadata).toHaveLength(1);
         expect(businessSequelize.tables.staff_accounts).toHaveLength(1);
+        expect(businessSequelize.tables.staff_credentials).toHaveLength(1);
         expect(businessSequelize.tables.locations).toHaveLength(1);
 
         // Assignment resolves a real (non-legacy) staffAccountId via the
@@ -507,6 +508,13 @@ describe('runApplyTransformations', () => {
         const staffRow = businessSequelize.tables.staff_accounts[0];
         expect(assignmentRow.staff_account_id).toBe(staffRow.id);
         expect(assignmentRow.staff_account_id).not.toBe('9001'); // legacy tenant_user_id
+
+        const credentialRow = businessSequelize.tables.staff_credentials[0];
+        expect(credentialRow.staff_account_id).toBe(staffRow.id);
+        expect(credentialRow.password_hash).toBe('$2b$10$tenantlocalhashvalue');
+        expect(credentialRow.pos_approval_pin_hash).toBe('$2b$10$pinhashvalue');
+        expect(credentialRow.credential_status).toBe('active');
+        expect(credentialRow.password_updated_at).toBeNull();
 
         // Terminal resolves a real location_id via the durable map, not the
         // legacy location_id.
@@ -524,6 +532,34 @@ describe('runApplyTransformations', () => {
         result.results.forEach((entry) => {
             expect(entry.target_payload).toBeUndefined();
         });
+        expect(JSON.stringify(result.results)).not.toMatch(/\$2[abxy]\$/);
+    });
+
+    test('skipped staff_account parent does not attempt a staff_credential related write', async () => {
+        const target = buildTarget();
+        const tenant = legacyTenantFixture();
+        const tenantUser = legacyTenantUserFixture({ email: '' });
+
+        const landlordSequelize = buildFakeLandlordSequelize({ tenants: [tenant], accounts: [], memberships: [] });
+        const tenantSequelize = buildFakeTenantSequelize({ users: [tenantUser], locations: [] });
+        mockCreateSourceConnection.mockReset().mockReturnValue(landlordSequelize);
+        mockCreateLegacyTenantSourceConnection.mockReset().mockReturnValue(tenantSequelize);
+        const businessSequelize = createFakeSqlSequelize();
+        mockCreateBusinessTargetConnection.mockReset().mockReturnValue(businessSequelize);
+        const coreSequelize = createFakeSqlSequelize();
+        const metaSequelize = createFakeSqlSequelize();
+
+        const result = await runApplyTransformations({
+            config: { sourceDb: {}, targetDb: {}, runtimeMode: 'development' },
+            metaSequelize,
+            coreSequelize,
+            targets: [target],
+            runScope: DEFAULT_RUN_SCOPE
+        });
+
+        expect(businessSequelize.tables.staff_accounts || []).toHaveLength(0);
+        expect(businessSequelize.tables.staff_credentials || []).toHaveLength(0);
+        expect(result.summary.rows_skipped).toBeGreaterThan(0);
     });
 
     test('missing accepted membership creates a conflict/finding and skips both business_membership and account_staff_assignment writes', async () => {
@@ -570,6 +606,7 @@ describe('runApplyTransformations', () => {
             accounts: coreSequelize.tables.accounts.length,
             businesses: coreSequelize.tables.businesses.length,
             staff_accounts: businessSequelize.tables.staff_accounts.length,
+            staff_credentials: businessSequelize.tables.staff_credentials.length,
             locations: businessSequelize.tables.locations.length,
             terminal_identities: businessSequelize.tables.terminal_identities.length,
             account_staff_assignments: businessSequelize.tables.account_staff_assignments.length
@@ -597,6 +634,7 @@ describe('runApplyTransformations', () => {
         expect(coreSequelize.tables.accounts).toHaveLength(firstCounts.accounts);
         expect(coreSequelize.tables.businesses).toHaveLength(firstCounts.businesses);
         expect(businessSequelize.tables.staff_accounts).toHaveLength(firstCounts.staff_accounts);
+        expect(businessSequelize.tables.staff_credentials).toHaveLength(firstCounts.staff_credentials);
         expect(businessSequelize.tables.locations).toHaveLength(firstCounts.locations);
         expect(businessSequelize.tables.terminal_identities).toHaveLength(firstCounts.terminal_identities);
         expect(businessSequelize.tables.account_staff_assignments).toHaveLength(firstCounts.account_staff_assignments);
@@ -689,6 +727,17 @@ describe('retry safety across interruption points', () => {
 });
 
 describe('apply.js structural contract', () => {
+    test('registers staff_credential natural-key idempotency on staff_account_id', async () => {
+        const { readFileSync } = await import('fs');
+        const { fileURLToPath } = await import('url');
+        const { dirname, join } = await import('path');
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = dirname(__filename);
+        const source = readFileSync(join(__dirname, '..', 'src', 'data', 'apply.js'), 'utf8');
+
+        expect(source).toContain("staff_credential: { primaryKey: 'id', naturalKeyColumns: ['staff_account_id'] }");
+    });
+
     test('never uses --confirm-destructive-bypassing raw string interpolation for table/column names in generated SQL (parameterized replacements only)', async () => {
         const { readFileSync } = await import('fs');
         const { fileURLToPath } = await import('url');
