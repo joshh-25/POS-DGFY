@@ -394,20 +394,23 @@ product_embedding:  { primaryKey: 'id', naturalKeyColumns: ['product_id'] },
 | A3 | `product_composition.ingredient_id` always references an `item_id` that is itself in-scope for migration (i.e., ingredients are `items`, not some other entity). | BOM resolution | If an ingredient points outside `items`, resolution always fails → orphan finding. Confirm via a COUNT of compositions whose `ingredient_id` has no matching `items.item_id` on the rehearsal tenant. |
 | A4 | Operator can provision working DB creds + `DGFY_BUSINESS_DB_NAMES` for a real tenant (the Phase-12 blocker) before the apply/verify proof. | Runtime State Inventory | Blocks the PIM acceptance proof, not the mapper code. Rehearsal likely on EC2. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Findings severity for expected lossy collapses (D-08 transfer, folder flattening).**
    - What we know: `checkOpenFindings` blocks `verify` on any open finding; storefront-projection precedent shows a non-blocking informational channel exists.
    - What's unclear: whether to (a) auto-resolve these findings, or (b) add reason-code exclusion to the blocking set.
    - Recommendation: (b) — define `LOSSY_CATEGORY_COLLAPSE` + `FOLDER_NESTING_FLATTENED` as a known "expected" set excluded from `data_migration_ok`, so the audit trail keeps them visible AND verify goes green. Decide in planning.
+   - **RESOLVED: Plan 13-05 Task 1 adopts option (b) — a frozen `EXPECTED_LOSSY_REASON_CODES` set (built from `MAPPING_REASON_CODES` constants) partitions open findings so `LOSSY_CATEGORY_COLLAPSE` + `FOLDER_NESTING_FLATTENED` are reported-but-non-blocking while `UNRESOLVED_INGREDIENT` and all conflicts stay blocking.**
 
 2. **Products idempotency without a target natural key.**
    - What we know: `products.id` is AUTO_INCREMENT; `sku_code` is non-unique; no other unique key.
    - Recommendation: rely on `legacy_id_map` skip-if-mapped as the sole product idempotency guard (same documented limitation class as `location`). Accept the narrow target-first interruption window; no schema change this phase.
+   - **RESOLVED: Plan 13-03 Task 1 relies on the `legacy_id_map` skip-if-mapped branch as the sole product idempotency guard (the `product` ENTITY_TARGET_CONFIG natural-key lookup returns null so `writeMappedTargetRow` short-circuits on the map), matching the documented `location`-style limitation.**
 
 3. **Sum-by-type verification depth (VER-02 formally lands Phase 14).**
    - What we know: Phase 13 "carries its own product/inventory-side dry-run/apply/verify rehearsal success criteria" (STATE.md roadmap note) without owning VER-02's REQ-ID.
    - Recommendation: extend `verifyData.js` with product-domain counts + `SUM(quantity)` grouped by `movement_type` and product `category` distribution — enough to prove PIM-03/04/05 against a real tenant, structured so Phase 14 can bolt on availment-side checks.
+   - **RESOLVED: Plan 13-05 Task 2 adds the product-domain count reconciliation + `SUM(quantity)` grouped by `movement_type`, a product `category` distribution, a one-embedding-per-product check, and a `stock_count`-equals-`reference_type='legacy_opening_balance'`-sum check — structured so Phase 14 can bolt on availment-side checks.**
 
 ## Environment Availability
 
