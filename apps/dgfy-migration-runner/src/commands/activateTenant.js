@@ -74,6 +74,20 @@ export async function runActivateTenant({ databaseName, confirmDestructive = fal
       );
     }
 
+    // WR-01 (04-REVIEW.md): the only guard before this point was
+    // `!registryRow` (fail closed on a missing row). Any row that exists
+    // but is not in a legitimate pre-activation state (e.g. a
+    // `deprecated`/`migrating` row from a future admin transition) must not
+    // be silently resurrected to `active` just because it exists. Require
+    // status === 'provisioning' for every path except the idempotent
+    // already-active/verified no-op below.
+    if (!(registryRow.status === 'active' && registryRow.verified_at) && registryRow.status !== 'provisioning') {
+      throw new TargetGuardError(
+        `activate-tenant refuses to activate database_name "${databaseName}" — registry status is `
+        + `"${registryRow.status}", expected "provisioning" (or already-active/verified for a no-op).`
+      );
+    }
+
     // Idempotency: if already active/verified, re-confirm the schema still
     // satisfies the contract and report a safe no-op rather than issuing a
     // second UPDATE.

@@ -432,3 +432,194 @@ describe('runActivateTenant — missing registry row fails closed (skip-safe uni
     );
   });
 });
+
+// WR-04 fix (04-REVIEW.md): the actual "resolve provisioning row -> CREATE
+// DATABASE -> apply+verify -> UPDATE to active/verified" happy path, and the
+// idempotent "already active/verified -> re-verify -> report
+// already_active:true without a second UPDATE" path, were previously ONLY
+// exercised inside the describeIfIntegration block above (gated behind
+// RUN_ACTIVATE_TENANT_INTEGRATION=true, not set in ordinary CI/local runs).
+// These skip-safe, mocked-DB unit tests close that always-run coverage gap,
+// following the exact jest.unstable_mockModule pattern used by the other
+// skip-safe blocks in this file.
+describe('runActivateTenant — happy path and idempotent re-verify (skip-safe unit)', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    applyEnv();
+  });
+
+  afterEach(() => {
+    restoreEnv();
+    jest.resetModules();
+  });
+
+  test('resolves a provisioning row, applies+verifies the schema, and issues the exact activating UPDATE', async () => {
+    const registryRow = {
+      business_id: 'biz-1',
+      database_name: 'dgfy_business_happypath',
+      status: 'provisioning',
+      verified_at: null
+    };
+    const mockCoreQuery = jest.fn()
+      .mockResolvedValueOnce([[registryRow]]) // SELECT
+      .mockResolvedValueOnce([[]]) // CREATE DATABASE IF NOT EXISTS
+      .mockResolvedValueOnce([[]]); // UPDATE
+    const mockCreateTargetConnection = jest.fn(() => ({ query: mockCoreQuery }));
+    const mockCreateBusinessTargetConnection = jest.fn(() => ({}));
+    const mockApplyAndVerifyBusinessSchema = jest.fn().mockResolvedValue({
+      migrationsExecuted: ['20260101000000-example.cjs'],
+      verifiedTables: ['locations', 'staff_accounts']
+    });
+    const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
+    const mockWriteJsonReport = jest.fn().mockResolvedValue('/tmp/fake-report.json');
+    const mockWriteSummaryReport = jest.fn().mockResolvedValue('/tmp/fake-report.txt');
+
+    jest.unstable_mockModule('../src/config/db.js', () => ({
+      createTargetConnection: mockCreateTargetConnection,
+      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() })),
+      createBusinessTargetConnection: mockCreateBusinessTargetConnection
+    }));
+    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
+      recordCommandStart: jest.fn().mockResolvedValue(1),
+      recordCommandComplete: mockRecordCommandComplete
+    }));
+    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
+      applyAndVerifyBusinessSchema: mockApplyAndVerifyBusinessSchema
+    }));
+    jest.unstable_mockModule('../src/reports/reportWriter.js', () => ({
+      writeJsonReport: mockWriteJsonReport
+    }));
+    jest.unstable_mockModule('../src/reports/summaryWriter.js', () => ({
+      writeSummaryReport: mockWriteSummaryReport
+    }));
+
+    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
+
+    const report = await runActivateTenant({ databaseName: 'dgfy_business_happypath' });
+
+    expect(report.activated).toBe(true);
+    expect(report.already_active).toBe(false);
+    expect(mockApplyAndVerifyBusinessSchema).toHaveBeenCalledTimes(1);
+
+    const updateCall = mockCoreQuery.mock.calls.find(([sql]) => /UPDATE\s+business_database_registry/i.test(sql));
+    expect(updateCall).toBeDefined();
+    expect(updateCall[0]).toMatch(
+      /UPDATE business_database_registry SET status = \?, verified_at = \?, updated_at = \? WHERE database_name = \?/i
+    );
+    expect(updateCall[1].replacements).toEqual([
+      'active',
+      expect.any(Date),
+      expect.any(Date),
+      'dgfy_business_happypath'
+    ]);
+
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'success' })
+    );
+  });
+
+  test('re-verifies an already active/verified row (idempotent no-op) and never issues a second UPDATE', async () => {
+    const registryRow = {
+      business_id: 'biz-2',
+      database_name: 'dgfy_business_idempotent',
+      status: 'active',
+      verified_at: new Date('2026-01-01T00:00:00Z')
+    };
+    const mockCoreQuery = jest.fn().mockResolvedValueOnce([[registryRow]]); // SELECT only
+    const mockCreateTargetConnection = jest.fn(() => ({ query: mockCoreQuery }));
+    const mockCreateBusinessTargetConnection = jest.fn(() => ({}));
+    const mockApplyAndVerifyBusinessSchema = jest.fn().mockResolvedValue({
+      migrationsExecuted: [],
+      verifiedTables: ['locations', 'staff_accounts']
+    });
+    const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
+
+    jest.unstable_mockModule('../src/config/db.js', () => ({
+      createTargetConnection: mockCreateTargetConnection,
+      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() })),
+      createBusinessTargetConnection: mockCreateBusinessTargetConnection
+    }));
+    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
+      recordCommandStart: jest.fn().mockResolvedValue(1),
+      recordCommandComplete: mockRecordCommandComplete
+    }));
+    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
+      applyAndVerifyBusinessSchema: mockApplyAndVerifyBusinessSchema
+    }));
+    jest.unstable_mockModule('../src/reports/reportWriter.js', () => ({
+      writeJsonReport: jest.fn().mockResolvedValue('/tmp/fake-report.json')
+    }));
+    jest.unstable_mockModule('../src/reports/summaryWriter.js', () => ({
+      writeSummaryReport: jest.fn().mockResolvedValue('/tmp/fake-report.txt')
+    }));
+
+    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
+
+    const report = await runActivateTenant({ databaseName: 'dgfy_business_idempotent' });
+
+    expect(report.activated).toBe(true);
+    expect(report.already_active).toBe(true);
+    expect(mockApplyAndVerifyBusinessSchema).toHaveBeenCalledTimes(1);
+
+    const updateCalls = mockCoreQuery.mock.calls.filter(([sql]) => /UPDATE\s+business_database_registry/i.test(sql));
+    expect(updateCalls).toHaveLength(0);
+
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'success' })
+    );
+  });
+
+  // WR-01 fix (04-REVIEW.md): a registry row that exists but is not in a
+  // legitimate pre-activation state (e.g. an admin-transitioned
+  // 'deprecated' row) must never be silently resurrected to 'active' just
+  // because a row with that database_name exists.
+  test('refuses to reactivate a row whose status is neither provisioning nor already active/verified', async () => {
+    const registryRow = {
+      business_id: 'biz-3',
+      database_name: 'dgfy_business_deprecated',
+      status: 'deprecated',
+      verified_at: null
+    };
+    const mockCoreQuery = jest.fn().mockResolvedValueOnce([[registryRow]]); // SELECT only
+    const mockCreateTargetConnection = jest.fn(() => ({ query: mockCoreQuery }));
+    const mockCreateBusinessTargetConnection = jest.fn();
+    const mockApplyAndVerifyBusinessSchema = jest.fn();
+    const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
+
+    jest.unstable_mockModule('../src/config/db.js', () => ({
+      createTargetConnection: mockCreateTargetConnection,
+      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() })),
+      createBusinessTargetConnection: mockCreateBusinessTargetConnection
+    }));
+    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
+      recordCommandStart: jest.fn().mockResolvedValue(1),
+      recordCommandComplete: mockRecordCommandComplete
+    }));
+    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
+      applyAndVerifyBusinessSchema: mockApplyAndVerifyBusinessSchema
+    }));
+
+    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
+
+    await expect(runActivateTenant({ databaseName: 'dgfy_business_deprecated' })).rejects.toThrow(
+      /registry status is "deprecated", expected "provisioning"/i
+    );
+
+    expect(mockApplyAndVerifyBusinessSchema).not.toHaveBeenCalled();
+    expect(mockCreateBusinessTargetConnection).not.toHaveBeenCalled();
+    const updateCalls = mockCoreQuery.mock.calls.filter(([sql]) => /UPDATE\s+business_database_registry/i.test(sql));
+    expect(updateCalls).toHaveLength(0);
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'failed' })
+    );
+  });
+});
