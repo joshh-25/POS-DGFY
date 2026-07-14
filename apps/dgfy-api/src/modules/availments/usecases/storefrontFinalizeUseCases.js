@@ -35,6 +35,16 @@ const noTenantDatabaseError = () => new DomainError(
     { statusCode: 404, details: { error_code: 'NO_TENANT_DATABASE' } }
 );
 
+// Phase 11 (11-03-PLAN.md, D-06/L2): online Availments are only ever
+// 'pickup' or 'delivery' (never 'dine_in', which is POS-only, A1).
+// Validated here (CR-01 fix, 11-REVIEW.md) before fulfillmentMode reaches
+// repository.finalizeStorefrontOrder, which writes it into a NOT NULL
+// availment_stage_events.fulfillment_mode column via recordStageEvents — a
+// missing/invalid value used to hard-fail the ENTIRE finalize transaction
+// (including the already-succeeded reservation->sale commit) instead of
+// returning a clean 400 up front.
+const STOREFRONT_FULFILLMENT_MODES = Object.freeze(['pickup', 'delivery']);
+
 /**
  * Duck-types on `error.name === 'TenantDatabaseUnavailableError'` rather
  * than importing availmentRepository.js's class directly (mirrors
@@ -147,6 +157,11 @@ export function buildFinalizeStorefrontOrderUseCase({ repository, commitReservat
         const normalizedPaymentMethod = normalizeStorefrontPaymentMethod(paymentMethod);
         if (!normalizedPaymentMethod) {
             return ApplicationResult.failure(validationError('paymentMethod must be one of: cash, gcash, credit_card (or the qrph alias).'));
+        }
+        if (!STOREFRONT_FULFILLMENT_MODES.includes(fulfillmentMode)) {
+            return ApplicationResult.failure(validationError(
+                `fulfillmentMode is required and must be one of: ${STOREFRONT_FULFILLMENT_MODES.join(', ')}.`
+            ));
         }
 
         // ---- Recompute money server-side (never trust the caller) ---------

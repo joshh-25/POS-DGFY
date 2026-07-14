@@ -156,6 +156,35 @@ export class AvailmentReadRepository {
     }
 
     /**
+     * Opens a sequelize.transaction() against businessId's tenant database
+     * and runs `fn(transaction)` inside it. Added for the CR-02 fix
+     * (11-REVIEW.md): buildProgressStageUseCase (FUL-02) writes an
+     * append-only availment_stage_events row AND syncs the denormalized
+     * fulfillment_status/fulfillment_stage cache in the SAME logical
+     * operation — without a shared transaction, a failure between the two
+     * writes permanently desyncs the ledger (source of truth) from the
+     * cache the NEXT transition is computed from.
+     *
+     * Deliberately does NOT go through this.withModel() — withModel's
+     * catch-all re-wraps any non-whitelisted thrown error into
+     * TenantDatabaseUnavailableError('unreachable', ...), which would mask
+     * a genuine business-logic rollback reason from inside `fn` (mirrors
+     * AvailmentRepository.finalizeStorefrontOrder's identical, explicitly
+     * documented deviation for the same reason). resolveDatabaseName()
+     * below still throws a genuine TenantDatabaseUnavailableError for real
+     * registry/connectivity problems (missing/provisioning/inactive/
+     * unverified) — that propagates unmodified, same as every other method.
+     * @param {string} businessId
+     * @param {(transaction: Object) => Promise<any>} fn
+     */
+    async runInTransaction(businessId, fn) {
+        if (!businessId) throw new Error('AvailmentReadRepository.runInTransaction requires businessId.');
+        const databaseName = await this.resolveDatabaseName(businessId);
+        const Availment = this.resolveModel(databaseName);
+        return Availment.sequelize.transaction(fn);
+    }
+
+    /**
      * Loads a single availment by id, scoped to businessId. Used by
      * buildProgressStageUseCase (FUL-02) to read the current
      * fulfillment_mode/fulfillment_status before computing the next legal

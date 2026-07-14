@@ -339,6 +339,29 @@ describe('buildFinalizeStorefrontOrderUseCase', () => {
         expect(result.statusCode).toBe(400);
     });
 
+    it('rejects a missing/invalid fulfillmentMode (400) — CR-01 fix, 11-REVIEW.md', async () => {
+        const missing = await useCase({
+            businessId: 'biz-1',
+            sourceReference: 'SFO-1',
+            lines: baseLines(),
+            paymentMethod: 'gcash'
+        });
+        expect(missing.isSuccess).toBe(false);
+        expect(missing.statusCode).toBe(400);
+        expect(repository.finalizeStorefrontOrder).not.toHaveBeenCalled();
+
+        const invalid = await useCase({
+            businessId: 'biz-1',
+            sourceReference: 'SFO-1',
+            lines: baseLines(),
+            paymentMethod: 'gcash',
+            fulfillmentMode: 'dine_in'
+        });
+        expect(invalid.isSuccess).toBe(false);
+        expect(invalid.statusCode).toBe(400);
+        expect(repository.finalizeStorefrontOrder).not.toHaveBeenCalled();
+    });
+
     it('rejects a totalCentavos that does not match the recomputed line total (400)', async () => {
         const result = await useCase({
             businessId: 'biz-1',
@@ -360,7 +383,8 @@ describe('buildFinalizeStorefrontOrderUseCase', () => {
             lines: baseLines(),
             totalCentavos: 20000,
             paymentMethod: 'gcash',
-            paymentReference: 'pay_abc123'
+            paymentReference: 'pay_abc123',
+            fulfillmentMode: 'delivery'
         });
 
         expect(result.isSuccess).toBe(true);
@@ -395,7 +419,8 @@ describe('buildFinalizeStorefrontOrderUseCase', () => {
             businessId: 'biz-1',
             sourceReference: 'SFO-1',
             lines: baseLines(),
-            paymentMethod: 'cash'
+            paymentMethod: 'cash',
+            fulfillmentMode: 'pickup'
         });
 
         expect(result.isSuccess).toBe(false);
@@ -407,7 +432,8 @@ describe('buildFinalizeStorefrontOrderUseCase', () => {
             businessId: 'biz-1',
             sourceReference: 'SFO-1',
             lines: baseLines(),
-            paymentMethod: 'cash'
+            paymentMethod: 'cash',
+            fulfillmentMode: 'pickup'
         });
 
         expect(repository.finalizeStorefrontOrder).toHaveBeenCalledWith('biz-1', expect.objectContaining({

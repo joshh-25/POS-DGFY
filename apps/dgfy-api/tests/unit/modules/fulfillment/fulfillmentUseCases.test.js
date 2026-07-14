@@ -80,19 +80,26 @@ describe('buildListIncomingOrdersUseCase (FUL-01, D-08)', () => {
 });
 
 describe('buildProgressStageUseCase (FUL-02, D-15 app-logic sequence validation)', () => {
+    // A fake transaction token — asserts both writes share the SAME object
+    // (CR-02 fix, 11-REVIEW.md) without needing a real Sequelize connection.
+    const FAKE_TRANSACTION = { id: 'tx-1' };
+
     const makeDeps = ({ availment = makeAvailment(), active = true } = {}) => {
         const stageEventRepository = { create: jest.fn(async (businessId, input) => ({ id: 1, ...input })) };
         const availmentRepository = {
             findById: jest.fn(async () => availment),
-            updateFulfillmentState: jest.fn(async () => 1)
+            updateFulfillmentState: jest.fn(async () => 1),
+            runInTransaction: jest.fn(async (businessId, fn) => fn(FAKE_TRANSACTION))
         };
         const businessRepository = makeBusinessRepository({ active });
         const useCase = buildProgressStageUseCase({ stageEventRepository, availmentRepository, businessRepository });
-        return { stageEventRepository, availmentRepository, businessRepository, useCase };
+        return {
+            stageEventRepository, availmentRepository, businessRepository, useCase, FAKE_TRANSACTION
+        };
     };
 
     it('accepts the legal successor stage for delivery (placed -> confirmed)', async () => {
-        const { useCase, stageEventRepository, availmentRepository } = makeDeps({
+        const { useCase, stageEventRepository, availmentRepository, FAKE_TRANSACTION } = makeDeps({
             availment: makeAvailment({ fulfillment_mode: 'delivery', fulfillment_status: 'placed' })
         });
 
@@ -100,16 +107,42 @@ describe('buildProgressStageUseCase (FUL-02, D-15 app-logic sequence validation)
 
         expect(result.isSuccess).toBe(true);
         expect(result.data.fulfillmentStatus).toBe('confirmed');
+        expect(availmentRepository.runInTransaction).toHaveBeenCalledWith('biz-1', expect.any(Function));
         expect(stageEventRepository.create).toHaveBeenCalledWith('biz-1', expect.objectContaining({
             availmentId: 20,
             fulfillmentMode: 'delivery',
             fulfillmentStatus: 'confirmed',
             isForced: false
-        }), {});
+        }), { transaction: FAKE_TRANSACTION });
         expect(availmentRepository.updateFulfillmentState).toHaveBeenCalledWith('biz-1', 20, {
             fulfillmentStatus: 'confirmed',
             fulfillmentStage: 'confirmed'
-        }, {});
+        }, { transaction: FAKE_TRANSACTION });
+    });
+
+    it('CR-02: writes the ledger row and the cache sync atomically — a failed cache-sync rolls back the whole progression, not just half of it', async () => {
+        // No outer transaction is opened via availmentRepository.runInTransaction
+        // in this test — instead it directly invokes the callback with a fake
+        // transaction, mirroring what a real sequelize.transaction(fn) does:
+        // if `fn` rejects, the caller sees that rejection and nothing commits.
+        const stageEventRepository = { create: jest.fn(async (businessId, input) => ({ id: 1, ...input })) };
+        const updateFailure = new Error('simulated cache-sync failure');
+        const availmentRepository = {
+            findById: jest.fn(async () => makeAvailment({ fulfillment_mode: 'delivery', fulfillment_status: 'placed' })),
+            updateFulfillmentState: jest.fn(async () => { throw updateFailure; }),
+            runInTransaction: jest.fn(async (businessId, fn) => fn(FAKE_TRANSACTION))
+        };
+        const businessRepository = makeBusinessRepository();
+        const useCase = buildProgressStageUseCase({ stageEventRepository, availmentRepository, businessRepository });
+
+        await expect(useCase({ businessId: 'biz-1', requestingAccountId: 'acct-1', availmentId: 20 }))
+            .rejects.toThrow('simulated cache-sync failure');
+
+        // The ledger write and the cache-sync write both received the SAME
+        // transaction object — proving they were composed as one atomic
+        // unit (runInTransaction), not two independent calls.
+        expect(stageEventRepository.create).toHaveBeenCalledWith('biz-1', expect.anything(), { transaction: FAKE_TRANSACTION });
+        expect(availmentRepository.updateFulfillmentState).toHaveBeenCalledWith('biz-1', 20, expect.anything(), { transaction: FAKE_TRANSACTION });
     });
 
     it('accepts the legal successor stage for pickup (preparing -> ready)', async () => {
@@ -189,7 +222,7 @@ describe('buildProgressStageUseCase (FUL-02, D-15 app-logic sequence validation)
             isForced: true,
             reason: 'Customer confirmed receipt by phone.',
             fulfillmentStatus: 'completed'
-        }), {});
+        }), expect.objectContaining({ transaction: expect.anything() }));
     });
 
     it('rejects a force-complete for a non-delivery mode', async () => {

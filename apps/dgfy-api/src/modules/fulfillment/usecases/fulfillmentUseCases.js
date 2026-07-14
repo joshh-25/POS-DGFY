@@ -174,7 +174,14 @@ export function buildListIncomingOrdersUseCase({ availmentReadRepository, busine
  * conflict, and rejects progressing an already-`completed` availment (D-07
  * immutability of the append-only ledger — a completed order has no legal
  * successor).
- * @param {{stageEventRepository, availmentRepository: {findById, updateFulfillmentState}, businessRepository}} deps
+ *
+ * CR-02 fix (11-REVIEW.md): the append-only ledger write
+ * (stageEventRepository.create) and the denormalized cache-sync write
+ * (availmentRepository.updateFulfillmentState) are made atomic via
+ * availmentRepository.runInTransaction — a partial failure between them
+ * used to permanently desync the ledger (source of truth) from the cache
+ * the NEXT transition is computed from.
+ * @param {{stageEventRepository, availmentRepository: {findById, updateFulfillmentState, runInTransaction}, businessRepository}} deps
  */
 export function buildProgressStageUseCase({ stageEventRepository, availmentRepository, businessRepository }) {
     return async (input = {}) => {
@@ -236,21 +243,36 @@ export function buildProgressStageUseCase({ stageEventRepository, availmentRepos
                 }
             }
 
-            const stageEvent = await stageEventRepository.create(businessId, {
-                availmentId,
-                fulfillmentMode: mode,
-                fulfillmentStatus: targetStatus,
-                fulfillmentStage: targetStatus,
-                reason: reason ?? null,
-                isForced,
-                actorStaffAccountId,
-                actorAccountId: requestingAccountId || null
-            }, transaction ? { transaction } : {});
+            // CR-02 fix (11-REVIEW.md): both writes below must commit or
+            // roll back together. When the caller already supplied an outer
+            // transaction (e.g. a future composed call), reuse it directly;
+            // otherwise open one here via availmentRepository.runInTransaction
+            // so the wired production path (no outer transaction) is atomic
+            // by default.
+            const writeStageProgress = async (tx) => {
+                const options = tx ? { transaction: tx } : {};
+                const event = await stageEventRepository.create(businessId, {
+                    availmentId,
+                    fulfillmentMode: mode,
+                    fulfillmentStatus: targetStatus,
+                    fulfillmentStage: targetStatus,
+                    reason: reason ?? null,
+                    isForced,
+                    actorStaffAccountId,
+                    actorAccountId: requestingAccountId || null
+                }, options);
 
-            await availmentRepository.updateFulfillmentState(businessId, availmentId, {
-                fulfillmentStatus: targetStatus,
-                fulfillmentStage: targetStatus
-            }, transaction ? { transaction } : {});
+                await availmentRepository.updateFulfillmentState(businessId, availmentId, {
+                    fulfillmentStatus: targetStatus,
+                    fulfillmentStage: targetStatus
+                }, options);
+
+                return event;
+            };
+
+            const stageEvent = transaction
+                ? await writeStageProgress(transaction)
+                : await availmentRepository.runInTransaction(businessId, writeStageProgress);
 
             return ApplicationResult.success({ stageEvent, fulfillmentStatus: targetStatus, isForced });
         } catch (repoError) {

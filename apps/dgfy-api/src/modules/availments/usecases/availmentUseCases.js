@@ -53,6 +53,14 @@ const noTenantDatabaseError = () => new DomainError(
     { statusCode: 404, details: { error_code: 'NO_TENANT_DATABASE' } }
 );
 
+// Phase 11 (11-01-PLAN.md): the fixed ENUM('pickup','delivery','dine_in')
+// availments.fulfillment_mode column set — mirrors
+// modules/fulfillment/usecases/fulfillmentUseCases.js's STAGE_SEQUENCES
+// keys. Validated here (CR-01 fix, 11-REVIEW.md) before
+// buildFinalizeAvailmentUseCase threads a value into
+// repository.finalizePersist.
+const FULFILLMENT_MODES = Object.freeze(['pickup', 'dine_in', 'delivery']);
+
 /**
  * Duck-types on `error.name === 'TenantDatabaseUnavailableError'` rather
  * than importing availmentRepository.js's class directly.
@@ -631,6 +639,21 @@ export function buildFinalizeAvailmentUseCase({
             return ApplicationResult.failure(validationError('cashierAccountId is required.'));
         }
 
+        // CR-01 fix (11-REVIEW.md): resolve + validate fulfillmentMode BEFORE
+        // it ever reaches repository.finalizePersist, which writes it
+        // straight into the ENUM('pickup','delivery','dine_in')
+        // availments.fulfillment_mode column and (via recordStageEvents)
+        // the same-ENUM availment_stage_events.fulfillment_mode column. An
+        // out-of-set value used to surface as a misleading 503 "tenant
+        // database unreachable" (AvailmentRepository.withModel's catch-all
+        // re-wraps any non-whitelisted error) instead of a clean 400.
+        const resolvedFulfillmentMode = fulfillmentMode || posFulfillmentModeDefault;
+        if (!FULFILLMENT_MODES.includes(resolvedFulfillmentMode)) {
+            return ApplicationResult.failure(validationError(
+                `fulfillmentMode must be one of: ${FULFILLMENT_MODES.join(', ')}.`
+            ));
+        }
+
         const business = await businessRepository.findById(businessId);
         if (!business) {
             return ApplicationResult.failure(notFoundError('Business not found.'));
@@ -857,7 +880,7 @@ export function buildFinalizeAvailmentUseCase({
                 saleEffectLines,
                 recordSaleEffect,
                 recordStageEvents,
-                fulfillmentMode: fulfillmentMode || posFulfillmentModeDefault,
+                fulfillmentMode: resolvedFulfillmentMode,
                 actorStaffAccountId: cashierAccountId,
                 actorAccountId: requestingAccountId || null
             });
