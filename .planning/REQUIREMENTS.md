@@ -127,6 +127,40 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 - [x] **FUL-02**: Staff can progress an order's fulfillment status through a shared core pipeline (placed → confirmed → preparing → ready/out-for-delivery → completed), with handoff steps specific to pickup, delivery, and dine-in.
 - [x] **FUL-03**: Staff can manually assign a courier/delivery partner to an order and track courier payout through to fulfillment completion.
 
+## v2.1 Requirements
+
+Committed scope for the v2.1 Legacy Data Migration milestone. Migration-runner-only work (`apps/dgfy-migration-runner`) plus a schema-only touch on `apps/dgfy-api`'s `dgfy_business_*` schema — no new API surface, no new frontend. Closes the empirically-confirmed gap where the existing Accounts/Businesses/Tenancy migration leaves every tenant with zero products, availments, and inventory movements. Each maps to roadmap phases.
+
+### Legacy Migration Scope & Schema Extension
+
+- [ ] **LDM-01**: ADR 0029 is amended to remove `items`/`item_folders`/`stock_movements`/`pos_transactions` from `OUT_OF_SCOPE_LEGACY_TABLES`, unblocking every new mapper.
+- [ ] **LDM-02**: `products` schema is extended with 6 typed columns (`sku_code`, `cost_per_unit`, `vat_type`, `senior_pwd_discount_eligible`, `description`, `unit_of_measure`) plus one `attributes` JSON column, with the 1:1-vs-1:many satellite-table folding design (including `product_composition`/BOM) documented before mapper code is written.
+- [ ] **LDM-03**: A new `product_embeddings` table exists (one row per product) for carry-over vector storage.
+- [ ] **LDM-04**: `inventory_movements` gains a natural-key unique index (`business_id`, `reference_type`, `reference_id`) so retries are idempotency-safe.
+- [ ] **LDM-05**: `availments` gains an additive `source_system` column, sequenced with the Sales History phase.
+
+### Product & Inventory Migration
+
+- [ ] **PIM-01**: `item_folders` → `product_folders` mapper migrates legacy folders before item migration begins.
+- [ ] **PIM-02**: `items` → `products` mapper migrates the 6 promoted fields plus all 8 satellite tables (including `product_composition`/BOM) folded into `attributes` JSON, with `attributes.barcodes` as an array for the 1:many `ItemBarcode` table.
+- [ ] **PIM-03**: A documented, reviewed 8-legacy-type → 5-target-type `stock_movements.movement_type` category-remapping decision exists, with `findings` raised for any lossy collapse.
+- [ ] **PIM-04**: `stock_movements` → `inventory_movements` mapper is idempotency-safe against the append-only target table (skip-if-mapped, never re-insert).
+- [ ] **PIM-05**: Legacy per-location stock sums into the single `products.stock_count` scalar; `item_location_stocks` migrates as an opening-balance `inventory_movements` row per product, not a direct `stock_count` write.
+- [ ] **PIM-06**: `item_embeddings` → `product_embeddings` mapper carries vectors over as-is (same model/format, no re-embedding).
+
+### Sales History Migration
+
+- [ ] **SHM-01**: `pos_transactions` → `availments` mapper runs after Product/Inventory migration, tagging every migrated row `source_system='legacy_migration'` and carrying the legacy transaction reference.
+- [ ] **SHM-02**: `pos_transaction_lines` → `availment_items` mapper migrates line-item detail, not just header totals.
+- [ ] **SHM-03**: Voided/cancelled `pos_transactions` (`status='voided'`) migrate into `availments` with their void status preserved.
+- [ ] **SHM-04**: Provenance (`source_system`/legacy reference) is tagged at the `inventory_movements`/`availment_items` line level, not just the `availments` header.
+
+### Migration Verification & Validation
+
+- [ ] **VER-01**: Dry-run/apply/idempotency-retry/verify wiring covers every new entity type (`product_folder`, `product`, `inventory_movement`, `product_embedding`, `availment`, `availment_item`), reusing the existing checkpoint and `legacy_id_map` mechanisms.
+- [ ] **VER-02**: Extended per-tenant verification checks record counts *and* sum-by-type totals (not just row counts) for products, inventory movements, embeddings, and availments.
+- [ ] **VER-03**: Re-rehearsal against a disposable production-parity environment, against real legacy data volume, proves the migration end-to-end.
+
 ## v3 Requirements
 
 Deferred beyond the v2.0 Commerce Domain milestone. Tracked but not in current roadmap.
@@ -155,6 +189,11 @@ Deferred beyond the v2.0 Commerce Domain milestone. Tracked but not in current r
 ### Booking (v3+)
 
 - **BOK-04**: Staff-level appointment calendars (per-staff time slots, skill matching, resource booking) beyond branch-level capacity.
+
+### Legacy Data Migration (v2.x)
+
+- **RPT-01**: Human-readable, plain-language per-tenant migration summary report (e.g. "347 of 350 transactions migrated; 3 skipped: reason X"), extending the existing JSON+summary report pattern. Deferred from v2.1 — not required for fidelity, high trust-building value, add if support/audit workflows show it's needed.
+- **EMB-01**: Embedding-model metadata (name/version/timestamp) tagged on carried-over `product_embeddings` vectors. Deferred from v2.1 — doesn't block this migration's fidelity goal, but cheap to add now and expensive to reconstruct later once a second embedding-model generation exists.
 
 ### Other
 
@@ -248,7 +287,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 - v1 requirements: 26 total — mapped to phases: 26 — unmapped: 0
 - v2 requirements: 28 total — mapped to phases: 28 — unmapped: 0
+- v2.1 requirements: 18 total — mapped to phases: 0 — unmapped: 18 (pending roadmap creation)
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-12 after creating the v2.0 Commerce Domain roadmap (Phases 8-11)*
+*Last updated: 2026-07-14 after defining the v2.1 Legacy Data Migration requirements*
