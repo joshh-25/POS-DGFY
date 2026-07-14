@@ -305,19 +305,25 @@ export function buildReviewComplianceStateUseCase({ repository, businessReposito
         if (error) return ApplicationResult.failure(error);
 
         try {
-            await repository.recordVerification(businessId, branchId, {
+            // T-12-07/T-12-08: the verification metadata write and the state
+            // demotion/transition must be ONE atomic, row-locked unit — two
+            // independent calls here would reopen the crash/race window where
+            // a reviewed-but-not-yet-demoted row leaves a revoked business's
+            // compliance_mode_state.state stuck at compliant_active (a Fiscal
+            // POS_CHECKOUT fail-open). FSC-01: reject/revoke unconditionally
+            // demotes state to non_compliant_active (not merely leaving
+            // verified/recorded metadata in place); 'verified' uses the
+            // reviewer-supplied newState.
+            const finalState = verificationStatus === COMPLIANCE_VERIFICATION_STATUS.VERIFIED
+                ? newState
+                : COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE;
+
+            const finalRow = await repository.recordVerificationAndState(businessId, branchId, {
                 verification_status: verificationStatus,
                 verified_by_actor_type: verifierActorType,
-                verified_at: new Date()
+                verified_at: new Date(),
+                state: finalState
             });
-
-            // FSC-01: reject/revoke must demote state to non_compliant_active
-            // unconditionally (not merely leave verified/recorded metadata in
-            // place) — a stale compliant_active row after a revocation is a
-            // fail-open authorization bypass for Fiscal POS_CHECKOUT.
-            const finalRow = verificationStatus === COMPLIANCE_VERIFICATION_STATUS.VERIFIED
-                ? await repository.upsertState(businessId, branchId, { state: newState })
-                : await repository.upsertState(businessId, branchId, { state: COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE });
 
             const compliance = createComplianceEntity(finalRow);
             return ApplicationResult.success({ compliance: compliance.toPlain() });

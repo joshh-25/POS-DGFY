@@ -289,6 +289,60 @@ export class ComplianceModeStateRepository {
         });
     }
 
+    /**
+     * FSC-01/T-12-07/T-12-08 atomicity fix: writes the D-04 manual review's
+     * verification triplet (verification_status/verified_by_actor_type/
+     * verified_at) AND the resulting compliance_mode_state.state demotion/
+     * transition in ONE `record.update()` call inside ONE
+     * sequelize.transaction() with a row lock (`lock: transaction.LOCK.UPDATE`)
+     * — mirrors recordVerification()'s txn+lock scaffold and
+     * shiftRepository.js's closeShift() template exactly, but folds the state
+     * write into the same locked read-modify-write instead of leaving it to a
+     * second, independent upsertState() call. This closes the crash/race
+     * window where a reviewed-but-not-yet-demoted row could leave a revoked
+     * business's compliance_mode_state.state stuck at compliant_active (a
+     * Fiscal POS_CHECKOUT fail-open).
+     *
+     * Throws ComplianceStateNotFoundError if no row exists yet — deliberately
+     * does NOT findOrCreate, preserving the "evidence must be submitted (via
+     * upsertState()) before it can be reviewed" contract. A unique-constraint
+     * violation on the update is duck-typed via isUniqueConstraintViolation()
+     * and rethrown as DuplicateComplianceModeStateError, matching
+     * upsertState()'s error-mapping convention.
+     * @param {string} businessId
+     * @param {number|null} branchId
+     * @param {{verification_status, verified_by_actor_type, verified_at, state}} input
+     */
+    async recordVerificationAndState(businessId, branchId = null, { verification_status, verified_by_actor_type, verified_at, state }) {
+        if (!businessId) throw new Error('ComplianceModeStateRepository.recordVerificationAndState requires businessId.');
+
+        return this.withModel(businessId, async (ComplianceModeState) => {
+            const sequelize = ComplianceModeState.sequelize;
+
+            return sequelize.transaction(async (transaction) => {
+                const record = await ComplianceModeState.findOne({
+                    where: { business_id: businessId, branch_id: branchId },
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                if (!record) throw new ComplianceStateNotFoundError();
+
+                try {
+                    await record.update(
+                        { verification_status, verified_by_actor_type, verified_at, state },
+                        { transaction }
+                    );
+                } catch (updateError) {
+                    if (isUniqueConstraintViolation(updateError)) {
+                        throw new DuplicateComplianceModeStateError();
+                    }
+                    throw updateError;
+                }
+                return this.toPlain(record);
+            });
+        });
+    }
+
     toPlain(model) {
         if (!model) return null;
         const plain = typeof model.get === 'function' ? model.get({ plain: true }) : model;
