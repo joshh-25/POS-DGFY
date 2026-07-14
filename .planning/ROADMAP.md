@@ -437,7 +437,18 @@ Plans:
   3. A new `product_embeddings` table exists in the tenant schema (one row reserved per product), confirmed via schema verification output.
   4. `inventory_movements` carries a natural-key unique index on (`business_id`, `reference_type`, `reference_id`), confirmed via schema verification, and re-running the schema migration is idempotent — no duplicate-index error, no data loss, no drift against the pre-migration baseline for unrelated tables.
 
-**Plans**: TBD
+**Plans**: 0/4 plans complete
+
+Plans:
+**Wave 1** *(parallel — zero file overlap)*
+
+- [ ] 12-01-PLAN.md — Scope unblock: remove items/stock_movements/pos_transactions from OUT_OF_SCOPE_LEGACY_TABLES + amend ADR 0029 prose + migration-map §10 in lockstep (LDM-01, D-11)
+- [ ] 12-02-PLAN.md — Schema extension: additive migration (products 6 typed cols + attributes JSON, new product_embeddings 1:1 table, inventory_movements natural-key unique index) + dgfyBusinessContract lockstep + 3 Tenant models/registration + satellite-folding design doc (LDM-02, LDM-03, LDM-04, D-01..D-10)
+- [ ] 12-03-PLAN.md — Folded compliance-transaction fix: atomic row-locked recordVerificationAndState() replacing the two non-transactional writes in the review usecase (FSC-01 integrity; folded todo)
+
+**Wave 2** *(blocked on 12-02)*
+
+- [ ] 12-04-PLAN.md — [BLOCKING] apply migration + verify against a tenant DB + idempotent re-run proof (LDM-02, LDM-03, LDM-04; autonomous:false)
 
 ### Phase 13: Product & Inventory Migration
 
@@ -487,6 +498,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 9. POS Checkout & Payment | 8/8 | Complete    | 2026-07-13 |
 | 10. Storefront Discovery & Online Ordering | 8/8 | Complete    | 2026-07-13 |
 | 11. Order Fulfillment & Delivery Coordination | 4/4 | Complete    | 2026-07-14 |
-| 12. Scope Unblock + Schema Extension | 0/TBD | Not started | - |
+| 12. Scope Unblock + Schema Extension | 0/4 | Not started | - |
 | 13. Product & Inventory Migration | 0/TBD | Not started | - |
 | 14. Sales History Migration & Full Verification | 0/TBD | Not started | - |
