@@ -463,7 +463,23 @@ Plans:
   4. Re-running apply against an already-migrated tenant inserts zero duplicate `inventory_movements` rows (skip-if-mapped, never re-insert), and verification's sum-by-type totals show each product's `stock_count` equal to the sum of its legacy `item_location_stocks`, with each location's stock represented by its own opening-balance `inventory_movements` row rather than a direct `stock_count` write.
   5. Re-rehearsal against the disposable production-parity environment migrates a real tenant's `product_folders`, `products`, and `inventory_movements` end-to-end, and every migrated product has exactly one `product_embeddings` row carrying its original vector unchanged (same model/format, no re-embedding).
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+**Wave 1** *(parallel — disjoint files)*
+
+- [ ] 13-01-PLAN.md — 5 pure mappers + 3 reason codes + MOVEMENT_TYPE_MAP + scope-unblock + committed movement-remap doc (PIM-01..06; D-01..D-10)
+- [ ] 13-02-PLAN.md — readLegacyProductSnapshot raw-SELECT reader + satellite stitch (PIM-01/02/05/06)
+
+**Wave 2** *(blocked on Wave 1; parallel — apply.js / dryRun.js / verifyData.js are disjoint)*
+
+- [ ] 13-03-PLAN.md — apply.js: ENTITY_TARGET_CONFIG + fixed-order product-domain apply + two-pass BOM UPDATE + idempotency (PIM-01/02/04/05/06)
+- [ ] 13-04-PLAN.md — dryRun.js: product-domain plan entries in apply order + finding persistence (PIM-01/03)
+- [ ] 13-05-PLAN.md — verifyData.js: product-domain counts + sum-by-type + expected-lossy exclusion (PIM-03/04/05)
+
+**Wave 3** *(blocked on Wave 2; [BLOCKING] live rehearsal, autonomous:false)*
+
+- [ ] 13-06-PLAN.md — ENV-gated end-to-end dry-run/apply/retry/verify rehearsal against a real tenant (PIM-01..06)
 
 ### Phase 14: Sales History Migration & Full Verification
 
