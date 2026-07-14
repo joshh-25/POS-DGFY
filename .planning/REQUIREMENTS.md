@@ -163,10 +163,10 @@ Committed scope for the v2.1 Legacy Data Migration milestone. Migration-runner-o
 
 ### Staff Authentication Model Correction
 
-- [ ] **STAFF-01**: Tenant-local staff authentication remains supported in the DGFY tenant schema. A staff user must be able to authenticate to one business without requiring a global DGFY account.
-- [ ] **STAFF-02**: Linking a tenant-local staff profile to a global DGFY account is optional. When linked, the DGFY account can support unified identity/company switching; when unlinked, tenant-local staff login still works.
+- [x] **STAFF-01**: Tenant-local staff authentication remains supported in the DGFY tenant schema. A staff user must be able to authenticate to one business without requiring a global DGFY account.
+- [x] **STAFF-02**: Linking a tenant-local staff profile to a global DGFY account is optional. When linked, the DGFY account can support unified identity/company switching; when unlinked, tenant-local staff login still works.
 - [ ] **STAFF-03**: Legacy tenant `users.password_hash`, invitation/setup state, and POS PIN implications have an explicit migration target or intentionally documented reset/reinvite flow; they are not silently discarded.
-- [ ] **STAFF-04**: ADR 0028, `docs/database/dgfy-foundation.md`, the migration map, schema contracts, and verification gates are amended to replace the current DGFY-only staff invitation assumption with the tenant-local-staff-first model.
+- [x] **STAFF-04**: ADR 0028, `docs/database/dgfy-foundation.md`, the migration map, schema contracts, and verification gates are amended to replace the current DGFY-only staff invitation assumption with the tenant-local-staff-first model.
 
 ## v3 Requirements
 
@@ -307,10 +307,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VER-01 | Phase 14 | Pending (spans all 6 entity types incl. availment/availment_item — only fully true once Phase 14 lands) |
 | VER-02 | Phase 14 | Pending (spans product- and availment-side sum-by-type checks — only fully true once Phase 14 lands) |
 | VER-03 | Phase 14 | Pending (milestone-wide final re-rehearsal proof) |
-| STAFF-01 | Phase 13.5 | Pending |
-| STAFF-02 | Phase 13.5 | Pending |
+| STAFF-01 | Phase 13.5 | Complete |
+| STAFF-02 | Phase 13.5 | Complete |
 | STAFF-03 | Phase 13.5 | Pending |
-| STAFF-04 | Phase 13.5 | Pending |
+| STAFF-04 | Phase 13.5 | Complete |
 
 **Coverage:**
 
