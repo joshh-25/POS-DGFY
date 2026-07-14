@@ -5,6 +5,17 @@ status: passed
 score: 5/5 must-haves verified (ROADMAP success criteria); 7/7 requirements satisfied
 behavior_unverified: 0
 overrides_applied: 0
+retroactive_code_review:
+  performed: 2026-07-14T02:04:21Z
+  reason: "Phase 9 completed and was verified without ever going through a code-review pass (unlike every other phase). Discovered during a cross-phase gap audit and run retroactively."
+  review_path: .planning/phases/09-pos-checkout-payment/09-REVIEW.md
+  fix_report_path: .planning/phases/09-pos-checkout-payment/09-REVIEW-FIX.md
+  findings: "2 Critical, 5 Warning — all 7 fixed"
+  critical_findings_summary:
+    - "CR-01: ENUM-backed inputs (discount_type, stock_effect_type, requested_document_context) reached the DB unvalidated, masked as a misleading 503 instead of a 400 — same bug class as Phase 11's CR-01, generalized and fixed."
+    - "CR-02: negative discount amount/percent was never validated; the totals-computation cap only bounded the upper end, so a caller (no permission required, via promo_code/sc_pwd) could inflate a customer's total beyond the subtotal. Fixed with usecase-level validation + money.js defense-in-depth flooring."
+  independent_reconfirmation: "Orchestrator (not the fixer agent) independently read the CR-01/CR-02 diffs directly and re-ran the full apps/dgfy-api test suite after the fix commits: 620 passed, 0 failed, 196 skipped (live-DB-gated, pre-existing). Not trusted from the fixer's self-report."
+  conclusion: "All 7 findings resolved with no regressions. Phase 9's original 'passed' verification stands; this closes the code-review gap that predated it."
 ---
 
 # Phase 9: POS Checkout & Payment — Verification Report
