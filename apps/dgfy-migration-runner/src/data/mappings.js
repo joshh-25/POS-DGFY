@@ -45,6 +45,7 @@ export const MAPPING_REASON_CODES = Object.freeze({
     ORPHAN_TENANT_USER_LINK: 'orphan_tenant_user_link',
     LOCATION_NOT_MAPPED: 'location_not_mapped',
     OUT_OF_SCOPE_ENTITY: 'out_of_scope_entity',
+    STAFF_CREDENTIAL_RESET_REQUIRED: 'staff_credential_reset_required',
     LOSSY_CATEGORY_COLLAPSE: 'lossy_category_collapse',
     FOLDER_NESTING_FLATTENED: 'folder_nesting_flattened',
     UNRESOLVED_INGREDIENT: 'unresolved_ingredient'
@@ -85,6 +86,7 @@ export const OUT_OF_SCOPE_LEGACY_TABLES = Object.freeze([
 ]);
 
 const TERMINAL_ID_PATTERN = /^[A-Z0-9][A-Z0-9_-]{1,39}$/;
+const REAL_BCRYPT_HASH_PATTERN = /^\$2[abxy]\$\d{2}\$/;
 
 export const MOVEMENT_TYPE_MAP = Object.freeze({
     purchase_receipt: 'restock',
@@ -107,6 +109,10 @@ function toTrimmedString(value) {
 
 function toKeyString(value) {
     return value === undefined || value === null ? null : String(value);
+}
+
+export function isRealBcryptHash(value) {
+    return typeof value === 'string' && REAL_BCRYPT_HASH_PATTERN.test(value);
 }
 
 function legacyIdMapKey({ legacySource, legacyTable, legacyId }) {
@@ -282,7 +288,7 @@ export function mapLegacyAccountToDgfyAccount(legacyAccount = {}) {
     const status = legacyAccount.deleted_at
         ? 'deleted'
         : legacyAccount.is_active === false
-            ? 'inactive'
+            ? 'suspended'
             : 'active';
 
     return {
@@ -572,8 +578,33 @@ export function mapLegacyUserToStaffAccount(legacyUser = {}, context = {}) {
     const status = legacyUser.deleted_at
         ? 'removed'
         : legacyUser.is_active === false
-            ? 'inactive'
+            ? 'suspended'
             : 'active';
+    const hasRealPasswordHash = isRealBcryptHash(legacyUser.password_hash);
+    const hasRealPinHash = isRealBcryptHash(legacyUser.pos_approval_pin_hash);
+    const credentialStatus = hasRealPasswordHash ? 'active' : 'reset_required';
+    const credentialPayload = {
+        password_hash: hasRealPasswordHash ? legacyUser.password_hash : null,
+        pos_approval_pin_hash: hasRealPinHash ? legacyUser.pos_approval_pin_hash : null,
+        credential_status: credentialStatus,
+        password_updated_at: null
+    };
+    const findings = [];
+
+    if (credentialStatus === 'reset_required') {
+        const message = legacyUser.password_hash === 'PENDING_INVITATION'
+            ? `Legacy tenant user ${legacyId} has a pending legacy invitation credential marker, so no password hash can be migrated.`
+            : `Legacy tenant user ${legacyId} has no supported bcrypt password hash, so tenant-local credential reset is required.`;
+
+        findings.push(classifyMappingConflict(MAPPING_REASON_CODES.STAFF_CREDENTIAL_RESET_REQUIRED, {
+            entityType: 'staff_credential',
+            legacyTable: 'users',
+            legacyId,
+            severity: 'skip',
+            message,
+            remediation: 'Reinvite or reset this staff member through the tenant-local staff_invitations credential setup flow.'
+        }));
+    }
 
     return {
         operation: 'insert',
@@ -588,13 +619,21 @@ export function mapLegacyUserToStaffAccount(legacyUser = {}, context = {}) {
             is_master_admin: legacyUser.is_master_admin === true
         },
         legacy_id_map_key: legacyIdMapKeyValue,
-        related_targets: [],
         deferred_fields: {
             role: legacyUser.role ?? null,
             role_preset_key: legacyUser.role_preset_key ?? null,
             permissions: legacyUser.permissions ?? null
         },
-        findings: []
+        related_targets: [
+            {
+                operation: 'insert',
+                entity_type: 'staff_credential',
+                target_table: 'staff_credentials',
+                target_database: targetBusinessDbName,
+                target_payload: credentialPayload
+            }
+        ],
+        findings
     };
 }
 
