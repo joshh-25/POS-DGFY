@@ -58,6 +58,7 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 
 - [ ] Preserve current POS/Storefront behavior until replacement paths have parity evidence and rollback options.
 - [ ] Cutover rehearsal, data-volume evidence, backup/restore proof, and abort thresholds before production cutover is scheduled — CMP-05, Phase 7 (paused 2026-07-12, pending real Docker/GHCR rehearsal infra; will likely be revisited once this Legacy Data Migration milestone is proven, since the real production migration must move Product/Availment data too, not just Accounts/Businesses/Tenancy). Rehearsal infra itself has since been proven independently via a disposable EC2 environment during v2.1 kickoff — Phase 7 can likely reuse that approach when resumed.
+- [ ] Tenant-local staff authentication model correction — DGFY accounts must be optional for staff, not required. The current ADR 0028 / `staff_accounts` schema assumption is wrong for the intended product model and must be corrected before Sales History / cutover planning continues.
 - [ ] Product/Inventory data migration (`items`/`item_folders`/`stock_movements`/satellite tables/`item_embeddings` → `products`/`product_folders`/`inventory_movements`) — v2.1.
 - [ ] Sales-history migration (`pos_transactions` → `availments` with `source_system` provenance) — v2.1.
 

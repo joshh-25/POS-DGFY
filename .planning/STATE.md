@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Legacy Data Migration
-current_phase: 13
-current_phase_name: Product & Inventory Migration
-status: executing
-stopped_at: Completed 13-03-PLAN.md
-last_updated: "2026-07-14T13:42:39.962Z"
+current_phase: 13.5
+current_phase_name: Staff Authentication Model Correction
+status: inserted_blocker
+stopped_at: Phase 13 rehearsal exposed wrong staff-auth architecture assumption
+last_updated: "2026-07-14T14:45:00.000Z"
 last_activity: 2026-07-14
-last_activity_desc: Completed 13-03-PLAN.md
+last_activity_desc: Inserted Phase 13.5 staff authentication model correction
 progress:
-  total_phases: 14
+  total_phases: 15
   completed_phases: 11
   total_plans: 78
   completed_plans: 72
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-14)
 
 **Core value:** DGFY can become a standalone multi-tenant POS and Storefront system without breaking the existing live platform during migration.
-**Current focus:** Phase 13 — Product & Inventory Migration
+**Current focus:** Phase 13.5 — Staff Authentication Model Correction
 
 ## Current Position
 
-Phase: 13 (Product & Inventory Migration) — EXECUTING
-Plan: 4 of 6
-Status: Ready to execute
-Last activity: 2026-07-14 — Completed 13-03-PLAN.md
+Phase: 13.5 (Staff Authentication Model Correction) — INSERTED BLOCKER
+Plan: TBD
+Status: Needs discuss/plan before more migration execution
+Last activity: 2026-07-14 — Phase 13 product/inventory rehearsal passed target data checks across 26 business DBs, but exposed a cross-boundary architecture conflict: tenant-local staff passwords were retired even though the intended product model requires business-local staff credentials with optional DGFY account linking.
 
 Progress: [█████████░] 92%
 
@@ -132,6 +132,7 @@ Recent decisions affecting current work:
 - [Phase 13 Plan 01]: Legacy item categories map unconditionally to products.category='retail' per D-09.
 - [Phase 13 Plan 03]: Product apply uses legacy_id_map as the idempotency guard for products because products.id is auto-increment and sku_code is non-unique.
 - [Phase 13 Plan 03]: BOM composition is resolved in apply pass 2 with JSON bound through Sequelize replacements.
+- [Roadmap v2.1 INSERTED]: Phase 13.5 is required before Phase 14. ADR 0028's DGFY-only staff access model conflicts with the intended product model. Tenant-local staff credentials must remain supported; DGFY account linking is optional for staff, not mandatory.
 
 ### Pending Todos
 
@@ -146,6 +147,7 @@ Recent decisions affecting current work:
 - [Roadmap v2.1] Open design decisions flagged by research, to resolve during Phase 13 planning (per SUMMARY.md's explicit recommendation for a discuss-phase/spec pass before mapper code): (1) multi-location stock/transfer target design — no non-lossy target exists in the new schema (`products.stock_count` is a single scalar, no location dimension, no `transfer` movement type); (2) `product_composition`/BOM in/out-of-scope decision — currently undecided; (3) `item_location_stocks` mapping target — informs whether it becomes an opening-balance `inventory_movements` row (current LDM/PIM wording) or something else; (4) `product_embeddings` cardinality (one row per product vs. per product-per-model-version) affects the recommended unique constraint shape.
 - [Roadmap v2.1] Open design decisions flagged by research, to resolve during Phase 14 planning: (1) whether `pos_transaction_lines` → `availment_items` is definitively in scope (REQUIREMENTS.md's SHM-02 says yes, confirming this — but the per-field FK classification for `pos_transactions`' ~15 FK-shaped fields, e.g. `shift_id`/`terminal_id`/`fnb_check_id`/`fnb_table_id`, still needs an explicit resolvable/nulled-with-finding/opaque-snapshot decision per field); (2) watermark/checkpoint extension design for a live, continuously-growing source table — no existing precedent in this codebase (Phase 3's checkpoint pattern was only proven against small, static tables).
 - [Phase 12 Plan 04] Tenant DB blocked: migration-runner .env DB user 'sieitzsqladmin' rejected by lima-dgfy-dev MySQL (only sku_inventory_user provisioned) and DGFY_BUSINESS_DB_NAMES not configured -- schema migrate/verify cannot prove success criteria #2-#4 until operator fixes credentials/target config. See 12-04-SUMMARY.md.
+- [Phase 13 Plan 06 / Phase 13.5] Blocking architecture correction: current `dgfy_business_*.staff_accounts` has no credential target and ADR 0028 says invited staff must use DGFY accounts. This is wrong for the product requirement. Do not treat pending DGFY memberships as the core issue; correct the tenant-local staff auth model first.
 
 ## Deferred Items
 
@@ -161,5 +163,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-14T13:42:39.955Z
-Stopped at: Completed 13-03-PLAN.md
+Stopped at: Inserted Phase 13.5 staff authentication model correction after Phase 13 rehearsal exposed the wrong DGFY-only staff auth assumption.
 Resume file: None
