@@ -549,5 +549,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 11. Order Fulfillment & Delivery Coordination | 4/4 | Complete    | 2026-07-14 |
 | 12. Scope Unblock + Schema Extension | 4/4 | Complete    | 2026-07-14 |
 | 13. Product & Inventory Migration | 5/6 | Blocked at rehearsal completion by STAFF-01..04 architecture correction |  |
-| 13.5. Staff Authentication Model Correction | 3/4 | In Progress|  |
+| 13.5. Staff Authentication Model Correction | 4/4 | Complete |  |
 | 14. Sales History Migration & Full Verification | 0/TBD | Not started | - |

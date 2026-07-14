@@ -4,14 +4,14 @@ milestone: v2.1
 milestone_name: Legacy Data Migration
 current_phase: 13.5
 current_phase_name: Staff Authentication Model Correction
-status: executing
+status: completed
 stopped_at: Phase 13 rehearsal exposed wrong staff-auth architecture assumption
-last_updated: "2026-07-14T22:36:07Z"
+last_updated: "2026-07-14T22:42:38.490Z"
 last_activity: 2026-07-14
-last_activity_desc: Phase 13.5 Plan 04 complete
+last_activity_desc: Phase 13.5 marked complete
 progress:
   total_phases: 15
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 82
   completed_plans: 78
   percent: 95
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 
 ## Current Position
 
-Phase: 13.5 (Staff Authentication Model Correction) — EXECUTING
+Phase: 13.5 — COMPLETE
 Plan: 4 of 4
-Status: Complete — ready for Phase 14 planning/execution
-Last activity: 2026-07-14 — Phase 13.5 Plan 04 complete
+Status: Phase 13.5 complete
+Last activity: 2026-07-14 — Phase 13.5 marked complete
 
 Progress: [█████████░] 95%
 
