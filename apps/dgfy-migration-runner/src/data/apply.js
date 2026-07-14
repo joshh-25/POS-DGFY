@@ -55,7 +55,7 @@ import {
     createBusinessTargetConnection
 } from '../config/db.js';
 import { DEFAULT_RUN_SCOPE } from './dryRun.js';
-import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot } from './legacySource.js';
+import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot, readLegacyProductSnapshot } from './legacySource.js';
 import {
     mapLegacyAccountToDgfyAccount,
     mapLegacyTenantToBusiness,
@@ -64,6 +64,11 @@ import {
     mapLegacyAccountStaffAssignment,
     mapLegacyLocationToLocation,
     mapTerminalRegistryEntryToTerminalIdentity,
+    mapItemFolderToProductFolder,
+    mapItemToProduct,
+    mapStockMovementToInventoryMovement,
+    mapItemLocationStocksToOpeningBalance,
+    mapItemEmbeddingToProductEmbedding,
     classifyMappingConflict,
     MAPPING_REASON_CODES
 } from './mappings.js';
@@ -107,7 +112,11 @@ const ENTITY_TARGET_CONFIG = {
     staff_account: { primaryKey: 'id', naturalKeyColumns: ['email'] },
     account_staff_assignment: { primaryKey: 'id', naturalKeyColumns: ['dgfy_account_id'] },
     location: { primaryKey: 'id', naturalKeyColumns: ['name'] },
-    terminal_identity: { primaryKey: 'id', naturalKeyColumns: ['terminal_code'] }
+    terminal_identity: { primaryKey: 'id', naturalKeyColumns: ['terminal_code'] },
+    product_folder: { primaryKey: 'id', naturalKeyColumns: ['business_id', 'name'] },
+    product: { primaryKey: 'id', naturalKeyColumns: ['id'] },
+    inventory_movement: { primaryKey: 'id', naturalKeyColumns: ['business_id', 'product_id', 'reference_type', 'reference_id'] },
+    product_embedding: { primaryKey: 'id', naturalKeyColumns: ['product_id'] }
 };
 
 /**
@@ -427,6 +436,113 @@ async function applyBatchAndRecord({ metaSequelize, targetSequelize, runScope, l
     summary.checkpoints_marked += 1;
 }
 
+function parseProductAttributes(value) {
+    if (!value) return {};
+    if (typeof value === 'string') {
+        try {
+            return JSON.parse(value);
+        } catch {
+            return {};
+        }
+    }
+    if (typeof value === 'object') {
+        return { ...value };
+    }
+    return {};
+}
+
+async function resolveProductId(metaSequelize, { runScope, legacyTenantDbName, legacyId }) {
+    const map = await findLegacyIdMap(metaSequelize, {
+        runScope,
+        legacySource: legacyTenantDbName,
+        legacyTable: 'items',
+        legacyId
+    });
+    return map ? Number(map.dgfy_id) : null;
+}
+
+async function applyProductCompositionUpdates({
+    metaSequelize,
+    targetSequelize,
+    runScope,
+    legacyTenantId,
+    legacyTenantDbName,
+    items = []
+}) {
+    for (const item of items) {
+        const compositions = Array.isArray(item.productCompositions) ? item.productCompositions : [];
+        if (compositions.length === 0) {
+            continue; // eslint-disable-line no-continue
+        }
+
+        // eslint-disable-next-line no-await-in-loop
+        const parentProductId = await resolveProductId(metaSequelize, {
+            runScope,
+            legacyTenantDbName,
+            legacyId: item.item_id
+        });
+        if (!parentProductId) {
+            continue; // eslint-disable-line no-continue
+        }
+
+        const resolvedComposition = [];
+        for (const composition of compositions) {
+            // eslint-disable-next-line no-await-in-loop
+            const ingredientProductId = await resolveProductId(metaSequelize, {
+                runScope,
+                legacyTenantDbName,
+                legacyId: composition.ingredient_id
+            });
+
+            if (!ingredientProductId) {
+                // eslint-disable-next-line no-await-in-loop
+                await recordDataQualityFinding(metaSequelize, {
+                    runScope,
+                    legacyTenantId,
+                    entityType: 'product',
+                    legacyTable: 'product_composition',
+                    legacyId: composition.ingredient_id,
+                    severity: 'orphan',
+                    reasonCode: MAPPING_REASON_CODES.UNRESOLVED_INGREDIENT,
+                    message: `Legacy product_composition ingredient_id ${composition.ingredient_id} could not be resolved to a migrated products.id for parent item ${item.item_id}.`,
+                    remediation: 'Migrate the referenced ingredient item, then rerun product apply so the composition can self-heal.'
+                });
+                continue; // eslint-disable-line no-continue
+            }
+
+            // eslint-disable-next-line no-await-in-loop
+            await resolveDataQualityFindings(metaSequelize, {
+                runScope,
+                legacyTenantId,
+                entityType: 'product',
+                legacyTable: 'product_composition',
+                legacyId: composition.ingredient_id
+            });
+
+            resolvedComposition.push({
+                ingredient_product_id: ingredientProductId,
+                composition_type: composition.composition_type,
+                quantity_required: composition.quantity_required,
+                unit_of_measure: composition.unit_of_measure
+            });
+        }
+
+        // eslint-disable-next-line no-await-in-loop
+        const [rows] = await targetSequelize.query(
+            'SELECT attributes FROM products WHERE id = ? LIMIT 1',
+            { replacements: [parentProductId] }
+        );
+        const currentAttributes = parseProductAttributes(rows[0]?.attributes);
+        const mergedAttributes = { ...currentAttributes, composition: resolvedComposition };
+
+        // eslint-disable-next-line no-await-in-loop
+        await targetSequelize.query(
+            'UPDATE products SET attributes = ?, updated_at = ? WHERE id = ?',
+            { replacements: [JSON.stringify(mergedAttributes), new Date(), parentProductId] }
+        );
+    }
+}
+
 /**
  * Orchestrates a full checkpointed apply run (T-03-04-01): opens legacy
  * source connections (mirrors dryRun.js's runDryRunTransformations()), a
@@ -528,6 +644,8 @@ export async function runApplyTransformations({ config, metaSequelize, coreSeque
         const tenantSequelize = createLegacyTenantSourceConnection(config, target.legacy_tenant_db_name);
         // eslint-disable-next-line no-await-in-loop
         const tenantSnapshot = await readLegacyTenantSnapshot(tenantSequelize);
+        // eslint-disable-next-line no-await-in-loop
+        const productSnapshot = await readLegacyProductSnapshot(tenantSequelize);
 
         // business (+ registry + ownership metadata related writes)
         const businessResult = mapLegacyTenantToBusiness(legacyTenant, targetContext);
@@ -657,6 +775,134 @@ export async function runApplyTransformations({ config, metaSequelize, coreSeque
             metaSequelize, targetSequelize: businessSequelize, runScope,
             legacyTenantId: target.legacy_tenant_id, entityType: 'terminal_identity',
             entries: terminalEntries, dgfyDatabase: target.target_business_db_name, summary, results
+        });
+
+        // Product folders — written before products so products.folder_id is
+        // resolved through legacy_id_map, never copied from the raw legacy id.
+        const productFolderEntries = productSnapshot.itemFolders.map((folder) => ({
+            legacy_tenant_id: target.legacy_tenant_id,
+            ...mapItemFolderToProductFolder(folder, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id
+            })
+        }));
+        // eslint-disable-next-line no-await-in-loop
+        await applyBatchAndRecord({
+            metaSequelize, targetSequelize: businessSequelize, runScope,
+            legacyTenantId: target.legacy_tenant_id, entityType: 'product_folder',
+            entries: productFolderEntries, dgfyDatabase: target.target_business_db_name, summary, results
+        });
+
+        const productEntries = [];
+        for (const item of productSnapshot.items) {
+            let resolvedFolderId = null;
+            if (item.folder_id) {
+                // eslint-disable-next-line no-await-in-loop
+                const folderMap = await findLegacyIdMap(metaSequelize, {
+                    runScope,
+                    legacySource: target.legacy_tenant_db_name,
+                    legacyTable: 'item_folders',
+                    legacyId: item.folder_id
+                });
+                resolvedFolderId = folderMap ? Number(folderMap.dgfy_id) : null;
+            }
+            const productResult = mapItemToProduct(item, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedFolderId,
+                itemLocationStocks: item.itemLocationStocks || []
+            });
+            productEntries.push({ legacy_tenant_id: target.legacy_tenant_id, ...productResult });
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await applyBatchAndRecord({
+            metaSequelize, targetSequelize: businessSequelize, runScope,
+            legacyTenantId: target.legacy_tenant_id, entityType: 'product',
+            entries: productEntries, dgfyDatabase: target.target_business_db_name, summary, results
+        });
+
+        // BOM pass 2 — all products now have legacy_id_map rows, so sibling
+        // ingredients resolve regardless of source ordering.
+        // eslint-disable-next-line no-await-in-loop
+        await applyProductCompositionUpdates({
+            metaSequelize,
+            targetSequelize: businessSequelize,
+            runScope,
+            legacyTenantId: target.legacy_tenant_id,
+            legacyTenantDbName: target.legacy_tenant_db_name,
+            items: productSnapshot.items
+        });
+
+        const stockMovementEntries = [];
+        for (const movement of productSnapshot.stockMovements) {
+            // eslint-disable-next-line no-await-in-loop
+            const resolvedProductId = await resolveProductId(metaSequelize, {
+                runScope,
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                legacyId: movement.item_id
+            });
+            const movementResult = mapStockMovementToInventoryMovement(movement, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedProductId
+            });
+            stockMovementEntries.push({ legacy_tenant_id: target.legacy_tenant_id, ...movementResult });
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await applyBatchAndRecord({
+            metaSequelize, targetSequelize: businessSequelize, runScope,
+            legacyTenantId: target.legacy_tenant_id, entityType: 'inventory_movement',
+            entries: stockMovementEntries, dgfyDatabase: target.target_business_db_name, summary, results
+        });
+
+        const openingBalanceEntries = [];
+        for (const item of productSnapshot.items) {
+            // eslint-disable-next-line no-await-in-loop
+            const resolvedProductId = await resolveProductId(metaSequelize, {
+                runScope,
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                legacyId: item.item_id
+            });
+            const openingBalanceResult = mapItemLocationStocksToOpeningBalance(item, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedProductId,
+                itemLocationStocks: item.itemLocationStocks || []
+            });
+            openingBalanceEntries.push({ legacy_tenant_id: target.legacy_tenant_id, ...openingBalanceResult });
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await applyBatchAndRecord({
+            metaSequelize, targetSequelize: businessSequelize, runScope,
+            legacyTenantId: target.legacy_tenant_id, entityType: 'inventory_movement',
+            entries: openingBalanceEntries, dgfyDatabase: target.target_business_db_name, summary, results
+        });
+
+        const embeddingEntries = [];
+        for (const embedding of productSnapshot.itemEmbeddings) {
+            // eslint-disable-next-line no-await-in-loop
+            const resolvedProductId = await resolveProductId(metaSequelize, {
+                runScope,
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                legacyId: embedding.item_id
+            });
+            const embeddingResult = mapItemEmbeddingToProductEmbedding(embedding, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedProductId
+            });
+            embeddingEntries.push({ legacy_tenant_id: target.legacy_tenant_id, ...embeddingResult });
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await applyBatchAndRecord({
+            metaSequelize, targetSequelize: businessSequelize, runScope,
+            legacyTenantId: target.legacy_tenant_id, entityType: 'product_embedding',
+            entries: embeddingEntries, dgfyDatabase: target.target_business_db_name, summary, results
         });
     }
 
