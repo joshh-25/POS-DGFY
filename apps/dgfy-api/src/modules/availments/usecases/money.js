@@ -114,6 +114,24 @@ export function sumLineSubtotals(lines) {
  * Each discount (promo code, manual, SC/PWD) is computed against the ORIGINAL
  * base subtotal, never cascaded. The final discount is the sum of all terms.
  *
+ * WR-02 (09-REVIEW.md) — IMPORTANT type contract, silent and type-driven:
+ * `term.amount` is interpreted DIFFERENTLY depending on its runtime `typeof`:
+ *   - `string`  -> parsed as PESOS via parseAmountToCentavos (e.g. '50.00' -> 5000)
+ *   - `number`  -> assumed ALREADY IN CENTAVOS, used as-is (e.g. 5000 -> 5000)
+ * There is a 100x magnitude difference between these two interpretations and
+ * NO runtime guard against a caller passing a plain JS number meaning pesos
+ * (e.g. `{ amount: 50 }` intending PHP 50.00 silently becomes a PHP 0.50
+ * discount instead — no error, no warning). The two current internal call
+ * sites are each individually consistent with this contract:
+ *   - availmentUseCases.js's discountRowToTerm() passes `{ amount: row.amount }`
+ *     — a DB DECIMAL-as-STRING (pesos) straight from availment_discounts.
+ *   - availmentUseCases.js's buildFinalizeAvailmentUseCase's codeDiscounts/
+ *     manualDiscount arrays pass `{ amount: amountCentavos }` — a NUMBER
+ *     already pre-resolved to centavos by computeDiscountRowAmountCentavos().
+ * Any NEW call site must follow one of these two shapes exactly — a number
+ * meaning pesos is NOT supported and will silently corrupt the discount by
+ * 100x. @throws nothing at runtime for this misuse; verify manually.
+ *
  * @param {number} baseSubtotalCentavos - integer centavos, original subtotal
  * @param {Array<{type: string, amount?: number|string, percent?: number}>} discountTerms - array of discount objects
  *        Each term must have EITHER amount (integer centavos OR string dollars) OR percent (0-100).
@@ -126,7 +144,9 @@ export function computeManualAndCodeDiscounts(baseSubtotalCentavos, discountTerm
 	for (const term of terms) {
 		let discountCentavos = 0;
 		if (term.amount !== undefined) {
-			// Absolute amount: if string, parse as dollars; if number, assume centavos
+			// Absolute amount: if string, parse as PESOS; if number, assume
+			// ALREADY IN CENTAVOS (see the WR-02 type-contract note in this
+			// function's JSDoc above — this is a silent, type-driven switch).
 			if (typeof term.amount === 'string') {
 				discountCentavos = parseAmountToCentavos(term.amount);
 			} else {
