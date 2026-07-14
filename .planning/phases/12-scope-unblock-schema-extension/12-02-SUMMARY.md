@@ -158,6 +158,10 @@ None - no external service configuration required.
 - Phase 13's `items` → `products` mapper (PIM-02) has a written contract (`docs/database/legacy-product-attributes-folding-design.md`) to read before implementing `attributes` JSON population logic.
 - Recommend a CI/dev-environment run with `node_modules` installed to execute the full `apps/dgfy-migration-runner` test suite and the dgfy-api module-load check as a supplementary confirmation (see Issues Encountered above) — not blocking, since Plan 04 provides the authoritative DB-backed proof.
 
+## Self-Check: PASSED
+
+All 8 created/modified files confirmed present on disk; all 4 commit hashes (`f9ccede2`, `ba7fdca7`, `b416f980`, `cc7f866a`) confirmed present in git log.
+
 ---
 *Phase: 12-scope-unblock-schema-extension*
 *Completed: 2026-07-14*
