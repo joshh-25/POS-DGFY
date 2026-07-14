@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-06-26
-last_reviewed: 2026-06-29
+last_reviewed: 2026-07-14
 classification: authoritative
 ---
 
@@ -48,14 +48,19 @@ Only Inventory records stock effects and updates stock balances.
 
 1. The physical `items` table remains unchanged in this phase. Catalog ownership
    is introduced through module boundaries and repository facades before any
-   schema split is considered.
+   schema split is considered. ("This phase" refers to the phase this ADR was
+   written for; superseded by the v2.1 milestone amendment below, which reads
+   `items` data into new `dgfy_business_*.products` rows without mutating the
+   legacy table.)
 2. `items.current_stock` remains a derived compatibility aggregate. Stock truth
    is `item_location_stocks` plus `stock_movements`, with FIFO batches carrying
    batch age, cost, and expiry evidence.
 3. Online Storefront orders remain stored in `pos_transactions` for v1
    compatibility and unified sales reporting. This table is treated as the
    unified sales transaction ledger for current behavior, not proof that POS
-   owns Storefront.
+   owns Storefront. (Superseded for migration purposes by the v2.1 milestone
+   amendment below: `pos_transactions` sales history is additionally migrated
+   into `availments` starting Phase 14; the legacy table itself is untouched.)
 4. Stock reservations are intentionally out of scope for this phase. If online
    order placement must reserve stock before fulfillment, a separate ADR must
    define reservation state, expiry, commit, release, and available-to-sell
@@ -94,7 +99,10 @@ Only Inventory records stock effects and updates stock balances.
 2. Use additive module facades and command adapters before removing legacy
    service paths.
 3. Do not introduce destructive migrations, table renames, or schema splits in
-   this phase.
+   this phase. (Remains literally true under the v2.1 milestone amendment
+   below: that work is purely additive — new columns and a new table in
+   `dgfy_business_*` schemas — with no destructive migration, rename, or split
+   of any legacy or existing `dgfy_*` table.)
 4. Architecture allowlist entries should shrink when use cases stop importing
    legacy services directly.
 5. Reporting and advisory analytics cleanup happens after boundary tests protect
@@ -113,3 +121,35 @@ Required proof for boundary changes:
 
 Frontend proof is required only when a slice changes rendered IMS, POS, or
 Storefront behavior.
+
+## Amendment (v2.1 Legacy Data Migration, 2026-07)
+
+The v2.1 Legacy Data Migration milestone begins migrating legacy Catalog,
+Inventory, and POS sales-history data that this ADR's original Compatibility
+Decisions treated as untouched for the duration of the (now-superseded)
+alignment phase:
+
+1. Legacy `items` data is migrated into `dgfy_business_*.products` starting
+   Phase 13 (LDM-01, LDM-02) via a new mapper following the existing
+   `mappings.js` pattern. The legacy `items` table itself is not mutated —
+   the migration reads it and writes new rows into the new schema.
+2. Legacy `stock_movements` data is migrated into
+   `dgfy_business_*.inventory_movements` starting Phase 13, following the same
+   additive, read-only-of-legacy pattern.
+3. Legacy `pos_transactions` sales history is migrated into
+   `dgfy_business_*.availments`, with a new `source_system` provenance field,
+   starting Phase 14. `pos_transaction_lines` remains out of scope until that
+   same phase.
+
+This amendment does not change the ownership boundaries or Boundary Rules
+above — Inventory still owns stock truth, Catalog still owns item identity,
+and POS still owns sales execution in the *live, operational* sense. It only
+records that the *historical* data underlying those domains now has an
+approved, additive migration path into the new `dgfy_*` schema, so the
+Compatibility Decisions' "in this phase" framing (written for a different,
+now-completed phase) no longer describes these three tables as permanently
+excluded from migration. See `docs/database/dgfy-data-migration-map.md` §10
+for the mirrored exclusion-list update.
+
+`status: accepted` is preserved; this is an amendment, not a revision of the
+original decision history.
