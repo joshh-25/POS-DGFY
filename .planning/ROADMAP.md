@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 8: Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating** - Businesses can define what they sell/service and staff can run accountable cash shifts under a compliance-mode gate, without any new table referencing legacy `items`/IMS data. (gaps found 2026-07-13 — see 08-VERIFICATION.md; FSC-02 closed by 08-10 and independently re-verified; new gap FSC-01 — revoke/reject review outcome never demotes compliance_mode_state, so a revoked business keeps ALLOW) (completed 2026-07-13)
 - [ ] **Phase 9: POS Checkout & Payment** - Staff can run a complete, trustworthy checkout — line items, discounts incl. SC/PWD, payment method, server-verified totals/change, receipts — gated by an open shift and the compliance policy engine.
 - [x] **Phase 10: Storefront Discovery & Online Ordering** - Consumers can discover stores/Products and complete a guest-or-account online order that durably and idempotently becomes a real tenant Availment. (completed 2026-07-13)
-- [ ] **Phase 11: Order Fulfillment & Delivery Coordination** - Business staff can process incoming online orders through a shared fulfillment pipeline, including manual courier assignment and payout tracking.
+- [x] **Phase 11: Order Fulfillment & Delivery Coordination** - Business staff can process incoming online orders through a shared fulfillment pipeline, including manual courier assignment and payout tracking. (completed 2026-07-14)
 
 ## Phase Details
 
@@ -400,7 +400,7 @@ Plans:
   2. Staff can progress an order's fulfillment status through a shared core pipeline (placed to confirmed to preparing to ready/out-for-delivery to completed), with handoff steps specific to pickup, delivery, and dine-in.
   3. Staff can manually assign a courier/delivery partner to an order and track courier payout through to fulfillment completion.
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -417,7 +417,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 11-04-PLAN.md — [BLOCKING] Live tenant-DB migration apply + verify + ENV-gated end-to-end finalize proof
+- [x] 11-04-PLAN.md — [BLOCKING] Live tenant-DB migration apply + verify + ENV-gated end-to-end finalize proof
 
 ## Progress
 
@@ -436,4 +436,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 13/13 | Complete   | 2026-07-13 |
 | 9. POS Checkout & Payment | 0/8 | Not started | - |
 | 10. Storefront Discovery & Online Ordering | 8/8 | Complete    | 2026-07-13 |
-| 11. Order Fulfillment & Delivery Coordination | 3/4 | In Progress|  |
+| 11. Order Fulfillment & Delivery Coordination | 4/4 | Complete   | 2026-07-14 |
