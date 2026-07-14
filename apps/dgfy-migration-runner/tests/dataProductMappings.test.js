@@ -1,7 +1,10 @@
 import {
     MAPPING_REASON_CODES,
     mapItemFolderToProductFolder,
-    mapItemToProduct
+    mapItemToProduct,
+    mapStockMovementToInventoryMovement,
+    mapItemLocationStocksToOpeningBalance,
+    mapItemEmbeddingToProductEmbedding
 } from '../src/data/mappings.js';
 import {
     phase13ContextFixture,
@@ -10,7 +13,13 @@ import {
     legacyItemMissingNameFixture,
     legacyItemFolderFixture,
     legacyItemFolderWithParentFixture,
-    legacyItemFolderMissingNameFixture
+    legacyItemFolderMissingNameFixture,
+    legacyStockMovementFixture,
+    legacyStockMovementFixturesByType,
+    legacyItemWithThreeLocationStocksFixture,
+    legacyItemWithCurrentStockOnlyFixture,
+    legacyItemWithoutOpeningStockFixture,
+    legacyItemEmbeddingFixture
 } from './fixtures/phase13/legacyProductRecords.js';
 
 describe('Phase 13 product folder mappings', () => {
@@ -151,5 +160,106 @@ describe('Phase 13 mapping reason codes', () => {
         expect(MAPPING_REASON_CODES.LOSSY_CATEGORY_COLLAPSE).toBe('lossy_category_collapse');
         expect(MAPPING_REASON_CODES.FOLDER_NESTING_FLATTENED).toBe('folder_nesting_flattened');
         expect(MAPPING_REASON_CODES.UNRESOLVED_INGREDIENT).toBe('unresolved_ingredient');
+    });
+});
+
+describe('Phase 13 stock movement mappings', () => {
+    test('maps every legacy movement type to the locked Phase 13 target behavior', () => {
+        const expected = {
+            purchase_receipt: 'restock',
+            calculated_loss: 'loss',
+            adjustment: 'adjustment',
+            goods_issue: 'sale',
+            return: 'restock',
+            production_consumption: 'adjustment',
+            production_output: 'adjustment',
+            transfer: null
+        };
+
+        legacyStockMovementFixturesByType().forEach((movement) => {
+            const result = mapStockMovementToInventoryMovement(
+                movement,
+                phase13ContextFixture({ resolvedProductId: 9901 })
+            );
+
+            if (expected[movement.movement_type] === null) {
+                expect(result.operation).toBe('skip');
+                expect(result.target_payload).toBeNull();
+                expect(result.findings[0].reason_code).toBe(MAPPING_REASON_CODES.LOSSY_CATEGORY_COLLAPSE);
+                return;
+            }
+
+            expect(result.operation).toBe('insert');
+            expect(result.target_payload.movement_type).toBe(expected[movement.movement_type]);
+        });
+    });
+
+    test('synthesizes non-null natural key fields from movement_id, ignoring nullable legacy reference fields', () => {
+        const result = mapStockMovementToInventoryMovement(
+            legacyStockMovementFixture({
+                movement_id: 777,
+                reference_id: null,
+                reference_type: null
+            }),
+            phase13ContextFixture({ resolvedProductId: 9901 })
+        );
+
+        expect(result.target_payload.reference_type).toBe('legacy_stock_movement');
+        expect(result.target_payload.reference_id).toBe('777');
+    });
+});
+
+describe('Phase 13 opening-balance mappings', () => {
+    test('sums three item_location_stocks rows into one opening-balance movement', () => {
+        const { item, itemLocationStocks } = legacyItemWithThreeLocationStocksFixture();
+        const result = mapItemLocationStocksToOpeningBalance(
+            item,
+            phase13ContextFixture({ resolvedProductId: 9901, itemLocationStocks })
+        );
+
+        expect(result.operation).toBe('insert');
+        expect(result.target_payload.movement_type).toBe('adjustment');
+        expect(result.target_payload.quantity).toBe('7.000000000000');
+        expect(result.target_payload.reference_type).toBe('legacy_opening_balance');
+        expect(result.target_payload.reference_id).toBe('601');
+    });
+
+    test('uses current_stock when no item_location_stocks rows exist and agrees with product stock_count', () => {
+        const { item, itemLocationStocks } = legacyItemWithCurrentStockOnlyFixture();
+        const context = phase13ContextFixture({ resolvedProductId: 9901, itemLocationStocks });
+        const openingBalance = mapItemLocationStocksToOpeningBalance(item, context);
+        const product = mapItemToProduct(item, context);
+
+        expect(openingBalance.operation).toBe('insert');
+        expect(openingBalance.target_payload.quantity).toBe('5.000000000000');
+        expect(product.target_payload.stock_count).toBe('5.000000000000');
+        expect(product.target_payload.stock_count).toBe(openingBalance.target_payload.quantity);
+    });
+
+    test('skips when no location stocks exist and current_stock is null, matching null product stock_count', () => {
+        const { item, itemLocationStocks } = legacyItemWithoutOpeningStockFixture();
+        const context = phase13ContextFixture({ resolvedProductId: 9901, itemLocationStocks });
+        const openingBalance = mapItemLocationStocksToOpeningBalance(item, context);
+        const product = mapItemToProduct(item, context);
+
+        expect(openingBalance.operation).toBe('skip');
+        expect(openingBalance.target_payload).toBeNull();
+        expect(product.target_payload.stock_count).toBeNull();
+    });
+});
+
+describe('Phase 13 product embedding mappings', () => {
+    test('copies the embedding vector byte-for-byte and preserves legacy_embedding_id', () => {
+        const embedding = legacyItemEmbeddingFixture({ vector: '[0.123456789,0.987654321]' });
+        const result = mapItemEmbeddingToProductEmbedding(
+            embedding,
+            phase13ContextFixture({ resolvedProductId: 9901 })
+        );
+
+        expect(result.operation).toBe('insert');
+        expect(result.entity_type).toBe('product_embedding');
+        expect(result.target_table).toBe('product_embeddings');
+        expect(result.target_payload.vector).toBe(embedding.vector);
+        expect(result.target_payload.legacy_embedding_id).toBe(701);
     });
 });

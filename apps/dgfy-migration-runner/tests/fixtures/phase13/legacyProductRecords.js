@@ -116,3 +116,75 @@ export function legacyItemMissingNameFixture(overrides = {}) {
         ...overrides
     });
 }
+
+export function legacyStockMovementFixture(overrides = {}) {
+    return {
+        movement_id: 501,
+        item_id: 401,
+        movement_type: 'purchase_receipt',
+        quantity: '4.250000000000',
+        reference_id: null,
+        reference_type: null,
+        ...overrides
+    };
+}
+
+export function legacyStockMovementFixturesByType() {
+    return [
+        legacyStockMovementFixture({ movement_id: 501, movement_type: 'purchase_receipt' }),
+        legacyStockMovementFixture({ movement_id: 502, movement_type: 'calculated_loss' }),
+        legacyStockMovementFixture({ movement_id: 503, movement_type: 'adjustment' }),
+        legacyStockMovementFixture({ movement_id: 504, movement_type: 'goods_issue' }),
+        legacyStockMovementFixture({ movement_id: 505, movement_type: 'return' }),
+        legacyStockMovementFixture({ movement_id: 506, movement_type: 'production_consumption' }),
+        legacyStockMovementFixture({ movement_id: 507, movement_type: 'production_output' }),
+        legacyStockMovementFixture({ movement_id: 508, movement_type: 'transfer' })
+    ];
+}
+
+export function legacyItemWithThreeLocationStocksFixture() {
+    const item = legacyMinimalItemFixture({
+        item_id: 601,
+        name: 'Three Location Product',
+        current_stock: '999.000000000000'
+    });
+
+    const itemLocationStocks = [
+        { item_location_stock_id: 1, item_id: 601, location_id: 10, quantity_on_hand: '1.250000000000' },
+        { item_location_stock_id: 2, item_id: 601, location_id: 11, quantity_on_hand: '2.750000000000' },
+        { item_location_stock_id: 3, item_id: 601, location_id: 12, quantity_on_hand: '3.000000000000' }
+    ];
+
+    return { item, itemLocationStocks };
+}
+
+export function legacyItemWithCurrentStockOnlyFixture() {
+    return {
+        item: legacyMinimalItemFixture({
+            item_id: 602,
+            name: 'Current Stock Fallback Product',
+            current_stock: '5.000000000000'
+        }),
+        itemLocationStocks: []
+    };
+}
+
+export function legacyItemWithoutOpeningStockFixture() {
+    return {
+        item: legacyMinimalItemFixture({
+            item_id: 603,
+            name: 'No Opening Stock Product',
+            current_stock: null
+        }),
+        itemLocationStocks: []
+    };
+}
+
+export function legacyItemEmbeddingFixture(overrides = {}) {
+    return {
+        embedding_id: 701,
+        item_id: 401,
+        vector: '[0.1,0.2,0.3]',
+        ...overrides
+    };
+}
