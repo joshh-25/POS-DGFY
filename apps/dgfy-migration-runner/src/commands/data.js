@@ -4,7 +4,7 @@ import { assertTargetDbNameAllowed } from '../safety/targetGuard.js';
 import { assertDestructiveAllowed } from '../safety/destructiveGate.js';
 import { ensureMetadataSchema, recordCommandStart, recordCommandComplete } from '../metadata/bootstrap.js';
 import { loadMigrationTargetManifest } from '../data/targetManifest.js';
-import { runDryRunTransformations, DEFAULT_RUN_SCOPE } from '../data/dryRun.js';
+import { runDryRunTransformations, DEFAULT_RUN_SCOPE, redactTargetPayload } from '../data/dryRun.js';
 import { runApplyTransformations } from '../data/apply.js';
 import { writeJsonReport } from '../reports/reportWriter.js';
 import { writeSummaryReport } from '../reports/summaryWriter.js';
@@ -61,6 +61,7 @@ export async function runDataDryRun({} = {}) {
       targets,
       runScope
     });
+    const reportSafeEntries = entries.map((entry) => redactTargetPayload(entry));
 
     const report = {
       generated_at: new Date().toISOString(),
@@ -79,7 +80,7 @@ export async function runDataDryRun({} = {}) {
         tenant_coverage_count: summary.tenant_coverage_count
       },
       tenant_coverage,
-      results: entries
+      results: reportSafeEntries
     };
 
     const reportJsonPath = await writeJsonReport(config.reportDir, 'data:dry-run', report);

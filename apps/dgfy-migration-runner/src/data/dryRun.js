@@ -75,6 +75,44 @@ function reclassifyOperation(mapperResult, resolvedIdMap) {
     return mapperResult;
 }
 
+const CREDENTIAL_PAYLOAD_TABLES = new Set(['accounts', 'staff_credentials']);
+
+function hasNonEmptyString(value) {
+    return typeof value === 'string' && value.length > 0;
+}
+
+/**
+ * Builds a report-safe copy of a dry-run plan entry. Mapper/apply internals
+ * still carry full payloads; only report assembly swaps credential-bearing
+ * fields for boolean evidence flags.
+ */
+export function redactTargetPayload(entry = {}) {
+    if (!entry || !entry.target_payload) {
+        return { ...entry };
+    }
+
+    const targetPayload = entry.target_payload;
+    const redactedPayload = {};
+    Object.entries(targetPayload).forEach(([key, value]) => {
+        if (key !== 'password_hash' && key !== 'pos_approval_pin_hash') {
+            redactedPayload[key] = value;
+        }
+    });
+
+    const credentialBearingTable = CREDENTIAL_PAYLOAD_TABLES.has(entry.target_table);
+    if (credentialBearingTable || Object.hasOwn(targetPayload, 'password_hash')) {
+        redactedPayload.has_password_hash = hasNonEmptyString(targetPayload.password_hash);
+    }
+    if (entry.target_table === 'staff_credentials' || Object.hasOwn(targetPayload, 'pos_approval_pin_hash')) {
+        redactedPayload.has_pos_approval_pin_hash = hasNonEmptyString(targetPayload.pos_approval_pin_hash);
+    }
+
+    return {
+        ...entry,
+        target_payload: redactedPayload
+    };
+}
+
 /**
  * Pure: builds the full per-target migration plan (a flat list of plan
  * entries — one per mapper call, including related/derived writes) from
