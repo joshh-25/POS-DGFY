@@ -37,6 +37,10 @@ export default function TerminalPageLayout({
     canAdjustCashDrawer,
     canCloseDay,
     terminalUser,
+    accessibleCompanies = [],
+    companySwitching = false,
+    companySwitchBlockedReason = '',
+    onSwitchCompany = async () => {},
     posViewMode,
     workflowMode = '',
     isMsmeMode = false,
@@ -128,6 +132,7 @@ export default function TerminalPageLayout({
     handleLegacyLogin = null
 }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const [capabilityNotice, setCapabilityNotice] = useState(null);
   const hasHydratedIncomingOrdersRef = useRef(false);
   const seenIncomingOrderIdsRef = useRef(new Set());
@@ -218,6 +223,8 @@ export default function TerminalPageLayout({
   }, [incomingOrders, incomingOrdersState?.accessState, incomingOrdersState?.loading, onlineOrderSoundEnabled]);
   const notificationCount = notifications.length;
   const primaryNotificationAction = notifications[0]?.onClick || null;
+  const companyRows = Array.isArray(accessibleCompanies) ? accessibleCompanies : [];
+  const currentCompanyId = String(terminalUser?.company?.id || '').trim();
   const shellLayoutClassName = IS_DGFY_POS_SURFACE
     ? `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`
     : `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`;
@@ -238,9 +245,6 @@ export default function TerminalPageLayout({
     : 'mt-1 hidden max-w-3xl text-[12px] leading-4 text-pos-muted md:block';
   const compactBellClassName = IS_DGFY_POS_SURFACE
     ? 'relative grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:hidden'
-    : 'hidden';
-  const compactIdentityClassName = IS_DGFY_POS_SURFACE
-    ? 'hidden'
     : 'hidden';
   const desktopBellClassName = IS_DGFY_POS_SURFACE
     ? 'relative hidden h-10 w-10 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:grid'
@@ -359,6 +363,64 @@ export default function TerminalPageLayout({
     </div>
   );
 
+  const renderCompanyProfileMenu = (className, mutedEmailClassName) => (
+    <div className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => setCompanyMenuOpen((open) => !open)}
+        className="flex min-w-0 items-center gap-2 rounded-2xl px-1 py-1 text-left transition hover:bg-slate-100"
+        aria-label="Open admin profile menu"
+        aria-expanded={companyMenuOpen}
+      >
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
+          <UserRound size={22} className="text-white" />
+        </span>
+        <span className="min-w-0 leading-tight">
+          <span className="block truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</span>
+          <span className={`block truncate text-[11px] ${mutedEmailClassName}`}>{terminalUser?.email || 'Sign in required'}</span>
+        </span>
+      </button>
+      {companyMenuOpen && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-950/15">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <p className="text-sm font-extrabold text-[#0F172A]">Admin Profile</p>
+            <p className="mt-0.5 text-xs text-[#64748B]">Choose a company to open its POS workspace.</p>
+          </div>
+          <div className="max-h-72 overflow-y-auto p-2">
+            {companyRows.length > 0 ? companyRows.map((company) => {
+              const tenantId = String(company?.tenant_id || '').trim();
+              const isCurrent = company?.is_current === true || (currentCompanyId && tenantId === currentCompanyId);
+              const unavailable = Boolean(companySwitchBlockedReason) || companySwitching || isCurrent || company?.can_switch !== true;
+              return (
+                <button
+                  key={tenantId}
+                  type="button"
+                  disabled={unavailable}
+                  title={isCurrent ? 'Current company' : (companySwitchBlockedReason || '')}
+                  onClick={() => onSwitchCompany(tenantId)}
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left ${unavailable ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-bold text-[#0F172A]">{company?.company_name || 'Unnamed company'}</span>
+                    <span className="mt-0.5 block truncate text-xs text-[#64748B]">{isCurrent ? 'Current company' : (company?.role || 'Accessible company')}</span>
+                  </span>
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide ${isCurrent ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'}`}>
+                    {isCurrent ? 'Current' : (companySwitching ? 'Switching' : 'Switch')}
+                  </span>
+                </button>
+              );
+            }) : (
+              <p className="px-3 py-4 text-sm text-[#64748B]">No additional companies are available for this account.</p>
+            )}
+          </div>
+          {companySwitchBlockedReason && (
+            <p className="border-t border-amber-100 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">{companySwitchBlockedReason}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className={`dgfy-pos-shell h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden ${shellLayoutClassName}`}>
       {notificationPanel}
@@ -425,25 +487,8 @@ export default function TerminalPageLayout({
             {renderNotificationButton(compactBellClassName, 20)}
           </div>
           <div className="flex min-w-0 items-center justify-between gap-3 sm:gap-4 lg:justify-end">
-          <div className={compactIdentityClassName}>
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
-              <UserRound size={22} className="text-white" />
-            </div>
-            <div className="min-w-0 leading-tight">
-              <div className="truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
-              <div className="truncate text-[11px] text-pos-muted">{terminalUser?.email || 'Sign in required'}</div>
-            </div>
-          </div>
           {renderNotificationButton(desktopBellClassName, 24)}
-          <div className={desktopIdentityClassName}>
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
-              <UserRound size={22} className="text-white" />
-            </div>
-            <div className="min-w-0 leading-tight">
-              <div className="truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
-              <div className="truncate text-[11px] text-[#64748B]">{terminalUser?.email || 'Sign in required'}</div>
-            </div>
-          </div>
+          {renderCompanyProfileMenu(desktopIdentityClassName, 'text-[#64748B]')}
           </div>
         </div>
       </div>
