@@ -20,10 +20,14 @@ import {
 // kept returning ALLOW for a Fiscal POS_CHECKOUT. This is a fail-open
 // authorization bypass.
 //
-// Against the pre-fix complianceUseCases.js, the usecase-half cases below FAIL
-// (upsertState is never called for reject/revoke and compliance.state stays
-// compliant_active) -- this reproduces the bypass (RED). They pass once Task 2
-// lands the unconditional demotion to non_compliant_active (GREEN).
+// 12-03-PLAN.md (T-12-07/T-12-08): the original fix above still called
+// recordVerification() then upsertState() as two INDEPENDENT,
+// non-transactional writes -- a crash/race between them could record a
+// review while leaving compliance_mode_state.state un-demoted. The usecase
+// now performs a single atomic repository.recordVerificationAndState() call
+// (row-locked transaction, see complianceModeStateRepository.test.js for the
+// repository-level atomicity coverage) carrying both the verification
+// triplet and the computed state -- the old two-call path is gone.
 //
 // Mocked repository/businessRepository convention mirrors
 // complianceModeStateRepository.test.js's makeStateRow()/getMembership()
@@ -46,19 +50,14 @@ const makeStateRow = (overrides = {}) => ({
 });
 
 /**
- * recordVerification()/upsertState() each resolve a state row reflecting the
- * patch they were called with -- so the usecase's createComplianceEntity(
- * finalRow).toPlain() surfaces whichever repository call actually determined
- * finalRow (the bug: only recordVerification for reject/revoke; the fix:
- * upsertState too).
+ * recordVerificationAndState() resolves a state row reflecting the single
+ * atomic patch it was called with -- so the usecase's
+ * createComplianceEntity(finalRow).toPlain() surfaces exactly what the one
+ * repository call determined (verification triplet + computed state
+ * together, never a two-call split).
  */
 const makeRepository = () => ({
-    recordVerification: jest.fn(async (businessId, branchId, patch) => makeStateRow({
-        business_id: businessId,
-        branch_id: branchId,
-        ...patch
-    })),
-    upsertState: jest.fn(async (businessId, branchId, patch) => makeStateRow({
+    recordVerificationAndState: jest.fn(async (businessId, branchId, patch) => makeStateRow({
         business_id: businessId,
         branch_id: branchId,
         ...patch
@@ -90,17 +89,47 @@ describe('FSC-01: reject/revoke demotes compliance_mode_state to non_compliant_a
         });
 
         expect(result.success).toBe(true);
-        expect(repository.upsertState).toHaveBeenCalledWith(
+        // Single atomic call carrying BOTH the verification triplet and the
+        // computed state -- the old recordVerification()+upsertState() pair
+        // is gone.
+        expect(repository.recordVerificationAndState).toHaveBeenCalledTimes(1);
+        expect(repository.recordVerificationAndState).toHaveBeenCalledWith(
             'biz-1',
             null,
-            { state: COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE }
+            expect.objectContaining({
+                verification_status: verificationStatus,
+                state: COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE
+            })
         );
         expect(result.data.compliance.state).toBe(COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE);
-        expect(repository.recordVerification).toHaveBeenCalledWith(
+    });
+});
+
+describe('FSC-01/T-12-07: a verified review outcome sets state to the reviewer-supplied newState via the single atomic call', () => {
+    test('verificationStatus=verified calls recordVerificationAndState once with the computed newState', async () => {
+        const repository = makeRepository();
+        const businessRepository = makeBusinessRepository();
+        const reviewComplianceState = buildReviewComplianceStateUseCase({ repository, businessRepository });
+
+        const result = await reviewComplianceState({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            verifierActorType: COMPLIANCE_VERIFIER_ACTOR_TYPE.TENANT_MASTER_ADMIN,
+            verificationStatus: COMPLIANCE_VERIFICATION_STATUS.VERIFIED,
+            newState: COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.recordVerificationAndState).toHaveBeenCalledTimes(1);
+        expect(repository.recordVerificationAndState).toHaveBeenCalledWith(
             'biz-1',
             null,
-            expect.objectContaining({ verification_status: verificationStatus })
+            expect.objectContaining({
+                verification_status: COMPLIANCE_VERIFICATION_STATUS.VERIFIED,
+                state: COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE
+            })
         );
+        expect(result.data.compliance.state).toBe(COMPLIANCE_MODE_STATE.COMPLIANT_ACTIVE);
     });
 });
 
