@@ -43,6 +43,15 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     item_folders: Object.freeze({
         is_active: Object.freeze({
             sql: "ALTER TABLE `item_folders` ADD COLUMN `is_active` TINYINT(1) NOT NULL DEFAULT 1 AFTER `show_in_pos_filter`"
+        }),
+        deleted_at: Object.freeze({
+            sql: "ALTER TABLE `item_folders` ADD COLUMN `deleted_at` DATETIME NULL"
+        }),
+        deleted_by: Object.freeze({
+            sql: "ALTER TABLE `item_folders` ADD COLUMN `deleted_by` INTEGER NULL"
+        }),
+        active_name_key: Object.freeze({
+            sql: "ALTER TABLE `item_folders` ADD COLUMN `active_name_key` VARCHAR(100) GENERATED ALWAYS AS (CASE WHEN `is_active` = 1 AND `deleted_at` IS NULL THEN LOWER(TRIM(`name`)) ELSE NULL END) STORED"
         })
     }),
     pos_transactions: Object.freeze({
@@ -185,6 +194,11 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
 // REQUIRED_TENANT_SCHEMA_COLUMNS because MySQL enforces this one as UNIQUE and a plain
 // column-presence check can't tell "column added, index still missing" apart from "both present".
 export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
+    item_folders: Object.freeze({
+        uq_item_folders_active_name: Object.freeze({
+            sql: "ALTER TABLE `item_folders` ADD UNIQUE INDEX `uq_item_folders_active_name` (`active_name_key`)"
+        })
+    }),
     pos_terminal_shifts: Object.freeze({
         uq_pos_terminal_shifts_active_terminal: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_terminal` (`active_terminal_id`)"
@@ -196,6 +210,53 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         })
     })
 });
+
+const quoteIdentifier = (value) => `\`${String(value).replace(/`/g, '``')}\``;
+
+async function removeLegacyItemFolderNameUniqueIndexes(connection, tenantDb) {
+    const [rows] = await connection.query(
+        `SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME
+           FROM INFORMATION_SCHEMA.STATISTICS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'item_folders'`,
+        [tenantDb]
+    );
+    const indexes = new Map();
+    rows.forEach((row) => {
+        const indexName = String(row.INDEX_NAME || '');
+        if (!indexName || indexName === 'PRIMARY' || Number(row.NON_UNIQUE) !== 0) return;
+        indexes.set(indexName, [...(indexes.get(indexName) || []), String(row.COLUMN_NAME || '')]);
+    });
+    for (const [indexName, columns] of indexes) {
+        if (columns.length === 1 && columns[0] === 'name') {
+            await connection.query(`ALTER TABLE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('item_folders')} DROP INDEX ${quoteIdentifier(indexName)}`);
+        }
+    }
+}
+
+export async function repairItemFolderCategoryLifecycleSchema(connection, tenantDb) {
+    const [columns] = await connection.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'item_folders'`,
+        [tenantDb]
+    );
+    const existingColumns = new Set(columns.map((row) => row.COLUMN_NAME));
+    if (!existingColumns.has('deleted_at')) {
+        await connection.query(`ALTER TABLE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('item_folders')} ADD COLUMN ${quoteIdentifier('deleted_at')} DATETIME NULL`);
+    }
+    if (!existingColumns.has('deleted_by')) {
+        await connection.query(`ALTER TABLE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('item_folders')} ADD COLUMN ${quoteIdentifier('deleted_by')} INTEGER NULL`);
+    }
+    await removeLegacyItemFolderNameUniqueIndexes(connection, tenantDb);
+    if (!existingColumns.has('active_name_key')) {
+        await connection.query(`ALTER TABLE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('item_folders')} ADD COLUMN ${quoteIdentifier('active_name_key')} VARCHAR(100) GENERATED ALWAYS AS (CASE WHEN ${quoteIdentifier('is_active')} = 1 AND ${quoteIdentifier('deleted_at')} IS NULL THEN LOWER(TRIM(${quoteIdentifier('name')})) ELSE NULL END) STORED`);
+    }
+    const [indexes] = await connection.query(
+        `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'item_folders'`,
+        [tenantDb]
+    );
+    if (!indexes.some((row) => row.INDEX_NAME === 'uq_item_folders_active_name')) {
+        await connection.query(`ALTER TABLE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('item_folders')} ADD UNIQUE INDEX ${quoteIdentifier('uq_item_folders_active_name')} (${quoteIdentifier('active_name_key')})`);
+    }
+}
 
 // Seed rows that ship with a REQUIRED_TENANT_SCHEMA_TABLES table. Gated on the table being empty
 // (rather than "was it just created by this run") so a prior partial failure — table created,
@@ -547,6 +608,7 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                             await useTenantDb();
                             await connection.query(repair.sql);
                         }
+                        await repairItemFolderCategoryLifecycleSchema(connection, tenant.db_name);
                     }
 
                     const missingIndexes = await inspectRequiredTenantSchemaIndexes(connection, tenant.db_name);
