@@ -3,10 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Legacy Data Migration
 current_phase: 13.5
-current_phase_name: Staff Authentication Model Correction
 status: completed
-stopped_at: Phase 13 rehearsal exposed wrong staff-auth architecture assumption
-last_updated: "2026-07-14T22:42:38.490Z"
+stopped_at: Phase 14 context gathered
+last_updated: "2026-07-14T23:25:12.857Z"
 last_activity: 2026-07-14
 last_activity_desc: Phase 13.5 marked complete
 progress:
@@ -14,7 +13,8 @@ progress:
   completed_phases: 12
   total_plans: 82
   completed_plans: 78
-  percent: 95
+  percent: 80
+current_phase_name: Staff Authentication Model Correction
 ---
 
 # Project State
@@ -174,6 +174,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-14T22:36:07Z
-Stopped at: Completed 13.5-04-PLAN.md. Phase 13.5 complete; Phase 14 remains.
-Resume file: None
+Last session: 2026-07-14T23:25:12.806Z
+Stopped at: Phase 14 context gathered
+Resume file: .planning/phases/14-sales-history-migration-full-verification/14-CONTEXT.md
