@@ -282,13 +282,31 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FUL-01 | Phase 11 | Complete |
 | FUL-02 | Phase 11 | Complete |
 | FUL-03 | Phase 11 | Complete |
+| LDM-01 | Phase 12 | Pending |
+| LDM-02 | Phase 12 | Pending |
+| LDM-03 | Phase 12 | Pending |
+| LDM-04 | Phase 12 | Pending |
+| PIM-01 | Phase 13 | Pending |
+| PIM-02 | Phase 13 | Pending |
+| PIM-03 | Phase 13 | Pending |
+| PIM-04 | Phase 13 | Pending |
+| PIM-05 | Phase 13 | Pending |
+| PIM-06 | Phase 13 | Pending |
+| LDM-05 | Phase 14 | Pending (sequenced with Sales History per its own requirement text, not Phase 12) |
+| SHM-01 | Phase 14 | Pending |
+| SHM-02 | Phase 14 | Pending |
+| SHM-03 | Phase 14 | Pending |
+| SHM-04 | Phase 14 | Pending |
+| VER-01 | Phase 14 | Pending (spans all 6 entity types incl. availment/availment_item — only fully true once Phase 14 lands) |
+| VER-02 | Phase 14 | Pending (spans product- and availment-side sum-by-type checks — only fully true once Phase 14 lands) |
+| VER-03 | Phase 14 | Pending (milestone-wide final re-rehearsal proof) |
 
 **Coverage:**
 
 - v1 requirements: 26 total — mapped to phases: 26 — unmapped: 0
 - v2 requirements: 28 total — mapped to phases: 28 — unmapped: 0
-- v2.1 requirements: 18 total — mapped to phases: 0 — unmapped: 18 (pending roadmap creation)
+- v2.1 requirements: 18 total — mapped to phases: 18 — unmapped: 0
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-14 after defining the v2.1 Legacy Data Migration requirements*
+*Last updated: 2026-07-14 after creating the v2.1 Legacy Data Migration roadmap (Phases 12-14)*

@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Legacy Data Migration
 status: planning
-last_updated: "2026-07-14T07:47:19.489Z"
+last_updated: "2026-07-14T16:45:00.000Z"
 last_activity: 2026-07-14
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-12)
+See: .planning/PROJECT.md (updated 2026-07-14)
 
 **Core value:** DGFY can become a standalone multi-tenant POS and Storefront system without breaking the existing live platform during migration.
-**Current focus:** Phase 11 — order-fulfillment-delivery-coordination
+**Current focus:** Phase 12 — scope-unblock-schema-extension
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-14 — Milestone v2.1 started
+Phase: 12 of 14 (Scope Unblock + Schema Extension)
+Plan: TBD (not yet planned)
+Status: Ready to plan
+Last activity: 2026-07-14 — v2.1 ROADMAP.md created (Phases 12-14), REQUIREMENTS.md traceability updated (18/18 v2.1 requirements mapped)
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -115,35 +117,10 @@ Recent decisions affecting current work:
 - [Roadmap v2.0]: Phase numbering continues from v1.0's last phase — v2.0 starts at Phase 8 (not renumbered); Phase 7 (paused cutover rehearsal) stays independent and does not block v2.0.
 - [Roadmap v2.0]: Phases derived dependency-driven from research: Product Catalog is the root dependency (nothing else has a `product_id`); Shift & Cash Drawer and Fiscal/Compliance build in parallel with Product Catalog (no Product dependency) but must land before/be ready by Checkout; Booking requires Product Catalog; POS Checkout depends on Product+Shift+Compliance; Storefront Ordering is deliberately its own phase (first Landlord<->Tenant cross-database write, real integration risk — not bundled with unrelated work); Order Fulfillment depends on Storefront Ordering + Checkout.
 - [Roadmap v2.0]: Compressed research's 7 suggested phase groupings to 4 phases (8-11) per "coarse" granularity — Phase 8 bundles Product Catalog + Booking + Shift & Cash Drawer + compliance-mode state/gate-port (FSC-01/FSC-02); FSC-03 (SC/PWD discount math) placed in Phase 9 (Checkout) since it's checkout-domain discount computation, not compliance-state-machine scope.
-- [Phase 08]: P01: INTEGER (not BIGINT) autoincrement PKs on all 8 new commerce tables including append-only ledgers, matching existing tenant-table convention.
-- [Phase 08]: P01: actor_staff_account_id on inventory_movements/cash_drawer_events FKs staff_accounts.id (SET NULL), matching the tenant_audit_logs referential-integrity precedent.
-- [Phase 08]: P02: reworded model doc comments to avoid literal 'backend/src/models' substring so the plan's automated grep prohibition check passes while still documenting legacy provenance by name.
-- [Phase 08]: P03: productRepository/productFolderRepository resolve models via tenantConnector.getModels() (not direct model-factory import), since Product/ProductFolder are 08-02's registered Tenant models.
-- [Phase 08]: P03: products module mounts top-level at /products (not nested under /businesses/:businessId); businessId read from req.body/req.query in controllers.
-- [Phase 08]: P04: inventory manual movements gate on any active business membership (staff-or-owner), not owner-only.
-- [Phase 08]: P04: recordMovementWithStockSync() applies restock/loss/adjustment stock_count deltas transactionally with a JS negative-stock precheck + optimistic-concurrency guard.
-- [Phase 08]: P05: reconciliation math computed in shiftUseCases (not shiftRepository) so computeExpectedCash is unit-testable without mocking Sequelize transactions — keeps repository a pure persistence adapter; matches plan task wording
-- [Phase 08]: P05: staleThresholdMinutes (D-11) resolved once at buildShiftsModule's composition boundary (override > SHIFT_STALE_THRESHOLD_MINUTES env var > 60min default), never inline in usecase/entity layers
-- [Phase 08]: P06: ported the entire compliancePolicyEngine.js (including evaluateComplianceChecklist) rather than only the outer branches, since compliant_active's checklist-completeness path depends on it -- a faithful D-03 full-depth port requires the whole file.
-- [Phase 08]: P06: reviewComplianceState gates on business-owner membership (not a dedicated tenant_master_admin/platform_admin role, which does not exist yet in this system) while still requiring and recording a valid verifierActorType input.
-- [Phase 08]: P07: non-staff createBooking callers always book for themselves (customer_account_id = requestingAccountId); a client-supplied customer_account_id is only honored from a staff/owner caller
-- [Phase 08]: P07: booking-capacity atomic guard uses Model.update() with sequelize.literal() and a WHERE slots_remaining >= 1 guard inside sequelize.transaction() (Pattern D), matching 08-04's Model.update()-based counter-guard convention rather than raw SQL
-- [Phase Phase 08]: P08: composition root reuses businesses module's tenantConnector/businessDatabaseRegistryRepository (newly destructured) rather than each new commerce module defaulting to its own TenantConnector instance.
-- [Phase Phase 08]: P08: staleThresholdMinutes passed straight from process.env.SHIFT_STALE_THRESHOLD_MINUTES into buildShiftsModule(); the module's own resolveStaleThresholdMinutes() owns the override/env/default fallback chain.
-- [Phase 08]: P09: used a STORED generated column (branch_scope_key = COALESCE(branch_id, 0)) instead of a branch_id=0 sentinel to make compliance_mode_state uniqueness enforceable for NULL branches, since a literal sentinel would violate branch_id's FK into locations.id
-- [Phase 08]: P09: reused checklist.activation_blockers[0]'s already-assembled reason code in the new compliant_active full-checklist gate guard rather than duplicating a per-signal mapping table, since profile/settings/artifacts/peripherals are already proven complete by the four checks above it
-- [Phase 08]: P11: reject/revoke demotion to non_compliant_active is unconditional — no explicit newState required or consulted for these two outcomes (FSC-01)
-- [Phase 08]: P11: state-demotion is the single source of truth for FSC-01 — no parallel verification_status branch added to complianceGate.js/evaluateComplianceDecision()
-- [Phase 08]: P12: cancelBooking/closeShift guard reads row-locked (lock: transaction.LOCK.UPDATE) to close CR-02/CR-03 concurrent double-submit races, mirroring the create-path's atomic-guard discipline
-- [Phase 08]: P13: edited 20260712100000 directly (rather than a corrective forward-dated migration) to fix CASCADE-on-generated-column-base-column FKs, since it was never successfully applied to any real business database — least-collateral-change option per plan's own diagnosis; only three of eleven FKs in the file touched
-- [Phase 08]: UAT — closed WR-01 as a one-off operational cleanup (not a code-level guard) after live evidence on two real lima-dgfy-dev tenants showed the stale-CASCADE risk never materialized; see 08-UAT.md Test 6.
-- [Phase 08]: UAT — fixed two pre-existing infra gaps on lima-dgfy-dev unrelated to Phase 8 code: `infrastructure/docker/docker-compose.yml`'s `dgfy-api` service was missing `DB_NAME: dgfy_core` (was inheriting `backend`'s legacy `sku_inventory_manager`), and MySQL's `sku_inventory_user` lacked a `dgfy_business_%` wildcard grant for newly-provisioned tenants. Both fixed directly (compose edit + container restart; GRANT statement) rather than deferred, since they blocked all live UAT fixture-building.
-- [Phase 09]: P02: money.js is a pure integer-centavo engine (no I/O/Sequelize) — single roundHalfUp() convention reused everywhere; VAT-inclusive decomposition per D-19; SC/PWD VAT-exempt (zero VAT, 20% off net) per D-20; discounts stack independently against the original base subtotal, never cascading, per D-05.
-- [Phase 09]: P04/P06: finalizePersist runs one sequelize.transaction covering the availment status flip, per-line recordSaleEffect (injected, threaded transaction) THROW-on-non-success, Payment, and Receipt — an insufficient-stock or other sale-effect failure rolls back the entire sale (Pitfall 7 atomicity), preserving ADR-0029's single-writer contract (availments never writes InventoryMovement rows directly).
-- [Phase 09]: P06: fiscal/compliant_active checkout hard-fails on incomplete compliance evidence (REQUIRES_SETUP/DENY) and surfaces the missing checklist signals — never silently downgrades a fiscal sale to a non_fiscal slip (D-24).
-- [Phase 09]: P06: receipt printing is fail-open (D-22) — the Availment/Payment/Receipt commit to DB first; a device-bridge print failure afterward returns success-with-warning, never rolls back the sale.
-- [Phase 09]: UAT/08 — live schema apply performed directly against lima-dgfy-dev (not deferred): migration-runner `schema migrate` applied the Phase 9 migration to tenant `dgfy_business_aa1fb840807e198b6448` (total_pending=1 executed=1); all 6 tables + append-only triggers + `compliance_evidence` generated column/unique index confirmed present via direct SQL; live `finalizeLive.test.js` (2/2) passed against real MySQL.
-- [Phase 09]: UAT/08 — found and fixed a latent, pre-existing bug in the SHARED test helper `apps/dgfy-api/tests/helpers/tenantSchemaProvisioning.js` (used by Phase 4/8 live-gated suites too, not just Phase 9): it hardcoded exactly 2 migration files and never grew to include Phase 8's commerce-foundation migrations, so its own `dgfyBusinessContract` full-table verification was silently broken for every consumer since Phase 8 landed. Fixed to dynamically load all `meta.targetKind === 'business'` migrations by filename order (mirrors the production migration-runner's own `buildMigrationsForKind()`), re-verified against an unrelated Phase 4 consumer (`businessFlows.test.js`, 12/12) to confirm no regression.
+- [Roadmap v2.1]: Phase numbering continues from v2.0's last phase — v2.1 starts at Phase 12 (not renumbered); Phase 7 (paused cutover rehearsal) and Phases 1-11 stay as historical record, untouched.
+- [Roadmap v2.1]: Phases derived dependency-driven per research: Phase 12 (ADR 0029 amendment + additive schema extension) is a hard blocker for every mapper and lands first; Phase 13 (Product/Inventory) must land and be re-rehearsed before Phase 14 (Sales History) because `pos_transaction_lines` → `availment_items` has a real FK dependency on migrated products in `legacy_id_map`, not just an organizational preference.
+- [Roadmap v2.1]: LDM-05 (`availments.source_system` additive column) mapped to Phase 14, not Phase 12, per the requirement's own text ("sequenced with the Sales History phase") despite being listed under the "Legacy Migration Scope & Schema Extension" category in REQUIREMENTS.md.
+- [Roadmap v2.1]: VER-01/VER-02 mapped fully to Phase 14 rather than split across Phase 13 as research's draft phrased it ("scoped to this phase's entity types") — both requirements' own text names `availment`/`availment_item`, which only exist once Phase 14 lands, so assigning either to Phase 13 would claim completion before it's literally true. Phase 13 still carries its own product/inventory-side dry-run/apply/verify rehearsal success criteria without formally owning the VER-* REQ-IDs, preserving the "map to exactly one phase" rule.
 
 ### Pending Todos
 
@@ -155,19 +132,22 @@ Recent decisions affecting current work:
 - [Roadmap v2.0] Open design decisions flagged by research, to resolve during phase planning: (1) whether `ComplianceModeState` is Landlord- or Tenant-scoped (resolve before/during Phase 8 planning — currently assumed Tenant-scoped); (2) fulfillment status shape, two-field event-sourced vs. single-field state machine (resolve during Phase 11 planning); (3) PayMongo storefront payment flow design needs phase-specific research when Phase 10 is planned.
 - [Phase 8] FSC-01 gap (blocking, needs gap-closure plan): `buildReviewComplianceStateUseCase` (complianceUseCases.js:274-329) never demotes `compliance_mode_state.state` when a review outcome is `rejected`/`revoked` — only verification metadata is patched. `evaluateComplianceDecision()` branches solely on `state`, never `verification_status`, and `complianceGate.js` never forwards `verification_status` into the decision context at all. Net effect: a `compliant_active` business whose fiscal paperwork is later revoked keeps `ALLOW` for Fiscal POS_CHECKOUT indefinitely. HTTP-reachable today via `POST /compliance/review`. Independently confirmed by 08-REVIEW.md (CR-01) and 08-VERIFICATION.md's third pass. Recommended: a focused gap-closure plan analogous to 08-09/08-10.
 - ~~[Phase 8] CR-02/CR-03 row-lock race~~ — RESOLVED by P12 (row-locked reads via `lock: transaction.LOCK.UPDATE`) and live-confirmed 2026-07-13 via 08-UAT.md Test 3: concurrent `cancelBooking()`/`closeShift()` calls against lima-dgfy-dev showed exactly one success + one clean rejection each, no double capacity release, no duplicate close event.
+- [Roadmap v2.1] Open design decisions flagged by research, to resolve during Phase 13 planning (per SUMMARY.md's explicit recommendation for a discuss-phase/spec pass before mapper code): (1) multi-location stock/transfer target design — no non-lossy target exists in the new schema (`products.stock_count` is a single scalar, no location dimension, no `transfer` movement type); (2) `product_composition`/BOM in/out-of-scope decision — currently undecided; (3) `item_location_stocks` mapping target — informs whether it becomes an opening-balance `inventory_movements` row (current LDM/PIM wording) or something else; (4) `product_embeddings` cardinality (one row per product vs. per product-per-model-version) affects the recommended unique constraint shape.
+- [Roadmap v2.1] Open design decisions flagged by research, to resolve during Phase 14 planning: (1) whether `pos_transaction_lines` → `availment_items` is definitively in scope (REQUIREMENTS.md's SHM-02 says yes, confirming this — but the per-field FK classification for `pos_transactions`' ~15 FK-shaped fields, e.g. `shift_id`/`terminal_id`/`fnb_check_id`/`fnb_table_id`, still needs an explicit resolvable/nulled-with-finding/opaque-snapshot decision per field); (2) watermark/checkpoint extension design for a live, continuously-growing source table — no existing precedent in this codebase (Phase 3's checkpoint pattern was only proven against small, static tables).
 
 ## Deferred Items
 
-Items acknowledged and carried forward from milestone scope control:
+Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
 | Product/POS domains | Product, Availment, inventory, checkout, payments, discounts, shifts, fiscal compliance | Now active — v2.0 Commerce Domain, Phases 8-11 | Roadmap creation (v1.0); resumed at v2.0 roadmap creation |
-| Frontend migration | Storefront/POS/Business frontend migration into new app surfaces | Still deferred (v3, FE-01) — no new frontend apps in v2.0 | Roadmap creation |
+| Frontend migration | Storefront/POS/Business frontend migration into new app surfaces | Still deferred (v3, FE-01) — no new frontend apps in v2.0 or v2.1 | Roadmap creation |
 | Legacy decommissioning | Moving legacy code to `.archive` | Still deferred until parity and no-active-path evidence exists | Roadmap creation |
+| Migration reporting/embeddings polish | Human-readable per-tenant migration summary report (RPT-01); embedding-model metadata tagging (EMB-01) | Still deferred (v2.x) — not required for v2.1 fidelity goal, add if support/audit workflows justify | v2.1 requirements definition |
 
 ## Session Continuity
 
-Last session: 2026-07-13T15:01:43.779Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-order-fulfillment-delivery-coordination/11-CONTEXT.md
+Last session: 2026-07-14T16:45:00.000Z
+Stopped at: v2.1 ROADMAP.md (Phases 12-14) and REQUIREMENTS.md traceability created; 18/18 v2.1 requirements mapped with 100% coverage; ready for `/gsd-plan-phase 12`
+Resume file: None

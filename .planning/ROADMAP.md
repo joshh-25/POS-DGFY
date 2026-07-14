@@ -6,10 +6,13 @@ DGFY moves from an IMS-backed foundation to standalone `dgfy_*` landlord and ten
 
 Once that foundation stood (Phases 1-6), the v2.0 Commerce Domain milestone extends it with new module code inside `apps/dgfy-api` — Product Catalog, Booking, Shift & Cash Drawer, Fiscal/Compliance, POS Checkout & Payment, Storefront Discovery & Online Ordering, and Order Fulfillment — following the exact `routes -> controllers -> usecases -> repositories -> models` layering and per-module folder shape already proven by `modules/accounts`/`modules/businesses`. New tables live in `dgfy_business_*` tenant schemas (with `dgfy_core` used only for the Storefront Discovery Index and the cross-database order-write pattern). This milestone is backend-API-only: existing frontends keep talking to the old backend, and no new frontend apps are built.
 
+The v2.1 Legacy Data Migration milestone closes the empirically-confirmed gap where the Phase 3 Accounts/Businesses/Tenancy migration leaves every tenant with zero products, inventory movements, and sales history. Legacy `items`/`item_folders`/`stock_movements`/`item_embeddings` (plus 8 satellite tables) migrate into the `products`/`product_folders`/`inventory_movements`/new `product_embeddings` tables Phase 8 already built, and legacy `pos_transactions`/`pos_transaction_lines` migrate into the `availments`/`availment_items` tables Phase 9 already built — extending the proven Phase 3 mapper/checkpoint/dry-run/apply/verify pattern into two new legacy table families, sequenced by a real FK dependency (product/inventory before sales-history) and proven via re-rehearsal against a disposable production-parity environment. This milestone is migration-runner-only work (`apps/dgfy-migration-runner`) plus a schema-only touch on `apps/dgfy-api`'s `dgfy_business_*` schema: no new API surface, no new frontend.
+
 ## Milestones
 
 - 🚧 **v1.0 Standalone Refactor Foundation** - Phases 1-7 (Phases 1-6 complete; Phase 7 paused 2026-07-12 pending real Docker/GHCR rehearsal infra — CMP-05 stays Pending, not archived)
 - ✅ **v2.0 Commerce Domain — Product, Checkout & Fulfillment** - Phases 8-11 (complete 2026-07-14; backend-API-only, does not depend on Phase 7 completing)
+- 🚧 **v2.1 Legacy Data Migration** - Phases 12-14 (started 2026-07-14; migration-runner-only work plus a schema-only touch on `dgfy_business_*`, no new API surface, no new frontend; independent of Phase 7)
 
 ## Phases
 
@@ -31,6 +34,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: POS Checkout & Payment** - Staff can run a complete, trustworthy checkout — line items, discounts incl. SC/PWD, payment method, server-verified totals/change, receipts — gated by an open shift and the compliance policy engine. (completed 2026-07-13)
 - [x] **Phase 10: Storefront Discovery & Online Ordering** - Consumers can discover stores/Products and complete a guest-or-account online order that durably and idempotently becomes a real tenant Availment. (completed 2026-07-13)
 - [x] **Phase 11: Order Fulfillment & Delivery Coordination** - Business staff can process incoming online orders through a shared fulfillment pipeline, including manual courier assignment and payout tracking. (completed 2026-07-14)
+- [ ] **Phase 12: Scope Unblock + Schema Extension** - ADR 0029 amendment and additive schema changes unblock every new legacy-data mapper.
+- [ ] **Phase 13: Product & Inventory Migration** - Legacy items/folders/stock-movements/embeddings migrate into the new products/inventory schema with proven fidelity, re-rehearsed before sales-history begins.
+- [ ] **Phase 14: Sales History Migration & Full Verification** - Legacy POS sales history migrates into availments with provenance and void-state fidelity, and the full milestone is proven end-to-end via re-rehearsal.
 
 ## Phase Details
 
@@ -419,10 +425,54 @@ Plans:
 
 - [x] 11-04-PLAN.md — [BLOCKING] Live tenant-DB migration apply + verify + ENV-gated end-to-end finalize proof
 
+### Phase 12: Scope Unblock + Schema Extension
+
+**Goal**: The ADR-level and schema-level blockers preventing any legacy `items`/`item_folders`/`stock_movements`/`pos_transactions` mapper from being written are removed, and the extended target schema exists and is verified before mapper code starts.
+**Depends on**: Phase 3 (migration runner dry-run/apply/verify/checkpoint pattern this milestone extends), Phase 8 (existing `products`/`product_folders`/`inventory_movements` tables), Phase 9 (existing `availments`/`availment_items` tables this milestone's schema touches build on). Independent of Phase 7 (paused cutover rehearsal is an unrelated track and does not block this milestone).
+**Requirements**: LDM-01, LDM-02, LDM-03, LDM-04
+**Success Criteria** (what must be TRUE):
+
+  1. ADR 0029's `OUT_OF_SCOPE_LEGACY_TABLES` list no longer includes `items`, `item_folders`, `stock_movements`, or `pos_transactions`, confirmed by re-reading the amended ADR and the runner's scope-check code that enforces it.
+  2. Running schema migration against a tenant database shows `products` carrying the 6 new typed columns (`sku_code`, `cost_per_unit`, `vat_type`, `senior_pwd_discount_eligible`, `description`, `unit_of_measure`) plus an `attributes` JSON column, and a committed design doc/decision captures the 1:1-vs-1:many satellite-table folding shape (including the `product_composition`/BOM scope decision) before any mapper code is written.
+  3. A new `product_embeddings` table exists in the tenant schema (one row reserved per product), confirmed via schema verification output.
+  4. `inventory_movements` carries a natural-key unique index on (`business_id`, `reference_type`, `reference_id`), confirmed via schema verification, and re-running the schema migration is idempotent — no duplicate-index error, no data loss, no drift against the pre-migration baseline for unrelated tables.
+
+**Plans**: TBD
+
+### Phase 13: Product & Inventory Migration
+
+**Goal**: Legacy `items`/`item_folders`/`stock_movements`/`item_embeddings` (plus 8 satellite tables) migrate into `products`/`product_folders`/`inventory_movements`/`product_embeddings` with full fidelity, proven via dry-run/apply/verify evidence against a real tenant before Sales History migration begins.
+**Depends on**: Phase 12 (schema extension and ADR unblock must land first)
+**Requirements**: PIM-01, PIM-02, PIM-03, PIM-04, PIM-05, PIM-06
+**Success Criteria** (what must be TRUE):
+
+  1. Dry-run against a real legacy-shaped tenant plans every `product_folders` insert before any `products` insert — no product is ever planned ahead of its own folder.
+  2. Apply migrates every legacy `items` row into a `products` row with the 6 promoted fields populated and all 8 satellite tables (including `product_composition`) folded into `attributes` JSON, with `attributes.barcodes` present as an array for any item that had multiple legacy `ItemBarcode` rows.
+  3. A committed, reviewed 8-to-5 `movement_type` lookup table drives the `stock_movements` → `inventory_movements` mapper, and the apply report's `findings` list captures every lossy category-collapse instance encountered in a real rehearsal run.
+  4. Re-running apply against an already-migrated tenant inserts zero duplicate `inventory_movements` rows (skip-if-mapped, never re-insert), and verification's sum-by-type totals show each product's `stock_count` equal to the sum of its legacy `item_location_stocks`, with each location's stock represented by its own opening-balance `inventory_movements` row rather than a direct `stock_count` write.
+  5. Re-rehearsal against the disposable production-parity environment migrates a real tenant's `product_folders`, `products`, and `inventory_movements` end-to-end, and every migrated product has exactly one `product_embeddings` row carrying its original vector unchanged (same model/format, no re-embedding).
+
+**Plans**: TBD
+
+### Phase 14: Sales History Migration & Full Verification
+
+**Goal**: Legacy POS sales history migrates into `availments`/`availment_items` with `source_system` provenance and void-state fidelity, sequenced after Product/Inventory migration because line items have a real FK dependency on migrated products — and the complete milestone (product/inventory + sales-history) is proven end-to-end via a full re-rehearsal against real legacy data volume.
+**Depends on**: Phase 13 (migrated `products`/`inventory_movements` must exist first — `pos_transaction_lines` → `availment_items` resolves a real `product_id` FK against Phase 13's `legacy_id_map`)
+**Requirements**: LDM-05, SHM-01, SHM-02, SHM-03, SHM-04, VER-01, VER-02, VER-03
+**Success Criteria** (what must be TRUE):
+
+  1. `availments` carries an additive `source_system` column (schema-verified, non-breaking to existing Phase 9/10 write paths), and every migrated `pos_transactions` row appears as an `availments` row tagged `source_system='legacy_migration'` with its legacy transaction reference preserved — migrated only for tenants where Product/Inventory migration has already completed.
+  2. Every `pos_transaction_lines` row appears as its own `availment_items` row carrying line-item detail (not just header totals), and each line carries its own `source_system`/legacy-reference provenance tag, not only the `availments` header.
+  3. Voided/cancelled legacy transactions (`status='voided'`) appear in `availments` with their void status preserved and are distinguishable from completed sales in verification output.
+  4. Dry-run/apply/idempotency-retry/verify wiring exists for all 6 new entity types (`product_folder`, `product`, `inventory_movement`, `product_embedding`, `availment`, `availment_item`), reusing the existing checkpoint and `legacy_id_map` mechanisms, and per-tenant verification reports both row counts and sum-by-type totals for products, inventory movements, embeddings, and availments.
+  5. A full re-rehearsal against the disposable production-parity environment, using real legacy data volume, migrates a real tenant's products/inventory/embeddings/availments/availment_items end-to-end with a clean verify report (zero unresolved data-quality issues) — proving the milestone's "as if nothing happened" fidelity goal.
+
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 paused). v2.0 Commerce Domain runs 8 -> 9 -> 10 -> 11 and does not depend on Phase 7 completing.
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 paused). v2.0 Commerce Domain runs 8 -> 9 -> 10 -> 11 and does not depend on Phase 7 completing. v2.1 Legacy Data Migration runs 12 -> 13 -> 14, sequenced by a real FK dependency (products before sales-history), and is likewise independent of Phase 7.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -437,3 +487,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 9. POS Checkout & Payment | 8/8 | Complete    | 2026-07-13 |
 | 10. Storefront Discovery & Online Ordering | 8/8 | Complete    | 2026-07-13 |
 | 11. Order Fulfillment & Delivery Coordination | 4/4 | Complete    | 2026-07-14 |
+| 12. Scope Unblock + Schema Extension | 0/TBD | Not started | - |
+| 13. Product & Inventory Migration | 0/TBD | Not started | - |
+| 14. Sales History Migration & Full Verification | 0/TBD | Not started | - |
