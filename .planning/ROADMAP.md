@@ -9,7 +9,7 @@ Once that foundation stood (Phases 1-6), the v2.0 Commerce Domain milestone exte
 ## Milestones
 
 - 🚧 **v1.0 Standalone Refactor Foundation** - Phases 1-7 (Phases 1-6 complete; Phase 7 paused 2026-07-12 pending real Docker/GHCR rehearsal infra — CMP-05 stays Pending, not archived)
-- 📋 **v2.0 Commerce Domain — Product, Checkout & Fulfillment** - Phases 8-11 (planned; backend-API-only, does not depend on Phase 7 completing)
+- ✅ **v2.0 Commerce Domain — Product, Checkout & Fulfillment** - Phases 8-11 (complete 2026-07-14; backend-API-only, does not depend on Phase 7 completing)
 
 ## Phases
 
@@ -28,7 +28,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Release Evidence and Rehearsal Gates** - Release evidence proves architecture, migration, tenant drift, and compatibility checks before cutover planning. (completed 2026-07-12)
 - [ ] **Phase 7: Cutover Runbook and Deferred Domain Split** - Production cutover remains gated by a rehearsal-backed runbook and later domain plans stay out of v1. (paused 2026-07-12 — requires real Docker/GHCR rehearsal infra and operator-run docker login; parked in favor of starting the next milestone. Resume with `/gsd-execute-phase 7` once prerequisites are ready.)
 - [x] **Phase 8: Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating** - Businesses can define what they sell/service and staff can run accountable cash shifts under a compliance-mode gate, without any new table referencing legacy `items`/IMS data. (gaps found 2026-07-13 — see 08-VERIFICATION.md; FSC-02 closed by 08-10 and independently re-verified; new gap FSC-01 — revoke/reject review outcome never demotes compliance_mode_state, so a revoked business keeps ALLOW) (completed 2026-07-13)
-- [ ] **Phase 9: POS Checkout & Payment** - Staff can run a complete, trustworthy checkout — line items, discounts incl. SC/PWD, payment method, server-verified totals/change, receipts — gated by an open shift and the compliance policy engine.
+- [x] **Phase 9: POS Checkout & Payment** - Staff can run a complete, trustworthy checkout — line items, discounts incl. SC/PWD, payment method, server-verified totals/change, receipts — gated by an open shift and the compliance policy engine. (completed 2026-07-13)
 - [x] **Phase 10: Storefront Discovery & Online Ordering** - Consumers can discover stores/Products and complete a guest-or-account online order that durably and idempotently becomes a real tenant Availment. (completed 2026-07-13)
 - [x] **Phase 11: Order Fulfillment & Delivery Coordination** - Business staff can process incoming online orders through a shared fulfillment pipeline, including manual courier assignment and payout tracking. (completed 2026-07-14)
 
@@ -337,34 +337,34 @@ Plans:
   4. Staff can select a payment method (Cash, GCash, Credit Card) per Availment, with the method and amount recorded (not a live gateway charge); an Availment is rejected unless the cashier and terminal have an open shift.
   5. A completed Availment produces a receipt reflecting every applied discount and tax, gated by the Phase 8 compliance policy engine.
 
-**Plans**: 8 plans
+**Plans**: 8/8 plans complete
 
 Plans:
 **Wave 1** *(parallel — no shared files)*
 
-- [ ] 09-01-PLAN.md — Schema foundation: availment-checkout migration (availments/availment_items/availment_discounts/payments/receipts/compliance_evidence) + 6 Tenant models + tenantConnector registration + dgfyBusinessContract entries (CHK-01, CHK-03, CHK-04, CHK-05, CHK-06, FSC-03)
-- [ ] 09-02-PLAN.md — money.js integer-centavo engine (VAT-inclusive decomposition, SC/PWD VAT-exempt 20%, independent stacking, server-side change) + golden tests (CHK-02, FSC-03)
-- [ ] 09-03-PLAN.md — Finalize integration seams: inventory sale usecase + txn-aware stock sync, ShiftRepository.findOpenShift + repo exposure, compliance-gate context passthrough, device-bridge HTTP client (CHK-04, CHK-06)
+- [x] 09-01-PLAN.md — Schema foundation: availment-checkout migration (availments/availment_items/availment_discounts/payments/receipts/compliance_evidence) + 6 Tenant models + tenantConnector registration + dgfyBusinessContract entries (CHK-01, CHK-03, CHK-04, CHK-05, CHK-06, FSC-03)
+- [x] 09-02-PLAN.md — money.js integer-centavo engine (VAT-inclusive decomposition, SC/PWD VAT-exempt 20%, independent stacking, server-side change) + golden tests (CHK-02, FSC-03)
+- [x] 09-03-PLAN.md — Finalize integration seams: inventory sale usecase + txn-aware stock sync, ShiftRepository.findOpenShift + repo exposure, compliance-gate context passthrough, device-bridge HTTP client (CHK-04, CHK-06)
 
 **Wave 2** *(blocked on 09-01)*
 
-- [ ] 09-04-PLAN.md — Availments persistence: entity + tenant repository (scaffold, line CRUD, soft-delete/restore, atomic finalizePersist) + module shell (CHK-01)
+- [x] 09-04-PLAN.md — Availments persistence: entity + tenant repository (scaffold, line CRUD, soft-delete/restore, atomic finalizePersist) + module shell (CHK-01)
 
 **Wave 3** *(blocked on 09-04, 09-02)*
 
-- [ ] 09-05-PLAN.md — Availment line-editing + permission-gated manual discount usecases + controller + routes + module wiring + CRUD tests (CHK-01, CHK-03)
+- [x] 09-05-PLAN.md — Availment line-editing + permission-gated manual discount usecases + controller + routes + module wiring + CRUD tests (CHK-01, CHK-03)
 
 **Wave 4** *(blocked on 09-05, 09-03)*
 
-- [ ] 09-06-PLAN.md — finalizeAvailment orchestration (server-side money, compliance gate + evidence bundle, open-shift bind, atomic persist + sale effects, best-effort print) + interim compliance-evidence attestation store + finalize integration test (CHK-02, CHK-03, CHK-04, CHK-05, CHK-06, FSC-03)
+- [x] 09-06-PLAN.md — finalizeAvailment orchestration (server-side money, compliance gate + evidence bundle, open-shift bind, atomic persist + sale effects, best-effort print) + interim compliance-evidence attestation store + finalize integration test (CHK-02, CHK-03, CHK-04, CHK-05, CHK-06, FSC-03)
 
 **Wave 5** *(blocked on 09-06)*
 
-- [ ] 09-07-PLAN.md — Composition-root wiring + /v1/availments mount + mount transport test (CHK-04, CHK-05)
+- [x] 09-07-PLAN.md — Composition-root wiring + /v1/availments mount + mount transport test (CHK-04, CHK-05)
 
 **Wave 6** *(blocked on 09-07; [BLOCKING] live-MySQL schema apply, non-autonomous)*
 
-- [ ] 09-08-PLAN.md — Apply Phase 9 schema to a real tenant DB via migration-runner + verify evidence + live-gated end-to-end finalize test (CHK-01, CHK-05, CHK-06)
+- [x] 09-08-PLAN.md — Apply Phase 9 schema to a real tenant DB via migration-runner + verify evidence + live-gated end-to-end finalize test (CHK-01, CHK-05, CHK-06)
 
 ### Phase 10: Storefront Discovery & Online Ordering
 
@@ -434,6 +434,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 6. Release Evidence and Rehearsal Gates | 3/3 | Complete    | 2026-07-12 |
 | 7. Cutover Runbook and Deferred Domain Split | 0/3 | Paused | - |
 | 8. Commerce Foundation — Product Catalog, Booking, Shift & Cash Drawer, Compliance Gating | 13/13 | Complete   | 2026-07-13 |
-| 9. POS Checkout & Payment | 0/8 | Not started | - |
+| 9. POS Checkout & Payment | 8/8 | Complete    | 2026-07-13 |
 | 10. Storefront Discovery & Online Ordering | 8/8 | Complete    | 2026-07-13 |
 | 11. Order Fulfillment & Delivery Coordination | 4/4 | Complete    | 2026-07-14 |
