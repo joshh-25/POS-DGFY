@@ -123,9 +123,9 @@ Committed scope for the v2.0 Commerce Domain milestone. Backend API only (`apps/
 
 ### Order Fulfillment And Delivery Coordination
 
-- [ ] **FUL-01**: Business staff can view and process incoming online orders.
-- [ ] **FUL-02**: Staff can progress an order's fulfillment status through a shared core pipeline (placed → confirmed → preparing → ready/out-for-delivery → completed), with handoff steps specific to pickup, delivery, and dine-in.
-- [ ] **FUL-03**: Staff can manually assign a courier/delivery partner to an order and track courier payout through to fulfillment completion.
+- [x] **FUL-01**: Business staff can view and process incoming online orders.
+- [x] **FUL-02**: Staff can progress an order's fulfillment status through a shared core pipeline (placed → confirmed → preparing → ready/out-for-delivery → completed), with handoff steps specific to pickup, delivery, and dine-in.
+- [x] **FUL-03**: Staff can manually assign a courier/delivery partner to an order and track courier payout through to fulfillment completion.
 
 ## v3 Requirements
 
@@ -240,9 +240,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STF-03 | Phase 10 | Complete |
 | STF-04 | Phase 10 | Complete |
 | STF-05 | Phase 10 | Complete |
-| FUL-01 | Phase 11 | Pending |
-| FUL-02 | Phase 11 | Pending |
-| FUL-03 | Phase 11 | Pending |
+| FUL-01 | Phase 11 | Complete |
+| FUL-02 | Phase 11 | Complete |
+| FUL-03 | Phase 11 | Complete |
 
 **Coverage:**
 
