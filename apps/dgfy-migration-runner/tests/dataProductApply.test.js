@@ -241,6 +241,11 @@ describe('product-domain apply pipeline', () => {
         expect(product.folder_id).toBe(folder.id);
         expect(product.folder_id).not.toBe(10);
         expect(product.stock_count).toBe('9.000000000000');
+        expect(typeof product.attributes).toBe('string');
+        expect(JSON.parse(product.attributes).barcodes).toEqual([
+            { barcode_id: 1, item_id: 100, barcode: '111111' },
+            { barcode_id: 2, item_id: 100, barcode: '222222' }
+        ]);
 
         const insertOrder = businessSequelize.bulkInsertCalls.map((call) => call.tableName);
         expect(insertOrder.indexOf('product_folders')).toBeLessThan(insertOrder.indexOf('products'));
@@ -270,6 +275,10 @@ describe('product-domain apply pipeline', () => {
             })
         ]));
         expect(movementRows.some((row) => row.reference_id === '501')).toBe(false);
+        movementRows.forEach((movement) => {
+            expect(movement.created_at).toBeInstanceOf(Date);
+            expect(Object.hasOwn(movement, 'updated_at')).toBe(false);
+        });
 
         expect(businessSequelize.tables.product_embeddings).toEqual([
             expect.objectContaining({

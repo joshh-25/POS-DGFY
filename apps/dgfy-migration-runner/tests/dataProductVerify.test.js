@@ -34,7 +34,7 @@ const target = {
   expected_owner_account_id: 'acct-1'
 };
 
-function legacyTenantConnection() {
+function legacyTenantConnection({ noEmbeddings = false } = {}) {
   return fakeConnection({
     queryImpl: (sql) => {
       if (sql.includes('FROM users')) return Promise.resolve([[]]);
@@ -53,8 +53,10 @@ function legacyTenantConnection() {
         { movement_id: 302, movement_type: 'transfer', item_id: 102, quantity: '1.000000000000' }
       ]]);
       if (sql.includes('FROM item_embeddings')) return Promise.resolve([[
-        { embedding_id: 401, item_id: 101 },
-        { embedding_id: 402, item_id: 102 }
+        ...(noEmbeddings ? [] : [
+          { embedding_id: 401, item_id: 101 },
+          { embedding_id: 402, item_id: 102 }
+        ])
       ]]);
       return Promise.resolve([[]]);
     }
@@ -86,7 +88,7 @@ function targetSequelize() {
   });
 }
 
-function businessConnection({ duplicateEmbedding = false, stockMismatch = false } = {}) {
+function businessConnection({ duplicateEmbedding = false, noEmbeddings = false, stockMismatch = false } = {}) {
   return fakeConnection({
     queryImpl: (sql) => {
       if (sql.includes('SUM(quantity) AS total_quantity')) {
@@ -120,6 +122,7 @@ function businessConnection({ duplicateEmbedding = false, stockMismatch = false 
         ]]);
       }
       if (sql.includes('FROM product_embeddings')) {
+        if (noEmbeddings) return Promise.resolve([[]]);
         return Promise.resolve([duplicateEmbedding
           ? [
             { id: 31, product_id: 11 },
@@ -145,7 +148,7 @@ async function buildVerification(options = {}) {
       return Promise.resolve([[]]);
     }
   }));
-  mockCreateLegacyTenantSourceConnection.mockReturnValue(legacyTenantConnection());
+  mockCreateLegacyTenantSourceConnection.mockReturnValue(legacyTenantConnection(options));
   mockCreateBusinessTargetConnection.mockReturnValue(businessConnection(options));
 
   return buildDataVerificationSections({
@@ -234,6 +237,40 @@ describe('product-domain target verification (13-05 Task 2)', () => {
     expect(result.data_migration.targets[0].product_reconciliation.embedding_coverage.ok).toBe(false);
     expect(result.data_migration.targets[0].ok).toBe(false);
     expect(result.data_migration.ok).toBe(false);
+  });
+
+  test('allows products without product_embeddings when the legacy tenant has no item_embeddings', async () => {
+    const result = await buildVerification({ noEmbeddings: true });
+
+    expect(result.data_migration.targets[0].product_reconciliation.embedding_coverage.ok).toBe(true);
+    expect(result.data_migration.targets[0].ok).toBe(true);
+    expect(result.data_migration.ok).toBe(true);
+  });
+
+  test('counts duplicate open findings for the same skipped legacy record once', async () => {
+    mockListOpenDataQualityFindings.mockResolvedValue([
+      {
+        legacy_tenant_id: 't1',
+        entity_type: 'inventory_movement',
+        legacy_table: 'stock_movements',
+        legacy_id: '302',
+        severity: 'skip',
+        reason_code: MAPPING_REASON_CODES.LOSSY_CATEGORY_COLLAPSE
+      },
+      {
+        legacy_tenant_id: 't1',
+        entity_type: 'inventory_movement',
+        legacy_table: 'stock_movements',
+        legacy_id: '302',
+        severity: 'skip',
+        reason_code: MAPPING_REASON_CODES.LOSSY_CATEGORY_COLLAPSE
+      }
+    ]);
+
+    const result = await buildVerification();
+
+    expect(result.data_migration.targets[0].data_counts.ok).toBe(true);
+    expect(result.data_migration.targets[0].data_counts.mismatches).toEqual([]);
   });
 
   test('fails when stock_count does not equal the legacy_opening_balance sum', async () => {

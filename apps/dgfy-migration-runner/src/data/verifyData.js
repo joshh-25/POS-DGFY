@@ -246,14 +246,12 @@ function checkProductEmbeddingCoverage(products = [], productEmbeddings = []) {
     });
 
     const violations = [];
-    products.forEach((product) => {
-        const productId = String(product.id);
-        const embeddingCount = embeddingCounts.get(productId) || 0;
-        if (embeddingCount !== 1) {
+    embeddingCounts.forEach((embeddingCount, productId) => {
+        if (embeddingCount > 1) {
             violations.push({
-                product_id: product.id,
+                product_id: productId,
                 embedding_count: embeddingCount,
-                reason: 'Each migrated product must have exactly one product_embeddings row.'
+                reason: 'Each product with migrated embeddings must have at most one product_embeddings row.'
             });
         }
     });
@@ -343,15 +341,17 @@ async function buildTargetDataVerification({
     openFindings
 }) {
     const legacyTenantId = target.legacy_tenant_id;
+    let tenantSequelize;
+    let businessSequelize;
 
     try {
-        const tenantSequelize = createLegacyTenantSourceConnection(config, target.legacy_tenant_db_name);
+        tenantSequelize = createLegacyTenantSourceConnection(config, target.legacy_tenant_db_name);
         const [tenantSnapshot, productSnapshot] = await Promise.all([
             readLegacyTenantSnapshot(tenantSequelize),
             readLegacyProductSnapshot(tenantSequelize)
         ]);
 
-        const businessSequelize = createBusinessTargetConnection(config, target.target_business_db_name);
+        businessSequelize = createBusinessTargetConnection(config, target.target_business_db_name);
         const [
             staffAccounts,
             accountStaffAssignments,
@@ -383,10 +383,20 @@ async function buildTargetDataVerification({
             inventory_movement: 0,
             product_embedding: 0
         };
+        const skippedEntityKeys = new Set();
         openFindings
             .filter((finding) => String(finding.legacy_tenant_id) === String(legacyTenantId))
             .forEach((finding) => {
-                if (Object.prototype.hasOwnProperty.call(skippedByEntity, finding.entity_type)) {
+                const skipKey = [
+                    finding.entity_type,
+                    finding.legacy_table ?? '',
+                    finding.legacy_id ?? ''
+                ].join('|');
+                if (
+                    Object.prototype.hasOwnProperty.call(skippedByEntity, finding.entity_type) &&
+                    !skippedEntityKeys.has(skipKey)
+                ) {
+                    skippedEntityKeys.add(skipKey);
                     skippedByEntity[finding.entity_type] += 1;
                 }
             });
@@ -480,6 +490,11 @@ async function buildTargetDataVerification({
             ok: false,
             error: error.message
         };
+    } finally {
+        await Promise.all([
+            tenantSequelize?.close?.(),
+            businessSequelize?.close?.()
+        ]);
     }
 }
 

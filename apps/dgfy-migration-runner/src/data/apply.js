@@ -119,6 +119,8 @@ const ENTITY_TARGET_CONFIG = {
     product_embedding: { primaryKey: 'id', naturalKeyColumns: ['product_id'] }
 };
 
+const APPEND_ONLY_TARGET_TABLES = new Set(['inventory_movements']);
+
 /**
  * Checks whether a target row still exists for a previously-recorded
  * `legacy_id_map.dgfy_id` (Task 1 acceptance: "if complete, verify mapped
@@ -171,7 +173,13 @@ async function findExistingTargetRow(targetSequelize, table, config, payload) {
  * racing a different connection's own last-insert value.
  */
 async function insertTargetRow(targetSequelize, table, payload) {
-    const row = { ...payload, created_at: new Date(), updated_at: new Date() };
+    const row = {
+        ...serializeTargetPayload(payload),
+        created_at: new Date()
+    };
+    if (!APPEND_ONLY_TARGET_TABLES.has(table)) {
+        row.updated_at = new Date();
+    }
 
     if (row.id !== undefined && row.id !== null) {
         await targetSequelize.getQueryInterface().bulkInsert(table, [row]);
@@ -184,6 +192,22 @@ async function insertTargetRow(targetSequelize, table, payload) {
         const resultRow = Array.isArray(rows) ? rows[0] : rows;
         return resultRow ? resultRow.id : null;
     });
+}
+
+function serializeTargetPayload(payload = {}) {
+    return Object.fromEntries(
+        Object.entries(payload).map(([key, value]) => [key, serializeTargetValue(value)])
+    );
+}
+
+function serializeTargetValue(value) {
+    if (value === null || value === undefined || value instanceof Date || Buffer.isBuffer(value)) {
+        return value;
+    }
+    if (Array.isArray(value) || typeof value === 'object') {
+        return JSON.stringify(value);
+    }
+    return value;
 }
 
 /**
