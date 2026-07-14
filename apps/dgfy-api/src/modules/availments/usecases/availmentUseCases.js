@@ -61,6 +61,17 @@ const noTenantDatabaseError = () => new DomainError(
 // repository.finalizePersist.
 const FULFILLMENT_MODES = Object.freeze(['pickup', 'dine_in', 'delivery']);
 
+// CR-01 fix (09-REVIEW.md): the sibling ENUM-backed inputs introduced in
+// this same phase, generalizing the FULFILLMENT_MODES allowlist pattern
+// above so every client-controlled ENUM column is validated to a clean 400
+// BEFORE it ever reaches Sequelize.create()/.update() — an out-of-set value
+// used to throw a SequelizeValidationError that AvailmentRepository.
+// withModel's catch-all silently re-wraps into a misleading 503 "tenant
+// database unreachable" instead.
+const DISCOUNT_TYPES = Object.freeze(['promo_code', 'manual', 'sc_pwd']);
+const STOCK_EFFECT_TYPES = Object.freeze(['inventory_issue', 'stock_exempt']);
+const DOCUMENT_CONTEXT_VALUES = Object.freeze([DOCUMENT_CONTEXTS.FISCAL, DOCUMENT_CONTEXTS.NON_FISCAL]);
+
 /**
  * Duck-types on `error.name === 'TenantDatabaseUnavailableError'` rather
  * than importing availmentRepository.js's class directly.
@@ -197,6 +208,14 @@ export function buildAddLineUseCase({ repository, businessRepository, productRep
         if (quantity === undefined || quantity === null || Number(quantity) <= 0) {
             return ApplicationResult.failure(validationError('quantity must be a positive number.'));
         }
+        // CR-01 fix (09-REVIEW.md): validate the caller-supplied override
+        // against the DB's ENUM('inventory_issue', 'stock_exempt') before it
+        // ever reaches repository.addLine.
+        if (stockEffectType && !STOCK_EFFECT_TYPES.includes(stockEffectType)) {
+            return ApplicationResult.failure(validationError(
+                `stockEffectType must be one of: ${STOCK_EFFECT_TYPES.join(', ')}.`
+            ));
+        }
 
         const { error } = await guardBusinessAccess(businessRepository, businessId, requestingAccountId);
         if (error) return ApplicationResult.failure(error);
@@ -257,6 +276,14 @@ export function buildUpdateLineUseCase({ repository, businessRepository }) {
         }
         if (quantity !== null && Number(quantity) <= 0) {
             return ApplicationResult.failure(validationError('quantity must be a positive number.'));
+        }
+        // CR-01 fix (09-REVIEW.md): validate the caller-supplied override
+        // against the DB's ENUM('inventory_issue', 'stock_exempt') before it
+        // ever reaches repository.updateLine.
+        if (stockEffectType && !STOCK_EFFECT_TYPES.includes(stockEffectType)) {
+            return ApplicationResult.failure(validationError(
+                `stockEffectType must be one of: ${STOCK_EFFECT_TYPES.join(', ')}.`
+            ));
         }
 
         const { error } = await guardBusinessAccess(businessRepository, businessId, requestingAccountId);
@@ -381,6 +408,14 @@ export function buildApplyDiscountUseCase({ repository, businessRepository }) {
         }
         if (!discountType) {
             return ApplicationResult.failure(validationError('discountType is required (promo_code, manual, or sc_pwd).'));
+        }
+        // CR-01 fix (09-REVIEW.md): validate against the DB's
+        // ENUM('promo_code', 'manual', 'sc_pwd') before it ever reaches
+        // repository.recordDiscount.
+        if (!DISCOUNT_TYPES.includes(discountType)) {
+            return ApplicationResult.failure(validationError(
+                `discountType must be one of: ${DISCOUNT_TYPES.join(', ')}.`
+            ));
         }
 
         const { error } = await guardBusinessAccess(businessRepository, businessId, requestingAccountId);
@@ -637,6 +672,14 @@ export function buildFinalizeAvailmentUseCase({
         }
         if (cashierAccountId === null || cashierAccountId === undefined) {
             return ApplicationResult.failure(validationError('cashierAccountId is required.'));
+        }
+        // CR-01 fix (09-REVIEW.md): validate requestedDocumentContext against
+        // the DB's ENUM('fiscal', 'non_fiscal') before it is written into
+        // header.document_context and persisted (availmentRepository.js).
+        if (!DOCUMENT_CONTEXT_VALUES.includes(requestedDocumentContext)) {
+            return ApplicationResult.failure(validationError(
+                `requestedDocumentContext must be one of: ${DOCUMENT_CONTEXT_VALUES.join(', ')}.`
+            ));
         }
 
         // CR-01 fix (11-REVIEW.md): resolve + validate fulfillmentMode BEFORE
