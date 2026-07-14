@@ -521,6 +521,86 @@ describe('runActivateTenant — happy path and idempotent re-verify (skip-safe u
     );
   });
 
+  // F-05 fix (04-REVIEW.md WR-03): the registry UPDATE commits BEFORE
+  // report/summary writing runs. A report-write failure here must never
+  // flip a genuinely successful activation to exitStatus:'failed' — an
+  // operator seeing "fatal" would reasonably (but wrongly) conclude the
+  // tenant database was never activated.
+  test('a report-write failure after a successful UPDATE still records exitStatus:success, not failed', async () => {
+    const registryRow = {
+      business_id: 'biz-4',
+      database_name: 'dgfy_business_reportfailure',
+      status: 'provisioning',
+      verified_at: null
+    };
+    const mockCoreQuery = jest.fn()
+      .mockResolvedValueOnce([[registryRow]]) // SELECT
+      .mockResolvedValueOnce([[]]) // CREATE DATABASE IF NOT EXISTS
+      .mockResolvedValueOnce([[]]); // UPDATE
+    const mockCreateTargetConnection = jest.fn(() => ({ query: mockCoreQuery }));
+    const mockCreateBusinessTargetConnection = jest.fn(() => ({}));
+    const mockApplyAndVerifyBusinessSchema = jest.fn().mockResolvedValue({
+      migrationsExecuted: ['20260101000000-example.cjs'],
+      verifiedTables: ['locations', 'staff_accounts']
+    });
+    const mockRecordCommandComplete = jest.fn().mockResolvedValue(undefined);
+    // Simulates a disk-full / report-writer failure — the UPDATE above has
+    // already committed by the time this throws.
+    const mockWriteJsonReport = jest.fn().mockRejectedValue(new Error('ENOSPC: no space left on device'));
+    const mockWriteSummaryReport = jest.fn().mockResolvedValue('/tmp/fake-report.txt');
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    jest.unstable_mockModule('../src/config/db.js', () => ({
+      createTargetConnection: mockCreateTargetConnection,
+      createMetaConnection: jest.fn(() => ({ config: {}, query: jest.fn() })),
+      createBusinessTargetConnection: mockCreateBusinessTargetConnection
+    }));
+    jest.unstable_mockModule('../src/metadata/bootstrap.js', () => ({
+      ensureMetadataSchema: jest.fn().mockResolvedValue(undefined),
+      recordCommandStart: jest.fn().mockResolvedValue(1),
+      recordCommandComplete: mockRecordCommandComplete
+    }));
+    jest.unstable_mockModule('../src/schema/applyBusinessSchema.js', () => ({
+      applyAndVerifyBusinessSchema: mockApplyAndVerifyBusinessSchema
+    }));
+    jest.unstable_mockModule('../src/reports/reportWriter.js', () => ({
+      writeJsonReport: mockWriteJsonReport
+    }));
+    jest.unstable_mockModule('../src/reports/summaryWriter.js', () => ({
+      writeSummaryReport: mockWriteSummaryReport
+    }));
+
+    const { runActivateTenant } = await import('../src/commands/activateTenant.js');
+
+    // Must resolve, not reject — a report-write failure is not a command
+    // failure once the mutation has already succeeded.
+    const report = await runActivateTenant({ databaseName: 'dgfy_business_reportfailure' });
+
+    expect(report.activated).toBe(true);
+    expect(report.already_active).toBe(false);
+
+    // The activating UPDATE genuinely ran, regardless of the later
+    // report-write failure.
+    const updateCalls = mockCoreQuery.mock.calls.filter(([sql]) => /UPDATE\s+business_database_registry/i.test(sql));
+    expect(updateCalls).toHaveLength(1);
+
+    // The core assertion: exitStatus stays 'success', never 'failed', for
+    // a report-write failure that happens after the mutation succeeded.
+    expect(mockRecordCommandComplete).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'success', reportJsonPath: null })
+    );
+    expect(mockRecordCommandComplete).not.toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      expect.objectContaining({ exitStatus: 'failed' })
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('report/summary write failed'));
+
+    consoleErrorSpy.mockRestore();
+  });
+
   test('re-verifies an already active/verified row (idempotent no-op) and never issues a second UPDATE', async () => {
     const registryRow = {
       business_id: 'biz-2',

@@ -12,6 +12,72 @@ import { EnvValidationError, TargetGuardError } from '../utils/errors.js';
 import { applyAndVerifyBusinessSchema } from '../schema/applyBusinessSchema.js';
 
 /**
+ * F-05/F-06 fix (04-REVIEW.md WR-03/WR-05): shared report-build/write/record
+ * finisher for BOTH the idempotent no-op branch and the main activation
+ * branch of runActivateTenant — previously duplicated near-verbatim between
+ * them (WR-05), and previously recorded exitStatus:'failed' if report/
+ * summary writing threw AFTER the real mutation (registry UPDATE, or the
+ * idempotent re-verify) had already durably succeeded (WR-03) — an operator
+ * would see "fatal" and might needlessly re-run/escalate an activation that
+ * had, in fact, already completed. By the time this helper is called, the
+ * activation-relevant work is already done; report/summary writing here is
+ * best-effort observability only and must never flip a genuinely successful
+ * activation to `failed` (mirrors verify.js's own reportWriteError
+ * best-effort pattern for the identical class of "post-success bookkeeping
+ * failure" problem).
+ * @param {{config, executionId, metaSequelize, databaseName, registryRow, migrationsExecuted, verifiedTables, alreadyActive, generatedAt}} params
+ * @returns {Promise<Object>} the report object
+ */
+async function finishActivation({
+  config, executionId, metaSequelize, databaseName, registryRow,
+  migrationsExecuted, verifiedTables, alreadyActive, generatedAt
+}) {
+  const report = {
+    generated_at: generatedAt,
+    command: 'activate-tenant',
+    // T-04-09-04: database names, business_id, migration names, and
+    // verified tables only — never DB host/user/password/DSN or tokens.
+    database_name: databaseName,
+    business_id: registryRow.business_id,
+    migrations_executed: migrationsExecuted,
+    verified_tables: verifiedTables,
+    activated: true,
+    already_active: alreadyActive
+  };
+
+  let reportJsonPath = null;
+  let reportSummaryPath = null;
+  try {
+    reportJsonPath = await writeJsonReport(config.reportDir, 'activate-tenant', report);
+    reportSummaryPath = await writeSummaryReport(config.reportDir, 'activate-tenant', report, 'success');
+  } catch (error) {
+    // Best-effort logging only (WR-03) — the activation itself already
+    // succeeded, so this must never surface as a command failure. Still
+    // surfaced to the operator via stderr rather than silently swallowed.
+    // eslint-disable-next-line no-console
+    console.error(
+      `activate-tenant: report/summary write failed after a successful activation of "${databaseName}" `
+      + `(exit_status remains 'success'): ${error.message}`
+    );
+  }
+
+  try {
+    await recordCommandComplete(metaSequelize, executionId, {
+      exitStatus: 'success',
+      reportJsonPath,
+      reportSummaryPath
+    });
+  } catch (error) {
+    // Best-effort audit bookkeeping — must not crash after a genuinely
+    // successful activation.
+    // eslint-disable-next-line no-console
+    console.error(`activate-tenant: recordCommandComplete failed after a successful activation: ${error.message}`);
+  }
+
+  return report;
+}
+
+/**
  * 04-09 gap closure (API-02/API-03): operator-invokable activation handoff.
  * Reproduces, in shipped production code, exactly what the proven test
  * helper apps/dgfy-api/tests/helpers/tenantSchemaProvisioning.js already
@@ -101,27 +167,17 @@ export async function runActivateTenant({ databaseName, confirmDestructive = fal
         runtimeMode: config.runtimeMode
       });
 
-      const report = {
-        generated_at: new Date().toISOString(),
-        command: 'activate-tenant',
-        database_name: databaseName,
-        business_id: registryRow.business_id,
-        migrations_executed: migrationsExecuted,
-        verified_tables: verifiedTables,
-        activated: true,
-        already_active: true
-      };
-
-      const reportJsonPath = await writeJsonReport(config.reportDir, 'activate-tenant', report);
-      const reportSummaryPath = await writeSummaryReport(config.reportDir, 'activate-tenant', report, 'success');
-
-      await recordCommandComplete(metaSequelize, executionId, {
-        exitStatus: 'success',
-        reportJsonPath,
-        reportSummaryPath
+      return await finishActivation({
+        config,
+        executionId,
+        metaSequelize,
+        databaseName,
+        registryRow,
+        migrationsExecuted,
+        verifiedTables,
+        alreadyActive: true,
+        generatedAt: new Date().toISOString()
       });
-
-      return report;
     }
 
     // Ensure the physical tenant database exists — databaseName was already
@@ -148,29 +204,17 @@ export async function runActivateTenant({ databaseName, confirmDestructive = fal
       { replacements: ['active', now, now, databaseName] }
     );
 
-    const report = {
-      generated_at: now.toISOString(),
-      command: 'activate-tenant',
-      // T-04-09-04: database names, business_id, migration names, and
-      // verified tables only — never DB host/user/password/DSN or tokens.
-      database_name: databaseName,
-      business_id: registryRow.business_id,
-      migrations_executed: migrationsExecuted,
-      verified_tables: verifiedTables,
-      activated: true,
-      already_active: false
-    };
-
-    const reportJsonPath = await writeJsonReport(config.reportDir, 'activate-tenant', report);
-    const reportSummaryPath = await writeSummaryReport(config.reportDir, 'activate-tenant', report, 'success');
-
-    await recordCommandComplete(metaSequelize, executionId, {
-      exitStatus: 'success',
-      reportJsonPath,
-      reportSummaryPath
+    return await finishActivation({
+      config,
+      executionId,
+      metaSequelize,
+      databaseName,
+      registryRow,
+      migrationsExecuted,
+      verifiedTables,
+      alreadyActive: false,
+      generatedAt: now.toISOString()
     });
-
-    return report;
   } catch (error) {
     // executionId can legitimately be 0 — do not treat it as falsy (WR-02).
     if (executionId !== undefined && executionId !== null) {
