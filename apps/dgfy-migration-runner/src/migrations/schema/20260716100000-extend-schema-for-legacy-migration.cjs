@@ -37,12 +37,18 @@
  *
  *   3. (LDM-04) `inventory_movements` gains a natural-key unique index
  *      `unique_inventory_movements_natural_key` on
- *      (business_id, reference_type, reference_id) — makes Phase 13's
- *      migrated-row apply retries idempotent (T-12-03). This is pure DDL:
- *      it does not trip the append-only BEFORE UPDATE/DELETE triggers, and
- *      existing organic Phase 8/9 rows have NULL reference_type/
- *      reference_id, which MySQL's unique index treats as distinct tuples
- *      (D-10) — so NO backfill of existing rows.
+ *      (business_id, product_id, reference_type, reference_id) — makes
+ *      Phase 13's migrated-row apply retries idempotent per (order, product)
+ *      line (T-12-03). `product_id` is required in the key: Phase 9/10's
+ *      checkout-finalize and reservation-commit flows both write one
+ *      InventoryMovement row per product line in a single order, sharing the
+ *      same (business_id, reference_type, reference_id) across lines — an
+ *      order-only key would collide on the second product line in any
+ *      multi-product sale (CR-01, 12-REVIEW.md). This is pure DDL: it does
+ *      not trip the append-only BEFORE UPDATE/DELETE triggers, and existing
+ *      organic Phase 8/9 rows have NULL reference_type/reference_id, which
+ *      MySQL's unique index treats as distinct tuples (D-10) — so NO
+ *      backfill of existing rows.
  *
  * `dgfyBusinessContract.js` is updated in THIS SAME COMMIT — the atomic
  * invariant this phase's RESEARCH flags as the single most important
@@ -176,7 +182,11 @@ module.exports = {
     // Pure DDL — does not trip the append-only BEFORE UPDATE/DELETE triggers.
     // Existing organic rows have NULL reference_type/reference_id, which
     // MySQL's unique index treats as distinct tuples, so no backfill needed.
-    await addIndexIfMissing('inventory_movements', ['business_id', 'reference_type', 'reference_id'], {
+    // product_id is part of the key (CR-01 fix, 12-REVIEW.md): checkout
+    // finalize and reservation-commit both write one row per product line
+    // sharing the same (business_id, reference_type, reference_id) — an
+    // order-only key breaks any multi-product order.
+    await addIndexIfMissing('inventory_movements', ['business_id', 'product_id', 'reference_type', 'reference_id'], {
       name: 'unique_inventory_movements_natural_key',
       unique: true
     });

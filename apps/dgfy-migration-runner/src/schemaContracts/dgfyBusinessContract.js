@@ -294,11 +294,19 @@ export const dgfyBusinessContract = {
     //
     // Phase 12 (12-02-PLAN.md, LDM-04, D-10): additive
     // 20260716100000-extend-schema-for-legacy-migration.cjs adds
-    // unique_inventory_movements_natural_key on (business_id,
+    // unique_inventory_movements_natural_key on (business_id, product_id,
     // reference_type, reference_id) — makes Phase 13's migrated-row apply
-    // retries idempotent. Existing Phase 8/9 organic rows have NULL
+    // retries idempotent per (order, product) line. product_id is required
+    // in the key: checkout finalize and reservation-commit both write one
+    // row per product line sharing the same (business_id, reference_type,
+    // reference_id) — an order-only key breaks any multi-product order
+    // (CR-01 fix, 12-REVIEW.md). Existing Phase 8/9 organic rows have NULL
     // reference_type/reference_id; MySQL's unique index treats NULL tuples
     // as distinct, so this is a pure additive DDL change with no backfill.
+    // NOTE: this contract only asserts index *existence* by name (see
+    // verify.js checkContractSchema) — column composition is not
+    // independently re-checked here, so the migration + model files above
+    // are the source of truth for the actual column list.
     inventory_movements: {
       columns: [
         'id',

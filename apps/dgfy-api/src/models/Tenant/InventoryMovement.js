@@ -108,8 +108,13 @@ export default (sequelize) => {
             // idempotent. NULL reference_type/reference_id on existing
             // organic rows are distinct under MySQL's unique-index NULL
             // semantics, so no backfill/data migration is needed.
+            // product_id is part of the key (CR-01 fix, 12-REVIEW.md):
+            // checkout finalize and reservation-commit both write one row
+            // per product line sharing the same
+            // (business_id, reference_type, reference_id) — an order-only
+            // key breaks any multi-product order.
             {
-                fields: ['business_id', 'reference_type', 'reference_id'],
+                fields: ['business_id', 'product_id', 'reference_type', 'reference_id'],
                 name: 'unique_inventory_movements_natural_key',
                 unique: true
             }
