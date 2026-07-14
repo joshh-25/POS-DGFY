@@ -7,6 +7,7 @@ import defineTerminalIdentityModel from '../models/Tenant/TerminalIdentity.js';
 import defineProductModel from '../models/Tenant/Product.js';
 import defineProductFolderModel from '../models/Tenant/ProductFolder.js';
 import defineInventoryMovementModel from '../models/Tenant/InventoryMovement.js';
+import defineProductEmbeddingModel from '../models/Tenant/ProductEmbedding.js';
 import defineBookingModel from '../models/Tenant/Booking.js';
 import defineBookingCapacityModel from '../models/Tenant/BookingCapacity.js';
 import defineShiftModel from '../models/Tenant/Shift.js';
@@ -126,7 +127,7 @@ export class TenantConnector {
      * — the plan explicitly forbids that); this method only wires them
      * together into one reachable registry with associations applied.
      * @param {string} databaseName
-     * @returns {{Location, StaffAccount, StaffInvitation, AccountStaffAssignment, TerminalIdentity, Product, ProductFolder, InventoryMovement, Booking, BookingCapacity, Shift, CashDrawerEvent, ComplianceModeState, Availment, AvailmentItem, AvailmentDiscount, Payment, Receipt, ComplianceEvidence, AvailmentStageEvent, CourierAssignment}}
+     * @returns {{Location, StaffAccount, StaffInvitation, AccountStaffAssignment, TerminalIdentity, Product, ProductFolder, InventoryMovement, ProductEmbedding, Booking, BookingCapacity, Shift, CashDrawerEvent, ComplianceModeState, Availment, AvailmentItem, AvailmentDiscount, Payment, Receipt, ComplianceEvidence, AvailmentStageEvent, CourierAssignment}}
      */
     getModels(databaseName) {
         if (this.modelsByDatabase.has(databaseName)) {
@@ -147,6 +148,12 @@ export class TenantConnector {
             Product: defineProductModel,
             ProductFolder: defineProductFolderModel,
             InventoryMovement: defineInventoryMovementModel,
+            // Phase 12 (12-02): product_embeddings 1:1-per-product tenant
+            // model — see apps/dgfy-api/src/models/Tenant/ProductEmbedding.js.
+            // Registered here so repositories resolve it at runtime (the
+            // exact Phase 9 unregistered-model bug the comment below warns
+            // about).
+            ProductEmbedding: defineProductEmbeddingModel,
             Booking: defineBookingModel,
             BookingCapacity: defineBookingCapacityModel,
             Shift: defineShiftModel,

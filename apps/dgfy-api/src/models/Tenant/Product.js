@@ -10,6 +10,13 @@ import { DataTypes, Model } from 'sequelize';
 // lives on Phase 9's AvailmentItem, decided per sale line, not fixed on the
 // Product). Per Phase 4/8 Clean Architecture: this model carries NO
 // business logic.
+//
+// Phase 12 (12-02-PLAN.md, LDM-02, RESEARCH A3 / Open Question 2): the 7
+// legacy-migration fields below (sku_code..attributes) were added for
+// read-path parity with 20260716100000-extend-schema-for-legacy-migration.cjs.
+// No API feature reads these columns yet — updated now for drift avoidance,
+// per the recorded decision to keep every Tenant model matching its
+// migration exactly.
 export default (sequelize) => {
     class Product extends Model {
         static associate(models = {}) {
@@ -97,6 +104,42 @@ export default (sequelize) => {
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: true
+        },
+        // --- Phase 12 (12-02-PLAN.md, LDM-02) legacy-migration fields ------
+        sku_code: {
+            type: DataTypes.STRING(50),
+            allowNull: true
+        },
+        description: {
+            type: DataTypes.TEXT,
+            allowNull: true
+        },
+        unit_of_measure: {
+            type: DataTypes.STRING(50),
+            allowNull: true
+        },
+        // D-06: DECIMAL(14,4) matches the base_price convention (superset of
+        // legacy's narrower DECIMAL(10,4)).
+        cost_per_unit: {
+            type: DataTypes.DECIMAL(14, 4),
+            allowNull: true
+        },
+        // D-07: reuses legacy items.vat_type enum verbatim.
+        vat_type: {
+            type: DataTypes.ENUM('vatable', 'vat_exempt', 'zero_rated'),
+            allowNull: false,
+            defaultValue: 'vatable'
+        },
+        senior_pwd_discount_eligible: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
+        // D-03: satellite-fold container reserved for Phase 13's mapper —
+        // see docs/database/legacy-product-attributes-folding-design.md.
+        attributes: {
+            type: DataTypes.JSON,
+            allowNull: true
         }
     }, {
         sequelize,
@@ -109,7 +152,9 @@ export default (sequelize) => {
         indexes: [
             { fields: ['business_id'], name: 'idx_products_business' },
             { fields: ['folder_id'], name: 'idx_products_folder' },
-            { fields: ['category'], name: 'idx_products_category' }
+            { fields: ['category'], name: 'idx_products_category' },
+            // D-05: non-unique — legacy allows duplicate SKUs.
+            { fields: ['sku_code'], name: 'idx_products_sku_code' }
         ]
     });
 

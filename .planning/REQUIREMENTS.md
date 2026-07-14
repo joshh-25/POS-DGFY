@@ -134,9 +134,9 @@ Committed scope for the v2.1 Legacy Data Migration milestone. Migration-runner-o
 ### Legacy Migration Scope & Schema Extension
 
 - [ ] **LDM-01**: ADR 0029 is amended to remove `items`/`item_folders`/`stock_movements`/`pos_transactions` from `OUT_OF_SCOPE_LEGACY_TABLES`, unblocking every new mapper.
-- [ ] **LDM-02**: `products` schema is extended with 6 typed columns (`sku_code`, `cost_per_unit`, `vat_type`, `senior_pwd_discount_eligible`, `description`, `unit_of_measure`) plus one `attributes` JSON column, with the 1:1-vs-1:many satellite-table folding design (including `product_composition`/BOM) documented before mapper code is written.
-- [ ] **LDM-03**: A new `product_embeddings` table exists (one row per product) for carry-over vector storage.
-- [ ] **LDM-04**: `inventory_movements` gains a natural-key unique index (`business_id`, `reference_type`, `reference_id`) so retries are idempotency-safe.
+- [x] **LDM-02**: `products` schema is extended with 6 typed columns (`sku_code`, `cost_per_unit`, `vat_type`, `senior_pwd_discount_eligible`, `description`, `unit_of_measure`) plus one `attributes` JSON column, with the 1:1-vs-1:many satellite-table folding design (including `product_composition`/BOM) documented before mapper code is written.
+- [x] **LDM-03**: A new `product_embeddings` table exists (one row per product) for carry-over vector storage.
+- [x] **LDM-04**: `inventory_movements` gains a natural-key unique index (`business_id`, `reference_type`, `reference_id`) so retries are idempotency-safe.
 - [ ] **LDM-05**: `availments` gains an additive `source_system` column, sequenced with the Sales History phase.
 
 ### Product & Inventory Migration
@@ -283,9 +283,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FUL-02 | Phase 11 | Complete |
 | FUL-03 | Phase 11 | Complete |
 | LDM-01 | Phase 12 | Pending |
-| LDM-02 | Phase 12 | Pending |
-| LDM-03 | Phase 12 | Pending |
-| LDM-04 | Phase 12 | Pending |
+| LDM-02 | Phase 12 | Complete |
+| LDM-03 | Phase 12 | Complete |
+| LDM-04 | Phase 12 | Complete |
 | PIM-01 | Phase 13 | Pending |
 | PIM-02 | Phase 13 | Pending |
 | PIM-03 | Phase 13 | Pending |

@@ -247,6 +247,15 @@ export const dgfyBusinessContract = {
     // PRD-01/PRD-02/BOK-01: category lives on the Product, not the Store;
     // inventory_mode only (D-07 — stock_effect_type is Phase 9's
     // AvailmentItem, not this table).
+    //
+    // Phase 12 (12-02-PLAN.md, LDM-02): additive
+    // 20260716100000-extend-schema-for-legacy-migration.cjs adds 6 typed
+    // columns ported from legacy items (sku_code, description,
+    // unit_of_measure, cost_per_unit, vat_type,
+    // senior_pwd_discount_eligible) plus `attributes` JSON — the
+    // satellite-folding container reserved for Phase 13's mapper (see
+    // docs/database/legacy-product-attributes-folding-design.md). D-05:
+    // idx_products_sku_code is non-unique — legacy allows duplicate SKUs.
     products: {
       columns: [
         'id',
@@ -261,10 +270,17 @@ export const dgfyBusinessContract = {
         'slot_duration_minutes',
         'concurrent_capacity',
         'is_active',
+        'sku_code',
+        'description',
+        'unit_of_measure',
+        'cost_per_unit',
+        'vat_type',
+        'senior_pwd_discount_eligible',
+        'attributes',
         'created_at',
         'updated_at'
       ],
-      indexes: ['idx_products_business', 'idx_products_folder', 'idx_products_category'],
+      indexes: ['idx_products_business', 'idx_products_folder', 'idx_products_category', 'idx_products_sku_code'],
       uniqueConstraints: [],
       foreignKeys: [
         { column: 'folder_id', referencesTable: 'product_folders', referencesColumn: 'id' }
@@ -275,6 +291,14 @@ export const dgfyBusinessContract = {
     // PRD-04/D-06: append-only ledger, sole writer modules/inventory (ADR
     // 0029). movement_type reserves (unwired) sale/booking values. Never
     // named stock_movements.
+    //
+    // Phase 12 (12-02-PLAN.md, LDM-04, D-10): additive
+    // 20260716100000-extend-schema-for-legacy-migration.cjs adds
+    // unique_inventory_movements_natural_key on (business_id,
+    // reference_type, reference_id) — makes Phase 13's migrated-row apply
+    // retries idempotent. Existing Phase 8/9 organic rows have NULL
+    // reference_type/reference_id; MySQL's unique index treats NULL tuples
+    // as distinct, so this is a pure additive DDL change with no backfill.
     inventory_movements: {
       columns: [
         'id',
@@ -290,11 +314,38 @@ export const dgfyBusinessContract = {
         'after_snapshot',
         'created_at'
       ],
-      indexes: ['idx_inventory_movements_business_product', 'idx_inventory_movements_movement_type'],
-      uniqueConstraints: [],
+      indexes: [
+        'idx_inventory_movements_business_product',
+        'idx_inventory_movements_movement_type',
+        'unique_inventory_movements_natural_key'
+      ],
+      uniqueConstraints: ['unique_inventory_movements_natural_key'],
       foreignKeys: [
         { column: 'product_id', referencesTable: 'products', referencesColumn: 'id' },
         { column: 'actor_staff_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // Phase 12 (12-02-PLAN.md, LDM-03, D-09): NEW table — one row per
+    // product (strict 1:1, matching legacy item_embeddings' existing
+    // shape). vector is TEXT (legacy JSON-stringified float array shape).
+    // legacy_embedding_id is an optional traceability pointer back to the
+    // legacy row (A2). Modeled on the product_folders entry's shape.
+    product_embeddings: {
+      columns: [
+        'id',
+        'business_id',
+        'product_id',
+        'vector',
+        'legacy_embedding_id',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['unique_product_embeddings_product'],
+      uniqueConstraints: ['unique_product_embeddings_product'],
+      foreignKeys: [
+        { column: 'product_id', referencesTable: 'products', referencesColumn: 'id' }
       ],
       projectionOnly: false
     },
