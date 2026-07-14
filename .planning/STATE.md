@@ -6,15 +6,15 @@ current_phase: 13.5
 current_phase_name: Staff Authentication Model Correction
 status: executing
 stopped_at: Phase 13 rehearsal exposed wrong staff-auth architecture assumption
-last_updated: "2026-07-14T15:53:02.754Z"
+last_updated: "2026-07-14T22:20:53.146Z"
 last_activity: 2026-07-14
 last_activity_desc: Phase 13.5 execution started
 progress:
   total_phases: 15
   completed_phases: 11
   total_plans: 82
-  completed_plans: 75
-  percent: 73
+  completed_plans: 76
+  percent: 93
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 ## Current Position
 
 Phase: 13.5 (Staff Authentication Model Correction) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-14 — Phase 13.5 execution started
 
-Progress: [█████████░] 92%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -109,6 +109,7 @@ Progress: [█████████░] 92%
 | Phase 13 P01 | 8min | 3 tasks | 6 files |
 | Phase 13 P03 | 4min | 2 tasks | 3 files |
 | Phase 13.5 P01 | 5min | 2 tasks | 4 files |
+| Phase 13.5 P02 | 4min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,8 @@ Recent decisions affecting current work:
 - [Roadmap v2.1 INSERTED]: Phase 13.5 is required before Phase 14. ADR 0028's DGFY-only staff access model conflicts with the intended product model. Tenant-local staff credentials must remain supported; DGFY account linking is optional for staff, not mandatory.
 - [Phase 13.5]: [Phase 13.5 Plan 01]: Staff authentication is tenant-local-first; DGFY account linking is optional and requires accepted-membership evidence.
 - [Phase 13.5]: [Phase 13.5 Plan 01]: Staff credentials live in same-tenant staff_credentials, separate from staff_accounts profile serialization.
+- [Phase 13.5]: [Phase 13.5 Plan 02]: staff_credentials is a separate same-tenant table, not columns on staff_accounts.
+- [Phase 13.5]: [Phase 13.5 Plan 02]: dgfy-api adds a persistence-only StaffCredential model but no credential write/read endpoint in this plan.
 
 ### Pending Todos
 
@@ -165,6 +168,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-14T15:52:36.006Z
+Last session: 2026-07-14T22:20:53.139Z
 Stopped at: Session resumed. Phase 13.5 is fully planned (4 plans + CONTEXT/RESEARCH/PATTERNS), not yet executed. Proceeding to execute Phase 13.5. Removed stale HANDOFF.json/.continue-here.md (superseded — v2.1 milestone + Phases 12/13 already complete, BTREE fix already committed).
 Resume file: None
