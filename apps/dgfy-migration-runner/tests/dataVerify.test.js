@@ -21,6 +21,8 @@ const {
   checkRequiredRelationships,
   checkMapCompleteness,
   checkOpenFindings,
+  STAFF_LINKAGE_REASON_CODES,
+  summarizeStaffAuth,
   summarizeStorefrontDiscoveryProjection,
   buildDataVerificationSections
 } = await import('../src/data/verifyData.js');
@@ -168,6 +170,76 @@ describe('verifyData.js pure comparison functions (03-05 Task 2)', () => {
       expect(result.ok).toBe(false);
       expect(result.by_severity.orphan).toBe(1);
     });
+
+    test('routes exactly the three staff-linkage reason codes to a visible non-blocking staff_linkage list', () => {
+      expect([...STAFF_LINKAGE_REASON_CODES].sort()).toEqual([
+        'missing_accepted_membership',
+        'orphan_tenant_user_link',
+        'staff_credential_reset_required'
+      ]);
+
+      const findings = [
+        { legacy_tenant_id: 't1', severity: 'skip', reason_code: 'missing_accepted_membership' },
+        { legacy_tenant_id: 't1', severity: 'orphan', reason_code: 'orphan_tenant_user_link' },
+        { legacy_tenant_id: 't1', severity: 'skip', reason_code: 'staff_credential_reset_required' }
+      ];
+      const result = checkOpenFindings(findings);
+
+      expect(result.ok).toBe(true);
+      expect(result.blocking_count).toBe(0);
+      expect(result.staff_linkage_count).toBe(3);
+      expect(result.staff_linkage_findings).toEqual(findings);
+    });
+
+    test('keeps non-staff integrity findings blocking even when staff-linkage findings are present', () => {
+      const result = checkOpenFindings([
+        { severity: 'skip', reason_code: 'missing_accepted_membership' },
+        { severity: 'skip', reason_code: 'missing_required_field' },
+        { severity: 'conflict', reason_code: 'duplicate_email' },
+        { severity: 'conflict', reason_code: 'owner_mismatch' }
+      ]);
+
+      expect(result.ok).toBe(false);
+      expect(result.staff_linkage_count).toBe(1);
+      expect(result.blocking_findings.map((finding) => finding.reason_code)).toEqual([
+        'missing_required_field',
+        'duplicate_email',
+        'owner_mismatch'
+      ]);
+    });
+  });
+
+  describe('summarizeStaffAuth', () => {
+    test('reports staff credential coverage counters per tenant without exposing hash fields', () => {
+      const result = summarizeStaffAuth({
+        targets: [{
+          legacy_tenant_id: 't1',
+          target_business_db_name: 'dgfy_business_alpha',
+          staffAccounts: [{ id: 1 }, { id: 2 }, { id: 3 }],
+          staffCredentials: [
+            { id: 10, staff_account_id: 1, credential_status: 'active', password_hash: '$2b$10$secret' },
+            { id: 11, staff_account_id: 2, credential_status: 'reset_required', pos_approval_pin_hash: '$2b$10$pinsecret' }
+          ],
+          accountStaffAssignments: [{ id: 100 }, { id: 101 }]
+        }],
+        openFindingsCheck: {
+          staff_linkage_findings: [{ legacy_tenant_id: 't1', reason_code: 'missing_accepted_membership' }]
+        },
+        relationshipViolations: []
+      });
+
+      expect(result.staff_linkage_ok).toBe(false);
+      expect(result.tenants).toEqual([expect.objectContaining({
+        legacy_tenant_id: 't1',
+        target_business_db_name: 'dgfy_business_alpha',
+        staff_account_count: 3,
+        credential_count: 2,
+        active_credential_count: 1,
+        reset_required_count: 1,
+        assignment_count: 2
+      })]);
+      expect(JSON.stringify(result)).not.toMatch(/password_hash|pos_approval_pin_hash|\$2[abxy]\$/);
+    });
   });
 
   describe('summarizeStorefrontDiscoveryProjection', () => {
@@ -282,6 +354,115 @@ describe('buildDataVerificationSections orchestration (03-05 Task 2)', () => {
 
     expect(result.data_migration.open_findings.ok).toBe(false);
     expect(result.data_migration.ok).toBe(false);
+  });
+
+  test('open missing accepted membership findings no longer fail data_migration_ok and remain visible under staff_auth', async () => {
+    mockCreateBusinessTargetConnection.mockReset().mockReturnValue(fakeConnection({
+      queryImpl: (sql) => {
+        if (sql.includes('FROM staff_accounts')) return Promise.resolve([[{ id: 's1' }]]);
+        if (sql.includes('FROM staff_credentials')) return Promise.resolve([[{ id: 1, staff_account_id: 's1', credential_status: 'reset_required', password_hash: '$2b$10$secret' }]]);
+        if (sql.includes('FROM account_staff_assignments')) return Promise.resolve([[]]);
+        if (sql.includes('FROM locations')) return Promise.resolve([[{ id: 'loc-1' }]]);
+        if (sql.includes('FROM terminal_identities')) return Promise.resolve([[]]);
+        return Promise.resolve([[]]);
+      }
+    }));
+    mockListOpenDataQualityFindings.mockResolvedValue([
+      {
+        legacy_tenant_id: 't1',
+        entity_type: 'business_membership',
+        severity: 'skip',
+        reason_code: 'missing_accepted_membership',
+        message: 'Pending membership remains auditable.'
+      }
+    ]);
+
+    const metaSequelize = {
+      query: jest.fn((sql) => {
+        if (typeof sql === 'string' && sql.includes('legacy_id_map')) {
+          return Promise.resolve([[
+            { legacy_source: 'sku_tenant_1', legacy_table: 'users', legacy_id: '1' },
+            { legacy_source: 'sku_tenant_1', legacy_table: 'tenant_locations', legacy_id: '1' }
+          ]]);
+        }
+        return Promise.resolve([[]]);
+      })
+    };
+    const targetSequelize = fakeConnection({
+      queryImpl: (sql) => {
+        if (sql.includes('business_memberships')) return Promise.resolve([[]]);
+        if (sql.includes('storefront_discovery_index')) return Promise.resolve([[]]);
+        return Promise.resolve([[]]);
+      }
+    });
+
+    const result = await buildDataVerificationSections({
+      config: {},
+      targetSequelize,
+      metaSequelize,
+      targets: [target]
+    });
+
+    expect(result.data_migration.ok).toBe(true);
+    expect(result.data_migration.open_findings.ok).toBe(true);
+    expect(result.data_migration.open_findings.staff_linkage_count).toBe(1);
+    expect(result.data_migration.staff_auth.staff_linkage_ok).toBe(false);
+    expect(result.data_migration.staff_auth.staff_linkage_findings).toHaveLength(1);
+    expect(result.data_migration.staff_auth.tenants[0]).toMatchObject({
+      staff_account_count: 1,
+      credential_count: 1,
+      reset_required_count: 1,
+      active_credential_count: 0,
+      assignment_count: 0
+    });
+    expect(JSON.stringify(result.data_migration.staff_auth)).not.toMatch(/password_hash|pos_approval_pin_hash|\$2[abxy]\$/);
+  });
+
+  test('an existing account_staff_assignment without accepted membership remains blocking even when staff-linkage findings are non-blocking', async () => {
+    mockCreateBusinessTargetConnection.mockReset().mockReturnValue(fakeConnection({
+      queryImpl: (sql) => {
+        if (sql.includes('FROM staff_accounts')) return Promise.resolve([[{ id: 's1' }]]);
+        if (sql.includes('FROM staff_credentials')) return Promise.resolve([[{ id: 1, staff_account_id: 's1', credential_status: 'active' }]]);
+        if (sql.includes('FROM account_staff_assignments')) return Promise.resolve([[{ id: 'asa-1', dgfy_account_id: 'acct-orphan' }]]);
+        if (sql.includes('FROM locations')) return Promise.resolve([[{ id: 'loc-1' }]]);
+        if (sql.includes('FROM terminal_identities')) return Promise.resolve([[]]);
+        return Promise.resolve([[]]);
+      }
+    }));
+    mockListOpenDataQualityFindings.mockResolvedValue([
+      { legacy_tenant_id: 't1', severity: 'skip', reason_code: 'missing_accepted_membership' }
+    ]);
+
+    const metaSequelize = {
+      query: jest.fn((sql) => {
+        if (typeof sql === 'string' && sql.includes('legacy_id_map')) {
+          return Promise.resolve([[
+            { legacy_source: 'sku_tenant_1', legacy_table: 'users', legacy_id: '1' },
+            { legacy_source: 'sku_tenant_1', legacy_table: 'tenant_locations', legacy_id: '1' }
+          ]]);
+        }
+        return Promise.resolve([[]]);
+      })
+    };
+    const targetSequelize = fakeConnection({
+      queryImpl: (sql) => {
+        if (sql.includes('business_memberships')) return Promise.resolve([[]]);
+        if (sql.includes('storefront_discovery_index')) return Promise.resolve([[]]);
+        return Promise.resolve([[]]);
+      }
+    });
+
+    const result = await buildDataVerificationSections({
+      config: {},
+      targetSequelize,
+      metaSequelize,
+      targets: [target]
+    });
+
+    expect(result.data_migration.open_findings.ok).toBe(true);
+    expect(result.data_migration.targets[0].required_relationships.ok).toBe(false);
+    expect(result.data_migration.ok).toBe(false);
+    expect(result.data_migration.staff_auth.staff_linkage_ok).toBe(false);
   });
 
   test('storefront_discovery_index rows never flip data_migration_ok to false (informational only)', async () => {
