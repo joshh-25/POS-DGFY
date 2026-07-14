@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-06-26
-last_reviewed: 2026-06-29
+last_reviewed: 2026-07-14
 classification: authoritative
 ---
 
@@ -86,6 +86,11 @@ Only Inventory records stock effects and updates stock balances.
    `stock_exempt_reason='pos_always_available'` for these lines and must not ask
    Inventory to create a stock movement. All other product lines continue to
    use Inventory-owned stock validation and movement commands.
+9. `pos_catalog_overrides.pos_best_seller_mode` is POS presentation metadata
+   only. Its `auto` mode resolves from the tenant's `pos_best_seller_settings`
+   policy using completed, paid POS transaction line quantities; `force` and
+   `never` are explicit POS-only overrides. This tag never changes item identity,
+   availability, Storefront output, payment, or inventory movements.
 
 ## Rollout Policy
 
