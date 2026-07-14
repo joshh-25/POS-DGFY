@@ -51,20 +51,21 @@ export const MAPPING_REASON_CODES = Object.freeze({
 // rejectedTables — product, inventory, POS, fiscal, promo, and Storefront
 // operational domains are never migrated in Phase 03
 // (docs/database/dgfy-data-migration-map.md "Explicit Exclusions").
+// v2.1 (LDM-01/D-11, Phase 12): 'items', 'stock_movements', and
+// 'pos_transactions' are now in scope starting Phase 13 — their mappers
+// land in the v2.1 Legacy Data Migration milestone. 'pos_transaction_lines'
+// remains out of scope until Phase 14 (SHM-02).
 export const OUT_OF_SCOPE_LEGACY_TABLES = Object.freeze([
-    'items',
     'products',
     'skus',
     'product_variants',
     'categories',
     'purchase_orders',
     'job_orders',
-    'stock_movements',
     'item_location_stocks',
     'fifo_batches',
     'suppliers',
     'supplier_items',
-    'pos_transactions',
     'pos_transaction_lines',
     'shifts',
     'cashier_sessions',
