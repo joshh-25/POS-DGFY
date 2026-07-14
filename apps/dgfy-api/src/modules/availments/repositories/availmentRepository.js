@@ -91,6 +91,24 @@ export class NoOpenShiftError extends Error {
     }
 }
 
+/**
+ * WR-05 fix (09-REVIEW.md): thrown by recordDiscount() when the availment
+ * already has an sc_pwd discount row and a second one is attempted.
+ * availment_discounts is an append-only table (no cancelled_at/soft-delete
+ * concept like availment_items), so any existing sc_pwd row is a permanent
+ * block — nothing prevented two (or more) sc_pwd rows from independently
+ * discounting the net base before this check, bounded only by the overall
+ * Math.min/Math.max cap in computeAvailmentTotals. Usecases duck-type on
+ * `error.name === 'DuplicateScPwdDiscountError'` and map it to a 409
+ * conflict.
+ */
+export class DuplicateScPwdDiscountError extends Error {
+    constructor(message) {
+        super(message || 'This availment already has an SC/PWD discount applied.');
+        this.name = 'DuplicateScPwdDiscountError';
+    }
+}
+
 export class AvailmentRepository {
     /**
      * @param {{tenantConnector, businessDatabaseRegistryRepository?}} deps -
@@ -180,6 +198,7 @@ export class AvailmentRepository {
                 || error instanceof AvailmentFinalizedError
                 || error instanceof AvailmentLineNotFoundError
                 || error instanceof NoOpenShiftError
+                || error instanceof DuplicateScPwdDiscountError
             ) {
                 throw error;
             }
@@ -408,6 +427,16 @@ export class AvailmentRepository {
             });
             if (!availment) throw new AvailmentNotFoundError();
             if (availment.isFinalized()) throw new AvailmentFinalizedError();
+
+            // WR-05 fix (09-REVIEW.md): reject a second sc_pwd row on the
+            // same availment — availment_discounts is append-only, so
+            // nothing else prevents multiple SC/PWD discounts from stacking.
+            if (discount.discountType === 'sc_pwd') {
+                const existingScPwd = await AvailmentDiscount.findOne({
+                    where: { availment_id: Number(availmentId), business_id: businessId, discount_type: 'sc_pwd' }
+                });
+                if (existingScPwd) throw new DuplicateScPwdDiscountError();
+            }
 
             const discountRow = await AvailmentDiscount.create({
                 business_id: businessId,

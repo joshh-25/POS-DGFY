@@ -89,6 +89,14 @@ const isAvailmentFinalizedError = (error) => Boolean(error) && error.name === 'A
 const isAvailmentLineNotFoundError = (error) => Boolean(error) && error.name === 'AvailmentLineNotFoundError';
 
 /**
+ * WR-05 fix (09-REVIEW.md): duck-types on repository.recordDiscount's
+ * DuplicateScPwdDiscountError (a second sc_pwd row attempted on an
+ * availment that already has one).
+ * @param {Error} error
+ */
+const isDuplicateScPwdDiscountError = (error) => Boolean(error) && error.name === 'DuplicateScPwdDiscountError';
+
+/**
  * Maps a thrown TenantDatabaseUnavailableError to a stable
  * ApplicationResult-ready DomainError. `missing`/`not_configured` surface as
  * 404; every other reason surfaces as 503 SERVICE_UNAVAILABLE.
@@ -479,6 +487,11 @@ export function buildApplyDiscountUseCase({ repository, businessRepository }) {
             }
             if (isAvailmentNotFoundError(repoError)) {
                 return ApplicationResult.failure(notFoundError('Availment not found.'));
+            }
+            // WR-05 fix (09-REVIEW.md): a second sc_pwd discount on the same
+            // availment is a client input conflict, not a 503.
+            if (isDuplicateScPwdDiscountError(repoError)) {
+                return ApplicationResult.failure(conflictError('This availment already has an SC/PWD discount applied.'));
             }
             throw repoError;
         }

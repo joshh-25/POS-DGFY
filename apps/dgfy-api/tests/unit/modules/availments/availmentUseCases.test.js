@@ -727,4 +727,33 @@ describe('buildApplyDiscountUseCase', () => {
         expect(result.statusCode).toBe(400);
         expect(repository.recordDiscount).not.toHaveBeenCalled();
     });
+
+    // WR-05 fix (09-REVIEW.md): repository.recordDiscount rejects a second
+    // sc_pwd row on the same availment via DuplicateScPwdDiscountError; the
+    // usecase must map that to a 409 conflict, not a 503.
+    it('rejects a second sc_pwd discount on the same availment (409)', async () => {
+        const repository = baseRepository({
+            recordDiscount: jest.fn().mockRejectedValue(
+                Object.assign(new Error('This availment already has an SC/PWD discount applied.'), {
+                    name: 'DuplicateScPwdDiscountError'
+                })
+            )
+        });
+        const businessRepository = baseBusinessRepository({
+            getMembership: jest.fn().mockResolvedValue(makeMembership({ role: 'member' }))
+        });
+        const useCase = buildApplyDiscountUseCase({ repository, businessRepository });
+
+        const result = await useCase({
+            businessId: 'biz-1',
+            requestingAccountId: 'acct-1',
+            availmentId: 'avl-1',
+            discountType: 'sc_pwd',
+            percent: 20,
+            scPwdIdNumber: '12345678'
+        });
+
+        expect(result.isSuccess).toBe(false);
+        expect(result.statusCode).toBe(409);
+    });
 });
