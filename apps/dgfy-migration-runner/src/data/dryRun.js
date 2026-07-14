@@ -24,7 +24,7 @@
 import { createSourceConnection, createLegacyTenantSourceConnection } from '../config/db.js';
 import { LEGACY_ID_MAP_TABLE } from '../metadata/bootstrap.js';
 import { recordDataQualityFinding } from '../metadata/dataState.js';
-import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot } from './legacySource.js';
+import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot, readLegacyProductSnapshot } from './legacySource.js';
 import {
     mapLegacyAccountToDgfyAccount,
     mapLegacyTenantToBusiness,
@@ -33,6 +33,11 @@ import {
     mapLegacyAccountStaffAssignment,
     mapLegacyLocationToLocation,
     mapTerminalRegistryEntryToTerminalIdentity,
+    mapItemFolderToProductFolder,
+    mapItemToProduct,
+    mapStockMovementToInventoryMovement,
+    mapItemLocationStocksToOpeningBalance,
+    mapItemEmbeddingToProductEmbedding,
     classifyMappingConflict,
     MAPPING_REASON_CODES
 } from './mappings.js';
@@ -81,7 +86,7 @@ function reclassifyOperation(mapperResult, resolvedIdMap) {
  * @param {{
  *   targets: Array<{ legacy_tenant_id, legacy_tenant_db_name, target_business_db_name, expected_business_id, expected_owner_account_id }>,
  *   landlordSnapshot: { tenants: object[], accounts: object[], memberships: object[] },
- *   tenantSnapshots: Map<string, { users: object[], locations: object[], userLocationGrants: object[], terminalRegistry: object[] }>,
+ *   tenantSnapshots: Map<string, { users: object[], locations: object[], userLocationGrants: object[], terminalRegistry: object[], productSnapshot?: object }>,
  *   resolvedIdMap?: Map<string, string>
  * }} input
  * @returns {Array<object>} plan entries: `{ legacy_tenant_id, operation, entity_type, target_table, target_database, target_payload, legacy_id_map_key, related_targets, findings }`
@@ -165,7 +170,13 @@ export function buildDryRunPlan({
         );
 
         const tenantSnapshot = tenantSnapshots.get(target.legacy_tenant_id) || {};
-        const { users = [], locations = [], terminalRegistry = [] } = tenantSnapshot;
+        const { users = [], locations = [], terminalRegistry = [], productSnapshot = {} } = tenantSnapshot;
+        const {
+            itemFolders = [],
+            items = [],
+            stockMovements = [],
+            itemEmbeddings = []
+        } = productSnapshot;
 
         // 4. Staff accounts — must run before assignments (5) so a staff
         // account's resolved dgfy_id (if this run scope already migrated it
@@ -246,6 +257,95 @@ export function buildDryRunPlan({
                 locationId: resolvedLocationId
             });
             entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(terminalResult, resolvedIdMap) });
+        });
+
+        // 8. Product folders — must precede products so retried dry-runs can
+        // resolve products.folder_id through the durable legacy_id_map.
+        itemFolders.forEach((folder) => {
+            const folderResult = mapItemFolderToProductFolder(folder, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id
+            });
+            entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(folderResult, resolvedIdMap) });
+        });
+
+        // 9. Products — folder_id is pre-resolved from legacy_id_map when
+        // available, matching the location-to-terminal dry-run pattern above.
+        items.forEach((item) => {
+            let resolvedFolderId = null;
+            if (item.folder_id) {
+                const folderKey = {
+                    legacy_source: target.legacy_tenant_db_name,
+                    legacy_table: 'item_folders',
+                    legacy_id: item.folder_id
+                };
+                resolvedFolderId = resolvedIdMap.get(idMapLookupKey(folderKey)) || null;
+            }
+
+            const productResult = mapItemToProduct(item, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedFolderId,
+                itemLocationStocks: item.itemLocationStocks || []
+            });
+            entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(productResult, resolvedIdMap) });
+        });
+
+        // 10. Stock movements — products are planned first so product_id can
+        // be resolved from a prior apply's durable map when this is a retry.
+        stockMovements.forEach((movement) => {
+            const productKey = {
+                legacy_source: target.legacy_tenant_db_name,
+                legacy_table: 'items',
+                legacy_id: movement.item_id
+            };
+            const resolvedProductId = resolvedIdMap.get(idMapLookupKey(productKey)) || null;
+            const movementResult = mapStockMovementToInventoryMovement(movement, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedProductId
+            });
+            entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(movementResult, resolvedIdMap) });
+        });
+
+        // 11. Opening-balance inventory movements from item_location_stocks
+        // (or current_stock fallback), after product planning for product_id.
+        items.forEach((item) => {
+            const productKey = {
+                legacy_source: target.legacy_tenant_db_name,
+                legacy_table: 'items',
+                legacy_id: item.item_id
+            };
+            const resolvedProductId = resolvedIdMap.get(idMapLookupKey(productKey)) || null;
+            const openingBalanceResult = mapItemLocationStocksToOpeningBalance(item, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedProductId,
+                itemLocationStocks: item.itemLocationStocks || []
+            });
+            entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(openingBalanceResult, resolvedIdMap) });
+        });
+
+        // 12. Product embeddings — after products, resolving product_id from
+        // the durable items -> products map on retried dry-runs.
+        itemEmbeddings.forEach((embedding) => {
+            const productKey = {
+                legacy_source: target.legacy_tenant_db_name,
+                legacy_table: 'items',
+                legacy_id: embedding.item_id
+            };
+            const resolvedProductId = resolvedIdMap.get(idMapLookupKey(productKey)) || null;
+            const embeddingResult = mapItemEmbeddingToProductEmbedding(embedding, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedProductId
+            });
+            entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(embeddingResult, resolvedIdMap) });
         });
     });
 
@@ -358,7 +458,10 @@ export async function runDryRunTransformations({ config, metaSequelize, targets,
         // eslint-disable-next-line no-await-in-loop
         const tenantSequelize = createLegacyTenantSourceConnection(config, target.legacy_tenant_db_name);
         // eslint-disable-next-line no-await-in-loop
-        tenantSnapshots.set(target.legacy_tenant_id, await readLegacyTenantSnapshot(tenantSequelize));
+        const tenantSnapshot = await readLegacyTenantSnapshot(tenantSequelize);
+        // eslint-disable-next-line no-await-in-loop
+        const productSnapshot = await readLegacyProductSnapshot(tenantSequelize);
+        tenantSnapshots.set(target.legacy_tenant_id, { ...tenantSnapshot, productSnapshot });
     }
 
     const resolvedIdMap = await fetchResolvedIdMap(metaSequelize, runScope);
