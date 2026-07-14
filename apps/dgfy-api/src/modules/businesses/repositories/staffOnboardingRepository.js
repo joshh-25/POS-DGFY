@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import defineStaffAccountModel from '../../../models/Tenant/StaffAccount.js';
+import defineStaffCredentialModel from '../../../models/Tenant/StaffCredential.js';
 import defineStaffInvitationModel from '../../../models/Tenant/StaffInvitation.js';
 
 // StaffOnboardingRepository — Clean Architecture data access adapter for the
@@ -48,7 +49,7 @@ export class StaffOnboardingRepository {
         this.tenantConnector = tenantConnector;
         this.businessDatabaseRegistryRepository = businessDatabaseRegistryRepository || null;
         this.accountStaffAssignmentRepository = accountStaffAssignmentRepository;
-        this.modelsByDatabase = new Map(); // databaseName -> { StaffAccount, StaffInvitation }
+        this.modelsByDatabase = new Map(); // databaseName -> { StaffAccount, StaffCredential, StaffInvitation }
     }
 
     /**
@@ -95,21 +96,25 @@ export class StaffOnboardingRepository {
         const connection = this.tenantConnector.getConnection(databaseName);
         const models = {
             StaffAccount: defineStaffAccountModel(connection),
+            StaffCredential: defineStaffCredentialModel(connection),
             StaffInvitation: defineStaffInvitationModel(connection)
         };
+        Object.values(models).forEach((model) => {
+            if (typeof model.associate === 'function') model.associate(models);
+        });
         this.modelsByDatabase.set(databaseName, models);
         return models;
     }
 
     /**
      * Resolves businessId's active/verified tenant database, then runs
-     * `fn({ StaffAccount, StaffInvitation, databaseName })` against it. Any
-     * error surfaced while resolving the models or running the query (e.g.
+     * `fn({ StaffAccount, StaffCredential, StaffInvitation, databaseName })`
+     * against it. Any error surfaced while resolving the models or running the query (e.g.
      * an unreachable tenant MySQL server) is normalized to
      * TenantDatabaseUnavailableError('unreachable', ...) unless it is
      * already one (never double-wrapped).
      * @param {string} businessId
-     * @param {(ctx: {StaffAccount, StaffInvitation, databaseName}) => Promise<any>} fn
+     * @param {(ctx: {StaffAccount, StaffCredential, StaffInvitation, databaseName}) => Promise<any>} fn
      */
     async withModels(businessId, fn) {
         const databaseName = await this.resolveDatabaseName(businessId);
@@ -185,11 +190,12 @@ export class StaffOnboardingRepository {
     }
 
     /**
-     * Creates a tenant-local staff account. `initialPassword` is
-     * intentionally NOT accepted here (unlike the pre-Wave-7 in-memory
-     * bridge) — the real staff_accounts schema has no password/credential
-     * column, and staff login credentials always come from their own
-     * DgfyAccount (see ../../models/Tenant/StaffAccount.js's doc comment).
+     * Creates a tenant-local staff account profile only. Tenant-local
+     * credentials live in staff_credentials (ADR 0028 Phase 13.5 amendment),
+     * but the invitation-accept password setup and staff login write path are
+     * intentionally deferred to a dedicated auth phase. This method therefore
+     * still creates profile-only staff_accounts rows today and does not accept
+     * `initialPassword`.
      */
     async createStaffAccount({ businessId, email, name }) {
         return this.withModels(businessId, async ({ StaffAccount }) => {

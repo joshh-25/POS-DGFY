@@ -4,18 +4,15 @@ import { DataTypes, Model } from 'sequelize';
 // matching apps/dgfy-migration-runner/src/migrations/schema/
 // 20260710021000-create-dgfy-business-foundation.cjs's actual `staff_accounts`
 // table definition exactly (D-14: tenant-local staff authorization profile —
-// identity/login itself is DGFY-account-based, this is the tenant-local
-// record an account_staff_assignments row links to). Per Phase 4 Clean
-// Architecture: this model carries NO business logic — that lives in
-// ../../modules/businesses/usecases/tenantSessionUseCases.js.
+// credentials live in staff_credentials, and optional DGFY account linkage is
+// represented by account_staff_assignments per ADR 0028's Phase 13.5
+// amendment). Per Phase 4 Clean Architecture: this model carries NO business
+// logic — that lives in ../../modules/businesses/usecases/tenantSessionUseCases.js.
 //
-// IMPORTANT (Wave 4 known limitation, mirrors ../Location.js's precedent):
-// this model is defined and ready, but is only wired to a live per-tenant
-// Sequelize connection through ../../infra/tenantConnector.js +
-// ../../modules/businesses/repositories/accountStaffAssignmentRepository.js
-// — no use case in this wave creates/updates StaffAccount rows directly
-// (staff onboarding still uses businessRepository's Wave 3 in-memory bridge
-// pending a real staff-onboarding-to-tenant-DB write path).
+// Staff onboarding creates profile-only rows through
+// ../../modules/businesses/repositories/staffOnboardingRepository.js. Tenant-local
+// credential writes are intentionally separate and belong to a future staff-auth
+// phase.
 export default (sequelize) => {
     class StaffAccount extends Model {
         /**
@@ -29,6 +26,12 @@ export default (sequelize) => {
                 StaffAccount.hasMany(models.AccountStaffAssignment, {
                     foreignKey: 'staff_account_id',
                     as: 'assignments'
+                });
+            }
+            if (models.StaffCredential && !StaffAccount.associations?.credential) {
+                StaffAccount.hasOne(models.StaffCredential, {
+                    foreignKey: 'staff_account_id',
+                    as: 'credential'
                 });
             }
         }
