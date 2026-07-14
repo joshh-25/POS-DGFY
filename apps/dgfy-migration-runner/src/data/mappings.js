@@ -86,6 +86,17 @@ export const OUT_OF_SCOPE_LEGACY_TABLES = Object.freeze([
 
 const TERMINAL_ID_PATTERN = /^[A-Z0-9][A-Z0-9_-]{1,39}$/;
 
+export const MOVEMENT_TYPE_MAP = Object.freeze({
+    purchase_receipt: 'restock',
+    calculated_loss: 'loss',
+    adjustment: 'adjustment',
+    goods_issue: 'sale',
+    return: 'restock',
+    production_consumption: 'adjustment',
+    production_output: 'adjustment',
+    transfer: null
+});
+
 function isBlank(value) {
     return value === undefined || value === null || String(value).trim() === '';
 }
@@ -939,6 +950,158 @@ export function mapItemToProduct(legacyItem = {}, context = {}) {
             vat_type: 'vatable',
             senior_pwd_discount_eligible: false,
             attributes: buildProductAttributes(legacyItem)
+        },
+        legacy_id_map_key: legacyIdMapKeyValue,
+        related_targets: [],
+        findings: []
+    };
+}
+
+// ---------------------------------------------------------------------------
+// 10. Inventory movement — stock_movements ->
+//     dgfy_business_*.inventory_movements
+// ---------------------------------------------------------------------------
+
+export function mapStockMovementToInventoryMovement(legacyMovement = {}, context = {}) {
+    const {
+        legacyTenantDbName = 'legacy_tenant',
+        targetBusinessDbName = null,
+        expectedBusinessId = null,
+        resolvedProductId = null
+    } = context;
+    const legacyId = legacyMovement.movement_id;
+    const legacyIdMapKeyValue = legacyIdMapKey({
+        legacySource: legacyTenantDbName,
+        legacyTable: 'stock_movements',
+        legacyId
+    });
+    const mappedMovementType = MOVEMENT_TYPE_MAP[legacyMovement.movement_type];
+
+    if (mappedMovementType === null) {
+        return skipResult({
+            entityType: 'inventory_movement',
+            targetTable: 'inventory_movements',
+            legacyIdMapKeyValue,
+            finding: classifyMappingConflict(MAPPING_REASON_CODES.LOSSY_CATEGORY_COLLAPSE, {
+                entityType: 'inventory_movement',
+                legacyTable: 'stock_movements',
+                legacyId,
+                severity: 'skip',
+                message: `Legacy stock_movements row ${legacyId} is a transfer; inventory_movements has no location dimension, so no honest target row is inserted.`,
+                remediation: 'No migration action required; this expected lossy collapse is documented by the Phase 13 movement-type remap decision.'
+            })
+        });
+    }
+
+    return {
+        operation: 'insert',
+        entity_type: 'inventory_movement',
+        target_table: 'inventory_movements',
+        target_database: targetBusinessDbName,
+        target_payload: {
+            business_id: expectedBusinessId,
+            product_id: resolvedProductId,
+            movement_type: mappedMovementType,
+            quantity: legacyMovement.quantity,
+            reference_type: 'legacy_stock_movement',
+            reference_id: toKeyString(legacyId),
+            actor_account_id: null,
+            actor_staff_account_id: null,
+            before_snapshot: null,
+            after_snapshot: null
+        },
+        legacy_id_map_key: legacyIdMapKeyValue,
+        related_targets: [],
+        findings: []
+    };
+}
+
+// ---------------------------------------------------------------------------
+// 11. Opening balance — item_location_stocks/current_stock ->
+//     dgfy_business_*.inventory_movements
+// ---------------------------------------------------------------------------
+
+export function mapItemLocationStocksToOpeningBalance(legacyItem = {}, context = {}) {
+    const {
+        legacyTenantDbName = 'legacy_tenant',
+        targetBusinessDbName = null,
+        expectedBusinessId = null,
+        resolvedProductId = null,
+        itemLocationStocks = []
+    } = context;
+    const legacyId = legacyItem.item_id;
+    const legacyIdMapKeyValue = legacyIdMapKey({
+        legacySource: legacyTenantDbName,
+        legacyTable: 'item_location_stocks',
+        legacyId
+    });
+    const quantity = computeOpeningBalanceQuantity(legacyItem, itemLocationStocks);
+
+    if (quantity === null) {
+        return {
+            operation: 'skip',
+            entity_type: 'inventory_movement',
+            target_table: 'inventory_movements',
+            target_database: null,
+            target_payload: null,
+            legacy_id_map_key: legacyIdMapKeyValue,
+            related_targets: [],
+            findings: []
+        };
+    }
+
+    return {
+        operation: 'insert',
+        entity_type: 'inventory_movement',
+        target_table: 'inventory_movements',
+        target_database: targetBusinessDbName,
+        target_payload: {
+            business_id: expectedBusinessId,
+            product_id: resolvedProductId,
+            movement_type: 'adjustment',
+            quantity,
+            reference_type: 'legacy_opening_balance',
+            reference_id: toKeyString(legacyId),
+            actor_account_id: null,
+            actor_staff_account_id: null,
+            before_snapshot: null,
+            after_snapshot: null
+        },
+        legacy_id_map_key: legacyIdMapKeyValue,
+        related_targets: [],
+        findings: []
+    };
+}
+
+// ---------------------------------------------------------------------------
+// 12. Product embedding — item_embeddings ->
+//     dgfy_business_*.product_embeddings
+// ---------------------------------------------------------------------------
+
+export function mapItemEmbeddingToProductEmbedding(legacyEmbedding = {}, context = {}) {
+    const {
+        legacyTenantDbName = 'legacy_tenant',
+        targetBusinessDbName = null,
+        expectedBusinessId = null,
+        resolvedProductId = null
+    } = context;
+    const legacyId = legacyEmbedding.embedding_id;
+    const legacyIdMapKeyValue = legacyIdMapKey({
+        legacySource: legacyTenantDbName,
+        legacyTable: 'item_embeddings',
+        legacyId
+    });
+
+    return {
+        operation: 'insert',
+        entity_type: 'product_embedding',
+        target_table: 'product_embeddings',
+        target_database: targetBusinessDbName,
+        target_payload: {
+            business_id: expectedBusinessId,
+            product_id: resolvedProductId,
+            vector: legacyEmbedding.vector,
+            legacy_embedding_id: legacyEmbedding.embedding_id
         },
         legacy_id_map_key: legacyIdMapKeyValue,
         related_targets: [],
