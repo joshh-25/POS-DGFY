@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import {
     ComplianceModeStateRepository,
+    ComplianceStateNotFoundError,
     DuplicateComplianceModeStateError
 } from '../../../../src/modules/compliance/repositories/complianceModeStateRepository.js';
 import { buildSubmitComplianceEvidenceUseCase } from '../../../../src/modules/compliance/usecases/complianceUseCases.js';
@@ -221,6 +222,123 @@ describe('ComplianceModeStateRepository.getForBusinessBranch — regression guar
 
         const result = await repository.getForBusinessBranch('biz-1', null);
         expect(result).toBeNull();
+    });
+});
+
+describe('ComplianceModeStateRepository.recordVerificationAndState — FSC-01/T-12-07/T-12-08 atomic verify+state write', () => {
+    it('writes verification_status/verified_by_actor_type/verified_at AND state in ONE record.update() inside ONE row-locked transaction', async () => {
+        const row = makeStateRow();
+        const transactionImpl = jest.fn(async (callback) => callback({ LOCK: { UPDATE: 'UPDATE' } }));
+        const models = makeModels({
+            findOneImpl: async () => row,
+            transactionImpl
+        });
+        const repository = new ComplianceModeStateRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        const verifiedAt = new Date('2026-07-14T00:00:00Z');
+        const result = await repository.recordVerificationAndState('biz-1', null, {
+            verification_status: 'verified',
+            verified_by_actor_type: 'tenant_master_admin',
+            verified_at: verifiedAt,
+            state: 'compliant_active'
+        });
+
+        // Exactly one transaction, opened via sequelize.transaction (row-locked).
+        expect(models.ComplianceModeState.sequelize.transaction).toHaveBeenCalledTimes(1);
+
+        // The guard read uses the row lock, mirroring recordVerification()/closeShift().
+        expect(models.ComplianceModeState.findOne).toHaveBeenCalledWith({
+            where: { business_id: 'biz-1', branch_id: null },
+            transaction: expect.anything(),
+            lock: 'UPDATE'
+        });
+
+        // Exactly one record.update() call, carrying all four fields together.
+        expect(row.update).toHaveBeenCalledTimes(1);
+        expect(row.update).toHaveBeenCalledWith(
+            {
+                verification_status: 'verified',
+                verified_by_actor_type: 'tenant_master_admin',
+                verified_at: verifiedAt,
+                state: 'compliant_active'
+            },
+            { transaction: expect.anything() }
+        );
+
+        expect(result).toEqual(expect.objectContaining({
+            verification_status: 'verified',
+            verified_by_actor_type: 'tenant_master_admin',
+            state: 'compliant_active'
+        }));
+    });
+
+    it('throws ComplianceStateNotFoundError when no row exists yet (does NOT findOrCreate)', async () => {
+        const models = makeModels({ findOneImpl: async () => null });
+        const repository = new ComplianceModeStateRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        await expect(repository.recordVerificationAndState('biz-1', null, {
+            verification_status: 'revoked',
+            verified_by_actor_type: 'tenant_master_admin',
+            verified_at: new Date(),
+            state: 'non_compliant_active'
+        })).rejects.toBeInstanceOf(ComplianceStateNotFoundError);
+
+        expect(models.ComplianceModeState.findOrCreate).not.toHaveBeenCalled();
+    });
+
+    it('rethrows a record.update() unique-constraint violation as DuplicateComplianceModeStateError', async () => {
+        const row = makeStateRow();
+        row.update = jest.fn(async () => {
+            throw new FakeSequelizeUniqueConstraintError();
+        });
+        const models = makeModels({ findOneImpl: async () => row });
+        const repository = new ComplianceModeStateRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        await expect(repository.recordVerificationAndState('biz-1', null, {
+            verification_status: 'verified',
+            verified_by_actor_type: 'tenant_master_admin',
+            verified_at: new Date(),
+            state: 'compliant_active'
+        })).rejects.toBeInstanceOf(DuplicateComplianceModeStateError);
+    });
+
+    it('returns the toPlain() shape', async () => {
+        const row = makeStateRow({ id: 9, business_id: 'biz-1', branch_id: null });
+        const models = makeModels({ findOneImpl: async () => row });
+        const repository = new ComplianceModeStateRepository({
+            tenantConnector: makeTenantConnector(models),
+            businessDatabaseRegistryRepository: makeRegistryRepository()
+        });
+
+        const result = await repository.recordVerificationAndState('biz-1', null, {
+            verification_status: 'rejected',
+            verified_by_actor_type: 'tenant_master_admin',
+            verified_at: new Date('2026-07-14T00:00:00Z'),
+            state: 'non_compliant_active'
+        });
+
+        expect(result).toEqual({
+            id: 9,
+            business_id: 'biz-1',
+            branch_id: null,
+            state: 'non_compliant_active',
+            compliance_profile: null,
+            active_policy_pack_version: null,
+            verification_status: 'rejected',
+            verified_by_actor_type: 'tenant_master_admin',
+            verified_at: new Date('2026-07-14T00:00:00Z'),
+            created_at: row.created_at,
+            updated_at: row.updated_at
+        });
     });
 });
 
