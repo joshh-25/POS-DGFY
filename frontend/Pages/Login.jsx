@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, ChevronUp, Loader2, AlertTriangle, Send, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import dgfyLogo from '../src/assets/dgfy/dgfy-logo.png';
+
+const handleDgfyLogoError = (event) => {
+  const image = event.currentTarget;
+  image.style.display = 'none';
+  image.parentElement?.setAttribute('data-logo-fallback', 'DGFY');
+};
 
 export default function Login() {
   const navigate = useNavigate();
@@ -255,7 +262,9 @@ export default function Login() {
           {/* Logo and Title */}
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <img src="/dgfy-horizontal_logo-removebg-preview.png" alt="DGFY" className="h-16 w-auto object-contain" />
+              <span className="relative inline-flex min-h-16 min-w-28 items-center justify-center rounded-xl text-2xl font-black tracking-tight text-[#1A4E8D] before:content-[attr(data-logo-fallback)]">
+                <img src={dgfyLogo} alt="DGFY" className="h-16 w-auto object-contain" onError={handleDgfyLogoError} />
+              </span>
             </div>
             <p className="text-slate-600 mt-2">Sign in to your account</p>
           </div>

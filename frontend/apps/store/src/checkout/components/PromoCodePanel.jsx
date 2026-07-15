@@ -3,6 +3,27 @@ import { Tag, X, CheckCircle2 } from 'lucide-react';
 
 const normalizePromoCode = (value = '') => String(value || '').trim().toUpperCase().slice(0, 40);
 
+const formatDiscountPercent = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '';
+  return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2).replace(/\.?0+$/, '');
+};
+
+const resolvePromoDiscountLabel = (promo) => {
+  const percent = formatDiscountPercent(promo?.discountPercent ?? promo?.discount_percent);
+  if (percent) return `${percent}% OFF`;
+  return String(promo?.discountLabel || promo?.discount_label || promo?.title || '').trim();
+};
+
+const resolvePromoDiscountParts = (promo) => {
+  const percent = formatDiscountPercent(promo?.discountPercent ?? promo?.discount_percent);
+  if (percent) return { top: `${percent}%`, bottom: 'OFF' };
+  const label = resolvePromoDiscountLabel(promo);
+  const match = label.match(/^(\d+(?:\.\d+)?%)\s*(OFF)?$/i);
+  if (match) return { top: match[1], bottom: match[2] ? 'OFF' : '' };
+  return { top: 'PROMO', bottom: '' };
+};
+
 export function PromoCodePanel({
   code = '',
   onChange,
@@ -149,7 +170,10 @@ export function PromoCodePanel({
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Available Promos</div>
                 {normalizedAvailablePromos.map((promo, idx) => {
                   const promoCodeName = normalizePromoCode(promo.promoCode || promo.promo_code);
-                  const promoDiscountLabel = String(promo.discountLabel || '').trim();
+                  const promoDiscountLabel = resolvePromoDiscountLabel(promo);
+                  const promoDiscountParts = resolvePromoDiscountParts(promo);
+                  const promoTitle = String(promo.title || promo.headline || promoDiscountLabel || 'Store promo').trim();
+                  const promoSubtitle = String(promo.subtitle || promo.supportingText || promo.description || 'Special offer').trim();
                   const promoEligibleItemsText = String(promo.eligibleItemsText || '').trim();
                   const promoEligibleCategoriesText = String(promo.eligibleCategoriesText || '').trim();
                   const availabilityStatus = String(promo.availabilityStatus || promo.availability_status || 'available').trim();
@@ -157,32 +181,47 @@ export function PromoCodePanel({
                   const isUnavailable = availabilityStatus !== 'available';
                   const isApplied = hasCode && promoCodeName && normalizedCode === promoCodeName;
                   const canApplyPromo = promoCodeName.length > 0 && !isUnavailable;
+                  const compactBorder = isApplied && !isUnavailable ? accentColor : '#fb923c';
                   return (
-                    <div key={idx} style={{ border: `1px solid ${isApplied && !isUnavailable ? accentColor : '#e2e8f0'}`, borderRadius: 16, padding: 14, display: 'flex', gap: 12, alignItems: 'flex-start', background: isApplied && !isUnavailable ? `${accentColor}10` : '#ffffff', opacity: isUnavailable ? 0.58 : 1, filter: isUnavailable ? 'grayscale(1)' : 'none' }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 20, background: isApplied && !isUnavailable ? accentColor : '#f1f5f9', color: isApplied && !isUnavailable ? '#fff' : '#64748b', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                        <Tag size={18} />
+                    <div key={idx} style={{ border: `1px solid ${compactBorder}`, borderRadius: 16, padding: isMobile ? 10 : 12, display: 'grid', gridTemplateColumns: isMobile ? '64px 1fr' : '78px 1fr', gap: isMobile ? 10 : 14, alignItems: 'center', background: isApplied && !isUnavailable ? `${accentColor}10` : '#ffffff', opacity: isUnavailable ? 0.58 : 1, filter: isUnavailable ? 'grayscale(1)' : 'none' }}>
+                      <div style={{ width: isMobile ? 58 : 64, height: isMobile ? 58 : 64, display: 'grid', placeItems: 'center', borderRadius: 12, border: '1px solid #fb923c', background: '#fed7aa', color: '#0f172a', textAlign: 'center', fontSize: isMobile ? 20 : 24, fontWeight: 900, lineHeight: 1 }}>
+                        {promoDiscountParts.top}
                       </div>
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: isApplied ? accentColor : '#0f172a' }}>
-                          {String(promo.title || promo.headline || promo.badge || 'Store promo').trim() || 'Store promo'}
-                        </div>
-                        {promoDiscountLabel ? (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start', minHeight: 24, padding: '0 10px', borderRadius: 999, background: '#fff7ed', border: '1px solid #fdba74', color: '#c2410c', fontSize: 11, fontWeight: 800 }}>
-                            {promoDiscountLabel}
+                      <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minWidth: 0 }}>
+                          <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: isApplied ? accentColor : '#0f172a', fontSize: 14, fontWeight: 900 }}>
+                            {promoTitle}
                           </div>
-                        ) : null}
-                        <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.4 }}>
-                          {promo.subtitle || promo.supportingText || promo.description || 'Special offer'}
+                          {isApplied && !isUnavailable ? (
+                            <span style={{ flexShrink: 0, color: accentColor, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 900 }}>
+                              <CheckCircle2 size={14} /> Applied
+                            </span>
+                          ) : promoCodeName ? (
+                            <button
+                              type="button"
+                              onClick={() => handleApply(promoCodeName)}
+                              disabled={!canApplyPromo}
+                              style={{ minHeight: 30, padding: '0 16px', borderRadius: 14, border: `1px solid ${canApplyPromo ? accentColor : '#cbd5e1'}`, background: '#ffffff', color: canApplyPromo ? accentColor : '#94a3b8', fontWeight: 800, fontSize: 12, cursor: canApplyPromo ? 'pointer' : 'not-allowed', flexShrink: 0 }}
+                            >
+                              Use
+                            </button>
+                          ) : null}
                         </div>
-                        {promoCodeName ? (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start', gap: 6, minHeight: 26, padding: '0 10px', borderRadius: 999, background: '#f8fafc', border: '1px solid #dbe5ee', color: '#0f172a', fontSize: 11, fontWeight: 800 }}>
-                            <span style={{ color: '#64748b', fontWeight: 700 }}>Promo Code:</span>
-                            <span>{promoCodeName}</span>
-                          </div>
-                        ) : null}
-                        {promo.validityText ? (
-                          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{promo.validityText}</div>
-                        ) : null}
+                        <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.25, fontWeight: 600 }}>
+                          {promoSubtitle}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
+                          {promoCodeName ? (
+                            <span style={{ fontSize: 12, color: '#0f172a', fontWeight: 900, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                              PROMO CODE: <span style={{ color: accentColor }}>{promoCodeName}</span>
+                            </span>
+                          ) : null}
+                          {promo.validityText ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 20, padding: '0 10px', borderRadius: 999, background: '#bbf7d0', color: '#166534', fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {promo.validityText}
+                            </span>
+                          ) : null}
+                        </div>
                         {isUnavailable ? (
                           <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>
                             {availabilityMessage || 'Unavailable outside the scheduled promo window.'}
@@ -199,20 +238,6 @@ export function PromoCodePanel({
                           </div>
                         ) : null}
                       </div>
-                      {isApplied && !isUnavailable ? (
-                        <div style={{ color: accentColor, display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 800 }}>
-                          <CheckCircle2 size={16} /> Applied
-                        </div>
-                      ) : promoCodeName ? (
-                        <button
-                          type="button"
-                          onClick={() => handleApply(promoCodeName)}
-                          disabled={!canApplyPromo}
-                          style={{ minHeight: 32, padding: '0 14px', borderRadius: 16, border: `1px solid ${canApplyPromo ? accentColor : '#cbd5e1'}`, background: 'transparent', color: canApplyPromo ? accentColor : '#94a3b8', fontWeight: 800, fontSize: 12, cursor: canApplyPromo ? 'pointer' : 'not-allowed' }}
-                        >
-                          Use
-                        </button>
-                      ) : null}
                     </div>
                   );
                 })}

@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
 import DgfyLegalAcknowledgementBox from '../src/features/dgfy/components/DgfyLegalAcknowledgementBox.jsx';
 import DgfyPasswordInput from '../src/features/dgfy/components/DgfyPasswordInput.jsx';
+import dgfyLogo from '../src/assets/dgfy/dgfy-logo.png';
 import phFlag from '../src/assets/flags/ph.svg';
 import usFlag from '../src/assets/flags/us.svg';
 import sgFlag from '../src/assets/flags/sg.svg';
@@ -38,11 +39,15 @@ import {
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BUSINESS_REGISTRATION_ENTRY = '/register-company?source=dgfy&auth=login#business-registration';
 const storefrontHomeUrl = resolveStorefrontHomeUrl();
-const dgfyPublicLogoUrl = '/dgfy-logo.png';
 const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
 const DGFY_STOREFRONT_HANDOFF_FAILED = 'DGFY_STOREFRONT_HANDOFF_FAILED';
 const DGFY_STOREFRONT_HANDOFF_FAILED_MESSAGE = 'We found your DGFY account session, but could not return it to the Storefront. Sign in again to continue securely.';
 const EMAIL_SUGGESTION_DOMAINS = ['gmail.com', 'yahoo.com', 'icloud.com'];
+const handleDgfyLogoError = (event) => {
+  const image = event.currentTarget;
+  image.style.display = 'none';
+  image.parentElement?.setAttribute('data-logo-fallback', 'DGFY');
+};
 const getRequestDgfySignupOtp = () => (
   Object.prototype.hasOwnProperty.call(dgfyAuthService, 'requestDgfySignupOtp')
     ? dgfyAuthService.requestDgfySignupOtp
@@ -858,8 +863,12 @@ export default function DgfyAuthPage() {
 
           {/* Mobile: compact logo */}
           <div className="mb-8 flex items-center justify-center lg:hidden">
-            <a href={storefrontHomeUrl} aria-label="Back to DGFY storefront">
-              <img src={dgfyPublicLogoUrl} alt="DGFY Logo" className="h-10 w-auto object-contain" />
+            <a
+              href={storefrontHomeUrl}
+              aria-label="Back to DGFY storefront"
+              className="relative inline-flex min-h-10 min-w-24 items-center justify-center rounded-xl text-xl font-black tracking-tight text-[#1A4E8D] before:content-[attr(data-logo-fallback)]"
+            >
+              <img src={dgfyLogo} alt="DGFY Logo" className="h-10 w-auto object-contain" onError={handleDgfyLogoError} />
             </a>
           </div>
 
