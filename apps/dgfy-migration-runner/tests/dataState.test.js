@@ -9,7 +9,8 @@ import {
     markDataCheckpoint,
     recordDataQualityFinding,
     resolveDataQualityFindings,
-    listOpenDataQualityFindings
+    listOpenDataQualityFindings,
+    syncDataQualityFindings
 } from '../src/metadata/dataState.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -66,6 +67,21 @@ function buildFakeMetaSequelize() {
                 row.run_scope === runScope
                 && row.legacy_tenant_id === legacyTenantId
                 && row.entity_type === entityType
+            ));
+            return [rows, []];
+        }
+
+        // Full-tuple lookup used by syncDataQualityFindings — matched first
+        // because it also targets data_quality_findings and must not fall
+        // through to the run_scope/status-only shape below.
+        if (sql.includes('FROM data_quality_findings') && sql.includes('legacy_table <=>')) {
+            const [runScope, entityType, legacyTable, legacyId, legacyTenantId] = replacements;
+            const rows = tables.data_quality_findings.filter((row) => (
+                row.run_scope === runScope
+                && row.entity_type === entityType
+                && (row.legacy_table ?? null) === (legacyTable ?? null)
+                && (row.legacy_id ?? null) === (legacyId ?? null)
+                && (row.legacy_tenant_id ?? null) === (legacyTenantId ?? null)
             ));
             return [rows, []];
         }
@@ -347,6 +363,184 @@ describe('recordDataQualityFinding / listOpenDataQualityFindings', () => {
         expect(metaSequelize.__tables.data_quality_findings.find(
             (finding) => finding.entity_type === 'terminal_identity'
         ).status).toBe('resolved');
+    });
+});
+
+describe('syncDataQualityFindings', () => {
+    const baseScope = {
+        runScope: 'run-1',
+        legacyTenantId: 'tenant-1',
+        entityType: 'availment',
+        legacyTable: 'pos_transactions',
+        legacyId: 501
+    };
+
+    test('repeated synchronization of the same open reason does not duplicate rows', async () => {
+        const metaSequelize = buildFakeMetaSequelize();
+        const findings = [{
+            severity: 'orphan',
+            reasonCode: 'unresolved_cashier',
+            message: 'Cashier could not be resolved for pos_transaction 501'
+        }];
+
+        await syncDataQualityFindings(metaSequelize, { ...baseScope, findings });
+        await syncDataQualityFindings(metaSequelize, { ...baseScope, findings });
+
+        const rows = metaSequelize.__tables.data_quality_findings.filter(
+            (row) => row.reason_code === 'unresolved_cashier'
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0].status).toBe('open');
+    });
+
+    test('a resolved reason reopens when the current mapper emits it again', async () => {
+        const metaSequelize = buildFakeMetaSequelize();
+        const finding = {
+            severity: 'orphan',
+            reasonCode: 'unresolved_terminal',
+            message: 'Terminal could not be resolved for pos_transaction 501'
+        };
+
+        // First sync opens the finding.
+        await syncDataQualityFindings(metaSequelize, { ...baseScope, findings: [finding] });
+
+        // A later sync where the mapper no longer emits the reason resolves it.
+        await syncDataQualityFindings(metaSequelize, { ...baseScope, findings: [] });
+
+        const afterResolve = metaSequelize.__tables.data_quality_findings.filter(
+            (row) => row.reason_code === 'unresolved_terminal'
+        );
+        expect(afterResolve).toHaveLength(1);
+        expect(afterResolve[0].status).toBe('resolved');
+
+        // A retry (e.g. a still-present data issue on a full-scan retry)
+        // reopens the same row instead of inserting a second one.
+        await syncDataQualityFindings(metaSequelize, { ...baseScope, findings: [finding] });
+
+        const afterReopen = metaSequelize.__tables.data_quality_findings.filter(
+            (row) => row.reason_code === 'unresolved_terminal'
+        );
+        expect(afterReopen).toHaveLength(1);
+        expect(afterReopen[0].status).toBe('open');
+        expect(afterReopen[0].id).toBe(afterResolve[0].id);
+    });
+
+    test('one absent reason resolves without resolving another reason still emitted for the same source record', async () => {
+        const metaSequelize = buildFakeMetaSequelize();
+
+        await syncDataQualityFindings(metaSequelize, {
+            ...baseScope,
+            findings: [
+                { severity: 'orphan', reasonCode: 'unresolved_cashier', message: 'Cashier missing' },
+                { severity: 'orphan', reasonCode: 'unresolved_terminal', message: 'Terminal missing' }
+            ]
+        });
+
+        // Only unresolved_terminal is emitted on the next scan — the mapper
+        // has since resolved the cashier reference for this same record.
+        await syncDataQualityFindings(metaSequelize, {
+            ...baseScope,
+            findings: [
+                { severity: 'orphan', reasonCode: 'unresolved_terminal', message: 'Terminal still missing' }
+            ]
+        });
+
+        const cashierRows = metaSequelize.__tables.data_quality_findings.filter(
+            (row) => row.reason_code === 'unresolved_cashier'
+        );
+        const terminalRows = metaSequelize.__tables.data_quality_findings.filter(
+            (row) => row.reason_code === 'unresolved_terminal'
+        );
+
+        expect(cashierRows).toHaveLength(1);
+        expect(cashierRows[0].status).toBe('resolved');
+        expect(terminalRows).toHaveLength(1);
+        expect(terminalRows[0].status).toBe('open');
+    });
+
+    test('an empty current-set resolves every prior open reason for the source record', async () => {
+        const metaSequelize = buildFakeMetaSequelize();
+
+        await syncDataQualityFindings(metaSequelize, {
+            ...baseScope,
+            findings: [
+                { severity: 'orphan', reasonCode: 'unresolved_cashier', message: 'Cashier missing' },
+                { severity: 'orphan', reasonCode: 'unresolved_terminal', message: 'Terminal missing' }
+            ]
+        });
+
+        await syncDataQualityFindings(metaSequelize, { ...baseScope, findings: [] });
+
+        const rows = metaSequelize.__tables.data_quality_findings.filter(
+            (row) => row.legacy_id === '501'
+        );
+        expect(rows).toHaveLength(2);
+        rows.forEach((row) => expect(row.status).toBe('resolved'));
+    });
+
+    test('tenant/run/entity isolation: sync for one source record never touches another tenant/run/entity scope', async () => {
+        const metaSequelize = buildFakeMetaSequelize();
+        const finding = {
+            severity: 'orphan',
+            reasonCode: 'unresolved_cashier',
+            message: 'Cashier missing'
+        };
+
+        // Same reason code, same legacy_table/legacy_id, but different
+        // run/tenant/entity scopes — each must be tracked independently.
+        await syncDataQualityFindings(metaSequelize, { ...baseScope, findings: [finding] });
+        await syncDataQualityFindings(metaSequelize, {
+            ...baseScope, runScope: 'run-2', findings: [finding]
+        });
+        await syncDataQualityFindings(metaSequelize, {
+            ...baseScope, legacyTenantId: 'tenant-2', findings: [finding]
+        });
+        await syncDataQualityFindings(metaSequelize, {
+            ...baseScope, entityType: 'availment_item', findings: [finding]
+        });
+
+        expect(metaSequelize.__tables.data_quality_findings).toHaveLength(4);
+
+        // Resolving (empty findings) only the original scope must leave the
+        // other three scopes' open rows untouched.
+        await syncDataQualityFindings(metaSequelize, { ...baseScope, findings: [] });
+
+        const openRows = metaSequelize.__tables.data_quality_findings.filter((row) => row.status === 'open');
+        expect(openRows).toHaveLength(3);
+        const resolvedRows = metaSequelize.__tables.data_quality_findings.filter((row) => row.status === 'resolved');
+        expect(resolvedRows).toHaveLength(1);
+        expect(resolvedRows[0].run_scope).toBe('run-1');
+        expect(resolvedRows[0].legacy_tenant_id).toBe('tenant-1');
+        expect(resolvedRows[0].entity_type).toBe('availment');
+    });
+
+    test('syncDataQualityFindings does not blanket-resolve all reasons before recording current findings', async () => {
+        const metaSequelize = buildFakeMetaSequelize();
+
+        await syncDataQualityFindings(metaSequelize, {
+            ...baseScope,
+            findings: [
+                { severity: 'orphan', reasonCode: 'unresolved_cashier', message: 'Cashier missing' },
+                { severity: 'orphan', reasonCode: 'unresolved_terminal', message: 'Terminal missing' }
+            ]
+        });
+
+        // Current scan still emits both reasons — neither should ever
+        // transiently resolve then reopen in a way a caller could observe
+        // as a blanket resolve; final state must show both open the whole
+        // time (checked here via end-state, since transient state isn't
+        // observable through the public function contract).
+        await syncDataQualityFindings(metaSequelize, {
+            ...baseScope,
+            findings: [
+                { severity: 'orphan', reasonCode: 'unresolved_cashier', message: 'Cashier still missing' },
+                { severity: 'orphan', reasonCode: 'unresolved_terminal', message: 'Terminal still missing' }
+            ]
+        });
+
+        const rows = metaSequelize.__tables.data_quality_findings;
+        expect(rows).toHaveLength(2);
+        rows.forEach((row) => expect(row.status).toBe('open'));
     });
 });
 
