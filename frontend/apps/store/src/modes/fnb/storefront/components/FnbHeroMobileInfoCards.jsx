@@ -243,4 +243,3 @@ const FnbHeroMobileInfoCards = ({
 };
 
 export { FnbHeroMobileInfoCards };
-

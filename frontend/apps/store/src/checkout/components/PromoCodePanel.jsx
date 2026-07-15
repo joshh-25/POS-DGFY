@@ -40,7 +40,7 @@ export function PromoCodePanel({
 }) {
   const normalizedCode = normalizePromoCode(code);
   const hasCode = normalizedCode.length > 0;
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempCode, setTempCode] = useState(code);
 
@@ -108,9 +108,9 @@ export function PromoCodePanel({
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', justifyContent: isMobile ? 'flex-end' : 'center', alignItems: isMobile ? 'stretch' : 'center', background: 'rgba(15,23,42,0.4)', fontFamily: bodyFont, padding: isMobile ? 0 : 20 }}>
           {/* Backdrop click to close */}
           <div style={{ position: 'absolute', inset: 0 }} onClick={() => setIsModalOpen(false)} />
-          
+
           <div style={{ position: 'relative', width: '100%', maxWidth: isMobile ? 'none' : 420, background: '#ffffff', borderRadius: isMobile ? '24px 24px 0 0' : 24, padding: '20px 20px 24px', display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '85vh', boxShadow: isMobile ? '0 -10px 40px rgba(0,0,0,0.1)' : '0 10px 40px rgba(0,0,0,0.2)' }}>
-            
+
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Add Promo Code</h3>
               <button type="button" onClick={() => setIsModalOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, border: 'none', background: '#f1f5f9', color: '#475569', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0 }}>

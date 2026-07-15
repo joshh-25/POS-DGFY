@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Info, Trash2, X } from 'lucide-react';
 import { TrackingDrawerCard } from './TrackingDrawerCard.jsx';
 import { TrackingDrawerEmptyState } from './TrackingDrawerEmptyState.jsx';
@@ -63,4 +63,3 @@ export function TrackingDrawer({
     </>
   );
 }
-

@@ -206,4 +206,3 @@ const FnbCatalogToolbar = ({
 };
 
 export { FnbCatalogToolbar };
-

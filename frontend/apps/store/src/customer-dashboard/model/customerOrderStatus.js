@@ -13,4 +13,3 @@ export const COMPLETED_CUSTOMER_ORDER_STATUSES = new Set([
   'delivered',
   'picked_up'
 ]);
-

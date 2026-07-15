@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 
 import { TrackingDrawer } from './TrackingDrawer.jsx';
 
@@ -39,4 +39,3 @@ export function TrackingDrawerMount({
     />
   );
 }
-

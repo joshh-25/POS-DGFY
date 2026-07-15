@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { HeadphonesIcon, HelpCircle, MapPin, ShoppingBag, User } from 'lucide-react';
 
 export function OverviewQuickActions({ isMobileViewport, theme, setActiveNav, onHelp }) {
@@ -27,4 +27,3 @@ export function OverviewQuickActions({ isMobileViewport, theme, setActiveNav, on
   ) : null}
   </>;
 }
-

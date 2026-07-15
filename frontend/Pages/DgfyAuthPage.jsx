@@ -800,10 +800,10 @@ export default function DgfyAuthPage() {
     event.preventDefault();
     setError(''); setNotice('');
     setIsLoading(true);
-    try { 
-      const session = await loginDgfyAccount(loginForm); 
+    try {
+      const session = await loginDgfyAccount(loginForm);
       toast.success('Signed in successfully');
-      await handleAuthSuccess(session); 
+      await handleAuthSuccess(session);
     }
     catch (requestError) {
       const message = requestError?.response?.data?.message || requestError?.message || 'DGFY sign-in failed.';
@@ -1040,7 +1040,7 @@ export default function DgfyAuthPage() {
                 <div className="mb-2 border-b pb-2">
                   <h3 className="text-xs font-bold uppercase tracking-widest" style={{ color: '#64748B' }}>Personal Information</h3>
                 </div>
-                
+
                 <div className="grid gap-4 sm:grid-cols-3">
                   <FieldGroup id="dgfyLastName" label="Last Name">
                     <Input id="dgfyLastName" placeholder="e.g. Doe" value={authForm.lastName}

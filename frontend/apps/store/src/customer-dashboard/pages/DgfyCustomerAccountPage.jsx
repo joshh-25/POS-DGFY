@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AccountSettingsSection } from '../components/AccountSettingsSection.jsx';
 import { AddressesSection } from '../components/AddressesSection.jsx';
 import { BookingsSection } from '../components/BookingsSection.jsx';
@@ -215,4 +215,3 @@ export function DgfyCustomerAccountPage({
 }
 
 export default DgfyCustomerAccountPage;
-

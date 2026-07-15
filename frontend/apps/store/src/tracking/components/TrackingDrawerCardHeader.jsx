@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { CalendarDays, ChevronDown, ChevronUp, Package } from 'lucide-react';
 
 export function TrackingDrawerCardHeader({ dateLabel, entryPin, expanded, logoSource, onToggle, status, storeName, totalAmount, withAssetOrigin }) {
@@ -34,4 +34,3 @@ export function TrackingDrawerCardHeader({ dateLabel, entryPin, expanded, logoSo
     </div>
   );
 }
-

@@ -370,4 +370,3 @@ const FnbProductCard = ({
 };
 
 export { FnbProductCard };
-

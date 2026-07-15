@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 
 export function TrackingDrawerTotals({ subtotal, discount, discountLabel = 'Promo / Discount', deliveryFee, serviceFee, totalAmount }) {
   if (!(subtotal || discount || deliveryFee || serviceFee)) return null;
@@ -13,4 +13,3 @@ export function TrackingDrawerTotals({ subtotal, discount, discountLabel = 'Prom
     </div>
   );
 }
-

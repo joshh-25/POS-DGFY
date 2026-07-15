@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Lock, MapPin } from 'lucide-react';
 import { AddressEditorModal } from './AddressEditorModal.jsx';
 import { SavedAddressCard, SavedAddressCardEmpty } from '../../checkout/components/SavedAddressCard.jsx';
@@ -54,11 +54,11 @@ export function AddressesSection({
 
   const handleOpenEditAddressModal = (address) => {
     setAddressModalMode(`edit-${address.address_id}`);
-    setAddressDraft({ 
-      label: getCustomerAddressNote(address), 
-      address_line: getCustomerAddressLine(address), 
-      latitude: address.latitude, 
-      longitude: address.longitude, 
+    setAddressDraft({
+      label: getCustomerAddressNote(address),
+      address_line: getCustomerAddressLine(address),
+      latitude: address.latitude,
+      longitude: address.longitude,
       is_default: address.is_default === true,
       address_id: address.address_id
     });
@@ -81,7 +81,7 @@ export function AddressesSection({
 
     const isEdit = String(addressModalMode).startsWith('edit-');
     const targetAddress = isEdit ? allAddresses.find(a => a.address_id === addressDraft.address_id) : null;
-    
+
     const success = await onSaveAddress?.(payload, targetAddress);
     if (success !== false) { // Assuming returning nothing or true means success
       setIsAddressModalOpen(false);
@@ -183,7 +183,7 @@ export function AddressesSection({
           fieldStyle={fieldStyle}
         />
       ) : null}
-      
+
       {/* CSS for animations */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes slideUp {
@@ -202,4 +202,3 @@ export function AddressesSection({
     </div>
   );
 }
-

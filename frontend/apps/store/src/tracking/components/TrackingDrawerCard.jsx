@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { ChevronRight, ExternalLink } from 'lucide-react';
 import { TrackingDrawerOrderLines } from './TrackingDrawerOrderLines.jsx';
 import { TrackingDrawerTotals } from './TrackingDrawerTotals.jsx';
@@ -48,4 +48,3 @@ export function TrackingDrawerCard({ entry, entryPin, expanded, onToggle, onView
     </div>
   );
 }
-

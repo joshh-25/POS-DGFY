@@ -45,4 +45,3 @@ const FnbHeroDesktopAboutGallery = ({
 );
 
 export { FnbHeroDesktopAboutGallery };
-

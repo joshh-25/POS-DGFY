@@ -1,4 +1,4 @@
-﻿export function formatTrackingDrawerDate(value) {
+export function formatTrackingDrawerDate(value) {
   if (!value) return 'Today';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Today';
@@ -51,4 +51,3 @@ export function deriveTrackingDrawerTotals(entry = {}, money) {
     serviceFee: entry.service_fee != null ? money(entry.service_fee) : null
   };
 }
-

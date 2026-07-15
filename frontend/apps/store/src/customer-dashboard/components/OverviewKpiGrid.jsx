@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Award, CalendarDays, ChevronRight, MapPin, Package, ShoppingBag } from 'lucide-react';
 
 export function OverviewKpiGrid({ isMobileViewport, theme, inProgressOrders, completedOrders, allBookings, allAddresses, loyalty, setActiveNav }) {
@@ -35,4 +35,3 @@ export function OverviewKpiGrid({ isMobileViewport, theme, inProgressOrders, com
   </div>
   );
 }
-

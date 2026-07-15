@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { ChevronRight, Mail, Phone, ShieldCheck, Store } from 'lucide-react';
 
 export function OverviewIdentityCards({ isMobileViewport, theme, accountIdentityInitials, accountIdentityName, accountPanel, overviewPhone, overviewEmail, setActiveNav, onRegisterBusiness }) {
@@ -59,4 +59,3 @@ export function OverviewIdentityCards({ isMobileViewport, theme, accountIdentity
   </div>
   );
 }
-

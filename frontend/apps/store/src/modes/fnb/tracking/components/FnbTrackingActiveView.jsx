@@ -65,7 +65,7 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
                                     activeStatus === 'ready_for_pickup' ? 'Your Order is Ready for Pickup! \uD83C\uDF89' : 'Pickup Completed!'}
                                  </div>
                                  <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5, maxWidth: 420 }}>{statusGuidance}</div>
-                                 
+
                                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16, fontSize: 14, fontWeight: 600, fontFamily: servicesBodyFont }}>
                                    <span style={{ color: dgfySoftText }}>Order PIN</span>
                                    <span style={{ color: '#0f172a', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 10px' }}>{trackingResult.tracking_pin || trackingPinInput}</span>
@@ -75,7 +75,7 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
                                  </div>
                                </div>
                              </div>
-                             
+
                              <div style={{ zIndex: 1, display: 'flex', placeItems: 'center', justifyContent: 'center', opacity: 0.9 }}>
                                {(activeStatus === 'placed' || activeStatus === 'ready_for_pickup') && <ShoppingBag size={100} color={dgfyPrimary} strokeWidth={1.5} style={{ opacity: 0.8 }} />}
                                {activeStatus === 'confirmed' && <Store size={100} color={dgfyPrimary} strokeWidth={1.5} style={{ opacity: 0.8 }} />}
@@ -133,7 +133,7 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
                               borderRadius: 999
                             }}
                           />
-                          
+
                           {trackingSteps.map((step, index) => {
                             const done = index < activeStepIndex;
                             const active = index === activeStepIndex || (activeStatus === 'completed' && index === trackingSteps.length - 1);
@@ -239,7 +239,7 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
 
                       {/* Right Column: Order Details Sidebar */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        
+
                         {/* Receipt Box */}
                         <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 20, background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,.03)' }}>
                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>

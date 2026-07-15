@@ -1,20 +1,20 @@
-﻿import React from 'react';
+import React from 'react';
 import { CheckCircle2, X } from 'lucide-react';
 
 export function AddressEditorModal({ isMobileViewport, theme: THEME, addressModalMode, addressDraft, setAddressDraft, onClose, onSubmit, renderAddressPinEditor, accountAddressActionId, fieldStyle }) {
   return (  <div style={{ position: 'fixed', inset: 0, zIndex: 99999, display: 'flex', alignItems: isMobileViewport ? 'flex-end' : 'center', justifyContent: 'center' }}>
-    <div 
+    <div
       style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease' }}
       onClick={() => onClose()}
     />
-    <div 
-      style={{ 
-        position: 'relative', 
-        background: THEME.surface, 
-        width: '100%', 
-        maxWidth: isMobileViewport ? '100%' : 480, 
-        borderRadius: isMobileViewport ? '24px 24px 0 0' : 24, 
-        padding: '24px', 
+    <div
+      style={{
+        position: 'relative',
+        background: THEME.surface,
+        width: '100%',
+        maxWidth: isMobileViewport ? '100%' : 480,
+        borderRadius: isMobileViewport ? '24px 24px 0 0' : 24,
+        padding: '24px',
         boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
         animation: isMobileViewport ? 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)' : 'zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
         display: 'grid',
@@ -64,10 +64,10 @@ export function AddressEditorModal({ isMobileViewport, theme: THEME, addressModa
 
         {addressModalMode !== 'create' && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '12px 16px', background: THEME.bg, borderRadius: 12, marginTop: 4 }}>
-            <input 
-              type="checkbox" 
-              checked={addressDraft.is_default} 
-              onChange={(e) => setAddressDraft(p => ({ ...p, is_default: e.target.checked }))} 
+            <input
+              type="checkbox"
+              checked={addressDraft.is_default}
+              onChange={(e) => setAddressDraft(p => ({ ...p, is_default: e.target.checked }))}
               style={{ width: 18, height: 18, accentColor: THEME.primary }}
             />
             <div style={{ fontSize: 14, fontWeight: 600, color: THEME.text }}>Set as default address</div>
@@ -85,9 +85,9 @@ export function AddressEditorModal({ isMobileViewport, theme: THEME, addressModa
           <button type="button" onClick={() => onClose()} style={{ background: 'transparent', border: `1px solid ${THEME.border}`, borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 700, color: THEME.text, cursor: 'pointer' }}>
             Cancel
           </button>
-          <button 
-            type="submit" 
-            disabled={accountAddressActionId === 'new' || !addressDraft.address_line} 
+          <button
+            type="submit"
+            disabled={accountAddressActionId === 'new' || !addressDraft.address_line}
             style={{ background: THEME.primary, border: 'none', borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 700, color: '#fff', cursor: (accountAddressActionId === 'new' || !addressDraft.address_line) ? 'not-allowed' : 'pointer', opacity: (accountAddressActionId === 'new' || !addressDraft.address_line) ? 0.6 : 1 }}
           >
             {accountAddressActionId === 'new' ? 'Saving...' : 'Save Address'}

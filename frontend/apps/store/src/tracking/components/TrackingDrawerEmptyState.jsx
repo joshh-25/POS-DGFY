@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Package } from 'lucide-react';
 
 export function TrackingDrawerEmptyState({ isAccountTracking }) {
@@ -16,4 +16,3 @@ export function TrackingDrawerEmptyState({ isAccountTracking }) {
     </div>
   );
 }
-

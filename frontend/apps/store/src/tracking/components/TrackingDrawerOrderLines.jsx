@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Package } from 'lucide-react';
 
 export function TrackingDrawerOrderLines({ entryPin, items, money, withAssetOrigin }) {
@@ -33,4 +33,3 @@ export function TrackingDrawerOrderLines({ entryPin, items, money, withAssetOrig
     </>
   );
 }
-

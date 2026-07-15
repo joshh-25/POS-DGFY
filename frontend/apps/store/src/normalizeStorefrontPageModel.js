@@ -339,7 +339,7 @@ export const normalizeStorefrontPageModel = ({
     || selectedStore?.storefront_hours
     || selectedStore?.storefront_hours_status?.display
   );
-  
+
   const contactRows = [];
   if (phone) contactRows.push({ label: 'Call', value: phone, href: `tel:${phone}` });
   if (facebookLink) contactRows.push({ label: 'Facebook', value: 'Facebook', href: facebookLink });

@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { ChevronRight, Home } from 'lucide-react';
 import { CustomerDashboardEmptyState } from '../model/customerDashboardPresentation.jsx';
 
@@ -37,4 +37,3 @@ export function OverviewDefaultAddressCard({ isMobileViewport, theme, defaultAdd
     ) : null}
   </>;
 }
-
