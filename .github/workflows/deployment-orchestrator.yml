@@ -28,6 +28,8 @@ on:
         value: ${{ jobs.frontend.outputs.sha_tag }}
       dgfy_api_sha_tag:
         value: ${{ jobs.dgfy-api.outputs.sha_tag }}
+      migration_runner_sha_tag:
+        value: ${{ jobs.dgfy-migration-runner.outputs.sha_tag }}
 
 permissions:
   contents: read
@@ -67,8 +69,20 @@ jobs:
       contents: read
       packages: write
 
+  dgfy-migration-runner:
+    # One-shot migration CLI image, published to GHCR (multi-arch) but not
+    # deployed as a compose service -- see deploy-migration-runner.yml.
+    uses: ./.github/workflows/deploy-migration-runner.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
   publish:
-    needs: [ backend, frontend, dgfy-api ]
+    needs: [ backend, frontend, dgfy-api, dgfy-migration-runner ]
     if: inputs.publish
     uses: ./.github/workflows/publish-platform.yml
     with:

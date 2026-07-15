@@ -1,0 +1,1 @@
+[verify] status=success generated_at=2026-07-14T10:08:06.983Z metadata_schema_ok=false target_db_reachable=false target_db_name=dgfy_landlord core_schema_ok=false business_schemas_ok=true migration_metadata_ok=false tenant_coverage_ok=true idempotency_ok=false legacy_non_mutation_ok=false data_migration_ok=true

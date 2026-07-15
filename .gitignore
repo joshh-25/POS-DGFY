@@ -5,6 +5,7 @@ node_modules/
 
 # Testing
 /coverage
+/apps/dgfy-api/coverage/
 
 # Playwright local artifacts and secrets
 /frontend/playwright-report/
@@ -93,11 +94,14 @@ bun.lock
 # now lands under data/certbot/conf/live/ instead of dev-certs/ itself)
 /infrastructure/docker/data/
 
-# Docker env files
-/infrastructure/docker/.env
-
-local-test/
-local-dev/
+# Ignore .env files, which may contain secrets. See
+.env
 
 # Built Android release artifacts (scripts/build-android-beta-release.sh)
 /releases/android/
+
+# Migration runner report output (apps/dgfy-migration-runner local invocations)
+/tmp/dgfy-migration-reports/
+
+# Verification and test reports (generated locally, environment-specific)
+/reports/

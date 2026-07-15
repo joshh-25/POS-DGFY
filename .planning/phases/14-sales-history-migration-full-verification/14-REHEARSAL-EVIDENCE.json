@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "final_verdict": "pass",
+  "exemptions": [
+    {
+      "entity": "product_embedding",
+      "kind": "source_zero",
+      "reason": "All 26 manifest tenants have zero item_embeddings rows in the dgfy-temp production-parity snapshot; embeddings are a v2.x-deferred feature (EMB-01) and non-central to the v2.1 fidelity goal. Operator decision 2026-07-15 ('empty is truthful'): a legitimately empty source entity is accepted as truthfully migrated (0 -> 0). The item_embeddings -> product_embeddings carry-over path remains built and unit-tested for when real vectors exist."
+    }
+  ],
+  "data_migration_ok": true,
+  "exact_sales_totals_match": true,
+  "provenance_ok": true,
+  "relationships_ok": true,
+  "void_fidelity_ok": true,
+  "connections_closed": true,
+  "source_volume": 2025,
+  "retry_rows_written": 0,
+  "blocking_findings": 0,
+  "commands": [
+    "schema:migrate",
+    "data:dry-run",
+    "data:apply",
+    "data:apply:retry",
+    "verify"
+  ],
+  "runtime": {
+    "host": "dgfy-temp",
+    "template_root": "/home/ubuntu/dgfy-rehearsal-template",
+    "docker_context": "dgfy-temp-local-docker",
+    "source_tenant": "26 sku_tenant_* manifest tenants",
+    "target_databases": [
+      "dgfy_business_r0001",
+      "dgfy_business_r0002",
+      "dgfy_business_r0003",
+      "dgfy_business_r0004",
+      "dgfy_business_r0005",
+      "dgfy_business_r0006",
+      "dgfy_business_r0007",
+      "dgfy_business_r0008",
+      "dgfy_business_r0009",
+      "dgfy_business_r0010",
+      "dgfy_business_r0011",
+      "dgfy_business_r0012",
+      "dgfy_business_r0013",
+      "dgfy_business_r0014",
+      "dgfy_business_r0015",
+      "dgfy_business_r0016",
+      "dgfy_business_r0017",
+      "dgfy_business_r0018",
+      "dgfy_business_r0019",
+      "dgfy_business_r0020",
+      "dgfy_business_r0021",
+      "dgfy_business_r0022",
+      "dgfy_business_r0023",
+      "dgfy_business_r0024",
+      "dgfy_business_r0025",
+      "dgfy_business_r0026"
+    ],
+    "manifest_path": "/home/ubuntu/dgfy-rehearsal-template/migration/manifest.json",
+    "business_db_names_path": "/home/ubuntu/dgfy-rehearsal-template/migration/business-db-names.txt"
+  },
+  "entity_counts": {
+    "product_folder": {
+      "source_rows": 266,
+      "target_rows": 266,
+      "first_rows_written": 266,
+      "retry_rows_written": 0
+    },
+    "product": {
+      "source_rows": 609,
+      "target_rows": 609,
+      "first_rows_written": 609,
+      "retry_rows_written": 0
+    },
+    "inventory_movement": {
+      "source_rows": 1053,
+      "target_rows": 1053,
+      "first_rows_written": 1053,
+      "retry_rows_written": 0
+    },
+    "product_embedding": {
+      "source_rows": 0,
+      "target_rows": 0,
+      "first_rows_written": 0,
+      "retry_rows_written": 0,
+      "source_zero_reason": "All 26 manifest tenants have zero item_embeddings rows in the dgfy-temp production-parity snapshot."
+    },
+    "availment": {
+      "source_rows": 42,
+      "target_rows": 42,
+      "first_rows_written": 42,
+      "retry_rows_written": 0
+    },
+    "availment_item": {
+      "source_rows": 55,
+      "target_rows": 55,
+      "first_rows_written": 55,
+      "retry_rows_written": 0
+    }
+  },
+  "sales_totals_by_status": {
+    "finalized": {
+      "source_total": "6734.7400",
+      "target_total": "6734.7400"
+    },
+    "voided": {
+      "source_total": "414.1000",
+      "target_total": "414.1000"
+    }
+  },
+  "open_findings": [
+    {
+      "reason_code": "STAFF_CREDENTIAL_RESET_REQUIRED",
+      "blocking": false,
+      "count": 1
+    },
+    {
+      "reason_code": "MISSING_ACCEPTED_MEMBERSHIP",
+      "blocking": false,
+      "count": 2
+    },
+    {
+      "reason_code": "SALE_TERMINAL_NOT_MAPPED",
+      "blocking": false,
+      "count": 31
+    }
+  ],
+  "reports": [
+    {
+      "command": "schema:migrate",
+      "path": "reports/2026-07-15T03-06-15-542Z-schema-migrate.json",
+      "sha256": "e694086fd0cb71f9ab03493536818e61eca497b9af23bccfdb915e013b2cd9ba",
+      "location": "dgfy-temp:/home/ubuntu/dgfy-rehearsal-template"
+    },
+    {
+      "command": "data:dry-run",
+      "path": "reports/2026-07-15T03-07-21-506Z-data-dry-run.json",
+      "sha256": "8d7f5dc4697eaeb6776f95415f86ac882f3b54660683753ac8fd5953c795d00f",
+      "location": "dgfy-temp:/home/ubuntu/dgfy-rehearsal-template"
+    },
+    {
+      "command": "data:apply:first",
+      "path": "reports/2026-07-15T03-08-31-258Z-data-apply.json",
+      "sha256": "e159833b64dea36d3affd88ee9bc630d541f7bca68d179bd79d3216286c6f88a",
+      "location": "dgfy-temp:/home/ubuntu/dgfy-rehearsal-template"
+    },
+    {
+      "command": "data:apply:retry",
+      "path": "reports/2026-07-15T03-09-03-464Z-data-apply.json",
+      "sha256": "f23f8f6675f45a52aaf513fbe60208f8adeed7a74ea79e35e08dd85e0d79ea70",
+      "location": "dgfy-temp:/home/ubuntu/dgfy-rehearsal-template"
+    },
+    {
+      "command": "verify",
+      "path": "reports/2026-07-15T03-09-37-647Z-verify.json",
+      "sha256": "89a53837005ccf1105058e920ec71e978ac53fca3328ef40d0fa2e23615437cc",
+      "location": "dgfy-temp:/home/ubuntu/dgfy-rehearsal-template"
+    }
+  ],
+  "notes": [
+    "Raw reports are intentionally not committed because data-dry-run evidence contains credential hash material in source evidence fields.",
+    "Raw reports remain on the approved experimental EC2 under /home/ubuntu/dgfy-rehearsal-template/reports; the committed validator checks report hash format and path safety, not recomputed digests of these absent files.",
+    "The CLI sequence passed data_migration_ok=true, retry wrote zero new rows, and five of six entities migrated with exact source=target counts. product_embedding was source-zero across all 26 tenants and is accepted under a documented source_zero exemption (see exemptions[]) per operator decision 2026-07-15 ('empty is truthful')."
+  ]
+}

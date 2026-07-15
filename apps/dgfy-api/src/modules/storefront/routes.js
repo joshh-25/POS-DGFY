@@ -1,0 +1,142 @@
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+import { buildDiscoveryController } from './controllers/discoveryController.js';
+import { buildGuestCheckoutController } from './controllers/guestCheckoutController.js';
+import { buildCheckoutController } from './controllers/checkoutController.js';
+
+// Wires Express routing for the storefront module's PUBLIC discovery
+// surface (Interface Adapter). Routes are thin: define paths/methods and
+// delegate to the injected controller. Errors from async handlers are
+// forwarded to Express's error middleware via `.catch(next)`, mirroring
+// ../products/routes.js's createProductRoutes() shape.
+//
+// Signature intentionally matches the products module's
+// createXRoutes(useCases, { authenticateAccount }) convention for
+// composition-root consistency (the composition root passes
+// authenticateAccount uniformly to every module). T-10-03 discovery/
+// store-page routes stay unauthenticated (guest browsing). 10-04
+// (STF-03/D-06) adds guest OTP request/verify (always public — email
+// verification never depends on login state) plus a checkout-identity
+// resolve route that uses `authenticateAccount` OPTIONALLY, so a logged-in
+// DGFY Account's identity always wins but a guest is never forced to log in
+// (must_haves truth #3).
+//
+// express-rate-limit guards the public discovery endpoints against
+// scraping/DoS (T-10-03-03) — no auth gate exists to rely on instead.
+const discoveryLimiter = rateLimit({
+    windowMs: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS || '', 10) || 60 * 1000,
+    max: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS || '', 10) || 60,
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+// Separate, tighter limiter for the guest OTP request/verify routes
+// (T-10-04-01: OTP brute-force/spam guard) — on top of, not instead of,
+// emailOtp.js's own hashing + EMAIL_OTP_MAX_ATTEMPTS + single-active-OTP
+// enforcement. A stricter default than discoveryLimiter's browse-traffic
+// budget since OTP requests are far more sensitive (email delivery cost,
+// brute-force surface).
+const guestOtpLimiter = rateLimit({
+    windowMs: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_GUEST_OTP_WINDOW_MS || '', 10) || 60 * 1000,
+    max: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_GUEST_OTP_MAX_REQUESTS || '', 10) || 10,
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+// Dedicated limiter for POST /checkout (10-06-PLAN.md, T-10-06 threat
+// register: "no new packages" — matches discoveryLimiter/guestOtpLimiter's
+// existing express-rate-limit pattern, no new dependency). Order placement
+// touches a tenant DB write (stock reservation) and an external PayMongo
+// call, so it gets its own tighter budget rather than sharing
+// discoveryLimiter's browse-traffic allowance.
+const checkoutLimiter = rateLimit({
+    windowMs: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_CHECKOUT_WINDOW_MS || '', 10) || 60 * 1000,
+    max: Number.parseInt(process.env.RATE_LIMIT_STOREFRONT_CHECKOUT_MAX_REQUESTS || '', 10) || 20,
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+/**
+ * Wraps the accounts module's REQUIRED `authenticateAccount` middleware
+ * (../accounts/middleware/accountAuthMiddleware.js — 401s when the bearer
+ * is missing/invalid) into an OPTIONAL pass-through: no Authorization
+ * header at all skips auth entirely (guest path); a present-but-invalid/
+ * expired bearer is treated the same as "no account" rather than blocking
+ * the request (`req.account` stays unset, guest path applies) — checkout
+ * identity resolution itself decides whether SOME identity (account OR
+ * verified guest) is required, this middleware only ever ATTACHES an
+ * account, never REJECTS a request for lacking one.
+ * @param {Function} authenticateAccount
+ */
+// Exported so WR-05's double-next() fix is directly unit-testable without
+// needing to drive a full Express request/response cycle through supertest
+// (mirrors emailOtp.js's getHashSecret export-for-testability convention).
+export const buildOptionalAuthenticateAccount = (authenticateAccount) => (req, res, next) => {
+    if (!req.headers.authorization) {
+        return next();
+    }
+    // WR-05 fix (10-REVIEW.md): `next()` must be invoked at most once per
+    // request. Previously the real `next` was passed directly to
+    // authenticateAccount AND the `.catch()` handler below could also call
+    // it — if authenticateAccount's success path called `next()`
+    // synchronously and its returned promise LATER rejected for an
+    // unrelated reason (e.g. a downstream `.then()` inside
+    // authenticateAccount throwing after already calling `next()`), the
+    // `.catch()` here would invoke `next()` a SECOND time for the same
+    // request (classic double-next() Express bug). guardedNext() tracks
+    // whether it has already fired and no-ops every subsequent call —
+    // every path below (success, the passthroughRes failure interception,
+    // and the catch handler) now routes through it exclusively.
+    let nextCalled = false;
+    const guardedNext = (...args) => {
+        if (nextCalled) return;
+        nextCalled = true;
+        next(...args);
+    };
+    // Intercept authenticateAccount's failure response (it calls
+    // res.status(401).json(...) directly) by handing it a stand-in `res`
+    // that routes the failure into `guardedNext()` (guest path) instead of
+    // terminating the request. The success path never touches `res` — it
+    // just sets req.account and calls `guardedNext` closed over here.
+    const passthroughRes = {
+        status: () => passthroughRes,
+        json: () => guardedNext()
+    };
+    Promise.resolve(authenticateAccount(req, passthroughRes, guardedNext))
+        .catch(() => guardedNext());
+};
+
+/**
+ * @param {Object} useCases - storefront module use cases (buildStorefrontModule().useCases)
+ * @param {{authenticateAccount?: Function}} [deps]
+ */
+export function createStorefrontRoutes(useCases = {}, { authenticateAccount } = {}) {
+    const router = express.Router();
+    const discoveryController = buildDiscoveryController(useCases);
+    const guestCheckoutController = buildGuestCheckoutController(useCases);
+    const checkoutController = buildCheckoutController(useCases);
+    const optionalAuthenticateAccount = typeof authenticateAccount === 'function'
+        ? buildOptionalAuthenticateAccount(authenticateAccount)
+        : (req, res, next) => next();
+
+    router.get('/discovery/search', discoveryLimiter, (req, res, next) => discoveryController.searchDiscovery(req, res).catch(next));
+    router.get('/stores/:handle', discoveryLimiter, (req, res, next) => discoveryController.getStorePage(req, res).catch(next));
+
+    router.post('/guest/otp/request', guestOtpLimiter, (req, res, next) => guestCheckoutController.requestOtp(req, res).catch(next));
+    router.post('/guest/otp/verify', guestOtpLimiter, (req, res, next) => guestCheckoutController.verifyOtp(req, res).catch(next));
+
+    router.post('/checkout/identity', guestOtpLimiter, optionalAuthenticateAccount, (req, res, next) => guestCheckoutController.resolveIdentity(req, res).catch(next));
+
+    // POST /storefront/checkout (STF-04/STF-05, 10-06-PLAN.md): account
+    // OPTIONAL, same optionalAuthenticateAccount contract as
+    // /checkout/identity above — a logged-in DGFY Account's identity always
+    // wins, a verified guest supplies guestIdentityId in the body instead.
+    router.post('/checkout', checkoutLimiter, optionalAuthenticateAccount, (req, res, next) => checkoutController.placeOrder(req, res).catch(next));
+    // GET /storefront/orders/:reference: PUBLIC — IDOR guard (opaque
+    // reference + optional guest email binding) lives in the use case.
+    router.get('/orders/:reference', discoveryLimiter, (req, res, next) => checkoutController.getOrderStatus(req, res).catch(next));
+
+    return router;
+}
+
+export default createStorefrontRoutes;
