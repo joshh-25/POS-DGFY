@@ -365,6 +365,20 @@ lookup-before-insert plus target `source_reference` unique keys provide retry
 idempotency. No timestamp or watermark cursor is introduced because this is a
 bounded cutover migration, not continuous sync.
 
+### Phase 14 decision traceability
+
+| Decision | Documentation contract |
+|---|---|
+| D-14-01 | Unresolvable header FK-shaped fields are preserved in `legacy_snapshot.legacy_pos`, not resolved into new entity types. |
+| D-14-02 | Unresolved `terminal_id` yields `terminal_id: null`, emits `sale_terminal_not_mapped`, and preserves the raw value in the snapshot. |
+| D-14-03 | Unresolved `cashier_id` yields `cashier_account_id: null`, emits `sale_cashier_not_mapped`, and preserves the raw value in the snapshot. |
+| D-14-04 | Legacy voids reuse `availments.status = 'voided'`; reporting distinguishes them by `source_system = 'legacy_migration'`. |
+| D-14-05 | Legacy void metadata stays in `legacy_snapshot.legacy_pos`; no dedicated void columns are added. |
+| D-14-06 | Sales uses full-table scans on every run; `legacy_id_map` and target natural keys provide retry idempotency. |
+| D-14-07 | Core monetary totals map directly to existing fixed-scale `availments` money columns. |
+| D-14-08 | Generic payment-processing detail with no live target column stays in `legacy_snapshot.legacy_pos`. |
+| D-14-09 | Legacy `service_fee_amount` and `delivery_fee` map to dedicated `availments.additional_fees` JSON. |
+
 ### Header: `pos_transactions` -> `availments`
 
 | Source field | Target field/action | Transform rule |
