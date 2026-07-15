@@ -25,13 +25,17 @@
  *   `item_regulatory_compliance`, `item_cost_breakdown`, `item_barcodes`,
  *   `product_composition`, `item_folders`, `stock_movements`,
  *   `item_location_stocks`, `item_embeddings`
+ * - tenant-local (Phase 14 sales-history domain, D-14-06): `pos_transactions`,
+ *   `pos_transaction_lines` — both full unpaginated scans, every run, no
+ *   watermark/checkpoint cursor (this is a one-time cutover migration, not a
+ *   continuous sync; `legacy_id_map` is the sole idempotency guard).
  *
- * Still never queried in this reader: `pos_transactions`,
- * `pos_terminal_shifts`, `cashier_sessions`, `terminal_sessions`,
- * `fiscal_receipts`, `fiscal_compliance_logs`, `products`, `skus`,
- * `purchase_orders`, `job_orders`, or any other table that remains in
- * `mappings.js`'s `OUT_OF_SCOPE_LEGACY_TABLES` list (ADR 0029). The exclusion
- * is structural, not a runtime filter.
+ * Still never queried in this reader: `pos_terminal_shifts`,
+ * `cashier_sessions`, `terminal_sessions`, `fiscal_receipts`,
+ * `fiscal_compliance_logs`, `products`, `skus`, `purchase_orders`,
+ * `job_orders`, or any other table that remains in `mappings.js`'s
+ * `OUT_OF_SCOPE_LEGACY_TABLES` list (ADR 0029). The exclusion is structural,
+ * not a runtime filter.
  */
 
 const POS_TERMINAL_REGISTRY_SETTING_KEY = 'pos_terminal_registry';
@@ -235,4 +239,26 @@ export async function readLegacyProductSnapshot(tenantSequelize) {
         stockMovements,
         itemEmbeddings
     };
+}
+
+/**
+ * Phase 14 Plan 04 (SHM-01/02, D-14-06): read-only legacy sales-history
+ * snapshot reader for a single already-scoped legacy tenant connection.
+ * Issues exactly one full unpaginated `SELECT * FROM pos_transactions` and
+ * one full unpaginated `SELECT * FROM pos_transaction_lines`, returning both
+ * result sets verbatim (no stitching, no target lookup, no write). D-14-06:
+ * this is a live, continuously-growing source table, but the migration is a
+ * one-time bounded cutover, not a continuous sync — no watermark/checkpoint
+ * cursor is added here; `legacy_id_map` lookup-before-insert (dryRun.js/
+ * apply.js) is the sole idempotency guard, exactly like every other reader
+ * in this module.
+ *
+ * @param {import('sequelize').Sequelize} tenantSequelize
+ * @returns {Promise<{ posTransactions: object[], posTransactionLines: object[] }>}
+ */
+export async function readLegacySalesSnapshot(tenantSequelize) {
+    const [posTransactions] = await tenantSequelize.query('SELECT * FROM pos_transactions');
+    const [posTransactionLines] = await tenantSequelize.query('SELECT * FROM pos_transaction_lines');
+
+    return { posTransactions, posTransactionLines };
 }
