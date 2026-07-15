@@ -61,6 +61,34 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.supporting.promo.items).toHaveLength(2);
   });
 
+  it('uses the legacy storefront promo code when the commercial promo list is empty', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        storefront_promo: {
+          active: true,
+          promo_code: 'KUSINA20',
+          title: '20% OFF',
+          subtitle: 'All Dish',
+          badge: 'Todays Promo',
+          validity_text: 'Valid until July 31',
+          discount_percent: 20
+        },
+        storefront_promos: null
+      },
+      catalog: []
+    });
+
+    expect(model.supporting.promo.items).toEqual([
+      expect.objectContaining({
+        promo_code: 'KUSINA20',
+        promoCode: 'KUSINA20',
+        discount_percent: 20,
+        discountPercent: 20,
+        availability_status: 'available'
+      })
+    ]);
+  });
+
   it('keeps scheduled promos visible but unavailable while hiding expired and inactive promos', () => {
     const model = normalizeStorefrontPageModel({
       selectedStore: {
