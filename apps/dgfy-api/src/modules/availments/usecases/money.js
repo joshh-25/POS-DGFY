@@ -195,7 +195,7 @@ export function computeAvailmentTotals(lines, options = {}) {
 	// Sum line subtotals (VAT-inclusive)
 	const subtotalCentavos = sumLineSubtotals(lines);
 
-	let totalVat = 0;
+	let totalVat;
 	let totalVatExempt = 0;
 	const allDiscounts = [...(codeDiscounts || []), ...(manualDiscount || [])];
 

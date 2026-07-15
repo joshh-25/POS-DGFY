@@ -225,19 +225,19 @@ export function buildReleaseReservationUseCase({ repository } = {}) {
  */
 export function buildExpireDueReservationsUseCase({ repository } = {}) {
     return async (now = null) => {
-        try {
-            // This is a background/admin operation, not scoped to a specific business
-            // In practice, orchestration code calls this per-business from a scheduled sweep
-            // For now, we return the async operation itself
-            return async (businessId) => {
+        // This is a background/admin operation, not scoped to a specific business
+        // In practice, orchestration code calls this per-business from a scheduled sweep
+        // For now, we return the async operation itself
+        return async (businessId) => {
+            try {
                 const expiredCount = await repository.expireDueReservations(businessId, now);
                 return ApplicationResult.success({ expiredCount });
-            };
-        } catch (error) {
-            return ApplicationResult.failure(
-                serviceUnavailableError('Failed to expire due reservations.')
-            );
-        }
+            } catch (error) {
+                return ApplicationResult.failure(
+                    serviceUnavailableError('Failed to expire due reservations.')
+                );
+            }
+        };
     };
 }
 

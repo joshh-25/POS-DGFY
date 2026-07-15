@@ -71,7 +71,7 @@ async function postJson({ baseUrl, secretKey, path, attributes }) {
         body: JSON.stringify({ data: { attributes } })
     });
 
-    let body = null;
+    let body;
     try {
         body = await response.json();
     } catch {
