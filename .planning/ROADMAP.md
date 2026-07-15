@@ -527,7 +527,7 @@ Plans:
   4. Dry-run/apply/idempotency-retry/verify wiring exists for all 6 new entity types (`product_folder`, `product`, `inventory_movement`, `product_embedding`, `availment`, `availment_item`), reusing the existing checkpoint and `legacy_id_map` mechanisms, and per-tenant verification reports both row counts and sum-by-type totals for products, inventory movements, embeddings, and availments.
   5. A full re-rehearsal against the disposable production-parity environment, using real legacy data volume, migrates a real tenant's products/inventory/embeddings/availments/availment_items end-to-end with a clean verify report (zero unresolved data-quality issues) — proving the milestone's "as if nothing happened" fidelity goal.
 
-**Plans**: 5/11 plans executed
+**Plans**: 6/11 plans executed
 
 Plans:
 
@@ -547,7 +547,7 @@ Plans:
 
 **Wave 4** *(blocked on 14-05)*
 
-- [ ] 14-06-PLAN.md — Exact monetary and six-entity sales reconciliation
+- [x] 14-06-PLAN.md — Exact monetary and six-entity sales reconciliation
 
 **Wave 5** *(blocked on 14-06; authoritative docs define the rehearsal contract)*
 
@@ -590,4 +590,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 12. Scope Unblock + Schema Extension | 4/4 | Complete    | 2026-07-14 |
 | 13. Product & Inventory Migration | 5/6 | Blocked at rehearsal completion by STAFF-01..04 architecture correction |  |
 | 13.5. Staff Authentication Model Correction | 4/4 | Complete |  |
-| 14. Sales History Migration & Full Verification | 5/11 | In Progress|  |
+| 14. Sales History Migration & Full Verification | 6/11 | In Progress|  |

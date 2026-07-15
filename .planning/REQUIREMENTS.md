@@ -158,7 +158,7 @@ Committed scope for the v2.1 Legacy Data Migration milestone. Migration-runner-o
 ### Migration Verification & Validation
 
 - [x] **VER-01**: Dry-run/apply/idempotency-retry/verify wiring covers every new entity type (`product_folder`, `product`, `inventory_movement`, `product_embedding`, `availment`, `availment_item`), reusing the existing checkpoint and `legacy_id_map` mechanisms.
-- [ ] **VER-02**: Extended per-tenant verification checks record counts *and* sum-by-type totals (not just row counts) for products, inventory movements, embeddings, and availments.
+- [x] **VER-02**: Extended per-tenant verification checks record counts *and* sum-by-type totals (not just row counts) for products, inventory movements, embeddings, and availments.
 - [ ] **VER-03**: Re-rehearsal against a disposable production-parity environment, against real legacy data volume, proves the migration end-to-end.
 
 ### Staff Authentication Model Correction
