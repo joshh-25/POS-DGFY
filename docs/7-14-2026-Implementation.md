@@ -197,3 +197,39 @@ Status: Fixed locally on 2026-07-14.
 - Added a one-time, 60-second same-tab handoff after a successful company switch.
 - The selected POS runtime may use the existing HttpOnly refresh cookie exactly once to restore its tenant session, then removes the handoff marker.
 - The marker contains only tenant ID and creation time; no access token, refresh token, company token, or credentials are placed in browser storage or a URL.
+
+### iMin Cash Drawer Routing
+
+Status: Fixed locally on 2026-07-15.
+
+- Cash In drawer events now call the iMin native `openCashDrawer()` bridge first.
+- The USB ESC/POS device bridge is now only the non-iMin fallback.
+- This prevents iMin terminals from showing USB-printer discovery errors when opening their native cash drawer.
+
+### POS Report Food Category Alignment
+
+Status: Implemented locally on 2026-07-15.
+
+- POS reports now resolve an item's customer-facing Food Category from the assigned item folder.
+- Report filtering, category options, top-item rows, print output, and CSV exports use that same Food Category.
+- Legacy items without a folder retain the existing broad item type (`product`, `service`, and similar) as a fallback.
+- This is a read-model change only: financial amounts are unchanged. Historical reports reflect the item's currently assigned category because transaction lines do not persist a category snapshot.
+
+### POS Report Category Filter Availability
+
+Status: Implemented locally on 2026-07-15.
+
+- The POS Report Category selector now lists every active Food Category for the current company, including categories with no sales in the selected date range.
+- Report queries filter by `folder_id`, so category renames do not break report filtering.
+- Empty date ranges correctly retain the category selector while returning an empty report result.
+
+### Storefront Location Pin Lifecycle Guard
+
+- Added `DeliveryJob.location` to the tenant-location permanent-delete reference manifest so a location pin with delivery history cannot be removed.
+- Enforced the existing inactive-first policy at the backend boundary: permanent deletion now returns `409` until the location is deactivated.
+- Added regression coverage for inactive unused deletion, active-pin rejection, and reactivation of a non-primary storefront location while preserving the active primary pin.
+
+### Storefront Location Pin Confirmation
+
+- Corrected the POS storefront location actions to use the shared UI confirmation dialog. The previous legacy dialog expected a different `action` prop and rendered nothing when Delete Pin or Reactivate was clicked.
+- Delete Pin and Reactivate now show their confirmation modal before calling the existing APIs. Permanent deletion remains limited to inactive pins with no operational references.
