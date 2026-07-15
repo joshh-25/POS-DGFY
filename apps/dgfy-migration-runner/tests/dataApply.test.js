@@ -91,6 +91,16 @@ function createFakeSqlSequelize(initialTables = {}) {
         if (/^SELECT LAST_INSERT_ID/.test(sql)) {
             return [[{ id: lastInsertId }]];
         }
+        if (sql.includes('FROM data_quality_findings') && sql.includes('legacy_table <=>')) {
+            const [runScope, entityType, legacyTable, legacyId, legacyTenantId] = replacements;
+            return [ensureTable('data_quality_findings').filter((row) => (
+                String(row.run_scope) === String(runScope)
+                && String(row.entity_type) === String(entityType)
+                && String(row.legacy_table) === String(legacyTable)
+                && String(row.legacy_id) === String(legacyId)
+                && String(row.legacy_tenant_id) === String(legacyTenantId)
+            ))];
+        }
         const selectMatch = sql.match(/^SELECT .* FROM (\w+) WHERE (.+) LIMIT 1$/);
         if (selectMatch) {
             const [, tableName, whereClause] = selectMatch;

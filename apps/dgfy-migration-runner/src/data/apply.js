@@ -55,7 +55,12 @@ import {
     createBusinessTargetConnection
 } from '../config/db.js';
 import { DEFAULT_RUN_SCOPE } from './dryRun.js';
-import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot, readLegacyProductSnapshot } from './legacySource.js';
+import {
+    readLegacyLandlordSnapshot,
+    readLegacyTenantSnapshot,
+    readLegacyProductSnapshot,
+    readLegacySalesSnapshot
+} from './legacySource.js';
 import {
     mapLegacyAccountToDgfyAccount,
     mapLegacyTenantToBusiness,
@@ -69,6 +74,8 @@ import {
     mapStockMovementToInventoryMovement,
     mapItemLocationStocksToOpeningBalance,
     mapItemEmbeddingToProductEmbedding,
+    mapPosTransactionToAvailment,
+    mapPosTransactionLineToAvailmentItem,
     classifyMappingConflict,
     MAPPING_REASON_CODES
 } from './mappings.js';
@@ -118,7 +125,9 @@ const ENTITY_TARGET_CONFIG = {
     product_folder: { primaryKey: 'id', naturalKeyColumns: ['business_id', 'name'] },
     product: { primaryKey: 'id', naturalKeyColumns: ['id'] },
     inventory_movement: { primaryKey: 'id', naturalKeyColumns: ['business_id', 'product_id', 'reference_type', 'reference_id'] },
-    product_embedding: { primaryKey: 'id', naturalKeyColumns: ['product_id'] }
+    product_embedding: { primaryKey: 'id', naturalKeyColumns: ['product_id'] },
+    availment: { primaryKey: 'id', naturalKeyColumns: ['source_reference'] },
+    availment_item: { primaryKey: 'id', naturalKeyColumns: ['source_reference'] }
 };
 
 const APPEND_ONLY_TARGET_TABLES = new Set(['inventory_movements']);
@@ -519,6 +528,12 @@ function parseProductAttributes(value) {
     return {};
 }
 
+async function closeConnectionSafely(sequelize) {
+    if (sequelize && typeof sequelize.close === 'function') {
+        await sequelize.close();
+    }
+}
+
 async function resolveProductId(metaSequelize, { runScope, legacyTenantDbName, legacyId }) {
     const map = await findLegacyIdMap(metaSequelize, {
         runScope,
@@ -527,6 +542,41 @@ async function resolveProductId(metaSequelize, { runScope, legacyTenantDbName, l
         legacyId
     });
     return map ? Number(map.dgfy_id) : null;
+}
+
+async function resolveLegacyIdMapValue(metaSequelize, { runScope, legacySource, legacyTable, legacyId }) {
+    const map = await findLegacyIdMap(metaSequelize, {
+        runScope,
+        legacySource,
+        legacyTable,
+        legacyId
+    });
+    return map ? Number(map.dgfy_id) : null;
+}
+
+const SALES_PREREQUISITE_ENTITY_TYPES = Object.freeze([
+    'product_folder',
+    'product',
+    'inventory_movement',
+    'product_embedding'
+]);
+
+export async function assertSalesPrerequisiteCheckpoints(metaSequelize, { runScope, legacyTenantId }) {
+    const missing = [];
+
+    for (const entityType of SALES_PREREQUISITE_ENTITY_TYPES) {
+        // eslint-disable-next-line no-await-in-loop
+        const checkpoint = await getDataCheckpoint(metaSequelize, { runScope, legacyTenantId, entityType });
+        if (checkpoint?.status !== 'completed') {
+            missing.push(entityType);
+        }
+    }
+
+    if (missing.length > 0) {
+        throw new Error(
+            `Sales history apply requires completed Phase 13 checkpoints before sales for tenant ${legacyTenantId}; missing: ${missing.join(', ')}.`
+        );
+    }
 }
 
 async function applyProductCompositionUpdates({
@@ -633,40 +683,44 @@ async function applyProductCompositionUpdates({
  * }} params
  */
 export async function runApplyTransformations({ config, metaSequelize, coreSequelize, targets = [], runScope = DEFAULT_RUN_SCOPE }) {
-    const landlordSequelize = createSourceConnection(config);
-    const landlordSnapshot = await readLegacyLandlordSnapshot(landlordSequelize, targets);
+    let landlordSequelize = null;
+    const openedConnections = [];
 
-    const summary = {
-        rows_written: 0,
-        rows_skipped: 0,
-        rows_conflicted: 0,
-        rows_retried: 0,
-        checkpoints_marked: 0,
-        tenant_coverage_count: targets.length
-    };
-    const results = [];
+    try {
+        landlordSequelize = createSourceConnection(config);
+        const landlordSnapshot = await readLegacyLandlordSnapshot(landlordSequelize, targets);
 
-    // 1. Accounts — landlord-scoped, written once for the whole run (not
-    // per tenant), mirroring buildDryRunPlan()'s account de-duplication.
-    const seenAccountIds = new Set();
-    const accountEntries = [];
-    landlordSnapshot.accounts.forEach((account) => {
-        const accountKey = String(account.id);
-        if (seenAccountIds.has(accountKey)) {
-            return;
-        }
-        seenAccountIds.add(accountKey);
-        accountEntries.push({ legacy_tenant_id: null, ...mapLegacyAccountToDgfyAccount(account) });
-    });
+        const summary = {
+            rows_written: 0,
+            rows_skipped: 0,
+            rows_conflicted: 0,
+            rows_retried: 0,
+            checkpoints_marked: 0,
+            tenant_coverage_count: targets.length
+        };
+        const results = [];
 
-    await applyBatchAndRecord({
-        metaSequelize, targetSequelize: coreSequelize, runScope,
-        legacyTenantId: LANDLORD_CHECKPOINT_SCOPE, entityType: 'account',
-        entries: accountEntries, dgfyDatabase: 'dgfy_core', summary, results
-    });
+        // 1. Accounts — landlord-scoped, written once for the whole run (not
+        // per tenant), mirroring buildDryRunPlan()'s account de-duplication.
+        const seenAccountIds = new Set();
+        const accountEntries = [];
+        landlordSnapshot.accounts.forEach((account) => {
+            const accountKey = String(account.id);
+            if (seenAccountIds.has(accountKey)) {
+                return;
+            }
+            seenAccountIds.add(accountKey);
+            accountEntries.push({ legacy_tenant_id: null, ...mapLegacyAccountToDgfyAccount(account) });
+        });
 
-    // 2. Per-tenant entity types, in the fixed order documented above.
-    for (const target of targets) {
+        await applyBatchAndRecord({
+            metaSequelize, targetSequelize: coreSequelize, runScope,
+            legacyTenantId: LANDLORD_CHECKPOINT_SCOPE, entityType: 'account',
+            entries: accountEntries, dgfyDatabase: 'dgfy_core', summary, results
+        });
+
+        // 2. Per-tenant entity types, in the fixed order documented above.
+        for (const target of targets) {
         const legacyTenant = landlordSnapshot.tenants.find(
             (tenant) => String(tenant.id) === String(target.legacy_tenant_id)
         );
@@ -708,12 +762,16 @@ export async function runApplyTransformations({ config, metaSequelize, coreSeque
         }
 
         const businessSequelize = createBusinessTargetConnection(config, target.target_business_db_name);
+        openedConnections.push(businessSequelize);
         // eslint-disable-next-line no-await-in-loop
         const tenantSequelize = createLegacyTenantSourceConnection(config, target.legacy_tenant_db_name);
+        openedConnections.push(tenantSequelize);
         // eslint-disable-next-line no-await-in-loop
         const tenantSnapshot = await readLegacyTenantSnapshot(tenantSequelize);
         // eslint-disable-next-line no-await-in-loop
         const productSnapshot = await readLegacyProductSnapshot(tenantSequelize);
+        // eslint-disable-next-line no-await-in-loop
+        const salesSnapshot = await readLegacySalesSnapshot(tenantSequelize);
 
         // business (+ registry + ownership metadata related writes)
         const businessResult = mapLegacyTenantToBusiness(legacyTenant, targetContext);
@@ -989,7 +1047,103 @@ export async function runApplyTransformations({ config, metaSequelize, coreSeque
             legacyTenantId: target.legacy_tenant_id, entityType: 'product_embedding',
             entries: embeddingEntries, dgfyDatabase: target.target_business_db_name, summary, results
         });
+
+        // Sales history — gated on the four completed Phase 13 product-
+        // domain checkpoints, then headers before lines so each line can
+        // resolve a real availments.id and products.id from legacy_id_map.
+        // eslint-disable-next-line no-await-in-loop
+        await assertSalesPrerequisiteCheckpoints(metaSequelize, {
+            runScope,
+            legacyTenantId: target.legacy_tenant_id
+        });
+
+        const availmentEntries = [];
+        for (const transaction of salesSnapshot.posTransactions || []) {
+            // eslint-disable-next-line no-await-in-loop
+            const resolvedLocationId = transaction.location_id
+                ? await resolveLegacyIdMapValue(metaSequelize, {
+                    runScope,
+                    legacySource: target.legacy_tenant_db_name,
+                    legacyTable: 'tenant_locations',
+                    legacyId: transaction.location_id
+                })
+                : null;
+            // eslint-disable-next-line no-await-in-loop
+            const resolvedTerminalId = transaction.terminal_id
+                ? await resolveLegacyIdMapValue(metaSequelize, {
+                    runScope,
+                    legacySource: target.legacy_tenant_db_name,
+                    legacyTable: 'system_settings.pos_terminal_registry',
+                    legacyId: transaction.terminal_id
+                })
+                : null;
+            // eslint-disable-next-line no-await-in-loop
+            const resolvedCashierId = transaction.cashier_id
+                ? await resolveLegacyIdMapValue(metaSequelize, {
+                    runScope,
+                    legacySource: target.legacy_tenant_db_name,
+                    legacyTable: 'users',
+                    legacyId: transaction.cashier_id
+                })
+                : null;
+
+            const availmentResult = mapPosTransactionToAvailment(transaction, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedLocationId,
+                resolvedTerminalId,
+                resolvedCashierId
+            });
+            availmentEntries.push({ legacy_tenant_id: target.legacy_tenant_id, ...availmentResult });
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await applyBatchAndRecord({
+            metaSequelize, targetSequelize: businessSequelize, runScope,
+            legacyTenantId: target.legacy_tenant_id, entityType: 'availment',
+            entries: availmentEntries, dgfyDatabase: target.target_business_db_name, summary, results
+        });
+
+        const itemNameByLegacyItemId = new Map((productSnapshot.items || []).map((item) => [String(item.item_id), item.name ?? null]));
+        const availmentItemEntries = [];
+        for (const line of salesSnapshot.posTransactionLines || []) {
+            // eslint-disable-next-line no-await-in-loop
+            const resolvedAvailmentId = await resolveLegacyIdMapValue(metaSequelize, {
+                runScope,
+                legacySource: target.legacy_tenant_db_name,
+                legacyTable: 'pos_transactions',
+                legacyId: line.pos_transaction_id
+            });
+            // eslint-disable-next-line no-await-in-loop
+            const resolvedProductId = await resolveProductId(metaSequelize, {
+                runScope,
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                legacyId: line.item_id
+            });
+            const lineResult = mapPosTransactionLineToAvailmentItem(line, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedAvailmentId,
+                resolvedProductId,
+                resolvedProductName: itemNameByLegacyItemId.get(String(line.item_id)) || null
+            });
+            availmentItemEntries.push({ legacy_tenant_id: target.legacy_tenant_id, ...lineResult });
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await applyBatchAndRecord({
+            metaSequelize, targetSequelize: businessSequelize, runScope,
+            legacyTenantId: target.legacy_tenant_id, entityType: 'availment_item',
+            entries: availmentItemEntries, dgfyDatabase: target.target_business_db_name, summary, results
+        });
     }
 
-    return { run_scope: runScope, summary, results };
+        return { run_scope: runScope, summary, results };
+    } finally {
+        await closeConnectionSafely(landlordSequelize);
+        for (const connection of openedConnections) {
+            // eslint-disable-next-line no-await-in-loop
+            await closeConnectionSafely(connection);
+        }
+    }
 }

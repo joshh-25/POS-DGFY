@@ -415,7 +415,7 @@ describe('sales-history apply orchestration', () => {
             product_id: product.id,
             product_name: 'House Blend Coffee',
             source_system: 'legacy_migration',
-            created_at: '2026-07-10T08:20:00.000Z'
+            created_at: '2026-07-10T08:00:05.000Z'
         }));
         expect(normalLine.availment_id).not.toBe(9101);
         expect(normalLine.product_id).not.toBe(401);
