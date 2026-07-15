@@ -27,6 +27,13 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Lint governed documentation
         run: npm run lint:docs
+      - name: Verify compatibility inventory doc matches manifest
+        run: |
+          npm run generate:compat-inventory
+          git diff --exit-code -- docs/architecture/COMPATIBILITY_INVENTORY.md || {
+            echo "COMPATIBILITY_INVENTORY.md is stale — run npm run generate:compat-inventory and commit the result."
+            exit 1
+          }
 
   release-verdict-contract:
     runs-on: ubuntu-latest
@@ -76,6 +83,8 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install root dependencies
         run: npm ci
+      - name: Run compat-seams regression suite
+        run: npm run test:compat-seams
       - name: Generate and validate batch inventory
         shell: bash
         run: |
@@ -170,6 +179,10 @@ jobs:
       - name: Enforce compliance impact declarations
         run: npm run check:compliance
 
+      - name: Enforce compatibility-seam manifest gate
+        working-directory: .
+        run: npm run check:compat-seams
+
       - name: Prepare test schema
         run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
         env:
@@ -257,11 +270,36 @@ jobs:
         working-directory: .
         run: npm run check:architecture:dgfy-api
 
+      - name: Enforce compat-boundary guardrail (CMP-03)
+        run: npm run check:compat-boundary
+
+      - name: Run lint
+        run: npm run lint
+
       - name: Run tests
         run: npm test
         env:
           NODE_ENV: test
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+
+  test-dgfy-migration-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ./apps/dgfy-migration-runner
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/dgfy-migration-runner/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
 
   test-frontend:
     runs-on: ubuntu-latest
@@ -300,7 +338,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     if: github.event_name == 'workflow_dispatch'
-    needs: [lint-docs, dependency-audit, test-backend, test-frontend]
+    needs: [lint-docs, dependency-audit, test-backend, test-frontend, test-dgfy-migration-runner]
     services:
       mysql:
         image: mysql:8.0

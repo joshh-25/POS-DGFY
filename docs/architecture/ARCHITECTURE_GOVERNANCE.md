@@ -64,15 +64,25 @@ The final response or PR evidence must state which hardening items passed, which
 - blocks non-repository model imports, except explicit allowlist entries
 - blocks use-case imports from legacy services
 - enforces module controller naming (`*Handlers.js`)
+- blocks compatibility/continuity imports in the domain layer (`entities/` and `usecases/`),
+  except explicit allowlist entries (`domainCompatLeak` bucket, CMP-03, ADR-0035)
 2. `backend/scripts/check-controller-boundaries.js`
 - blocks direct model import in controllers
 3. `.github/workflows/ci.yml`
 - executes architecture checks before backend test suite
+- executes the compatibility-seam manifest gate (`npm run check:compat-seams`) in the
+  `test-backend` job (ADR-0035)
 4. `.husky/pre-commit`
 - runs architecture checks when architecture-sensitive files are staged
+- runs `npm run check:compat-seams -- --staged` when compatibility-seam manifest/script files
+  or an `@compat-seam` code marker are staged (ADR-0035)
 5. `scripts/lint-docs.js`
 - validates governed docs metadata, authority conflicts, and internal links
-6. `AGENTS.md`
+6. `scripts/check-compat-seams.js`
+- validates the `docs/architecture/compatibility-seams.json` manifest schema, gates completeness
+  of `active`/`accepted` seams, and bidirectionally reconciles in-code `@compat-seam id=<id>`
+  markers against manifest entries (CMP-02, ADR-0035)
+7. `AGENTS.md`
 - enforces mandatory documentation lookup order for AI agents
 
 ## Exception Policy
@@ -80,6 +90,9 @@ The final response or PR evidence must state which hardening items passed, which
 - `backend/src/config/architectureModelImportAllowlist.js`, or
 - `backend/src/config/controllerModelImportAllowlist.js`
 - `backend/src/config/architectureGuardrailsAllowlist.js`
+- `apps/dgfy-api/src/config/architectureGuardrailsAllowlist.js` (includes the
+  `ARCHITECTURE_COMPAT_IMPORT_ALLOWLIST` compat-import exception list, empty by default per
+  CMP-03, ADR-0035)
 2. Every exception must include:
 - linked task ID
 - planned removal phase/date
