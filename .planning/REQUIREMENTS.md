@@ -137,7 +137,7 @@ Committed scope for the v2.1 Legacy Data Migration milestone. Migration-runner-o
 - [x] **LDM-02**: `products` schema is extended with 6 typed columns (`sku_code`, `cost_per_unit`, `vat_type`, `senior_pwd_discount_eligible`, `description`, `unit_of_measure`) plus one `attributes` JSON column, with the 1:1-vs-1:many satellite-table folding design (including `product_composition`/BOM) documented before mapper code is written.
 - [x] **LDM-03**: A new `product_embeddings` table exists (one row per product) for carry-over vector storage.
 - [x] **LDM-04**: `inventory_movements` gains a natural-key unique index (`business_id`, `reference_type`, `reference_id`) so retries are idempotency-safe.
-- [ ] **LDM-05**: `availments` gains an additive `source_system` column, sequenced with the Sales History phase.
+- [x] **LDM-05**: `availments` gains an additive `source_system` column, sequenced with the Sales History phase.
 
 ### Product & Inventory Migration
 

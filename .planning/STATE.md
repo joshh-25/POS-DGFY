@@ -6,14 +6,14 @@ current_phase: 14
 current_phase_name: sales-history-migration-full-verification
 status: executing
 stopped_at: Phase 14 context gathered
-last_updated: "2026-07-15T02:10:14.915Z"
+last_updated: "2026-07-15T02:23:07.422Z"
 last_activity: 2026-07-15
 last_activity_desc: Phase 14 execution resumed (wave continue)
 progress:
   total_phases: 15
   completed_phases: 12
   total_plans: 93
-  completed_plans: 84
+  completed_plans: 85
   percent: 80
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 ## Current Position
 
 Phase: 14 (sales-history-migration-full-verification) — EXECUTING
-Plan: 3 of 11
+Plan: 4 of 11
 Status: Ready to execute
 Last activity: 2026-07-15 — Phase 14 execution resumed (wave continue)
 
@@ -114,6 +114,7 @@ Progress: [█████████░] 95%
 | Phase 13.5 P04 | 45min | 2 tasks | 8 files |
 | Phase 14 P05 | 9min | 2 tasks | 3 files |
 | Phase 14 P06 | 7min | 1 tasks | 3 files |
+| Phase 14 P07 | 8min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -151,6 +152,8 @@ Recent decisions affecting current work:
 - [Phase 14]: [Phase 14 Plan 05]: availment and availment_item retry recovery use source_reference natural keys.
 - [Phase 14]: [Phase 14 Plan 05]: runApplyTransformations closes only the landlord, legacy tenant, and business target connections it opens; caller-owned coreSequelize remains caller-managed.
 - [Phase 14]: [Phase 14 Plan 06]: Sales monetary verification uses BigInt DECIMAL(14,4) units; only sale_location_not_mapped, sale_terminal_not_mapped, and sale_cashier_not_mapped are non-blocking attribution findings.
+- [Phase 14]: [Phase 14 Plan 07]: ADR impact not needed for sales-history docs; ADR 0029 accepted v2.1 amendment already authorizes additive historical migration with no live write-path change. — Documented because Plan 07 updated authoritative database docs and confirmed no cross-boundary live write path or ownership change was introduced.
+- [Phase 14]: [Phase 14 Plan 07]: Phase 14 rehearsal proof requires six entities, approved manifest/context, target-plus-metadata reset, exact sales totals, reviewed non-blocking findings, and redacted evidence. — Documented because the rehearsal runbook is the contract Plan 08 must implement and a skipped harness alone cannot satisfy VER-03.
 
 ### Pending Todos
 
@@ -180,6 +183,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T02:09:41.443Z
+Last session: 2026-07-15T02:22:34.597Z
 Stopped at: Phase 14 context gathered
 Resume file: .planning/phases/14-sales-history-migration-full-verification/14-CONTEXT.md
