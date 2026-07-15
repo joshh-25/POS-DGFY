@@ -1,21 +1,18 @@
-import { Mail, Phone, UserRound } from 'lucide-react';
+import { CustomerIdentityCard } from './CustomerIdentityCard.jsx';
 
 export function SavedCustomerDetailsPanel({
   title = 'Customer Details',
-  subtitle = "We'll use these details for your order or booking.",
   customerName = '',
   customerEmail = '',
   customerPhone = '',
   hasSavedCustomerDetails = false,
-  rememberCustomerDetails = false,
-  maskedSavedCustomerPreview = '',
   isEditing = false,
   isMobileViewport = false,
   feedback = null,
   onUseDifferentDetails,
   onCancelEdit,
   onApplyEdit,
-  onRememberChange,
+  applyLabel = 'Apply Details',
   children = null
 }) {
   if (!hasSavedCustomerDetails && !isEditing) {
@@ -25,36 +22,16 @@ export function SavedCustomerDetailsPanel({
   return (
     <section
       style={{
-        border: '1px solid #dbe5ee',
-        borderRadius: 16,
-        background: '#fff',
-        padding: isMobileViewport ? 12 : 13,
+        border: 'none',
+        borderRadius: 0,
+        background: 'transparent',
+        padding: 0,
         display: 'grid',
         gap: 10
       }}
     >
       <div style={{ display: 'grid', gap: 6 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: isMobileViewport ? 'flex-start' : 'center',
-            justifyContent: 'space-between',
-            gap: 10,
-            flexDirection: isMobileViewport ? 'column' : 'row'
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a' }}>{title}</div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: '#334155' }}>
-            <input
-              type="checkbox"
-              checked={rememberCustomerDetails}
-              onChange={(event) => onRememberChange?.(event.target.checked)}
-              style={{ width: 16, height: 16 }}
-            />
-            <span>Remember these details for my next order</span>
-          </label>
-        </div>
-        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>{subtitle}</div>
+        <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a' }}>{title}</div>
         {feedback?.message ? (
           <div
             style={{
@@ -74,76 +51,21 @@ export function SavedCustomerDetailsPanel({
 
       {!isEditing ? (
         <>
-          <div
-            style={{
-              border: '1px solid #dbe5ee',
-              borderRadius: 14,
-              background: '#f8fafc',
-              padding: isMobileViewport ? 11 : 12,
-              display: 'grid',
-              gap: 8
-            }}
-          >
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: isMobileViewport ? '1fr' : 'auto minmax(0, 1fr)',
-                gap: isMobileViewport ? 10 : 12,
-                alignItems: 'center',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                <div
-                  style={{
-                    width: isMobileViewport ? 36 : 40,
-                    height: isMobileViewport ? 36 : 40,
-                    borderRadius: 12,
-                    background: '#eff6ff',
-                    color: '#1a4e8d',
-                    display: 'grid',
-                    placeItems: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <UserRound size={isMobileViewport ? 18 : 20} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
-                    {customerName || 'Guest customer'}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Guest checkout</div>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))',
-                  gap: 8,
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, color: '#475569' }}>
-                  <Mail size={14} color="#64748b" style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {customerEmail || 'No email added yet.'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, color: '#475569' }}>
-                  <Phone size={14} color="#64748b" style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {customerPhone || 'No phone number added yet.'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <CustomerIdentityCard
+            title="Saved Details"
+            subtitle=""
+            showVerifiedBadge={false}
+            name={customerName || 'Guest customer'}
+            phone={customerPhone}
+            email={customerEmail}
+            isMobileViewport={isMobileViewport}
+          />
 
           <div
             style={{
               display: 'flex',
               alignItems: 'flex-start',
-              justifyContent: 'space-between',
+              justifyContent: 'flex-end',
               gap: 8
             }}
           >
@@ -166,18 +88,13 @@ export function SavedCustomerDetailsPanel({
         </>
       ) : (
         <>
-          {maskedSavedCustomerPreview ? (
-            <div style={{ fontSize: 12, color: '#64748b' }}>
-              Saved details on this device: {maskedSavedCustomerPreview}
-            </div>
-          ) : null}
           {children}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: isMobileViewport ? 'nowrap' : 'wrap' }}>
             <button
               type="button"
               onClick={onCancelEdit}
               style={{
-                minHeight: 40,
+                minHeight: 36,
                 borderRadius: 12,
                 border: '1px solid #cbd5e1',
                 background: '#fff',
@@ -185,7 +102,8 @@ export function SavedCustomerDetailsPanel({
                 padding: '0 14px',
                 fontSize: 13,
                 fontWeight: 700,
-                cursor: 'pointer'
+                cursor: 'pointer',
+                flex: isMobileViewport ? 1 : undefined
               }}
             >
               Cancel
@@ -194,7 +112,7 @@ export function SavedCustomerDetailsPanel({
               type="button"
               onClick={onApplyEdit}
               style={{
-                minHeight: 40,
+                minHeight: 36,
                 borderRadius: 12,
                 border: '1px solid #1a4e8d',
                 background: '#1a4e8d',
@@ -202,10 +120,11 @@ export function SavedCustomerDetailsPanel({
                 padding: '0 14px',
                 fontSize: 13,
                 fontWeight: 700,
-                cursor: 'pointer'
+                cursor: 'pointer',
+                flex: isMobileViewport ? 1 : undefined
               }}
             >
-              Apply Details
+              {applyLabel}
             </button>
           </div>
         </>

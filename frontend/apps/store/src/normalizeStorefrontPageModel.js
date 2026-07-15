@@ -137,17 +137,25 @@ const normalizeStorefrontPromos = ({ promos, legacyPromo, now = new Date(), time
     return {
       ...entry,
       promo_code: promoCode,
+      promoCode,
       title,
       badge,
       subtitle: trimText(entry.subtitle),
       validity_text: trimText(entry.validity_text || entry.validityText),
       discount_percent: Number.isFinite(discountPercent) ? discountPercent : null,
+      discountPercent: Number.isFinite(discountPercent) ? discountPercent : null,
       valid_time_start: validTimeStart,
+      validTimeStart,
       valid_time_end: validTimeEnd,
+      validTimeEnd,
       valid_from: validFrom,
+      validFrom,
       valid_until: validUntil,
+      validUntil,
       availability_status: availability.status,
+      availabilityStatus: availability.status,
       availability_message: availability.message,
+      availabilityMessage: availability.message,
       active: true
     };
   };
@@ -331,7 +339,7 @@ export const normalizeStorefrontPageModel = ({
     || selectedStore?.storefront_hours
     || selectedStore?.storefront_hours_status?.display
   );
-  
+
   const contactRows = [];
   if (phone) contactRows.push({ label: 'Call', value: phone, href: `tel:${phone}` });
   if (facebookLink) contactRows.push({ label: 'Facebook', value: 'Facebook', href: facebookLink });

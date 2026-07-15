@@ -53,7 +53,7 @@ describe('StorefrontHeaderNav', () => {
     expect(screen.getByRole('dialog', { name: 'Mobile navigation' })).toBeTruthy();
   });
 
-  it('shows initials and first name in desktop signed-in storefront header', () => {
+  it('shows initials without the first name in desktop signed-in storefront header', () => {
     render(
       <StorefrontHeaderNav
         {...baseProps}
@@ -63,6 +63,6 @@ describe('StorefrontHeaderNav', () => {
 
     expect(screen.getByRole('button', { name: 'Profile' })).toBeTruthy();
     expect(screen.getByText('GD')).toBeTruthy();
-    expect(screen.getByText('Gaille')).toBeTruthy();
+    expect(screen.queryByText('Gaille')).toBeNull();
   });
 });

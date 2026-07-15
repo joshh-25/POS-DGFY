@@ -120,6 +120,19 @@ export const buildPosTerminalUrl = (search = '') => {
   return `${protocol}//pos.${hostname}${terminalPath}`;
 };
 
+export const buildPosAppUrl = () => {
+  const terminalUrl = buildPosTerminalUrl();
+  try {
+    const target = new URL(terminalUrl, typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1');
+    target.pathname = '/';
+    target.search = '';
+    target.hash = '';
+    return target.toString();
+  } catch {
+    return terminalUrl.replace(/\/terminal(?:\?.*)?$/, '/');
+  }
+};
+
 export const buildDgfyAuthUrl = ({
   intent = 'customer',
   mode = 'sign-in',
