@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-07-11
+last_reviewed: 2026-07-15
 applies_to: dgfy_database_foundation
 topic: dgfy_database_foundation
 ---
@@ -138,6 +138,12 @@ foundation tables:
 | `terminal_identities` | Terminal identity/status/location-binding foundation (no checkout/payment behavior) | `terminal_code` (unique), `label`, `location_id` → `locations.id` (nullable), `status`, `last_seen_at` |
 | `tenant_ownership_metadata` | Tenant-local owner/business linkage | `business_id` (opaque UUID, unique), `business_handle`, `stable_opaque_suffix`, `owner_dgfy_account_id` (opaque UUID) |
 | `tenant_audit_logs` | Tenant-local audit trail for the tables above | `audit_log_id`, `actor_dgfy_account_id` (opaque UUID, nullable), `staff_account_id` → `staff_accounts.id` (nullable), `action`, `before_snapshot`/`after_snapshot` |
+| `product_folders` | Flat product grouping used by POS/catalog and v2.1 product migration | `id`, `business_id`, `name`, `description`, `show_in_pos_filter`, `is_active`; unique `(business_id, name)` |
+| `products` | DGFY product identity and migrated legacy item evidence | `id`, `business_id`, `folder_id` → `product_folders.id`, `name`, `category`, `inventory_mode`, `stock_count`, `base_price`, booking fields, `sku_code`, `description`, `unit_of_measure`, `cost_per_unit`, `vat_type`, `senior_pwd_discount_eligible`, `attributes` JSON |
+| `inventory_movements` | Append-only inventory ledger and migrated stock/opening-balance evidence | `id`, `business_id`, `product_id` → `products.id`, `movement_type`, `quantity`, `reference_type`, `reference_id`, actor fields, snapshots, `unique_inventory_movements_natural_key` |
+| `product_embeddings` | Migrated AI vector evidence for products | `id`, `business_id`, `product_id` → `products.id`, `vector`, `legacy_embedding_id`; unique product row |
+| `availments` | Checkout/sales header and migrated legacy POS transaction evidence | `id`, `business_id`, `branch_id` → `locations.id`, `shift_id` → `shifts.id`, `terminal_id` → `terminal_identities.id`, `cashier_account_id` → `staff_accounts.id`, `status`, `document_context`, money totals, `source_reference`, fulfillment cache columns, `source_system`, `legacy_snapshot`, `additional_fees` |
+| `availment_items` | Checkout/sales line items and migrated legacy POS line evidence | `id`, `business_id`, `availment_id` → `availments.id`, `product_id` → `products.id`, `product_name`, quantity/price/tax/stock fields, `source_system`, `source_reference`, `legacy_snapshot`; unique `source_reference` |
 
 **Cross-database references are opaque UUIDs, never foreign keys.**
 `dgfy_account_id`, `owner_dgfy_account_id`, and `actor_dgfy_account_id` point
@@ -203,20 +209,31 @@ explicit, validated target list rather than inferring targets from legacy
   `DGFY_BUSINESS_DB_NAMES` target list is the accepted mechanism for initial
   verification before registry-driven target resolution is wired up.
 
-## Explicit Out-of-Scope Domains (D-15, ADR 0029)
+## Explicit Out-of-Scope Domains and v2.1 Additions (D-15, ADR 0029)
 
-The following domains are **not** part of the `dgfy_core` landlord
-foundation or any `dgfy_business_*` tenant foundation, and must never appear
-as tables in either. `dgfyCoreContract.js` and `dgfyBusinessContract.js` each
-encode this as an explicit `rejectedTables` list used by their own schema
-tests and by Plan 04's verification scope guard:
+The original Phase 02 foundation deliberately excluded product, inventory,
+POS, fiscal, promo, and Storefront operational tables. Later accepted
+commerce and v2.1 migration phases added DGFY-owned target tables for product,
+inventory, shifts, availments, payments, fulfillment events, and sales-history
+provenance. The current rule is therefore table-name specific:
+`dgfyBusinessContract.js` rejects legacy/source table names such as
+`items`, `stock_movements`, `pos_transactions`, and
+`pos_transaction_lines`, while allowing the DGFY-owned targets
+`products`, `inventory_movements`, `availments`, and `availment_items`.
 
-- Products/items, SKUs, product variants, categories.
-- Purchase orders, job orders, stock movements, item/location stock,
-  FIFO batches, suppliers/supplier-items (Inventory/Catalog ownership per
-  ADR 0029).
-- POS transactions/lines, shifts, cashier sessions, terminal sessions
-  (POS ownership per ADR 0029).
+The following legacy/source or still-deferred domains must not appear as new
+canonical tables in `dgfy_core` or `dgfy_business_*`:
+
+- Legacy/source product table names: `items`, SKUs, product variants, and
+  categories. The DGFY target is `products`.
+- Purchase orders, job orders, legacy `stock_movements`,
+  `item_location_stocks`, FIFO batches, suppliers/supplier-items
+  (Inventory/Catalog ownership per ADR 0029). The DGFY target ledger is
+  `inventory_movements`.
+- Legacy/source POS table names: `pos_transactions`,
+  `pos_transaction_lines`, cashier sessions, and terminal sessions. The DGFY
+  sales-history targets are `availments` and `availment_items`; live shift
+  behavior uses the DGFY `shifts` table.
 - Discounts, promos, promotions.
 - Fiscal receipts and fiscal compliance logs.
 - Checkout sessions, Storefront pages, Storefront orders/carts (Storefront
@@ -224,8 +241,32 @@ tests and by Plan 04's verification scope guard:
 - Canonical `branches`/`locations` inside `dgfy_core` (see D-10 above — these
   belong in `dgfy_business_*`, not `dgfy_core`).
 
-These domains are deferred to later milestones once Accounts, Businesses, and
-Tenancy are stable (see `.planning/PROJECT.md` Out of Scope).
+Remaining excluded domains are deferred to later milestones or compatibility
+seams as documented in `.planning/PROJECT.md` Out of Scope.
+
+## Phase 14 Sales-History Schema Contract
+
+Phase 14 adds the final sales-history migration surface to the tenant schema
+without changing live checkout write behavior:
+
+| Table | Column/index | Shape | Notes |
+|---|---|---|---|
+| `availments` | `source_system` | `STRING(32) NULL` | `legacy_migration` for migrated headers; null for existing/live rows. |
+| `availments` | `legacy_snapshot` | `JSON NULL` | Explicitly allowlisted legacy header evidence: unresolvable FK-shaped fields, void metadata, payment-processing detail, F&B/fiscal/customer/order snapshots. |
+| `availments` | `additional_fees` | `JSON NULL` | Flat `{ service_fee_amount, delivery_fee }` migrated from the actual legacy `service_fee_amount` and `delivery_fee` fields; no live POS fee write path is added. |
+| `availment_items` | `source_system` | `STRING(32) NULL` | Line-level provenance mirroring `availments.source_system`. |
+| `availment_items` | `source_reference` | `STRING(64) NULL` | Namespaced `legacy_pos_line:<line_id>` reference. |
+| `availment_items` | `legacy_snapshot` | `JSON NULL` | Explicitly allowlisted legacy line evidence: raw parent/item IDs, unit/cost/stock-exempt/override/F&B snapshots. |
+| `availment_items` | `unique_availment_items_source_reference` | unique index on `source_reference` | Retry/crash idempotency for migrated lines. MySQL permits multiple nulls, so this is additive for existing live rows. |
+
+`availments.source_reference` and `unique_availments_source_reference`
+already exist and are reused for migrated headers. The Phase 14 contract is
+implemented by
+`apps/dgfy-migration-runner/src/migrations/schema/20260718000000-extend-schema-for-sales-history-migration.cjs`
+and mirrored in `apps/dgfy-migration-runner/src/schemaContracts/dgfyBusinessContract.js`.
+ADR impact is not needed because ADR 0029's accepted 2026-07 amendment already
+authorizes additive historical migration, and no live write path or ownership
+boundary changes.
 
 ## Migration and Verification Contract (DBF-04, D-21 through D-24)
 

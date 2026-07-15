@@ -2,22 +2,22 @@
 status: authoritative
 authority_level: authoritative
 owner: database
-last_reviewed: 2026-07-11
+last_reviewed: 2026-07-15
 applies_to: dgfy_data_migration
 topic: dgfy_data_migration_map
 ---
 
 # DGFY Data Migration Map
 
-This document is the authoritative MIG-01 evidence for Phase 03
-(`old-to-new-migration-proof`): it defines, for every legacy/current record
-type in scope, the exact source fields, target fields, transform rule,
-`legacy_id_map` key shape, skip/conflict/orphan/staff-linkage reason codes, and the
-verification check that later plans (03-03 dry-run, 03-04 apply, 03-05
-verify) must implement against. It is the single source of truth the pure
-mapper functions in `apps/dgfy-migration-runner/src/data/mappings.js`
-implement — dry-run and apply share these exact functions so their behavior
-cannot drift (Pitfall 2 in `03-RESEARCH.md`).
+This document is the authoritative MIG-01/LDM/SHM mapping evidence for the
+DGFY data migration runner. It defines, for every legacy/current record type
+in scope, the exact source fields, target fields, transform rule,
+`legacy_id_map` key shape, skip/conflict/orphan/staff-linkage/sales reason
+codes, and the verification checks that dry-run, apply, retry, and verify
+must implement against. It is the single source of truth the pure mapper
+functions in `apps/dgfy-migration-runner/src/data/mappings.js` implement —
+dry-run and apply share these exact functions so their behavior cannot drift
+(Pitfall 2 in `03-RESEARCH.md`).
 
 ## Governing Docs and ADRs
 
@@ -33,13 +33,17 @@ cannot drift (Pitfall 2 in `03-RESEARCH.md`).
   — `storefront_discovery_index` is a projection/read-model, not canonical
   branch/location truth.
 - `docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md`
-  — product, inventory, POS, fiscal, promo, and Storefront-operational
-  domains are out of scope for this phase (see "Explicit Exclusions" below).
+  — product, inventory, POS, fiscal, promo, and Storefront operational
+  ownership boundaries. Its accepted 2026-07 v2.1 amendment authorizes the
+  additive historical migration of legacy `items`, `stock_movements`,
+  `pos_transactions`, and `pos_transaction_lines` into DGFY-owned target
+  tables without changing live write-path ownership.
 
-**ADR impact:** ADR 0028 is amended by Phase 13.5 before this document's
-staff-authentication rules are applied. This document mirrors that accepted
-tenant-local-staff-first model; it introduces no additional architectural
-decision beyond the ADR amendment.
+**ADR impact:** Not needed. ADR 0028 is already amended by Phase 13.5 for the
+tenant-local-staff-first model, and ADR 0029's accepted 2026-07 amendment
+already authorizes this additive historical Catalog/Inventory/POS migration.
+This document mirrors those accepted decisions and introduces no live
+write-path ownership change.
 
 ## Conventions
 
@@ -88,6 +92,15 @@ stable `reason_code`, a human-readable `message`, and `remediation` guidance.
 | `orphan_tenant_user_link` | `orphan` | An accepted membership has no resolvable tenant-local staff account link (missing `tenant_user_id`, or the staff account has not been migrated/ID-mapped yet). |
 | `location_not_mapped` | `orphan` | A terminal registry entry references a legacy `location_id` that has no resolved target `locations.id` yet; the terminal is still migrated with `location_id: null`. |
 | `out_of_scope_entity` | `skip` | The legacy table is explicitly excluded from Phase 03 migration (see "Explicit Exclusions"). |
+| `lossy_category_collapse` | `skip` | A legacy transfer stock movement cannot be honestly represented in the target `inventory_movements` table because the target has no location dimension; no row is inserted. |
+| `folder_nesting_flattened` | `skip` | A legacy nested folder is migrated as a flat `product_folders` row; the parent-child relationship is intentionally discarded. |
+| `unresolved_ingredient` | `orphan` | A legacy product composition ingredient has no migrated product mapping yet. |
+| `unsupported_sale_status` | `skip` | A legacy `pos_transactions.status` value has no honest target `availments.status`; only `completed` and `voided` migrate. |
+| `sale_location_not_mapped` | `orphan` | A sale references a legacy `location_id` that has no resolved `locations.id`; the header still migrates with `branch_id: null` and preserved raw evidence. |
+| `sale_terminal_not_mapped` | `orphan` | A sale references a legacy `terminal_id` that has no resolved `terminal_identities.id`; the header still migrates with `terminal_id: null` and preserved raw evidence. |
+| `sale_cashier_not_mapped` | `orphan` | A sale references a legacy `cashier_id` that has no resolved `staff_accounts.id`; the header still migrates with `cashier_account_id: null` and preserved raw evidence. |
+| `availment_parent_not_mapped` | `orphan` | A `pos_transaction_lines` row has no resolved parent `availments.id`; no line row is inserted. |
+| `sale_product_not_mapped` | `orphan` | A `pos_transaction_lines` row has no resolved migrated `products.id`; no line row is inserted. |
 
 ## 1. Account Identity
 
@@ -300,19 +313,111 @@ Per ADR 0010 and `docs/database/dgfy-foundation.md`, `storefront_discovery_index
 
 ## 10. Explicit Exclusions (ADR 0029)
 
-The following legacy domains are **never** read as migration sources and **never** produce a target write in Phase 03. `apps/dgfy-migration-runner/src/data/mappings.js` exports `OUT_OF_SCOPE_LEGACY_TABLES` (mirroring `dgfyCoreContract.js`/`dgfyBusinessContract.js`'s `rejectedTables` lists) and `classifyOutOfScopeRecord()`, which dry-run/apply call to record a structured `skip` finding (`out_of_scope_entity`) instead of silently ignoring an encountered record:
+The following legacy domains are **never** read as migration sources and
+**never** produce a target write in the current data migration runner.
+`apps/dgfy-migration-runner/src/data/mappings.js` exports
+`OUT_OF_SCOPE_LEGACY_TABLES` and `classifyOutOfScopeRecord()`, which dry-run
+and apply call to record a structured `skip` finding
+(`out_of_scope_entity`) instead of silently ignoring an encountered record:
 
-- Products, SKUs, product variants, categories.
-- Purchase orders, job orders, item/location stock, FIFO batches, suppliers/supplier-items (Inventory/Catalog ownership, ADR 0029).
-- POS transaction lines, shifts, cashier sessions, terminal sessions (POS ownership, ADR 0029 — **note:** terminal *identity* from `pos_terminal_registry` is in scope per entity 7; terminal *operational* history is not).
+- SKUs, product variants, categories.
+- Purchase orders, job orders, FIFO batches, suppliers/supplier-items
+  (Inventory/Catalog ownership, ADR 0029).
+- Shifts, cashier sessions, terminal sessions (POS ownership, ADR 0029 —
+  **note:** terminal *identity* from `pos_terminal_registry` is in scope per
+  entity 7; terminal *operational* history is not).
 - Discounts, promos, promotions.
 - Fiscal receipts and fiscal compliance logs.
 - Checkout sessions, Storefront pages, Storefront orders/carts (Storefront operational ownership, ADR 0029).
 - Any frontend/compatibility seam migration (deferred to Phase 05 per `.planning/PROJECT.md`).
 
-**v2.1 amendment (Phase 12, ADR 0029 Amendment):** legacy `items`, `stock_movements`, and `pos_transactions` are no longer permanently excluded. Starting Phase 13, `items` is migrated into `dgfy_business_*.products` and `stock_movements` into `dgfy_business_*.inventory_movements`; starting Phase 14, `pos_transactions` sales history is migrated into `dgfy_business_*.availments`. `pos_transaction_lines` remains excluded until Phase 14 (SHM-02).
+**v2.1 amendment (Phase 12/14, ADR 0029 Amendment):** legacy `items`,
+`item_folders`, `item_location_stocks`, `item_embeddings`,
+`stock_movements`, `pos_transactions`, and `pos_transaction_lines` are in
+scope for the v2.1 historical migration. Starting Phase 13, product and
+inventory records migrate into `product_folders`, `products`,
+`inventory_movements`, and `product_embeddings`; starting Phase 14,
+`pos_transactions` and `pos_transaction_lines` migrate into `availments` and
+`availment_items`. They are no longer listed in
+`OUT_OF_SCOPE_LEGACY_TABLES`. Live operational POS shifts, cashier sessions,
+terminal sessions, discounts, fiscal receipts, and Storefront carts/orders
+remain out of scope.
 
-These domains are deferred to later milestones once Accounts, Businesses, and Tenancy are stable (see `.planning/PROJECT.md` Out of Scope, and `docs/database/dgfy-foundation.md`'s "Explicit Out-of-Scope Domains").
+Remaining excluded domains are deferred to later milestones or compatibility
+seams as documented in `.planning/PROJECT.md` Out of Scope and
+`docs/database/dgfy-foundation.md`'s "Explicit Out-of-Scope Domains and v2.1
+Additions" section.
+
+## 11. Sales History: POS Transactions and Lines
+
+**Sources:** tenant-local `pos_transactions` and `pos_transaction_lines`.
+**Targets:** `dgfy_business_*.availments` and
+`dgfy_business_*.availment_items`.
+**Mappers:** `mapPosTransactionToAvailment()` and
+`mapPosTransactionLineToAvailmentItem()`.
+
+Sales history applies only after the product-domain checkpoints for
+`product_folder`, `product`, `inventory_movement`, and `product_embedding`
+are complete for the same tenant. The runner intentionally uses the existing
+full-table scan pattern for these live-growing source tables: every run reads
+all `pos_transactions` and `pos_transaction_lines`, and `legacy_id_map`
+lookup-before-insert plus target `source_reference` unique keys provide retry
+idempotency. No timestamp or watermark cursor is introduced because this is a
+bounded cutover migration, not continuous sync.
+
+### Header: `pos_transactions` -> `availments`
+
+| Source field | Target field/action | Transform rule |
+|---|---|---|
+| `pos_transaction_id` | `legacy_id_map` key | `{ legacy_source: <legacy_tenant_db_name>, legacy_table: 'pos_transactions', legacy_id: <pos_transaction_id> }`. |
+| `invoice_number` | `source_reference` | `legacy_pos:<invoice_number>`; namespaced to avoid collisions with Storefront finalize references. |
+| `location_id` | `branch_id` | Resolved through existing `location` ID map. If unresolved, `branch_id` is null and `sale_location_not_mapped` is emitted. |
+| `terminal_id` | `terminal_id` | Resolved through existing `terminal_identity` ID map. If unresolved, `terminal_id` is null and `sale_terminal_not_mapped` is emitted. |
+| `cashier_id` | `cashier_account_id` | Resolved through existing `staff_account` ID map. If unresolved, `cashier_account_id` is null and `sale_cashier_not_mapped` is emitted. |
+| `shift_id` | snapshot only | Never mapped to target `shift_id`; legacy POS terminal shifts and DGFY shift rows are unrelated domains. |
+| `status` | `status` | `completed` -> `finalized`; `voided` -> `voided`. Other values skip with `unsupported_sale_status`. |
+| `document_context` | `document_context` | `fiscal`/`non_fiscal` pass through; `training_test` maps to null and the raw value stays in the snapshot. |
+| `subtotal_amount`, `discount_amount`, `vat_amount`, `vat_exempt_sales`, `total_amount` | money columns | Direct fixed-scale DECIMAL(14,4) string mapping; `vat_exempt_sales` maps to `vat_exempt_amount`. |
+| `service_fee_amount`, `delivery_fee` | `additional_fees` | Dedicated JSON column `{ service_fee_amount, delivery_fee }`; the actual implemented source field is `service_fee_amount`, not `service_fee`. |
+| `created_at`, `updated_at` | `created_at`, `updated_at`, `finalized_at` | Source timestamps are preserved; `finalized_at` uses source `created_at`. |
+| remaining current header fields | `legacy_snapshot.legacy_pos` | Explicit allowlist only: invoice/document/idempotency, raw unresolved FK values, order/fulfillment/customer/delivery, payment and pickup-cash fields, fiscal fields, F&B fields, original status, and void metadata. The mapper never spreads an arbitrary source row. |
+
+Migration-populated live-checkout-only/cache fields remain null:
+`customer_account_id`, `cashier_dgfy_account_id`, `sc_pwd_id_number`,
+`sc_pwd_metadata`, and `fulfillment_*`.
+
+### Line: `pos_transaction_lines` -> `availment_items`
+
+| Source field | Target field/action | Transform rule |
+|---|---|---|
+| `line_id` | `legacy_id_map` key and `source_reference` | Key uses `{ legacy_table: 'pos_transaction_lines', legacy_id: <line_id> }`; target reference is `legacy_pos_line:<line_id>`. |
+| `pos_transaction_id` | `availment_id` | Resolved through the parent `pos_transactions` -> `availments` ID map. Missing parent map emits `availment_parent_not_mapped` and no row is inserted. |
+| `item_id` | `product_id` | Resolved through Phase 13 `items` -> `products` ID map. Missing product map emits `sale_product_not_mapped` and no row is inserted. |
+| product snapshot name | `product_name` | Supplied by dry-run/apply context from the migrated product evidence. |
+| `quantity` | `quantity` | Passthrough. |
+| `sale_price` | `unit_price` | Passthrough. |
+| `stock_effect_type` | `stock_effect_type` | Passthrough. |
+| `vat_type_snapshot`, `vat_rate_snapshot` | `tax_treatment`, `tax_rate` | Passthrough. |
+| `created_at`, `updated_at` | `created_at`, `updated_at` | Source timestamps are preserved. |
+| remaining current line fields | `legacy_snapshot.legacy_pos_line` | Explicit allowlist: raw parent/item IDs, unit of measure, cost snapshot, stock-exempt reason, price override evidence, line subtotal, and F&B line snapshots. |
+
+### Phase 14 target schema/index contract
+
+The additive tenant schema migration
+`20260718000000-extend-schema-for-sales-history-migration.cjs` adds:
+
+| Table | Column/index | Shape | Purpose |
+|---|---|---|---|
+| `availments` | `source_system` | `STRING(32) NULL` | `legacy_migration` for migrated headers; null for existing/live rows. |
+| `availments` | `legacy_snapshot` | `JSON NULL` | Allowlisted unmapped header evidence, void metadata, and payment-processing detail. |
+| `availments` | `additional_fees` | `JSON NULL` | Flat `{ service_fee_amount, delivery_fee }` fee preservation. |
+| `availment_items` | `source_system` | `STRING(32) NULL` | Line-level migration provenance. |
+| `availment_items` | `source_reference` | `STRING(64) NULL` | Namespaced line legacy reference. |
+| `availment_items` | `legacy_snapshot` | `JSON NULL` | Allowlisted unmapped line evidence. |
+| `availment_items` | `unique_availment_items_source_reference` | unique index on `source_reference` | Retry/crash idempotency for migrated lines; multiple nulls remain allowed by MySQL. |
+
+`availments.source_reference` and `unique_availments_source_reference`
+already exist and are reused for migrated headers.
 
 ## Verification Checks Summary
 
@@ -321,10 +426,11 @@ Verification separates `staff_auth` from core/product/inventory fidelity.
 status, non-blocking staff-linkage findings, and a no-secrets-in-report check
 that rejects password/POS PIN hashes, raw invite tokens, reset tokens, and
 temporary passwords in generated reports. `data_migration_ok` is computed from
-product, inventory, and core fidelity only; pending/missing DGFY linkage does
-not make tenant-local staff migration fail. Existing `account_staff_assignments`
-rows without accepted-membership evidence remain a blocking relationship
-violation because corrupt linkage is different from absent/pending linkage.
+core, product, inventory, and sales-history fidelity; pending/missing DGFY
+linkage does not make tenant-local staff migration fail. Existing
+`account_staff_assignments` rows without accepted-membership evidence remain a
+blocking relationship violation because corrupt linkage is different from
+absent/pending linkage.
 
 | Entity | `legacy_table` | Target table(s) | MIG-05 verification check |
 |---|---|---|---|
@@ -337,3 +443,18 @@ violation because corrupt linkage is different from absent/pending linkage.
 | Terminal identity | `system_settings.pos_terminal_registry` | `terminal_identities` | `legacy_id_map` completeness; zero secret fields present; `location_id` chain valid when non-null. |
 | Tenant ownership metadata | `tenants` (related write) | `tenant_ownership_metadata` | Exactly one row per business with confirmed owner evidence. |
 | Storefront discovery projection | (none — optional) | `storefront_discovery_index` | Evidence-only; never blocks MIG-01 through MIG-05 completion. |
+| Product folder | `item_folders` | `product_folders` | `legacy_id_map` completeness; flat folder contract; folder nesting reported as expected lossy evidence. |
+| Product | `items` | `products` | `legacy_id_map` completeness; promoted typed fields; attributes folding; category collapse to `retail`; stock count equals opening-balance evidence. |
+| Inventory movement | `stock_movements`, `item_location_stocks` | `inventory_movements` | Movement type totals; transfer collapse as expected lossy evidence; opening-balance rows keyed by `legacy_opening_balance`; retry idempotency. |
+| Product embedding | `item_embeddings` | `product_embeddings` | One row per migrated product with unchanged vector and `legacy_embedding_id` traceability. |
+| Sales header | `pos_transactions` | `availments` | Counts, status/source totals, exact `total_amount` sums, `legacy_migration` provenance, ID-map completeness, and void fidelity. |
+| Sales line | `pos_transaction_lines` | `availment_items` | Counts, source-reference provenance, parent availment FK, product FK, and ID-map completeness. |
+
+The VER-01 six-entity milestone verdict is exactly:
+`product_folder`, `product`, `inventory_movement`, `product_embedding`,
+`availment`, and `availment_item`. Header attribution findings
+`sale_location_not_mapped`, `sale_terminal_not_mapped`, and
+`sale_cashier_not_mapped` stay visible but non-blocking because raw source
+values are preserved. Unsupported sale statuses, missing parent availment
+maps, and missing product maps remain blocking. Sales monetary verification
+uses fixed-scale BigInt DECIMAL(14,4) units, not binary floating point.
