@@ -232,6 +232,32 @@ export default (sequelize) => {
         fulfillment_stage: {
             type: DataTypes.STRING(32),
             allowNull: true
+        },
+        // Phase 14 (14-01, LDM-05): sales-history migration provenance.
+        // NULL for every existing/live row; the migration mapper explicitly
+        // writes 'legacy_migration'. Persistence-only — no live checkout
+        // input schema, controller, repository payload, or serializer
+        // accepts or assembles this field (ADR 0029, D-14-09).
+        source_system: {
+            type: DataTypes.STRING(32),
+            allowNull: true
+        },
+        // Phase 14 (14-01, D-14-01/D-14-05/D-14-08): allowlisted unmapped
+        // header evidence (unresolvable FK-shaped fields, legacy void
+        // metadata, generic payment-processing detail with no live target
+        // column). Persistence-only, populated only by the migration mapper.
+        legacy_snapshot: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        // Phase 14 (14-01, D-14-09): flat { service_fee_amount, delivery_fee }
+        // shape, populated only by the migration mapper. Explicitly NOT
+        // wired to any live checkout write path in this plan — the new
+        // system today has no live fee computation (see
+        // availmentUseCases.js's hardcoded service_fee_amount placeholder).
+        additional_fees: {
+            type: DataTypes.JSON,
+            allowNull: true
         }
     }, {
         sequelize,

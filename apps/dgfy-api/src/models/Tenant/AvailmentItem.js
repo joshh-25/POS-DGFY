@@ -100,6 +100,29 @@ export default (sequelize) => {
         cancelled_at: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        // Phase 14 (14-01, SHM-04): line-level sales-history migration
+        // provenance, mirroring availments.source_system exactly.
+        // Persistence-only — populated only by the migration mapper, never
+        // by any live checkout input/create surface.
+        source_system: {
+            type: DataTypes.STRING(32),
+            allowNull: true
+        },
+        // Phase 14 (14-01, SHM-04): namespaced legacy reference
+        // (legacy_pos_line:<line_id>), following the exact
+        // availments.source_reference pattern. Target-first crash recovery
+        // and retry idempotency for line inserts.
+        source_reference: {
+            type: DataTypes.STRING(64),
+            allowNull: true
+        },
+        // Phase 14 (14-01): line detail with no first-class target slot
+        // (raw parent/item IDs, UOM, cost, stock-exempt reason, subtotal,
+        // override evidence, F&B snapshots). Persistence-only.
+        legacy_snapshot: {
+            type: DataTypes.JSON,
+            allowNull: true
         }
     }, {
         sequelize,
@@ -110,7 +133,8 @@ export default (sequelize) => {
         createdAt: 'created_at',
         updatedAt: 'updated_at',
         indexes: [
-            { fields: ['business_id', 'availment_id'], name: 'idx_availment_items_business_availment' }
+            { fields: ['business_id', 'availment_id'], name: 'idx_availment_items_business_availment' },
+            { fields: ['source_reference'], name: 'unique_availment_items_source_reference', unique: true }
         ]
     });
 

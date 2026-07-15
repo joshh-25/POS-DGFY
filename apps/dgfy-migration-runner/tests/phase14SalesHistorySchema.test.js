@@ -1,6 +1,7 @@
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync } from 'fs';
 import { jest } from '@jest/globals';
 import { Sequelize } from 'sequelize';
 
@@ -17,6 +18,25 @@ const MIGRATION_PATH = join(
   'schema',
   '20260718000000-extend-schema-for-sales-history-migration.cjs'
 );
+
+// Task 2: apps/dgfy-api is a sibling package with its own node_modules
+// (mysql2/sequelize) — resolved relative to each model file's own location
+// by Node's ESM resolver, not by this test file's location.
+const DGFY_API_ROOT = join(__dirname, '..', '..', 'dgfy-api');
+const AVAILMENT_MODEL_PATH = join(DGFY_API_ROOT, 'src', 'models', 'Tenant', 'Availment.js');
+const AVAILMENT_ITEM_MODEL_PATH = join(DGFY_API_ROOT, 'src', 'models', 'Tenant', 'AvailmentItem.js');
+
+// Every live availment input/create/finalize/serializer surface a Phase 14
+// field must never appear in (persistence-only, ADR 0029/D-14-09).
+const LIVE_AVAILMENT_SOURCE_SURFACE_PATHS = [
+  join(DGFY_API_ROOT, 'src', 'modules', 'availments', 'entities', 'availmentEntity.js'),
+  join(DGFY_API_ROOT, 'src', 'modules', 'availments', 'controllers', 'availmentController.js'),
+  join(DGFY_API_ROOT, 'src', 'modules', 'availments', 'usecases', 'availmentUseCases.js'),
+  join(DGFY_API_ROOT, 'src', 'modules', 'availments', 'usecases', 'storefrontFinalizeUseCases.js'),
+  join(DGFY_API_ROOT, 'src', 'modules', 'availments', 'repositories', 'availmentRepository.js')
+];
+
+const PHASE_14_FIELD_NAMES = ['source_system', 'legacy_snapshot', 'additional_fees'];
 
 describe('Phase 14 Plan 01: dgfyBusinessContract sales-history persistence surface', () => {
   test('LDM-05/D-14-01/D-14-08/D-14-09: availments contract gains source_system/legacy_snapshot/additional_fees without removing any existing column', () => {
@@ -230,5 +250,127 @@ describe('Phase 14 Plan 01: sales-history schema migration (20260718000000-exten
       removedColumns.some((entry) => entry.tableName === 'availments' && entry.columnName === 'source_reference')
     ).toBe(false);
     expect(removedIndexes.some((entry) => entry.indexName === 'unique_availments_source_reference')).toBe(false);
+  });
+});
+
+describe('Phase 14 Plan 02: apps/dgfy-api tenant persistence model parity (Availment.js/AvailmentItem.js)', () => {
+  let sequelize;
+  let Availment;
+  let AvailmentItem;
+
+  beforeAll(async () => {
+    // No live DB connection is opened — Model.init() only builds the
+    // schema definition; mysql2 is present in apps/dgfy-api's own
+    // node_modules so Sequelize's dialect resolution succeeds without a
+    // connect() call.
+    sequelize = new Sequelize('phase14_parity_check', 'user', 'pass', {
+      dialect: 'mysql',
+      logging: false
+    });
+    const { default: defineAvailment } = await import(`file://${AVAILMENT_MODEL_PATH}`);
+    const { default: defineAvailmentItem } = await import(`file://${AVAILMENT_ITEM_MODEL_PATH}`);
+    Availment = defineAvailment(sequelize);
+    AvailmentItem = defineAvailmentItem(sequelize);
+  });
+
+  afterAll(async () => {
+    if (sequelize) await sequelize.close();
+  });
+
+  test('Availment model declares source_system/legacy_snapshot/additional_fees with the exact migration-matching types, nullability, and physical field names', () => {
+    const attrs = Availment.rawAttributes;
+
+    expect(attrs.source_system).toBeDefined();
+    expect(attrs.source_system.allowNull).toBe(true);
+    expect(attrs.source_system.type.toString()).toContain('VARCHAR(32)');
+    expect(attrs.source_system.field ?? 'source_system').toBe('source_system');
+
+    expect(attrs.legacy_snapshot).toBeDefined();
+    expect(attrs.legacy_snapshot.allowNull).toBe(true);
+    expect(attrs.legacy_snapshot.type.constructor.name).toBe('JSONTYPE');
+    expect(attrs.legacy_snapshot.field ?? 'legacy_snapshot').toBe('legacy_snapshot');
+
+    expect(attrs.additional_fees).toBeDefined();
+    expect(attrs.additional_fees.allowNull).toBe(true);
+    expect(attrs.additional_fees.type.constructor.name).toBe('JSONTYPE');
+    expect(attrs.additional_fees.field ?? 'additional_fees').toBe('additional_fees');
+  });
+
+  test('AvailmentItem model declares source_system/source_reference/legacy_snapshot with the exact migration-matching types, nullability, and physical field names', () => {
+    const attrs = AvailmentItem.rawAttributes;
+
+    expect(attrs.source_system).toBeDefined();
+    expect(attrs.source_system.allowNull).toBe(true);
+    expect(attrs.source_system.type.toString()).toContain('VARCHAR(32)');
+    expect(attrs.source_system.field ?? 'source_system').toBe('source_system');
+
+    expect(attrs.source_reference).toBeDefined();
+    expect(attrs.source_reference.allowNull).toBe(true);
+    expect(attrs.source_reference.type.toString()).toContain('VARCHAR(64)');
+    expect(attrs.source_reference.field ?? 'source_reference').toBe('source_reference');
+
+    expect(attrs.legacy_snapshot).toBeDefined();
+    expect(attrs.legacy_snapshot.allowNull).toBe(true);
+    expect(attrs.legacy_snapshot.type.constructor.name).toBe('JSONTYPE');
+    expect(attrs.legacy_snapshot.field ?? 'legacy_snapshot').toBe('legacy_snapshot');
+  });
+
+  test('AvailmentItem model index options declare unique_availment_items_source_reference matching the contract/migration', () => {
+    const indexes = AvailmentItem.options.indexes || [];
+    const index = indexes.find((entry) => entry.name === 'unique_availment_items_source_reference');
+
+    expect(index).toBeDefined();
+    expect(index.unique).toBe(true);
+    expect(index.fields).toEqual(['source_reference']);
+
+    // Model index list matches the contract's index list exactly.
+    const contractTable = dgfyBusinessContract.tables.availment_items;
+    const modelIndexNames = indexes.map((entry) => entry.name).sort();
+    expect(modelIndexNames).toEqual([...contractTable.indexes].sort());
+  });
+
+  test('Availment model attribute set matches the dgfyBusinessContract.availments column list (minus timestamps handled by Sequelize)', () => {
+    const contractColumns = dgfyBusinessContract.tables.availments.columns;
+    const modelColumns = Object.keys(Availment.rawAttributes);
+    contractColumns.forEach((columnName) => {
+      expect(modelColumns).toContain(columnName);
+    });
+  });
+
+  test('AvailmentItem model attribute set matches the dgfyBusinessContract.availment_items column list', () => {
+    const contractColumns = dgfyBusinessContract.tables.availment_items.columns;
+    const modelColumns = Object.keys(AvailmentItem.rawAttributes);
+    contractColumns.forEach((columnName) => {
+      expect(modelColumns).toContain(columnName);
+    });
+  });
+});
+
+describe('Phase 14 Plan 02: source-surface guard — Phase 14 fields are absent from every live availment surface (ADR 0029/D-14-09)', () => {
+  test('no live availment entity/controller/usecase/repository source file references source_system, legacy_snapshot, or additional_fees', () => {
+    LIVE_AVAILMENT_SOURCE_SURFACE_PATHS.forEach((filePath) => {
+      const contents = readFileSync(filePath, 'utf8');
+      PHASE_14_FIELD_NAMES.forEach((fieldName) => {
+        expect(contents).not.toContain(fieldName);
+      });
+    });
+  });
+
+  test('AvailmentEntity.toPlain() output never includes a Phase 14 field even when constructed with one (public response shape stays narrow)', async () => {
+    const { AvailmentEntity } = await import(
+      `file://${join(DGFY_API_ROOT, 'src', 'modules', 'availments', 'entities', 'availmentEntity.js')}`
+    );
+    const entity = new AvailmentEntity({
+      id: 1,
+      business_id: 'b1',
+      source_system: 'legacy_migration',
+      legacy_snapshot: { legacy_pos: {} },
+      additional_fees: { service_fee_amount: '1.0000' }
+    });
+    const plain = entity.toPlain();
+
+    PHASE_14_FIELD_NAMES.forEach((fieldName) => {
+      expect(plain).not.toHaveProperty(fieldName);
+    });
   });
 });
