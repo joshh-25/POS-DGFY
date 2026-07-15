@@ -27,8 +27,10 @@ export const PickupTrackingMobileView = ({
 }) => {
   const activeTrackingPin = trackingResult?.tracking_pin || trackingPinInput || 'N/A';
   const hasSubtotal = Number.isFinite(Number(trackingResult?.subtotalAmount));
+  const hasDiscount = Number.isFinite(Number(trackingResult?.discountAmount)) && Number(trackingResult?.discountAmount) > 0;
   const hasDeliveryFee = Number.isFinite(Number(trackingResult?.deliveryFee));
   const hasServiceFee = Number.isFinite(Number(trackingResult?.serviceFeeAmount));
+  const discountLabel = String(trackingResult?.discountLabel || 'Promo / Discount').trim();
   
   // Extract theme colors
   const { primary, secondary, bg, secondaryBg, border, softText } = theme;
@@ -165,6 +167,12 @@ export const PickupTrackingMobileView = ({
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
               <span>Subtotal</span>
               <span style={{ fontWeight: 700, color: '#0f172a' }}>{money(trackingResult.subtotalAmount)}</span>
+            </div>
+          ) : null}
+          {hasDiscount ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d', fontWeight: 700 }}>
+              <span>{discountLabel || 'Promo / Discount'}</span>
+              <span style={{ fontWeight: 800 }}>- {money(trackingResult.discountAmount)}</span>
             </div>
           ) : null}
           {hasDeliveryFee ? (
