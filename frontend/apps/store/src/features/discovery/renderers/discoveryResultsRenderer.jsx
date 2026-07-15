@@ -23,6 +23,7 @@ export function createDiscoveryResultsRenderer(ctx) {
   const {
   activeDiscoveryFilterCount,
   activeDiscoveryFilterDropdown,
+  clearDiscoveryClusterResults,
   discoveryBusinessModeOptions,
   discoveryCategoryFilter,
   discoveryCoords,
@@ -590,7 +591,10 @@ const resultsSubtitle = isClusterResultsActive
           {isDiscoveryMobileViewport && (
             <button
               type="button"
-              onClick={() => setIsMobileResultsCollapsed((v) => !v)}
+              onClick={() => {
+                clearDiscoveryClusterResults();
+                setIsMobileResultsCollapsed(isResultsPanelVisible);
+              }}
               className="discovery-results-stage__mobile-toggle"
               style={{
                 position: 'absolute',
@@ -622,14 +626,17 @@ const resultsSubtitle = isClusterResultsActive
           {!isDiscoveryMobileViewport && <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 11 }}>
             <button
               type="button"
-              onClick={() => setIsStoreListVisible((value) => !value)}
+              onClick={() => {
+                clearDiscoveryClusterResults();
+                setIsStoreListVisible(!isResultsPanelVisible);
+              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 7,
                 borderRadius: 12,
                 border: 'none',
-                background: isStoreListVisible ? '#0f172a' : '#1a4e8d',
+                background: isResultsPanelVisible ? '#0f172a' : '#1a4e8d',
                 color: '#fff',
                 padding: '10px 16px',
                 fontWeight: 700,
@@ -639,8 +646,8 @@ const resultsSubtitle = isClusterResultsActive
                 transition: 'background 200ms'
               }}
             >
-              {isStoreListVisible ? <X size={14} /> : <List size={14} />}
-              {isStoreListVisible ? 'Hide Results' : `View Results${panelTotalCount ? ` (${panelTotalCount})` : ''}`}
+              {isResultsPanelVisible ? <X size={14} /> : <List size={14} />}
+              {isResultsPanelVisible ? 'Hide Results' : `View Results${panelTotalCount ? ` (${panelTotalCount})` : ''}`}
             </button>
           </div>}
         </div>

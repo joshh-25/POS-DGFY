@@ -14,18 +14,3 @@ export const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadiusKm * c;
 };
-
-export const getSpreadMarkerCoordinate = (lat, lng, index, total) => {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isInteger(index) || total <= 1) {
-    return { latitude: lat, longitude: lng };
-  }
-  const ringPosition = index + 1;
-  const angle = ((Math.PI * 2) / total) * ringPosition;
-  const radiusDegrees = 0.00016 + Math.floor(index / 6) * 0.00005;
-  const lngAdjustment = radiusDegrees * Math.cos(angle) / Math.max(Math.cos((lat * Math.PI) / 180), 0.35);
-  const latAdjustment = radiusDegrees * Math.sin(angle);
-  return {
-    latitude: lat + latAdjustment,
-    longitude: lng + lngAdjustment
-  };
-};
