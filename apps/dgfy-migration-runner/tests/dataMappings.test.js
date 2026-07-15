@@ -118,11 +118,15 @@ describe('isInScopeLegacyTable / classifyOutOfScopeRecord (ADR 0029)', () => {
         expect(classifyOutOfScopeRecord('fiscal_receipts', fiscalFixture.fiscal_receipt_id).operation).toBe('skip');
     });
 
-    test('mappings.js exports no mapper function for excluded POS line, fiscal, discount, or checkout domains', () => {
+    test('mappings.js exports no mapper function for excluded fiscal, discount, or checkout domains', () => {
+        // Phase 14 (SHM-02) explicitly brings `pos_transaction_lines` into
+        // scope (removed from OUT_OF_SCOPE_LEGACY_TABLES) and adds
+        // `mapPosTransactionLineToAvailmentItem`; fiscal receipts, discounts,
+        // and checkout sessions remain out of scope and unmapped.
         const source = readFileSync(join(__dirname, '..', 'src', 'data', 'mappings.js'), 'utf8');
         const exportedFunctionNames = [...source.matchAll(/export function (\w+)/g)].map((match) => match[1]);
 
-        expect(exportedFunctionNames.some((name) => /PosTransactionLine|FiscalReceipt|Discount|Checkout/i.test(name))).toBe(false);
+        expect(exportedFunctionNames.some((name) => /FiscalReceipt|Discount|Checkout/i.test(name))).toBe(false);
     });
 });
 
