@@ -23,7 +23,12 @@ import {
     createLegacyTenantSourceConnection,
     createBusinessTargetConnection
 } from '../config/db.js';
-import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot, readLegacyProductSnapshot } from './legacySource.js';
+import {
+    readLegacyLandlordSnapshot,
+    readLegacyTenantSnapshot,
+    readLegacyProductSnapshot,
+    readLegacySalesSnapshot
+} from './legacySource.js';
 import { MAPPING_REASON_CODES } from './mappings.js';
 import { DEFAULT_RUN_SCOPE } from './dryRun.js';
 
@@ -38,6 +43,12 @@ export const STAFF_LINKAGE_REASON_CODES = Object.freeze(new Set([
     MAPPING_REASON_CODES.MISSING_ACCEPTED_MEMBERSHIP,
     MAPPING_REASON_CODES.ORPHAN_TENANT_USER_LINK,
     MAPPING_REASON_CODES.STAFF_CREDENTIAL_RESET_REQUIRED
+]));
+
+export const SALES_ATTRIBUTION_REASON_CODES = Object.freeze(new Set([
+    MAPPING_REASON_CODES.SALE_LOCATION_NOT_MAPPED,
+    MAPPING_REASON_CODES.SALE_TERMINAL_NOT_MAPPED,
+    MAPPING_REASON_CODES.SALE_CASHIER_NOT_MAPPED
 ]));
 
 /**
@@ -153,6 +164,7 @@ export function checkOpenFindings(openFindings = []) {
     const bySeverity = { conflict: 0, skip: 0, orphan: 0 };
     const expectedLossyFindings = [];
     const staffLinkageFindings = [];
+    const salesAttributionFindings = [];
     const blockingFindings = [];
 
     openFindings.forEach((finding) => {
@@ -163,6 +175,8 @@ export function checkOpenFindings(openFindings = []) {
             expectedLossyFindings.push(finding);
         } else if (STAFF_LINKAGE_REASON_CODES.has(finding.reason_code)) {
             staffLinkageFindings.push(finding);
+        } else if (SALES_ATTRIBUTION_REASON_CODES.has(finding.reason_code)) {
+            salesAttributionFindings.push(finding);
         } else {
             blockingFindings.push(finding);
         }
@@ -174,10 +188,12 @@ export function checkOpenFindings(openFindings = []) {
         blocking_count: blockingFindings.length,
         expected_lossy_count: expectedLossyFindings.length,
         staff_linkage_count: staffLinkageFindings.length,
+        sales_attribution_count: salesAttributionFindings.length,
         by_severity: bySeverity,
         blocking_findings: blockingFindings,
         expected_lossy_findings: expectedLossyFindings,
         staff_linkage_findings: staffLinkageFindings,
+        sales_attribution_findings: salesAttributionFindings,
         findings: openFindings
     };
 }
@@ -302,6 +318,212 @@ function normalizeCount(value) {
     return Number(value || 0);
 }
 
+export function decimal4ToUnits(value) {
+    const raw = value === undefined || value === null ? '' : String(value).trim();
+    const match = raw.match(/^(-)?(?:0|[1-9]\d*)(?:\.(\d{1,4}))?$/);
+    if (!match) {
+        throw new Error(`Expected canonical DECIMAL(14,4) value, received "${raw}".`);
+    }
+
+    const negative = match[1] === '-';
+    const unsigned = negative ? raw.slice(1) : raw;
+    const [integerPart, fractionalPart = ''] = unsigned.split('.');
+    const wholeUnits = BigInt(integerPart) * 10000n;
+    const fractionalUnits = BigInt(fractionalPart.padEnd(4, '0') || '0');
+    const units = wholeUnits + fractionalUnits;
+    return negative && units !== 0n ? -units : units;
+}
+
+function unitsToDecimal4(unitsValue) {
+    const units = typeof unitsValue === 'bigint' ? unitsValue : BigInt(unitsValue);
+    const negative = units < 0n;
+    const absoluteUnits = negative ? -units : units;
+    const integerPart = absoluteUnits / 10000n;
+    const fractionalPart = String(absoluteUnits % 10000n).padStart(4, '0');
+    return `${negative ? '-' : ''}${integerPart}.${fractionalPart}`;
+}
+
+export function summarizeSalesStatusTotals(rows = []) {
+    return (rows || []).map((row) => {
+        const totalAmountUnits = decimal4ToUnits(row.total_amount ?? '0');
+        return {
+            status: row.status,
+            source_system: row.source_system ?? 'legacy_migration',
+            count: normalizeCount(row.header_count ?? row.count),
+            total_amount: unitsToDecimal4(totalAmountUnits),
+            total_amount_units: totalAmountUnits.toString()
+        };
+    });
+}
+
+function salesStatusKey(row) {
+    return `${row.status}|${row.source_system ?? 'legacy_migration'}`;
+}
+
+function summarizeSalesTotalMap(rows = []) {
+    const map = new Map();
+    summarizeSalesStatusTotals(rows).forEach((row) => {
+        map.set(salesStatusKey(row), row);
+    });
+    return map;
+}
+
+function compareSalesStatusTotals(sourceStatusTotals = [], targetStatusTotals = []) {
+    const sourceMap = summarizeSalesTotalMap(sourceStatusTotals);
+    const targetMap = summarizeSalesTotalMap(targetStatusTotals);
+    const keys = new Set([...sourceMap.keys(), ...targetMap.keys()]);
+    const mismatches = [];
+
+    keys.forEach((key) => {
+        const source = sourceMap.get(key);
+        const target = targetMap.get(key);
+        if (
+            (source?.count || 0) !== (target?.count || 0) ||
+            (source?.total_amount_units || '0') !== (target?.total_amount_units || '0')
+        ) {
+            const [status, sourceSystem] = key.split('|');
+            mismatches.push({
+                status,
+                source_system: sourceSystem,
+                source_count: source?.count || 0,
+                target_count: target?.count || 0,
+                source_total_amount: source?.total_amount || '0.0000',
+                target_total_amount: target?.total_amount || '0.0000'
+            });
+        }
+    });
+
+    return {
+        ok: mismatches.length === 0,
+        source: summarizeSalesStatusTotals(sourceStatusTotals),
+        target: summarizeSalesStatusTotals(targetStatusTotals),
+        mismatches
+    };
+}
+
+function checkSalesProvenance({ availments = [], availmentItems = [] } = {}) {
+    const violations = [];
+
+    availments.forEach((availment) => {
+        if (
+            availment.source_system !== 'legacy_migration' ||
+            typeof availment.source_reference !== 'string' ||
+            !availment.source_reference.startsWith('legacy_pos:')
+        ) {
+            violations.push({
+                entity_type: 'availment',
+                target_id: availment.id,
+                reason: 'Migrated availments must have source_system=legacy_migration and source_reference prefixed with legacy_pos:.'
+            });
+        }
+    });
+
+    availmentItems.forEach((item) => {
+        if (
+            item.source_system !== 'legacy_migration' ||
+            typeof item.source_reference !== 'string' ||
+            !item.source_reference.startsWith('legacy_pos_line:')
+        ) {
+            violations.push({
+                entity_type: 'availment_item',
+                target_id: item.id,
+                reason: 'Migrated availment_items must have source_system=legacy_migration and source_reference prefixed with legacy_pos_line:.'
+            });
+        }
+    });
+
+    return { ok: violations.length === 0, violations };
+}
+
+function checkSalesRelationships({ availments = [], availmentItems = [], products = [] } = {}) {
+    const availmentIds = new Set(availments.map((availment) => String(availment.id)));
+    const productIds = new Set(products.map((product) => String(product.id)));
+    const violations = [];
+
+    availmentItems.forEach((item) => {
+        if (!item.availment_id || !availmentIds.has(String(item.availment_id))) {
+            violations.push({
+                entity_type: 'availment_item',
+                target_id: item.id,
+                reason: 'availment_items row references an availment_id that does not resolve to a migrated availments row.'
+            });
+        }
+        if (!item.product_id || !productIds.has(String(item.product_id))) {
+            violations.push({
+                entity_type: 'availment_item',
+                target_id: item.id,
+                reason: 'availment_items row references a product_id that does not resolve to a migrated products row.'
+            });
+        }
+    });
+
+    return { ok: violations.length === 0, violations };
+}
+
+function checkVoidFidelity({ sourceSalesSnapshot = {}, availments = [] } = {}) {
+    const source_voided_count = (sourceSalesSnapshot.posTransactions || [])
+        .filter((transaction) => transaction.status === 'voided').length;
+    const target_voided_count = availments
+        .filter((availment) => availment.source_system === 'legacy_migration' && availment.status === 'voided').length;
+
+    return {
+        ok: source_voided_count === target_voided_count,
+        source_voided_count,
+        target_voided_count,
+        discriminator: "source_system='legacy_migration' AND status='voided'"
+    };
+}
+
+function keyIsSkipped(skippedSalesKeys, legacySource, legacyTable, legacyId) {
+    return skippedSalesKeys.has(`${legacySource}|${legacyTable}|${legacyId}`);
+}
+
+export function buildSalesReconciliation({
+    sourceStatusTotals = [],
+    targetStatusTotals = [],
+    sourceSalesSnapshot = {},
+    availments = [],
+    availmentItems = [],
+    products = [],
+    mappedLegacyKeys = new Set(),
+    legacyTenantDbName = null,
+    skippedSalesKeys = new Set()
+} = {}) {
+    const statusTotals = compareSalesStatusTotals(sourceStatusTotals, targetStatusTotals);
+    const provenance = checkSalesProvenance({ availments, availmentItems });
+    const relationships = checkSalesRelationships({ availments, availmentItems, products });
+    const voidFidelity = checkVoidFidelity({ sourceSalesSnapshot, availments });
+
+    const expectedLegacyKeys = [
+        ...(sourceSalesSnapshot.posTransactions || [])
+            .filter((transaction) => !keyIsSkipped(skippedSalesKeys, legacyTenantDbName, 'pos_transactions', transaction.pos_transaction_id))
+            .map((transaction) => `${legacyTenantDbName}|pos_transactions|${transaction.pos_transaction_id}`),
+        ...(sourceSalesSnapshot.posTransactionLines || [])
+            .filter((line) => !keyIsSkipped(skippedSalesKeys, legacyTenantDbName, 'pos_transaction_lines', line.line_id))
+            .map((line) => `${legacyTenantDbName}|pos_transaction_lines|${line.line_id}`)
+    ];
+    const mapCompleteness = checkMapCompleteness({ expectedLegacyKeys, mappedLegacyKeys });
+
+    const lineCounts = {
+        ok: availmentItems.length === (sourceSalesSnapshot.posTransactionLines || []).length - [...skippedSalesKeys]
+            .filter((key) => key.includes('|pos_transaction_lines|')).length,
+        source_count: (sourceSalesSnapshot.posTransactionLines || []).length,
+        expected_target_count: (sourceSalesSnapshot.posTransactionLines || []).length - [...skippedSalesKeys]
+            .filter((key) => key.includes('|pos_transaction_lines|')).length,
+        target_count: availmentItems.length
+    };
+
+    return {
+        ok: statusTotals.ok && lineCounts.ok && mapCompleteness.ok && provenance.ok && relationships.ok && voidFidelity.ok,
+        status_totals: statusTotals,
+        line_counts: lineCounts,
+        map_completeness: mapCompleteness,
+        provenance,
+        relationships,
+        void_fidelity: voidFidelity
+    };
+}
+
 function summarizeMovementTypeTotals(rows = []) {
     return rows.map((row) => ({
         movement_type: row.movement_type,
@@ -403,6 +625,64 @@ async function buildProductReconciliation({ businessSequelize, products, product
     };
 }
 
+async function fetchLegacySalesStatusTotals(tenantSequelize) {
+    const [rows] = await tenantSequelize.query(`
+        SELECT
+            CASE status
+                WHEN 'completed' THEN 'finalized'
+                WHEN 'voided' THEN 'voided'
+                ELSE status
+            END AS status,
+            'legacy_migration' AS source_system,
+            COUNT(*) AS header_count,
+            COALESCE(SUM(total_amount), 0) AS total_amount
+        FROM pos_transactions
+        WHERE status IN ('completed', 'voided')
+        GROUP BY
+            CASE status
+                WHEN 'completed' THEN 'finalized'
+                WHEN 'voided' THEN 'voided'
+                ELSE status
+            END
+        ORDER BY status
+    `);
+    return rows || [];
+}
+
+async function fetchTargetSalesStatusTotals(businessSequelize) {
+    const [rows] = await businessSequelize.query(`
+        SELECT
+            status,
+            source_system,
+            COUNT(*) AS header_count,
+            COALESCE(SUM(total_amount), 0) AS total_amount
+        FROM availments
+        WHERE source_system = 'legacy_migration'
+        GROUP BY status, source_system
+        ORDER BY status, source_system
+    `);
+    return rows || [];
+}
+
+function isCountReducingFinding(finding) {
+    if (
+        finding.entity_type === 'availment' &&
+        finding.reason_code === MAPPING_REASON_CODES.UNSUPPORTED_SALE_STATUS
+    ) {
+        return true;
+    }
+    if (
+        finding.entity_type === 'availment_item' &&
+        (
+            finding.reason_code === MAPPING_REASON_CODES.AVAILMENT_PARENT_NOT_MAPPED ||
+            finding.reason_code === MAPPING_REASON_CODES.SALE_PRODUCT_NOT_MAPPED
+        )
+    ) {
+        return true;
+    }
+    return !SALES_ATTRIBUTION_REASON_CODES.has(finding.reason_code);
+}
+
 /**
  * Builds one target's full data verification entry: source/target entity
  * counts (net of this run's own skip/conflict findings), `legacy_id_map`
@@ -425,9 +705,10 @@ async function buildTargetDataVerification({
 
     try {
         tenantSequelize = createLegacyTenantSourceConnection(config, target.legacy_tenant_db_name);
-        const [tenantSnapshot, productSnapshot] = await Promise.all([
+        const [tenantSnapshot, productSnapshot, salesSnapshot] = await Promise.all([
             readLegacyTenantSnapshot(tenantSequelize),
-            readLegacyProductSnapshot(tenantSequelize)
+            readLegacyProductSnapshot(tenantSequelize),
+            readLegacySalesSnapshot(tenantSequelize)
         ]);
 
         businessSequelize = createBusinessTargetConnection(config, target.target_business_db_name);
@@ -440,7 +721,11 @@ async function buildTargetDataVerification({
             productFolders,
             products,
             inventoryMovements,
-            productEmbeddings
+            productEmbeddings,
+            availments,
+            availmentItems,
+            sourceSalesStatusTotals,
+            targetSalesStatusTotals
         ] = await Promise.all([
             selectAll(businessSequelize, 'staff_accounts'),
             selectStaffCredentialsCoverage(businessSequelize),
@@ -450,7 +735,11 @@ async function buildTargetDataVerification({
             selectAll(businessSequelize, 'product_folders'),
             selectAll(businessSequelize, 'products'),
             selectAll(businessSequelize, 'inventory_movements'),
-            selectAll(businessSequelize, 'product_embeddings')
+            selectAll(businessSequelize, 'product_embeddings'),
+            selectAll(businessSequelize, 'availments'),
+            selectAll(businessSequelize, 'availment_items'),
+            fetchLegacySalesStatusTotals(tenantSequelize),
+            fetchTargetSalesStatusTotals(businessSequelize)
         ]);
 
         const skippedByEntity = {
@@ -462,9 +751,12 @@ async function buildTargetDataVerification({
             product_folder: 0,
             product: 0,
             inventory_movement: 0,
-            product_embedding: 0
+            product_embedding: 0,
+            availment: 0,
+            availment_item: 0
         };
         const skippedEntityKeys = new Set();
+        const skippedSalesKeys = new Set();
         openFindings
             .filter((finding) => String(finding.legacy_tenant_id) === String(legacyTenantId))
             .forEach((finding) => {
@@ -475,10 +767,21 @@ async function buildTargetDataVerification({
                 ].join('|');
                 if (
                     Object.prototype.hasOwnProperty.call(skippedByEntity, finding.entity_type) &&
-                    !skippedEntityKeys.has(skipKey)
+                    !skippedEntityKeys.has(skipKey) &&
+                    isCountReducingFinding(finding)
                 ) {
                     skippedEntityKeys.add(skipKey);
                     skippedByEntity[finding.entity_type] += 1;
+                }
+                if (
+                    (finding.entity_type === 'availment' || finding.entity_type === 'availment_item') &&
+                    isCountReducingFinding(finding)
+                ) {
+                    skippedSalesKeys.add([
+                        target.legacy_tenant_db_name,
+                        finding.legacy_table,
+                        finding.legacy_id
+                    ].join('|'));
                 }
             });
 
@@ -530,6 +833,18 @@ async function buildTargetDataVerification({
                 source_count: productSnapshot.itemEmbeddings.length,
                 expected_target_count: productSnapshot.itemEmbeddings.length - skippedByEntity.product_embedding,
                 target_count: productEmbeddings.length
+            },
+            {
+                entity: 'availments',
+                source_count: salesSnapshot.posTransactions.length,
+                expected_target_count: salesSnapshot.posTransactions.length - skippedByEntity.availment,
+                target_count: availments.length
+            },
+            {
+                entity: 'availment_items',
+                source_count: salesSnapshot.posTransactionLines.length,
+                expected_target_count: salesSnapshot.posTransactionLines.length - skippedByEntity.availment_item,
+                target_count: availmentItems.length
             }
         ]);
 
@@ -538,7 +853,13 @@ async function buildTargetDataVerification({
             ...tenantSnapshot.users.map((user) => `${legacyTenantSource}|users|${user.user_id}`),
             ...tenantSnapshot.locations.map((location) => `${legacyTenantSource}|tenant_locations|${location.location_id}`),
             ...productSnapshot.items.map((item) => `${legacyTenantSource}|items|${item.item_id}`),
-            ...productSnapshot.itemFolders.map((folder) => `${legacyTenantSource}|item_folders|${folder.folder_id}`)
+            ...productSnapshot.itemFolders.map((folder) => `${legacyTenantSource}|item_folders|${folder.folder_id}`),
+            ...salesSnapshot.posTransactions
+                .filter((transaction) => !skippedSalesKeys.has(`${legacyTenantSource}|pos_transactions|${transaction.pos_transaction_id}`))
+                .map((transaction) => `${legacyTenantSource}|pos_transactions|${transaction.pos_transaction_id}`),
+            ...salesSnapshot.posTransactionLines
+                .filter((line) => !skippedSalesKeys.has(`${legacyTenantSource}|pos_transaction_lines|${line.line_id}`))
+                .map((line) => `${legacyTenantSource}|pos_transaction_lines|${line.line_id}`)
         ];
         const mapCompleteness = checkMapCompleteness({ expectedLegacyKeys, mappedLegacyKeys });
 
@@ -554,12 +875,23 @@ async function buildTargetDataVerification({
             products,
             productEmbeddings
         });
+        const salesReconciliation = buildSalesReconciliation({
+            sourceStatusTotals: sourceSalesStatusTotals,
+            targetStatusTotals: targetSalesStatusTotals,
+            sourceSalesSnapshot: salesSnapshot,
+            availments,
+            availmentItems,
+            products,
+            mappedLegacyKeys,
+            legacyTenantDbName: legacyTenantSource,
+            skippedSalesKeys
+        });
         const staffCredentials = staffCredentialsCoverage.rows;
 
         return {
             legacy_tenant_id: legacyTenantId,
             target_business_db_name: target.target_business_db_name,
-            ok: dataCounts.ok && mapCompleteness.ok && relationships.ok && productReconciliation.ok,
+            ok: dataCounts.ok && mapCompleteness.ok && relationships.ok && productReconciliation.ok && salesReconciliation.ok,
             data_counts: dataCounts,
             map_completeness: mapCompleteness,
             required_relationships: relationships,
@@ -573,7 +905,8 @@ async function buildTargetDataVerification({
                 assignment_count: accountStaffAssignments.length,
                 staff_credentials_table_missing: staffCredentialsCoverage.tableMissing
             },
-            product_reconciliation: productReconciliation
+            product_reconciliation: productReconciliation,
+            sales_reconciliation: salesReconciliation
         };
     } catch (error) {
         return {

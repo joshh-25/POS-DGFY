@@ -124,7 +124,33 @@ function baseTargetRows({
   };
 }
 
+function aggregateSalesStatusTotals(rows, { source = false } = {}) {
+  const totals = new Map();
+  rows.forEach((row) => {
+    const status = source && row.status === 'completed' ? 'finalized' : row.status;
+    if (source && !['completed', 'voided'].includes(row.status)) return;
+    if (!source && row.source_system !== 'legacy_migration') return;
+    const key = `${status}|legacy_migration`;
+    const current = totals.get(key) || { status, source_system: 'legacy_migration', count: 0, total_amount: '0.0000' };
+    current.count += 1;
+    const currentUnits = BigInt(String(current.total_amount).replace('.', ''));
+    const rowUnits = BigInt(String(row.total_amount).replace('.', ''));
+    const nextUnits = currentUnits + rowUnits;
+    const negative = nextUnits < 0n;
+    const absolute = negative ? -nextUnits : nextUnits;
+    current.total_amount = `${negative ? '-' : ''}${absolute / 10000n}.${String(absolute % 10000n).padStart(4, '0')}`;
+    totals.set(key, current);
+  });
+  return [...totals.values()].sort((left, right) => left.status.localeCompare(right.status));
+}
+
 function rowsFor(sql, legacyRows, targetRows) {
+  if (sql.includes('SUM(total_amount)') && sql.includes('FROM pos_transactions')) {
+    return aggregateSalesStatusTotals(legacyRows.posTransactions, { source: true });
+  }
+  if (sql.includes('SUM(total_amount)') && sql.includes('FROM availments')) {
+    return aggregateSalesStatusTotals(targetRows.availments);
+  }
   if (sql.includes('FROM users')) return legacyRows.users;
   if (sql.includes('FROM tenant_locations')) return legacyRows.locations;
   if (sql.includes('FROM user_location_grants')) return [];
