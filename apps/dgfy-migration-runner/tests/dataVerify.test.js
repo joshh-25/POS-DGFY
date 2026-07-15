@@ -13,7 +13,13 @@ jest.unstable_mockModule('../src/config/db.js', () => ({
 
 jest.unstable_mockModule('../src/metadata/dataState.js', () => ({
   listOpenDataQualityFindings: mockListOpenDataQualityFindings,
-  recordDataQualityFinding: jest.fn().mockResolvedValue(undefined)
+  recordDataQualityFinding: jest.fn().mockResolvedValue(undefined),
+  // Phase 14 (Plan 04): dryRun.js (transitively imported via
+  // verifyData.js's `./dryRun.js` DEFAULT_RUN_SCOPE import) now also
+  // imports syncDataQualityFindings from this module — the mock must
+  // provide every named export dryRun.js's static import list requires,
+  // or ESM linking fails before any test in this file can run.
+  syncDataQualityFindings: jest.fn().mockResolvedValue(undefined)
 }));
 
 const {
