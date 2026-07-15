@@ -17,23 +17,21 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - **Success metric**: Existing users experience no regression while new DGFY Accounts, Businesses, Tenancy, and migration scripts prove a clean path away from the IMS-backed schema.
 - **Strategy notes**: See `refactor/DGFY_Project_Status_and_Proposal.md`, `refactor/DGFY_Implementation_Phases.md`, and `refactor/DGFY_Migration_Cutover_Strategy.md`.
 
-## Current Milestone: v2.1 Legacy Data Migration
+## Current State (as of v2.1)
 
-**Goal:** Close the empirically-confirmed gap where the existing Accounts/Businesses/Tenancy migration leaves every tenant with zero products, availments, and inventory movements — build the schema extension and mapper functions to migrate legacy `items`/`item_folders`/`stock_movements` (plus satellite tables and `item_embeddings`) into the new `products`/`product_folders`/`inventory_movements` schema, and migrate `pos_transactions` sales history into `availments`, proven via re-rehearsal against a live production-parity environment.
+**Shipped v2.1 Legacy Data Migration (2026-07-15).** Legacy product/inventory and POS sales-history data now migrate into the new `dgfy_*` schema with proven fidelity: product/inventory/embedding and `pos_transactions`/`pos_transaction_lines` → `availments`/`availment_items` mappers, a corrected tenant-local staff-auth model (Phase 13.5), and a real-volume rehearsal on a disposable production-parity EC2 (26 tenants) verified by machine-checkable evidence and a blocking operator sign-off. Backend API surface (`apps/dgfy-api`) is now feature-complete for the migrated commerce + data domains, built beside the still-live legacy platform. Full history in `.planning/MILESTONES.md`.
 
-**Target features:**
-- `products` schema extension: 6 universal typed columns (`sku_code`, `cost_per_unit`, `vat_type`, `senior_pwd_discount_eligible`, `description`, `unit_of_measure`) plus one `attributes` JSON column for everything else category-specific
-- `item_embeddings` (AI vector search data) migrated alongside product data
-- New mapper functions following the existing `mappings.js` pattern: `items`→`products`, `item_folders`→`product_folders`, `stock_movements`→`inventory_movements`, satellite tables→`products.attributes`, `item_embeddings`→new embeddings storage
-- Sales-history migration: `pos_transactions`→`availments` with a new `source_system` provenance field, as its own phase
-- Legacy `category` (5 values, raw-material-centric) treated as generic sellable products for migration purposes; the raw-material-vs-finished-good distinction is explicitly deferred to a future, not-yet-scoped DGFY↔IMS integration contract
-- Validation via re-rehearsal against a disposable production-parity environment (real GHCR images, real domains, real legacy data volume) using a tested snapshot/reset mechanism
+**Known gaps & carry-forward:** durable register at [`.planning/KNOWN-GAPS.md`](KNOWN-GAPS.md) — notably G-01/G-02 (fiscal compliance-gate demotion + transactional write, blocking-before-production) and G-04 (embedding carry-over unproven on real vectors — source was zero). Surface G-01/G-02 early in frontend/checkout integration.
 
-**Deferred to later milestones:** new frontend apps (dgfy-storefront/pos/business), production cutover itself (Phase 7 stays paused until this migration is proven, then likely resumed), Comprehensive Inventory/IMS integration, co-ownership exposure, Hospitality/Ticketing/Jobs ecosystem integrations.
+## Next Milestone: v2.2 Frontend Integration (not yet planned)
 
-**Known gaps & carry-forward:** durable register at [`.planning/KNOWN-GAPS.md`](KNOWN-GAPS.md) — notably G-01/G-02 (fiscal compliance-gate demotion + transactional write, blocking-before-production) and G-04 (embedding carry-over unproven on real vectors). Surface G-01/G-02 early when integrating `dgfy-api` into the frontend, since checkout depends on the compliance gate.
+**Goal:** Integrate `apps/dgfy-api` as the new live API into the frontend apps (dgfy-storefront / pos / business), replacing the legacy backend for the migrated domains once the migration branch merges. Begin with `/gsd-new-milestone`.
 
-**Previous milestone (v2.0 Commerce Domain — Product, Checkout & Fulfillment):** Backend API parity with the legacy system's full commerce flow — product catalog, POS checkout/payment, storefront online ordering, and order fulfillment — built beside legacy on `dgfy_*` schemas. Completed across Phases 8-11 (see Validated requirements below).
+**Early watch-items:** G-01/G-02 (compliance gate) since checkout depends on it; parity/rollback evidence before switching any live frontend path off the legacy backend.
+
+**Still deferred:** production cutover itself (Phase 7 stays paused until frontend + cutover are ready), Comprehensive Inventory/IMS integration, co-ownership exposure, Hospitality/Ticketing/Jobs ecosystem integrations.
+
+**Previous milestones:** v2.0 Commerce Domain (Phases 8–11, backend commerce APIs, shipped 2026-07-14); v1.0 Foundation (Phases 1–6, migration runner + DGFY schema + Accounts/Businesses/Tenancy; Phase 7 cutover paused). See Validated requirements below.
 
 ## Requirements
 
@@ -55,6 +53,10 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 - ✓ Storefront Discovery & Online Ordering (map browse/search, store page, cart, guest-or-account checkout, pickup/delivery immediate-or-scheduled, PayMongo QR Ph payment) is built with a durable landlord-first order record that finalizes idempotently into the correct tenant's Availment, safely crossing the Landlord/Tenant database boundary for the first time — validated in Phase 10: Storefront Discovery & Online Ordering (STF-01..STF-05, 8/8 plans, code review found and fixed 4 critical bugs including a stock-reservation composition-root wiring defect, 16/16 must-haves independently re-verified against current code).
 - ✓ Order Fulfillment & Delivery Coordination (business/staff retrieve and process incoming online orders, progress fulfillment status through a shared core pipeline with pickup/delivery/dine-in handoffs, manually assign courier/delivery partners and track payout through completion) — validated in Phase 11: Order Fulfillment & Delivery Coordination (FUL-01/02/03, 4/4 plans, code review found and fixed 2 critical bugs — non-atomic stage-progression writes and unvalidated fulfillmentMode — 14/14 must-haves re-verified against current code, migration applied and finalize paths proven end-to-end against a live tenant MySQL database).
 - ✓ ADR 0029's legacy-table scope gate unblocked (`items`/`item_folders`/`stock_movements`/`pos_transactions` removed from `OUT_OF_SCOPE_LEGACY_TABLES`) and the extended target schema (`products` +7 columns incl. `attributes` JSON, new `product_embeddings` 1:1 table, `inventory_movements` natural-key unique index) exists and is proven against real tenant databases — validated in Phase 12: Scope Unblock + Schema Extension (LDM-01..04, 4/4 plans, code review found and fixed 1 critical bug — the natural-key index initially omitted `product_id`, which would have broken any multi-product checkout — re-verified against 3 real EC2 tenant DBs after the fix, 7/7 must-haves independently re-verified against current code).
+- ✓ Legacy product/inventory data (`items`→`products` with 8 satellite tables folded into `attributes` JSON, `item_folders`→`product_folders`, `stock_movements`→`inventory_movements` with lossy-collapse findings, `item_embeddings`→`product_embeddings`) migrates through dry-run/apply/idempotency-retry/verify — validated in Phase 13: Product & Inventory Migration (PIM-01..06, 6/6 plans; real-data proof delivered by the Phase 14 full-milestone rehearsal). — v2.1
+- ✓ Tenant-local staff credentials with optional DGFY account linking (correcting ADR 0028's DGFY-mandatory assumption); real bcrypt password/PIN values migrate byte-for-byte, non-bcrypt values become reset-required, dry-run reports redact credential fields into boolean evidence — validated in Phase 13.5: Staff Authentication Model Correction (4/4 plans). — v2.1
+- ✓ Legacy POS sales history (`pos_transactions`→`availments`, `pos_transaction_lines`→`availment_items`) migrates with a `source_system` provenance column, exact monetary fidelity (BigInt DECIMAL(14,4) by status), header/line provenance, and void-state fidelity — validated in Phase 14: Sales History Migration (LDM-05, SHM-01..04). — v2.1
+- ✓ Full six-entity milestone proven end-to-end via a real-volume rehearsal on a disposable production-parity EC2 (26 tenants): exact source=target counts, zero duplicate retry writes, zero blocking findings, machine-checkable sanitized evidence, and a blocking operator human-verify checkpoint — validated in Phase 14 (VER-01/02/03, override closeout; Phase 13/14 verified via rehearsal + operator sign-off rather than separate VERIFICATION.md — see MILESTONES.md). — v2.1
 
 ### Active
 
@@ -145,4 +147,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Update Context with current state
 
 ---
-*Last updated: 2026-07-14 — Phase 12: Scope Unblock + Schema Extension complete*
+*Last updated: 2026-07-15 — after v2.1 Legacy Data Migration milestone (Phases 12–14 + 13.5) shipped*

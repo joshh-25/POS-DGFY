@@ -2,38 +2,36 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Legacy Data Migration
-current_phase: 14
-current_phase_name: sales-history-migration-full-verification
-status: phase-complete
-stopped_at: Phase 14 complete — all 11 plans landed; 14-11 operator approval recorded
-last_updated: "2026-07-15T00:00:00.000Z"
+current_phase: 1
+status: Awaiting next milestone
+stopped_at: "Phase 14 complete. Next: v2.1 milestone close-out (/gsd-complete-milestone) or new work."
+last_updated: "2026-07-15T03:41:13.475Z"
 last_activity: 2026-07-15
-last_activity_desc: Operator approved 14-11 final evidence review; Phase 14 (sales-history-migration-full-verification) complete
+last_activity_desc: Milestone v2.1 completed and archived
 progress:
   total_phases: 15
-  completed_phases: 12
+  completed_phases: 14
   total_plans: 93
-  completed_plans: 86
-  percent: 80
+  completed_plans: 90
+  percent: 93
+current_phase_name: sales-history-migration-full-verification
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-14)
+See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** DGFY can become a standalone multi-tenant POS and Storefront system without breaking the existing live platform during migration.
-**Current focus:** Phase 14 — sales-history-migration-full-verification
+**Current focus:** v2.1 shipped 2026-07-15 — planning next milestone (v2.2 Frontend Integration). Carry-forward gaps in .planning/KNOWN-GAPS.md.
 
 ## Current Position
 
-Phase: 14 (sales-history-migration-full-verification) — COMPLETE
-Plan: 11 of 11 complete — operator approved final evidence review
-Status: Phase complete; v2.1 milestone close-out available (/gsd-complete-milestone)
-Last activity: 2026-07-15 — Operator approved 14-11; Phase 14 done
-
-Progress: [██████████] 100%
+Phase: Milestone v2.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-15 — Milestone v2.1 completed and archived
 
 ## Performance Metrics
 
@@ -187,3 +185,7 @@ Items acknowledged and carried forward from previous milestone close:
 Last session: 2026-07-15 (resumed) — reconciled stale HANDOFF, finished 14-10, operator approved 14-11
 Stopped at: Phase 14 complete. Next: v2.1 milestone close-out (/gsd-complete-milestone) or new work.
 Resume file: None (stale HANDOFF.json + .continue-here.md removed as superseded)
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
