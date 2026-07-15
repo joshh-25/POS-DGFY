@@ -2,6 +2,14 @@ import { Op } from 'sequelize';
 
 export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
     {
+        key: 'deliveryJobs',
+        label: 'delivery jobs',
+        modelName: 'DeliveryJob',
+        association: 'DeliveryJob.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'itemLocationStocks',
         label: 'item location stock rows',
         modelName: 'ItemLocationStock',

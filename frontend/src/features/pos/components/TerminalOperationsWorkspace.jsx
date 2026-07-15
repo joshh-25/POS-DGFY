@@ -49,7 +49,7 @@ import {
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import ConfirmActionDialog from '@/components/ai/ConfirmActionDialog';
+import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
   Dialog,
   DialogContent,

@@ -103,7 +103,7 @@ import {
   resolveTenantSetupStepValue,
   resolveTenantSetupViewMode
 } from '../utils/setupFlow.js';
-import { printOrderWithIminBridge } from '../utils/iminHardwareBridge.js';
+import { openDrawerWithIminBridge, printOrderWithIminBridge } from '../utils/iminHardwareBridge.js';
 
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
 import OnlineOrderDetailsModal from '../components/OnlineOrderDetailsModal.jsx';
@@ -2048,11 +2048,11 @@ export default function TerminalPage() {
   };
 
   const resolveSelectedLoginTerminalId = () => resolveLoginTerminalId({
-      selectedTerminalId: formData.terminalId,
-      registryEnforced,
-      registryEntries: activeTerminalRegistry,
-      registryMode: terminalRegistryMode
-    });
+    selectedTerminalId: formData.terminalId,
+    registryEnforced,
+    registryEntries: activeTerminalRegistry,
+    registryMode: terminalRegistryMode
+  });
 
   const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
@@ -2222,15 +2222,15 @@ export default function TerminalPage() {
       }, token);
       const fallbackSelectedTenantUser = selectedTenantSession
         ? {
-            user_id: selectedTenantSession.user_id,
-            username: selectedTenantSession.username,
-            email: selectedTenantSession.email,
-            phone_number: selectedTenantSession.phone_number || null,
-            role: selectedTenantSession.role,
-            permissions: Array.isArray(selectedTenantSession.permissions) ? selectedTenantSession.permissions : [],
-            is_active: true,
-            is_master_admin: selectedTenantSession.is_master_admin === true
-          }
+          user_id: selectedTenantSession.user_id,
+          username: selectedTenantSession.username,
+          email: selectedTenantSession.email,
+          phone_number: selectedTenantSession.phone_number || null,
+          role: selectedTenantSession.role,
+          permissions: Array.isArray(selectedTenantSession.permissions) ? selectedTenantSession.permissions : [],
+          is_active: true,
+          is_master_admin: selectedTenantSession.is_master_admin === true
+        }
         : null;
 
       const [selectedTenantUser, selectedTenantSettings, selectedTenantLocations, selectedTenantItems] = await Promise.all([
@@ -2247,9 +2247,9 @@ export default function TerminalPage() {
         || String(effectiveSelectedTenantUser?.role || '').trim().toLowerCase() === 'admin';
       const selectedTenantAdminPayloads = selectedUserIsAdmin
         ? await Promise.all([
-            getCompanyInfo().catch(() => null),
-            getAllUsers({ include_invitations: true }).catch(() => [])
-          ])
+          getCompanyInfo().catch(() => null),
+          getAllUsers({ include_invitations: true }).catch(() => [])
+        ])
         : [null, effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : []];
       const [selectedTenantCompany, selectedTenantUsers] = selectedTenantAdminPayloads;
       const selectedTenantSetupState = buildTenantSetupStateSnapshot({
@@ -3143,12 +3143,15 @@ export default function TerminalPage() {
       toast.success('Cash drawer event recorded.');
       if (payload.event_type === 'cash_in') {
         try {
-          await openPosDeviceDrawer({
-            idempotency_key: createIdempotencyKey('pos-cash-event-drawer'),
-            shift_id: activeShiftId,
-            terminal_id: sanitizeTerminalId(activeTerminalId) || undefined,
-            reason: 'cash_in_event_recorded'
-          });
+          const iminDrawerResult = openDrawerWithIminBridge();
+          if (!iminDrawerResult.handled) {
+            await openPosDeviceDrawer({
+              idempotency_key: createIdempotencyKey('pos-cash-event-drawer'),
+              shift_id: activeShiftId,
+              terminal_id: sanitizeTerminalId(activeTerminalId) || undefined,
+              reason: 'cash_in_event_recorded'
+            });
+          }
           toast.success('Cash drawer opened.');
         } catch (drawerError) {
           toast.error(
@@ -3539,9 +3542,9 @@ export default function TerminalPage() {
           tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE
             ? 'Finish tenant onboarding in POS Settings before opening the rest of the POS.'
             : (
-          tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
-            ? 'Finish Storefront Setup before opening the rest of the POS.'
-            : 'Finish POS Setup before opening the rest of the POS.')
+              tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
+                ? 'Finish Storefront Setup before opening the rest of the POS.'
+                : 'Finish POS Setup before opening the rest of the POS.')
         );
         if (!tenantSetupDismissedThisSession) {
           resumeTenantSetupFlow();
@@ -3820,12 +3823,12 @@ export default function TerminalPage() {
                   {adminReauthUnlock
                     ? 'Enter the admin credentials to unlock POS. Cashier and terminal credentials are not required.'
                     : cashierResumeUnlock
-                    ? 'Enter the cashier credentials for the open shift. Terminal password is not required.'
-                    : terminalUnlockMode === 'relock'
-                    ? 'Reauthenticate the current DGFY operator to resume this terminal.'
-                    : cashierUnlockSession?.email
-                    ? 'Choose the registered POS terminal and start the cashier shift from this logged-in device.'
-                    : 'Choose the registered POS terminal, sign in the cashier, and start the shift from this logged-in device.'}
+                      ? 'Enter the cashier credentials for the open shift. Terminal password is not required.'
+                      : terminalUnlockMode === 'relock'
+                        ? 'Reauthenticate the current DGFY operator to resume this terminal.'
+                        : cashierUnlockSession?.email
+                          ? 'Choose the registered POS terminal and start the cashier shift from this logged-in device.'
+                          : 'Choose the registered POS terminal, sign in the cashier, and start the shift from this logged-in device.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 px-5 py-5">
@@ -3909,62 +3912,62 @@ export default function TerminalPage() {
                   </>
                 ) : (
                   <>
-                  <div className="grid gap-2">
-                  <Label htmlFor="terminal-unlock-terminal-id" className="text-xs font-extrabold text-[#0F172A]">
-                    Terminal ID
-                  </Label>
-                  {activeTerminalRegistry.length > 0 ? (
-                    <>
-                      <select
-                        id="terminal-unlock-terminal-id"
-                        value={terminalUnlockForm.terminalId || ''}
-                        onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalId: event.target.value }))}
-                        className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none focus:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                        disabled={submitting}
-                        required
-                      >
-                        <option value="">Select registered terminal</option>
-                        {activeTerminalRegistry.map((entry) => (
-                          <option key={entry.terminal_id} value={entry.terminal_id}>
-                            {entry.label
-                              ? `${entry.label} (${entry.terminal_id})${locationNameLookup.get(Number(entry.location_id || 0)) ? ` - ${locationNameLookup.get(Number(entry.location_id || 0))}` : ''}`
-                              : `${entry.terminal_id}${locationNameLookup.get(Number(entry.location_id || 0)) ? ` - ${locationNameLookup.get(Number(entry.location_id || 0))}` : ''}`}
-                          </option>
-                        ))}
-                      </select>
-                      {activeTerminalRegistry.length > 1 ? (
-                        <p className="text-[11px] font-medium text-[#64748B]">
-                          {activeTerminalRegistry.length} registered terminals available. A location may have multiple counters; choose the counter you are operating.
-                        </p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      <Input
-                        id="terminal-unlock-terminal-id"
-                        value={terminalUnlockForm.terminalId || ''}
-                        onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalId: event.target.value }))}
-                        placeholder="COUNTER-01"
-                        list="terminal-unlock-terminal-options"
-                        autoComplete="off"
-                        className="h-11 rounded-lg border-slate-200 px-3 text-[13px] font-semibold uppercase tracking-wide text-[#0F172A]"
-                        disabled={submitting}
-                        required
-                      />
-                      <datalist id="terminal-unlock-terminal-options">
-                        {terminalIdOptions.map((terminalId) => (
-                          <option key={terminalId} value={terminalId} />
-                        ))}
-                      </datalist>
-                    </>
-                  )}
-                  <p className="text-[11px] text-[#64748B]">
-                    Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
-                  </p>
-                </div>
-                <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-                  Authorized DGFY users can open shifts from any logged-in device when the selected terminal is active and assigned to their allowed location.
-                </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="terminal-unlock-terminal-id" className="text-xs font-extrabold text-[#0F172A]">
+                        Terminal ID
+                      </Label>
+                      {activeTerminalRegistry.length > 0 ? (
+                        <>
+                          <select
+                            id="terminal-unlock-terminal-id"
+                            value={terminalUnlockForm.terminalId || ''}
+                            onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalId: event.target.value }))}
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none focus:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                            disabled={submitting}
+                            required
+                          >
+                            <option value="">Select registered terminal</option>
+                            {activeTerminalRegistry.map((entry) => (
+                              <option key={entry.terminal_id} value={entry.terminal_id}>
+                                {entry.label
+                                  ? `${entry.label} (${entry.terminal_id})${locationNameLookup.get(Number(entry.location_id || 0)) ? ` - ${locationNameLookup.get(Number(entry.location_id || 0))}` : ''}`
+                                  : `${entry.terminal_id}${locationNameLookup.get(Number(entry.location_id || 0)) ? ` - ${locationNameLookup.get(Number(entry.location_id || 0))}` : ''}`}
+                              </option>
+                            ))}
+                          </select>
+                          {activeTerminalRegistry.length > 1 ? (
+                            <p className="text-[11px] font-medium text-[#64748B]">
+                              {activeTerminalRegistry.length} registered terminals available. A location may have multiple counters; choose the counter you are operating.
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <Input
+                            id="terminal-unlock-terminal-id"
+                            value={terminalUnlockForm.terminalId || ''}
+                            onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalId: event.target.value }))}
+                            placeholder="COUNTER-01"
+                            list="terminal-unlock-terminal-options"
+                            autoComplete="off"
+                            className="h-11 rounded-lg border-slate-200 px-3 text-[13px] font-semibold uppercase tracking-wide text-[#0F172A]"
+                            disabled={submitting}
+                            required
+                          />
+                          <datalist id="terminal-unlock-terminal-options">
+                            {terminalIdOptions.map((terminalId) => (
+                              <option key={terminalId} value={terminalId} />
+                            ))}
+                          </datalist>
+                        </>
+                      )}
+                      <p className="text-[11px] text-[#64748B]">
+                        Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                      Authorized DGFY users can open shifts from any logged-in device when the selected terminal is active and assigned to their allowed location.
+                    </div>
                   </>
                 )}
                 {!adminReauthUnlock && !cashierResumeUnlock && terminalUnlockMode !== 'relock' ? (
@@ -4134,11 +4137,10 @@ export default function TerminalPage() {
               ? 'Finish tenant onboarding in POS Settings first. The rest of POS remains limited until setup is complete.'
               : (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
                 ? 'Finish Storefront Setup next. Add the company icon and cover image to continue.'
-                : `Finish POS Setup next. Missing: ${
-                  [
-                    setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store',
-                    setupFlowState.posRequirements.cashierReady ? null : 'provisioned cashier access'
-                  ].filter(Boolean).join(', ')
+                : `Finish POS Setup next. Missing: ${[
+                  setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store',
+                  setupFlowState.posRequirements.cashierReady ? null : 'provisioned cashier access'
+                ].filter(Boolean).join(', ')
                 }.`)}
           </div>
         )}

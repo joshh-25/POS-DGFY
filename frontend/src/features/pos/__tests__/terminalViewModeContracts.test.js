@@ -78,6 +78,13 @@ describe('POS terminal view-mode contracts', () => {
     expect(skupervisorCheckoutTerminalContent).toContain("item?.pos_always_available === true");
   });
 
+  it('uses the iMin drawer bridge before the USB bridge for cash-in events', () => {
+    expect(terminalPageContent).toContain("import { openDrawerWithIminBridge, printOrderWithIminBridge } from '../utils/iminHardwareBridge.js';");
+    expect(terminalPageContent).toContain(
+      "const iminDrawerResult = openDrawerWithIminBridge();\n          if (!iminDrawerResult.handled) {\n            await openPosDeviceDrawer({"
+    );
+  });
+
 
   it('validates POS onboarding starter item cost and stock before calling the onboarding API', () => {
     expect(posTenantSetupModalContent).toContain('const parsedCost = cost === \'\' ? null : Number(cost);');

@@ -315,6 +315,7 @@ const posReportsQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
     source: Joi.string().valid(...REPORT_SOURCE_FILTERS).optional(),
+    category_id: Joi.number().integer().positive().optional(),
     category: Joi.string().trim().max(120).allow('', null).optional()
 });
 
