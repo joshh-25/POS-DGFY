@@ -174,6 +174,169 @@ Plan 08 must implement this runbook contract for the Phase 14 milestone
 harness. Do not assume a not-yet-created Phase 14 harness defines operator
 requirements differently; this runbook is the requirement source.
 
+## 5.1 `dgfy-temp` EC2 Rehearsal Template Procedure
+
+The current experimental EC2 rehearsal host is reachable as:
+
+```bash
+ssh dgfy-temp
+```
+
+On that host, the operator-maintained rehearsal template lives at:
+
+```text
+/home/ubuntu/dgfy-rehearsal-template
+```
+
+The template is the source of truth for the disposable rehearsal stack. It
+contains:
+
+- `baseline.sql` - validated baseline database snapshot.
+- `baseline-uploads.tar` - matching uploads snapshot.
+- `.env.compose` - local EC2 compose environment; never print or commit its
+  values.
+- `docker-compose.yml` - MySQL/Redis/app/nginx stack.
+- `docker-compose.migration.yml` - one-shot migration-runner service.
+- `reset-to-baseline.sh` - destructive reset back to the validated baseline.
+- `migration/manifest.json` - reviewed migration target manifest.
+- `migration/business-db-names.txt` - comma-separated `dgfy_business_*`
+  target list used for `DGFY_BUSINESS_DB_NAMES`.
+- `reports/` - durable report/evidence output directory.
+
+Use this concrete procedure when refreshing and running a rehearsal on
+`dgfy-temp`:
+
+1. **Sync the current migration-runner source from the active branch.** The
+   EC2 `~/dgfy-platform` directory is an image build context, not necessarily
+   a git checkout. Refresh only the migration-runner app and its Docker
+   packaging; do not overwrite the rehearsal template, `.env.compose`,
+   reports, MySQL data, uploads, or nginx/cert assets.
+
+   ```bash
+   rsync -az --delete --exclude node_modules --exclude reports \
+     apps/dgfy-migration-runner/ \
+     dgfy-temp:/home/ubuntu/dgfy-platform/apps/dgfy-migration-runner/
+
+   rsync -az \
+     infrastructure/docker/dgfy-migration-runner/ \
+     dgfy-temp:/home/ubuntu/dgfy-platform/infrastructure/docker/dgfy-migration-runner/
+   ```
+
+2. **Build the updated runner image on EC2.**
+
+   ```bash
+   ssh dgfy-temp '
+     cd ~/dgfy-rehearsal-template &&
+     docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+       --env-file .env.compose build migration-runner
+   '
+   ```
+
+3. **Reset the disposable rehearsal stack.** This is destructive by design
+   and must only be run against the EC2 template.
+
+   ```bash
+   ssh dgfy-temp '
+     cd ~/dgfy-rehearsal-template &&
+     ./reset-to-baseline.sh
+   '
+   ```
+
+4. **Create the approved disposable target databases if the reset removed
+   them.** Use only names from `migration/manifest.json` and require the
+   `dgfy_business_` prefix.
+
+   ```bash
+   ssh dgfy-temp '
+     cd ~/dgfy-rehearsal-template &&
+     python3 - <<'"'"'PY'"'"' > /tmp/create_dgfy_targets.sql
+import json
+m = json.load(open("migration/manifest.json"))
+for entry in m:
+    db = entry["target_business_db_name"]
+    if not db.startswith("dgfy_business_"):
+        raise SystemExit(f"unexpected target database: {db}")
+    print(f"CREATE DATABASE IF NOT EXISTS `{db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+PY
+     docker compose --env-file .env.compose exec -T mysql \
+       mysql -uroot -p"$MYSQL_ROOT_PASSWORD" < /tmp/create_dgfy_targets.sql
+   '
+   ```
+
+   If the root password is not exported in the shell, use the template's
+   approved local-only root password from `.env.compose` without printing it.
+
+5. **Run schema migration with the business target list explicitly injected.**
+   Do not trust the compose-rendered default if it shows
+   `DGFY_BUSINESS_DB_NAMES: ""`; that skips every business target.
+
+   ```bash
+   ssh dgfy-temp '
+     cd ~/dgfy-rehearsal-template &&
+     NAMES=$(cat migration/business-db-names.txt) &&
+     docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+       --env-file .env.compose run --rm \
+       -e DGFY_BUSINESS_DB_NAMES="$NAMES" \
+       migration-runner node src/cli.js schema migrate
+   '
+   ```
+
+6. **Run the real sequence with the same manifest, target list, actor, and
+   report directory.** The production runner image contains `src/` only, so
+   on EC2 the rehearsal is executed through the real CLI commands rather than
+   through the Jest harness.
+
+   ```bash
+   ssh dgfy-temp '
+     cd ~/dgfy-rehearsal-template &&
+     NAMES=$(cat migration/business-db-names.txt) &&
+     docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+       --env-file .env.compose run --rm \
+       -e DGFY_BUSINESS_DB_NAMES="$NAMES" \
+       -e RUN_PHASE14_MILESTONE_REHEARSAL=true \
+       -e DOCKER_CONTEXT=lima-dgfy-dev \
+       migration-runner node src/cli.js data dry-run &&
+     docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+       --env-file .env.compose run --rm \
+       -e DGFY_BUSINESS_DB_NAMES="$NAMES" \
+       -e RUN_PHASE14_MILESTONE_REHEARSAL=true \
+       -e DOCKER_CONTEXT=lima-dgfy-dev \
+       migration-runner node src/cli.js data apply --confirm-destructive &&
+     docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+       --env-file .env.compose run --rm \
+       -e DGFY_BUSINESS_DB_NAMES="$NAMES" \
+       -e RUN_PHASE14_MILESTONE_REHEARSAL=true \
+       -e DOCKER_CONTEXT=lima-dgfy-dev \
+       migration-runner node src/cli.js data apply --confirm-destructive &&
+     docker compose -f docker-compose.yml -f docker-compose.migration.yml \
+       --env-file .env.compose run --rm \
+       -e DGFY_BUSINESS_DB_NAMES="$NAMES" \
+       -e RUN_PHASE14_MILESTONE_REHEARSAL=true \
+       -e DOCKER_CONTEXT=lima-dgfy-dev \
+       migration-runner node src/cli.js verify
+   '
+   ```
+
+7. **Copy back the exact reports for durable evidence.** Preserve the
+   successful schema, dry-run, first apply, retry apply, and verify JSON
+   reports from `/home/ubuntu/dgfy-rehearsal-template/reports/`, then compute
+   local SHA-256 hashes before creating milestone evidence.
+
+Important `dgfy-temp` lessons:
+
+- `~/dgfy-platform` can be stale and may not contain current Phase 14 code.
+  Always sync/build before rehearsing.
+- `docker-compose.migration.yml` builds `dgfy-rehearsal-migration-runner:latest`
+  from `/home/ubuntu/dgfy-platform`.
+- `reset-to-baseline.sh` removes disposable target databases; recreate the
+  manifest targets before schema migration when needed.
+- Compose may render `DGFY_BUSINESS_DB_NAMES` as an empty string. Always
+  inject `$(cat migration/business-db-names.txt)` for schema/data/verify.
+- A CLI sequence that reports `data_migration_ok=true` is strong evidence,
+  but final VER-03 acceptance still depends on the evidence contract: source
+  volume must be non-vacuous for each required entity unless the plan
+  explicitly accepts a source-zero entity as governed not-applicable.
+
 ## 6. Expected Proof
 
 A successful rehearsal must prove:
