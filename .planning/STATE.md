@@ -6,14 +6,14 @@ current_phase: 14
 current_phase_name: sales-history-migration-full-verification
 status: executing
 stopped_at: Phase 14 context gathered
-last_updated: "2026-07-15T00:34:05.477Z"
+last_updated: "2026-07-15T01:58:10.304Z"
 last_activity: 2026-07-15
-last_activity_desc: Phase 14 execution started
+last_activity_desc: Phase 14 execution resumed (wave continue)
 progress:
   total_phases: 15
   completed_phases: 12
   total_plans: 93
-  completed_plans: 78
+  completed_plans: 83
   percent: 80
 ---
 
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 ## Current Position
 
 Phase: 14 (sales-history-migration-full-verification) — EXECUTING
-Plan: 1 of 11
-Status: Executing Phase 14
-Last activity: 2026-07-15 — Phase 14 execution started
+Plan: 2 of 11
+Status: Ready to execute
+Last activity: 2026-07-15 — Phase 14 execution resumed (wave continue)
 
 Progress: [█████████░] 95%
 
@@ -112,6 +112,7 @@ Progress: [█████████░] 95%
 | Phase 13.5 P02 | 4min | 3 tasks | 8 files |
 | Phase 13.5 P03 | 22min | 2 tasks | 5 files |
 | Phase 13.5 P04 | 45min | 2 tasks | 8 files |
+| Phase 14 P05 | 9min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -145,6 +146,9 @@ Recent decisions affecting current work:
 - [Phase 13.5]: [Phase 13.5 Plan 03]: staff_credentials apply idempotency uses natural-key lookup on staff_account_id after parent staff_account id resolution.
 - [Phase 13.5]: [Phase 13.5 Plan 04]: Dry-run reports redact credential-bearing payload fields into boolean evidence flags.
 - [Phase 13.5]: [Phase 13.5 Plan 04]: staff_auth verification keeps staff-linkage findings visible but non-blocking for product/inventory data_migration_ok; corrupt existing assignment rows still block.
+- [Phase 14]: [Phase 14 Plan 05]: Sales apply can run in the same command after product-domain apply, but the sales boundary refuses to start unless product_folder, product, inventory_movement, and product_embedding checkpoints are completed for the tenant.
+- [Phase 14]: [Phase 14 Plan 05]: availment and availment_item retry recovery use source_reference natural keys.
+- [Phase 14]: [Phase 14 Plan 05]: runApplyTransformations closes only the landlord, legacy tenant, and business target connections it opens; caller-owned coreSequelize remains caller-managed.
 
 ### Pending Todos
 
@@ -174,6 +178,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-14T23:25:12.806Z
+Last session: 2026-07-15T01:57:46.224Z
 Stopped at: Phase 14 context gathered
 Resume file: .planning/phases/14-sales-history-migration-full-verification/14-CONTEXT.md

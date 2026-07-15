@@ -152,8 +152,8 @@ Committed scope for the v2.1 Legacy Data Migration milestone. Migration-runner-o
 
 - [x] **SHM-01**: `pos_transactions` → `availments` mapper runs after Product/Inventory migration, tagging every migrated row `source_system='legacy_migration'` and carrying the legacy transaction reference.
 - [x] **SHM-02**: `pos_transaction_lines` → `availment_items` mapper migrates line-item detail, not just header totals.
-- [ ] **SHM-03**: Voided/cancelled `pos_transactions` (`status='voided'`) migrate into `availments` with their void status preserved.
-- [ ] **SHM-04**: Provenance (`source_system`/legacy reference) is tagged at the `inventory_movements`/`availment_items` line level, not just the `availments` header.
+- [x] **SHM-03**: Voided/cancelled `pos_transactions` (`status='voided'`) migrate into `availments` with their void status preserved.
+- [x] **SHM-04**: Provenance (`source_system`/legacy reference) is tagged at the `inventory_movements`/`availment_items` line level, not just the `availments` header.
 
 ### Migration Verification & Validation
 
@@ -302,8 +302,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LDM-05 | Phase 14 | Pending (sequenced with Sales History per its own requirement text, not Phase 12) |
 | SHM-01 | Phase 14 | Complete |
 | SHM-02 | Phase 14 | Complete |
-| SHM-03 | Phase 14 | Pending |
-| SHM-04 | Phase 14 | Pending |
+| SHM-03 | Phase 14 | Complete |
+| SHM-04 | Phase 14 | Complete |
 | VER-01 | Phase 14 | Pending (spans all 6 entity types incl. availment/availment_item — only fully true once Phase 14 lands) |
 | VER-02 | Phase 14 | Pending (spans product- and availment-side sum-by-type checks — only fully true once Phase 14 lands) |
 | VER-03 | Phase 14 | Pending (milestone-wide final re-rehearsal proof) |
