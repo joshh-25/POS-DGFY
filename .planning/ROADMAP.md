@@ -527,7 +527,20 @@ Plans:
   4. Dry-run/apply/idempotency-retry/verify wiring exists for all 6 new entity types (`product_folder`, `product`, `inventory_movement`, `product_embedding`, `availment`, `availment_item`), reusing the existing checkpoint and `legacy_id_map` mechanisms, and per-tenant verification reports both row counts and sum-by-type totals for products, inventory movements, embeddings, and availments.
   5. A full re-rehearsal against the disposable production-parity environment, using real legacy data volume, migrates a real tenant's products/inventory/embeddings/availments/availment_items end-to-end with a clean verify report (zero unresolved data-quality issues) — proving the milestone's "as if nothing happened" fidelity goal.
 
-**Plans**: TBD
+**Plans**: 11 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Additive sales-history schema, schema-contract, and persistence-model parity
+- [ ] 14-02-PLAN.md — Pure header/line mappers, snapshots, provenance, and reason taxonomy
+- [ ] 14-03-PLAN.md — Reason-specific current-state finding lifecycle correction
+- [ ] 14-04-PLAN.md — Read-only sales source scans and report-safe six-entity dry-run
+- [ ] 14-05-PLAN.md — Prerequisite-gated, dependency-ordered, idempotent sales apply
+- [ ] 14-06-PLAN.md — Exact monetary and six-entity sales reconciliation
+- [ ] 14-07-PLAN.md — Authoritative database mapping, foundation, and rehearsal documentation
+- [ ] 14-08-PLAN.md — Milestone rehearsal harness and full automated gate set
+- [ ] 14-09-PLAN.md — Blocking production-parity target authorization
+- [ ] 14-10-PLAN.md — Authorized real-volume execution and machine-checkable evidence
+- [ ] 14-11-PLAN.md — Blocking operator review and final source-coverage closure
 
 ## Progress
 
@@ -550,4 +563,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 (v1.0; Phase 7 
 | 12. Scope Unblock + Schema Extension | 4/4 | Complete    | 2026-07-14 |
 | 13. Product & Inventory Migration | 5/6 | Blocked at rehearsal completion by STAFF-01..04 architecture correction |  |
 | 13.5. Staff Authentication Model Correction | 4/4 | Complete |  |
-| 14. Sales History Migration & Full Verification | 0/TBD | Not started | - |
+| 14. Sales History Migration & Full Verification | 0/11 | Planned | - |
