@@ -31,6 +31,8 @@ DGFY can become a standalone multi-tenant POS and Storefront system without brea
 
 **Deferred to later milestones:** new frontend apps (dgfy-storefront/pos/business), production cutover itself (Phase 7 stays paused until this migration is proven, then likely resumed), Comprehensive Inventory/IMS integration, co-ownership exposure, Hospitality/Ticketing/Jobs ecosystem integrations.
 
+**Known gaps & carry-forward:** durable register at [`.planning/KNOWN-GAPS.md`](KNOWN-GAPS.md) — notably G-01/G-02 (fiscal compliance-gate demotion + transactional write, blocking-before-production) and G-04 (embedding carry-over unproven on real vectors). Surface G-01/G-02 early when integrating `dgfy-api` into the frontend, since checkout depends on the compliance gate.
+
 **Previous milestone (v2.0 Commerce Domain — Product, Checkout & Fulfillment):** Backend API parity with the legacy system's full commerce flow — product catalog, POS checkout/payment, storefront online ordering, and order fulfillment — built beside legacy on `dgfy_*` schemas. Completed across Phases 8-11 (see Validated requirements below).
 
 ## Requirements
