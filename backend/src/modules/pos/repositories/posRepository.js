@@ -935,7 +935,13 @@ const buildReportInclude = () => ([
         include: [{
             model: dbStore.get('Item'),
             as: 'item',
-            attributes: ['item_id', 'name', 'sku_code', 'category', 'cost_per_unit', 'default_sale_price', 'unit_of_measure']
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_folder', 'folder_id', 'cost_per_unit', 'default_sale_price', 'unit_of_measure'],
+            include: [{
+                model: dbStore.get('ItemFolder'),
+                as: 'folder',
+                attributes: ['folder_id', 'name'],
+                required: false
+            }]
         }]
     },
     {
@@ -1199,7 +1205,7 @@ const buildDiscountBreakdown = (rows = []) => {
     })).sort((left, right) => Number(right.discount_amount || 0) - Number(left.discount_amount || 0));
 };
 
-const buildFilterOptions = (transactions = [], lineRows = []) => {
+const buildFilterOptions = (transactions = [], lineRows = [], categoryOptions = []) => {
     const cashierMap = new Map();
     transactions.forEach((transaction) => {
         const userId = toPositiveInt(transaction?.cashier?.user_id || transaction?.cashier_id);
@@ -1209,7 +1215,13 @@ const buildFilterOptions = (transactions = [], lineRows = []) => {
             cashier_name: transaction?.cashier?.username || `Cashier #${userId}`
         });
     });
-    const categories = Array.from(new Set(lineRows.map((row) => String(row.category || '').trim()).filter(Boolean))).sort();
+    const categories = Array.isArray(categoryOptions) && categoryOptions.length > 0
+        ? categoryOptions
+        : Array.from(new Set(lineRows.map((row) => String(row.category || '').trim()).filter(Boolean))).sort().map((name) => ({
+            folder_id: null,
+            name,
+            legacy: true
+        }));
     return {
         cashiers: Array.from(cashierMap.values()).sort((left, right) => left.cashier_name.localeCompare(right.cashier_name)),
         categories,
@@ -1218,8 +1230,15 @@ const buildFilterOptions = (transactions = [], lineRows = []) => {
     };
 };
 
+// POS item forms assign the customer-facing Food Category through item folders.
+// Keep the legacy item.category value only for older records without a folder.
+const resolveReportItemCategory = (item = {}) => (
+    String(item?.folder?.name || item?.product_folder || item?.category || '').trim()
+);
+
 const normalizeReportLineRows = (transactions = [], filters = {}) => {
     const normalizedCategory = String(filters.category || '').trim().toLowerCase();
+    const normalizedFolderId = toPositiveInt(filters.category_id);
     const rows = [];
 
     (Array.isArray(transactions) ? transactions : []).forEach((transaction) => {
@@ -1234,7 +1253,11 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
 
         (Array.isArray(transaction?.lines) ? transaction.lines : []).forEach((line) => {
             const item = line?.item || {};
-            const category = String(item?.category || '').trim().toLowerCase();
+            const reportCategory = resolveReportItemCategory(item);
+            const category = reportCategory.toLowerCase();
+            if (normalizedFolderId && Number(item?.folder_id) !== normalizedFolderId) {
+                return;
+            }
             if (normalizedCategory && category !== normalizedCategory) {
                 return;
             }
@@ -1269,7 +1292,7 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 item_id: line?.item_id,
                 item_name: item?.name || `Item #${line?.item_id}`,
                 sku_code: item?.sku_code || null,
-                category: item?.category || null,
+                category: reportCategory || null,
                 quantity,
                 gross_sales: grossSales,
                 net_sales: lineNetSales,
@@ -1292,7 +1315,7 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
     return rows;
 };
 
-const buildReportPayloadFromTransactions = (transactions = [], filters = {}) => {
+const buildReportPayloadFromTransactions = (transactions = [], filters = {}, categoryOptions = []) => {
     const normalizedLines = normalizeReportLineRows(transactions, filters);
     const summary = serializeReportSummary(normalizedLines);
     const dailySeries = buildTimeSeries(normalizedLines, 'daily');
@@ -1347,9 +1370,10 @@ const buildReportPayloadFromTransactions = (transactions = [], filters = {}) => 
             terminal_id: String(filters.terminal_id || '').trim() || null,
             payment_type: String(filters.payment_type || '').trim() || null,
             source: String(filters.source || '').trim() || null,
+            category_id: toPositiveInt(filters.category_id),
             category: String(filters.category || '').trim() || null
         },
-        filter_options: buildFilterOptions(transactions, normalizedLines),
+        filter_options: buildFilterOptions(transactions, normalizedLines, categoryOptions),
         summary_cards: {
             total_sales: summary.net_sales,
             total_transactions: summary.total_transactions,
@@ -2381,9 +2405,28 @@ export const posRepository = {
         return rows.map(toPlain);
     },
 
+    async listActiveReportCategories(options = {}) {
+        const ItemFolder = dbStore.get('ItemFolder');
+        if (!ItemFolder) return [];
+
+        const rows = await ItemFolder.findAll({
+            where: {
+                is_active: true,
+                deleted_at: null
+            },
+            attributes: ['folder_id', 'name'],
+            order: [['name', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
     async getReportsOverview(filters = {}, options = {}) {
-        const transactions = await this.listReportTransactions(filters, options);
-        return buildReportPayloadFromTransactions(transactions, filters);
+        const [transactions, categoryOptions] = await Promise.all([
+            this.listReportTransactions(filters, options),
+            this.listActiveReportCategories(options)
+        ]);
+        return buildReportPayloadFromTransactions(transactions, filters, categoryOptions);
     },
 
     async exportReports(filters = {}, options = {}) {

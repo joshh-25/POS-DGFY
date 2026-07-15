@@ -230,7 +230,7 @@ function PosReportsAnalyticsWorkspace({
   const [cashierId, setCashierId] = useState('');
   const [paymentType, setPaymentType] = useState('');
   const [source, setSource] = useState('');
-  const [category, setCategory] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -246,8 +246,8 @@ function PosReportsAnalyticsWorkspace({
     cashierId,
     paymentType,
     source,
-    category
-  }), [category, cashierId, granularity, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, paymentType, source]);
+    categoryId
+  }), [categoryId, cashierId, granularity, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, paymentType, source]);
 
   const handleSectionChange = (sectionId) => {
     const nextSection = String(sectionId || 'daily').trim() || 'daily';
@@ -284,7 +284,7 @@ function PosReportsAnalyticsWorkspace({
           cashier_id: cashierId || undefined,
           payment_type: paymentType || undefined,
           source: source || undefined,
-          category: category || undefined
+          category_id: categoryId || undefined
         });
         if (!cancelled) {
           setReportData(payload);
@@ -308,7 +308,7 @@ function PosReportsAnalyticsWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [category, cashierId, granularity, isOnline, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, offlineReportKey, offlineSnapshotScope, paymentType, reportRefreshKey, source]);
+  }, [categoryId, cashierId, granularity, isOnline, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, offlineReportKey, offlineSnapshotScope, paymentType, reportRefreshKey, source]);
 
   const summaryCards = reportData?.summary_cards || {};
   const filterOptions = reportData?.filter_options || {};
@@ -350,7 +350,7 @@ function PosReportsAnalyticsWorkspace({
       cashier_id: cashierId || undefined,
       payment_type: paymentType || undefined,
       source: source || undefined,
-      category: category || undefined
+      category_id: categoryId || undefined
     });
     downloadBlob(blob, filename);
   };
@@ -421,7 +421,11 @@ function PosReportsAnalyticsWorkspace({
 
   const comparisonCards = comparisonReport.fixed_periods || [];
   const cashiers = Array.isArray(filterOptions.cashiers) ? filterOptions.cashiers : [];
-  const categories = Array.isArray(filterOptions.categories) ? filterOptions.categories : [];
+  const categories = (Array.isArray(filterOptions.categories) ? filterOptions.categories : []).map((entry) => (
+    typeof entry === 'string'
+      ? { folder_id: null, name: entry, legacy: true }
+      : entry
+  ));
 
   return (
     <div id={sectionId} className="space-y-4">
@@ -443,9 +447,9 @@ function PosReportsAnalyticsWorkspace({
         </div>
         <label className="space-y-1.5">
           <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Category</span>
-          <select className="h-11 w-full rounded-xl border border-slate-200 px-2 text-xs font-semibold text-slate-900" value={category} onChange={(event) => setCategory(event.target.value)}>
+          <select className="h-11 w-full rounded-xl border border-slate-200 px-2 text-xs font-semibold text-slate-900" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
             <option value="">All categories</option>
-            {categories.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            {categories.map((entry) => <option key={entry.folder_id || entry.name} value={entry.folder_id || ''} disabled={!entry.folder_id}>{entry.name}</option>)}
           </select>
         </label>
         <div className="flex h-11 w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
@@ -454,7 +458,7 @@ function PosReportsAnalyticsWorkspace({
         </div>
       </div>
       <section className="order-2 md:order-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <div className="grid gap-3 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]">
           <div className="grid grid-cols-2 gap-3 sm:contents">
             <label className="space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Date from</span>
@@ -471,7 +475,7 @@ function PosReportsAnalyticsWorkspace({
               </div>
             </label>
           </div>
-          <div className="grid gap-3 sm:contents">
+          <div className="grid grid-cols-2 gap-3 sm:contents">
             <label className="space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Range</span>
               <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={granularity} onChange={(event) => setGranularity(event.target.value)}>
@@ -511,9 +515,9 @@ function PosReportsAnalyticsWorkspace({
           </label>
           <label className="space-y-1.5">
             <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Category</span>
-            <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={category} onChange={(event) => setCategory(event.target.value)}>
+            <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
               <option value="">All categories</option>
-              {categories.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+              {categories.map((entry) => <option key={entry.folder_id || entry.name} value={entry.folder_id || ''} disabled={!entry.folder_id}>{entry.name}</option>)}
             </select>
           </label>
           <div className="flex items-end">
