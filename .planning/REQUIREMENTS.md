@@ -150,14 +150,14 @@ Committed scope for the v2.1 Legacy Data Migration milestone. Migration-runner-o
 
 ### Sales History Migration
 
-- [ ] **SHM-01**: `pos_transactions` → `availments` mapper runs after Product/Inventory migration, tagging every migrated row `source_system='legacy_migration'` and carrying the legacy transaction reference.
-- [ ] **SHM-02**: `pos_transaction_lines` → `availment_items` mapper migrates line-item detail, not just header totals.
+- [x] **SHM-01**: `pos_transactions` → `availments` mapper runs after Product/Inventory migration, tagging every migrated row `source_system='legacy_migration'` and carrying the legacy transaction reference.
+- [x] **SHM-02**: `pos_transaction_lines` → `availment_items` mapper migrates line-item detail, not just header totals.
 - [ ] **SHM-03**: Voided/cancelled `pos_transactions` (`status='voided'`) migrate into `availments` with their void status preserved.
 - [ ] **SHM-04**: Provenance (`source_system`/legacy reference) is tagged at the `inventory_movements`/`availment_items` line level, not just the `availments` header.
 
 ### Migration Verification & Validation
 
-- [ ] **VER-01**: Dry-run/apply/idempotency-retry/verify wiring covers every new entity type (`product_folder`, `product`, `inventory_movement`, `product_embedding`, `availment`, `availment_item`), reusing the existing checkpoint and `legacy_id_map` mechanisms.
+- [x] **VER-01**: Dry-run/apply/idempotency-retry/verify wiring covers every new entity type (`product_folder`, `product`, `inventory_movement`, `product_embedding`, `availment`, `availment_item`), reusing the existing checkpoint and `legacy_id_map` mechanisms.
 - [ ] **VER-02**: Extended per-tenant verification checks record counts *and* sum-by-type totals (not just row counts) for products, inventory movements, embeddings, and availments.
 - [ ] **VER-03**: Re-rehearsal against a disposable production-parity environment, against real legacy data volume, proves the migration end-to-end.
 
@@ -300,8 +300,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PIM-05 | Phase 13 | Complete |
 | PIM-06 | Phase 13 | Complete |
 | LDM-05 | Phase 14 | Pending (sequenced with Sales History per its own requirement text, not Phase 12) |
-| SHM-01 | Phase 14 | Pending |
-| SHM-02 | Phase 14 | Pending |
+| SHM-01 | Phase 14 | Complete |
+| SHM-02 | Phase 14 | Complete |
 | SHM-03 | Phase 14 | Pending |
 | SHM-04 | Phase 14 | Pending |
 | VER-01 | Phase 14 | Pending (spans all 6 entity types incl. availment/availment_item — only fully true once Phase 14 lands) |

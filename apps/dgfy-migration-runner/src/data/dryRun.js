@@ -23,8 +23,13 @@
 
 import { createSourceConnection, createLegacyTenantSourceConnection } from '../config/db.js';
 import { LEGACY_ID_MAP_TABLE } from '../metadata/bootstrap.js';
-import { recordDataQualityFinding } from '../metadata/dataState.js';
-import { readLegacyLandlordSnapshot, readLegacyTenantSnapshot, readLegacyProductSnapshot } from './legacySource.js';
+import { recordDataQualityFinding, syncDataQualityFindings } from '../metadata/dataState.js';
+import {
+    readLegacyLandlordSnapshot,
+    readLegacyTenantSnapshot,
+    readLegacyProductSnapshot,
+    readLegacySalesSnapshot
+} from './legacySource.js';
 import {
     mapLegacyAccountToDgfyAccount,
     mapLegacyTenantToBusiness,
@@ -38,6 +43,8 @@ import {
     mapStockMovementToInventoryMovement,
     mapItemLocationStocksToOpeningBalance,
     mapItemEmbeddingToProductEmbedding,
+    mapPosTransactionToAvailment,
+    mapPosTransactionLineToAvailmentItem,
     classifyMappingConflict,
     MAPPING_REASON_CODES
 } from './mappings.js';
@@ -75,6 +82,39 @@ function reclassifyOperation(mapperResult, resolvedIdMap) {
     return mapperResult;
 }
 
+// Phase 14 (SHM-01/02, T-14-04-03): sentinel prefix marking a dependency
+// (an availment header or a product) that is validly planned as an
+// insert/update *within this same dry-run pass* but has no durable
+// legacy_id_map row yet (a clean-target first run never does — dry-run
+// performs no target write, so it can never observe a real just-inserted
+// id the way apply.js can). Distinguishes "this line's parent/product will
+// exist once apply runs" from "this line's parent/product genuinely does
+// not exist anywhere in this run's plan" — only the latter is a real
+// blocking orphan. Never a valid dgfy_id shape, so it can never be
+// confused with a real resolved target id in a report.
+const PENDING_DEPENDENCY_PREFIX = 'pending:';
+
+/**
+ * Resolves a dependency's target id for dry-run line-item planning: a
+ * durable `legacy_id_map` row (already migrated by a prior apply) always
+ * wins; otherwise, if the dependency was validly planned as an insert/
+ * update earlier in this same pass, a `PENDING_DEPENDENCY_PREFIX`-prefixed
+ * sentinel is returned so the line mapper does not falsely orphan it;
+ * otherwise `null` (the dependency is genuinely absent from this run's
+ * plan — a real blocking orphan).
+ */
+function resolvePlannedDependencyId(key, resolvedIdMap, plannedKeys) {
+    const lookupKey = idMapLookupKey(key);
+    const durableId = resolvedIdMap.get(lookupKey);
+    if (durableId) {
+        return durableId;
+    }
+    if (plannedKeys.has(lookupKey)) {
+        return `${PENDING_DEPENDENCY_PREFIX}${lookupKey}`;
+    }
+    return null;
+}
+
 const CREDENTIAL_PAYLOAD_TABLES = new Set(['accounts', 'staff_credentials']);
 
 function hasNonEmptyString(value) {
@@ -82,9 +122,28 @@ function hasNonEmptyString(value) {
 }
 
 /**
+ * Recursively collects every key name found at any level of a (nested)
+ * plain-object value, deduplicated. Never collects *values* — only key
+ * names — so this is safe to surface in a report even when the object
+ * carries sensitive legacy data (Phase 14 T-14-04-01: dry-run report
+ * snapshots must never disclose legacy values).
+ */
+function collectObjectKeysDeep(value, keys = new Set()) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        Object.entries(value).forEach(([key, nestedValue]) => {
+            keys.add(key);
+            collectObjectKeysDeep(nestedValue, keys);
+        });
+    }
+    return keys;
+}
+
+/**
  * Builds a report-safe copy of a dry-run plan entry. Mapper/apply internals
  * still carry full payloads; only report assembly swaps credential-bearing
- * fields for boolean evidence flags.
+ * fields for boolean evidence flags and replaces any `legacy_snapshot`
+ * value (Phase 14 sales-history headers/lines) with presence + key-name
+ * evidence only (T-14-04-01) — never the seeded legacy values themselves.
  */
 export function redactTargetPayload(entry = {}) {
     if (!entry || !entry.target_payload) {
@@ -94,9 +153,10 @@ export function redactTargetPayload(entry = {}) {
     const targetPayload = entry.target_payload;
     const redactedPayload = {};
     Object.entries(targetPayload).forEach(([key, value]) => {
-        if (key !== 'password_hash' && key !== 'pos_approval_pin_hash') {
-            redactedPayload[key] = value;
+        if (key === 'password_hash' || key === 'pos_approval_pin_hash' || key === 'legacy_snapshot') {
+            return;
         }
+        redactedPayload[key] = value;
     });
 
     const credentialBearingTable = CREDENTIAL_PAYLOAD_TABLES.has(entry.target_table);
@@ -105,6 +165,12 @@ export function redactTargetPayload(entry = {}) {
     }
     if (entry.target_table === 'staff_credentials' || Object.hasOwn(targetPayload, 'pos_approval_pin_hash')) {
         redactedPayload.has_pos_approval_pin_hash = hasNonEmptyString(targetPayload.pos_approval_pin_hash);
+    }
+
+    if (Object.hasOwn(targetPayload, 'legacy_snapshot')) {
+        const snapshotValue = targetPayload.legacy_snapshot;
+        redactedPayload.has_legacy_snapshot = snapshotValue !== null && snapshotValue !== undefined;
+        redactedPayload.legacy_snapshot_keys = Array.from(collectObjectKeysDeep(snapshotValue)).sort();
     }
 
     return {
@@ -124,7 +190,7 @@ export function redactTargetPayload(entry = {}) {
  * @param {{
  *   targets: Array<{ legacy_tenant_id, legacy_tenant_db_name, target_business_db_name, expected_business_id, expected_owner_account_id }>,
  *   landlordSnapshot: { tenants: object[], accounts: object[], memberships: object[] },
- *   tenantSnapshots: Map<string, { users: object[], locations: object[], userLocationGrants: object[], terminalRegistry: object[], productSnapshot?: object }>,
+ *   tenantSnapshots: Map<string, { users: object[], locations: object[], userLocationGrants: object[], terminalRegistry: object[], productSnapshot?: object, salesSnapshot?: { posTransactions: object[], posTransactionLines: object[] } }>,
  *   resolvedIdMap?: Map<string, string>
  * }} input
  * @returns {Array<object>} plan entries: `{ legacy_tenant_id, operation, entity_type, target_table, target_database, target_payload, legacy_id_map_key, related_targets, findings }`
@@ -208,7 +274,7 @@ export function buildDryRunPlan({
         );
 
         const tenantSnapshot = tenantSnapshots.get(target.legacy_tenant_id) || {};
-        const { users = [], locations = [], terminalRegistry = [], productSnapshot = {} } = tenantSnapshot;
+        const { users = [], locations = [], terminalRegistry = [], productSnapshot = {}, salesSnapshot = {} } = tenantSnapshot;
         const {
             itemFolders = [],
             items = [],
@@ -284,6 +350,7 @@ export function buildDryRunPlan({
         });
 
         // 7. Terminal identities.
+        const terminalIdentityIdByLegacyTerminalId = new Map();
         terminalRegistry.forEach((entry) => {
             const resolvedLocationId = entry.location_id
                 ? locationIdByLegacyLocationId.get(String(entry.location_id)) || null
@@ -295,6 +362,13 @@ export function buildDryRunPlan({
                 locationId: resolvedLocationId
             });
             entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(terminalResult, resolvedIdMap) });
+
+            if (terminalResult.legacy_id_map_key) {
+                const resolvedTerminalIdentityId = resolvedIdMap.get(idMapLookupKey(terminalResult.legacy_id_map_key));
+                if (resolvedTerminalIdentityId) {
+                    terminalIdentityIdByLegacyTerminalId.set(String(entry.terminal_id), resolvedTerminalIdentityId);
+                }
+            }
         });
 
         // 8. Product folders — must precede products so retried dry-runs can
@@ -310,6 +384,11 @@ export function buildDryRunPlan({
 
         // 9. Products — folder_id is pre-resolved from legacy_id_map when
         // available, matching the location-to-terminal dry-run pattern above.
+        // Phase 14 (T-14-04-03): also tracks which legacy items are validly
+        // planned as insert/update in this same pass, so sales-line planning
+        // (14) can distinguish "this line's product will exist once apply
+        // runs" from a genuinely absent product.
+        const plannedProductKeys = new Set();
         items.forEach((item) => {
             let resolvedFolderId = null;
             if (item.folder_id) {
@@ -328,7 +407,15 @@ export function buildDryRunPlan({
                 resolvedFolderId,
                 itemLocationStocks: item.itemLocationStocks || []
             });
-            entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(productResult, resolvedIdMap) });
+            const reclassifiedProduct = reclassifyOperation(productResult, resolvedIdMap);
+            entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifiedProduct });
+
+            if (
+                (reclassifiedProduct.operation === 'insert' || reclassifiedProduct.operation === 'update')
+                && productResult.legacy_id_map_key
+            ) {
+                plannedProductKeys.add(idMapLookupKey(productResult.legacy_id_map_key));
+            }
         });
 
         // 10. Stock movements — products are planned first so product_id can
@@ -384,6 +471,77 @@ export function buildDryRunPlan({
                 resolvedProductId
             });
             entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(embeddingResult, resolvedIdMap) });
+        });
+
+        // 13. Availments (sales headers) — after every Phase 13 product-
+        // domain entity (8-12), resolving location/terminal/cashier
+        // attribution via the same durable legacy_id_map lookups built for
+        // entities 4/6/7 above. Tracks which legacy pos_transactions rows
+        // are validly planned as insert/update this pass (T-14-04-03), so
+        // line planning (14) can tell "parent will exist once apply runs"
+        // apart from a genuinely absent parent.
+        const { posTransactions = [], posTransactionLines = [] } = salesSnapshot;
+        const plannedAvailmentKeys = new Set();
+
+        posTransactions.forEach((transaction) => {
+            const resolvedLocationId = transaction.location_id
+                ? locationIdByLegacyLocationId.get(String(transaction.location_id)) || null
+                : null;
+            const resolvedTerminalId = transaction.terminal_id
+                ? terminalIdentityIdByLegacyTerminalId.get(String(transaction.terminal_id)) || null
+                : null;
+            const resolvedCashierId = transaction.cashier_id
+                ? staffAccountIdByLegacyUserId.get(String(transaction.cashier_id)) || null
+                : null;
+
+            const availmentResult = mapPosTransactionToAvailment(transaction, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedLocationId,
+                resolvedTerminalId,
+                resolvedCashierId
+            });
+            const reclassifiedAvailment = reclassifyOperation(availmentResult, resolvedIdMap);
+            entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifiedAvailment });
+
+            if (
+                (reclassifiedAvailment.operation === 'insert' || reclassifiedAvailment.operation === 'update')
+                && availmentResult.legacy_id_map_key
+            ) {
+                plannedAvailmentKeys.add(idMapLookupKey(availmentResult.legacy_id_map_key));
+            }
+        });
+
+        // 14. Availment items (sales lines) — both target FKs (availment_id,
+        // product_id) are non-null, so a genuinely unresolved dependency is
+        // a real blocking skip; a dependency that is durably resolved OR
+        // validly planned this same pass (13, or Phase 13's product loop
+        // above) is not (T-14-04-03).
+        const itemNameByLegacyItemId = new Map(items.map((item) => [String(item.item_id), item.name ?? null]));
+
+        posTransactionLines.forEach((line) => {
+            const resolvedAvailmentId = resolvePlannedDependencyId(
+                { legacy_source: target.legacy_tenant_db_name, legacy_table: 'pos_transactions', legacy_id: line.pos_transaction_id },
+                resolvedIdMap,
+                plannedAvailmentKeys
+            );
+            const resolvedProductId = resolvePlannedDependencyId(
+                { legacy_source: target.legacy_tenant_db_name, legacy_table: 'items', legacy_id: line.item_id },
+                resolvedIdMap,
+                plannedProductKeys
+            );
+            const resolvedProductName = itemNameByLegacyItemId.get(String(line.item_id)) || null;
+
+            const lineResult = mapPosTransactionLineToAvailmentItem(line, {
+                legacyTenantDbName: target.legacy_tenant_db_name,
+                targetBusinessDbName: target.target_business_db_name,
+                expectedBusinessId: target.expected_business_id,
+                resolvedAvailmentId,
+                resolvedProductId,
+                resolvedProductName
+            });
+            entries.push({ legacy_tenant_id: target.legacy_tenant_id, ...reclassifyOperation(lineResult, resolvedIdMap) });
         });
     });
 
@@ -458,6 +616,25 @@ export function summarizeDryRunReport(entries = [], targets = []) {
  * reclassify `insert` -> `update`. Never touches any other metadata table
  * and never mutates `legacy_id_map` itself (read-only `SELECT`).
  */
+// Phase 14 (Plan 03/VER-01): the two new sales entity types adopt the
+// reason-lifecycle-aware sync helper (open/reopen/leave/resolve per exact
+// reason_code) instead of the older Phase 3 append-only
+// recordDataQualityFinding() loop, so a rerun over a live, continuously-
+// growing source table (D-14-06) never accumulates duplicate rows for a
+// still-open reason and always resolves a reason no longer emitted. Every
+// other (Phase 3/13) entity type keeps its existing append-only behavior
+// unchanged.
+const SYNC_LIFECYCLE_ENTITY_TYPES = new Set(['availment', 'availment_item']);
+
+function toSyncFindings(findings = []) {
+    return findings.map((finding) => ({
+        severity: finding.severity,
+        reasonCode: finding.reason_code,
+        message: finding.message,
+        remediation: finding.remediation ?? null
+    }));
+}
+
 async function fetchResolvedIdMap(metaSequelize, runScope) {
     const [rows] = await metaSequelize.query(
         `SELECT legacy_source, legacy_table, legacy_id, dgfy_id FROM ${LEGACY_ID_MAP_TABLE} WHERE run_scope = ?`,
@@ -475,6 +652,19 @@ async function fetchResolvedIdMap(metaSequelize, runScope) {
 }
 
 /**
+ * Closes a Sequelize connection this orchestration opened, if it was ever
+ * successfully constructed. Tolerant of connections that don't expose a
+ * `close()` method (older/lighter test doubles) so it never itself throws
+ * during cleanup and is always safe to call unconditionally from `finally`
+ * (T-14-04-02: creator-owned pool closure, on success and on failure).
+ */
+async function closeConnectionSafely(sequelize) {
+    if (sequelize && typeof sequelize.close === 'function') {
+        await sequelize.close();
+    }
+}
+
+/**
  * Orchestrates a full dry-run: opens read-only legacy source connections
  * (landlord + one per manifest-listed legacy tenant DB), reads snapshots,
  * resolves existing `legacy_id_map` state, builds the plan, persists every
@@ -483,49 +673,89 @@ async function fetchResolvedIdMap(metaSequelize, runScope) {
  *
  * Opens no `dgfy_*` target/business connection and writes no checkpoint
  * state — dry-run performs no target mutation and marks no checkpoints
- * (checkpoints are an apply-only concept, D-03).
+ * (checkpoints are an apply-only concept, D-03). Every connection this
+ * function creates (landlord + each legacy tenant) is closed in `finally`
+ * on both success and any thrown error (T-14-04-02).
  *
  * @param {{ config: object, metaSequelize: import('sequelize').Sequelize, targets: object[], runScope?: string }} params
  */
 export async function runDryRunTransformations({ config, metaSequelize, targets, runScope = DEFAULT_RUN_SCOPE }) {
-    const landlordSequelize = createSourceConnection(config);
-    const landlordSnapshot = await readLegacyLandlordSnapshot(landlordSequelize, targets);
+    let landlordSequelize = null;
+    const tenantSequelizes = [];
 
-    const tenantSnapshots = new Map();
-    for (const target of targets) {
-        // eslint-disable-next-line no-await-in-loop
-        const tenantSequelize = createLegacyTenantSourceConnection(config, target.legacy_tenant_db_name);
-        // eslint-disable-next-line no-await-in-loop
-        const tenantSnapshot = await readLegacyTenantSnapshot(tenantSequelize);
-        // eslint-disable-next-line no-await-in-loop
-        const productSnapshot = await readLegacyProductSnapshot(tenantSequelize);
-        tenantSnapshots.set(target.legacy_tenant_id, { ...tenantSnapshot, productSnapshot });
-    }
+    try {
+        landlordSequelize = createSourceConnection(config);
+        const landlordSnapshot = await readLegacyLandlordSnapshot(landlordSequelize, targets);
 
-    const resolvedIdMap = await fetchResolvedIdMap(metaSequelize, runScope);
-
-    const entries = buildDryRunPlan({ targets, landlordSnapshot, tenantSnapshots, resolvedIdMap });
-
-    // D-04: persist every skip/conflict/orphan finding before returning —
-    // never silently dropped from the migration report.
-    for (const entry of entries) {
-        for (const finding of entry.findings || []) {
+        const tenantSnapshots = new Map();
+        for (const target of targets) {
             // eslint-disable-next-line no-await-in-loop
-            await recordDataQualityFinding(metaSequelize, {
-                runScope,
-                legacyTenantId: entry.legacy_tenant_id,
-                entityType: finding.entity_type,
-                legacyTable: finding.legacy_table,
-                legacyId: finding.legacy_id,
-                severity: finding.severity,
-                reasonCode: finding.reason_code,
-                message: finding.message,
-                remediation: finding.remediation
-            });
+            const tenantSequelize = createLegacyTenantSourceConnection(config, target.legacy_tenant_db_name);
+            tenantSequelizes.push(tenantSequelize);
+            // eslint-disable-next-line no-await-in-loop
+            const tenantSnapshot = await readLegacyTenantSnapshot(tenantSequelize);
+            // eslint-disable-next-line no-await-in-loop
+            const productSnapshot = await readLegacyProductSnapshot(tenantSequelize);
+            // eslint-disable-next-line no-await-in-loop
+            const salesSnapshot = await readLegacySalesSnapshot(tenantSequelize);
+            tenantSnapshots.set(target.legacy_tenant_id, { ...tenantSnapshot, productSnapshot, salesSnapshot });
+        }
+
+        const resolvedIdMap = await fetchResolvedIdMap(metaSequelize, runScope);
+
+        const entries = buildDryRunPlan({ targets, landlordSnapshot, tenantSnapshots, resolvedIdMap });
+
+        // D-04: persist every skip/conflict/orphan finding before returning —
+        // never silently dropped from the migration report. Phase 14 sales
+        // entities (availment/availment_item) sync the record's full current
+        // reason set (open/reopen/leave/resolve); every other entity type
+        // keeps the original Phase 3 append-only insert.
+        for (const entry of entries) {
+            if (SYNC_LIFECYCLE_ENTITY_TYPES.has(entry.entity_type)) {
+                const legacyTable = entry.legacy_id_map_key?.legacy_table
+                    ?? entry.findings?.[0]?.legacy_table
+                    ?? null;
+                const legacyId = entry.legacy_id_map_key?.legacy_id
+                    ?? entry.findings?.[0]?.legacy_id
+                    ?? null;
+
+                // eslint-disable-next-line no-await-in-loop
+                await syncDataQualityFindings(metaSequelize, {
+                    runScope,
+                    legacyTenantId: entry.legacy_tenant_id,
+                    entityType: entry.entity_type,
+                    legacyTable,
+                    legacyId,
+                    findings: toSyncFindings(entry.findings)
+                });
+                continue; // eslint-disable-line no-continue
+            }
+
+            for (const finding of entry.findings || []) {
+                // eslint-disable-next-line no-await-in-loop
+                await recordDataQualityFinding(metaSequelize, {
+                    runScope,
+                    legacyTenantId: entry.legacy_tenant_id,
+                    entityType: finding.entity_type,
+                    legacyTable: finding.legacy_table,
+                    legacyId: finding.legacy_id,
+                    severity: finding.severity,
+                    reasonCode: finding.reason_code,
+                    message: finding.message,
+                    remediation: finding.remediation
+                });
+            }
+        }
+
+        const { summary, tenant_coverage } = summarizeDryRunReport(entries, targets);
+
+        return { run_scope: runScope, entries, summary, tenant_coverage };
+    } finally {
+        // eslint-disable-next-line no-await-in-loop
+        await closeConnectionSafely(landlordSequelize);
+        for (const tenantSequelize of tenantSequelizes) {
+            // eslint-disable-next-line no-await-in-loop
+            await closeConnectionSafely(tenantSequelize);
         }
     }
-
-    const { summary, tenant_coverage } = summarizeDryRunReport(entries, targets);
-
-    return { run_scope: runScope, entries, summary, tenant_coverage };
 }
