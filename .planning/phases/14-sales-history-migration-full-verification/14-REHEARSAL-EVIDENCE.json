@@ -1,6 +1,13 @@
 {
   "schema_version": 1,
-  "final_verdict": "blocked_source_zero_product_embedding",
+  "final_verdict": "pass",
+  "exemptions": [
+    {
+      "entity": "product_embedding",
+      "kind": "source_zero",
+      "reason": "All 26 manifest tenants have zero item_embeddings rows in the dgfy-temp production-parity snapshot; embeddings are a v2.x-deferred feature (EMB-01) and non-central to the v2.1 fidelity goal. Operator decision 2026-07-15 ('empty is truthful'): a legitimately empty source entity is accepted as truthfully migrated (0 -> 0). The item_embeddings -> product_embeddings carry-over path remains built and unit-tested for when real vectors exist."
+    }
+  ],
   "data_migration_ok": true,
   "exact_sales_totals_match": true,
   "provenance_ok": true,
@@ -153,7 +160,7 @@
   ],
   "notes": [
     "Raw reports are intentionally not committed because data-dry-run evidence contains credential hash material in source evidence fields.",
-    "Raw reports remain on the approved experimental EC2 under /home/ubuntu/dgfy-rehearsal-template/reports.",
-    "The CLI sequence passed data_migration_ok=true and retry wrote zero new rows, but the strict Plan 10 non-vacuous six-entity contract is blocked by source-zero item_embeddings."
+    "Raw reports remain on the approved experimental EC2 under /home/ubuntu/dgfy-rehearsal-template/reports; the committed validator checks report hash format and path safety, not recomputed digests of these absent files.",
+    "The CLI sequence passed data_migration_ok=true, retry wrote zero new rows, and five of six entities migrated with exact source=target counts. product_embedding was source-zero across all 26 tenants and is accepted under a documented source_zero exemption (see exemptions[]) per operator decision 2026-07-15 ('empty is truthful')."
   ]
 }
