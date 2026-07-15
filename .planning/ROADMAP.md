@@ -37,7 +37,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 12: Scope Unblock + Schema Extension** - ADR 0029 amendment and additive schema changes unblock every new legacy-data mapper. (completed 2026-07-14)
 - [ ] **Phase 13: Product & Inventory Migration** - Legacy items/folders/stock-movements/embeddings migrate into the new products/inventory schema with proven fidelity. Product/inventory data passed rehearsal across 26 targets, but final phase completion is blocked by the staff-auth model correction discovered during verify.
 - [x] **Phase 13.5: Staff Authentication Model Correction (INSERTED)** - Correct ADR 0028, tenant schema, API model assumptions, and migration rules so tenant-local staff credentials remain supported and DGFY account linking is optional. (completed 2026-07-14)
-- [ ] **Phase 14: Sales History Migration & Full Verification** - Legacy POS sales history migrates into availments with provenance and void-state fidelity, and the full milestone is proven end-to-end via re-rehearsal after Phase 13.5.
+- [x] **Phase 14: Sales History Migration & Full Verification** - Legacy POS sales history migrates into availments with provenance and void-state fidelity, and the full milestone is proven end-to-end via re-rehearsal after Phase 13.5.
 
 ## Phase Details
 
@@ -559,15 +559,15 @@ Plans:
 
 **Wave 7** *(blocked on 14-07 + 14-08)*
 
-- [ ] 14-09-PLAN.md — Blocking production-parity target authorization
+- [x] 14-09-PLAN.md — Blocking production-parity target authorization
 
 **Wave 8** *(blocked on 14-09)*
 
-- [ ] 14-10-PLAN.md — Authorized real-volume execution and machine-checkable evidence
+- [x] 14-10-PLAN.md — Authorized real-volume execution and machine-checkable evidence
 
 **Wave 9** *(blocked on 14-10)*
 
-- [ ] 14-11-PLAN.md — Blocking operator review and final source-coverage closure
+- [x] 14-11-PLAN.md — Blocking operator review and final source-coverage closure
 
 ## Progress
 

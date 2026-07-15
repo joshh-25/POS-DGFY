@@ -4,11 +4,11 @@ milestone: v2.1
 milestone_name: Legacy Data Migration
 current_phase: 14
 current_phase_name: sales-history-migration-full-verification
-status: executing
-stopped_at: Completed 14-08-PLAN.md
-last_updated: "2026-07-15T02:32:26.927Z"
+status: phase-complete
+stopped_at: Phase 14 complete — all 11 plans landed; 14-11 operator approval recorded
+last_updated: "2026-07-15T00:00:00.000Z"
 last_activity: 2026-07-15
-last_activity_desc: Phase 14 execution resumed (wave continue)
+last_activity_desc: Operator approved 14-11 final evidence review; Phase 14 (sales-history-migration-full-verification) complete
 progress:
   total_phases: 15
   completed_phases: 12
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 
 ## Current Position
 
-Phase: 14 (sales-history-migration-full-verification) — EXECUTING
-Plan: 5 of 11
-Status: Ready to execute
-Last activity: 2026-07-15 — Phase 14 execution resumed (wave continue)
+Phase: 14 (sales-history-migration-full-verification) — COMPLETE
+Plan: 11 of 11 complete — operator approved final evidence review
+Status: Phase complete; v2.1 milestone close-out available (/gsd-complete-milestone)
+Last activity: 2026-07-15 — Operator approved 14-11; Phase 14 done
 
-Progress: [█████████░] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -184,6 +184,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T02:32:26.921Z
-Stopped at: Completed 14-08-PLAN.md
-Resume file: None
+Last session: 2026-07-15 (resumed) — reconciled stale HANDOFF, finished 14-10, operator approved 14-11
+Stopped at: Phase 14 complete. Next: v2.1 milestone close-out (/gsd-complete-milestone) or new work.
+Resume file: None (stale HANDOFF.json + .continue-here.md removed as superseded)
