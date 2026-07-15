@@ -97,7 +97,7 @@ services:
       start_period: 30s
 
   dgfy-api:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:

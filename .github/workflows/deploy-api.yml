@@ -19,7 +19,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/sieitzz/dgfy-platform/dgfy-api
+  IMAGE_NAME: ghcr.io/sieitzz/dgfy-platform/api
 
 jobs:
   build-and-push:
@@ -54,15 +54,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build and push dgfy-api image
+      - name: Build and push api image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infrastructure/docker/dgfy-api/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=dgfy-api
-          cache-to: type=gha,scope=dgfy-api,mode=max
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
 
       # PROD server pull/restart happens in the `publish` job of
       # deployment-orchestrator.yml -> publish-platform.yml, keyed off
