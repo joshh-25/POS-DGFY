@@ -530,16 +530,43 @@ Plans:
 **Plans**: 11 plans
 
 Plans:
+
+**Wave 1** *(parallel schema, mapper, and finding-lifecycle foundations)*
+
 - [ ] 14-01-PLAN.md — Additive sales-history schema, schema-contract, and persistence-model parity
 - [ ] 14-02-PLAN.md — Pure header/line mappers, snapshots, provenance, and reason taxonomy
 - [ ] 14-03-PLAN.md — Reason-specific current-state finding lifecycle correction
+
+**Wave 2** *(blocked on 14-02 + 14-03)*
+
 - [ ] 14-04-PLAN.md — Read-only sales source scans and report-safe six-entity dry-run
+
+**Wave 3** *(blocked on 14-01 through 14-04)*
+
 - [ ] 14-05-PLAN.md — Prerequisite-gated, dependency-ordered, idempotent sales apply
+
+**Wave 4** *(blocked on 14-05)*
+
 - [ ] 14-06-PLAN.md — Exact monetary and six-entity sales reconciliation
+
+**Wave 5** *(blocked on 14-06; authoritative docs define the rehearsal contract)*
+
 - [ ] 14-07-PLAN.md — Authoritative database mapping, foundation, and rehearsal documentation
+
+**Wave 6** *(blocked on 14-07)*
+
 - [ ] 14-08-PLAN.md — Milestone rehearsal harness and full automated gate set
+
+**Wave 7** *(blocked on 14-07 + 14-08)*
+
 - [ ] 14-09-PLAN.md — Blocking production-parity target authorization
+
+**Wave 8** *(blocked on 14-09)*
+
 - [ ] 14-10-PLAN.md — Authorized real-volume execution and machine-checkable evidence
+
+**Wave 9** *(blocked on 14-10)*
+
 - [ ] 14-11-PLAN.md — Blocking operator review and final source-coverage closure
 
 ## Progress

@@ -476,15 +476,15 @@ if (key === 'legacy_snapshot') {
 }
 ```
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 No user decision is required before planning. Use these researched defaults:
 
-1. Snapshot column: `legacy_snapshot` on both header and line, with explicit nested `legacy_pos` / `legacy_pos_line` allowlists.
-2. Fee shape: flat `{ service_fee_amount, delivery_fee }` using fixed-scale strings; restaurant service charge stays in the general snapshot because D-14-09 names only the two known fee fields.
-3. Provenance: nullable `STRING(32)` plus namespaced unique source references; no ENUM migration.
-4. Reconciliation: include strict legacy-vs-target `total_amount` parity, grouped status totals, line counts, and provenance/FK coverage.
-5. Fulfillment fields: keep target caches null; preserve source fulfillment fields in the snapshot.
+1. **RESOLVED:** Snapshot column: `legacy_snapshot` on both header and line, with explicit nested `legacy_pos` / `legacy_pos_line` allowlists.
+2. **RESOLVED:** Fee shape: flat `{ service_fee_amount, delivery_fee }` using fixed-scale strings; restaurant service charge stays in the general snapshot because D-14-09 names only the two known fee fields.
+3. **RESOLVED:** Provenance: nullable `STRING(32)` plus namespaced unique source references; no ENUM migration.
+4. **RESOLVED:** Reconciliation: include strict legacy-vs-target `total_amount` parity, grouped status totals, line counts, and provenance/FK coverage.
+5. **RESOLVED:** Fulfillment fields: keep target caches null; preserve source fulfillment fields in the snapshot.
 
 ## Sources
 
