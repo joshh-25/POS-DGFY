@@ -21,6 +21,11 @@ on:
         required: false
         type: boolean
         default: false
+      runner_labels_json:
+        description: JSON array passed to runs-on for build/publish jobs
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
     outputs:
       backend_sha_tag:
         value: ${{ jobs.backend.outputs.sha_tag }}
@@ -41,6 +46,7 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -54,6 +60,7 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -64,6 +71,7 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -76,6 +84,7 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -88,6 +97,7 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       vpn_required: ${{ inputs.vpn_required }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
