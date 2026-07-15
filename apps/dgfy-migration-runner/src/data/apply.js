@@ -78,7 +78,8 @@ import {
     getDataCheckpoint,
     markDataCheckpoint,
     recordDataQualityFinding,
-    resolveDataQualityFindings
+    resolveDataQualityFindings,
+    syncDataQualityFindings
 } from '../metadata/dataState.js';
 
 export { DEFAULT_RUN_SCOPE };
@@ -175,11 +176,15 @@ async function findExistingTargetRow(targetSequelize, table, config, payload) {
  */
 async function insertTargetRow(targetSequelize, table, payload) {
     const row = {
-        ...serializeTargetPayload(payload),
-        created_at: new Date()
+        ...serializeTargetPayload(payload)
     };
+    if (row.created_at === undefined || row.created_at === null) {
+        row.created_at = new Date();
+    }
     if (!APPEND_ONLY_TARGET_TABLES.has(table)) {
-        row.updated_at = new Date();
+        if (row.updated_at === undefined || row.updated_at === null) {
+            row.updated_at = new Date();
+        }
     }
 
     if (row.id !== undefined && row.id !== null) {
@@ -351,6 +356,64 @@ export async function resumeFromDataCheckpoint(metaSequelize, { runScope, legacy
     return { checkpoint, alreadyCompleted: checkpoint?.status === 'completed' };
 }
 
+function toSyncFindings(findings = []) {
+    return findings.map((finding) => ({
+        severity: finding.severity,
+        reasonCode: finding.reason_code,
+        message: finding.message,
+        remediation: finding.remediation ?? null
+    }));
+}
+
+function findingScopeKey({ entityType, legacyTable, legacyId }) {
+    return `${entityType}|${legacyTable ?? ''}|${legacyId ?? ''}`;
+}
+
+async function syncEntryDataQualityFindings(metaSequelize, { runScope, legacyTenantId, entry }) {
+    const entryFindings = (entry.findings || []).filter((finding) => finding.entity_type === entry.entity_type);
+    if (entry.legacy_id_map_key) {
+        await syncDataQualityFindings(metaSequelize, {
+            runScope,
+            legacyTenantId,
+            entityType: entry.entity_type,
+            legacyTable: entry.legacy_id_map_key.legacy_table,
+            legacyId: entry.legacy_id_map_key.legacy_id,
+            findings: toSyncFindings(entryFindings)
+        });
+    }
+
+    const groupedFindings = new Map();
+    (entry.findings || [])
+        .filter((finding) => finding.entity_type !== entry.entity_type)
+        .forEach((finding) => {
+            const key = findingScopeKey({
+                entityType: finding.entity_type,
+                legacyTable: finding.legacy_table,
+                legacyId: finding.legacy_id
+            });
+            const group = groupedFindings.get(key) || {
+                entityType: finding.entity_type,
+                legacyTable: finding.legacy_table,
+                legacyId: finding.legacy_id,
+                findings: []
+            };
+            group.findings.push(finding);
+            groupedFindings.set(key, group);
+        });
+
+    for (const group of groupedFindings.values()) {
+        // eslint-disable-next-line no-await-in-loop
+        await syncDataQualityFindings(metaSequelize, {
+            runScope,
+            legacyTenantId,
+            entityType: group.entityType,
+            legacyTable: group.legacyTable,
+            legacyId: group.legacyId,
+            findings: toSyncFindings(group.findings)
+        });
+    }
+}
+
 /**
  * Applies (or verifies) every plan entry for one (tenant, entity type)
  * scope, then marks the checkpoint `completed` — but only when this call
@@ -390,33 +453,12 @@ export async function applyTenantEntityBatch({
         const writeResult = await writeMappedTargetRow({ metaSequelize, targetSequelize, runScope, entry });
         results.push({ entry, status: writeResult.status, dgfyId: writeResult.dgfyId });
 
-        if ((writeResult.status === 'inserted' || writeResult.status === 'reconciled') && entry.legacy_id_map_key) {
-            // eslint-disable-next-line no-await-in-loop
-            await resolveDataQualityFindings(metaSequelize, {
-                runScope,
-                legacyTenantId: entry.legacy_tenant_id ?? legacyTenantId,
-                entityType: entry.entity_type,
-                legacyTable: entry.legacy_id_map_key.legacy_table,
-                legacyId: entry.legacy_id_map_key.legacy_id
-            });
-        }
-
-        if (!alreadyCompleted) {
-            for (const finding of entry.findings || []) {
-                // eslint-disable-next-line no-await-in-loop
-                await recordDataQualityFinding(metaSequelize, {
-                    runScope,
-                    legacyTenantId: entry.legacy_tenant_id ?? legacyTenantId,
-                    entityType: finding.entity_type,
-                    legacyTable: finding.legacy_table,
-                    legacyId: finding.legacy_id,
-                    severity: finding.severity,
-                    reasonCode: finding.reason_code,
-                    message: finding.message,
-                    remediation: finding.remediation
-                });
-            }
-        }
+        // eslint-disable-next-line no-await-in-loop
+        await syncEntryDataQualityFindings(metaSequelize, {
+            runScope,
+            legacyTenantId: entry.legacy_tenant_id ?? legacyTenantId,
+            entry
+        });
     }
 
     if (!alreadyCompleted) {
