@@ -555,10 +555,10 @@ export const dgfyBusinessContract = {
     // availment_items, availment_discounts, payments, receipts,
     // compliance_evidence) were added here, but git history shows no Phase 9
     // commit ever touched this file. Only the two tables 10-07 itself
-    // modifies (availments, payments) are backfilled here; the other four
-    // (availment_items, availment_discounts, receipts, compliance_evidence)
-    // remain missing and are logged in deferred-items.md as out-of-scope for
-    // this plan.
+    // modifies (availments, payments) are backfilled here; `availment_items`
+    // is added as its own full entry below (Phase 14); `availment_discounts`
+    // and `compliance_evidence` remain missing and are logged in
+    // deferred-items.md as out-of-scope for this plan.
     //
     // source_reference (10-07, T-10-07-01): cross-DB idempotency guard for
     // the storefront-order -> tenant-Availment finalize seam. NULL for every
@@ -570,6 +570,16 @@ export const dgfyBusinessContract = {
     // pre-migration availments (A4). Distinct from `status` above (Landmine
     // 1) — `status` is the draft/finalized/voided checkout lifecycle,
     // `fulfillment_status` is the separate coarse fulfillment pipeline.
+    // source_system/legacy_snapshot/additional_fees (Phase 14,
+    // 20260718000000-extend-schema-for-sales-history-migration.cjs, LDM-05,
+    // D-14-01/D-14-05/D-14-08/D-14-09): additive/nullable sales-history
+    // migration columns. NULL for every existing/live row; the migration
+    // mapper explicitly writes 'legacy_migration' into source_system.
+    // legacy_snapshot holds allowlisted unmapped header evidence (never an
+    // arbitrary spread of the source row); additional_fees is a separate
+    // flat { service_fee_amount, delivery_fee } JSON column with no live
+    // checkout write path in this plan. Does not touch source_reference or
+    // unique_availments_source_reference above.
     availments: {
       columns: [
         'id',
@@ -594,6 +604,9 @@ export const dgfyBusinessContract = {
         'fulfillment_mode',
         'fulfillment_status',
         'fulfillment_stage',
+        'source_system',
+        'legacy_snapshot',
+        'additional_fees',
         'created_at',
         'updated_at'
       ],
@@ -604,6 +617,45 @@ export const dgfyBusinessContract = {
         { column: 'shift_id', referencesTable: 'shifts', referencesColumn: 'id' },
         { column: 'terminal_id', referencesTable: 'terminal_identities', referencesColumn: 'id' },
         { column: 'cashier_account_id', referencesTable: 'staff_accounts', referencesColumn: 'id' }
+      ],
+      projectionOnly: false
+    },
+
+    // CHK-01..CHK-06, D-01/D-02/D-03 (Phase 9, 20260713120000-create-
+    // availment-checkout.cjs). Full contract entry backfilled by Phase 14
+    // (this plan) — this table physically existed since Phase 9 but was
+    // never added to this contract (see the `availments` entry's note
+    // above), so it was previously unverifiable by `verify`.
+    //
+    // source_system/source_reference/legacy_snapshot + the
+    // unique_availment_items_source_reference index (Phase 14,
+    // 20260718000000-extend-schema-for-sales-history-migration.cjs, SHM-04):
+    // additive/nullable line-level provenance columns, mirroring
+    // availments.source_reference exactly. NULL for every existing/live row.
+    availment_items: {
+      columns: [
+        'id',
+        'business_id',
+        'availment_id',
+        'product_id',
+        'product_name',
+        'quantity',
+        'unit_price',
+        'stock_effect_type',
+        'tax_treatment',
+        'tax_rate',
+        'cancelled_at',
+        'source_system',
+        'source_reference',
+        'legacy_snapshot',
+        'created_at',
+        'updated_at'
+      ],
+      indexes: ['idx_availment_items_business_availment', 'unique_availment_items_source_reference'],
+      uniqueConstraints: ['unique_availment_items_source_reference'],
+      foreignKeys: [
+        { column: 'availment_id', referencesTable: 'availments', referencesColumn: 'id' },
+        { column: 'product_id', referencesTable: 'products', referencesColumn: 'id' }
       ],
       projectionOnly: false
     },
