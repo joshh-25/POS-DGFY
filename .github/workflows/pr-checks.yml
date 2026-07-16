@@ -15,32 +15,51 @@ concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  # Toggle the runner for ALL PR checks here by commenting/uncommenting one line.
+  # RUNNER_LABELS_JSON: &runner_labels_json '["ubuntu-latest"]'
+  RUNNER_LABELS_JSON: &runner_labels_json '["sieitz-ubuntu-runner"]'
+
 jobs:
   conventional-commits:
     uses: ./.github/workflows/pr-conventional-commits.yml
+    with:
+      runner_labels_json: *runner_labels_json
 
   code-quality:
     uses: ./.github/workflows/pr-code-checks.yml
+    with:
+      runner_labels_json: *runner_labels_json
 
   backend-build-check:
     needs: [conventional-commits, code-quality]
     uses: ./.github/workflows/pr-backend-build-checks.yml
+    with:
+      runner_labels_json: *runner_labels_json
 
   frontend-build-check:
     needs: [conventional-commits, code-quality]
     uses: ./.github/workflows/pr-frontend-build-checks.yml
+    with:
+      runner_labels_json: *runner_labels_json
 
   dgfy-api-build-check:
     needs: [conventional-commits, code-quality]
     uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
+    with:
+      runner_labels_json: *runner_labels_json
 
   dgfy-migration-runner-build-check:
     needs: [conventional-commits, code-quality]
     uses: ./.github/workflows/pr-migration-runner-build-checks.yml
+    with:
+      runner_labels_json: *runner_labels_json
 
   dgfy-api-code-check:
     needs: [conventional-commits]
     uses: ./.github/workflows/pr-dgfy-api-code-checks.yml
+    with:
+      runner_labels_json: *runner_labels_json
 
   summary:
     runs-on: ubuntu-latest
