@@ -488,9 +488,14 @@ export const startDgfyTenantSession = async ({
     company_token: companyToken
   }, dgfyRequestConfig(token));
   const data = response.data.data;
+  const tenantToken = String(data?.token || '').trim();
+  const resolvedCompanyToken = String(data?.company?.token || companyToken || '').trim();
+  if (!tenantToken || !resolvedCompanyToken) {
+    throw new Error('The selected company did not return a valid POS session. Sign in again.');
+  }
   setBrowserSession({
-    token: data?.token,
-    companyToken: data?.company?.token || companyToken
+    token: tenantToken,
+    companyToken: resolvedCompanyToken
   });
   if (typeof window !== 'undefined') {
     const event = typeof CustomEvent === 'function'

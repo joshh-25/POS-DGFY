@@ -222,6 +222,26 @@ describe('dgfyAuthService cookie session rehydration', () => {
     }));
   });
 
+  it('rejects incomplete tenant-session responses without replacing the active browser session', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          company: {
+            token: 'token-cookie-company'
+          }
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    await expect(service.startDgfyTenantSession({
+      tenantId: 'tenant-cookie',
+      companyToken: 'token-cookie-company'
+    }, '')).rejects.toThrow('The selected company did not return a valid POS session. Sign in again.');
+
+    expect(setBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
   it('logs out DGFY cookie sessions when no bearer token is in memory', async () => {
     apiPost.mockResolvedValueOnce({ data: { data: {} } });
 
