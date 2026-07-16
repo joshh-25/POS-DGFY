@@ -81,7 +81,8 @@ const CASH_EVENT_EFFECT = Object.freeze({
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
 const PERMISSION_SWITCH_LOCATION = 'pos:switch_location';
-const POS_CATALOG_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const POS_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
+const POS_CATALOG_BULK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
@@ -4409,7 +4410,7 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
             const fileValidation = await validateImageUploadFile({
                 file,
                 allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
-                maxBytes: POS_CATALOG_IMAGE_MAX_BYTES
+                maxBytes: POS_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES
             });
             if (!fileValidation.ok) {
                 logger.warn('[PosUseCases] Rejected POS catalog image upload due to file validation failure', {
@@ -4581,7 +4582,7 @@ export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageSto
                     const fileValidation = await validateImageUploadFile({
                         file,
                         allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
-                        maxBytes: POS_CATALOG_IMAGE_MAX_BYTES
+                        maxBytes: POS_CATALOG_BULK_IMAGE_MAX_BYTES
                     });
                     if (!fileValidation.ok) {
                         await cleanupTempFile(file);
@@ -5281,9 +5282,14 @@ export const buildGetCurrentTerminalShiftUseCase = ({ posRepository }) => {
             const requestedLocationId = query?.location_id == null
                 ? null
                 : parsePositiveInt(query.location_id);
+            // A master admin may take over an open terminal shift. Cashiers must
+            // remain scoped to their own shift even when they use the same terminal.
+            const activeShiftCashierId = user?.is_master_admin === true
+                ? null
+                : normalizedUserId;
             const shift = await posRepository.findOpenTerminalShift({
                 terminalId: String(query?.terminal_id || '').trim() || null,
-                cashierId: normalizedUserId,
+                cashierId: activeShiftCashierId,
                 locationId: requestedLocationId
             });
 
@@ -5594,7 +5600,7 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
             });
             const openShift = await posRepository.findOpenTerminalShift({
                 terminalId,
-                cashierId: normalizedUserId,
+                cashierId: user?.is_master_admin === true ? null : normalizedUserId,
                 locationId: locationScope.location_id
             });
             const shiftPayload = openShift ? toSerializable(openShift) : null;

@@ -3344,6 +3344,12 @@ export const posRepository = {
             where,
             include: [
                 {
+                    model: dbStore.get('User'),
+                    as: 'cashier',
+                    attributes: ['user_id', 'username', 'email'],
+                    required: false
+                },
+                {
                     model: dbStore.get('PosCashDrawerEvent'),
                     as: 'cashEvents',
                     required: false

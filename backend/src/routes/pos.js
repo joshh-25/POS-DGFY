@@ -44,6 +44,18 @@ import {
 
 const router = express.Router();
 
+// Cashiers have no tenant access token before their first POS login. Tenant
+// context, premium/capability checks, rate limiting, and payload validation
+// still run before credentials are verified by the POS login use case.
+router.post(
+    '/auth/cashier-login',
+    requirePremium,
+    requireTenantCapability('tenant_pos_enabled', 'POS'),
+    posLimiter,
+    validatePosCashierLogin,
+    posController.loginCashier
+);
+
 router.use(authenticate);
 router.use(requirePremium);
 router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
@@ -52,7 +64,6 @@ router.use(posLimiter);
 router.post('/terminal/pair', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateVerifyTerminal, posController.verifyTerminal);
 router.get('/terminal/paired', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getPairedTerminal);
 router.delete('/terminal/paired', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.clearPairedTerminal);
-router.post('/auth/cashier-login', validatePosCashierLogin, posController.loginCashier);
 router.get('/setup/cashiers', checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), posController.listSetupCashiers);
 router.post('/setup/cashiers', checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateSetupCashier, posController.createSetupCashier);
 

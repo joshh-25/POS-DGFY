@@ -38,6 +38,7 @@ const buildBaseProps = (overrides = {}) => ({
   },
   canViewPos: true,
   canTransactPos: true,
+  canAdminBypassShiftPrompt: false,
   canSwitchPosLocation: false,
   canAdjustCashDrawer: true,
   canCloseDay: true,
@@ -93,12 +94,12 @@ describe('POS terminal location UX integration', () => {
 
     expect(screen.getByText('Location scope:')).toBeTruthy();
     expect(screen.getByText('East Branch')).toBeTruthy();
-    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByLabelText('Operating Location')).toBeNull();
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();
     expect(setOperatingLocationId).not.toHaveBeenCalled();
   });
 
-  it('updates operating location from shift controls without mutating queue scope', () => {
+  it('does not render an unguarded operating-location selector while a shift is active', () => {
     const setQueueLocationScopeId = vi.fn();
     const setOperatingLocationId = vi.fn();
     const props = buildBaseProps({
@@ -124,11 +125,31 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    const operatingSelect = screen.getAllByRole('combobox')[0];
-    fireEvent.change(operatingSelect, { target: { value: '2' } });
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getByText('Current Shift Location')).toBeTruthy();
+    expect(setOperatingLocationId).not.toHaveBeenCalled();
+    expect(setQueueLocationScopeId).not.toHaveBeenCalled();
+  });
+
+  it('lets an admin choose an operating location before a shift opens', () => {
+    const setOperatingLocationId = vi.fn();
+    const props = buildBaseProps({
+      canAdminBypassShiftPrompt: true,
+      setOperatingLocationId
+    });
+
+    render(<TerminalOperationsWorkspace {...props} />);
+
+    fireEvent.change(screen.getByLabelText('Operating Location'), { target: { value: '2' } });
 
     expect(setOperatingLocationId).toHaveBeenCalledWith(2);
-    expect(setQueueLocationScopeId).not.toHaveBeenCalled();
+    expect(screen.getByText(/Admin navigation can use this location without a shift/i)).toBeTruthy();
+  });
+
+  it('does not expose operating-location selection to a cashier before opening a shift', () => {
+    render(<TerminalOperationsWorkspace {...buildBaseProps()} />);
+
+    expect(screen.queryByLabelText('Operating Location')).toBeNull();
   });
 
   it('shows denied guidance when user cannot switch shift location', () => {
