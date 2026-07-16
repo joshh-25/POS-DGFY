@@ -93,7 +93,8 @@ jobs:
       packages: write
 
   publish:
-    needs: [ backend, frontend, dgfy-api, dgfy-migration-runner ]
+    needs: [ backend, frontend ]
+    # needs: [ backend, frontend, dgfy-api, dgfy-migration-runner ] # TEMP disables dgfy-api and dgfy-migration-runner
     if: inputs.publish && needs.backend.result == 'success' && needs.frontend.result == 'success'
     uses: ./.github/workflows/publish-platform.yml
     with:
