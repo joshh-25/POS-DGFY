@@ -14,6 +14,33 @@ export const makeClusterElement = (count, selected = false, ariaLabel = 'Shared 
   return el;
 };
 
+const getDensityClusterDiameter = (count) => {
+  const value = Number(count);
+  if (!Number.isFinite(value) || value < 10) return 34;
+  if (value < 25) return 42;
+  return 50;
+};
+
+// Zoom/density clusters (groups of distinct addresses that overlap at the
+// current zoom) are visually distinct from makeClusterElement's same-address
+// badges: a plain circle with no pin tail, since their position is a
+// computed centroid rather than a real coordinate, sized by point count.
+export const makeDensityClusterElement = (count, selected = false, ariaLabel = 'Cluster of nearby storefronts') => {
+  const diameter = getDensityClusterDiameter(count);
+  const el = document.createElement('div');
+  el.className = `discovery-density-cluster${selected ? ' is-selected' : ''}`;
+  el.style.width = `${diameter}px`;
+  el.style.height = `${diameter}px`;
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('aria-label', ariaLabel);
+  const visual = document.createElement('span');
+  visual.className = 'discovery-density-cluster-visual';
+  visual.textContent = String(count);
+  el.appendChild(visual);
+  return el;
+};
+
 export const getDiscoveryMarkerKey = (pin = {}) => {
   const explicitKey = String(pin?.marker_key || '').trim();
   if (explicitKey) return explicitKey;
@@ -101,5 +128,6 @@ export const createSharedCoordinatePreviewNode = (stores = [], {
 export default {
   createSharedCoordinatePreviewNode,
   getDiscoveryMarkerKey,
-  makeClusterElement
+  makeClusterElement,
+  makeDensityClusterElement
 };

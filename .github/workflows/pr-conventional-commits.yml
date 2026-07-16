@@ -2,10 +2,16 @@ name: PR Conventional Commits
 
 on:
   workflow_call:
+    inputs:
+      runner_labels_json:
+        description: JSON array passed to runs-on for this job
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
 
 jobs:
   conventional-commits:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     continue-on-error: true
     steps:
       - name: Validate PR title format

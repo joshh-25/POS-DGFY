@@ -67,6 +67,7 @@ jobs:
       packages: write
 
   dgfy-api:
+    if: false  # TEMP: disabled, only backend/frontend builds enabled
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: ${{ inputs.environment }}
@@ -80,6 +81,7 @@ jobs:
   dgfy-migration-runner:
     # One-shot migration CLI image, published to GHCR (multi-arch) but not
     # deployed as a compose service -- see deploy-migration-runner.yml.
+    if: false  # TEMP: disabled, only backend/frontend builds enabled
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: ${{ inputs.environment }}
@@ -92,7 +94,7 @@ jobs:
 
   publish:
     needs: [ backend, frontend, dgfy-api, dgfy-migration-runner ]
-    if: inputs.publish
+    if: inputs.publish && needs.backend.result == 'success' && needs.frontend.result == 'success'
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}

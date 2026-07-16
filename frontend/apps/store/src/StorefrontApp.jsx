@@ -79,7 +79,6 @@ import {
   selectDiscoveryPinLocations
 } from './discoveryPresentation.js';
 import {
-  getSpreadMarkerCoordinate,
   haversineDistanceKm,
   toNumberOrNull
 } from './features/discovery/utils/discoveryMapMath.js';
@@ -7994,6 +7993,7 @@ export default function StorefrontApp() {
   const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
   const {
     activeDiscoveryFilterCount,
+    clearDiscoveryClusterResults,
     clusterResultStores,
     discoveryPaginationItems,
     discoveryTotalPages,
@@ -8046,6 +8046,7 @@ export default function StorefrontApp() {
     discoveryCoords,
     discoveryFilterToolbarRef,
     discoveryLayout,
+    clearDiscoveryClusterResults,
     discoveryPaginationItems,
     discoveryPinsBySlug,
     discoveryResultStores,
@@ -8072,6 +8073,7 @@ export default function StorefrontApp() {
     isCategoryFilterActive,
     isDiscoveryMobileViewport,
     isDiscoveryTabletViewport,
+    isMobileResultsCollapsed,
     isOpenNowFilterActive,
     isSortFilterActive,
     isStoreListVisible,
