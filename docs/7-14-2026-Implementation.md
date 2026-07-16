@@ -233,3 +233,76 @@ Status: Implemented locally on 2026-07-15.
 
 - Corrected the POS storefront location actions to use the shared UI confirmation dialog. The previous legacy dialog expected a different `action` prop and rendered nothing when Delete Pin or Reactivate was clicked.
 - Delete Pin and Reactivate now show their confirmation modal before calling the existing APIs. Permanent deletion remains limited to inactive pins with no operational references.
+
+### POS Incoming Queue Sorting And Empty-State Guidance
+
+Status: Implemented locally on 2026-07-16.
+
+- Added an Orders queue sort control with `Newest first` as the default and an `Oldest first` option.
+- Sorting is local to the rendered active queue and does not alter fulfillment APIs, order status actions, or Storefront contracts.
+- Moved the History/Receipt Preview lifecycle guidance into the empty queue state so it disappears as soon as an active order is present.
+
+### DGFY Cashier Invitation Acceptance
+
+Status: Fixed locally on 2026-07-16.
+
+- Removed the incorrect Storefront email-OTP UI gate from accepting a pending DGFY company invitation.
+- A signed-in invited DGFY account now accepts directly; the backend activates the pre-assigned cashier role and location scope from the pending membership.
+- Ownership-transfer step-up verification remains unchanged.
+
+### DGFY Business Card Membership Roles
+
+Status: Implemented locally on 2026-07-16.
+
+- Business cards now show the signed-in account's actual company membership role instead of a generic business-account label.
+- Owner memberships display `Business Owner`; cashier memberships display `Cashier`; other backend roles remain readable.
+- This is display-only and does not change company access, membership records, or POS permissions.
+
+### POS Cashier Login Route Ordering
+
+Status: Fixed locally on 2026-07-16.
+
+- Moved `POST /api/v1/pos/auth/cashier-login` before the POS JWT authentication middleware so a cashier can establish the initial POS session.
+- Tenant resolution, premium and POS-capability checks, request validation, and POS rate limiting remain required before credentials are processed.
+- All remaining POS endpoints remain behind normal tenant authentication and permission checks.
+
+### POS Protected Bootstrap Session Guard
+
+Status: Fixed locally on 2026-07-16.
+
+- POS now starts in a locked state even when an old browser token is present.
+- `hydrateUser()` must validate the tenant session before the workspace can load protected catalog, settings, device, shift, or location requests.
+- This removes startup `401 Unauthorized` requests seen while a cashier is signing in, without changing login permissions or token refresh behavior.
+
+### POS Tenant Session Verification Gate
+
+Status: Fixed locally on 2026-07-16.
+
+- DGFY cashier POS login now rejects a tenant-session response that lacks either the tenant bearer token or the selected company token.
+- The POS verifies the returned tenant session through `/auth/me` before it unlocks or requests settings, shifts, locations, or catalog data.
+- A failed verification keeps the terminal locked and its login drawer open instead of producing secondary `401 Unauthorized` POS requests.
+- Validation: `npm --prefix frontend test -- src/services/__tests__/dgfyAuthService.cookieSession.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js`; `npm --prefix frontend run build`.
+### Admin Operating Location And Shift Lock
+
+- Status: fixed 2026-07-16
+- Admins may select an operating-location scope before opening a shift for non-financial navigation.
+- Cashiers do not receive a pre-shift location selector; their terminal assignment governs shift opening.
+- An active shift now displays a read-only location. The only retained reassignment path is the existing privileged, audited action requiring `pos:switch_location` and a reason.
+- Financial permissions and backend open-shift, checkout, and terminal-mutation checks are unchanged.
+### Catalog Image Source Intake And Fallback Recovery
+
+- Allowed one POS or Storefront catalog image source up to 100 MB, while retaining a 10 MB limit for multi-image galleries and bulk imports to protect request resources.
+- Kept original files private, generated `400px`, `1024px`, and `1920px` delivery variants, and enforced a 10 MB maximum for the public large variant through progressive compression and resize attempts.
+- Added safe decode limits and cleanup for failed image processing so unsafe or unreadable images do not leave partial public/original asset folders.
+- Updated item and onboarding single-image flows to use the high-cap primary-image endpoint; gallery behavior remains unchanged for multiple selections.
+- Added Storefront product-card `onError` fallback behavior for desktop and mobile layouts so a missing asset renders the existing category placeholder instead of a broken browser image icon.
+
+### Admin Active Shift Visibility And Closeout
+
+- Corrected active-shift reads so the company master admin can see the open shift for the selected terminal even when another cashier opened it; cashier reads remain restricted to their own shift.
+- Included the opening cashier account in active-shift data and displayed `Opened By` plus `Opened At` in responsive Shift controls.
+- Admin `Skip for Admin` and terminal-conflict handling now refresh the active-shift context before showing Shift controls, exposing the existing Close Shift flow instead of incorrectly rendering a new-shift form.
+
+### POS Active Shift Operator Icon Runtime Fix
+
+- Replaced an undefined `User` icon reference in the active-shift summary with the existing `UserRound` import, preventing the POS error boundary from showing `User is not defined` when an active shift is rendered.
