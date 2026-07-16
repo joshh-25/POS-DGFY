@@ -228,6 +228,7 @@ import {
 import { StorefrontExpandedMapModal } from './discovery/components/StorefrontExpandedMapModal.jsx';
 import { StoresMap } from './discovery/components/StoresMap.jsx';
 import { useDiscoveryRuntime } from './discovery/hooks/useDiscoveryRuntime.js';
+import { buildDiscoveryResultsRendererProps } from './discovery/model/discoveryRendererProps.js';
 import { DiscoveryRouteContainer } from './discovery/pages/DiscoveryRouteContainer.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './Components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './Components/storefront/hero/StorefrontHeaderNav.jsx';
@@ -8038,9 +8039,10 @@ export default function StorefrontApp() {
     storesWithNearestBranch,
     viewMode
   });
-  const discoveryResultsRendererProps = {
+  const discoveryResultsRendererProps = buildDiscoveryResultsRendererProps({
     activeDiscoveryFilterCount,
     activeDiscoveryFilterDropdown,
+    clusterResultStores,
     discoveryBusinessModeOptions,
     discoveryCategoryFilter,
     discoveryCoords,
@@ -8049,9 +8051,7 @@ export default function StorefrontApp() {
     discoveryPaginationItems,
     discoveryPinsBySlug,
     discoveryResultStores,
-    discoveryResultsMapKey: isClusterResultsActive
-      ? `discovery-results-map:cluster:${clusterResultStores.map((store) => getDiscoveryMarkerKey(store) || store?.slug || store?.tenant_slug || '').join('|')}`
-      : discoveryResultsMapKey,
+    discoveryResultsMapKey,
     discoveryResultsPage,
     discoverySortBy,
     discoverySortLabelByValue,
@@ -8064,12 +8064,15 @@ export default function StorefrontApp() {
     getPreferredDiscoveryLocationId,
     goStore,
     goStoreOrderForDiscovery,
+    handleDiscoveryClusterSelect,
+    handleNearMe,
     hasActiveDiscoveryFilters,
     hasDiscoverySearch,
     highlightedDiscoveryMarkerKey,
     highlightedStoreSlug,
     isBrandingImageBlocked,
     isCategoryFilterActive,
+    isClusterResultsActive,
     isDiscoveryMobileViewport,
     isDiscoveryTabletViewport,
     isOpenNowFilterActive,
@@ -8080,13 +8083,10 @@ export default function StorefrontApp() {
     normalizeStorefrontCategories,
     normalizeStorefrontReviewSummary,
     paginatedDiscoveryStores,
-    clusterResultStores,
-    handleDiscoveryClusterSelect,
-    isClusterResultsActive,
     renderDiscoveryResetButton,
     resetDiscoveryResultsView,
     search,
-    searchedDiscoveryMapPins: isClusterResultsActive ? clusterResultStores : searchedDiscoveryMapPins,
+    searchedDiscoveryMapPins,
     setActiveDiscoveryFilterDropdown,
     setDiscoveryCategoryFilter,
     setDiscoveryOpenFilter,
@@ -8100,14 +8100,13 @@ export default function StorefrontApp() {
     setSelectedMapPin,
     setViewMode,
     showDiscoveryResetButton,
-    handleNearMe,
     StoresMap,
     storesError,
     storesWithNearestBranch,
     toSlug,
     viewMode,
     withAssetOrigin
-  };
+  });
   const {
     sources: customerDashboardRouteSources,
     guestAuth: customerDashboardGuestAuthProps
