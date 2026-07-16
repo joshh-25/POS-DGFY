@@ -16,7 +16,7 @@ const mapUploadErrorToHttp = (err) => {
     return {
       statusCode: 413,
       payload: {
-        message: 'Uploaded image is too large. Use an image 5 MB or smaller.',
+        message: 'Uploaded file is too large for this upload type.',
         code
       }
     };

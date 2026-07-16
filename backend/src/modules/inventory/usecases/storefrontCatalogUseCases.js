@@ -9,7 +9,8 @@ import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVi
 import logger from '../../../config/logger.js';
 
 const PERMISSION_EDIT_ITEMS = 'items:edit';
-const STOREFRONT_CATALOG_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
+const STOREFRONT_CATALOG_GALLERY_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const STOREFRONT_CATALOG_GALLERY_MAX_IMAGES = 5;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
@@ -316,7 +317,7 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
       const fileValidation = await validateImageUploadFile({
         file,
         allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
-        maxBytes: STOREFRONT_CATALOG_IMAGE_MAX_BYTES
+        maxBytes: STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES
       });
       if (!fileValidation.ok) {
         logger.warn('[StorefrontCatalogUseCases] Rejected storefront catalog image upload due to file validation failure', {
@@ -453,7 +454,7 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
         const fileValidation = await validateImageUploadFile({
           file,
           allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
-          maxBytes: STOREFRONT_CATALOG_IMAGE_MAX_BYTES
+          maxBytes: STOREFRONT_CATALOG_GALLERY_IMAGE_MAX_BYTES
         });
         if (!fileValidation.ok) {
           logger.warn('[StorefrontCatalogUseCases] Rejected storefront catalog gallery upload due to file validation failure', {
@@ -590,7 +591,7 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
           const fileValidation = await validateImageUploadFile({
             file,
             allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
-            maxBytes: STOREFRONT_CATALOG_IMAGE_MAX_BYTES
+            maxBytes: STOREFRONT_CATALOG_GALLERY_IMAGE_MAX_BYTES
           });
           if (!fileValidation.ok) {
             await cleanupTempFile(file);

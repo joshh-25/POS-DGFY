@@ -12,7 +12,10 @@ import {
   listTenantLocations,
   updateTenantLocation
 } from '../../../services/tenantLocationService.js';
-import { uploadStorefrontCatalogImages } from '../../../services/storefrontCatalogService.js';
+import {
+  uploadStorefrontCatalogImage,
+  uploadStorefrontCatalogImages
+} from '../../../services/storefrontCatalogService.js';
 import {
   DEFAULT_WORKFLOW_MODE,
   getWorkflowModeLabel,
@@ -227,6 +230,10 @@ const getItemImageFiles = (row) => {
 
 const uploadItemImages = async (itemId, imageFiles) => {
   if (!itemId || imageFiles.length === 0) return;
+  if (imageFiles.length === 1) {
+    await uploadStorefrontCatalogImage(itemId, imageFiles[0]);
+    return;
+  }
   await uploadStorefrontCatalogImages(itemId, imageFiles);
 };
 
