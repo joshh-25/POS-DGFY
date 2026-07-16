@@ -293,7 +293,7 @@ export function StoresMap({
       });
     } catch (error) {
       console.warn('[MapLibre init unavailable]', error);
-      setMapUnavailable(true);
+      queueMicrotask(() => setMapUnavailable(true));
       return undefined;
     }
     mapRef.current = map;
