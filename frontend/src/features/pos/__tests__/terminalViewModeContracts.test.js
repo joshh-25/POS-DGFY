@@ -147,7 +147,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("toast.message('Confirm the company, then continue to POS.');");
     expect(terminalPageContent).toContain('if (!continuingAfterCompanyPicker) {');
     expect(terminalPageContent).toContain('const selectedTenantSession = await startDgfyTenantSession({');
-    expect(terminalPageContent).toContain('const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;');
+    expect(terminalPageContent).toContain("if (!String(selectedTenantSession?.token || '').trim()) {");
+    expect(terminalPageContent).toContain('const selectedTenantUser = await fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST);');
+    expect(terminalPageContent).toContain('The selected company session could not be verified. Sign in again.');
+    expect(terminalPageContent).toContain('const effectiveSelectedTenantUser = selectedTenantUser;');
     expect(terminalPageContent).toContain('const selectedTenantAdminPayloads = selectedUserIsAdmin');
     expect(terminalPageContent).toContain(': [null, effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : []];');
     expect(terminalPageContent).toContain('const selectedTenantSetupState = buildTenantSetupStateSnapshot({');
@@ -191,7 +194,9 @@ describe('POS terminal view-mode contracts', () => {
 
   it('persists manual POS terminal lock across refresh until login succeeds', () => {
     expect(terminalPageContent).toContain("const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';");
-    expect(terminalPageContent).toContain('readStoredTerminalLock() || !getAccessToken()');
+    expect(terminalPageContent).toContain('const [locked, setLocked] = useState(true);');
+    expect(terminalPageContent).toContain('session must be validated by hydrateUser before bootstrap requests run.');
+    expect(terminalPageContent).toContain('const [drawerOpen, setDrawerOpen] = useState(() => readStoredTerminalLock());');
     expect(terminalPageContent).toContain('setStoredTerminalLock(true);');
     expect(terminalPageContent).toContain('setStoredTerminalLock(false);');
     expect(terminalPageContent).toContain("if (storedLockActiveAtStart && ['full_auth', 'shift_closed'].includes(storedReasonAtStart)) {");
@@ -394,6 +399,14 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('if (incomingReceiptOpeningId !== null) return;');
     expect(terminalOperationsPanelsContent).toContain('Opening...');
     expect(terminalSidebarPanelContent).toContain('Completed or cancelled online orders move to History/Receipt Preview.');
+  });
+
+  it('sorts active incoming orders locally and shows lifecycle guidance only for an empty queue', () => {
+    expect(terminalOperationsPanelsContent).toContain("const [orderSort, setOrderSort] = React.useState('newest');");
+    expect(terminalOperationsPanelsContent).toContain('aria-label="Sort incoming orders"');
+    expect(terminalOperationsPanelsContent).toContain('<option value="oldest">Oldest first</option>');
+    expect(terminalOperationsPanelsContent).toContain('{sortedIncomingOrders.map((order) => {');
+    expect(terminalOperationsPanelsContent).toContain('incomingOrders.length === 0 ? (');
   });
 
   it('keeps completed receipt history out of the active queue', () => {

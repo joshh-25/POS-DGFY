@@ -701,6 +701,9 @@ function ShiftControlsWorkspace({
   const activeShift = shiftState?.shift || null;
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
+  const shiftCashierLabel = activeShift?.cashier?.username
+    || activeShift?.cashier?.email
+    || (activeShift?.cashier_id ? `Cashier #${activeShift.cashier_id}` : 'Current cashier');
   const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;
   const SHIFT_TABS = [
     { id: 'shift_location', label: 'Shift Location', icon: MapPinned },
@@ -781,6 +784,12 @@ function ShiftControlsWorkspace({
       valueClassName: 'text-[18px] font-black text-[#2563EB]'
     },
     {
+      icon: UserRound,
+      label: 'Opened By:',
+      value: shiftCashierLabel,
+      valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
+    },
+    {
       icon: CalendarDays,
       label: 'Business Date:',
       value: activeShift.business_date || '-',
@@ -825,6 +834,31 @@ function ShiftControlsWorkspace({
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
             Shift Closed. Please open your shift before using the POS.
           </p>
+          {canAdminBypassShiftPrompt && (
+            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+              <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
+                Operating Location
+              </Label>
+              <select
+                id="admin-operating-location"
+                className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                value={operatingLocationId || ''}
+                onChange={(event) => {
+                  const nextValue = event.target.value ? Number(event.target.value) : null;
+                  setOperatingLocationId(nextValue);
+                }}
+              >
+                {locations.map((location) => (
+                  <option key={`admin-operating-location-${location.location_id}`} value={location.location_id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-[11px] leading-4 text-[#475569]">
+                Admin navigation can use this location without a shift. Shift opening still uses the terminal's assigned location.
+              </p>
+            </div>
+          )}
           <div className="mt-4 space-y-3">
             <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
             <Input
@@ -869,48 +903,19 @@ function ShiftControlsWorkspace({
             <p className="mt-1 text-[12px] leading-5 text-[#475569]">
               Current location used by catalog, checkout, and dashboard for this terminal.
             </p>
-            <Label className="mt-3 block text-[12px] font-black text-[#0F172A]">Current Shift Location</Label>
-            <select
-              className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              value={operatingLocationId || ''}
-              onChange={(event) => {
-                const nextValue = event.target.value ? Number(event.target.value) : null;
-                setOperatingLocationId(nextValue);
-              }}
-            >
-              {locations.map((location) => (
-                <option key={`shift-operating-location-${location.location_id}`} value={location.location_id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Current Shift Location</p>
+              <p className="mt-1 text-[13px] font-extrabold text-[#0F172A]">{shiftLocationLabel}</p>
+            </div>
 
             <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 md:hidden">
-              <div className="flex flex-col gap-0.5">
-                <p className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[0]?.label}</p>
-                <p className={`${summaryRows[0]?.valueClassName} break-words leading-6`}>{summaryRows[0]?.value}</p>
-              </div>
-              <div className="flex flex-wrap gap-4">
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[1]?.label}</p>
-                  <p className={`${summaryRows[1]?.valueClassName} break-words leading-6`}>{summaryRows[1]?.value}</p>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[2]?.label}</p>
-                  <p className={`${summaryRows[2]?.valueClassName} break-words leading-6`}>{summaryRows[2]?.value}</p>
-                </div>
-              </div>
               <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                {summaryRows.slice(3, 6).map((row) => (
+                {summaryRows.map((row) => (
                   <div key={`shift-summary-mobile-${row.label}`} className="flex flex-col gap-0.5">
                     <span className="text-[12px] font-medium text-[#5B6B86]">{row.label}</span>
                     <span className={`${row.valueClassName} break-words leading-6`}>{row.value}</span>
                   </div>
                 ))}
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <span className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[6]?.label}</span>
-                <span className={`${summaryRows[6]?.valueClassName} break-words leading-6`}>{summaryRows[6]?.value}</span>
               </div>
             </div>
 
@@ -936,7 +941,7 @@ function ShiftControlsWorkspace({
                   {summaryRows.slice(4).map((row, index) => {
                     const RowIcon = row.icon;
                     return (
-                      <div key={`shift-summary-right-${row.label}`} className={`flex items-center gap-3 py-3 ${index < 2 ? 'border-b border-slate-100' : ''}`}>
+                      <div key={`shift-summary-right-${row.label}`} className={`flex items-center gap-3 py-3 ${index < 3 ? 'border-b border-slate-100' : ''}`}>
                         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
                           <RowIcon className="h-4.5 w-4.5" />
                         </div>
@@ -1923,7 +1928,13 @@ function ItemsWorkspace({
     };
 
     if (Array.isArray(imageFiles) && imageFiles.length > 0) {
-      await runStage('storefront_images', 'Item image gallery upload', () => uploadStorefrontCatalogImages(itemId, imageFiles));
+      await runStage(
+        'storefront_images',
+        imageFiles.length === 1 ? 'Item image upload' : 'Item image gallery upload',
+        () => (imageFiles.length === 1
+          ? uploadStorefrontCatalogImage(itemId, imageFiles[0])
+          : uploadStorefrontCatalogImages(itemId, imageFiles))
+      );
     }
 
     const generatedBarcode = await runStage('barcode', 'barcode generation', () => generateItemBarcode(itemId, {

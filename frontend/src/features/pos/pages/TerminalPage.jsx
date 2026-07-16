@@ -411,8 +411,10 @@ export default function TerminalPage() {
     if (!stored) return true;
     return stored !== '0' && stored !== 'false' && stored !== 'off';
   });
-  const [locked, setLocked] = useState(() => readStoredTerminalLock() || !getAccessToken());
-  const [drawerOpen, setDrawerOpen] = useState(() => readStoredTerminalLock() || !getAccessToken());
+  // Never render protected POS workspaces from a merely persisted token. The
+  // session must be validated by hydrateUser before bootstrap requests run.
+  const [locked, setLocked] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(() => readStoredTerminalLock());
   const [terminalLayoutEpoch, setTerminalLayoutEpoch] = useState(0);
   const terminalLayoutLockedRef = useRef(locked);
   const [loadingUser, setLoadingUser] = useState(true);
@@ -2220,21 +2222,16 @@ export default function TerminalPage() {
       const selectedTenantSession = await startDgfyTenantSession({
         tenantId: selectedTenantId
       }, token);
-      const fallbackSelectedTenantUser = selectedTenantSession
-        ? {
-          user_id: selectedTenantSession.user_id,
-          username: selectedTenantSession.username,
-          email: selectedTenantSession.email,
-          phone_number: selectedTenantSession.phone_number || null,
-          role: selectedTenantSession.role,
-          permissions: Array.isArray(selectedTenantSession.permissions) ? selectedTenantSession.permissions : [],
-          is_active: true,
-          is_master_admin: selectedTenantSession.is_master_admin === true
-        }
-        : null;
+      if (!String(selectedTenantSession?.token || '').trim()) {
+        throw new Error('The selected company did not return a valid POS session. Sign in again.');
+      }
 
-      const [selectedTenantUser, selectedTenantSettings, selectedTenantLocations, selectedTenantItems] = await Promise.all([
-        fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => null),
+      const selectedTenantUser = await fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST);
+      if (!selectedTenantUser) {
+        throw new Error('The selected company session could not be verified. Sign in again.');
+      }
+
+      const [selectedTenantSettings, selectedTenantLocations, selectedTenantItems] = await Promise.all([
         getAllSettings({
           force: true,
           requestConfig: SUPPRESS_GLOBAL_ERROR_TOAST
@@ -2242,7 +2239,7 @@ export default function TerminalPage() {
         listTenantLocations({ include_inactive: false }).catch(() => []),
         fetchPosCatalog({ limit: 200 }).catch(() => [])
       ]);
-      const effectiveSelectedTenantUser = selectedTenantUser || fallbackSelectedTenantUser;
+      const effectiveSelectedTenantUser = selectedTenantUser;
       const selectedUserIsAdmin = effectiveSelectedTenantUser?.is_master_admin === true
         || String(effectiveSelectedTenantUser?.role || '').trim().toLowerCase() === 'admin';
       const selectedTenantAdminPayloads = selectedUserIsAdmin
@@ -2368,6 +2365,8 @@ export default function TerminalPage() {
       }));
       setTerminalUnlockModalOpen(true);
     } catch (error) {
+      setLocked(true);
+      setDrawerOpen(true);
       setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
       toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {
@@ -3052,7 +3051,25 @@ export default function TerminalPage() {
           `Shift-open action queued after connectivity issue (${pendingCount} queued).`
         );
       } else {
-        toast.error(error?.response?.data?.message || 'Failed to open terminal shift.');
+        const status = Number(error?.response?.status || 0);
+        const conflictShiftId = Number(error?.response?.data?.details?.existing_shift_id || 0);
+        const message = String(error?.response?.data?.message || 'Failed to open terminal shift.');
+        const terminalAlreadyOpen = status === 409 && (
+          conflictShiftId > 0
+          || message.toLowerCase().includes('terminal already has an active shift')
+        );
+
+        if (terminalAlreadyOpen && terminalUser?.is_master_admin === true) {
+          await refreshOperationalContext({
+            terminalIdOverride: terminalId,
+            operatingLocationIdOverride: scopedOperatingLocationId,
+            suppressGlobalErrors: true
+          });
+          setAdminShiftPromptSkipped(true);
+          setPosViewMode('shift_controls');
+        }
+
+        toast.error(message);
       }
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, open: false }));
@@ -3762,10 +3779,11 @@ export default function TerminalPage() {
     event.preventDefault();
     handleOpenShift();
   }, [handleOpenShift]);
-  const handleSkipShiftOpeningForAdmin = useCallback(() => {
+  const handleSkipShiftOpeningForAdmin = useCallback(async () => {
+    await refreshOperationalContext({ suppressGlobalErrors: true });
     setAdminShiftPromptSkipped(true);
     setPosViewMode('shift_controls');
-  }, []);
+  }, [refreshOperationalContext]);
 
   const cashierResumeUnlock = terminalUnlockMode === 'cashier_resume';
   const adminReauthUnlock = terminalUnlockMode === 'admin_reunlock';
