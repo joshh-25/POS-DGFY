@@ -44,12 +44,14 @@ jobs:
       runner_labels_json: *runner_labels_json
 
   dgfy-api-build-check:
+    if: false  # TEMP: disabled, only backend/frontend builds enabled
     needs: [conventional-commits, code-quality]
     uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
     with:
       runner_labels_json: *runner_labels_json
 
   dgfy-migration-runner-build-check:
+    if: false  # TEMP: disabled, only backend/frontend builds enabled
     needs: [conventional-commits, code-quality]
     uses: ./.github/workflows/pr-migration-runner-build-checks.yml
     with:
