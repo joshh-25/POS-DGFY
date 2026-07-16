@@ -182,15 +182,17 @@ const getBusinessProfileUrl = (company = {}, resolveAssetUrl = null) => (
   ])
 );
 
-const getBusinessCategoryLabel = (company = {}) => (
-  String(
-    company?.category_label
-    || company?.business_category
-    || company?.category
-    || company?.workflow_mode
-    || ''
-  ).trim()
-);
+const getBusinessRoleLabel = (company = {}) => {
+  const role = String(company?.role || company?.membership_role || '').trim().toLowerCase();
+  const isOwner = company?.is_owner === true
+    || company?.membership_type === 'owner'
+    || role === 'owner'
+    || role === 'business_owner';
+
+  if (isOwner) return 'Business Owner';
+  if (role === 'cashier') return 'Cashier';
+  return role ? prettyStatus(role) : 'Business Member';
+};
 
 const getBusinessAddressLine = (company = {}) => (
   String(
@@ -505,7 +507,8 @@ export function DgfyCustomerAccountPage({
   const startBusinessAction = async (type, company) => {
     const action = { type, company };
     setBusinessActionError('');
-    if (type === 'reject' || type === 'leave' || businessStepUp?.verified === true) {
+    // A signed-in DGFY account can accept its own pending invitation directly.
+    if (type === 'accept' || type === 'reject' || type === 'leave' || businessStepUp?.verified === true) {
       setBusinessActionLoading(true);
       try { await performBusinessAction(action); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
       return;
@@ -552,10 +555,10 @@ export function DgfyCustomerAccountPage({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 24 }}>
             {accepted.map((company) => {
               const name = company.company_name || company.name || 'Business';
-              const owned = company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner';
+              const owned = company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner' || company.role === 'business_owner';
               const coverUrl = getBusinessCoverUrl(company, resolveBusinessAssetUrl);
               const profileUrl = getBusinessProfileUrl(company, resolveBusinessAssetUrl);
-              const categoryLabel = getBusinessCategoryLabel(company) || 'Business account';
+              const roleLabel = getBusinessRoleLabel(company);
               const statusLabel = getBusinessStatusLabel(company);
               
               return (
@@ -596,11 +599,11 @@ export function DgfyCustomerAccountPage({
                       <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: THEME.muted }}>{owned ? 'Company you own' : 'Company membership'}</p>
                     </div>
 
-                    {/* Category Badge */}
+                    {/* Membership Role */}
                     <div style={{ marginTop: 16 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: THEME.infoBg, color: THEME.primary, padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
                         <Store size={14} />
-                        {categoryLabel}
+                        {roleLabel}
                       </span>
                     </div>
 
