@@ -14,7 +14,10 @@ import {
     buildUnfollowStorefrontUseCase
 } from '../src/modules/store/usecases/storeUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
-import { generateStoreCancelProof } from '../src/modules/store/utils/storeJwtToken.js';
+import {
+    generateStoreCancelProof,
+    generateStoreGuestCheckoutProof
+} from '../src/modules/store/utils/storeJwtToken.js';
 
 const registeredTransactionSettings = () => [
     { setting_key: 'customer_access_mode', setting_value: 'transaction' },
@@ -1511,6 +1514,12 @@ describe('store use-cases application result contract', () => {
                 idempotency_key: 'promo-checkout-success',
                 customer_name: 'Buyer',
                 customer_phone: '0917',
+                customer_email: 'buyer@example.com',
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: '11111111-1111-4111-8111-111111111111',
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'promo-checkout-success'
+                }),
                 lines: [{ item_id: 40, quantity: 1 }]
             }
         });
@@ -1652,6 +1661,12 @@ describe('store use-cases application result contract', () => {
                 idempotency_key: 'promo-checkout-multi-success',
                 customer_name: 'Buyer',
                 customer_phone: '0917',
+                customer_email: 'buyer@example.com',
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: '11111111-1111-4111-8111-111111111111',
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'promo-checkout-multi-success'
+                }),
                 lines: [{ item_id: 40, quantity: 1 }]
             }
         });

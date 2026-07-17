@@ -97,6 +97,21 @@ describe('Rate limiter behavior', () => {
     );
   });
 
+  it('does not apply the public IP bucket to authenticated item operations', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api', generalLimiter);
+    app.post('/api/v1/items', (_req, res) => res.status(200).json({ ok: true }));
+
+    const headers = {
+      authorization: 'Bearer authenticated-item-operation',
+      'x-company-token': 'tenant-token-1'
+    };
+
+    await request(app).post('/api/v1/items').set(headers).send({ name: 'First item' }).expect(200);
+    await request(app).post('/api/v1/items').set(headers).send({ name: 'Second item' }).expect(200);
+  });
+
   it('keeps guest checkout OTP sends and verification attempts in separate rate-limit buckets', async () => {
     const app = express();
     app.use(express.json());
