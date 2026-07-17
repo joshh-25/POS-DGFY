@@ -39,6 +39,7 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs' },
         { name: '20260629000001-add-pos-always-available-contract.cjs' },
         { name: '20260705000001-add-admin-provisioned-membership-source.cjs' },
+        { name: '20260710000001-create-delivery-jobs.cjs' },
         { name: '20260711000001-add-pickup-cash-collection-fields.cjs' },
         { name: '20260711000002-add-item-folder-active-contract.cjs' },
         { name: '20260711000003-repair-pickup-cash-collection-columns.cjs' },
@@ -127,6 +128,13 @@ const buildHealthySequelizeMock = () => ({
                     payment_collected_by: { allowNull: true },
                     payment_collected_shift_id: { allowNull: true },
                     payment_collected_terminal_id: { allowNull: true }
+                },
+                delivery_jobs: {
+                    delivery_job_id: {},
+                    pos_transaction_id: {},
+                    location_id: {},
+                    provider: {},
+                    status: {}
                 },
                 stock_movements: {
                     movement_id: {},
@@ -365,6 +373,33 @@ describe('runtimeSchemaAuditService', () => {
             expect.objectContaining({ table: 'pos_transactions', column: 'payment_collected_by' }),
             expect.objectContaining({ table: 'pos_transactions', column: 'payment_collected_shift_id' }),
             expect.objectContaining({ table: 'pos_transactions', column: 'payment_collected_terminal_id' })
+        ]));
+    });
+
+    it('returns degraded when the delivery job migration or contract is missing', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20260710000001-create-delivery-jobs.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'delivery_jobs') {
+                    const { status, ...withoutStatus } = table;
+                    return withoutStatus;
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({ sequelizeInstance: mock });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.missingColumns).toEqual(expect.arrayContaining([
+            expect.objectContaining({ table: 'delivery_jobs', column: 'status' })
         ]));
     });
 

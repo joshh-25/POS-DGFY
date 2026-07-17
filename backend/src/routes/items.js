@@ -92,7 +92,6 @@ router.post('/validate-composition', checkPermission(PERMISSIONS.INVENTORY.actio
 router.post('/', checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS), (req, res, next) => {
   // Use draft validator if save_as_draft query param is true
   const isDraft = req.query.save_as_draft === 'true' || req.body.status === 'draft';
-  console.log('DEBUG: POST /items', { query: req.query, bodyStatus: req.body.status, isDraft });
   if (isDraft) {
     validateCreateItemDraft(req, res, next);
   } else {

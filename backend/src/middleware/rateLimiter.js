@@ -163,6 +163,18 @@ const isAuthenticatedPosBootstrapRead = (req) => {
   return Boolean(authHeader) && Boolean(companyToken);
 };
 
+const isAuthenticatedItemOperation = (req) => {
+  const path = String(req?.originalUrl || req?.path || '').split('?')[0];
+  if (!/^\/api\/v1\/items(?:\/|$)/.test(path)) return false;
+
+  // Item routes authenticate and authorize every request in routes/items.js.
+  // Keep this protected operational traffic out of the shared public-IP bucket;
+  // a busy store network must not block inventory creation, edits, or uploads.
+  const authHeader = String(req?.headers?.authorization || '').trim();
+  const companyToken = normalizeCompanyTokenHeader(req?.headers?.['x-company-token']);
+  return Boolean(authHeader) && Boolean(companyToken);
+};
+
 const LOCAL_POS_ORIGINS = new Set([
   'dgfypos://app',
   'http://localhost:5174',
@@ -466,6 +478,7 @@ export const generalLimiter = rateLimit({
     // Do not also consume the shared public IP bucket for ordinary POS work.
     if (/^\/(?:v1\/)?(?:pos|mobile-pos)(?:\/|$)/.test(req.path || req.originalUrl || '')) return true;
     if (isAuthenticatedPosBootstrapRead(req)) return true;
+    if (isAuthenticatedItemOperation(req)) return true;
     return false;
   },
 });
@@ -570,7 +583,7 @@ const createStoreGuestCheckoutOtpLimiter = ({ operation, message }) => rateLimit
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: (req) => {
+  skip: () => {
     if (process.env.NODE_ENV === 'test') return true;
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
     return false;

@@ -39,6 +39,7 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs',
     '20260629000001-add-pos-always-available-contract.cjs',
     '20260705000001-add-admin-provisioned-membership-source.cjs',
+    '20260710000001-create-delivery-jobs.cjs',
     '20260711000001-add-pickup-cash-collection-fields.cjs',
     '20260711000002-add-item-folder-active-contract.cjs',
     '20260711000003-repair-pickup-cash-collection-columns.cjs',
@@ -100,6 +101,13 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'payment_collected_by',
         'payment_collected_shift_id',
         'payment_collected_terminal_id'
+    ],
+    delivery_jobs: [
+        'delivery_job_id',
+        'pos_transaction_id',
+        'location_id',
+        'provider',
+        'status'
     ],
     stock_movements: ['movement_id', 'item_id', 'movement_type', 'quantity', 'location_id', 'source_location_id', 'destination_location_id'],
     fifo_batches: ['batch_id', 'item_id', 'location_id', 'quantity', 'quantity_consumed'],
