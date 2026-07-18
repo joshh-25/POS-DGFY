@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-07-10
-last_reviewed: 2026-07-10
+last_reviewed: 2026-07-17
 classification: authoritative
 ---
 
@@ -22,4 +22,5 @@ The initial provider is `manual` and the initial state is `pending_dispatch`. Th
 ## Validation
 
 - `npm --prefix backend run check:architecture-guardrails`
-- Apply the tenant migration before enabling delivery checkout in an environment.
+- Apply the landlord migration and run `npm --prefix backend run repair:tenant-schema` before enabling delivery checkout in an environment.
+- Confirm `npm --prefix backend run doctor:runtime` is healthy and `npm --prefix backend run check:tenant-schema` completes without failed tenants.

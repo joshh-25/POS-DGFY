@@ -1,6 +1,7 @@
 import {
     BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES,
     BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES,
+    CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES,
     IMAGE_UPLOAD_MAX_BYTES,
     posCatalogBulkImageUpload,
     posCatalogImageUpload,
@@ -40,11 +41,11 @@ describe('uploadConfig catalog image transport contracts', () => {
         }));
 
         expect(posCatalogImageUpload.limits).toMatchObject({
-            fileSize: IMAGE_UPLOAD_MAX_BYTES,
+            fileSize: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES,
             files: 1
         });
         expect(storefrontCatalogImageUpload.limits).toMatchObject({
-            fileSize: IMAGE_UPLOAD_MAX_BYTES,
+            fileSize: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES,
             files: 1
         });
         expect(storefrontCatalogGalleryImageUpload.limits).toMatchObject({

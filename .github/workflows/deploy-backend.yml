@@ -10,6 +10,11 @@ on:
         description: Comma-separated branch tags, e.g. "latest,beta"
         required: true
         type: string
+      runner_labels_json:
+        description: JSON array passed to runs-on for this build job
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
     outputs:
       sha_tag:
         value: ${{ jobs.build-and-push.outputs.sha_tag }}
@@ -23,7 +28,7 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     timeout-minutes: 20
     environment: ${{ inputs.environment }}
     outputs:

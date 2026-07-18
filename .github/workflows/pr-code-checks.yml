@@ -2,10 +2,16 @@ name: PR Code Quality Checks
 
 on:
   workflow_call:
+    inputs:
+      runner_labels_json:
+        description: JSON array passed to runs-on for this job
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
 
 jobs:
   code-quality:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     timeout-minutes: 15
     continue-on-error: true
     steps:

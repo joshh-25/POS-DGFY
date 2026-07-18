@@ -1,0 +1,45 @@
+name: PR Checks Summary
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels_json:
+        description: JSON array passed to runs-on for this job
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      conventional_commits_result:
+        required: true
+        type: string
+      code_quality_result:
+        required: true
+        type: string
+      backend_build_result:
+        required: true
+        type: string
+      frontend_build_result:
+        required: true
+        type: string
+
+jobs:
+  summary:
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    steps:
+      - name: PR checks summary
+        run: |
+          echo "## PR Checks Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Conventional Commits | ${{ inputs.conventional_commits_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ inputs.code_quality_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Build | ${{ inputs.backend_build_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Build | ${{ inputs.frontend_build_result }} |" >> $GITHUB_STEP_SUMMARY
+          # TEMP: DGFY API Build row removed while dgfy-api-build-check is disabled in pr-checks.yml
+
+      - name: Fail if any check failed
+        if: >-
+          contains(inputs.conventional_commits_result, 'failure') ||
+          contains(inputs.code_quality_result, 'failure') ||
+          contains(inputs.backend_build_result, 'failure') ||
+          contains(inputs.frontend_build_result, 'failure')
+        run: exit 1

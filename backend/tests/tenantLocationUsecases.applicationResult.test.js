@@ -238,30 +238,20 @@ describe('tenantLocation use-cases primary storefront behavior', () => {
         expect(result.error.statusCode).toBe(409);
     });
 
-    it('permanently deletes an unused location pin and promotes fallback primary', async () => {
+    it('permanently deletes an unused inactive non-primary location pin', async () => {
         const transaction = createTransactionMock();
         const repository = {
             beginTransaction: jest.fn().mockResolvedValue(transaction),
             findById: jest.fn().mockResolvedValue({
                 location_id: 31,
-                is_active: true,
-                is_primary_storefront: true
+                is_active: false,
+                is_primary_storefront: false
             }),
             countOperationalReferences: jest.fn().mockResolvedValue({ total: 0 }),
             deleteById: jest.fn().mockResolvedValue({
                 location_id: 31,
-                is_active: true,
-                is_primary_storefront: true
-            }),
-            findActivePrimary: jest.fn().mockResolvedValue(null),
-            findPrimaryFallbackCandidate: jest.fn().mockResolvedValue({
-                location_id: 32,
-                is_active: true
-            }),
-            clearPrimaryFlags: jest.fn().mockResolvedValue(undefined),
-            setPrimaryFlagById: jest.fn().mockResolvedValue({
-                location_id: 32,
-                is_primary_storefront: true
+                is_active: false,
+                is_primary_storefront: false
             })
         };
 
@@ -274,8 +264,86 @@ describe('tenantLocation use-cases primary storefront behavior', () => {
         expect(result.success).toBe(true);
         expect(repository.countOperationalReferences).toHaveBeenCalledWith(31, expect.any(Object));
         expect(repository.deleteById).toHaveBeenCalledWith(31, expect.any(Object));
-        expect(repository.setPrimaryFlagById).toHaveBeenCalledWith(32, expect.any(Object));
         expect(result.data).toMatchObject({ location_id: 31, deleted: true });
+    });
+
+    it('rejects permanent deletion until the pin is inactive', async () => {
+        const transaction = createTransactionMock();
+        const repository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            findById: jest.fn().mockResolvedValue({
+                location_id: 35,
+                is_active: true,
+                is_primary_storefront: false
+            }),
+            countOperationalReferences: jest.fn(),
+            deleteById: jest.fn()
+        };
+
+        const useCase = buildDeleteTenantLocationUseCase({
+            tenantLocationRepository: repository
+        });
+
+        const result = await useCase({ locationId: 35 });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+        expect(result.error.statusCode).toBe(409);
+        expect(repository.countOperationalReferences).not.toHaveBeenCalled();
+        expect(repository.deleteById).not.toHaveBeenCalled();
+        expect(transaction.rollback).toHaveBeenCalled();
+    });
+
+    it('reactivates an inactive non-primary location without replacing the active primary', async () => {
+        const transaction = createTransactionMock();
+        const inactiveLocation = {
+            location_id: 37,
+            name: 'Ungka Branch',
+            address_line: 'Ungka Road',
+            latitude: 10.7,
+            longitude: 122.5,
+            delivery_radius_km: 5,
+            is_open: false,
+            is_active: false,
+            is_primary_storefront: false,
+            current_wait_time_minutes: 15,
+            allow_out_of_stock_sales: false,
+            supports_delivery: true,
+            supports_pickup: true,
+            supports_dine_in: true
+        };
+        const repository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            findById: jest
+                .fn()
+                .mockResolvedValueOnce(inactiveLocation)
+                .mockResolvedValueOnce({ ...inactiveLocation, is_active: true }),
+            updateById: jest.fn().mockResolvedValue({ ...inactiveLocation, is_active: true }),
+            findActivePrimary: jest.fn().mockResolvedValue({
+                location_id: 1,
+                is_active: true,
+                is_primary_storefront: true
+            }),
+            clearPrimaryFlags: jest.fn().mockResolvedValue(undefined)
+        };
+
+        const useCase = buildUpdateTenantLocationUseCase({
+            tenantLocationRepository: repository
+        });
+
+        const result = await useCase({
+            locationId: 37,
+            payload: { is_active: true }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.updateById).toHaveBeenCalledWith(37, expect.objectContaining({
+            is_active: true,
+            is_primary_storefront: false
+        }), expect.any(Object));
+        expect(repository.clearPrimaryFlags).toHaveBeenCalledWith(expect.objectContaining({
+            excludeLocationId: 1
+        }));
     });
 
     it('blocks permanent delete when the location has operational references', async () => {

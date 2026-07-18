@@ -2006,7 +2006,7 @@ describe('inventory itemRepository', () => {
     const args = ItemFolder.findAll.mock.calls[0][0];
     expect(args.include[0].model).toBe(Item);
     expect(args.include[0].as).toBe('items');
-    expect(args.include[0].where).toBeUndefined();
+    expect(args.include[0].where).toMatchObject({ deleted_at: null });
     expect(result).toEqual([
         {
           folder_id: 1,
@@ -2067,11 +2067,34 @@ describe('inventory itemRepository', () => {
     });
   });
 
+  it('allows recreating a category name when only an inactive category has that name', async () => {
+    const inactiveFolder = { folder_id: 17, name: 'Mains', is_active: false, deleted_at: null };
+    const ItemFolder = {
+      findAll: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({
+        folder_id: 18,
+        name: 'Mains',
+        description: '',
+        parent_id: null,
+        show_in_pos_filter: true,
+        is_active: true
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => (name === 'ItemFolder' ? ItemFolder : {}));
+
+    await expect(itemRepository.createFolder('Mains')).resolves.toMatchObject({ folder_id: 18, name: 'Mains' });
+    expect(ItemFolder.findAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ is_active: true, deleted_at: null })
+    }));
+    expect(inactiveFolder.is_active).toBe(false);
+  });
+
   it('deletes an unassigned folder without altering item records', async () => {
     const folder = {
       folder_id: 7,
       name: 'Legacy Folder',
-      destroy: jest.fn().mockResolvedValue(true)
+      update: jest.fn().mockResolvedValue(true)
     };
     const ItemFolder = {
       findByPk: jest.fn().mockResolvedValue(folder)
@@ -2092,9 +2115,9 @@ describe('inventory itemRepository', () => {
 
     const result = await itemRepository.deleteFolder(7);
 
-    expect(Item.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { folder_id: 7 }, transaction }));
+    expect(Item.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ folder_id: 7, deleted_at: null }), transaction }));
     expect(Item.update).not.toHaveBeenCalled();
-    expect(folder.destroy).toHaveBeenCalledWith({ transaction });
+    expect(folder.update).toHaveBeenCalledWith(expect.objectContaining({ is_active: false, deleted_at: expect.any(Date) }), { transaction });
     expect(transaction.commit).toHaveBeenCalled();
     expect(result).toEqual({
       success: true,
@@ -2105,7 +2128,7 @@ describe('inventory itemRepository', () => {
   });
 
   it('reassigns assigned items to an active category before deleting the source category', async () => {
-    const folder = { folder_id: 7, name: 'Mains', destroy: jest.fn().mockResolvedValue(true) };
+    const folder = { folder_id: 7, name: 'Mains', update: jest.fn().mockResolvedValue(true) };
     const replacementFolder = { folder_id: 8, name: 'Rice Meals', is_active: true };
     const ItemFolder = {
       findByPk: jest.fn().mockImplementation((folderId) => Promise.resolve(Number(folderId) === 7 ? folder : replacementFolder))
@@ -2134,11 +2157,11 @@ describe('inventory itemRepository', () => {
       { folder_id: 8, product_folder: 'Rice Meals' },
       expect.objectContaining({ where: { folder_id: 7 }, transaction })
     );
-    expect(folder.destroy).toHaveBeenCalledWith({ transaction });
+    expect(folder.update).toHaveBeenCalledWith(expect.objectContaining({ is_active: false, deleted_at: expect.any(Date) }), { transaction });
   });
 
   it('requires an active replacement when deleting a folder with assigned items', async () => {
-    const folder = { folder_id: 7, name: 'Mains', destroy: jest.fn() };
+    const folder = { folder_id: 7, name: 'Mains', update: jest.fn() };
     const ItemFolder = { findByPk: jest.fn().mockResolvedValue(folder) };
     const Item = { findAll: jest.fn().mockResolvedValue([{ item_id: 12 }]) };
     const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
@@ -2156,11 +2179,11 @@ describe('inventory itemRepository', () => {
       code: 'CATEGORY_REASSIGNMENT_REQUIRED'
     });
     expect(transaction.rollback).toHaveBeenCalled();
-    expect(folder.destroy).not.toHaveBeenCalled();
+    expect(folder.update).not.toHaveBeenCalled();
   });
 
   it('rejects using the source category as its own replacement', async () => {
-    const folder = { folder_id: 7, name: 'Mains', destroy: jest.fn() };
+    const folder = { folder_id: 7, name: 'Mains', update: jest.fn() };
     const ItemFolder = { findByPk: jest.fn().mockResolvedValue(folder) };
     const Item = { findAll: jest.fn().mockResolvedValue([{ item_id: 12 }]) };
     const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
@@ -2177,11 +2200,11 @@ describe('inventory itemRepository', () => {
       statusCode: 400,
       code: 'CATEGORY_REASSIGNMENT_INVALID'
     });
-    expect(folder.destroy).not.toHaveBeenCalled();
+    expect(folder.update).not.toHaveBeenCalled();
   });
 
   it('rejects an inactive replacement category', async () => {
-    const folder = { folder_id: 7, name: 'Mains', destroy: jest.fn() };
+    const folder = { folder_id: 7, name: 'Mains', update: jest.fn() };
     const replacementFolder = { folder_id: 8, name: 'Archived', is_active: false };
     const ItemFolder = {
       findByPk: jest.fn().mockImplementation((folderId) => Promise.resolve(Number(folderId) === 7 ? folder : replacementFolder))
@@ -2201,7 +2224,7 @@ describe('inventory itemRepository', () => {
       statusCode: 409,
       code: 'CATEGORY_REPLACEMENT_INACTIVE'
     });
-    expect(folder.destroy).not.toHaveBeenCalled();
+    expect(folder.update).not.toHaveBeenCalled();
   });
 
   it('returns 404 when deleting a missing folder', async () => {

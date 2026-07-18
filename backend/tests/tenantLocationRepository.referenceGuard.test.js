@@ -16,14 +16,15 @@ describe('tenantLocationRepository permanent-delete reference guard', () => {
         ).rejects.toMatchObject({
             name: 'TenantLocationReferenceGuardUnavailableError',
             code: 'TENANT_LOCATION_REFERENCE_GUARD_UNAVAILABLE',
-            sourceKey: 'itemLocationStocks',
-            modelName: 'ItemLocationStock',
+            sourceKey: 'deliveryJobs',
+            modelName: 'DeliveryJob',
             reason: 'model_missing_from_tenant_context'
         });
     });
 
     it('fails closed when a reference model cannot count rows', async () => {
         jest.spyOn(dbStore, 'getStore').mockReturnValue({
+            DeliveryJob: { count: jest.fn().mockResolvedValue(0) },
             ItemLocationStock: {}
         });
 

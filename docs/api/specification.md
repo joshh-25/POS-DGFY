@@ -1162,7 +1162,7 @@ Upload/replace the Storefront catalog primary image override. This endpoint rema
 - `image/avif`
 
 **Security Contract**
-- Maximum file size is 5 MB.
+- A single primary image source may be up to 100 MB. The backend validates it, stores the original privately, and generates public delivery variants. The public large variant is always 10 MB or smaller.
 - Backend validates both reported MIME type and binary signature.
 - Stored paths are served through `/uploads` with `nosniff` static serving.
 - Upload preserves existing `storefront_visible`; it must not silently show a hidden Storefront item.
@@ -1178,7 +1178,7 @@ Append images to the ordered Storefront catalog image gallery for one item.
 - If no gallery exists, the first accepted image becomes the primary `storefront_image_url`.
 - If a gallery already exists, accepted images are appended after the existing ordered entries and the existing first image remains primary.
 - The response includes `storefront_image_gallery` ordered by `sort_order`.
-- Upload validation uses the same 5 MB per-image and safe MIME/signature checks as the single-image endpoint.
+- Gallery uploads remain capped at 10 MB per source image and use the same safe MIME/signature checks. The public large variant is always 10 MB or smaller.
 - Appending to the gallery preserves `storefront_visible` and does not mutate POS menu images.
 
 ### POST /items/storefront-images/bulk
@@ -2520,6 +2520,7 @@ Upload/replace POS catalog image override (multipart file upload).
 **Validation Contract**
 - Endpoint accepts image files only.
 - Unsupported upload types are rejected with `422 Validation failed`.
+- A single primary image source may be up to 100 MB; the backend retains the original privately and publishes a large delivery variant at or below 10 MB.
 - Existing image is replaced atomically when a valid new image is uploaded.
 
 **Image URL Contract**
@@ -2686,6 +2687,10 @@ Get full POS transaction details (header + lines + item snapshots).
 
 ### GET /pos/terminal/shifts/current
 Get the current open shift and cash summary for a terminal.
+
+The response includes the cashier who opened the shift. Cashier-role users see
+only their own open shift; the company master admin may view the active shift
+for the selected terminal in order to perform the existing authorized closeout.
 
 **Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
@@ -3228,7 +3233,7 @@ Catalog rows include:
 - `vat_type`
 - `image_url` (from Storefront catalog override when available; POS image is table-missing rollout fallback only)
   - may be an absolute URL or backend-relative `/uploads/...` path
-  - storefront/POS clients should gracefully show a placeholder when image load fails
+- storefront/POS clients should gracefully show a placeholder when image load fails
 - `image_gallery`, an ordered array of public Storefront item images. The first entry is the primary image and matches `image_url` when a Storefront image is configured.
 - `service_detail` for Services Mode service rows, including duration, payment policy, bookable/storefront visibility, and normalized `intake_form_schema` fields when configured
 - `allergens` for F&B menu rows, sourced from `item_allergens`

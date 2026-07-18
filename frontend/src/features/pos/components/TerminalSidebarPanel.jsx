@@ -95,6 +95,7 @@ export default function TerminalSidebarPanel({
   todayDashboard,
   canViewPos,
   canTransactPos,
+  canAdminBypassShiftPrompt = false,
   canSwitchPosLocation = false,
   canAdjustCashDrawer,
   canCloseDay,
@@ -134,6 +135,11 @@ export default function TerminalSidebarPanel({
   const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'terminal_setup']);
   const [switchReason, setSwitchReason] = useState('');
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
+  const activeShift = shiftState?.shift || null;
+  const activeShiftLocationLabel = activeShift?.location?.name
+    || activeShift?.location_name
+    || activeShift?.location_id
+    || 'Unassigned';
 
   const showSection = (key) => {
     if (isMsmeMode && hiddenSectionsInMsme.has(key)) return false;
@@ -272,47 +278,61 @@ export default function TerminalSidebarPanel({
       {showSection('shift_controls') && (
         <div id={sectionIds.activeShift} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
           <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">
-            {shiftState.shift ? 'Shift Open' : 'Shift Closed'}
+            {activeShift ? 'Shift Open' : 'Shift Closed'}
           </p>
-          <Label className="text-xs">Shift Location</Label>
-          <select
-            className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
-            value={operatingLocationId || ''}
-            onChange={(event) => {
-              const nextValue = event.target.value ? Number(event.target.value) : null;
-              setOperatingLocationId(nextValue);
-            }}
-          >
-            {locations.map((location) => (
-              <option key={`sidebar-operating-location-${location.location_id}`} value={location.location_id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-          <p className="text-[11px] text-slate-500">
-            Current location used by catalog, checkout, and dashboard.
-          </p>
+          {activeShift ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Shift Location</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{activeShiftLocationLabel}</p>
+            </div>
+          ) : canAdminBypassShiftPrompt ? (
+            <>
+              <Label htmlFor="sidebar-admin-operating-location" className="text-xs">Operating Location</Label>
+              <select
+                id="sidebar-admin-operating-location"
+                className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
+                value={operatingLocationId || ''}
+                onChange={(event) => {
+                  const nextValue = event.target.value ? Number(event.target.value) : null;
+                  setOperatingLocationId(nextValue);
+                }}
+              >
+                {locations.map((location) => (
+                  <option key={`sidebar-admin-operating-location-${location.location_id}`} value={location.location_id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500">
+                Admin navigation can change scope before a shift opens. The terminal assignment controls shift opening.
+              </p>
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-500">
+              Your terminal location is fixed until an authorized shift is opened.
+            </p>
+          )}
           {shiftState.loading ? (
             <p className="text-xs text-slate-500">Loading shift context...</p>
-          ) : shiftState.shift ? (
+          ) : activeShift ? (
             <div className="space-y-1 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Cashier</span>
                 <span className="font-semibold text-slate-900">
-                  {shiftState.shift?.cashier?.username || shiftState.shift?.cashier?.email || terminalUser?.username || terminalUser?.email || 'Current cashier'}
+                  {activeShift?.cashier?.username || activeShift?.cashier?.email || terminalUser?.username || terminalUser?.email || 'Current cashier'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Business Date</span>
-                <span className="font-semibold text-slate-900">{shiftState.shift.business_date || '-'}</span>
+                <span className="font-semibold text-slate-900">{activeShift.business_date || '-'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Opened At</span>
-                <span className="font-semibold text-slate-900">{parseIsoDateTime(shiftState.shift.opened_at)}</span>
+                <span className="font-semibold text-slate-900">{parseIsoDateTime(activeShift.opened_at)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Opening Float</span>
-                <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.shift.opening_float_amount)}</span>
+                <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(activeShift.opening_float_amount)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Expected Cash</span>
@@ -329,7 +349,7 @@ export default function TerminalSidebarPanel({
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Shift Location</span>
                 <span className="font-semibold text-slate-900">
-                  {shiftState?.shift?.location?.name || shiftState?.shift?.location_name || shiftState?.shift?.location_id || 'Unassigned'}
+                  {activeShiftLocationLabel}
                 </span>
               </div>
               {canSwitchPosLocation && (

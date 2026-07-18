@@ -87,8 +87,17 @@ function IncomingQueueWorkspace({
   locked,
   sectionId
 }) {
+  const [orderSort, setOrderSort] = React.useState('newest');
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  const sortedIncomingOrders = [...incomingOrders].sort((left, right) => {
+    const leftTime = new Date(left?.created_at || left?.order_time || 0).getTime() || 0;
+    const rightTime = new Date(right?.created_at || right?.order_time || 0).getTime() || 0;
+    const difference = leftTime - rightTime;
+    if (difference !== 0) return orderSort === 'oldest' ? difference : -difference;
+
+    return Number(left?.pos_transaction_id || 0) - Number(right?.pos_transaction_id || 0);
+  });
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const selectedLocationName = !queueLocationScopeId
@@ -107,25 +116,29 @@ function IncomingQueueWorkspace({
             <p className="text-lg font-black leading-6 text-[#0F172A]">{selectedLocationName}</p>
           </div>
         </div>
-        <Button
-          type="button"
-          onClick={() => refreshIncomingOrders?.()}
-          disabled={incomingOrdersState?.loading || locked}
-          className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
-        >
-          <RefreshCcw className="mr-2 h-4 w-4" />
-          {incomingOrdersState?.loading ? 'Refreshing...' : 'Refresh Queue'}
-        </Button>
-      </div>
-      <div className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-3 text-sm leading-5 text-[#334155]">
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
-          <Info className="h-4 w-4" />
-        </span>
-        <p>
-          Completed or cancelled online orders move to History/Receipt Preview.
-          <br />
-          Incoming Queue shows active fulfillment statuses only.
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+            Sort
+            <select
+              value={orderSort}
+              onChange={(event) => setOrderSort(event.target.value)}
+              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-blue-100"
+              aria-label="Sort incoming orders"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+          </label>
+          <Button
+            type="button"
+            onClick={() => refreshIncomingOrders?.()}
+            disabled={incomingOrdersState?.loading || locked}
+            className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            {incomingOrdersState?.loading ? 'Refreshing...' : 'Refresh Queue'}
+          </Button>
+        </div>
       </div>
 
       {!canViewPos || incomingOrdersAccessState === 'forbidden' ? (
@@ -155,12 +168,21 @@ function IncomingQueueWorkspace({
           </div>
           <div>
             <p className="text-xl font-black tracking-tight text-[#0F172A]">No online orders in active queue.</p>
-            <p className="mt-2 text-sm leading-5 text-[#475569]">New online orders will appear here once they are received.</p>
+            <div className="mt-3 flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-3 text-sm leading-5 text-[#334155]">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
+                <Info className="h-4 w-4" />
+              </span>
+              <p>
+                Completed or cancelled online orders move to History/Receipt Preview.
+                <br />
+                Incoming Queue shows active fulfillment statuses only.
+              </p>
+            </div>
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {incomingOrders.map((order) => {
+          {sortedIncomingOrders.map((order) => {
             const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
             const nextActions = getNextStatusActions(order);
             const utilityActions = getIncomingOrderUtilityActions(order);

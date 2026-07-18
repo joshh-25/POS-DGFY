@@ -4,6 +4,7 @@ import path from 'path';
 import sharp from 'sharp';
 import {
     deriveImageAssetVariantUrls,
+    MAX_PUBLIC_IMAGE_BYTES,
     removeOptimizedImageAsset,
     storeOptimizedImageAsset
 } from '../src/modules/shared/utils/imageAssetStorage.js';
@@ -50,6 +51,7 @@ describe('imageAssetStorage utility', () => {
 
         await expect(fs.access(path.join(uploadsRoot, stored.path))).resolves.toBeUndefined();
         await expect(fs.access(path.join(uploadsRoot, stored.original.path))).resolves.toBeUndefined();
+        expect(stored.variants.large.size).toBeLessThanOrEqual(MAX_PUBLIC_IMAGE_BYTES);
     });
 
     it('avoids upscaling small graphics and keeps the primary delivery path stable', async () => {
