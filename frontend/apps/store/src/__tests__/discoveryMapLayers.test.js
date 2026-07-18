@@ -11,10 +11,39 @@ import {
   ensureDiscoveryMapLayers,
   getDistanceMeters,
   getDiscoveryPinIconId,
+  hasPlottableCoordinate,
   setGeoJsonSourceData
 } from '../discoveryMapLayers.js';
 
 describe('discovery map layer helpers', () => {
+  it('excludes stores with missing or null-island coordinates from the map source', () => {
+    const model = buildDiscoveryPinLayerModel({
+      stores: [
+        { slug: 'located', tenant_name: 'Located', location_id: 1, latitude: 10.72, longitude: 122.56 },
+        { slug: 'no-location', tenant_name: 'No Location', location_id: null, latitude: null, longitude: null },
+        { slug: 'null-island', tenant_name: 'Null Island', location_id: 2, latitude: 0, longitude: 0 }
+      ]
+    });
+
+    const keys = model.sourceData.features.map((feature) => feature.properties.markerKey);
+    expect(model.sourceData.features).toHaveLength(1);
+    expect(keys).toEqual(['located:loc:1']);
+    expect(model.bounds).toHaveLength(1);
+    const hasNullIsland = model.sourceData.features.some((feature) => {
+      const [lng, lat] = feature.geometry.coordinates;
+      return Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001;
+    });
+    expect(hasNullIsland).toBe(false);
+  });
+
+  it('treats missing, null, and null-island coordinates as non-plottable', () => {
+    expect(hasPlottableCoordinate(10.72, 122.56)).toBe(true);
+    expect(hasPlottableCoordinate(null, null)).toBe(false);
+    expect(hasPlottableCoordinate(0, 0)).toBe(false);
+    expect(hasPlottableCoordinate(undefined, 122.56)).toBe(false);
+    expect(hasPlottableCoordinate('', '')).toBe(false);
+    expect(hasPlottableCoordinate(Number.NaN, 5)).toBe(false);
+  });
   it('builds exact-coordinate layer features without display offsets', () => {
     const model = buildDiscoveryPinLayerModel({
       stores: [
