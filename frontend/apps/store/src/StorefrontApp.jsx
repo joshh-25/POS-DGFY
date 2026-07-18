@@ -83,7 +83,6 @@ import {
   toNumberOrNull
 } from './features/discovery/utils/discoveryMapMath.js';
 import {
-  makePinElement,
   makeUserLocationElement
 } from './features/discovery/utils/discoveryMapMarkers.js';
 import {
@@ -5289,6 +5288,32 @@ export default function StorefrontApp() {
       .join('|');
     return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
   }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
+  const highlightedDiscoveryMarkerKeys = useMemo(() => {
+    if (hasDiscoverySearch) {
+      return (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
+        .map((pin) => getDiscoveryMarkerKey(pin))
+        .filter(Boolean);
+    }
+    return highlightedDiscoveryMarkerKey ? [highlightedDiscoveryMarkerKey] : [];
+  }, [hasDiscoverySearch, searchedDiscoveryMapPins, highlightedDiscoveryMarkerKey]);
+  const discoveryViewportSignal = useMemo(() => ([
+    hasDiscoverySearch ? `search:${debouncedDiscoverySearch.trim().toLowerCase()}` : 'browse',
+    `category:${discoveryCategoryFilter}`,
+    `distance:${discoveryDistanceFilter}`,
+    `open:${discoveryOpenFilter}`,
+    `rating:${discoveryRatingFilter}`,
+    `availability:${discoveryAvailabilityFilter}`,
+    `coords:${discoveryCoords ? `${Number(discoveryCoords.latitude).toFixed(4)},${Number(discoveryCoords.longitude).toFixed(4)}` : 'default'}`
+  ].join('|')), [
+    hasDiscoverySearch,
+    debouncedDiscoverySearch,
+    discoveryCategoryFilter,
+    discoveryDistanceFilter,
+    discoveryOpenFilter,
+    discoveryRatingFilter,
+    discoveryAvailabilityFilter,
+    discoveryCoords
+  ]);
   const discoverySummary = useMemo(() => {
     const totalStores = filteredDiscoveryStores.length;
     const openStores = filteredDiscoveryStores.filter((store) => store.storefront_open).length;
@@ -8068,6 +8093,8 @@ export default function StorefrontApp() {
     hasActiveDiscoveryFilters,
     hasDiscoverySearch,
     highlightedDiscoveryMarkerKey,
+    highlightedDiscoveryMarkerKeys,
+    discoveryViewportSignal,
     highlightedStoreSlug,
     isBrandingImageBlocked,
     isCategoryFilterActive,
@@ -9599,6 +9626,7 @@ export default function StorefrontApp() {
                         <StoresMap
                           stores={activeDiscoveryMapPins}
                           selectedKey={highlightedDiscoveryMarkerKey || null}
+                          highlightedKeys={highlightedDiscoveryMarkerKeys}
                           userLocation={discoveryCoords}
                           height="100%"
                           onSelectStore={(pin) => {

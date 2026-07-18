@@ -49,6 +49,8 @@ export function createDiscoveryResultsRenderer(ctx) {
   hasActiveDiscoveryFilters,
   hasDiscoverySearch,
   highlightedDiscoveryMarkerKey,
+  highlightedDiscoveryMarkerKeys,
+  discoveryViewportSignal,
   highlightedStoreSlug,
   isClusterResultsActive,
   isBrandingImageBlocked,
@@ -565,8 +567,11 @@ const resultsSubtitle = isClusterResultsActive
               key={discoveryResultsMapKey}
               stores={searchedDiscoveryMapPins}
               selectedKey={highlightedDiscoveryMarkerKey || null}
+              highlightedKeys={highlightedDiscoveryMarkerKeys}
               userLocation={discoveryCoords}
               height="100%"
+              viewportPolicy="search-stable"
+              viewportSignal={discoveryViewportSignal}
                     onSelectStore={(pin) => {
                       setHasDiscoveryExplorationStarted(true);
                   setIsMobileResultsCollapsed(false);
