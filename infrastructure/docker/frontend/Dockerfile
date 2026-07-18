@@ -4,7 +4,7 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY frontend/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
 COPY frontend/ ./
 
 # Deliberately no VITE_API_BASE_URL / VITE_ASSET_BASE_URL build args here: this
