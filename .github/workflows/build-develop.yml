@@ -20,6 +20,7 @@ jobs:
       image_tags: "develop"
       publish: true
       vpn_required: true
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read

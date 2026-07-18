@@ -19,7 +19,7 @@ concurrency:
 env:
   # Toggle the runner for ALL PR checks here by commenting/uncommenting one line.
   # RUNNER_LABELS_JSON: &runner_labels_json '["ubuntu-latest"]'
-  RUNNER_LABELS_JSON: &runner_labels_json '["sieitz-ubuntu-runner"]'
+  RUNNER_LABELS_JSON: &runner_labels_json '["self-hosted"]'
 
 jobs:
   conventional-commits:

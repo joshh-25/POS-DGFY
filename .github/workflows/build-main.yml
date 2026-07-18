@@ -25,6 +25,7 @@ jobs:
       environment: BETA
       image_tags: "beta"
       publish: true
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
