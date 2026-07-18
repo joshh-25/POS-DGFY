@@ -20,6 +20,21 @@ export const isKnownProvisionedPlaceholderCoordinate = (latitude, longitude) => 
   ))
 );
 
+// A store is only plottable when it has real, finite coordinates that are not
+// "null island" (0,0). The discovery list API returns latitude/longitude as
+// null for stores with no location (empty tenant_locations); upstream builders
+// coerce those nulls to 0 (Number(null) === 0), which is finite and would slip
+// past a plain Number.isFinite check — so location-less stores must be rejected
+// here to keep them off the map.
+export const hasPlottableCoordinate = (latitude, longitude) => {
+  if (latitude == null || longitude == null || latitude === '' || longitude === '') return false;
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) return false;
+  return true;
+};
+
 const svgToDataUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
 export const getDiscoveryPinIconId = ({ type = 'store', mode = 'food_manufacturing', count = 1, selected = false } = {}) => {
@@ -64,9 +79,9 @@ const buildCoordinateGroups = (rows) => {
 
   const validRows = uniqueRows
     .map((store) => {
+      if (!hasPlottableCoordinate(store?.latitude, store?.longitude)) return null;
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
       return {
         store,
         latitude: lat,
@@ -158,9 +173,9 @@ export const buildDiscoveryPinLayerModel = ({
   const requiredImages = new Map();
 
   uniqueRows.forEach((store) => {
+    if (!hasPlottableCoordinate(store?.latitude, store?.longitude)) return;
     const lat = Number(store?.latitude);
     const lng = Number(store?.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     const rowCoordinateKey = getCoordinateKey(lat, lng);
     const coordinateKey = rowGroupKeys.get(store) || rowCoordinateKey;
     if (renderedCoordinateGroups.has(coordinateKey)) return;

@@ -1,0 +1,36 @@
+CR-01 fix verification: unique_inventory_movements_natural_key column composition
+Captured: 2026-07-14T11:4x (EC2 dgfy-temp, dgfy-platform-mysql-1 container)
+
+Note: `verify`'s checkContractSchema only asserts index *existence by name*
+(see apps/dgfy-migration-runner/src/commands/verify.js), not column
+composition — so the verify.json report above does not, by itself, prove
+the CR-01 fix landed. This file is the supplementary proof, captured via
+`SHOW INDEX FROM inventory_movements WHERE Key_name =
+'unique_inventory_movements_natural_key'` directly against each corrected
+tenant DB.
+
+=== dgfy_business_r0001 ===
+Table               Non_unique  Key_name                                Seq_in_index  Column_name
+inventory_movements 0           unique_inventory_movements_natural_key  1             business_id
+inventory_movements 0           unique_inventory_movements_natural_key  2             product_id
+inventory_movements 0           unique_inventory_movements_natural_key  3             reference_type
+inventory_movements 0           unique_inventory_movements_natural_key  4             reference_id
+
+=== dgfy_business_r0002 ===
+Table               Non_unique  Key_name                                Seq_in_index  Column_name
+inventory_movements 0           unique_inventory_movements_natural_key  1             business_id
+inventory_movements 0           unique_inventory_movements_natural_key  2             product_id
+inventory_movements 0           unique_inventory_movements_natural_key  3             reference_type
+inventory_movements 0           unique_inventory_movements_natural_key  4             reference_id
+
+=== dgfy_business_r0003 ===
+Table               Non_unique  Key_name                                Seq_in_index  Column_name
+inventory_movements 0           unique_inventory_movements_natural_key  1             business_id
+inventory_movements 0           unique_inventory_movements_natural_key  2             product_id
+inventory_movements 0           unique_inventory_movements_natural_key  3             reference_type
+inventory_movements 0           unique_inventory_movements_natural_key  4             reference_id
+
+Confirmed: all 3 tenant DBs now carry the corrected 4-column composite
+unique index (business_id, product_id, reference_type, reference_id),
+matching the fixed migration/model/contract source. Prior (broken) shape
+was (business_id, reference_type, reference_id) — see 12-REVIEW.md CR-01.

@@ -27,9 +27,11 @@ export const PickupTrackingMobileView = ({
 }) => {
   const activeTrackingPin = trackingResult?.tracking_pin || trackingPinInput || 'N/A';
   const hasSubtotal = Number.isFinite(Number(trackingResult?.subtotalAmount));
+  const hasDiscount = Number.isFinite(Number(trackingResult?.discountAmount)) && Number(trackingResult?.discountAmount) > 0;
   const hasDeliveryFee = Number.isFinite(Number(trackingResult?.deliveryFee));
   const hasServiceFee = Number.isFinite(Number(trackingResult?.serviceFeeAmount));
-  
+  const discountLabel = String(trackingResult?.discountLabel || 'Promo / Discount').trim();
+
   // Extract theme colors
   const { primary, secondary, bg, secondaryBg, border, softText } = theme;
   const { copyTextToClipboard, setCheckoutTab, goStoreCatalogPage } = actions;
@@ -46,7 +48,7 @@ export const PickupTrackingMobileView = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 32 }}>
-      
+
       {/* 1. Main Status Card (Compact) */}
       <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 20, padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
@@ -64,9 +66,9 @@ export const PickupTrackingMobileView = ({
             </h2>
           </div>
         </div>
-        
+
         <div style={textStyles.body}>{statusGuidance}</div>
-        
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
           <span style={{ color: softText }}>Order PIN</span>
           <span style={{ color: '#0f172a', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 12px' }}>{activeTrackingPin}</span>
@@ -92,7 +94,7 @@ export const PickupTrackingMobileView = ({
             borderRadius: 999
           }}
         />
-        
+
         {trackingSteps.map((step, index) => {
           const done = index < activeStepIndex;
           const active = index === activeStepIndex || (isCompleted && index === trackingSteps.length - 1);
@@ -167,6 +169,12 @@ export const PickupTrackingMobileView = ({
               <span style={{ fontWeight: 700, color: '#0f172a' }}>{money(trackingResult.subtotalAmount)}</span>
             </div>
           ) : null}
+          {hasDiscount ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d', fontWeight: 700 }}>
+              <span>{discountLabel || 'Promo / Discount'}</span>
+              <span style={{ fontWeight: 800 }}>- {money(trackingResult.discountAmount)}</span>
+            </div>
+          ) : null}
           {hasDeliveryFee ? (
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
               <span>Delivery fee</span>
@@ -201,7 +209,7 @@ export const PickupTrackingMobileView = ({
           Back to Menu
         </button>
       </div>
-      
+
     </div>
   );
 };

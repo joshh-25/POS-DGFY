@@ -97,13 +97,14 @@ services:
       start_period: 30s
 
   dgfy-api:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
       DB_DIALECT: mysql
+      DB_NAME: dgfy_core
       REDIS_URL: redis://redis:6379
       DGFY_BACKEND_BASE_URL: http://backend:5000
       PORT: 5100

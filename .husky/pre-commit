@@ -38,6 +38,14 @@ if [ -n "$MIGRATION_FILES" ]; then
   echo "[pre-commit] Tenant schema registry coverage check passed."
 fi
 
+COMPAT_SEAM_SURFACE_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(docs/architecture/compatibility-seams\.json|scripts/check-compat-seams\.js|scripts/generate-compat-inventory\.js)$" || true)"
+COMPAT_SEAM_MARKER_DIFF="$(git diff --cached -- . 2>/dev/null | grep "@compat-seam" || true)"
+if [ -n "$COMPAT_SEAM_SURFACE_FILES" ] || [ -n "$COMPAT_SEAM_MARKER_DIFF" ]; then
+  echo "[pre-commit] Compatibility-seam surface changed. Running compat-seams manifest gate..."
+  npm run check:compat-seams -- --staged
+  echo "[pre-commit] Compatibility-seam manifest gate passed."
+fi
+
 echo "[pre-commit] Running compliance impact guardrail (single shared gate logic)..."
 npm run check:compliance -- --staged
 echo "[pre-commit] Compliance impact guardrail passed."

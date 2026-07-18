@@ -1,0 +1,73 @@
+{
+  "generated_at": "2026-07-13T03:02:10.457Z",
+  "command": "status",
+  "summary": {
+    "recent_commands": 7,
+    "schema_migrations_executed": 0
+  },
+  "results": [
+    {
+      "command": "status",
+      "mode": "status",
+      "actor": "claude-code-uat-test1",
+      "runtime_mode": "development",
+      "started_at": "2026-07-13T03:02:10.000Z",
+      "completed_at": null,
+      "exit_status": "running"
+    },
+    {
+      "command": "schema:migrate",
+      "mode": "apply",
+      "actor": "uat-08-13-retest",
+      "runtime_mode": "development",
+      "started_at": "2026-07-13T02:47:07.000Z",
+      "completed_at": "2026-07-13T02:47:08.000Z",
+      "exit_status": "success"
+    },
+    {
+      "command": "schema:migrate",
+      "mode": "apply",
+      "actor": "unknown",
+      "runtime_mode": "development",
+      "started_at": "2026-07-13T01:08:35.000Z",
+      "completed_at": "2026-07-13T01:08:35.000Z",
+      "exit_status": "failed"
+    },
+    {
+      "command": "schema:migrate",
+      "mode": "apply",
+      "actor": "unknown",
+      "runtime_mode": "development",
+      "started_at": "2026-07-13T01:07:59.000Z",
+      "completed_at": "2026-07-13T01:08:00.000Z",
+      "exit_status": "failed"
+    },
+    {
+      "command": "schema:migrate",
+      "mode": "apply",
+      "actor": "unknown",
+      "runtime_mode": "development",
+      "started_at": "2026-07-13T01:06:53.000Z",
+      "completed_at": "2026-07-13T01:06:54.000Z",
+      "exit_status": "failed"
+    },
+    {
+      "command": "status",
+      "mode": "status",
+      "actor": "unknown",
+      "runtime_mode": "development",
+      "started_at": "2026-07-13T01:06:24.000Z",
+      "completed_at": "2026-07-13T01:06:25.000Z",
+      "exit_status": "success"
+    },
+    {
+      "command": "schema:migrate",
+      "mode": "apply",
+      "actor": "unknown",
+      "runtime_mode": "development",
+      "started_at": "2026-07-13T01:06:05.000Z",
+      "completed_at": "2026-07-13T01:06:06.000Z",
+      "exit_status": "success"
+    }
+  ]
+}

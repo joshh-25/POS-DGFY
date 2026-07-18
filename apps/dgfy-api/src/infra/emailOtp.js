@@ -12,12 +12,18 @@ import * as emailService from './emailService.js';
 // rather than shared, and the parity test this duplication depends on.
 export const EMAIL_OTP_PURPOSES = Object.freeze({
     DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification',
-    DGFY_PASSWORD_RESET: 'dgfy_password_reset'
+    DGFY_PASSWORD_RESET: 'dgfy_password_reset',
+    // Phase 10 (10-04-PLAN.md, STF-03/D-05/D-06): guest storefront checkout
+    // email verification. Additive only — reuses the exact same
+    // hashing/TTL/attempt-limit/enforcement logic above via isValidPurpose(),
+    // no behavior change to the two existing purposes.
+    STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout'
 });
 
 const PURPOSE_LABELS = Object.freeze({
     [EMAIL_OTP_PURPOSES.DGFY_ACCOUNT_VERIFICATION]: 'DGFY account verification',
-    [EMAIL_OTP_PURPOSES.DGFY_PASSWORD_RESET]: 'DGFY password reset'
+    [EMAIL_OTP_PURPOSES.DGFY_PASSWORD_RESET]: 'DGFY password reset',
+    [EMAIL_OTP_PURPOSES.STOREFRONT_GUEST_CHECKOUT]: 'storefront guest checkout'
 });
 
 const OTP_TTL_MINUTES = Number.parseInt(process.env.EMAIL_OTP_TTL_MINUTES || '10', 10);
@@ -45,12 +51,41 @@ const createError = (message, statusCode = 400, code = 'EMAIL_OTP_INVALID') => {
     return error;
 };
 
-const getHashSecret = () => (
-    process.env.EMAIL_OTP_SECRET
-    || process.env.JWT_SECRET
-    || process.env.REFRESH_TOKEN_SECRET
-    || 'email_otp_local_fallback_change_me'
-);
+// WR-02 fix (10-REVIEW.md): a static, source-visible fallback secret is
+// only acceptable in development/test — the STOREFRONT_GUEST_CHECKOUT
+// purpose introduced in Phase 10 now gates real money-moving checkout, so
+// a production/staging deployment that forgets to configure
+// EMAIL_OTP_SECRET/JWT_SECRET/REFRESH_TOKEN_SECRET must fail closed
+// (reject OTP issuance with a 500) rather than silently hash every OTP
+// code with a well-known constant.
+const isDevelopmentLikeEnvironment = () => {
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    return nodeEnv === 'development' || nodeEnv === 'test';
+};
+
+// Exported (in addition to being used internally by hashOtpCode) so
+// WR-02's fail-closed behavior is directly unit-testable without needing a
+// live DB/model registration (registerModels() is only required by
+// requestEmailOtp/verifyEmailOtp, not by this pure secret-resolution
+// helper) — mirrors storefrontOrderRepository.js's computeRequestHash/
+// generateOrderPublicReference export-for-testability convention.
+export const getHashSecret = () => {
+    const configuredSecret = process.env.EMAIL_OTP_SECRET
+        || process.env.JWT_SECRET
+        || process.env.REFRESH_TOKEN_SECRET;
+
+    if (configuredSecret) return configuredSecret;
+
+    if (isDevelopmentLikeEnvironment()) {
+        return 'email_otp_local_fallback_change_me';
+    }
+
+    throw createError(
+        'Email OTP hashing secret is not configured. Set EMAIL_OTP_SECRET, JWT_SECRET, or REFRESH_TOKEN_SECRET.',
+        500,
+        'EMAIL_OTP_SECRET_NOT_CONFIGURED'
+    );
+};
 
 const hashOtpCode = ({ purpose, email, tenantId, code }) => (
     crypto

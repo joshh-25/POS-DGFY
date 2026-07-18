@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-07-14T11:41:12.415Z",
+  "command": "schema:migrate",
+  "mode": "apply",
+  "target_database": "dgfy_core",
+  "migrations_executed": [],
+  "business_targets": [
+    {
+      "database": "dgfy_business_r0001",
+      "migrations_executed": []
+    },
+    {
+      "database": "dgfy_business_r0002",
+      "migrations_executed": []
+    },
+    {
+      "database": "dgfy_business_r0003",
+      "migrations_executed": []
+    }
+  ],
+  "legacy_fingerprint_baseline_path": "/reports/legacy-fingerprint-baseline.json",
+  "summary": {
+    "total_pending": 0,
+    "executed": 0
+  }
+}

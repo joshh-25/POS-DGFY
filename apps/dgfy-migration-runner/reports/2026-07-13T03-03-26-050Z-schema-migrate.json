@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-07-13T03:03:26.050Z",
+  "command": "schema:migrate",
+  "mode": "apply",
+  "target_database": "dgfy_core",
+  "migrations_executed": [],
+  "business_targets": [
+    {
+      "database": "dgfy_business_uat08retest001",
+      "migrations_executed": []
+    }
+  ],
+  "legacy_fingerprint_baseline_path": "reports/legacy-fingerprint-baseline.json",
+  "summary": {
+    "total_pending": 0,
+    "executed": 0
+  }
+}

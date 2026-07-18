@@ -4,272 +4,205 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const appSource = () => fs.readFileSync(path.join(appRoot, 'StorefrontApp.jsx'), 'utf8');
-const panelSource = () => fs.readFileSync(path.join(appRoot, 'FnbReservationPanel.jsx'), 'utf8');
-const productDetailsSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/FnbProductDetailsPage.jsx'), 'utf8');
-const accountPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/DgfyCustomerAccountPage.jsx'), 'utf8');
-const solutionsPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/SolutionsPage.jsx'), 'utf8');
-const businessRegistrationUrlSource = () => fs.readFileSync(path.join(appRoot, 'businessRegistrationUrl.js'), 'utf8');
-const guestTrackingDrawerSource = () => fs.readFileSync(path.join(appRoot, 'tracking/components/GuestTrackingDrawer.jsx'), 'utf8');
-const serviceBookingStepsSource = () => fs.readFileSync(path.join(appRoot, 'services/components/ServiceBookingSteps.jsx'), 'utf8');
+const readSource = (relativePath) => fs.readFileSync(path.join(appRoot, relativePath), 'utf8');
+
+const appSource = () => readSource('StorefrontApp.jsx');
+const routingSource = () => readSource('app/routing/storefrontRouting.js');
+const navigationSource = () => readSource('app/routing/storefrontNavigation.js');
+const productDetailsRouteSource = () => readSource('modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx');
+const productDetailsPageSource = () => readSource('modes/fnb/storefront/pages/FnbProductDetailsPage.jsx');
+const productDetailsMediaSource = () => readSource('modes/fnb/storefront/components/FnbProductMediaGallery.jsx');
+const productDetailsNutritionSource = () => readSource('modes/fnb/storefront/components/FnbProductNutritionAllergens.jsx');
+const productDetailsReviewsSource = () => readSource('modes/fnb/storefront/components/FnbProductReviewsSection.jsx');
+const catalogRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbCatalogRuntime.js');
+const itemReviewRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js');
+const checkoutPayloadSource = () => readSource('modes/fnb/checkout/model/buildFnbCheckoutPayload.js');
+const checkoutPaymentOptionsSource = () => readSource('modes/fnb/checkout/model/fnbCheckoutPaymentOptions.js');
+const checkoutRouteMountSource = () => readSource('modes/fnb/checkout/pages/FnbCheckoutRouteMount.jsx');
+const checkoutSubmissionSource = () => readSource('modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js');
+const signedInCheckoutAddressesSource = () => readSource('modes/fnb/checkout/hooks/useSignedInCheckoutAddresses.js');
+const fnbTrackingContainerSource = () => readSource('modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx');
+const fnbTrackingAdapterSource = () => readSource('modes/fnb/tracking/model/fnbTrackingAdapter.js');
+const fnbTrackingPayloadSource = () => readSource('modes/fnb/tracking/model/fnbTrackingPayload.js');
+const fnbTrackingDrawerSource = () => readSource('modes/fnb/tracking/components/FnbTrackingDrawer.jsx');
+const fnbTrackingDrawerTotalsSource = () => readSource('modes/fnb/tracking/components/FnbTrackingDrawerTotals.jsx');
+const fnbTrackingActiveViewSource = () => readSource('modes/fnb/tracking/components/FnbTrackingActiveView.jsx');
+const fnbTrackingCompletedViewSource = () => readSource('modes/fnb/tracking/components/FnbTrackingCompletedView.jsx');
+const pickupTrackingMobileViewSource = () => readSource('features/tracking/components/PickupTrackingMobileView.jsx');
+const guestTrackingDrawerSource = () => readSource('tracking/components/GuestTrackingDrawer.jsx');
+const accountPageSource = () => readSource('customer-dashboard/pages/DgfyCustomerAccountPage.jsx');
+const businessSectionSource = () => readSource('customer-dashboard/components/BusinessSection.jsx');
+const customerAccountPanelHookSource = () => readSource('customer-dashboard/hooks/useCustomerAccountPanel.js');
+const panelSource = () => readSource('FnbReservationPanel.jsx');
+const solutionsPageSource = () => readSource('Components/storefront/pages/SolutionsPage.jsx');
+const businessRegistrationUrlSource = () => readSource('businessRegistrationUrl.js');
 
 describe('Food & Beverage storefront contract', () => {
-  it('renders restaurant menu metadata and carries modifiers into checkout lines', () => {
+  it('keeps route constants and navigation outside the root shell', () => {
     const source = appSource();
+    const routing = routingSource();
+    const navigation = navigationSource();
+
+    expect(routing).toContain("export const STORE_ITEM_SUBPAGE = 'item';");
+    expect(routing).toContain("export const STORE_TRACK_SUBPAGE = 'track';");
+    expect(navigation).toContain('buildItemDetailTarget');
+    expect(navigation).toContain('buildTrackTarget');
+    expect(source).toContain("from './app/routing/storefrontRouting.js'");
+    expect(source).toContain("from './app/routing/storefrontNavigation.js'");
+    expect(source).not.toContain("const STORE_ITEM_SUBPAGE = 'item';");
+  });
+
+  it('mounts F&B storefront item details through mode-owned route modules', () => {
+    const source = appSource();
+    const routeSource = productDetailsRouteSource();
+    const detailsSource = productDetailsPageSource();
+    const mediaSource = productDetailsMediaSource();
+
+    expect(source).toContain('FnbProductDetailsRoute');
+    expect(source).toContain('useFnbProductDetailsRoute');
+    expect(source).toContain('useFnbProductDetailNavigation');
+    expect(routeSource).toContain('FnbProductDetailsPage');
+    expect(detailsSource).toContain('FnbProductMediaGallery');
+    expect(mediaSource).toContain('aria-label="View larger image"');
+    expect(mediaSource).toContain('aria-label="Previous slide"');
+    expect(mediaSource).toContain('aria-label="Next slide"');
+    expect(source).toContain('filterCatalogItems');
+    expect(catalogRuntimeSource()).toContain('buildFnbCatalogPresentation');
+  });
+
+  it('keeps menu metadata, modifiers, allergens, and reviews available in F&B modules', () => {
+    const source = appSource();
+    const detailsSource = productDetailsPageSource();
+    const nutritionSource = productDetailsNutritionSource();
+    const reviewsSource = productDetailsReviewsSource();
 
     expect(source).toContain('fnb_modifier_groups');
-    expect(source).toContain('Allergens:');
     expect(source).toContain('getDefaultFnbLineModifiers');
+    expect(source).toContain('line_modifiers');
+    expect(detailsSource).toContain('FnbProductNutritionAllergens');
+    expect(nutritionSource).toContain('Allergens');
+    expect(detailsSource).toContain('FnbProductReviewsSection');
+    expect(reviewsSource).toContain('Reviews & Ratings');
+    expect(itemReviewRuntimeSource()).toContain('/api/v1/dgfy/customer/reviews/public?');
+    expect(itemReviewRuntimeSource()).toContain('openFnbItemReviewFromInvite');
+  });
+
+  it('keeps customer dashboard and business contracts feature-owned', () => {
+    const source = appSource();
+    const accountSource = accountPageSource();
+    const businessSource = businessSectionSource();
+
+    expect(source).toContain('useCustomerDashboardRuntime');
+    expect(source).toContain('useCustomerDashboardRouteOutlet');
+    expect(source).toContain('handleOpenBusinessInventory');
+    expect(source).toContain('trackedCustomerActivity');
+    expect(accountSource).toContain('BusinessSection');
+    expect(accountSource).toContain('businessMemberships');
+    expect(accountSource).toContain('onOpenBusinessPos');
+    expect(businessSource).toContain('Your businesses');
+    expect(businessSource).toContain('Pending invitations');
+    expect(businessSource).toContain("startBusinessAction('accept'");
+    expect(customerAccountPanelHookSource()).toContain('if (!isDgfyCustomerSignedIn || accountPanel?.loading) return;');
+  });
+
+  it('shows signed-in saved addresses in F&B delivery checkout before map pinning', () => {
+    const source = signedInCheckoutAddressesSource();
+
+    expect(source).toContain('accountSavedDeliveryLocations');
+    expect(source).toContain('defaultAccountDeliveryLocation');
+    expect(source).toContain('applySavedDeliveryLocation');
+    expect(source).toContain('handleSetDefaultDeliveryAddress');
+    expect(source).toContain('handleRemoveDeliveryAddress');
+    expect(source).toContain('/api/v1/dgfy/customer/addresses');
+  });
+
+  it('builds pickup and delivery checkout payloads from the F&B-owned model', () => {
+    const source = checkoutPayloadSource();
+
+    expect(source).toContain('promo_code');
+    expect(source).toContain("delivery_address: String(deliveryAddress || '').trim()");
+    expect(source).toContain('delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null');
+    expect(source).toContain('delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null');
     expect(source).toContain('line_modifiers');
   });
 
-  it('supports a deep-linkable item detail subpage for food and beverage menus', () => {
-    const source = appSource();
+  it('offers only cash payment until online checkout is configured', () => {
+    const source = checkoutPaymentOptionsSource();
+    const app = appSource();
 
-    expect(source).toContain("const STORE_ITEM_SUBPAGE = 'item';");
-    expect(source).toContain('?item=');
-    expect(source).toContain('review_token');
-    expect(source).toContain('<FnbProductDetailsPage');
-    expect(productDetailsSource()).toContain('aria-label="View larger image"');
-    expect(productDetailsSource()).toContain('aria-label="Previous slide"');
-    expect(productDetailsSource()).toContain('aria-label="Next slide"');
-    expect(productDetailsSource()).toContain('Custom dynamic thumbnails gallery representation');
-    expect(source).toContain('const openFnbDetail = (item, options = {}) => {');
-    expect(source).toContain('const closeFnbDetail = () => {');
-    expect(source).toContain('isFnbDetailsSubpage');
-  });
-
-  it('keeps DGFY account and checkout contracts wired through Storefront account routes', () => {
-    const source = appSource();
-    const accountSource = accountPageSource();
-
-    expect(source).toContain('handleOpenBusinessInventory');
-    expect(source).toContain('trackedCustomerActivity');
-    expect(accountSource).toContain('Your businesses');
-    expect(accountSource).toContain('Pending invitations');
-    expect(accountSource).toContain("startBusinessAction('accept'");
-    expect(accountSource).toContain('Go to Inventory');
-    expect(accountSource).toContain('businessMemberships');
-    expect(accountSource).toContain('onOpenBusinessInventory');
-    expect(source).toContain('Use Current Location');
-    expect(source).toContain('deliverySavedLocations');
-    expect(source).toContain('applySavedDeliveryLocation');
-    expect(source).toContain('customerPin');
-    expect(source).toContain('selectedSavedLocationId');
-  });
-
-  it('shows logged-in customer saved addresses in simple delivery checkout before map pinning', () => {
-    const source = appSource();
-
-    expect(source).toContain('Saved Addresses');
-    expect(source).toContain('Choose a saved address from your DGFY account or enter a new one below.');
-    expect(source).toContain('accountSavedDeliveryLocations.length > 0');
-    expect(source).toContain("key={`simple-delivery-location-${location.id}`}");
-    expect(source).toContain('applySavedDeliveryLocation(location)');
-    expect(source).toContain('handleSetDefaultDeliveryAddress(location)');
-    expect(source).toContain('handleRemoveDeliveryAddress(location)');
-    expect(source).toContain('Delivery Address *');
-    expect(source).toContain('No saved addresses yet. Add or pin a new one.');
-  });
-
-  it('hydrates account checkout state for cookie-backed DGFY sessions, not token-only sessions', () => {
-    const source = appSource();
-
-    expect(source).toContain('if (!isDgfyCustomerSignedIn || accountPanel.loading) return;');
-    expect(source).not.toContain('if (!dgfyAuthToken || accountPanel.loading) return;');
-  });
-
-  it('keeps mobile delivery maps on a concrete height with DGFY-branded expanded state', () => {
-    const source = appSource();
-
-    expect(source).toContain('const resolvedHeight = typeof height ===');
-    expect(source).toContain('height: resolvedHeight');
-    expect(source).toContain('data-delivery-map-frame="true"');
-    expect(source).toContain('data-delivery-map-root="true"');
-    expect(source).toContain('data-delivery-map-controls="true"');
-    expect(source).toContain('ResizeObserver');
-    expect(source).toContain('window.visualViewport?.addEventListener?.(\'resize\'');
-    expect(source).toContain('scheduleMapResize(\'observer\')');
-    expect(source).toContain('scheduleMapResize(\'viewport\')');
-    expect(source).toContain("height={isMobileViewport ? 'clamp(230px, 34svh, 280px)' : 260}");
-    expect(source).not.toContain("aspectRatio: '16 / 10'");
-    expect(source).toContain("height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}");
-    expect(source).toContain('highlightColor={fnbOrderBrand}');
-    expect(source).toContain('highlightGlow="rgba(26,78,141,0.16)"');
-    expect(source).toContain("maxWidth: isMobileViewport ? 'calc(100% - 68px)' : 'none'");
-    expect(source).toContain("pointerEvents: 'none'");
-    expect(source).toContain("pointerEvents: 'auto'");
-  });
-
-  it('builds business registration links through the configurable Storefront helper', () => {
-    const source = appSource();
-    const solutionsSource = solutionsPageSource();
-    const helperSource = businessRegistrationUrlSource();
-
-    expect(source).toContain('buildBusinessRegistrationUrl');
-    expect(solutionsSource).toContain("import { buildBusinessLoginUrl, buildBusinessRegistrationUrl } from '../../../businessRegistrationUrl.js';");
-    expect(helperSource).toContain('VITE_SKUPERVISOR_REGISTRATION_URL');
-    expect(helperSource).toContain('https://skupervisor.dgfy.ph/register-company');
-    expect(source).not.toContain("new URL('https://skupervisor.dgfy.ph/register-company')");
-    expect(solutionsSource).not.toContain("window.location.href = 'https://skupervisor.dgfy.ph/register-company'");
-  });
-
-  it('uses the side tracking drawer instead of the deprecated standalone tracking list card', () => {
-    const source = appSource();
-    const drawerSource = guestTrackingDrawerSource();
-
-    expect(source).toContain('const isStandaloneTrackingPage = Boolean(trackingResult)');
-    expect(source).toContain("const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');");
-    expect(source).toContain('setIsGuestTrackingDrawerOpen(true);');
-    expect(source).toContain('trackingError={trackingError}');
-    expect(source).toContain('expandedGuestDrawerPins={expandedGuestDrawerPins}');
-    expect(source).toContain('onExpandedGuestDrawerPinsChange={setExpandedGuestDrawerPins}');
-    expect(source).not.toContain('In-progress orders are tracked automatically on this device.');
-    expect(source).not.toContain("key={`guest-track-order-${entry.tracking_pin}`}");
-    expect(drawerSource).toContain('Active orders linked to your DGFY account.');
-    expect(drawerSource).toContain('trackingError =');
-  });
-
-  it('hydrates saved guest details once so manual email clears are preserved', () => {
-    const source = appSource();
-
-    expect(source).toContain('const [hasHydratedGuestCheckoutDetails, setHasHydratedGuestCheckoutDetails] = useState(false);');
-    expect(source).toContain('if (isDgfyCustomerSignedIn || hasHydratedGuestCheckoutDetails || !savedCustomerDetails) return;');
-    expect(source).toContain('setHasHydratedGuestCheckoutDetails(true);');
-    expect(source).toContain('if (!guestCheckoutUnlocked) {');
-  });
-
-  it('keeps /track routes mode-independent and limiter-safe', () => {
-    const source = appSource();
-
-    expect(source).toContain('const isStoreTrackingRoute = isTrackSubpage || currentPathSubpage === STORE_TRACK_SUBPAGE;');
-    expect(source).toContain('const isFnbOrderSubpage = isFnbMode && isResolvedOrderSubpage;');
-    expect(source).toContain("const isStandaloneTrackingPage = Boolean(trackingResult) && isResolvedOrderSubpage && checkoutTab === 'track';");
-    expect(source).toContain('const shouldInitializeTrackingRoute = isFnbOrderSubpage || routeWantsTrack;');
-    expect(source).not.toContain('if (!isFnbOrderSubpage) return;');
-    expect(source).toContain("const shouldPollTrackingRoute = checkoutTab === 'track' && (isFnbOrderSubpage || isStoreTrackingRoute);");
-    expect(source).toContain('return buildTrackingPinKey(guestTrackedOrders, {');
-    expect(source).toContain('enabled: !isStoreTrackingRoute');
-    expect(source).toContain("guestTrackingBackgroundPinsKey.split('|').filter(Boolean)");
-    expect(source).toContain('createCompletionTrackingScheduler({');
-    expect(source).toContain('resolveTrackingRetryDelayMs({ error, normalDelayMs })');
-    expect(source).toContain("visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible'");
-    expect(source).not.toContain('window.setInterval(refreshSelectedPin');
-    expect(source).not.toContain('guestTrackedOrders, isFnbOrderSubpage');
-    expect(source).not.toContain('trackingResult?.status]);');
-    expect(source).toContain('300000 : 180000');
-    expect(source).toContain('Tracking is refreshing too often');
-    expect(source).toContain("Try again in ${trackingCooldownLabel}");
-    expect(source).toContain('disabled={isTrackingRefreshing || isTrackingCooldownActive}');
-    expect(source).toContain('setIsGuestTrackingDrawerOpen(false);');
-  });
-
-  it('keeps signed-in standalone tracking live through SSE with polling repair', () => {
-    const source = appSource();
-
-    expect(source).toContain('const hasVisibleCustomerTrackingSurface = isAccountDrawerOpen');
-    expect(source).toContain('|| isStandaloneTrackingPage');
-    expect(source.match(/if \(!hasVisibleCustomerTrackingSurface\) return undefined;/g)).toHaveLength(2);
-    expect(source).toContain("source.addEventListener('activity.updated'");
-    expect(source).toContain('mergeLiveAccountActivity(payload.activity);');
-    expect(source).toContain('source.onerror = () => {');
-    expect(source).toContain('void handleLoadAccountPanel();');
-    expect(source).toContain('dedupeActiveCustomerOrders(accountPanel.orders)');
-    expect(source).toContain('mergeVisibleTrackingResult(previous, activity)');
-  });
-
-  it('supports guest-or-account checkout entry while preserving auth draft resume state', () => {
-    const source = appSource();
-
-    expect(source).toContain('STOREFRONT_CHECKOUT_AUTH_RESUME_KEY');
-    expect(source).toContain('writeCheckoutAuthResumeDraft');
-    expect(source).toContain('clearCheckoutAuthResumeDraft');
-    expect(source).toContain('renderGuestCheckoutEntry');
-    expect(source).toContain('renderAccountOwnedIdentitySummary');
-    expect(source).toContain('Create DGFY Account');
-    expect(source).toContain('Continue as Guest');
-    expect(source).toContain('Already have an account?');
-    expect(source).toContain('customerFirstName');
-    expect(source).toContain('customerLastName');
-    expect(source).toContain('buildCustomerFullName');
-    expect(source).toContain("toast.success('Signed in. Resuming your checkout.')");
-    expect(source).toContain("description: 'Create an account or continue as guest to continue this menu order.'");
-    expect(source).toContain("description: hasServiceCart");
-    expect(source).toContain("const nextFnbStep = draft.checkoutTab === 'cart' ? 3 : null;");
-    expect(source).toContain("const nextSimpleStep = draft.checkoutTab === 'checkout' && !draft.selectedServiceItemId ? 1 : null;");
-    expect(source).toContain("const nextServiceStep = draft.selectedServiceItemId ? 1 : null;");
-    expect(source).toContain('setGuestCheckoutUnlocked(true)');
-    expect(source).toContain("Your DGFY account details will be used for this order.");
-    expect(serviceBookingStepsSource()).toContain("Your signed-in DGFY account will be used for this booking.");
-    expect(source).toContain("simpleOrderStep === 1");
-    expect(source).toContain("serviceBookingStep === 1");
-    expect(source).toContain("renderGuestCheckoutEntry({");
-    expect(source).toContain("description: 'Create an account or continue as guest to continue this order.'");
-    expect(source).toContain("description: hasServiceCart");
-    expect(serviceBookingStepsSource()).toContain('Use guest booking now, or create a DGFY account later with these same details.');
-  });
-
-  it('offers only the enabled cash payment method until online checkout is configured', () => {
-    const source = appSource();
-
-    expect(source).toContain('STOREFRONT_CHECKOUT_PAYMENT_OPTIONS');
     expect(source).toContain("{ value: 'cash', label: 'Cash on delivery/pickup' }");
-    expect(source).not.toContain("{ value: 'gcash', label: 'GCash' }");
-    expect(source).not.toContain("{ value: 'maya', label: 'Maya' }");
-    expect(source).not.toContain("{ value: 'card', label: 'Card' }");
-    expect(source).not.toContain("{ value: 'bank_transfer', label: 'Bank transfer' }");
-    expect(source).not.toContain("{ value: 'online', label: 'Online payment' }");
-    expect(source).toContain('const isEnabledStorefrontCheckoutPaymentType = (value) => (');
-    expect(source).toContain('if (!isEnabledStorefrontCheckoutPaymentType(fnbPaymentType)) {');
-    expect(source).toContain('payment_type: fnbPaymentType');
+    expect(source).toContain('isEnabledStorefrontCheckoutPaymentType');
+    expect(source).not.toContain("value: 'gcash'");
+    expect(source).not.toContain("value: 'maya'");
+    expect(source).not.toContain("value: 'card'");
+    expect(app).toContain('isEnabledStorefrontCheckoutPaymentType');
+    expect(app).toContain('payment_type: fnbPaymentType');
   });
 
-  it('forces an open F&B drawer back to the cart tab so cart lines are never hidden', () => {
+  it('mounts F&B checkout route and cart drawer through mode-owned modules', () => {
     const source = appSource();
 
-    expect(source).toContain("if (!isFnbMode || !isCheckoutOpen || isFnbOrderSubpage || checkoutTab === 'cart') return;");
-    expect(source).toContain("setCheckoutTab('cart');");
+    expect(source).toContain('FnbCheckoutRouteMount');
+    expect(source).toContain('FnbCartDrawerRoute');
+    expect(source).toContain('FnbCheckoutRouteBody');
+    expect(source).toContain('FnbCheckoutCustomerStep');
+    expect(source).toContain('FnbCheckoutFulfillmentStep');
+    expect(source).toContain('FnbCheckoutPaymentStep');
+    expect(source).toContain('FnbCheckoutSummaryContent');
+    expect(checkoutRouteMountSource()).toContain('FnbCheckoutRoutePage');
+    expect(checkoutSubmissionSource()).toContain('/api/v1/store/checkout');
+    expect(checkoutSubmissionSource()).toContain('goStoreTrackPage({ pin: trackingPin });');
   });
 
-  it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {
+  it('keeps tracking drawer and tracking page under F&B tracking ownership', () => {
     const source = appSource();
+    const payload = fnbTrackingPayloadSource();
 
-    expect(source).toContain('/api/v1/dgfy/customer/reviews/public?');
-    expect(source).toContain('/api/v1/dgfy/customer/review-invites/');
-    expect(source).toContain('openFnbItemReviewFromInvite');
-    expect(source).toContain('review_invites');
+    expect(source).toContain('FnbTrackingRouteContainer');
+    expect(source).toContain('useFnbTrackingRuntime');
+    expect(source).toContain('useFnbTrackingDrawerPresentation');
+    expect(fnbTrackingContainerSource()).toContain('TrackingDrawerMount');
+    expect(fnbTrackingContainerSource()).toContain('FnbTrackingRoutePage');
+    expect(guestTrackingDrawerSource()).toContain('export { TrackingDrawer as GuestTrackingDrawer }');
+    expect(readSource('tracking/components/TrackingDrawer.jsx')).toContain('Active orders linked to your DGFY account.');
+    expect(payload).toContain('display_snapshot');
+    expect(payload).toContain('display');
+    expect(payload).toContain('Array.isArray(order?.lines)');
+    expect(payload).toContain('deliveryAddress');
   });
 
-  it('exposes the public reservation request tab for F&B storefronts', () => {
+  it('preserves promo discount labels across F&B tracking summaries', () => {
+    expect(fnbTrackingAdapterSource()).toContain('discountAmount');
+    expect(fnbTrackingAdapterSource()).toContain('discountLabel');
+    expect(fnbTrackingPayloadSource()).toContain('discount_amount: view.discountAmount');
+    expect(fnbTrackingDrawerTotalsSource()).toContain('Promo / Discount');
+    expect(fnbTrackingActiveViewSource()).toContain('viewModel.discountLabel');
+    expect(fnbTrackingCompletedViewSource()).toContain('viewModel.discountLabel');
+    expect(pickupTrackingMobileViewSource()).toContain('discountLabel');
+  });
+
+  it('keeps public reservation request and registration links working', () => {
     const source = appSource();
     const panel = panelSource();
+    const solutionsSource = solutionsPageSource();
+    const helperSource = businessRegistrationUrlSource();
 
     expect(source).toContain("id: 'reservation'");
     expect(source).toContain('/api/v1/store/fnb/reservations');
     expect(panel).toContain('Reservation Request');
     expect(panel).toContain('Send Request');
+    expect(source).toContain('buildBusinessRegistrationUrl');
+    expect(solutionsSource).toContain('buildBusinessRegistrationUrl');
+    expect(helperSource).toContain('VITE_SKUPERVISOR_REGISTRATION_URL');
+    expect(helperSource).toContain('register-company');
   });
 
-  it('does not depend on generated F&B summary copy when IMS profile fields are thin', () => {
+  it('keeps storefront generated fallback copy out of F&B mode', () => {
     const source = appSource();
 
     expect(source).not.toContain('buildFnbContentReadinessItems');
     expect(source).not.toContain('buildFnbOverviewFallbackCopy');
     expect(source).not.toContain('Menu at a glance');
     expect(source).not.toContain('published menu item');
-    expect(source).not.toContain('menu items published');
-    expect(source).not.toContain('items marked ready now');
-    expect(source).not.toContain('Store profile copy is available');
-    expect(source).not.toContain('food and beverage backend');
-  });
-
-  it('starts a fresh F&B order after a completed checkout/back navigation', () => {
-    const source = appSource();
-
-    expect(source).toContain('setCheckoutResult(null);');
-    expect(source).toContain('setFnbOrderStep(3);');
-    expect(source).toContain("setCheckoutTab(isFnbMode ? 'cart' : 'review');");
-    expect(source).toContain('setSimpleOrderStep(1)');
-    expect(source).toContain('Back to Menu');
   });
 });

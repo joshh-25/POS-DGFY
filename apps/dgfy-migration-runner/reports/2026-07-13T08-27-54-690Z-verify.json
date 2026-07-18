@@ -1,0 +1,228 @@
+{
+  "generated_at": "2026-07-13T08:27:54.690Z",
+  "command": "verify",
+  "core_schema": {
+    "database": "dgfy_business_aa1fb840807e198b6448",
+    "ok": false,
+    "tables": [
+      {
+        "table": "accounts",
+        "ok": false,
+        "exists": false,
+        "missing_columns": [
+          "id",
+          "first_name",
+          "last_name",
+          "email",
+          "phone",
+          "password_hash",
+          "status",
+          "email_verified_at",
+          "phone_verified_at",
+          "last_login_at",
+          "created_at",
+          "updated_at"
+        ],
+        "missing_indexes": [
+          "unique_accounts_email",
+          "unique_accounts_phone"
+        ],
+        "missing_unique_constraints": [
+          "unique_accounts_email",
+          "unique_accounts_phone"
+        ],
+        "missing_foreign_keys": []
+      },
+      {
+        "table": "businesses",
+        "ok": false,
+        "exists": false,
+        "missing_columns": [
+          "id",
+          "business_handle",
+          "legal_name",
+          "display_name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "missing_indexes": [
+          "unique_businesses_business_handle",
+          "idx_businesses_status"
+        ],
+        "missing_unique_constraints": [
+          "unique_businesses_business_handle"
+        ],
+        "missing_foreign_keys": []
+      },
+      {
+        "table": "business_memberships",
+        "ok": false,
+        "exists": false,
+        "missing_columns": [
+          "id",
+          "account_id",
+          "business_id",
+          "role",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "missing_indexes": [
+          "unique_business_memberships_business_account",
+          "idx_business_memberships_business_role"
+        ],
+        "missing_unique_constraints": [
+          "unique_business_memberships_business_account"
+        ],
+        "missing_foreign_keys": [
+          "account_id",
+          "business_id"
+        ]
+      },
+      {
+        "table": "business_database_registry",
+        "ok": false,
+        "exists": false,
+        "missing_columns": [
+          "id",
+          "business_id",
+          "stable_opaque_suffix",
+          "database_name",
+          "status",
+          "verified_at",
+          "created_at",
+          "updated_at"
+        ],
+        "missing_indexes": [
+          "unique_business_database_registry_suffix",
+          "unique_business_database_registry_database_name",
+          "idx_business_database_registry_business_id"
+        ],
+        "missing_unique_constraints": [
+          "unique_business_database_registry_suffix",
+          "unique_business_database_registry_database_name"
+        ],
+        "missing_foreign_keys": [
+          "business_id"
+        ]
+      },
+      {
+        "table": "business_audit_logs",
+        "ok": false,
+        "exists": false,
+        "missing_columns": [
+          "audit_log_id",
+          "business_id",
+          "account_id",
+          "action",
+          "before_snapshot",
+          "after_snapshot",
+          "created_at"
+        ],
+        "missing_indexes": [
+          "idx_business_audit_logs_business_time",
+          "idx_business_audit_logs_action"
+        ],
+        "missing_unique_constraints": [],
+        "missing_foreign_keys": [
+          "business_id",
+          "account_id"
+        ]
+      },
+      {
+        "table": "storefront_discovery_index",
+        "ok": false,
+        "exists": false,
+        "missing_columns": [
+          "id",
+          "business_id",
+          "handle",
+          "display_name",
+          "is_visible",
+          "location_snapshot",
+          "search_snapshot",
+          "last_synced_at",
+          "created_at",
+          "updated_at"
+        ],
+        "missing_indexes": [
+          "unique_storefront_discovery_index_handle",
+          "idx_storefront_discovery_index_business_id",
+          "idx_storefront_discovery_index_visible"
+        ],
+        "missing_unique_constraints": [
+          "unique_storefront_discovery_index_handle"
+        ],
+        "missing_foreign_keys": [
+          "business_id"
+        ]
+      }
+    ],
+    "rejected_tables_present": [
+      "products",
+      "shifts",
+      "locations"
+    ]
+  },
+  "business_schemas": [],
+  "migration_metadata": [
+    {
+      "target_database": "dgfy_business_aa1fb840807e198b6448",
+      "kind": "business",
+      "ok": true,
+      "expected_migrations": [
+        "20260710021000-create-dgfy-business-foundation.cjs",
+        "20260711143000-add-dgfy-business-staff-invitations.cjs",
+        "20260712100000-create-commerce-foundation.cjs",
+        "20260712140000-harden-compliance-mode-state-uniqueness.cjs",
+        "20260713120000-create-availment-checkout.cjs"
+      ],
+      "executed_migrations": [
+        "20260710021000-create-dgfy-business-foundation.cjs",
+        "20260711143000-add-dgfy-business-staff-invitations.cjs",
+        "20260712100000-create-commerce-foundation.cjs",
+        "20260712140000-harden-compliance-mode-state-uniqueness.cjs",
+        "20260713120000-create-availment-checkout.cjs"
+      ],
+      "missing_migrations": []
+    }
+  ],
+  "tenant_coverage": {
+    "ok": true,
+    "registry_available": false,
+    "targets": [],
+    "registry_gaps": []
+  },
+  "idempotency": [
+    {
+      "target_database": "dgfy_business_aa1fb840807e198b6448",
+      "ok": true,
+      "pending_migrations": []
+    }
+  ],
+  "legacy_non_mutation": {
+    "ok": false,
+    "baseline_found": true,
+    "baseline_path": "reports/legacy-fingerprint-baseline.json",
+    "legacy_database": "sku_inventory_manager",
+    "error": "Unknown database 'dgfy_landlord'"
+  },
+  "data_migration": {
+    "ok": true,
+    "skipped": true,
+    "reason": "DGFY_MIGRATION_TARGET_MANIFEST not configured — data migration verification skipped for this run."
+  },
+  "summary": {
+    "metadata_schema_ok": true,
+    "target_db_reachable": true,
+    "target_db_name": "dgfy_business_aa1fb840807e198b6448",
+    "core_schema_ok": false,
+    "business_schemas_ok": true,
+    "migration_metadata_ok": true,
+    "tenant_coverage_ok": true,
+    "idempotency_ok": true,
+    "legacy_non_mutation_ok": false,
+    "data_migration_ok": true
+  }
+}
