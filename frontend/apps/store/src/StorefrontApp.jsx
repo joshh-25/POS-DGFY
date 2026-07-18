@@ -4079,14 +4079,15 @@ const FnbProductCard = ({
   const [isDetailsHovered, setIsDetailsHovered] = useState(false);
   const [isCartHovered, setIsCartHovered] = useState(false);
   const [hasImageError, setHasImageError] = useState(false);
+  const [prevImageUrl, setPrevImageUrl] = useState(imageUrl);
+  if (imageUrl !== prevImageUrl) {
+    setPrevImageUrl(imageUrl);
+    setHasImageError(false);
+  }
   const detailsCopy = item.descriptionPreview || 'Menu item available in this storefront.';
   const cardUiFont = heroTheme.bodyFont || "'Trebuchet MS', 'Segoe UI', sans-serif";
   const cardTitleFont = heroTheme.displayFont || cardUiFont;
   const canRenderImage = Boolean(imageUrl) && !hasImageError;
-
-  useEffect(() => {
-    setHasImageError(false);
-  }, [imageUrl]);
 
   const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
   const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';

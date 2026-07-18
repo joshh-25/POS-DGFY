@@ -855,7 +855,7 @@ function ShiftControlsWorkspace({
                 ))}
               </select>
               <p className="mt-2 text-[11px] leading-4 text-[#475569]">
-                Admin navigation can use this location without a shift. Shift opening still uses the terminal's assigned location.
+                Admin navigation can use this location without a shift. Shift opening still uses the terminal&apos;s assigned location.
               </p>
             </div>
           )}
