@@ -2,10 +2,12 @@ import { jest } from '@jest/globals';
 import { Op } from 'sequelize';
 
 const mockFindAll = jest.fn();
+const mockItemFolderFindAll = jest.fn();
 
 const PosTransactionModel = { modelName: 'PosTransaction', findAll: mockFindAll };
 const PosTransactionLineModel = { modelName: 'PosTransactionLine' };
 const ItemModel = { modelName: 'Item' };
+const ItemFolderModel = { modelName: 'ItemFolder', findAll: mockItemFolderFindAll };
 const UserModel = { modelName: 'User' };
 const PosTerminalShiftModel = { modelName: 'PosTerminalShift' };
 const PosTransactionDiscountModel = { modelName: 'PosTransactionDiscount' };
@@ -21,6 +23,8 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
                     return PosTransactionLineModel;
                 case 'Item':
                     return ItemModel;
+                case 'ItemFolder':
+                    return ItemFolderModel;
                 case 'User':
                     return UserModel;
                 case 'PosTerminalShift':
@@ -46,6 +50,7 @@ beforeAll(async () => {
 describe('posRepository reports analytics', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockItemFolderFindAll.mockResolvedValue([]);
     });
 
     it('computes POS profit/loss using cost snapshot first and IMS fallback second', async () => {
@@ -259,6 +264,60 @@ describe('posRepository reports analytics', () => {
         expect(result.daily_report.top_items[0]).toEqual(expect.objectContaining({
             item_name: 'Steak',
             category: 'product'
+        }));
+    });
+
+    it('uses the item Food Category for report filters and top-item output', async () => {
+        mockItemFolderFindAll.mockResolvedValue([{ folder_id: 8, name: 'Mains' }]);
+        mockFindAll.mockResolvedValue([
+            {
+                pos_transaction_id: 250,
+                created_at: '2026-06-22T10:30:00.000Z',
+                status: 'completed',
+                payment_status: 'paid',
+                subtotal_amount: 120,
+                discount_amount: 0,
+                service_fee_amount: 0,
+                restaurant_service_charge_amount: 0,
+                vat_amount: 14.4,
+                payment_type: 'cash',
+                order_source: 'in_store',
+                order_method: 'dine_in',
+                lines: [{
+                    item_id: 15,
+                    quantity: 1,
+                    cost_snapshot: 45,
+                    line_subtotal: 120,
+                    item: {
+                        item_id: 15,
+                        name: 'Beef Meal',
+                        sku_code: 'DGFTY-ITEM-000015',
+                        category: 'product',
+                        product_folder: 'Mains',
+                        folder_id: 8,
+                        folder: { folder_id: 8, name: 'Mains' },
+                        cost_per_unit: 45
+                    }
+                }]
+            }
+        ]);
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-06-22',
+            date_to: '2026-06-22',
+            category_id: 8
+        });
+
+        expect(result.filter_options.categories).toEqual([{ folder_id: 8, name: 'Mains' }]);
+        expect(result.daily_report.top_items).toEqual([
+            expect.objectContaining({ item_name: 'Beef Meal', category: 'Mains' })
+        ]);
+
+        const itemInclude = mockFindAll.mock.calls[0][0].include[0].include[0];
+        expect(itemInclude.attributes).toEqual(expect.arrayContaining(['product_folder', 'folder_id']));
+        expect(itemInclude.include[0]).toEqual(expect.objectContaining({
+            model: ItemFolderModel,
+            as: 'folder'
         }));
     });
 

@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - develop
+      - staging
       - main
     types:
       - opened
@@ -18,7 +19,7 @@ concurrency:
 env:
   # Toggle the runner for ALL PR checks here by commenting/uncommenting one line.
   # RUNNER_LABELS_JSON: &runner_labels_json '["ubuntu-latest"]'
-  RUNNER_LABELS_JSON: &runner_labels_json '["sieitz-ubuntu-runner"]'
+  RUNNER_LABELS_JSON: &runner_labels_json '["self-hosted"]'
 
 jobs:
   conventional-commits:
@@ -43,44 +44,20 @@ jobs:
     with:
       runner_labels_json: *runner_labels_json
 
-  dgfy-api-build-check:
-    if: false  # TEMP: disabled, only backend/frontend builds enabled
-    needs: [conventional-commits, code-quality]
-    uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
-    with:
-      runner_labels_json: *runner_labels_json
-
-  dgfy-migration-runner-build-check:
-    if: false  # TEMP: disabled, only backend/frontend builds enabled
-    needs: [conventional-commits, code-quality]
-    uses: ./.github/workflows/pr-migration-runner-build-checks.yml
-    with:
-      runner_labels_json: *runner_labels_json
-
-  dgfy-api-code-check:
-    needs: [conventional-commits]
-    uses: ./.github/workflows/pr-dgfy-api-code-checks.yml
-    with:
-      runner_labels_json: *runner_labels_json
+  # TEMP: Not necessary for staging and main as of the moment
+  # dgfy-api-build-check:
+  #   needs: [conventional-commits, code-quality]
+  #   uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
+  #   with:
+  #     runner_labels_json: *runner_labels_json
 
   summary:
-    runs-on: ubuntu-latest
-    needs: [conventional-commits, code-quality, backend-build-check, frontend-build-check, dgfy-api-build-check, dgfy-migration-runner-build-check, dgfy-api-code-check]
+    needs: [conventional-commits, code-quality, backend-build-check, frontend-build-check]
     if: always()
-    steps:
-      - name: PR checks summary
-        run: |
-          echo "## PR Checks Summary" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Conventional Commits | ${{ needs.conventional-commits.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend Build | ${{ needs.backend-build-check.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend Build | ${{ needs.frontend-build-check.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| DGFY API Build | ${{ needs.dgfy-api-build-check.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| DGFY Migration Runner Build | ${{ needs.dgfy-migration-runner-build-check.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| DGFY API Code (lint/tests) | ${{ needs.dgfy-api-code-check.result }} |" >> $GITHUB_STEP_SUMMARY
-
-      - name: Fail if any check failed
-        if: contains(needs.*.result, 'failure')
-        run: exit 1
+    uses: ./.github/workflows/pr-checks-summary.yml
+    with:
+      runner_labels_json: *runner_labels_json
+      conventional_commits_result: ${{ needs.conventional-commits.result }}
+      code_quality_result: ${{ needs.code-quality.result }}
+      backend_build_result: ${{ needs.backend-build-check.result }}
+      frontend_build_result: ${{ needs.frontend-build-check.result }}

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DgfyCustomerAccountPage } from '../Components/storefront/pages/DgfyCustomerAccountPage.jsx';
 
@@ -127,6 +127,56 @@ describe('DGFY customer account dashboard', () => {
     expect(onTrackReference.mock.calls[0][0]).toMatchObject({ reference: 'SK-M3SGQA' });
   });
 
+  it('accepts a pending DGFY cashier invitation without requesting an OTP', async () => {
+    const onAcceptCompanyInvitation = vi.fn().mockResolvedValue({ success: true });
+    const onRequestBusinessStepUp = vi.fn();
+    renderDashboard({
+      onAcceptCompanyInvitation,
+      onRequestBusinessStepUp,
+      accountPanel: {
+        ...accountPanel,
+        businessCompanies: [{
+          membership_id: 'membership-cashier',
+          tenant_id: 'tenant-cashier',
+          company_name: 'Cashier Company',
+          status: 'pending',
+          requires_action: 'accept_invitation'
+        }]
+      }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Business Premium' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+
+    await waitFor(() => expect(onAcceptCompanyInvitation).toHaveBeenCalledWith({ membershipId: 'membership-cashier', emailOtpCode: '' }));
+    expect(onRequestBusinessStepUp).not.toHaveBeenCalled();
+    expect(screen.queryByText('Email security check')).toBeNull();
+  });
+
+  it('shows the actual membership role on accepted business cards', () => {
+    renderDashboard({
+      accountPanel: {
+        ...accountPanel,
+        businessCompanies: [
+          accountPanel.businessCompanies[0],
+          {
+            membership_id: 'membership-cashier',
+            tenant_id: 'tenant-cashier',
+            company_name: 'Cashier Company',
+            membership_status: 'accepted',
+            tenant_status: 'active',
+            role: 'cashier'
+          }
+        ]
+      }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Business Premium' }));
+
+    expect(screen.getByText('Business Owner')).toBeTruthy();
+    expect(screen.getByText('Cashier')).toBeTruthy();
+  });
+
   it('opens notifications, marks single entries read, and marks all entries read', () => {
     const onTrackReference = vi.fn();
     const onMarkNotificationRead = vi.fn();
@@ -220,7 +270,7 @@ describe('DGFY customer account dashboard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Business Premium/i }));
 
     expect(screen.getByText('Premium access to the companies and tools connected to this DGFY account.')).toBeTruthy();
-    expect(screen.getByText('Food & Beverage')).toBeTruthy();
+    expect(screen.getByText('Business Owner')).toBeTruthy();
     expect(screen.getByAltText('Space Bar cover')).toBeTruthy();
     expect(screen.getByAltText('Space Bar profile')).toBeTruthy();
 

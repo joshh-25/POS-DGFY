@@ -49,7 +49,7 @@ import {
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import ConfirmActionDialog from '@/components/ai/ConfirmActionDialog';
+import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
   Dialog,
   DialogContent,
@@ -71,6 +71,7 @@ import {
   updateFolder
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
+import { notifyPosCatalogUpdated } from '../utils/posCatalogRefresh.js';
 import {
   updateStorefrontCatalogOverride,
   uploadStorefrontCatalogImage,
@@ -102,6 +103,7 @@ import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const MapPinPicker = lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
+const POS_ITEMS_PAGE_SIZE = 15;
 
 const MODE_META = {
   incoming_queue: {
@@ -699,6 +701,9 @@ function ShiftControlsWorkspace({
   const activeShift = shiftState?.shift || null;
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
+  const shiftCashierLabel = activeShift?.cashier?.username
+    || activeShift?.cashier?.email
+    || (activeShift?.cashier_id ? `Cashier #${activeShift.cashier_id}` : 'Current cashier');
   const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;
   const SHIFT_TABS = [
     { id: 'shift_location', label: 'Shift Location', icon: MapPinned },
@@ -779,6 +784,12 @@ function ShiftControlsWorkspace({
       valueClassName: 'text-[18px] font-black text-[#2563EB]'
     },
     {
+      icon: UserRound,
+      label: 'Opened By:',
+      value: shiftCashierLabel,
+      valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
+    },
+    {
       icon: CalendarDays,
       label: 'Business Date:',
       value: activeShift.business_date || '-',
@@ -823,6 +834,31 @@ function ShiftControlsWorkspace({
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
             Shift Closed. Please open your shift before using the POS.
           </p>
+          {canAdminBypassShiftPrompt && (
+            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+              <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
+                Operating Location
+              </Label>
+              <select
+                id="admin-operating-location"
+                className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                value={operatingLocationId || ''}
+                onChange={(event) => {
+                  const nextValue = event.target.value ? Number(event.target.value) : null;
+                  setOperatingLocationId(nextValue);
+                }}
+              >
+                {locations.map((location) => (
+                  <option key={`admin-operating-location-${location.location_id}`} value={location.location_id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-[11px] leading-4 text-[#475569]">
+                Admin navigation can use this location without a shift. Shift opening still uses the terminal&apos;s assigned location.
+              </p>
+            </div>
+          )}
           <div className="mt-4 space-y-3">
             <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
             <Input
@@ -867,48 +903,19 @@ function ShiftControlsWorkspace({
             <p className="mt-1 text-[12px] leading-5 text-[#475569]">
               Current location used by catalog, checkout, and dashboard for this terminal.
             </p>
-            <Label className="mt-3 block text-[12px] font-black text-[#0F172A]">Current Shift Location</Label>
-            <select
-              className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              value={operatingLocationId || ''}
-              onChange={(event) => {
-                const nextValue = event.target.value ? Number(event.target.value) : null;
-                setOperatingLocationId(nextValue);
-              }}
-            >
-              {locations.map((location) => (
-                <option key={`shift-operating-location-${location.location_id}`} value={location.location_id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Current Shift Location</p>
+              <p className="mt-1 text-[13px] font-extrabold text-[#0F172A]">{shiftLocationLabel}</p>
+            </div>
 
             <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 md:hidden">
-              <div className="flex flex-col gap-0.5">
-                <p className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[0]?.label}</p>
-                <p className={`${summaryRows[0]?.valueClassName} break-words leading-6`}>{summaryRows[0]?.value}</p>
-              </div>
-              <div className="flex flex-wrap gap-4">
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[1]?.label}</p>
-                  <p className={`${summaryRows[1]?.valueClassName} break-words leading-6`}>{summaryRows[1]?.value}</p>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[2]?.label}</p>
-                  <p className={`${summaryRows[2]?.valueClassName} break-words leading-6`}>{summaryRows[2]?.value}</p>
-                </div>
-              </div>
               <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                {summaryRows.slice(3, 6).map((row) => (
+                {summaryRows.map((row) => (
                   <div key={`shift-summary-mobile-${row.label}`} className="flex flex-col gap-0.5">
                     <span className="text-[12px] font-medium text-[#5B6B86]">{row.label}</span>
                     <span className={`${row.valueClassName} break-words leading-6`}>{row.value}</span>
                   </div>
                 ))}
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <span className="text-[12px] font-medium text-[#5B6B86]">{summaryRows[6]?.label}</span>
-                <span className={`${summaryRows[6]?.valueClassName} break-words leading-6`}>{summaryRows[6]?.value}</span>
               </div>
             </div>
 
@@ -934,7 +941,7 @@ function ShiftControlsWorkspace({
                   {summaryRows.slice(4).map((row, index) => {
                     const RowIcon = row.icon;
                     return (
-                      <div key={`shift-summary-right-${row.label}`} className={`flex items-center gap-3 py-3 ${index < 2 ? 'border-b border-slate-100' : ''}`}>
+                      <div key={`shift-summary-right-${row.label}`} className={`flex items-center gap-3 py-3 ${index < 3 ? 'border-b border-slate-100' : ''}`}>
                         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
                           <RowIcon className="h-4.5 w-4.5" />
                         </div>
@@ -1354,45 +1361,12 @@ function EditableFoodCategoryCombobox({
   );
 }
 
-// "Best Seller" is a mobile-only, client-side-only marker (no backend field) - persisted to
-// localStorage and shared with the Sell Catalog card via a custom event for same-tab instant
-// sync (native "storage" events only fire across tabs, not within the same page).
-const BEST_SELLER_STORAGE_KEY = 'pos_best_seller_item_ids';
-const BEST_SELLER_EVENT_NAME = 'pos:best-seller-updated';
-
-const readBestSellerItemIds = () => {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    const raw = window.localStorage.getItem(BEST_SELLER_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return new Set(
-      (Array.isArray(parsed) ? parsed : [])
-        .map((id) => Number(id))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    );
-  } catch {
-    return new Set();
-  }
-};
-
-const writeBestSellerItemIds = (idsSet) => {
-  if (typeof window === 'undefined') return;
-  const ids = Array.from(idsSet);
-  try {
-    window.localStorage.setItem(BEST_SELLER_STORAGE_KEY, JSON.stringify(ids));
-  } catch {
-    // Storage unavailable (e.g. private mode) - best seller marking is best-effort only.
-  }
-  window.dispatchEvent(new CustomEvent(BEST_SELLER_EVENT_NAME, { detail: ids }));
-};
-
 const createEmptyPosItemForm = () => ({
   name: '',
   default_sale_price: '',
   cost_per_unit: '',
   current_stock: '0',
   pos_always_available: false,
-  pos_best_seller: false,
   senior_pwd_discount_eligible: false,
   description: '',
   sku_code: '',
@@ -1449,54 +1423,19 @@ function ItemsWorkspace({
     default_sale_price: '',
     cost_per_unit: '',
     pos_always_available: false,
-    pos_best_seller: false,
+    pos_best_seller_mode: 'auto',
     senior_pwd_discount_eligible: false,
     description: '',
     pos_category: ''
   });
-  const [isMobile, setIsMobile] = useState(false);
-  const [bestSellerItemIds, setBestSellerItemIds] = useState(() => readBestSellerItemIds());
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mediaQuery = window.matchMedia('(max-width: 639.98px)');
-    const handleChange = () => setIsMobile(mediaQuery.matches);
-    handleChange();
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', handleChange);
-      return () => mediaQuery.removeEventListener('change', handleChange);
-    }
-    mediaQuery.addListener(handleChange);
-    return () => mediaQuery.removeListener(handleChange);
-  }, []);
-  useEffect(() => {
-    const handleBestSellerUpdate = () => setBestSellerItemIds(readBestSellerItemIds());
-    window.addEventListener(BEST_SELLER_EVENT_NAME, handleBestSellerUpdate);
-    window.addEventListener('storage', handleBestSellerUpdate);
-    return () => {
-      window.removeEventListener(BEST_SELLER_EVENT_NAME, handleBestSellerUpdate);
-      window.removeEventListener('storage', handleBestSellerUpdate);
-    };
-  }, []);
-  const setItemBestSeller = (itemId, isBestSeller) => {
-    const numericId = Number(itemId);
-    if (!Number.isInteger(numericId) || numericId <= 0) return;
-    setBestSellerItemIds((current) => {
-      const next = new Set(current);
-      if (isBestSeller) {
-        next.add(numericId);
-      } else {
-        next.delete(numericId);
-      }
-      writeBestSellerItemIds(next);
-      return next;
-    });
-  };
   const [savedMessage, setSavedMessage] = useState({ name: '', barcode: '', action: 'updated' });
+  const [itemSaveInFlight, setItemSaveInFlight] = useState(false);
   const [deletedItemName, setDeletedItemName] = useState('');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
+  const [itemsPage, setItemsPage] = useState(1);
   const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
@@ -1700,6 +1639,23 @@ function ItemsWorkspace({
     });
   }, [categoryFilter, primaryBarcodes, searchQuery, sortedItems, stockFilter]);
 
+  useEffect(() => {
+    setItemsPage(1);
+  }, [categoryFilter, searchQuery, stockFilter]);
+
+  const totalItemsPages = Math.max(1, Math.ceil(filteredItems.length / POS_ITEMS_PAGE_SIZE));
+  const currentItemsPage = Math.min(itemsPage, totalItemsPages);
+  const paginatedItems = useMemo(() => {
+    const start = (currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE;
+    return filteredItems.slice(start, start + POS_ITEMS_PAGE_SIZE);
+  }, [currentItemsPage, filteredItems]);
+
+  useEffect(() => {
+    if (itemsPage !== currentItemsPage) {
+      setItemsPage(currentItemsPage);
+    }
+  }, [currentItemsPage, itemsPage]);
+
   const activeEditItem = useMemo(
     () => sortedItems.find((item) => Number(item?.item_id) === Number(editingItemId)) || null,
     [editingItemId, sortedItems]
@@ -1718,7 +1674,9 @@ function ItemsWorkspace({
       default_sale_price: String(item?.default_sale_price ?? ''),
       cost_per_unit: String(item?.cost_per_unit ?? ''),
       pos_always_available: item?.pos_always_available === true,
-      pos_best_seller: bestSellerItemIds.has(Number(item?.item_id)),
+      pos_best_seller_mode: ['force', 'never'].includes(String(item?.pos_best_seller_mode || '').toLowerCase())
+        ? String(item.pos_best_seller_mode).toLowerCase()
+        : 'auto',
       senior_pwd_discount_eligible: item?.senior_pwd_discount_eligible === true || Number(item?.senior_pwd_discount_eligible) === 1,
       description: String(item?.description || ''),
       // Item lists do not always hydrate the nested folder name. Resolve by saved ID first.
@@ -1740,7 +1698,7 @@ function ItemsWorkspace({
       default_sale_price: '',
       cost_per_unit: '',
       pos_always_available: false,
-      pos_best_seller: false,
+      pos_best_seller_mode: 'auto',
       senior_pwd_discount_eligible: false,
       description: '',
       pos_category: ''
@@ -1804,6 +1762,7 @@ function ItemsWorkspace({
     }
 
     try {
+      setItemSaveInFlight(true);
       setPersistingEditAssets(true);
       const resolvedStock = category === 'product' || category === 'supplies' ? stock : 0;
       const currentFolderId = Number(activeEditItem.folder_id || 0);
@@ -1850,16 +1809,18 @@ function ItemsWorkspace({
         senior_pwd_discount_eligible: editForm.senior_pwd_discount_eligible === true
       });
       await updatePosCatalogOverride(activeEditItem.item_id, {
-        pos_always_available: editForm.pos_always_available === true
+        pos_always_available: editForm.pos_always_available === true,
+        pos_best_seller_mode: editForm.pos_best_seller_mode
       });
-      setItemBestSeller(activeEditItem.item_id, editForm.pos_best_seller === true);
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
+      notifyPosCatalogUpdated();
       setSavedMessage({ name, barcode: primaryBarcodes[String(activeEditItem.item_id)]?.code || '', action: 'updated' });
     } catch (updateError) {
       toast.error(updateError?.response?.data?.message || 'Failed to update item.');
     } finally {
       setPersistingEditAssets(false);
+      setItemSaveInFlight(false);
     }
   };
 
@@ -1947,10 +1908,7 @@ function ItemsWorkspace({
     }
   };
 
-  const runPostCreateStages = async ({ itemId, itemName, imageFiles, posAlwaysAvailable, posBestSeller = false }) => {
-    // Best Seller is a client-side-only marker (localStorage), so it can't fail like the
-    // network-backed stages below - set it directly rather than as a retryable stage.
-    setItemBestSeller(itemId, posBestSeller === true);
+  const runPostCreateStages = async ({ itemId, itemName, imageFiles, posAlwaysAvailable }) => {
 
     const failedStages = [];
     let barcodeCode = '';
@@ -1970,7 +1928,13 @@ function ItemsWorkspace({
     };
 
     if (Array.isArray(imageFiles) && imageFiles.length > 0) {
-      await runStage('storefront_images', 'Item image gallery upload', () => uploadStorefrontCatalogImages(itemId, imageFiles));
+      await runStage(
+        'storefront_images',
+        imageFiles.length === 1 ? 'Item image upload' : 'Item image gallery upload',
+        () => (imageFiles.length === 1
+          ? uploadStorefrontCatalogImage(itemId, imageFiles[0])
+          : uploadStorefrontCatalogImages(itemId, imageFiles))
+      );
     }
 
     const generatedBarcode = await runStage('barcode', 'barcode generation', () => generateItemBarcode(itemId, {
@@ -1993,7 +1957,6 @@ function ItemsWorkspace({
         name: itemName,
         imageFiles,
         posAlwaysAvailable,
-        posBestSeller,
         failedStages
       });
       const labels = failedStages.map((stage) => stage.label).join(', ');
@@ -2105,6 +2068,7 @@ function ItemsWorkspace({
     };
 
     try {
+      setItemSaveInFlight(true);
       setPostCreateSaving(true);
       if (pendingCreateRecovery?.itemId) {
         const recoveryName = pendingCreateRecovery.name || name;
@@ -2113,7 +2077,6 @@ function ItemsWorkspace({
           itemName: recoveryName,
           imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
           posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
-          posBestSeller: pendingCreateRecovery.posBestSeller
         });
         await finalizeCreatedItem({
           barcode: result.barcodeCode,
@@ -2142,7 +2105,6 @@ function ItemsWorkspace({
         itemName: name,
         imageFiles: selectedImageFiles,
         posAlwaysAvailable: createForm.pos_always_available === true,
-        posBestSeller: createForm.pos_best_seller === true
       });
 
       await finalizeCreatedItem({ barcode: result.barcodeCode });
@@ -2156,6 +2118,7 @@ function ItemsWorkspace({
       }
     } finally {
       setPostCreateSaving(false);
+      setItemSaveInFlight(false);
     }
   };
 
@@ -2344,7 +2307,7 @@ function ItemsWorkspace({
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredItems.map((item) => {
+          {paginatedItems.map((item) => {
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
             const imageUrl = item?.storefront_image_url || '';
             const stockQuantity = Number(item?.current_stock || 0);
@@ -2521,6 +2484,35 @@ function ItemsWorkspace({
               </div>
             );
           })}
+
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-200/60 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-medium text-[#64748B]">
+              Showing {Math.min(((currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE) + 1, filteredItems.length)}–{Math.min(currentItemsPage * POS_ITEMS_PAGE_SIZE, filteredItems.length)} of {filteredItems.length} items
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setItemsPage((page) => Math.max(1, page - 1))}
+                disabled={currentItemsPage === 1}
+                aria-label="Previous items page"
+              >
+                Previous
+              </Button>
+              <span className="min-w-[5.5rem] text-center text-sm font-semibold text-[#0F172A]">
+                Page {currentItemsPage} of {totalItemsPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setItemsPage((page) => Math.min(totalItemsPages, page + 1))}
+                disabled={currentItemsPage === totalItemsPages}
+                aria-label="Next items page"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2726,27 +2718,6 @@ function ItemsWorkspace({
                         disabled={creatingItem || postCreateSaving}
                       />
                     </div>
-
-                    {/* Best Seller Toggle Switch - mobile-only; renders a "best seller" tag in the Sell Catalog */}
-                    {isMobile && (
-                      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
-                        <div className="min-w-0">
-                          <label htmlFor="pos-items-create-best-seller" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                            Best Seller
-                          </label>
-                          <span className="block text-[10px] text-[#64748B]">Shows a &quot;best seller&quot; tag in the Sell Catalog.</span>
-                        </div>
-                        <Switch
-                          id="pos-items-create-best-seller"
-                          checked={createForm.pos_best_seller === true}
-                          onCheckedChange={(checked) => setCreateForm((current) => ({
-                            ...current,
-                            pos_best_seller: Boolean(checked)
-                          }))}
-                          disabled={creatingItem || postCreateSaving}
-                        />
-                      </div>
-                    )}
 
                     {/* Selling Price */}
                     <div className="space-y-1.5">
@@ -3056,26 +3027,26 @@ function ItemsWorkspace({
                       />
                     </div>
 
-                    {/* Best Seller Toggle Switch - mobile-only; renders a "best seller" tag in the Sell Catalog */}
-                    {isMobile && (
-                      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
-                        <div className="min-w-0">
-                          <label htmlFor="pos-items-edit-best-seller" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                            Best Seller
-                          </label>
-                          <span className="block text-[10px] text-[#64748B]">Shows a &quot;best seller&quot; tag in the Sell Catalog.</span>
-                        </div>
-                        <Switch
-                          id="pos-items-edit-best-seller"
-                          checked={editForm.pos_best_seller === true}
-                          onCheckedChange={(checked) => setEditForm((current) => ({
-                            ...current,
-                            pos_best_seller: Boolean(checked)
-                          }))}
-                          disabled={savingItem || persistingEditAssets}
-                        />
-                      </div>
-                    )}
+                    <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                      <label htmlFor="pos-items-edit-best-seller-mode" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                        Best Seller
+                      </label>
+                      <select
+                        id="pos-items-edit-best-seller-mode"
+                        value={editForm.pos_best_seller_mode}
+                        onChange={(event) => setEditForm((current) => ({
+                          ...current,
+                          pos_best_seller_mode: event.target.value
+                        }))}
+                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        disabled={savingItem || persistingEditAssets}
+                      >
+                        <option value="auto">Auto from paid sales</option>
+                        <option value="force">Always tag as Best Seller</option>
+                        <option value="never">Never tag as Best Seller</option>
+                      </select>
+                      <span className="block text-[10px] text-[#64748B]">Auto follows the POS Setup sales-ranking policy.</span>
+                    </div>
 
                     <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
@@ -3173,6 +3144,27 @@ function ItemsWorkspace({
                 {savingItem || persistingEditAssets ? 'Saving...' : 'Save Item'}
               </Button>
             </div>
+          </div>
+        </div>
+      ), document.body)}
+
+      {itemSaveInFlight && typeof document !== 'undefined' && createPortal((
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-sm"
+          role="status"
+          aria-live="assertive"
+          aria-label="Saving item"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-2xl shadow-slate-950/30">
+            <div className="mx-auto flex h-14 w-20 items-center justify-center gap-2 rounded-full bg-blue-50" aria-hidden="true">
+              <span className="h-4 w-4 animate-bounce rotate-[-45deg] bg-blue-500 [animation-delay:-0.2s] [border-radius:50%_50%_50%_0]" />
+              <span className="h-5 w-5 animate-bounce rotate-[-45deg] bg-blue-600 [animation-delay:-0.1s] [border-radius:50%_50%_50%_0]" />
+              <span className="h-4 w-4 animate-bounce rotate-[-45deg] bg-blue-500 [border-radius:50%_50%_50%_0]" />
+            </div>
+            <p className="mt-4 text-lg font-extrabold text-[#0F172A]">Saving item…</p>
+            <p className="mt-2 text-sm leading-6 text-[#64748B]">
+              Please wait while we finish saving your changes.
+            </p>
           </div>
         </div>
       ), document.body)}
@@ -3409,12 +3401,21 @@ function CategoryManagementWorkspace() {
   const confirmLifecycleAction = async () => {
     const folder = pendingAction?.folder;
     if (!folder?.folder_id) return;
-    const replacementFolderId = Number(pendingAction?.replacementFolderId);
+    const replacementFolderId = String(pendingAction?.replacementFolderId || '').trim();
+    const replacementFolderIdNumber = Number(replacementFolderId);
+
+    if (pendingAction.type === 'delete' && folder.item_count > 0 && (!Number.isInteger(replacementFolderIdNumber) || replacementFolderIdNumber <= 0)) {
+      toast.error('Select an active replacement category before deleting this category.');
+      return;
+    }
 
     setBusy(true);
     try {
       if (pendingAction.type === 'delete') {
-        const result = await deleteFolder(folder.folder_id, Number.isInteger(replacementFolderId) ? { replacement_folder_id: replacementFolderId } : {});
+        const payload = replacementFolderId && Number.isInteger(replacementFolderIdNumber) && replacementFolderIdNumber > 0
+          ? { replacement_folder_id: replacementFolderIdNumber }
+          : {};
+        const result = await deleteFolder(folder.folder_id, payload);
         toast.success(result?.data?.message || 'Category deleted.');
       } else {
         await updateFolder(folder.folder_id, { is_active: pendingAction.type === 'activate' });
@@ -3442,7 +3443,6 @@ function CategoryManagementWorkspace() {
               <p className="mt-1 text-sm text-slate-600">Create and control the categories available when POS items are added or edited.</p>
             </div>
           </div>
-          <p className="mt-4 max-w-3xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Deactivating a category preserves existing item and historical records. Deleting an assigned category requires moving its items to another active category.</p>
         </div>
         <Button type="button" onClick={openCreate} className="h-11 rounded-xl bg-[#1A4E8D] px-5 text-white hover:bg-[#143F73]">
           <Plus className="mr-2 h-4 w-4" />
@@ -3488,7 +3488,7 @@ function CategoryManagementWorkspace() {
         ) : (
           <div className="divide-y divide-slate-100">
             {filteredFolders.map((folder) => (
-              <div key={folder.folder_id} className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
+              <div key={folder.folder_id} className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-extrabold text-[#0F172A]">{folder.name}</p>
@@ -3497,7 +3497,7 @@ function CategoryManagementWorkspace() {
                   <p className="mt-1 text-sm text-slate-500">{folder.description || 'No description provided.'}</p>
                   <p className="mt-2 text-xs font-semibold text-slate-500">{folder.item_count} assigned item{folder.item_count === 1 ? '' : 's'}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                   <Button type="button" variant="outline" onClick={() => openEdit(folder)} disabled={busy} className="h-9 rounded-lg"><Pencil className="mr-1.5 h-3.5 w-3.5" />Edit</Button>
                   <Button type="button" variant="outline" onClick={() => setPendingAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={busy} className="h-9 rounded-lg">{folder.is_active ? 'Deactivate' : 'Activate'}</Button>
                   <Button type="button" variant="outline" onClick={() => setPendingAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={busy} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : 'Delete category'} className="h-9 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed"><Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete</Button>
@@ -3554,13 +3554,13 @@ function CategoryManagementWorkspace() {
                 {pendingAction.type === 'delete'
                   ? (pendingAction.folder?.item_count > 0
                     ? `Delete ${pendingAction.folder?.name || 'this category'}? Its ${pendingAction.folder.item_count} assigned item(s) must move to another active category first.`
-                    : `Delete ${pendingAction.folder?.name || 'this category'} permanently? Select a replacement below if any assigned items need to move.`)
+                    : `Delete ${pendingAction.folder?.name || 'this category'}? It has no assigned active items, so no reassignment is required.`)
                   : (pendingAction.type === 'activate'
                     ? `Make ${pendingAction.folder?.name || 'this category'} available again for new POS items?`
                     : `Remove ${pendingAction.folder?.name || 'this category'} from new item selection while retaining existing item assignments?`)}
               </p>
             </div>
-            {pendingAction.type === 'delete' ? (
+            {pendingAction.type === 'delete' && pendingAction.folder?.item_count > 0 ? (
               <div className="space-y-2 px-5 py-4">
                 <Label htmlFor="pos-category-replacement">Move assigned items to <span className="font-normal text-slate-400">(required only when items are assigned)</span></Label>
                 {replacementFolders.length > 0 ? (
@@ -3667,7 +3667,8 @@ function SettingsWorkspace({
     activeDiscountCount: 0,
     posOpenStatus: true,
     posWaitTimeMinutes: 15,
-    inventoryLowStockDisplayThreshold: 5
+    inventoryLowStockDisplayThreshold: 5,
+    bestSellerAutoTaggingEnabled: true
   });
   const [storefrontForm, setStorefrontForm] = useState({
     storeIsVisible: false,
@@ -4034,7 +4035,8 @@ function SettingsWorkspace({
         activeDiscountCount,
         posOpenStatus: settingsPayload?.pos_open_status?.value ?? true,
         posWaitTimeMinutes: Number(settingsPayload?.pos_wait_time_minutes?.value ?? 15) || 15,
-        inventoryLowStockDisplayThreshold: Number(settingsPayload?.inventory_low_stock_display_threshold?.value ?? 5) || 5
+        inventoryLowStockDisplayThreshold: Number(settingsPayload?.inventory_low_stock_display_threshold?.value ?? 5) || 5,
+        bestSellerAutoTaggingEnabled: settingsPayload?.pos_best_seller_settings?.value?.enabled !== false
       });
       setStorefrontForm({
         storeIsVisible: settingsPayload?.store_is_visible?.value === true,
@@ -4474,7 +4476,12 @@ function SettingsWorkspace({
         pos_petty_cash_amount: Number(posForm.pettyCashAmount || 0),
         pos_open_status: posForm.posOpenStatus === true,
         pos_wait_time_minutes: Number(posForm.posWaitTimeMinutes || 0),
-        inventory_low_stock_display_threshold: Number(posForm.inventoryLowStockDisplayThreshold || 5)
+        inventory_low_stock_display_threshold: Number(posForm.inventoryLowStockDisplayThreshold || 5),
+        pos_best_seller_settings: {
+          enabled: posForm.bestSellerAutoTaggingEnabled === true,
+          lookback_days: 30,
+          top_limit: 3
+        }
       });
       await Promise.all([
         hydrateSettingsWorkspace(),
@@ -4961,6 +4968,22 @@ function SettingsWorkspace({
       setAssetUploadingType('');
     }
   }, [hydrateSettingsWorkspace]);
+
+  const handleGalleryAssetUpload = useCallback(async (index, file) => {
+    if (!file) return;
+    const uploadKey = `gallery-${index}`;
+    setAssetUploadingType(uploadKey);
+    try {
+      const uploaded = await uploadStorefrontAsset('gallery', file);
+      handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'path', String(uploaded?.path || ''));
+      handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'url', '');
+      toast.success('Gallery image uploaded. Save Storefront Settings to publish it.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to upload gallery image.');
+    } finally {
+      setAssetUploadingType(null);
+    }
+  }, [handleStorefrontObjectRowChange]);
 
   const handleDeleteAsset = useCallback(async (assetType) => {
     setAssetDeletingType(assetType);
@@ -5917,23 +5940,21 @@ function SettingsWorkspace({
             </div>
           </div>
 
-          {/* Best Seller Auto-Tagging - mobile only (sm:hidden), plain checkboxes/labels only.
-              No state, no persistence, no evaluation logic. */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:hidden">
-            <p className="text-[13px] font-black text-[#0F172A]">Best Seller Auto-Tagging</p>
-            <div className="mt-3 grid gap-2">
-              <label className="flex items-start gap-2">
-                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1A4E8D]" />
-                <span className="text-[12px] font-semibold text-[#0F172A]">
-                  Add a &quot;Best Seller&quot; tag if an item is sold more than 100 times last day.
-                </span>
-              </label>
-              <label className="flex items-start gap-2">
-                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1A4E8D]" />
-                <span className="text-[12px] font-semibold text-[#0F172A]">
-                  Add a &quot;Best Seller&quot; tag if the item was among the top 3 best sold items overall.
-                </span>
-              </label>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[13px] font-black text-[#0F172A]">Best Seller Auto-Tagging</p>
+                <p className="mt-1 text-[12px] font-medium text-[#64748B]">Tag the top 3 items by completed paid quantity from the previous 30 days.</p>
+              </div>
+              <Switch
+                id="pos-best-seller-auto-tagging"
+                checked={posForm.bestSellerAutoTaggingEnabled === true}
+                onCheckedChange={(checked) => setPosForm((current) => ({
+                  ...current,
+                  bestSellerAutoTaggingEnabled: Boolean(checked)
+                }))}
+                disabled={locked || loading}
+              />
             </div>
           </div>
       </div>
@@ -6080,13 +6101,14 @@ function SettingsWorkspace({
               )}
             </div>
           </div>
-          {/* Tablet/desktop: original structure, unchanged. */}
-          <div className="relative hidden h-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:block md:h-40">
-            {storefrontAssets.cover ? (
-              <img src={resolveAssetUrl(storefrontAssets.cover)} alt="Storefront cover preview" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-xs font-medium text-slate-500">No cover photo uploaded</div>
-            )}
+          <div className="relative hidden sm:block">
+            <div className="h-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 md:h-40">
+              {storefrontAssets.cover ? (
+                <img src={resolveAssetUrl(storefrontAssets.cover)} alt="Storefront cover preview" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xs font-medium text-slate-500">No cover photo uploaded</div>
+              )}
+            </div>
             <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow md:h-20 md:w-20">
               {storefrontAssets.profile ? (
                 <img src={resolveAssetUrl(storefrontAssets.profile)} alt="Storefront profile preview" className="h-full w-full object-cover" />
@@ -6098,7 +6120,7 @@ function SettingsWorkspace({
           <div className="grid gap-3 pt-8 md:grid-cols-2">
             <div className="rounded-lg border border-slate-200 p-3">
               <p className="text-sm font-semibold text-slate-900">Cover photo</p>
-              <div className="mt-2 flex items-center gap-2 sm:hidden">
+              <div className="mt-2 flex items-center gap-2">
                 <input
                   id="storefront-cover-upload"
                   type="file"
@@ -6116,14 +6138,10 @@ function SettingsWorkspace({
                 </label>
                 <Button type="button" variant="outline" className="flex-1 h-11 rounded-xl text-[13px] font-extrabold" disabled={locked || !storefrontAssets.cover || assetUploadingType === 'cover' || assetDeletingType === 'cover'} onClick={() => handleDeleteAsset('cover')}>Remove</Button>
               </div>
-              <div className="mt-2 hidden sm:flex flex-col gap-2 sm:flex-row">
-                <Input type="file" accept="image/*" disabled={locked || assetUploadingType === 'cover' || assetDeletingType === 'cover'} onChange={(event) => { const file = event.target.files?.[0] || null; handleUploadAsset('cover', file); event.target.value = ''; }} />
-                <Button type="button" variant="outline" disabled={locked || !storefrontAssets.cover || assetUploadingType === 'cover' || assetDeletingType === 'cover'} onClick={() => handleDeleteAsset('cover')}>Remove</Button>
-              </div>
             </div>
             <div className="rounded-lg border border-slate-200 p-3">
               <p className="text-sm font-semibold text-slate-900">Profile icon</p>
-              <div className="mt-2 flex items-center gap-2 sm:hidden">
+              <div className="mt-2 flex items-center gap-2">
                 <input
                   id="storefront-profile-upload"
                   type="file"
@@ -6140,10 +6158,6 @@ function SettingsWorkspace({
                   Upload
                 </label>
                 <Button type="button" variant="outline" className="flex-1 h-11 rounded-xl text-[13px] font-extrabold" disabled={locked || !storefrontAssets.profile || assetUploadingType === 'profile' || assetDeletingType === 'profile'} onClick={() => handleDeleteAsset('profile')}>Remove</Button>
-              </div>
-              <div className="mt-2 hidden sm:flex flex-col gap-2 sm:flex-row">
-                <Input type="file" accept="image/*" disabled={locked || assetUploadingType === 'profile' || assetDeletingType === 'profile'} onChange={(event) => { const file = event.target.files?.[0] || null; handleUploadAsset('profile', file); event.target.value = ''; }} />
-                <Button type="button" variant="outline" disabled={locked || !storefrontAssets.profile || assetUploadingType === 'profile' || assetDeletingType === 'profile'} onClick={() => handleDeleteAsset('profile')}>Remove</Button>
               </div>
             </div>
           </div>
@@ -6233,35 +6247,26 @@ function SettingsWorkspace({
               <Button type="button" variant="outline" size="sm" onClick={() => addStorefrontObjectRow('storefrontGalleryImages', { url: '', path: '', caption: '', alt: '', sort_order: 0 })}><Plus className="mr-1 h-4 w-4" />Add</Button>
             </div>
             {(Array.isArray(storefrontForm.storefrontGalleryImages) ? storefrontForm.storefrontGalleryImages : []).map((row, index) => (
-              <div key={`sf-gallery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_1fr_1fr_1fr_120px_auto]">
-                <Input value={row.path || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'path', event.target.value)} placeholder="storefront-assets/tenant/gallery-1.jpg" />
-                <Input value={row.url || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'url', event.target.value)} placeholder="https://cdn.example.com/gallery-1.jpg" className="max-md:hidden" />
-                <div className="flex items-center gap-2 md:contents">
-                  <div className="md:hidden">
-                    <input
-                      id={`sf-gallery-upload-${index}`}
-                      type="file"
-                      accept="image/*"
-                      aria-label="Upload gallery image"
-                      className="sr-only"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] || null;
-                        if (file) {
-                          handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'url', URL.createObjectURL(file));
-                        }
-                        event.target.value = '';
-                      }}
-                    />
-                    <label
-                      htmlFor={`sf-gallery-upload-${index}`}
-                      className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-[#334155] transition-colors hover:bg-slate-50"
-                      aria-label="Upload image"
-                    >
-                      <ImagePlus className="h-5 w-5" />
-                    </label>
-                  </div>
-                  <Input value={row.caption || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'caption', event.target.value)} placeholder="Caption" className="flex-1 md:flex-none" />
+              <div key={`sf-gallery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[180px_1fr_1fr_120px_auto]">
+                <div className="flex items-center gap-2">
+                  <input
+                    id={`sf-gallery-upload-${index}`}
+                    type="file"
+                    accept="image/*"
+                    aria-label={`Upload gallery image ${index + 1}`}
+                    className="sr-only"
+                    disabled={locked || assetUploadingType === `gallery-${index}`}
+                    onChange={(event) => { const file = event.target.files?.[0] || null; handleGalleryAssetUpload(index, file); event.target.value = ''; }}
+                  />
+                  <label
+                    htmlFor={`sf-gallery-upload-${index}`}
+                    className={`flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-extrabold text-[#334155] transition-colors hover:bg-slate-50${locked || assetUploadingType === `gallery-${index}` ? ' pointer-events-none opacity-50' : ''}`}
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                    Upload image
+                  </label>
                 </div>
+                <Input value={row.caption || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'caption', event.target.value)} placeholder="Caption" />
                 <Input value={row.alt || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'alt', event.target.value)} placeholder="Alt text" />
                 <Input value={row.sort_order ?? ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'sort_order', event.target.value)} placeholder="Sort" />
                 <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontObjectRow('storefrontGalleryImages', index, { url: '', path: '', caption: '', alt: '', sort_order: 0 })}><Trash2 className="h-4 w-4" /></Button>
@@ -6440,6 +6445,7 @@ function SettingsWorkspace({
                 <Label className="text-[12px] font-semibold text-slate-600">From</Label>
                 <Input
                   type="datetime-local"
+                  className="relative pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidFrom, storefrontForm.storefrontPromoValidTimeStart)}
                   onChange={(event) => {
                     const { date, time } = parsePromoDateTimeValue(event.target.value);
@@ -6452,6 +6458,7 @@ function SettingsWorkspace({
                 <Label className="text-[12px] font-semibold text-slate-600">To</Label>
                 <Input
                   type="datetime-local"
+                  className="relative pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidUntil, storefrontForm.storefrontPromoValidTimeEnd)}
                   onChange={(event) => {
                     const { date, time } = parsePromoDateTimeValue(event.target.value);

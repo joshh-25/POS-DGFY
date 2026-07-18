@@ -1,6 +1,8 @@
 const CSRF_COOKIE_KEY = 'sku_csrf_token';
 const IS_STANDALONE_POS_SURFACE = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase() === 'pos';
 const POS_BROWSER_SESSION_STORAGE_KEY = 'pos_browser_session_v1';
+const POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY = 'pos_company_switch_handoff_v1';
+const POS_COMPANY_SWITCH_HANDOFF_MAX_AGE_MS = 60_000;
 
 let accessToken = '';
 let companyToken = '';
@@ -46,6 +48,33 @@ const writePosSessionStorage = ({ token, companyToken: nextCompanyToken, active 
     companyToken: normalizedCompanyToken,
     active: normalizedActive
   }));
+};
+
+const hasFreshPosCompanySwitchHandoff = () => {
+  if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') return false;
+
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY) || 'null');
+    const createdAt = Number(parsed?.createdAt || 0);
+    const tenantId = String(parsed?.tenantId || '').trim();
+    const isFresh = Boolean(tenantId)
+      && Number.isFinite(createdAt)
+      && createdAt > 0
+      && Date.now() - createdAt <= POS_COMPANY_SWITCH_HANDOFF_MAX_AGE_MS;
+
+    if (!isFresh) {
+      window.sessionStorage.removeItem(POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY);
+    }
+    return isFresh;
+  } catch {
+    window.sessionStorage.removeItem(POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY);
+    return false;
+  }
+};
+
+const consumePosCompanySwitchHandoff = () => {
+  if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY);
 };
 
 const bootstrapStandalonePosSession = () => {
@@ -145,9 +174,27 @@ export const clearBrowserSession = () => {
   }
 };
 
+export const preparePosCompanySwitchHandoff = ({ tenantId } = {}) => {
+  if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') return;
+
+  const normalizedTenantId = String(tenantId || '').trim();
+  if (!normalizedTenantId || !accessToken || !companyToken) {
+    throw new Error('The selected company session could not be prepared for POS.');
+  }
+
+  window.sessionStorage.setItem(POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY, JSON.stringify({
+    tenantId: normalizedTenantId,
+    createdAt: Date.now()
+  }));
+};
+
 export const getAccessToken = () => accessToken;
 export const getCompanyToken = () => companyToken;
-export const canRefreshBrowserSession = () => !IS_STANDALONE_POS_SURFACE || standalonePosSessionActivated;
+export const canRefreshBrowserSession = () => (
+  !IS_STANDALONE_POS_SURFACE
+  || standalonePosSessionActivated
+  || hasFreshPosCompanySwitchHandoff()
+);
 
 export const getAuthHeaders = ({ includeCsrf = false } = {}) => {
   const headers = {};
@@ -163,6 +210,9 @@ export const refreshBrowserSession = async () => {
   // available only after this page has established an authenticated session.
   if (!canRefreshBrowserSession()) return '';
   if (refreshInFlight) return refreshInFlight;
+  const consumesCompanySwitchHandoff = IS_STANDALONE_POS_SURFACE
+    && !standalonePosSessionActivated
+    && hasFreshPosCompanySwitchHandoff();
   refreshInFlight = (async () => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -192,6 +242,7 @@ export const refreshBrowserSession = async () => {
       return session.token || '';
     } finally {
       clearTimeout(timeout);
+      if (consumesCompanySwitchHandoff) consumePosCompanySwitchHandoff();
     }
   })().finally(() => {
     refreshInFlight = null;

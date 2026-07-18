@@ -58,7 +58,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('auto-rows-[7rem]');
     expect(posCheckoutContent).toContain('md:grid-cols-3 md:auto-rows-[11rem]');
     expect(posCheckoutContent).toContain('const CATALOG_PAGE_SIZE = 12;');
-    expect(posCheckoutContent).toContain('return safeCatalog.slice(pageStart, pageStart + catalogPageSize);');
+    expect(posCheckoutContent).toContain('return catalogForDisplay.slice(pageStart, pageStart + catalogPageSize);');
     expect(posCheckoutContent).toContain('Page {catalogPage} of {totalCatalogPages}');
     expect(posCheckoutContent).not.toContain('ResizeObserver');
     expect(posCheckoutContent).not.toContain('scrollIntoView({ block: \'start\', behavior: \'auto\' })');

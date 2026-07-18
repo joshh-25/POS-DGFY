@@ -19,7 +19,7 @@ on:
         default: github-hosted
         options:
           - github-hosted
-          - sieitz-ubuntu-runner
+          - self-hosted
       publish:
         description: SSH-deploy to the selected environment after images are pushed
         required: true
@@ -42,7 +42,7 @@ jobs:
       image_tags: ${{ inputs.environment == 'DEV' && 'develop' || inputs.environment == 'STAGING' && 'staging' || inputs.environment == 'BETA' && 'beta' || 'latest' }}
       publish: ${{ inputs.publish }}
       vpn_required: ${{ inputs.environment == 'DEV' || inputs.environment == 'STAGING' }}
-      runner_labels_json: ${{ inputs.runner_target == 'sieitz-ubuntu-runner' && '["self-hosted","sieitz-ubuntu-runner"]' || '["ubuntu-latest"]' }}
+      runner_labels_json: ${{ inputs.runner_target == 'self-hosted' && '["self-hosted"]' || '["ubuntu-latest"]' }}
     secrets: inherit
     permissions:
       contents: read

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   STOREFRONT_BUSINESS_DAY_OPTIONS,
   applyStorefrontBusinessHoursRange,
@@ -129,8 +130,8 @@ function ConfirmAllDaysModal({
 }) {
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/18 px-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/18 px-4">
       <div className="w-full max-w-[640px] rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,0.18)] sm:p-8">
         <div className="flex justify-end">
           <button
@@ -178,7 +179,8 @@ function ConfirmAllDaysModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
