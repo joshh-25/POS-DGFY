@@ -5,7 +5,7 @@ last_reviewed: 2026-07-13
 related_adr: docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md
 declaration_id: 2026-07-13-pos-items-pagination
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.13
 verification_evidence: npm --prefix frontend test,npm --prefix frontend run build:pos,npm run check:architecture,npm run check:compliance,git diff --check

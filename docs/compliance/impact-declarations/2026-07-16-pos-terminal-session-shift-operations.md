@@ -5,7 +5,7 @@ last_reviewed: 2026-07-16
 related_adr: 0031-pos-terminal-pairing-and-shift-safe-navigation.md
 declaration_id: 2026-07-16-pos-terminal-session-shift-operations
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,settings
 reason_codes_impacted: TERMINAL_SESSION_REQUIRED,SHIFT_CONTEXT_REQUIRED,TERMINAL_SHIFT_ACTIVE
 policy_version: 2026.07.16
 verification_evidence: pos-terminal-readiness-tests,pos-terminal-contract-tests,frontend-store-contract-tests,pos-production-build,architecture-guardrails,controller-boundaries,diff-check
