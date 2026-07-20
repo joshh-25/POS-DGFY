@@ -198,6 +198,35 @@ const formatQuantity = (value) => {
     if (!Number.isFinite(quantity)) return '0';
     return Number.isInteger(quantity) ? String(quantity) : String(round4(quantity));
 };
+// Mobile-only catalog name color. NOTE: intentionally separate from getCatalogStockColorClassName
+// (posCatalogAvailability.js) - that helper returns gray for always-available/service items
+// because on desktop it colors a numeric stock value that doesn't apply there. On mobile this
+// class colors the item NAME itself, where gray reads as "disabled"; always-available items
+// should still read as good-to-sell, so they stay green like healthy stock.
+const getMobileStockNameColorClassName = (stockValue, isAlwaysAvailable) => {
+    if (isAlwaysAvailable) return 'text-green-600';
+    const numericStock = Number(stockValue);
+    if (stockValue === null || stockValue === undefined || !Number.isFinite(numericStock)) {
+        return 'text-red-600';
+    }
+    if (numericStock > 100) return 'text-green-600';
+    if (numericStock > 0) return 'text-yellow-600';
+    return 'text-red-600';
+};
+// Desktop-only catalog name color - mirrors getMobileStockNameColorClassName's structure/colors
+// (no new colors introduced) but with desktop's own stock thresholds: >1000 green, 1-999 yellow,
+// 0/invalid red. Applied only when NOT isTabletViewport, so tablet keeps its current static
+// name color untouched; mobile is unaffected since it uses the function above instead.
+const getDesktopStockNameColorClassName = (stockValue, isAlwaysAvailable) => {
+    if (isAlwaysAvailable) return 'text-green-600';
+    const numericStock = Number(stockValue);
+    if (stockValue === null || stockValue === undefined || !Number.isFinite(numericStock)) {
+        return 'text-red-600';
+    }
+    if (numericStock > 1000) return 'text-green-600';
+    if (numericStock > 0) return 'text-yellow-600';
+    return 'text-red-600';
+};
 // Mobile-only "fly to checkout bar" animation. Fires after the cart update (never blocks or
 // delays it), animates a cloned .product-image from the tapped card to #checkout-bar, and
 // removes itself on finish/cancel. Skips silently if not mobile, no image, or no target -
@@ -804,6 +833,7 @@ export default function POSCheckoutTerminal({
     const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
@@ -821,9 +851,11 @@ export default function POSCheckoutTerminal({
                 ? 'mt-4 grid grid-cols-2 auto-rows-[7rem] gap-2 sm:grid-cols-3'
                 : 'mt-4 grid grid-cols-3 auto-rows-[11rem] gap-1.5';
         }
+        // xl: is true desktop only - both tablet definitions (DGFY 640-1023px, standard
+        // 768-1279px) cap below 1280px, so this never touches tablet's own branch above.
         return sidebarCollapsed
-            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
-            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
+            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5 xl:auto-rows-[13.5rem]'
+            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4 xl:auto-rows-[13.5rem]';
     }, [isTabletViewport, sidebarCollapsed]);
     const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-visible pr-0 pb-3 xl:overflow-hidden';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
@@ -836,9 +868,12 @@ export default function POSCheckoutTerminal({
     const safePosFolders = toArray(posFolders);
     // This is a POS-only presentation filter. The API remains the stock authority and checkout
     // revalidates inventory server-side; services and Always Available items are intentionally exempt.
+    // Mobile and true-desktop exception: out-of-stock items stay in the list there (shown
+    // locked/grayed via the existing isOutOfStock handling on the card) instead of being hidden
+    // entirely. Tablet (isTabletViewport) keeps the original hide-when-out-of-stock behavior.
     const availableCatalog = useMemo(() => (
-        safeCatalog.filter(isSellAvailableCatalogItem)
-    ), [safeCatalog]);
+        (isMobile || !isTabletViewport) ? safeCatalog : safeCatalog.filter(isSellAvailableCatalogItem)
+    ), [isMobile, isTabletViewport, safeCatalog]);
     const availableCategories = useMemo(() => {
         return safePosFolders.filter((folder) => {
             const folderId = Number(folder?.folder_id);
@@ -880,7 +915,7 @@ export default function POSCheckoutTerminal({
         ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
         : isTabletViewport
             ? 'group flex h-[11rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[7.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-full';
+            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[7.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-[13.5rem]';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
         : isTabletViewport
@@ -1611,6 +1646,19 @@ export default function POSCheckoutTerminal({
     }, []);
 
     useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+        const mobileMedia = window.matchMedia('(max-width: 639.98px)');
+        const syncIsMobile = (event) => setIsMobile(Boolean(event.matches));
+        syncIsMobile(mobileMedia);
+        if (typeof mobileMedia.addEventListener === 'function') {
+            mobileMedia.addEventListener('change', syncIsMobile);
+            return () => mobileMedia.removeEventListener('change', syncIsMobile);
+        }
+        mobileMedia.addListener(syncIsMobile);
+        return () => mobileMedia.removeListener(syncIsMobile);
+    }, []);
+
+    useEffect(() => {
         setCatalogPage(1);
     }, [search, selectedFolderId, selectedLocationId]);
 
@@ -2084,6 +2132,86 @@ export default function POSCheckoutTerminal({
     };
 
     const handleQtyButtonPointerCancel = () => {
+        clearQtyMeterTimer();
+        qtyMeterGestureRef.current = null;
+        setQtyMeterState(null);
+    };
+
+    // Desktop-only: Current Sale cart line "+" button reuses the exact same bulk-add meter
+    // (qtyMeterState/qtyMeterGestureRef/qtyMeterTimerRef, the QTY_METER_* constants, and the
+    // single .qty-meter portal already rendered below) as the mobile catalog "+" button above -
+    // same long-press-then-drag-up gesture, same visual meter. Only the "commit" step differs:
+    // the catalog button ADDS a new/updates a cart line via adjustCartQuantity(item, delta),
+    // while a cart line already exists, so this SETS its quantity to current + delta via
+    // updateCartQuantity(lineKey, ...) instead. gesture.itemId doubles as a generic gesture key
+    // here (holds the cart lineKey rather than an item_id) purely for pointer-vs-line matching.
+    const handleCartQtyButtonPointerDown = (event, line) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const lineKey = getLineKey(line);
+        const buttonRect = event.currentTarget.getBoundingClientRect();
+        qtyMeterGestureRef.current = {
+            itemId: lineKey,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            anchorX: buttonRect.left,
+            anchorY: buttonRect.top + (buttonRect.height / 2),
+            activated: false,
+            cancelled: false,
+            quantity: QTY_METER_MIN_QTY
+        };
+        clearQtyMeterTimer();
+        qtyMeterTimerRef.current = setTimeout(() => {
+            const gesture = qtyMeterGestureRef.current;
+            if (!gesture || gesture.itemId !== lineKey || gesture.cancelled) return;
+            gesture.activated = true;
+            setQtyMeterState({ quantity: gesture.quantity, x: gesture.anchorX, y: gesture.anchorY });
+        }, QTY_METER_LONG_PRESS_MS);
+    };
+
+    const handleCartQtyButtonPointerMove = (event, line) => {
+        const lineKey = getLineKey(line);
+        const gesture = qtyMeterGestureRef.current;
+        if (!gesture || gesture.itemId !== lineKey || gesture.cancelled) return;
+
+        const deltaX = event.clientX - gesture.startX;
+        const deltaY = event.clientY - gesture.startY;
+
+        if (!gesture.activated) {
+            if (Math.hypot(deltaX, deltaY) > QTY_METER_MOVE_CANCEL_PX) {
+                gesture.cancelled = true;
+                clearQtyMeterTimer();
+            }
+            return;
+        }
+
+        const upwardPx = Math.min(QTY_METER_MAX_DRAG_PX, Math.max(0, -deltaY));
+        const ratio = upwardPx / QTY_METER_MAX_DRAG_PX;
+        const quantity = QTY_METER_MIN_QTY + Math.round(ratio * (QTY_METER_MAX_QTY - QTY_METER_MIN_QTY));
+        gesture.quantity = quantity;
+        setQtyMeterState({ quantity, x: gesture.anchorX, y: gesture.anchorY });
+    };
+
+    const handleCartQtyButtonPointerUp = (event, line) => {
+        const lineKey = getLineKey(line);
+        const gesture = qtyMeterGestureRef.current;
+        clearQtyMeterTimer();
+
+        qtyMeterGestureRef.current = null;
+        setQtyMeterState(null);
+
+        if (!gesture || gesture.itemId !== lineKey || gesture.cancelled) return;
+
+        const currentQuantity = Number(line.quantity || 0);
+        if (gesture.activated) {
+            if (gesture.quantity <= 0) return;
+            updateCartQuantity(lineKey, currentQuantity + gesture.quantity);
+        } else {
+            updateCartQuantity(lineKey, currentQuantity + 1);
+        }
+    };
+
+    const handleCartQtyButtonPointerCancel = () => {
         clearQtyMeterTimer();
         qtyMeterGestureRef.current = null;
         setQtyMeterState(null);
@@ -3012,6 +3140,13 @@ export default function POSCheckoutTerminal({
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
                             const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);
+                            // Mobile-only: computed on every render from current item data, so it's
+                            // correct on initial render and never stale/flickering on resize.
+                            const mobileStockNameColorClassName = getMobileStockNameColorClassName(item.current_stock, isAlwaysAvailable || isServiceItem);
+                            // Desktop-only: tablet (isTabletViewport) keeps the original static
+                            // name color, so this class is only ever used when neither mobile nor
+                            // tablet - i.e. true desktop/PC - per the applied className below.
+                            const desktopStockNameColorClassName = getDesktopStockNameColorClassName(item.current_stock, isAlwaysAvailable || isServiceItem);
                             return (
                                 <div
                                     key={item.item_id}
@@ -3103,7 +3238,7 @@ export default function POSCheckoutTerminal({
                                             code (sku_code) removed. "Always available" renders only when true —
                                             no placeholder when it doesn't apply. */}
                                         <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
-                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${stockColorClassName}`}>{item.name}</p>
+                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${mobileStockNameColorClassName}`}>{item.name}</p>
                                             <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
                                                 <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
                                                     <CatalogItemBadges
@@ -3193,7 +3328,7 @@ export default function POSCheckoutTerminal({
                                         </div>
                                         <div className="flex min-w-0 flex-col gap-1.5 max-sm:hidden">
                                             <div className="flex min-w-0 items-start gap-1.5">
-                                                <p className="min-w-0 flex-1 text-[13.5px] font-black leading-tight text-[#0F172A] line-clamp-2">{item.name}</p>
+                                                <p className={`min-w-0 flex-1 text-[13.5px] font-black leading-tight line-clamp-2 ${isTabletViewport ? 'text-[#0F172A]' : desktopStockNameColorClassName}`}>{item.name}</p>
                                                 {isBestSeller && (
                                                     <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-700">
                                                         Best seller
@@ -3206,7 +3341,11 @@ export default function POSCheckoutTerminal({
                                                 isBestSeller={false}
                                             />
                                         </div>
-                                        <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#64748B] max-sm:hidden">{item.sku_code}</p>
+                                        {/* Product code/SKU: tablet-only. Desktop's simplified layout omits it
+                                            (see Task: Simplify Desktop Sell Catalog Item Layout). */}
+                                        {isTabletViewport && (
+                                            <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#64748B] max-sm:hidden">{item.sku_code}</p>
+                                        )}
                                     </>
                                 )}
                                 {IS_DGFY_POS_SURFACE && isTabletViewport ? (
@@ -3217,9 +3356,9 @@ export default function POSCheckoutTerminal({
                                                 : `PHP ${money(item.default_sale_price)}`}
                                         </span>
                                     </div>
-                                ) : (
+                                ) : isTabletViewport ? (
                                     <>
-                                        <div className={`${isTabletViewport ? 'mt-1.5' : 'mt-3'} grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B] max-sm:hidden`}>
+                                        <div className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B] max-sm:hidden">
                                             <span className="font-semibold">Stock:</span>
                                             <span className={`text-right font-bold whitespace-nowrap ${stockColorClassName}`}>
                                                 {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toFixed(2)}
@@ -3241,6 +3380,22 @@ export default function POSCheckoutTerminal({
                                             </p>
                                         )}
                                     </>
+                                ) : (
+                                    /* Desktop-only simplified card: price only - no stock count, SKU, or VAT
+                                       row (see Task: Simplify Desktop Sell Catalog Item Layout). mt-auto (not
+                                       a fixed mt-3) pins this to the bottom of the flex-col card regardless
+                                       of how many tags render above it, so price position stays consistent
+                                       across items instead of shifting with tag count (see Task: Fix Item
+                                       Card Height & Price Positioning). The card's existing opacity/blur
+                                       styling and the "Out of stock" image overlay still communicate
+                                       unavailability without this extra metadata line. */
+                                    <div className="mt-auto pt-3 max-sm:hidden">
+                                        <span className="text-[13px] font-black text-[#1A4E8D] whitespace-nowrap">
+                                            {Number(item.default_sale_price || 0) > 0
+                                                ? `PHP ${money(item.default_sale_price)}`
+                                                : 'Not set'}
+                                        </span>
+                                    </div>
                                 )}
                                 </div>
                             );
@@ -3423,16 +3578,38 @@ export default function POSCheckoutTerminal({
                                                 <span className="flex h-8 min-w-0 flex-1 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A]">
                                                     {formatQuantity(line.quantity)}
                                                 </span>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-8 px-2 text-[13px]"
-                                                    onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
-                                                    disabled={posActionsBlocked}
-                                                >
-                                                    <Plus className="h-3.5 w-3.5" />
-                                                </Button>
+                                                {/* Desktop: long-press-then-drag-up shows the same bulk-add meter
+                                                    the mobile catalog "+" button uses (see
+                                                    handleCartQtyButtonPointerDown and friends) - a plain tap
+                                                    still adds exactly +1, handled inside the pointerUp handler
+                                                    itself, so no onClick here (would double-add on tap).
+                                                    Tablet keeps the original plain onClick, untouched. */}
+                                                {!isMobile && !isTabletViewport ? (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 px-2 text-[13px]"
+                                                        onPointerDown={(event) => handleCartQtyButtonPointerDown(event, line)}
+                                                        onPointerMove={(event) => handleCartQtyButtonPointerMove(event, line)}
+                                                        onPointerUp={(event) => handleCartQtyButtonPointerUp(event, line)}
+                                                        onPointerCancel={handleCartQtyButtonPointerCancel}
+                                                        disabled={posActionsBlocked}
+                                                    >
+                                                        <Plus className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 px-2 text-[13px]"
+                                                        onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
+                                                        disabled={posActionsBlocked}
+                                                    >
+                                                        <Plus className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                )}
                                             </div>
                                         </label>
                                         <div className="text-[11px] text-slate-500">
