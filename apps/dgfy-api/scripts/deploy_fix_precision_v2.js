@@ -12,7 +12,7 @@
  *
  * Safe: DECIMAL widening is always non-destructive — no existing data is lost.
  *
- * Usage: node backend/scripts/deploy_fix_precision_v2.js
+ * Usage: node apps/dgfy-api/scripts/deploy_fix_precision_v2.js
  */
 
 import { Sequelize } from 'sequelize';

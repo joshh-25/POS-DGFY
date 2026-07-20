@@ -101,7 +101,7 @@ docker compose exec -T mysql sh -c "mysql -u root -p\"\${MYSQL_ROOT_PASSWORD}\""
 
 echo "==> Granting ${DB_USER} access to all imported databases..."
 # Wildcard grant first: the app dynamically creates a new sku_tenant_<slug>_<id>
-# database on every business registration (see backend/src/services/
+# database on every business registration (see apps/dgfy-api/src/services/
 # tenantProvisioningService.js), and that new database's name can't be known
 # in advance -- an enumerated per-database GRANT list (below) only ever
 # covers databases that already existed at import time. Without this, every
@@ -115,10 +115,10 @@ done < <(LC_ALL=C grep '^-- Current Database: `' "$FILTERED_DUMP" | LC_ALL=C sed
 GRANT_SQL="${GRANT_SQL}FLUSH PRIVILEGES;"
 docker compose exec -T mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "$GRANT_SQL"
 
-echo "==> Restarting backend (re-runs pending migrations on the landlord DB via its entrypoint)..."
-docker compose up -d backend
+echo "==> Restarting dgfy-api (its dgfy-migration-runner dependency re-runs pending landlord-DB migrations first)..."
+docker compose up -d dgfy-api
 
 echo "==> Import complete. ${KEPT_DBS} database(s) imported: $(LC_ALL=C grep '^-- Current Database: `' "$FILTERED_DUMP" | LC_ALL=C sed 's/^-- Current Database: //')"
 echo "Note: tenant databases are NOT auto-migrated -- there's no per-tenant migration runner in this app"
 echo "(see docs/ai/CLAUDE.md). A tenant DB slightly behind current code degrades gracefully per-repository"
-echo "rather than erroring; check backend logs / /api/v1/health if something looks off for a specific tenant."
+echo "rather than erroring; check dgfy-api logs / /api/v1/health if something looks off for a specific tenant."

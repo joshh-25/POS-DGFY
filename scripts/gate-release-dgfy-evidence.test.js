@@ -85,8 +85,8 @@ test('isBoundaryChanged: true for a changed file under apps/dgfy-migration-runne
   assert.equal(isBoundaryChanged(['apps/dgfy-migration-runner/src/cli.js']), true);
 });
 
-test('isBoundaryChanged: true for a changed file under backend/src/modules/', () => {
-  assert.equal(isBoundaryChanged(['backend/src/modules/inventory/handler.js']), true);
+test('isBoundaryChanged: true for a changed file under apps/dgfy-api/src/modules/', () => {
+  assert.equal(isBoundaryChanged(['apps/dgfy-api/src/modules/inventory/handler.js']), true);
 });
 
 test('isBoundaryChanged: false for an unrelated path', () => {
@@ -101,7 +101,7 @@ test('isBoundaryChanged: false for an empty or missing changed-files list', () =
 
 test('isBoundaryChanged: true when only one of several changed files matches a boundary prefix', () => {
   assert.equal(
-    isBoundaryChanged(['frontend/src/App.jsx', 'backend/src/modules/tenancy/service.js', 'README.md']),
+    isBoundaryChanged(['frontend/src/App.jsx', 'apps/dgfy-api/src/modules/tenancy/service.js', 'README.md']),
     true
   );
 });

@@ -3,8 +3,8 @@
  * No writes are performed.
  *
  * Usage:
- *   node backend/scripts/audit_original_legacy_account.js
- *   node backend/scripts/audit_original_legacy_account.js --strict
+ *   node apps/dgfy-api/scripts/audit_original_legacy_account.js
+ *   node apps/dgfy-api/scripts/audit_original_legacy_account.js --strict
  */
 
 import mysql from 'mysql2/promise';

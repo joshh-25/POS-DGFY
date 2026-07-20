@@ -80,13 +80,13 @@ const cleanupTempDeclaration = (absolutePath) => {
 describe('check-compliance-impact script integration', () => {
     it('fails when backend settings route changes without declaration', () => {
         const result = runCheck({
-            changedFiles: ['backend/src/routes/settings.js']
+            changedFiles: ['apps/dgfy-api/src/routes/settings.js']
         });
 
         const output = `${result.stdout}${result.stderr}`;
         expect(result.status).toBe(1);
         expect(output).toContain('Compliance-sensitive files changed without a declaration file');
-        expect(output).toContain('backend/src/routes/settings.js');
+        expect(output).toContain('apps/dgfy-api/src/routes/settings.js');
     });
 
     it('fails when declaration classification is below computed minimum', () => {
@@ -123,7 +123,7 @@ describe('check-compliance-impact script integration', () => {
         try {
             const result = runCheck({
                 changedFiles: [
-                    'backend/src/routes/settings.js',
+                    'apps/dgfy-api/src/routes/settings.js',
                     declaration.relativePath
                 ]
             });
@@ -157,7 +157,7 @@ describe('check-compliance-impact script integration', () => {
         try {
             const result = runCheck({
                 stagedFiles: [
-                    'backend/src/routes/settings.js',
+                    'apps/dgfy-api/src/routes/settings.js',
                     declaration.relativePath
                 ],
                 args: ['--staged']
@@ -172,13 +172,13 @@ describe('check-compliance-impact script integration', () => {
     });
 
     it.each([
-        'backend/src/routes/adminTenants.js',
-        'backend/src/modules/tenants/controllers/adminTenantHandlers.js',
-        'backend/src/controllers/adminTenantController.js',
-        'backend/src/controllers/complianceController.js',
-        'backend/src/modules/tenants/usecases/registerCompanyRequestUseCase.js',
-        'backend/src/modules/tenants/usecases/provisionNewTenantUseCase.js',
-        'backend/src/modules/tenants/repositories/tenantAdminRepository.js'
+        'apps/dgfy-api/src/routes/adminTenants.js',
+        'apps/dgfy-api/src/modules/tenants/controllers/adminTenantHandlers.js',
+        'apps/dgfy-api/src/controllers/adminTenantController.js',
+        'apps/dgfy-api/src/controllers/complianceController.js',
+        'apps/dgfy-api/src/modules/tenants/usecases/registerCompanyRequestUseCase.js',
+        'apps/dgfy-api/src/modules/tenants/usecases/provisionNewTenantUseCase.js',
+        'apps/dgfy-api/src/modules/tenants/repositories/tenantAdminRepository.js'
     ])('fails when uncovered compliance-sensitive path changes without declaration: %s', (changedPath) => {
         const result = runCheck({
             changedFiles: [changedPath]

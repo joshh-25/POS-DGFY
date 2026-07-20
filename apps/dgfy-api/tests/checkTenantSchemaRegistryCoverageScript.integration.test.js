@@ -30,7 +30,7 @@ const runCoverageScript = ({ changedFiles, migrationsRoot, exemptionsPath, stage
 describe('check-tenant-schema-registry-coverage script integration', () => {
     it('passes when a changed migration only touches an already-registered column', () => {
         const result = runCoverageScript({
-            changedFiles: ['backend/migrations/20990101000001-add-registered-column.cjs'],
+            changedFiles: ['apps/dgfy-migration-runner/migrations/20990101000001-add-registered-column.cjs'],
             migrationsRoot: 'healthy'
         });
 
@@ -40,7 +40,7 @@ describe('check-tenant-schema-registry-coverage script integration', () => {
 
     it('fails when a changed migration adds a column to a tenant-scoped table with no registry entry', () => {
         const result = runCoverageScript({
-            changedFiles: ['backend/migrations/20990101000002-add-unregistered-column.cjs'],
+            changedFiles: ['apps/dgfy-migration-runner/migrations/20990101000002-add-unregistered-column.cjs'],
             migrationsRoot: 'violating'
         });
 
@@ -52,7 +52,7 @@ describe('check-tenant-schema-registry-coverage script integration', () => {
 
     it('passes when the same violation is explicitly exempted', () => {
         const result = runCoverageScript({
-            changedFiles: ['backend/migrations/20990101000002-add-unregistered-column.cjs'],
+            changedFiles: ['apps/dgfy-migration-runner/migrations/20990101000002-add-unregistered-column.cjs'],
             migrationsRoot: 'violating',
             exemptionsPath: 'exemptions.fixture.js'
         });
@@ -63,7 +63,7 @@ describe('check-tenant-schema-registry-coverage script integration', () => {
 
     it('warns but does not fail on a variable-driven addColumn call it cannot statically resolve', () => {
         const result = runCoverageScript({
-            changedFiles: ['backend/migrations/20990101000003-add-column-via-loop.cjs'],
+            changedFiles: ['apps/dgfy-migration-runner/migrations/20990101000003-add-column-via-loop.cjs'],
             migrationsRoot: 'non-literal-warning'
         });
 
@@ -75,7 +75,7 @@ describe('check-tenant-schema-registry-coverage script integration', () => {
 
     it('exits cleanly with no violations when no migration files changed', () => {
         const result = runCoverageScript({
-            changedFiles: ['backend/src/models/Item.js'],
+            changedFiles: ['apps/dgfy-api/src/models/Item.js'],
             migrationsRoot: 'healthy'
         });
 

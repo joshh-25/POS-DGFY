@@ -6,28 +6,19 @@ set -e
 
 STAGED_FILES="$(git diff --cached --name-only)"
 
-# Scoped to backend/ only: apps/dgfy-api has the same-named AI tooling
-# files (it's a copy of backend/'s app code), but validate:ai needs a
-# fully installed + configured app (sharp, JWT_SECRET, ...) that apps/
-# dgfy-api doesn't have set up locally yet -- wire up an apps/dgfy-api-
-# scoped check here once its local dev environment exists.
-AI_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^backend/.*(aiTools|aiToolExecutor|aiSystemPrompt)" || true)"
+# apps/dgfy-api is the source of truth for the app (backend/ removed).
+# validate:ai needs a fully installed + configured app (sharp, JWT_SECRET,
+# ...), so it runs only when the staged AI tooling files under apps/dgfy-api
+# change, relying on the developer having run `npm run install:all`.
+AI_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^apps/dgfy-api/.*(aiTools|aiToolExecutor|aiSystemPrompt)" || true)"
 if [ -n "$AI_FILES" ]; then
   echo "[pre-commit] AI-related files changed. Running AI validation..."
   echo "$AI_FILES"
-  (cd backend && npm run validate:ai)
+  (cd apps/dgfy-api && npm run validate:ai)
   echo "[pre-commit] AI validation passed."
 fi
 
-ARCH_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^backend/(src/modules/|src/controllers/|src/config/controllerModelImportAllowlist.js|src/config/architectureModelImportAllowlist.js|src/config/architectureGuardrailsAllowlist.js|scripts/check-controller-boundaries.js|scripts/check-architecture-guardrails.js)" || true)"
-if [ -n "$ARCH_FILES" ]; then
-  echo "[pre-commit] Architecture-sensitive files changed. Running architecture guardrails..."
-  echo "$ARCH_FILES"
-  (cd backend && npm run check:architecture-guardrails && npm run check:controller-boundaries)
-  echo "[pre-commit] Architecture guardrails passed."
-fi
-
-DGFY_API_ARCH_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^apps/dgfy-api/(src/controllers/|src/config/controllerModelImportAllowlist.js|src/config/architectureModelImportAllowlist.js|src/config/architectureGuardrailsAllowlist.js|scripts/check-controller-boundaries.js|scripts/check-architecture-guardrails.js)" || true)"
+DGFY_API_ARCH_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^apps/dgfy-api/(src/modules/|src/controllers/|src/config/controllerModelImportAllowlist.js|src/config/architectureModelImportAllowlist.js|src/config/architectureGuardrailsAllowlist.js|scripts/check-controller-boundaries.js|scripts/check-architecture-guardrails.js)" || true)"
 if [ -n "$DGFY_API_ARCH_FILES" ]; then
   echo "[pre-commit] apps/dgfy-api architecture-sensitive files changed. Running architecture guardrails..."
   echo "$DGFY_API_ARCH_FILES"
@@ -35,11 +26,11 @@ if [ -n "$DGFY_API_ARCH_FILES" ]; then
   echo "[pre-commit] apps/dgfy-api architecture guardrails passed."
 fi
 
-MIGRATION_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^backend/migrations/" || true)"
+MIGRATION_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^apps/dgfy-migration-runner/migrations/" || true)"
 if [ -n "$MIGRATION_FILES" ]; then
   echo "[pre-commit] Migration files changed. Running tenant schema registry coverage check..."
   echo "$MIGRATION_FILES"
-  (cd backend && npm run check:tenant-schema-coverage -- --staged)
+  (cd apps/dgfy-api && npm run check:tenant-schema-coverage -- --staged)
   echo "[pre-commit] Tenant schema registry coverage check passed."
 fi
 

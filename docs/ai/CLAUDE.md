@@ -10,6 +10,13 @@
 # 🎯 Project Overview (Critical Context)
 **SKU Inventory Manager** is a multi-tenant full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements using a distributed database-per-tenant architecture. It features FIFO batch tracking, nested product recipes, and smart restock logic.
 
+> **⚠️ Source of truth: `apps/dgfy-api/`.** The old `backend/` directory has been
+> removed. `apps/dgfy-api/` *is* the backend, refactored into `apps/`; the Sequelize
+> migration domain lives separately in `apps/dgfy-migration-runner/`. Path references
+> below that still say `backend/` in prose are historical. If `develop` receives
+> `backend/` changes during the transition window, absorb them via the documented
+> method in [docs/architecture/backend-absorption.md](../architecture/backend-absorption.md).
+
 **Tech Stack:**
 **Frontend:**
 - React 18 + Vite
@@ -85,7 +92,7 @@ Before attempting ANY bug fix, the following steps MUST be taken:
    - Consult `TROUBLESHOOTING.md` for known issues and solutions.
    - Check `DEVELOPMENT_HISTORY.md` for similar past bugs.
 2. **Reproduce & Isolate**:
-   - Create a reproduction script (e.g., `backend/scripts/reproduce_issue.js`) if complex.
+   - Create a reproduction script (e.g., `apps/dgfy-api/scripts/reproduce_issue.js`) if complex.
    - Verify if the issue is a "known quirk" documented in `CLAUDE.md` or `AI_GUIDELINES.md`.
 3. **Verify Environment**:
    - Ensure `NODE_ENV` matches the context (dev vs prod).
@@ -113,15 +120,17 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 # 📂 Project Structure
 ```text
 /
-├── backend/
-│   ├── src/
-│   │   ├── config/         # DB & Env config + AI tools/prompts
-│   │   ├── controllers/    # Request handlers (incl. aiController)
-│   │   ├── models/         # Sequelize definitions (incl. AI models)
-│   │   ├── routes/         # Express routes (v1) (incl. ai.js)
-│   │   ├── services/       # Business logic (incl. AI services)
-│   │   └── validators/     # Joi validation schemas
-│   └── tests/
+├── apps/
+│   ├── dgfy-api/               # The app (source of truth; formerly backend/)
+│   │   ├── src/
+│   │   │   ├── config/         # DB & Env config + AI tools/prompts
+│   │   │   ├── controllers/    # Request handlers (incl. aiController)
+│   │   │   ├── models/         # Sequelize definitions (incl. AI models)
+│   │   │   ├── routes/         # Express routes (v1) (incl. ai.js)
+│   │   │   ├── services/       # Business logic (incl. AI services)
+│   │   │   └── validators/     # Joi validation schemas
+│   │   └── tests/
+│   └── dgfy-migration-runner/  # Sequelize migration domain (one-shot container)
 ├── frontend/
 │   ├── Components/
 │   │   ├── ai/             # AI chat components (NEW)
@@ -193,10 +202,10 @@ npm run dev
 ## Database
 ```bash
 # Migrations (handled automatically by deploy.sh)
-cd backend && npx sequelize-cli db:migrate
+cd apps/dgfy-migration-runner && npx sequelize-cli db:migrate
 
 # Sync tenant schemas (handled automatically by deploy.sh)
-node backend/scripts/sync-tenant-schemas.js
+node apps/dgfy-api/scripts/sync-tenant-schemas.js
 ```
 
 # 🔗 Documentation Links
@@ -247,7 +256,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 │   ├── tailwind.config.js
 │   └── index.html
 │
-├── backend/                              # Node.js backend application
+├── apps/dgfy-api/                         # The app (source of truth; formerly backend/)
 │   ├── src/
 │   │   ├── routes/                       # Express routes
 │   │   │   ├── auth.js
@@ -276,11 +285,11 @@ SKU-Inventory-Manager/                    # Monorepo root
 │   │   │   ├── userService.js
 │   │   │   └── settingsService.js
 │   │   ├── validators/                   # Input validation
-│   │   ├── seeders/                      # Database seeders
 │   │   └── server.js                     # Express app entry
 │   ├── .env                              # Environment variables
-│   ├── package.json
-│   └── database-setup.sql
+│   └── package.json
+│
+├── apps/dgfy-migration-runner/            # Migration domain: migrations/, seeders/, database-setup.sql
 │
 ├── docs/                                 # Documentation
 │   └── QUICK_REFERENCE.md
@@ -370,7 +379,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 > - These fields cannot be manually edited in creation forms
 > - `product_type` is required only when `category = 'product'`
 > - `product_type` must be null/undefined for non-product categories
-> - Validation fix applied in `backend/src/models/Item.js` line 33
+> - Validation fix applied in `apps/dgfy-api/src/models/Item.js` line 33
 
 ### User
 ```javascript
@@ -389,7 +398,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 > - `is_master_admin` grants full system access, bypassing all permission checks
 > - **Role Change Auto-Applies Permissions**: When a user's role is changed, their `permissions` array is automatically reset to that role's default permission set
 > - Custom permission edits made AFTER a role change will persist until the next role change
-> - See `backend/src/config/permissions.js` for `DEFAULT_ROLE_PERMISSIONS` mapping
+> - See `apps/dgfy-api/src/config/permissions.js` for `DEFAULT_ROLE_PERMISSIONS` mapping
 >
 > **Remove from Company (Soft Delete)**:
 > - `deleted_at` marks when a user was removed from the company
@@ -410,10 +419,10 @@ SKU-Inventory-Manager/                    # Monorepo root
 | Port 5173 in use | `lsof -ti:5173 \| xargs kill -9` or change vite port |
 | Port 5000 in use | `lsof -ti:5000 \| xargs kill -9` |
 | Port 5002 or 5183 in use | Staging port conflict — `lsof -ti:5002 \| xargs kill -9` |
-| Frontend can't reach backend | Check CORS settings in `backend/src/server.js` |
+| Frontend can't reach backend | Check CORS settings in `apps/dgfy-api/src/server.js` |
 | `staging.dgfy.ph` blocked by Vite | Add `staging.dgfy.ph` to `allowedHosts` in `frontend/apps/skupervisor/vite.config.js` |
 | Components not rendering | Check import paths - use `@/Components/...` |
-| Backend won't start | Check `.env` file exists in `backend/` folder |
+| API won't start | Check `.env` file exists in `apps/dgfy-api/` folder |
 | Database connection error | Verify MySQL is running, check credentials in `.env` |
 | Redis connection error | Ensure Redis is running on port 6379 |
 
@@ -425,9 +434,9 @@ SKU-Inventory-Manager/                    # Monorepo root
 - `docs/reference/QUICK_REFERENCE.md` - Common commands and troubleshooting
 
 **Backend Documentation:**
-- `backend/CREDENTIALS.md` - Default admin credentials
-- `backend/database-setup.sql` - Database setup script
-- `backend/README.md` - Backend-specific documentation
+- `apps/dgfy-api/CREDENTIALS.md` - Default admin credentials
+- `apps/dgfy-migration-runner/database-setup.sql` - Database setup script
+- `apps/dgfy-api/README.md` - Backend-specific documentation
 
 **Root Documentation:**
 - `docs/setup/ADMIN_SETUP.md` - Admin user setup guide
@@ -450,13 +459,13 @@ SKU-Inventory-Manager/                    # Monorepo root
 → Check `frontend/Components/` folder structure
 
 **Working on Backend API?**
-→ Check `backend/src/routes/` and `backend/src/controllers/`
+→ Check `apps/dgfy-api/src/routes/` and `apps/dgfy-api/src/controllers/`
 
 **Working on Database Models?**
-→ Check `backend/src/models/` (Sequelize) and `frontend/Entities/` (frontend models)
+→ Check `apps/dgfy-api/src/models/` (Sequelize) and `frontend/Entities/` (frontend models)
 
 **Working on Authentication?**
-→ Check `backend/src/middleware/auth.js` and `backend/src/services/authService.js`
+→ Check `apps/dgfy-api/src/middleware/auth.js` and `apps/dgfy-api/src/services/authService.js`
 
 **Need API Integration?**
 → Check `frontend/src/services/` for API service layer
@@ -468,11 +477,11 @@ SKU-Inventory-Manager/                    # Monorepo root
 
 ## 📝 Notes for Claude Code
 
-- This is a **monorepo** structure with `frontend/` and `backend/` folders
-- Always specify which part you're working on (frontend vs backend)
+- This is a **monorepo** structure with `frontend/` and `apps/dgfy-api/` (the app; formerly `backend/`)
+- Always specify which part you're working on (frontend vs API)
 - Frontend uses relative imports (`@/Components/...`)
-- Backend uses CommonJS (`require()`)
-- API calls from frontend go to `http://localhost:5000/api/v1`
+- The API (`apps/dgfy-api`) is served on port `5100` (via nginx same-origin `/api`)
+- API calls from frontend go to the same-origin `/api/v1` path
 - This file is optimized for Claude Code context efficiency
 - Detailed specs are linked, not embedded
 - Keep context under 1,000 tokens for optimal performance

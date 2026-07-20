@@ -270,7 +270,7 @@ node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.confi
 - All test emails are namespaced under `EMAIL_PREFIX = 'lookup-v2-test-'` plus a `Date.now()` timestamp to prevent cross-run collisions.
 
 **Infrastructure notes**:
-- `NODE_ENV=test` routes to `sku_test` database automatically (see `backend/src/config/database.js`)
+- `NODE_ENV=test` routes to `sku_test` database automatically (see `apps/dgfy-api/src/config/database.js`)
 - Rate limiter `skip()` returns `true` when `NODE_ENV === 'test'`
 - `--runInBand` ensures sequential execution (avoids parallel DB state conflicts)
 
@@ -351,18 +351,18 @@ When creating new verification scripts:
 ## Bug Fixes Applied
 
 ### Issue 1: Missing Named Exports
-**File**: `backend/src/models/index.js` (lines 164-190)
+**File**: `apps/dgfy-api/src/models/index.js` (lines 164-190)
 - Added named exports for all models including FIFOBatch
 - Allows direct import of models in test scripts
 
 ### Issue 2: Product Type Validation
-**File**: `backend/src/models/Item.js` (line 33)
+**File**: `apps/dgfy-api/src/models/Item.js` (line 33)
 - Updated validator to handle undefined values
 - Changed `value !== null` to `value !== null && value !== undefined`
 - Prevents validation errors when creating non-product items
 
 ### Issue 3: Verification Script Parameters
-**File**: `backend/tests/manual_fifo_verification.js`
+**File**: `apps/dgfy-api/tests/manual_fifo_verification.js`
 - Use `line_items` instead of `items`
 - Use `quantity_ordered` instead of `quantity`
 - Removed outer transaction to avoid conflicts with service transactions

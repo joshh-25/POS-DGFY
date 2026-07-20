@@ -21,7 +21,7 @@ const EXEMPTIONS_PATH = process.env.TENANT_SCHEMA_COVERAGE_EXEMPTIONS_PATH
     ? path.resolve(process.env.TENANT_SCHEMA_COVERAGE_EXEMPTIONS_PATH)
     : path.join(backendRoot, 'src/config/tenantSchemaCoverageExemptions.js');
 
-const MIGRATIONS_PATH_PATTERN = /^backend\/migrations\/.+\.c?js$/;
+const MIGRATIONS_PATH_PATTERN = /^apps\/dgfy-migration-runner\/migrations\/.+\.c?js$/;
 
 // --- 1. Changed-file resolution -- mirrors scripts/check-compliance-impact.js's
 //    fallback chain: env override, --staged, GITHUB_BASE_REF merge-base, the
@@ -86,7 +86,7 @@ export const resolveChangedFiles = ({ useStaged = false } = {}) => {
     return unique(files);
 };
 
-// --- 2. tableName -> modelName map, built from backend/src/models/**/*.js -
+// --- 2. tableName -> modelName map, built from apps/dgfy-api/src/models/**/*.js -
 //    Handles both declaration styles used in this repo: flat/tenant models
 //    via `sequelize.define('ModelName', {...}, { tableName: '...' })`, and
 //    every file under models/Landlord/ via `class ModelName extends Model`
@@ -217,7 +217,7 @@ export function checkRegistryCoverage({
                     table,
                     column: null,
                     classification,
-                    message: `${file}: createTable('${table}') is ${classification === 'unmapped' ? 'not mapped to any model and' : 'tenant-scoped and'} has no entry in REQUIRED_TENANT_SCHEMA_TABLES (backend/scripts/sync-tenant-schemas.js). Add a registry entry, or exempt it in backend/src/config/tenantSchemaCoverageExemptions.js with a reason.`
+                    message: `${file}: createTable('${table}') is ${classification === 'unmapped' ? 'not mapped to any model and' : 'tenant-scoped and'} has no entry in REQUIRED_TENANT_SCHEMA_TABLES (apps/dgfy-api/scripts/sync-tenant-schemas.js). Add a registry entry, or exempt it in apps/dgfy-api/src/config/tenantSchemaCoverageExemptions.js with a reason.`
                 });
             }
         }
@@ -238,7 +238,7 @@ export function checkRegistryCoverage({
                     table,
                     column,
                     classification,
-                    message: `${file}: addColumn('${table}', '${column}') is ${classification === 'unmapped' ? 'not mapped to any model and' : 'tenant-scoped and'} has no entry in REQUIRED_TENANT_SCHEMA_COLUMNS (backend/scripts/sync-tenant-schemas.js). Add a registry entry, or exempt it in backend/src/config/tenantSchemaCoverageExemptions.js with a reason.`
+                    message: `${file}: addColumn('${table}', '${column}') is ${classification === 'unmapped' ? 'not mapped to any model and' : 'tenant-scoped and'} has no entry in REQUIRED_TENANT_SCHEMA_COLUMNS (apps/dgfy-api/scripts/sync-tenant-schemas.js). Add a registry entry, or exempt it in apps/dgfy-api/src/config/tenantSchemaCoverageExemptions.js with a reason.`
                 });
             }
         }

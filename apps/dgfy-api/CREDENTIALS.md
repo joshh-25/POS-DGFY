@@ -105,7 +105,7 @@ COLLATE utf8mb4_unicode_ci;
 
 ## Environment Variables Reference
 
-All configuration is stored in `backend/.env` file. The following variables are used:
+All configuration is stored in `apps/dgfy-api/.env` file. The following variables are used:
 
 | Variable | Value | Description |
 |----------|-------|-------------|
@@ -213,7 +213,7 @@ When `MOCK_PAYPAL=true` is set in the backend `.env`:
     ```
 4.  **Edit Backend Secrets:**
     ```bash
-    nano backend/.env
+    nano apps/dgfy-api/.env
     # Update PAYPAL_MODE=live, PAYPAL_CLIENT_ID, and PAYPAL_CLIENT_SECRET
     ```
 5.  **Re-deploy:** `bash scripts/deploy.sh` (This rebuilds the frontend with the new IDs)

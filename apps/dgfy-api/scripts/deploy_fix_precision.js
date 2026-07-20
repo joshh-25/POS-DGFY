@@ -2,7 +2,7 @@
  * PRODUCTION MIGRATION SCRIPT
  * Updates 'product_composition.quantity_required' to DECIMAL(24, 12) across ALL databases.
  * 
- * Usage: node backend/scripts/deploy_fix_precision.js
+ * Usage: node apps/dgfy-api/scripts/deploy_fix_precision.js
  */
 
 import { Sequelize } from 'sequelize';

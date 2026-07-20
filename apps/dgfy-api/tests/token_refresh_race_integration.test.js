@@ -15,7 +15,7 @@
  *          returns 401, and isTokenBlacklisted(rt1) returns true.
  *
  * Prerequisites:
- *   - Redis running on localhost:6379 (REDIS_URL in backend/.env)
+ *   - Redis running on localhost:6379 (REDIS_URL in apps/dgfy-api/.env)
  *   - DB running with the test company token registered
  */
 

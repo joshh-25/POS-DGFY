@@ -59,19 +59,19 @@ The hardening phase must address these common risks:
 The final response or PR evidence must state which hardening items passed, which were intentionally deferred, and which residual risks remain.
 
 ## Guardrails (Automated)
-1. `backend/scripts/check-architecture-guardrails.js`
+1. `apps/dgfy-api/scripts/check-architecture-guardrails.js`
 - validates module structure (`index.js`, `README.md`)
 - blocks non-repository model imports, except explicit allowlist entries
 - blocks use-case imports from legacy services
 - enforces module controller naming (`*Handlers.js`)
 - blocks compatibility/continuity imports in the domain layer (`entities/` and `usecases/`),
   except explicit allowlist entries (`domainCompatLeak` bucket, CMP-03, ADR-0035)
-2. `backend/scripts/check-controller-boundaries.js`
+2. `apps/dgfy-api/scripts/check-controller-boundaries.js`
 - blocks direct model import in controllers
 3. `.github/workflows/ci.yml`
-- executes architecture checks before backend test suite
+- executes architecture checks before the dgfy-api test suite
 - executes the compatibility-seam manifest gate (`npm run check:compat-seams`) in the
-  `test-backend` job (ADR-0035)
+  `test-dgfy-api` job (ADR-0035)
 4. `.husky/pre-commit`
 - runs architecture checks when architecture-sensitive files are staged
 - runs `npm run check:compat-seams -- --staged` when compatibility-seam manifest/script files
@@ -87,9 +87,9 @@ The final response or PR evidence must state which hardening items passed, which
 
 ## Exception Policy
 1. Add temporary exception in:
-- `backend/src/config/architectureModelImportAllowlist.js`, or
-- `backend/src/config/controllerModelImportAllowlist.js`
-- `backend/src/config/architectureGuardrailsAllowlist.js`
+- `apps/dgfy-api/src/config/architectureModelImportAllowlist.js`, or
+- `apps/dgfy-api/src/config/controllerModelImportAllowlist.js`
+- `apps/dgfy-api/src/config/architectureGuardrailsAllowlist.js`
 - `apps/dgfy-api/src/config/architectureGuardrailsAllowlist.js` (includes the
   `ARCHITECTURE_COMPAT_IMPORT_ALLOWLIST` compat-import exception list, empty by default per
   CMP-03, ADR-0035)

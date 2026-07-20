@@ -10,7 +10,7 @@
  *   3. Coverage Metrics — per-category percentage breakdown
  *
  * NOTE: When adding a new tool to aiTools.js, update SYSTEM_FEATURE_MAP below
- * to mark the corresponding feature as covered. Cross-reference: backend/src/config/aiTools.js
+ * to mark the corresponding feature as covered. Cross-reference: apps/dgfy-api/src/config/aiTools.js
  *
  * This service is stateless and read-only. It does NOT mutate any data.
  */

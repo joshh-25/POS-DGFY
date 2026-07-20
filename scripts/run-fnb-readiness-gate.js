@@ -13,22 +13,22 @@ const steps = [
   {
     label: 'Backend F&B operational QA',
     command: npmCommand,
-    args: ['--prefix', 'backend', 'test', '--', 'fnbOperationalReadiness.qa.test.js', '--runInBand']
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'fnbOperationalReadiness.qa.test.js', '--runInBand']
   },
   {
     label: 'Backend F&B use cases',
     command: npmCommand,
-    args: ['--prefix', 'backend', 'test', '--', 'fnbMode.usecases.test.js', '--runInBand']
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'fnbMode.usecases.test.js', '--runInBand']
   },
   {
     label: 'Backend POS F&B checkout contracts',
     command: npmCommand,
-    args: ['--prefix', 'backend', 'test', '--', 'posCheckoutFnbContracts.usecase.test.js', '--runInBand']
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'posCheckoutFnbContracts.usecase.test.js', '--runInBand']
   },
   {
     label: 'Backend Storefront F&B checkout contracts',
     command: npmCommand,
-    args: ['--prefix', 'backend', 'test', '--', 'storeFnbModifiers.usecases.test.js', '--runInBand']
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'storeFnbModifiers.usecases.test.js', '--runInBand']
   },
   {
     label: 'Frontend F&B kitchen queue display contract',

@@ -1,3 +1,0 @@
-export const ARCHITECTURE_MODEL_IMPORT_ALLOWLIST = Object.freeze([]);
-
-export default ARCHITECTURE_MODEL_IMPORT_ALLOWLIST;

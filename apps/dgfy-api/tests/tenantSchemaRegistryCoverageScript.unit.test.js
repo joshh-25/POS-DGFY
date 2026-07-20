@@ -124,7 +124,7 @@ describe('tenant schema registry coverage script contracts', () => {
         it('passes when a tenant-scoped column has a matching registry entry', () => {
             const { violations } = checkRegistryCoverage({
                 migrations: [{
-                    file: 'backend/migrations/x.cjs',
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
                     createdTables: [],
                     addedColumns: [{ table: 'items', column: 'senior_pwd_discount_eligible' }],
                     nonLiteralCalls: []
@@ -140,7 +140,7 @@ describe('tenant schema registry coverage script contracts', () => {
         it('flags a tenant-scoped column with no matching registry entry', () => {
             const { violations } = checkRegistryCoverage({
                 migrations: [{
-                    file: 'backend/migrations/x.cjs',
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
                     createdTables: [],
                     addedColumns: [{ table: 'items', column: 'unregistered_column' }],
                     nonLiteralCalls: []
@@ -158,7 +158,7 @@ describe('tenant schema registry coverage script contracts', () => {
         it('does not flag a landlord-only table', () => {
             const { violations } = checkRegistryCoverage({
                 migrations: [{
-                    file: 'backend/migrations/x.cjs',
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
                     createdTables: [],
                     addedColumns: [{ table: 'tenants', column: 'some_new_column' }],
                     nonLiteralCalls: []
@@ -174,7 +174,7 @@ describe('tenant schema registry coverage script contracts', () => {
         it('only flags the table-level violation when a table is created and column-added in the same migration', () => {
             const { violations } = checkRegistryCoverage({
                 migrations: [{
-                    file: 'backend/migrations/x.cjs',
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
                     createdTables: ['pos_discount_rules'],
                     addedColumns: [{ table: 'pos_discount_rules', column: 'name' }],
                     nonLiteralCalls: []
@@ -192,7 +192,7 @@ describe('tenant schema registry coverage script contracts', () => {
         it('suppresses a violation when the table.column is listed in exemptions', () => {
             const { violations } = checkRegistryCoverage({
                 migrations: [{
-                    file: 'backend/migrations/x.cjs',
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
                     createdTables: [],
                     addedColumns: [{ table: 'items', column: 'unregistered_column' }],
                     nonLiteralCalls: []
@@ -209,7 +209,7 @@ describe('tenant schema registry coverage script contracts', () => {
         it('flags an unmapped table (no model found) fail-closed', () => {
             const { violations } = checkRegistryCoverage({
                 migrations: [{
-                    file: 'backend/migrations/x.cjs',
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
                     createdTables: ['some_unmapped_table'],
                     addedColumns: [],
                     nonLiteralCalls: []
@@ -226,7 +226,7 @@ describe('tenant schema registry coverage script contracts', () => {
         it('surfaces non-literal calls as warnings, not violations', () => {
             const { violations, warnings } = checkRegistryCoverage({
                 migrations: [{
-                    file: 'backend/migrations/x.cjs',
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
                     createdTables: [],
                     addedColumns: [],
                     nonLiteralCalls: [{ fn: 'addColumn', arg: 'tableName', line: 5 }]

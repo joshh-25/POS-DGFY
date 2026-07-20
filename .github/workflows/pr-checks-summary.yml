@@ -14,7 +14,10 @@ on:
       code_quality_result:
         required: true
         type: string
-      backend_build_result:
+      dgfy_api_build_result:
+        required: true
+        type: string
+      migration_runner_build_result:
         required: true
         type: string
       frontend_build_result:
@@ -32,14 +35,15 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Conventional Commits | ${{ inputs.conventional_commits_result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Code Quality | ${{ inputs.code_quality_result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend Build | ${{ inputs.backend_build_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DGFY API Build | ${{ inputs.dgfy_api_build_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Migration Runner Build | ${{ inputs.migration_runner_build_result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Build | ${{ inputs.frontend_build_result }} |" >> $GITHUB_STEP_SUMMARY
-          # TEMP: DGFY API Build row removed while dgfy-api-build-check is disabled in pr-checks.yml
 
       - name: Fail if any check failed
         if: >-
           contains(inputs.conventional_commits_result, 'failure') ||
           contains(inputs.code_quality_result, 'failure') ||
-          contains(inputs.backend_build_result, 'failure') ||
+          contains(inputs.dgfy_api_build_result, 'failure') ||
+          contains(inputs.migration_runner_build_result, 'failure') ||
           contains(inputs.frontend_build_result, 'failure')
         run: exit 1

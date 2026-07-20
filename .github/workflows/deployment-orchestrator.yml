@@ -27,20 +27,36 @@ on:
         type: string
         default: '["ubuntu-latest"]'
     outputs:
-      backend_sha_tag:
-        value: ${{ jobs.backend.outputs.sha_tag }}
       frontend_sha_tag:
         value: ${{ jobs.frontend.outputs.sha_tag }}
       dgfy_api_sha_tag:
         value: ${{ jobs.dgfy-api.outputs.sha_tag }}
+      migration_runner_sha_tag:
+        value: ${{ jobs.dgfy-migration-runner.outputs.sha_tag }}
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  backend:
-    uses: ./.github/workflows/deploy-backend.yml
+  dgfy-api:
+    # The backend, refactored into apps/dgfy-api -- now the source of truth
+    # (backend/ removed). See infrastructure/docker/dgfy-api/Dockerfile.
+    uses: ./.github/workflows/deploy-api.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  dgfy-migration-runner:
+    # One-shot migration image the dgfy-api service depends on at compose-up
+    # (applies Sequelize migrations, then exits). Must be published alongside
+    # dgfy-api -- see infrastructure/docker/dgfy-migration-runner/Dockerfile.
+    uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
@@ -64,21 +80,9 @@ jobs:
       contents: read
       packages: write
 
-  dgfy-api:
-    if: false  # TEMP: disabled, only backend/frontend builds enabled
-    uses: ./.github/workflows/deploy-api.yml
-    with:
-      environment: ${{ inputs.environment }}
-      image_tags: ${{ inputs.image_tags }}
-      runner_labels_json: ${{ inputs.runner_labels_json }}
-    secrets: inherit
-    permissions:
-      contents: read
-      packages: write
-
   publish:
-    needs: [ backend, frontend ]
-    if: inputs.publish && needs.backend.result == 'success' && needs.frontend.result == 'success'
+    needs: [ dgfy-api, dgfy-migration-runner, frontend ]
+    if: inputs.publish && needs.dgfy-api.result == 'success' && needs.dgfy-migration-runner.result == 'success' && needs.frontend.result == 'success'
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}

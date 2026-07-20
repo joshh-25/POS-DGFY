@@ -81,7 +81,7 @@ const extractBacktickRefs = (line) => {
   return refs;
 };
 
-const isPathLikeChecklistRef = (ref) => /^(backend|frontend|docs|scripts)\//.test(ref);
+const isPathLikeChecklistRef = (ref) => /^(apps|backend|frontend|docs|scripts)\//.test(ref);
 
 const validateDgfyChecklist = (errors) => {
   const checklistRelativePath = 'docs/compliance/DGFY Compliance Certification Checklist.md';
@@ -149,7 +149,8 @@ const validateDgfyChecklist = (errors) => {
     });
 
     const hasTestOrDocumentaryEvidence = pathRefs.some((ref) => (
-      /^backend\/tests\//.test(ref)
+      /^apps\/dgfy-api\/tests\//.test(ref)
+      || /^backend\/tests\//.test(ref)
       || /^frontend\/src\/.*__tests__\//.test(ref)
       || /^docs\/compliance\/(evidence|submission)\//.test(ref)
       || ref === 'docs/api/specification.md'

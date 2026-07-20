@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const { URL } = require('url');
-const playwright = require('../backend/node_modules/playwright');
+const playwright = require('../apps/dgfy-api/node_modules/playwright');
 
 const baseUrl = String(process.env.POS_UI_BASE_URL || 'http://localhost:5174').replace(/\/+$/, '');
 const expectedSkupervisorOrigin = String(process.env.POS_UI_EXPECT_SKUPERVISOR_ORIGIN || '').trim()

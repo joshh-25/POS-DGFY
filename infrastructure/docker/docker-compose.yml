@@ -69,37 +69,10 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    image: ghcr.io/sieitzz/dgfy-platform/backend:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DIALECT: mysql
-      REDIS_URL: redis://redis:6379
-      PORT: 5000
-    volumes:
-      - ./data/backend/uploads:/app/uploads
-      - ./data/backend/storage:/app/storage
-      - ./data/backend/logs:/app/logs
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks: [dgfy_internal]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/v1/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
   # One-shot: applies Sequelize migrations (apps/dgfy-migration-runner, the
-  # migration domain extracted from backend/) against the landlord DB, then
-  # exits. dgfy-api below depends on this completing successfully instead of
-  # migrating itself on boot -- see infrastructure/docker/dgfy-migration-runner/.
+  # migration domain that used to live in backend/) against the landlord DB,
+  # then exits. dgfy-api below depends on this completing successfully instead
+  # of migrating itself on boot -- see infrastructure/docker/dgfy-migration-runner/.
   dgfy-migration-runner:
     image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
     restart: "no"
@@ -113,10 +86,10 @@ services:
         condition: service_healthy
     networks: [dgfy_internal]
 
-  # apps/dgfy-api is a copy of backend/ (see docs/ai/CLAUDE.md), minus the
-  # migration domain -- it shares the SAME database as `backend` (no DB_NAME
-  # override: this is an infra-only split, not a new database) and no
-  # longer runs db:migrate itself.
+  # apps/dgfy-api is the backend, refactored into apps/ (see docs/ai/CLAUDE.md)
+  # -- now the single source of truth (backend/ removed). The migration domain
+  # runs separately in dgfy-migration-runner above, so dgfy-api no longer runs
+  # db:migrate itself.
   dgfy-api:
     image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -159,7 +132,7 @@ services:
       retries: 5
 
   # Reverse proxy routing SKUPERVISOR_DOMAIN / POS_DOMAIN /
-  # STOREFRONT_DOMAIN (+STOREFRONT_ALT_DOMAIN) to `backend`/`frontend` by
+  # STOREFRONT_DOMAIN (+STOREFRONT_ALT_DOMAIN) to `dgfy-api`/`frontend` by
   # Host header. Stock image, not custom-built -- nginx.conf.template is
   # bind-mounted and rendered via the official image's built-in envsubst
   # entrypoint step using the environment vars below. See
@@ -184,8 +157,6 @@ services:
       - ./data/certbot/conf:/etc/letsencrypt:ro
       - ./data/certbot/www:/var/www/certbot:ro
     depends_on:
-      backend:
-        condition: service_healthy
       dgfy-api:
         condition: service_healthy
       frontend:

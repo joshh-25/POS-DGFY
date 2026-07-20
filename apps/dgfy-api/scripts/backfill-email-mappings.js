@@ -4,7 +4,7 @@
  * This script iterates through all active tenants, connects to each tenant database,
  * queries all active users, and creates email-tenant mappings in the landlord database.
  *
- * Run with: node backend/scripts/backfill-email-mappings.js
+ * Run with: node apps/dgfy-api/scripts/backfill-email-mappings.js
  */
 
 import dotenv from 'dotenv';

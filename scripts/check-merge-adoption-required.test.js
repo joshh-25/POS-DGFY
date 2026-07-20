@@ -71,7 +71,7 @@ function writePassingManifest(projectRoot, relativePath = 'docs/release/merge-ad
 
 test('recognizes high-risk storefront and customer-flow paths', () => {
   assert.equal(isHighRiskPath('frontend/apps/store/src/StorefrontApp.jsx'), true);
-  assert.equal(isHighRiskPath('backend/src/modules/dgfy/usecases/dgfyCustomerUseCases.js'), true);
+  assert.equal(isHighRiskPath('apps/dgfy-api/src/modules/dgfy/usecases/dgfyCustomerUseCases.js'), true);
   assert.equal(isHighRiskPath('docs/features/DGFY_CUSTOMER_ACCOUNT.md'), true);
   assert.equal(isHighRiskPath('docs/archive/old-note.md'), false);
 });

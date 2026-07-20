@@ -26,7 +26,7 @@
 # Every proxy_pass target below uses `set $var host:port; proxy_pass
 # http://$var;` instead of a bare `proxy_pass http://host:port;`. This is
 # NOT cosmetic: a bare proxy_pass resolves the hostname ONCE per nginx
-# worker (at startup/reload) and never again, but `backend`/`frontend`
+# worker (at startup/reload) and never again, but `dgfy-api`/`frontend`
 # get a NEW internal IP every time docker-compose recreates them (e.g. on
 # every deploy). Without this, nginx keeps proxying to the old, dead IP
 # after every deploy until it happens to be reloaded/restarted for some
@@ -99,8 +99,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     location /api {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -112,8 +112,8 @@ server {
     }
 
     location /uploads {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -161,8 +161,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     location /api {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -174,8 +174,8 @@ server {
     }
 
     location /uploads {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -211,8 +211,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     location /api {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -224,8 +224,8 @@ server {
     }
 
     location /uploads {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

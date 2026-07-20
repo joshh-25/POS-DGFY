@@ -47,12 +47,12 @@ const HIGH_RISK_PATH_PATTERNS = [
   /^frontend\/src\/features\/dgfy\//,
   /^frontend\/src\/services\/dgfyAuthService\.js$/,
   /^frontend\/src\/services\/authService\.js$/,
-  /^backend\/src\/middleware\/storeAuth\.js$/,
-  /^backend\/src\/modules\/dgfy\//,
-  /^backend\/src\/modules\/store\//,
-  /^backend\/src\/modules\/payments?\//,
-  /^backend\/tests\/dgfyCustomer/,
-  /^backend\/tests\/store.*(Customer|Order|Tracking|Checkout|Repository|UseCases)/,
+  /^apps\/dgfy-api\/src\/middleware\/storeAuth\.js$/,
+  /^apps\/dgfy-api\/src\/modules\/dgfy\//,
+  /^apps\/dgfy-api\/src\/modules\/store\//,
+  /^apps\/dgfy-api\/src\/modules\/payments?\//,
+  /^apps\/dgfy-api\/tests\/dgfyCustomer/,
+  /^apps\/dgfy-api\/tests\/store.*(Customer|Order|Tracking|Checkout|Repository|UseCases)/,
   /^docs\/features\/DGFY_CUSTOMER_ACCOUNT\.md$/,
   /^docs\/features\/STOREFRONT_CURRENT_STANDING\.md$/,
   /^docs\/architecture\/adr\/0023-front-facing-dgfy-customer-account\.md$/,
@@ -292,7 +292,7 @@ function unique(values) {
 
 function affectedSurfacesForFile(filePath) {
   const surfaces = [];
-  if (filePath.startsWith('backend/')) surfaces.push('backend');
+  if (filePath.startsWith('apps/dgfy-api/')) surfaces.push('backend');
   if (filePath.startsWith('frontend/')) surfaces.push('frontend');
   if (/(^|\/)migrations?\//i.test(filePath) || /schema|sequelize/i.test(filePath)) surfaces.push('database');
   if (filePath.startsWith('scripts/') || filePath.startsWith('.github/')) surfaces.push('scripts/deploy');
@@ -312,7 +312,7 @@ function sliceKeyForFile(filePath) {
   if (/storefront|apps\/store|tenant-store|catalog/i.test(filePath)) return 'Storefront';
   if (/(^|\/)(pos|POS|terminal|cashier)/.test(filePath)) return 'POS';
   if (/tenant|provision|registration|company/i.test(filePath)) return 'tenant-lifecycle';
-  if (filePath.startsWith('backend/')) return 'backend';
+  if (filePath.startsWith('apps/dgfy-api/')) return 'backend';
   if (filePath.startsWith('frontend/')) return 'frontend';
   if (filePath.startsWith('docs/')) return 'docs';
   if (filePath.startsWith('scripts/') || filePath.startsWith('.github/')) return 'release-automation';

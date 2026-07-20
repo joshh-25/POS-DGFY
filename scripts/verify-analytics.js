@@ -2,12 +2,12 @@
 // Basic Verification Script for Analytics Service
 // Usage: node scripts/verify-analytics.js
 
-import sequelize from '../backend/src/config/database.js';
-import * as analyticsService from '../backend/src/services/analyticsService.js';
-import Item from '../backend/src/models/Item.js';
-import StockMovement from '../backend/src/models/StockMovement.js';
-import Supplier from '../backend/src/models/Supplier.js';
-import SupplierItem from '../backend/src/models/SupplierItem.js';
+import sequelize from '../apps/dgfy-api/src/config/database.js';
+import * as analyticsService from '../apps/dgfy-api/src/services/analyticsService.js';
+import Item from '../apps/dgfy-api/src/models/Item.js';
+import StockMovement from '../apps/dgfy-api/src/models/StockMovement.js';
+import Supplier from '../apps/dgfy-api/src/models/Supplier.js';
+import SupplierItem from '../apps/dgfy-api/src/models/SupplierItem.js';
 
 // Helper to create test data
 async function setupTestData() {

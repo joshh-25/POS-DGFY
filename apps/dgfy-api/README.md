@@ -56,7 +56,7 @@ npm run dev
 ## Project Structure
 
 ```
-backend/
+apps/dgfy-api/
 ├── src/
 │   ├── config/          # Configuration files
 │   ├── models/          # Sequelize models

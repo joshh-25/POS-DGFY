@@ -2,7 +2,7 @@
  * voidMovement Test Suite
  * Tests the voidMovement function in stockMovementService.js
  *
- * Run with: npm test -- backend/tests/voidMovement.test.js
+ * Run with: npm test -- apps/dgfy-api/tests/voidMovement.test.js
  */
 
 import { createStockMovement, voidMovement } from '../src/services/stockMovementService.js';

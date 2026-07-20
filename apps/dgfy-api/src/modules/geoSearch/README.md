@@ -30,8 +30,8 @@ Coordinates are snapped to a 0.01° grid (~1.1 km cells). TTL defaults to 90 s (
 
 ## Related
 
-- Route: `backend/src/routes/geoSearch.js`
-- Validator: `backend/src/validators/geoSearchValidator.js`
-- Worker: `backend/src/workers/geoInventoryWorker.js`
-- Models: `backend/src/models/Landlord/GeoItem.js`, `GeoStoreItem.js`, `GeoItemAlias.js`
+- Route: `apps/dgfy-api/src/routes/geoSearch.js`
+- Validator: `apps/dgfy-api/src/validators/geoSearchValidator.js`
+- Worker: `apps/dgfy-api/src/workers/geoInventoryWorker.js`
+- Models: `apps/dgfy-api/src/models/Landlord/GeoItem.js`, `GeoStoreItem.js`, `GeoItemAlias.js`
 - Feature docs: `docs/features/spatial-based-search/GEOSPATIAL_SEARCH.md`

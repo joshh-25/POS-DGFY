@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs/promises');
 const path = require('path');
-const playwright = require('../backend/node_modules/playwright');
+const playwright = require('../apps/dgfy-api/node_modules/playwright');
 
 const urls = {
   pos: String(process.env.DGFY_ACCESS_POS_URL || 'http://localhost:5174/terminal'),

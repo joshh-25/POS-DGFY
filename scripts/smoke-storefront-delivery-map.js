@@ -2,7 +2,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const childProcess = require('child_process');
-const playwright = require('../backend/node_modules/playwright');
+const playwright = require('../apps/dgfy-api/node_modules/playwright');
 
 const managedServerPort = Number(process.env.STOREFRONT_DELIVERY_MAP_PORT || 5185);
 const baseUrl = String(process.env.STOREFRONT_DELIVERY_MAP_URL || `http://127.0.0.1:${managedServerPort}/tenant-store/map-qa-cafe/order`);

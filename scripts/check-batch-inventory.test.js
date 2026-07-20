@@ -135,7 +135,7 @@ test('rejects generated placeholder summaries', () => {
 test('payment-sensitive inventory remains flagged for separate controller authorization', () => {
   const root = makeRepo();
   try {
-    writeFile(root, 'backend/src/modules/payments/example.js', 'module.exports = true;\n');
+    writeFile(root, 'apps/dgfy-api/src/modules/payments/example.js', 'module.exports = true;\n');
     runGit(root, ['add', '.']);
     runGit(root, ['commit', '-m', 'payment']);
     const reviewedManifestPath = createReviewedManifest(root);

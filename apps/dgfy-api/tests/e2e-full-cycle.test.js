@@ -7,7 +7,7 @@
  * 4. Void a Movement
  * 5. Final Verification
  *
- * Run with: npm test -- backend/tests/e2e-full-cycle.test.js
+ * Run with: npm test -- apps/dgfy-api/tests/e2e-full-cycle.test.js
  */
 
 import { createPurchaseOrder, receivePurchaseOrder } from '../src/services/purchaseOrderService.js';

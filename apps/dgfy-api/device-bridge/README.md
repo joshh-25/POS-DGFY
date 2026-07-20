@@ -53,7 +53,7 @@ It is intentionally separate from the main backend API process.
 Install the bridge dependencies separately from the main backend API:
 
 ```bash
-cd backend/device-bridge
+cd apps/dgfy-api/device-bridge
 npm ci
 ```
 
@@ -119,7 +119,7 @@ folder:
 - `@node-escpos/usb-adapter`
 - later optional: `@node-escpos/network`
 
-These hardware dependencies are intentionally scoped to `backend/device-bridge`
+These hardware dependencies are intentionally scoped to `apps/dgfy-api/device-bridge`
 instead of the deployable backend API dependency tree. The bridge is a local
 POS hardware helper and is not installed by the production VPS backend deploy.
 

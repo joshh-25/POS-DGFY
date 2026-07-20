@@ -11,7 +11,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-BACKEND_DIR="$PROJECT_ROOT/backend"
+BACKEND_DIR="$PROJECT_ROOT/apps/dgfy-api"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 ENV_FILE="$BACKEND_DIR/.env"
 
@@ -43,7 +43,7 @@ fi
 if $_backend_ok; then
   echo "   ✅ Backend   — node_modules present"
 else
-  echo "   ⚠️  Backend   — missing  →  cd backend && npm install"
+  echo "   ⚠️  Backend   — missing  →  cd apps/dgfy-api && npm install"
 fi
 
 if $_root_ok; then
@@ -57,10 +57,10 @@ echo ""
 echo "🔑 §2 Environment Variables"
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo "   ❌ backend/.env — NOT FOUND"
-  echo "      ▶  Copy backend/.env.example → backend/.env and fill in values"
+  echo "   ❌ apps/dgfy-api/.env — NOT FOUND"
+  echo "      ▶  Copy apps/dgfy-api/.env.example → apps/dgfy-api/.env and fill in values"
 else
-  echo "   ✅ backend/.env — found"
+  echo "   ✅ apps/dgfy-api/.env — found"
 
   # Helper: check a key in the .env file (non-empty value)
   _env_ok() {
@@ -236,15 +236,15 @@ if command -v git &>/dev/null; then
     echo "$_recent" | grep -q "^frontend/src/services/" && echo "   🔌 API service layer changes  — ref: frontend/src/services/"
 
     # Backend
-    echo "$_recent" | grep -q "^backend/src/routes/"      && echo "   🛣️  Backend route changes      — ref: backend/src/routes/"
-    echo "$_recent" | grep -q "^backend/src/controllers/" && echo "   🎮 Backend controller changes — ref: backend/src/controllers/"
-    echo "$_recent" | grep -q "^backend/src/models/"      && echo "   🗂️  Backend model changes      — ref: backend/src/models/"
-    echo "$_recent" | grep -q "^backend/src/services/"    && echo "   ⚙️  Backend service changes    — ref: backend/src/services/"
-    echo "$_recent" | grep -q "^backend/migrations/"      && echo "   🗃️  DB migrations changed      — run: cd backend && npx sequelize-cli db:migrate"
-    echo "$_recent" | grep -q "^backend/tests/"           && echo "   🧪 Test changes               — run: cd backend && npm test"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/routes/"      && echo "   🛣️  Backend route changes      — ref: backend/src/routes/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/controllers/" && echo "   🎮 Backend controller changes — ref: backend/src/controllers/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/models/"      && echo "   🗂️  Backend model changes      — ref: backend/src/models/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/services/"    && echo "   ⚙️  Backend service changes    — ref: backend/src/services/"
+    echo "$_recent" | grep -q "^apps/dgfy-migration-runner/migrations/"      && echo "   🗃️  DB migrations changed      — run: cd apps/dgfy-migration-runner && npx sequelize-cli db:migrate"
+    echo "$_recent" | grep -q "^apps/dgfy-api/tests/"           && echo "   🧪 Test changes               — run: cd apps/dgfy-api && npm test"
 
     # Cross-cutting concerns
-    echo "$_recent" | grep -qE "^backend/src/models/|^frontend/Entities/" && \
+    echo "$_recent" | grep -qE "^apps/dgfy-api/src/models/|^frontend/Entities/" && \
       echo "   ⚠️  Entity/model changes — ensure frontend & backend schemas are in sync"
 
     # Docs / Audit
@@ -262,7 +262,7 @@ echo "⚡ Quick Commands"
 echo ""
 echo "  Development:"
 echo "    npm run dev              # Start frontend + backend (concurrently)"
-echo "    npm run dev:backend      # Backend only  (port 5000)"
+echo "    npm run dev:backend      # dgfy-api only  (port 5100)"
 echo "    npm run dev:frontend     # Frontend only (port 5173)"
 echo ""
 echo "  Production (PM2):"
@@ -272,11 +272,11 @@ echo "    pm2 logs                         # Stream logs"
 echo "    ./scripts/deploy.sh              # Full production deploy"
 echo ""
 echo "  Database:"
-echo "    cd backend && npx sequelize-cli db:migrate         # Run migrations"
-echo "    node backend/scripts/sync-tenant-schemas.js        # Sync tenants"
+echo "    cd apps/dgfy-migration-runner && npx sequelize-cli db:migrate         # Run migrations"
+echo "    node apps/dgfy-api/scripts/sync-tenant-schemas.js        # Sync tenants"
 echo ""
 echo "  Testing:"
-echo "    cd backend && npm test                             # All backend tests"
+echo "    cd apps/dgfy-api && npm test                             # All backend tests"
 echo ""
 echo "  Workflows:"
 echo "    /health          # PM2 + API health check"

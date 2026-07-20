@@ -1,6 +1,6 @@
 /**
  * One-time script to calculate and populate nesting_level for all existing products of ALL tenants.
- * Run after database migrations: node backend/src/scripts/calculateNestingLevels.js
+ * Run after database migrations: node apps/dgfy-api/src/scripts/calculateNestingLevels.js
  */
 
 import db from '../models/index.js';

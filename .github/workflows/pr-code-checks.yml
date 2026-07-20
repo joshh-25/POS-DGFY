@@ -28,20 +28,20 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            backend/package-lock.json
+            apps/dgfy-api/package-lock.json
             frontend/package-lock.json
 
       - name: Install root dependencies
         run: npm ci
 
-      - name: Install backend dependencies
-        run: npm --prefix backend ci
+      - name: Install dgfy-api dependencies
+        run: npm --prefix apps/dgfy-api ci
 
       - name: Install frontend dependencies
         run: npm --prefix frontend ci
 
-      - name: Lint backend
-        run: npm --prefix backend run lint
+      - name: Lint dgfy-api
+        run: npm --prefix apps/dgfy-api run lint
 
       - name: Lint frontend
         run: npm --prefix frontend run lint

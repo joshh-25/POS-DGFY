@@ -32,9 +32,15 @@ jobs:
     with:
       runner_labels_json: *runner_labels_json
 
-  backend-build-check:
+  dgfy-api-build-check:
     needs: [conventional-commits, code-quality]
-    uses: ./.github/workflows/pr-backend-build-checks.yml
+    uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
+    with:
+      runner_labels_json: *runner_labels_json
+
+  dgfy-migration-runner-build-check:
+    needs: [conventional-commits, code-quality]
+    uses: ./.github/workflows/pr-migration-runner-build-checks.yml
     with:
       runner_labels_json: *runner_labels_json
 
@@ -44,20 +50,14 @@ jobs:
     with:
       runner_labels_json: *runner_labels_json
 
-  # TEMP: Not necessary for staging and main as of the moment
-  # dgfy-api-build-check:
-  #   needs: [conventional-commits, code-quality]
-  #   uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
-  #   with:
-  #     runner_labels_json: *runner_labels_json
-
   summary:
-    needs: [conventional-commits, code-quality, backend-build-check, frontend-build-check]
+    needs: [conventional-commits, code-quality, dgfy-api-build-check, dgfy-migration-runner-build-check, frontend-build-check]
     if: always()
     uses: ./.github/workflows/pr-checks-summary.yml
     with:
       runner_labels_json: *runner_labels_json
       conventional_commits_result: ${{ needs.conventional-commits.result }}
       code_quality_result: ${{ needs.code-quality.result }}
-      backend_build_result: ${{ needs.backend-build-check.result }}
+      dgfy_api_build_result: ${{ needs.dgfy-api-build-check.result }}
+      migration_runner_build_result: ${{ needs.dgfy-migration-runner-build-check.result }}
       frontend_build_result: ${{ needs.frontend-build-check.result }}

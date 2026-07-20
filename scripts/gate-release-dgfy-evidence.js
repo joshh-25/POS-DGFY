@@ -33,7 +33,7 @@ const nodeCmd = 'node';
  * touching the standalone API app, the migration runner, or the legacy
  * backend's Clean Architecture modules directory.
  */
-const BOUNDARY_PREFIXES = ['apps/dgfy-api/', 'apps/dgfy-migration-runner/', 'backend/src/modules/'];
+const BOUNDARY_PREFIXES = ['apps/dgfy-api/', 'apps/dgfy-migration-runner/'];
 
 function runCommand(command, args) {
   const result = spawnSync(command, args, {
