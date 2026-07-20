@@ -1367,6 +1367,7 @@ const createEmptyPosItemForm = () => ({
   cost_per_unit: '',
   current_stock: '0',
   pos_always_available: false,
+  pos_best_seller_mode: 'auto',
   senior_pwd_discount_eligible: false,
   description: '',
   sku_code: '',
@@ -1908,7 +1909,7 @@ function ItemsWorkspace({
     }
   };
 
-  const runPostCreateStages = async ({ itemId, itemName, imageFiles, posAlwaysAvailable }) => {
+  const runPostCreateStages = async ({ itemId, itemName, imageFiles, posAlwaysAvailable, posBestSellerMode = 'auto' }) => {
 
     const failedStages = [];
     let barcodeCode = '';
@@ -1947,6 +1948,11 @@ function ItemsWorkspace({
     await runStage('always_available', 'Always Available', () => updatePosCatalogOverride(itemId, {
       pos_always_available: posAlwaysAvailable === true
     }));
+    await runStage('best_seller_mode', 'Best Seller', () => updatePosCatalogOverride(itemId, {
+      pos_best_seller_mode: ['force', 'never'].includes(String(posBestSellerMode || '').toLowerCase())
+        ? String(posBestSellerMode).toLowerCase()
+        : 'auto'
+    }));
     await runStage('pos_visibility', 'POS visibility', () => updatePosCatalogOverride(itemId, {
       pos_visible: true
     }));
@@ -1957,6 +1963,7 @@ function ItemsWorkspace({
         name: itemName,
         imageFiles,
         posAlwaysAvailable,
+        posBestSellerMode,
         failedStages
       });
       const labels = failedStages.map((stage) => stage.label).join(', ');
@@ -2077,6 +2084,7 @@ function ItemsWorkspace({
           itemName: recoveryName,
           imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
           posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
+          posBestSellerMode: pendingCreateRecovery.posBestSellerMode,
         });
         await finalizeCreatedItem({
           barcode: result.barcodeCode,
@@ -2105,6 +2113,7 @@ function ItemsWorkspace({
         itemName: name,
         imageFiles: selectedImageFiles,
         posAlwaysAvailable: createForm.pos_always_available === true,
+        posBestSellerMode: createForm.pos_best_seller_mode,
       });
 
       await finalizeCreatedItem({ barcode: result.barcodeCode });
@@ -2719,6 +2728,30 @@ function ItemsWorkspace({
                       />
                     </div>
 
+                    {/* Best Seller toggle - manual on/off, mirroring the Always Available switch
+                        above. Turning it on force-tags the item; turning it off defers back to
+                        the auto sales-ranking policy (there is no manual "never" state here).
+                        Mobile-only (sm:hidden); the field/state still exists and submits
+                        normally on desktop/tablet, it's just not surfaced there so desktop's
+                        create form is visually unchanged. */}
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:hidden">
+                      <div className="min-w-0">
+                        <label htmlFor="pos-items-create-best-seller-mode" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                          Best Seller
+                        </label>
+                        <span className="block text-[10px] text-[#64748B]">Manually tag this item as a Best Seller.</span>
+                      </div>
+                      <Switch
+                        id="pos-items-create-best-seller-mode"
+                        checked={createForm.pos_best_seller_mode === 'force'}
+                        onCheckedChange={(checked) => setCreateForm((current) => ({
+                          ...current,
+                          pos_best_seller_mode: checked ? 'force' : 'never'
+                        }))}
+                        disabled={creatingItem || postCreateSaving}
+                      />
+                    </div>
+
                     {/* Selling Price */}
                     <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
@@ -3027,25 +3060,27 @@ function ItemsWorkspace({
                       />
                     </div>
 
-                    <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
-                      <label htmlFor="pos-items-edit-best-seller-mode" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                        Best Seller
-                      </label>
-                      <select
+                    {/* Best Seller toggle - manual on/off, mirroring the Always Available switch
+                        above. Turning it on force-tags the item; turning it off defers back to
+                        the auto sales-ranking policy (there is no manual "never" state here).
+                        Mobile-only (sm:hidden); the field/state still exists and submits
+                        normally on desktop/tablet, it's just not surfaced there. */}
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:hidden">
+                      <div className="min-w-0">
+                        <label htmlFor="pos-items-edit-best-seller-mode" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                          Best Seller
+                        </label>
+                        <span className="block text-[10px] text-[#64748B]">Manually tag this item as a Best Seller.</span>
+                      </div>
+                      <Switch
                         id="pos-items-edit-best-seller-mode"
-                        value={editForm.pos_best_seller_mode}
-                        onChange={(event) => setEditForm((current) => ({
+                        checked={editForm.pos_best_seller_mode === 'force'}
+                        onCheckedChange={(checked) => setEditForm((current) => ({
                           ...current,
-                          pos_best_seller_mode: event.target.value
+                          pos_best_seller_mode: checked ? 'force' : 'never'
                         }))}
-                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         disabled={savingItem || persistingEditAssets}
-                      >
-                        <option value="auto">Auto from paid sales</option>
-                        <option value="force">Always tag as Best Seller</option>
-                        <option value="never">Never tag as Best Seller</option>
-                      </select>
-                      <span className="block text-[10px] text-[#64748B]">Auto follows the POS Setup sales-ranking policy.</span>
+                      />
                     </div>
 
                     <div className="space-y-1.5">
@@ -3668,7 +3703,8 @@ function SettingsWorkspace({
     posOpenStatus: true,
     posWaitTimeMinutes: 15,
     inventoryLowStockDisplayThreshold: 5,
-    bestSellerAutoTaggingEnabled: true
+    bestSellerAutoTaggingEnabled: true,
+    dailyTopBestSellerEnabled: false
   });
   const [storefrontForm, setStorefrontForm] = useState({
     storeIsVisible: false,
@@ -4036,7 +4072,8 @@ function SettingsWorkspace({
         posOpenStatus: settingsPayload?.pos_open_status?.value ?? true,
         posWaitTimeMinutes: Number(settingsPayload?.pos_wait_time_minutes?.value ?? 15) || 15,
         inventoryLowStockDisplayThreshold: Number(settingsPayload?.inventory_low_stock_display_threshold?.value ?? 5) || 5,
-        bestSellerAutoTaggingEnabled: settingsPayload?.pos_best_seller_settings?.value?.enabled !== false
+        bestSellerAutoTaggingEnabled: settingsPayload?.pos_best_seller_settings?.value?.enabled !== false,
+        dailyTopBestSellerEnabled: settingsPayload?.pos_best_seller_settings?.value?.daily_top_enabled === true
       });
       setStorefrontForm({
         storeIsVisible: settingsPayload?.store_is_visible?.value === true,
@@ -4480,7 +4517,8 @@ function SettingsWorkspace({
         pos_best_seller_settings: {
           enabled: posForm.bestSellerAutoTaggingEnabled === true,
           lookback_days: 30,
-          top_limit: 3
+          top_limit: 3,
+          daily_top_enabled: posForm.dailyTopBestSellerEnabled === true
         }
       });
       await Promise.all([
@@ -5941,20 +5979,37 @@ function SettingsWorkspace({
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-[13px] font-black text-[#0F172A]">Best Seller Auto-Tagging</p>
-                <p className="mt-1 text-[12px] font-medium text-[#64748B]">Tag the top 3 items by completed paid quantity from the previous 30 days.</p>
+            <p className="text-[13px] font-black text-[#0F172A]">Best Seller Autotagging Settings</p>
+            <div className="mt-3 space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[12px] font-medium text-[#64748B]">Tag the top 3 items by completed paid quantity from the previous 30 days.</p>
+                </div>
+                <Switch
+                  id="pos-best-seller-auto-tagging"
+                  checked={posForm.bestSellerAutoTaggingEnabled === true}
+                  onCheckedChange={(checked) => setPosForm((current) => ({
+                    ...current,
+                    bestSellerAutoTaggingEnabled: Boolean(checked)
+                  }))}
+                  disabled={locked || loading}
+                />
               </div>
-              <Switch
-                id="pos-best-seller-auto-tagging"
-                checked={posForm.bestSellerAutoTaggingEnabled === true}
-                onCheckedChange={(checked) => setPosForm((current) => ({
-                  ...current,
-                  bestSellerAutoTaggingEnabled: Boolean(checked)
-                }))}
-                disabled={locked || loading}
-              />
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[12px] font-medium text-[#64748B]">Tag the most-bought item by completed paid quantity from the previous day.</p>
+                </div>
+                <Switch
+                  id="pos-best-seller-daily-auto-tagging"
+                  checked={posForm.dailyTopBestSellerEnabled === true}
+                  onCheckedChange={(checked) => setPosForm((current) => ({
+                    ...current,
+                    dailyTopBestSellerEnabled: Boolean(checked)
+                  }))}
+                  disabled={locked || loading}
+                />
+              </div>
             </div>
           </div>
       </div>
