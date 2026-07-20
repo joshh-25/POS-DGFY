@@ -208,6 +208,7 @@ import {
   TILING_SERVER,
   tileTransformRequest
 } from './app/runtime/storefrontMapRuntime.js';
+import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../src/components/maps/mapLibreShared.js';
 import { createCustomerIdentityRenderers } from './features/checkout/renderers/customerIdentityRenderers.jsx';
 import { createAddressPinEditorRenderer } from './features/locations/renderers/addressPinEditorRenderer.jsx';
 import {
@@ -1018,38 +1019,6 @@ function DeliveryPinMap({
   const [mapUnavailable, setMapUnavailable] = useState(false);
   const resolvedHeight = typeof height === 'number' ? `${height}px` : String(height || '260px');
 
-  const scheduleMapResize = useCallback((reason = 'layout') => {
-    const map = mapRef.current;
-    const frame = frameRef.current;
-    if (!map || !frame) return undefined;
-
-    const runResize = () => {
-      const rect = frame.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      const canvas = map.getCanvas?.();
-      const canvasContainer = map.getCanvasContainer?.();
-      if (canvasContainer?.style) {
-        canvasContainer.style.width = '100%';
-        canvasContainer.style.height = '100%';
-      }
-      if (canvas?.style) {
-        canvas.style.zIndex = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-      }
-      map.resize();
-    };
-
-    const rafId = window.requestAnimationFrame(runResize);
-    const earlyTimer = window.setTimeout(runResize, reason === 'visible' ? 60 : 40);
-    const settleTimer = window.setTimeout(runResize, 220);
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      window.clearTimeout(earlyTimer);
-      window.clearTimeout(settleTimer);
-    };
-  }, []);
-
   useEffect(() => {
     if (!ref.current || mapRef.current) return undefined;
     let map;
@@ -1066,23 +1035,11 @@ function DeliveryPinMap({
       window.setTimeout(() => setMapUnavailable(true), 0);
       return undefined;
     }
-    const canvasContainer = map.getCanvasContainer?.();
-    if (canvasContainer?.style) {
-      canvasContainer.style.width = '100%';
-      canvasContainer.style.height = '100%';
-    }
-    const canvas = map.getCanvas();
-    canvas.style.zIndex = '0';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    applyMapLibreCanvasSizing(map);
     map.on('error', (e) => console.error('[DeliveryPinMap] MapLibre error', e));
-    map.on('load', () => {
-      scheduleMapResize('load');
-    });
+    map.on('load', () => safeResizeMap(map, ref.current));
     mapRef.current = map;
-    const cleanupInitialResize = scheduleMapResize('init');
     return () => {
-      cleanupInitialResize?.();
       if (markerRef.current) {
         markerRef.current.remove();
         markerRef.current = null;
@@ -1090,7 +1047,7 @@ function DeliveryPinMap({
       map.remove();
       mapRef.current = null;
     };
-  }, [scheduleMapResize]);
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1150,23 +1107,17 @@ function DeliveryPinMap({
   }, [disabled, onPinChange]);
 
   useEffect(() => {
-    if (!mapRef.current || !frameRef.current) return undefined;
-    const cleanupTasks = [];
-    cleanupTasks.push(scheduleMapResize('visible'));
+    const map = mapRef.current;
+    if (!map || !ref.current) return undefined;
+    safeResizeMap(map, ref.current);
 
     let resizeObserver = null;
     if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        const cleanup = scheduleMapResize('observer');
-        if (cleanup) cleanupTasks.push(cleanup);
-      });
-      resizeObserver.observe(frameRef.current);
+      resizeObserver = new ResizeObserver(() => safeResizeMap(map, ref.current));
+      resizeObserver.observe(ref.current);
     }
 
-    const handleViewportResize = () => {
-      const cleanup = scheduleMapResize('viewport');
-      if (cleanup) cleanupTasks.push(cleanup);
-    };
+    const handleViewportResize = () => safeResizeMap(map, ref.current);
     window.addEventListener('resize', handleViewportResize);
     window.addEventListener('orientationchange', handleViewportResize);
     window.visualViewport?.addEventListener?.('resize', handleViewportResize);
@@ -1176,9 +1127,8 @@ function DeliveryPinMap({
       window.removeEventListener('resize', handleViewportResize);
       window.removeEventListener('orientationchange', handleViewportResize);
       window.visualViewport?.removeEventListener?.('resize', handleViewportResize);
-      cleanupTasks.splice(0).forEach((cleanup) => cleanup?.());
     };
-  }, [disabled, resolvedHeight, scheduleMapResize]);
+  }, [disabled, resolvedHeight]);
 
   if (mapUnavailable) {
     return (

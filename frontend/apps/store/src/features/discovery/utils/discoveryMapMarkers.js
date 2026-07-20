@@ -25,7 +25,7 @@ export const makePinElement = (mode, selected = false, ariaLabel = 'Store marker
 
 export const makeUserLocationElement = () => {
   const el = document.createElement('div');
-  el.style.cssText = 'width:34px;height:42px;display:flex;align-items:flex-start;justify-content:center;filter:drop-shadow(0 8px 16px rgba(15,23,42,.24));transform:translateY(-4px);cursor:grab;';
+  el.style.cssText = 'width:34px;height:42px;display:flex;align-items:flex-start;justify-content:center;filter:drop-shadow(0 8px 16px rgba(15,23,42,.24));cursor:grab;';
   el.innerHTML = `
     <svg width="34" height="42" viewBox="0 0 34 42" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <path d="M17 1.75C9.54416 1.75 3.5 7.79416 3.5 15.25C3.5 25.1401 15.3627 37.2171 16.1881 38.0441C16.6318 38.4878 17.3682 38.4878 17.8119 38.0441C18.6373 37.2171 30.5 25.1401 30.5 15.25C30.5 7.79416 24.4558 1.75 17 1.75Z" fill="#2563EB" stroke="white" stroke-width="2.2"/>
