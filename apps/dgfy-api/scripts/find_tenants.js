@@ -1,5 +1,5 @@
+import { Tenant } from '../src/models/index.js';
 
-const { Tenant } = require('./apps/dgfy-api/src/models/index.js');
 Tenant.findAll({ raw: true })
     .then(tenants => {
         console.log('--- TENANTS ---');

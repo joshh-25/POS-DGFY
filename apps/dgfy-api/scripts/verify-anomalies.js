@@ -2,10 +2,10 @@
 // Verification Script for Anomaly Detection
 // Usage: node scripts/verify-anomalies.js
 
-import sequelize from '../apps/dgfy-api/src/config/database.js';
-import * as analyticsService from '../apps/dgfy-api/src/services/analyticsService.js';
-import Item from '../apps/dgfy-api/src/models/Item.js';
-import StockMovement from '../apps/dgfy-api/src/models/StockMovement.js';
+import sequelize from '../src/config/database.js';
+import * as analyticsService from '../src/services/analyticsService.js';
+import Item from '../src/models/Item.js';
+import StockMovement from '../src/models/StockMovement.js';
 
 async function setupTestData() {
     console.log('--- Setting up Test Data ---');
