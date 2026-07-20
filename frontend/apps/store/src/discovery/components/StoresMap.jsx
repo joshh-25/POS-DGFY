@@ -42,9 +42,7 @@ export function StoresMap({
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef([]);
   const popupsRef = useRef([]);
-  const userMarkerRef = useRef(null);
   const layerEventCleanupRef = useRef(null);
   const onSelectStoreRef = useRef(onSelectStore);
   const onSelectClusterRef = useRef(onSelectCluster);
@@ -122,21 +120,9 @@ export function StoresMap({
       }
     });
     popupsRef.current = [];
-    markersRef.current.forEach((marker) => {
-      try { marker?.remove?.(); } catch {
-        // Cleanup is best-effort when MapLibre has already detached the marker.
-      }
-    });
-    markersRef.current = [];
     if (typeof layerEventCleanupRef.current === 'function') {
       layerEventCleanupRef.current();
       layerEventCleanupRef.current = null;
-    }
-    if (userMarkerRef.current) {
-      try { userMarkerRef.current.remove?.(); } catch {
-        // Cleanup is best-effort when MapLibre has already detached the user marker.
-      }
-      userMarkerRef.current = null;
     }
   }, []);
 
@@ -193,14 +179,6 @@ export function StoresMap({
       }
     });
     popupsRef.current = retainedPopups;
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-    if (userMarkerRef.current) {
-      try { userMarkerRef.current.remove?.(); } catch {
-        // Cleanup is best-effort when migrating user location to map layers.
-      }
-      userMarkerRef.current = null;
-    }
     if (typeof layerEventCleanupRef.current === 'function') {
       layerEventCleanupRef.current();
       layerEventCleanupRef.current = null;
