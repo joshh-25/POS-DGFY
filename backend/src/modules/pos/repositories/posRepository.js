@@ -41,6 +41,7 @@ const TERMINAL_REGISTRY_MODE_VALUES = new Set(['warn', 'enforce']);
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const POS_BEST_SELLER_SETTINGS_KEY = 'pos_best_seller_settings';
 const DEFAULT_BEST_SELLER_SETTINGS = Object.freeze({ enabled: true, lookback_days: 30, top_limit: 3 });
+const DAILY_BEST_SELLER_SETTINGS = Object.freeze({ lookback_days: 1, top_limit: 1 });
 const LOW_CONFIDENCE_BACKFILL_SOURCES = new Set(['active_location_fallback', 'no_resolution']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const parseJsonLoosely = (value) => {
@@ -155,7 +156,8 @@ const normalizeBestSellerSettings = (value) => {
     return {
         enabled: parsed?.enabled !== false,
         lookback_days: DEFAULT_BEST_SELLER_SETTINGS.lookback_days,
-        top_limit: DEFAULT_BEST_SELLER_SETTINGS.top_limit
+        top_limit: DEFAULT_BEST_SELLER_SETTINGS.top_limit,
+        daily_top_enabled: parsed?.daily_top_enabled === true
     };
 };
 
@@ -323,6 +325,44 @@ const loadCatalogOverridesMap = async (itemIds = [], options = {}) => {
     }
 };
 
+const queryTopSellingItemIds = async ({
+    normalizedItemIds,
+    PosTransaction,
+    PosTransactionLine,
+    sequelize,
+    lookbackDays,
+    topLimit,
+    transaction
+}) => {
+    const since = new Date(Date.now() - (lookbackDays * 24 * 60 * 60 * 1000));
+    const rows = await PosTransactionLine.findAll({
+        where: { item_id: { [Op.in]: normalizedItemIds } },
+        include: [{
+            model: PosTransaction,
+            as: 'transaction',
+            attributes: [],
+            required: true,
+            where: {
+                status: 'completed',
+                payment_status: 'paid',
+                created_at: { [Op.gte]: since }
+            }
+        }],
+        attributes: [
+            'item_id',
+            [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('PosTransactionLine.quantity')), 0), 'sold_quantity']
+        ],
+        group: ['PosTransactionLine.item_id'],
+        order: [[sequelize.literal('sold_quantity'), 'DESC'], ['item_id', 'ASC']],
+        limit: topLimit,
+        raw: true,
+        transaction
+    });
+    return rows
+        .filter((row) => Number(row?.sold_quantity || 0) > 0)
+        .map((row) => Number(row.item_id));
+};
+
 const loadBestSellerItemIds = async (itemIds = [], options = {}) => {
     const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
         .map((itemId) => Number.parseInt(itemId, 10))
@@ -344,35 +384,28 @@ const loadBestSellerItemIds = async (itemIds = [], options = {}) => {
         attributes: ['setting_value']
     });
     const settings = normalizeBestSellerSettings(settingsRow?.setting_value);
-    if (settings.enabled !== true) return new Set();
+    if (settings.enabled !== true && settings.daily_top_enabled !== true) return new Set();
 
-    const since = new Date(Date.now() - (settings.lookback_days * 24 * 60 * 60 * 1000));
-    const rows = await PosTransactionLine.findAll({
-        where: { item_id: { [Op.in]: normalizedItemIds } },
-        include: [{
-            model: PosTransaction,
-            as: 'transaction',
-            attributes: [],
-            required: true,
-            where: {
-                status: 'completed',
-                payment_status: 'paid',
-                created_at: { [Op.gte]: since }
-            }
-        }],
-        attributes: [
-            'item_id',
-            [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('PosTransactionLine.quantity')), 0), 'sold_quantity']
-        ],
-        group: ['PosTransactionLine.item_id'],
-        order: [[sequelize.literal('sold_quantity'), 'DESC'], ['item_id', 'ASC']],
-        limit: settings.top_limit,
-        raw: true,
-        transaction: options.transaction
-    });
-    return new Set(rows
-        .filter((row) => Number(row?.sold_quantity || 0) > 0)
-        .map((row) => Number(row.item_id)));
+    const queryArgs = { normalizedItemIds, PosTransaction, PosTransactionLine, sequelize, transaction: options.transaction };
+    const bestSellerIds = new Set();
+
+    if (settings.enabled === true) {
+        (await queryTopSellingItemIds({
+            ...queryArgs,
+            lookbackDays: settings.lookback_days,
+            topLimit: settings.top_limit
+        })).forEach((itemId) => bestSellerIds.add(itemId));
+    }
+
+    if (settings.daily_top_enabled === true) {
+        (await queryTopSellingItemIds({
+            ...queryArgs,
+            lookbackDays: DAILY_BEST_SELLER_SETTINGS.lookback_days,
+            topLimit: DAILY_BEST_SELLER_SETTINGS.top_limit
+        })).forEach((itemId) => bestSellerIds.add(itemId));
+    }
+
+    return bestSellerIds;
 };
 
 const loadStorefrontCatalogImageMap = async (itemIds = [], options = {}) => {

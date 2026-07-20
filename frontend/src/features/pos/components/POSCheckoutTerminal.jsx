@@ -198,6 +198,21 @@ const formatQuantity = (value) => {
     if (!Number.isFinite(quantity)) return '0';
     return Number.isInteger(quantity) ? String(quantity) : String(round4(quantity));
 };
+// Mobile-only catalog name color. NOTE: intentionally separate from getCatalogStockColorClassName
+// (posCatalogAvailability.js) - that helper returns gray for always-available/service items
+// because on desktop it colors a numeric stock value that doesn't apply there. On mobile this
+// class colors the item NAME itself, where gray reads as "disabled"; always-available items
+// should still read as good-to-sell, so they stay green like healthy stock.
+const getMobileStockNameColorClassName = (stockValue, isAlwaysAvailable) => {
+    if (isAlwaysAvailable) return 'text-green-600';
+    const numericStock = Number(stockValue);
+    if (stockValue === null || stockValue === undefined || !Number.isFinite(numericStock)) {
+        return 'text-red-600';
+    }
+    if (numericStock > 100) return 'text-green-600';
+    if (numericStock > 0) return 'text-yellow-600';
+    return 'text-red-600';
+};
 // Mobile-only "fly to checkout bar" animation. Fires after the cart update (never blocks or
 // delays it), animates a cloned .product-image from the tapped card to #checkout-bar, and
 // removes itself on finish/cancel. Skips silently if not mobile, no image, or no target -
@@ -804,6 +819,7 @@ export default function POSCheckoutTerminal({
     const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
@@ -836,9 +852,12 @@ export default function POSCheckoutTerminal({
     const safePosFolders = toArray(posFolders);
     // This is a POS-only presentation filter. The API remains the stock authority and checkout
     // revalidates inventory server-side; services and Always Available items are intentionally exempt.
+    // Mobile-only exception: out-of-stock items stay in the list there (shown locked/grayed via
+    // the existing isOutOfStock handling on the card) instead of being hidden entirely, since
+    // desktop/tablet's hide-when-out-of-stock behavior should stay exactly as it is today.
     const availableCatalog = useMemo(() => (
-        safeCatalog.filter(isSellAvailableCatalogItem)
-    ), [safeCatalog]);
+        isMobile ? safeCatalog : safeCatalog.filter(isSellAvailableCatalogItem)
+    ), [isMobile, safeCatalog]);
     const availableCategories = useMemo(() => {
         return safePosFolders.filter((folder) => {
             const folderId = Number(folder?.folder_id);
@@ -1608,6 +1627,19 @@ export default function POSCheckoutTerminal({
         }
         tabletMedia.addListener(syncTabletViewport);
         return () => tabletMedia.removeListener(syncTabletViewport);
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+        const mobileMedia = window.matchMedia('(max-width: 639.98px)');
+        const syncIsMobile = (event) => setIsMobile(Boolean(event.matches));
+        syncIsMobile(mobileMedia);
+        if (typeof mobileMedia.addEventListener === 'function') {
+            mobileMedia.addEventListener('change', syncIsMobile);
+            return () => mobileMedia.removeEventListener('change', syncIsMobile);
+        }
+        mobileMedia.addListener(syncIsMobile);
+        return () => mobileMedia.removeListener(syncIsMobile);
     }, []);
 
     useEffect(() => {
@@ -3012,6 +3044,9 @@ export default function POSCheckoutTerminal({
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
                             const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);
+                            // Mobile-only: computed on every render from current item data, so it's
+                            // correct on initial render and never stale/flickering on resize.
+                            const mobileStockNameColorClassName = getMobileStockNameColorClassName(item.current_stock, isAlwaysAvailable || isServiceItem);
                             return (
                                 <div
                                     key={item.item_id}
@@ -3103,7 +3138,7 @@ export default function POSCheckoutTerminal({
                                             code (sku_code) removed. "Always available" renders only when true —
                                             no placeholder when it doesn't apply. */}
                                         <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
-                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${stockColorClassName}`}>{item.name}</p>
+                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${mobileStockNameColorClassName}`}>{item.name}</p>
                                             <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
                                                 <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
                                                     <CatalogItemBadges
