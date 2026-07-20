@@ -1,15 +1,33 @@
 #!/bin/sh
 set -e
 
+# .sequelizerc resolves all its paths via path.resolve(...), which is
+# relative to process.cwd() -- make sure that's /app (the WORKDIR root
+# layout) regardless of how the container was invoked.
 cd /app
 
-# Same bind-mount-ownership-fixup pattern as dgfy-api/entrypoint.sh — /reports
-# is the only writable bind mount this service has (maps to REPORT_DIR).
 if [ "$(id -u)" = '0' ]; then
-  mkdir -p "${REPORT_DIR:-/reports}"
-  chown -R app:app "${REPORT_DIR:-/reports}" 2>/dev/null || true
   exec su-exec app "$0" "$@"
 fi
 
-echo "[entrypoint] NODE_ENV=${NODE_ENV:-production} RUNTIME_MODE=${RUNTIME_MODE:-development} command=$*"
-exec "$@"
+echo "[entrypoint] NODE_ENV=${NODE_ENV:-production} DB_HOST=${DB_HOST} DB_NAME=${DB_NAME}"
+echo "[entrypoint] Running database migrations..."
+
+# db:migrate is idempotent (tracked via the SequelizeMeta table), so it's
+# safe to run on every invocation. Retry a few times in case the mysql
+# container's healthcheck passes before the specific database/user grants
+# are fully ready.
+MAX_RETRIES=30
+RETRY_DELAY=2
+i=0
+until "$@"; do
+  i=$((i + 1))
+  if [ "$i" -ge "$MAX_RETRIES" ]; then
+    echo "[entrypoint] Migrations failed after ${MAX_RETRIES} attempts. Exiting."
+    exit 1
+  fi
+  echo "[entrypoint] Migration attempt ${i} failed, retrying in ${RETRY_DELAY}s..."
+  sleep "$RETRY_DELAY"
+done
+
+echo "[entrypoint] Migrations complete."

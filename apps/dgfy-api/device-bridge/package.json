@@ -1,0 +1,18 @@
+{
+  "name": "sku-pos-device-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local POS hardware bridge dependencies for USB ESC/POS printers.",
+  "scripts": {
+    "start": "node server.js",
+    "printers": "node printers/list-printers.js",
+    "test-print": "node printers/test-print.js",
+    "open-drawer": "node drawer/test-open-drawer.js"
+  },
+  "dependencies": {
+    "@node-escpos/core": "^0.6.0",
+    "@node-escpos/usb-adapter": "^0.3.1",
+    "usb": "2.18.0"
+  }
+}

@@ -1,118 +1,106 @@
-// Dependency-injection wiring point for the inventory module (Clean
-// Architecture "Dependency Inversion" — per project convention this file is
-// the ONLY place that composes concrete implementations for this module),
-// mirroring ../products/index.js's buildProductsModule() pattern.
-//
-// Task 1 (08-04-PLAN.md) built the repository/entity/reserved-effect-
-// contract layers. Task 2 adds the usecases/controllers/routes.js layer and
-// this file's buildInventoryModule() factory, closing every manual-movement
-// usecase over InventoryMovementRepository (tenant-scoped, resolved via the
-// injected TenantConnector) and the businesses module's BusinessRepository
-// (membership/staff-or-owner access control only — membership lives in the
-// landlord dgfy_core database).
-//
-// Composition wiring (mounting createInventoryRoutes() under /inventory in
-// apps/dgfy-api/src/routes/index.js) is 08-08's scope, not this file's.
-
-export {
-    InventoryMovementRepository,
-    buildInventoryMovementRepository,
-    InsufficientStockError,
-    InventoryProductNotFoundError
-} from './repositories/inventoryMovementRepository.js';
-export {
-    InventoryReservationRepository,
-    buildInventoryReservationRepository
-} from './repositories/inventoryReservationRepository.js';
-export { InventoryMovementEntity, createInventoryMovementEntity } from './entities/inventoryMovementEntity.js';
-export { recordSaleEffect, recordBookingEffect } from './usecases/inventoryEffectContracts.js';
-export {
-    MOVEMENT_TYPES,
-    buildRecordRestockUseCase,
-    buildRecordLossUseCase,
-    buildRecordSaleUseCase,
-    buildRecordAdjustmentUseCase,
-    buildListMovementsUseCase
-} from './usecases/inventoryMovementUseCases.js';
-export {
-    buildAvailableToSellUseCase,
-    buildReserveStockUseCase,
-    buildCommitReservationUseCase,
-    buildReleaseReservationUseCase,
-    buildExpireDueReservationsUseCase,
-    buildSetReservationExpiryUseCase
-} from './usecases/inventoryReservationUseCases.js';
-export { buildInventoryMovementController } from './controllers/inventoryMovementController.js';
-export { createInventoryRoutes } from './routes.js';
-
-import { InventoryMovementRepository } from './repositories/inventoryMovementRepository.js';
-import { InventoryReservationRepository } from './repositories/inventoryReservationRepository.js';
-import { recordSaleEffect, recordBookingEffect } from './usecases/inventoryEffectContracts.js';
+import { itemRepository, resolveCachedWorkflowMode } from './repositories/itemRepository.js';
+import { buildGetItemsUseCase } from './usecases/getItemsUseCase.js';
+import { buildGetItemByIdUseCase } from './usecases/getItemByIdUseCase.js';
+import { buildCreateItemUseCase } from './usecases/createItemUseCase.js';
+import { buildUpdateItemUseCase } from './usecases/updateItemUseCase.js';
+import { buildFinalizeItemUseCase } from './usecases/finalizeItemUseCase.js';
+import { buildDeleteItemUseCase } from './usecases/deleteItemUseCase.js';
+import { buildGetItemStockHistoryUseCase } from './usecases/getItemStockHistoryUseCase.js';
+import { buildGetItemBatchesUseCase } from './usecases/getItemBatchesUseCase.js';
+import { buildGetItemMovementsUseCase } from './usecases/getItemMovementsUseCase.js';
+import { buildValidateCompositionUseCase } from './usecases/validateCompositionUseCase.js';
+import { buildGetItemSupplierCoverageUseCase } from './usecases/getItemSupplierCoverageUseCase.js';
+import { buildReplaceItemSuppliersUseCase } from './usecases/replaceItemSuppliersUseCase.js';
+import { buildGetFoldersUseCase } from './usecases/getFoldersUseCase.js';
+import { buildCreateFolderUseCase } from './usecases/createFolderUseCase.js';
+import { buildUpdateFolderUseCase } from './usecases/updateFolderUseCase.js';
+import { buildDeleteFolderUseCase } from './usecases/deleteFolderUseCase.js';
 import {
-    buildRecordRestockUseCase,
-    buildRecordLossUseCase,
-    buildRecordSaleUseCase,
-    buildRecordAdjustmentUseCase,
-    buildListMovementsUseCase
-} from './usecases/inventoryMovementUseCases.js';
+  buildListStorefrontCatalogOverridesUseCase,
+  buildUpdateStorefrontCatalogOverrideUseCase,
+  buildUpdateBulkStorefrontCatalogOverridesUseCase,
+  buildUploadStorefrontCatalogImageUseCase,
+  buildUploadStorefrontCatalogGalleryImagesUseCase,
+  buildUploadBulkStorefrontCatalogImagesUseCase,
+  buildUpdateStorefrontCatalogGalleryUseCase,
+  buildDeleteStorefrontCatalogGalleryImageUseCase,
+  buildDeleteStorefrontCatalogImageUseCase
+} from './usecases/storefrontCatalogUseCases.js';
 import {
-    buildAvailableToSellUseCase,
-    buildReserveStockUseCase,
-    buildCommitReservationUseCase,
-    buildReleaseReservationUseCase,
-    buildExpireDueReservationsUseCase,
-    buildSetReservationExpiryUseCase
-} from './usecases/inventoryReservationUseCases.js';
+  buildAttachItemBarcodeUseCase,
+  buildDeactivateItemBarcodeUseCase,
+  buildGenerateItemBarcodeUseCase,
+  buildListItemBarcodesUseCase,
+  buildRenderItemBarcodeLabelUseCase,
+  buildResolveItemBarcodeConflictUseCase,
+  buildResolveItemBarcodeUseCase,
+  buildSetPrimaryItemBarcodeUseCase,
+  buildUpdateItemBarcodeUseCase
+} from './usecases/barcodeUseCases.js';
+import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogImageStorage.js';
+import { resolveMovementLocation } from '../../services/locationInventoryService.js';
+import * as stockCommandService from './commands/stockCommandService.js';
 
-/**
- * Builds the fully wired inventory module: one InventoryMovementRepository
- * instance (tenant-scoped, resolved via the injected tenantConnector) plus
- * every manual-movement usecase closed over it; PLUS one
- * InventoryReservationRepository instance and all reservation usecases
- * (10-02: D-07/D-09/D-10, ADR 0029) closed over it and the injected
- * recordSale single-writer effect. Also re-exposes the reserved (unwired)
- * D-06 effect contracts so 08-08's composition root and Phase 9 can reach
- * them from one place.
- *
- * Exposes reservationPorts object ({ reserveStock, commitReservation,
- * releaseReservation, expireDueReservations, availableToSell,
- * setReservationExpiry }) so 10-06/10-08's composition can inject them.
- *
- * @param {{tenantConnector, businessDatabaseRegistryRepository?, businessRepository}} deps
- * @returns {{repository: InventoryMovementRepository, useCases: Object, effectContracts: {recordSaleEffect: Function, recordBookingEffect: Function}, reservationRepository: InventoryReservationRepository, reservationPorts: Object}}
- */
-export function buildInventoryModule({
-    tenantConnector,
-    businessDatabaseRegistryRepository,
-    businessRepository
-} = {}) {
-    const repository = new InventoryMovementRepository({ tenantConnector, businessDatabaseRegistryRepository });
-    const reservationRepository = new InventoryReservationRepository({ tenantConnector, businessDatabaseRegistryRepository });
 
-    // Build the recordSale single-writer to pass to reservation usecases
-    const recordSaleUseCase = buildRecordSaleUseCase({ repository, businessRepository });
+export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
+export const getItemByIdUseCase = buildGetItemByIdUseCase({ itemRepository });
+export const createItemUseCase = buildCreateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
+export const updateItemUseCase = buildUpdateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
+export const finalizeItemUseCase = buildFinalizeItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
 
-    return {
-        repository,
-        useCases: {
-            recordRestock: buildRecordRestockUseCase({ repository, businessRepository }),
-            recordLoss: buildRecordLossUseCase({ repository, businessRepository }),
-            recordSale: recordSaleUseCase,
-            recordAdjustment: buildRecordAdjustmentUseCase({ repository, businessRepository }),
-            listMovements: buildListMovementsUseCase({ repository, businessRepository })
-        },
-        effectContracts: { recordSaleEffect, recordBookingEffect },
-        // 10-02: Reservation capability (D-07/D-09/D-10, ADR 0029)
-        reservationRepository,
-        reservationPorts: {
-            reserveStock: buildReserveStockUseCase({ repository: reservationRepository, businessRepository }),
-            commitReservation: buildCommitReservationUseCase({ repository: reservationRepository, recordSaleUseCase }),
-            releaseReservation: buildReleaseReservationUseCase({ repository: reservationRepository }),
-            expireDueReservations: buildExpireDueReservationsUseCase({ repository: reservationRepository }),
-            availableToSell: buildAvailableToSellUseCase({ repository: reservationRepository }),
-            setReservationExpiry: buildSetReservationExpiryUseCase({ repository: reservationRepository })
-        }
-    };
-}
+export const deleteItemUseCase = buildDeleteItemUseCase({ itemRepository });
+export const getItemStockHistoryUseCase = buildGetItemStockHistoryUseCase({ itemRepository });
+export const getItemBatchesUseCase = buildGetItemBatchesUseCase({ itemRepository });
+export const getItemMovementsUseCase = buildGetItemMovementsUseCase({ itemRepository });
+export const validateCompositionUseCase = buildValidateCompositionUseCase({ itemRepository });
+export const getItemSupplierCoverageUseCase = buildGetItemSupplierCoverageUseCase({ itemRepository });
+export const replaceItemSuppliersUseCase = buildReplaceItemSuppliersUseCase({ itemRepository });
+export const getFoldersUseCase = buildGetFoldersUseCase({ itemRepository });
+export const createFolderUseCase = buildCreateFolderUseCase({ itemRepository });
+export const updateFolderUseCase = buildUpdateFolderUseCase({ itemRepository });
+export const deleteFolderUseCase = buildDeleteFolderUseCase({ itemRepository });
+export const listStorefrontCatalogOverridesUseCase = buildListStorefrontCatalogOverridesUseCase({ itemRepository });
+export const updateStorefrontCatalogOverrideUseCase = buildUpdateStorefrontCatalogOverrideUseCase({ itemRepository });
+export const updateBulkStorefrontCatalogOverridesUseCase = buildUpdateBulkStorefrontCatalogOverridesUseCase({ itemRepository });
+export const uploadStorefrontCatalogImageUseCase = buildUploadStorefrontCatalogImageUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const uploadStorefrontCatalogGalleryImagesUseCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const uploadBulkStorefrontCatalogImagesUseCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const updateStorefrontCatalogGalleryUseCase = buildUpdateStorefrontCatalogGalleryUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const deleteStorefrontCatalogGalleryImageUseCase = buildDeleteStorefrontCatalogGalleryImageUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const deleteStorefrontCatalogImageUseCase = buildDeleteStorefrontCatalogImageUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const listItemBarcodesUseCase = buildListItemBarcodesUseCase({ itemRepository });
+export const attachItemBarcodeUseCase = buildAttachItemBarcodeUseCase({ itemRepository });
+export const generateItemBarcodeUseCase = buildGenerateItemBarcodeUseCase({ itemRepository });
+export const updateItemBarcodeUseCase = buildUpdateItemBarcodeUseCase({ itemRepository });
+export const deactivateItemBarcodeUseCase = buildDeactivateItemBarcodeUseCase({ itemRepository });
+export const setPrimaryItemBarcodeUseCase = buildSetPrimaryItemBarcodeUseCase({ itemRepository });
+export const resolveItemBarcodeUseCase = buildResolveItemBarcodeUseCase({
+  itemRepository,
+  resolveLocationScope: resolveMovementLocation
+});
+export const resolveItemBarcodeConflictUseCase = buildResolveItemBarcodeConflictUseCase({ itemRepository });
+export const renderItemBarcodeLabelUseCase = buildRenderItemBarcodeLabelUseCase({ itemRepository });
+export const inventoryStockCommandService = stockCommandService;
+export { resolveMovementLocation };
 
-export default buildInventoryModule;
+export * from './commands/stockCommandService.js';
+export * from './contracts/itemRepository.contract.js';
+export * from './repositories/itemRepository.js';

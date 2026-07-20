@@ -96,6 +96,27 @@ services:
       retries: 5
       start_period: 30s
 
+  # One-shot: applies Sequelize migrations (apps/dgfy-migration-runner, the
+  # migration domain extracted from backend/) against the landlord DB, then
+  # exits. dgfy-api below depends on this completing successfully instead of
+  # migrating itself on boot -- see infrastructure/docker/dgfy-migration-runner/.
+  dgfy-migration-runner:
+    image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
+    restart: "no"
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DIALECT: mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [dgfy_internal]
+
+  # apps/dgfy-api is a copy of backend/ (see docs/ai/CLAUDE.md), minus the
+  # migration domain -- it shares the SAME database as `backend` (no DB_NAME
+  # override: this is an infra-only split, not a new database) and no
+  # longer runs db:migrate itself.
   dgfy-api:
     image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -104,20 +125,22 @@ services:
       DB_HOST: mysql
       DB_PORT: 3306
       DB_DIALECT: mysql
-      DB_NAME: dgfy_core
       REDIS_URL: redis://redis:6379
-      DGFY_BACKEND_BASE_URL: http://backend:5000
       PORT: 5100
     volumes:
+      - ./data/dgfy-api/uploads:/app/uploads
+      - ./data/dgfy-api/storage:/app/storage
       - ./data/dgfy-api/logs:/app/logs
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      dgfy-migration-runner:
+        condition: service_completed_successfully
     networks: [dgfy_internal]
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5100/v1/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:5100/api/v1/health"]
       interval: 15s
       timeout: 5s
       retries: 5

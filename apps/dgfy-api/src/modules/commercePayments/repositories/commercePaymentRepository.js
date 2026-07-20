@@ -1,144 +1,224 @@
-import crypto from 'crypto';
-
-// commercePaymentRepository.js — Phase 10 Plan 05 Task 2 (D-01, STF-04).
-//
-// Landlord (dgfy_core) persistence adapter for commerce_payment_sessions
-// (10-01's CommercePaymentSession model). Mirrors
-// ../../businesses/repositories/businessRepository.js's role: owns ALL
-// Sequelize queries for this domain; every use case reaches
-// CommercePaymentSession exclusively through this repository. No business
-// logic lives here, only data access + Model<->plain-object translation.
-//
-// tenant_id is a UUID string throughout (business_database_registry.
-// business_id) and is NEVER integer-coerced anywhere in this file
-// (Pitfall 7, ADR 0027 #17) — every method passes it straight through.
+import db from '../../../models/index.js';
+import { Op } from 'sequelize';
 
 const toPlain = (row) => (row?.get ? row.get({ plain: true }) : row);
 
-// Same generation scheme as the legacy reference
-// (backend/src/modules/store/usecases/storeUseCases.js:202-210,2421 —
-// `CPS-${randomAlphaNumeric(10)}`), re-implemented here rather than
-// imported (apps/dgfy-api never imports backend/ code).
-const REFERENCE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+export const commercePaymentRepository = {
+  findTenantPaymentAccount({ tenantId, provider = 'paymongo' } = {}, options = {}) {
+    return db.TenantPaymentAccount.findOne({
+      where: { tenant_id: tenantId, provider },
+      transaction: options.transaction
+    }).then(toPlain);
+  },
 
-const randomAlphaNumeric = (length) => {
-    const bytes = crypto.randomBytes(length);
-    let output = '';
-    for (let i = 0; i < bytes.length; i += 1) {
-        output += REFERENCE_ALPHABET[bytes[i] % REFERENCE_ALPHABET.length];
+  findTenantPaymentAccountByProviderMerchantId(providerMerchantId, options = {}) {
+    return db.TenantPaymentAccount.findOne({
+      where: {
+        provider: 'paymongo',
+        provider_merchant_id: providerMerchantId
+      },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
+  async upsertTenantPaymentAccount(payload = {}, options = {}) {
+    const where = {
+      tenant_id: payload.tenant_id,
+      provider: payload.provider || 'paymongo'
+    };
+    const existing = await db.TenantPaymentAccount.findOne({
+      where,
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    });
+    if (existing) {
+      await existing.update(payload, { transaction: options.transaction });
+      return toPlain(existing);
     }
-    return output;
+    const row = await db.TenantPaymentAccount.create(payload, { transaction: options.transaction });
+    return toPlain(row);
+  },
+
+  listTenantPaymentAccounts({ tenantId = null, provider = 'paymongo' } = {}, options = {}) {
+    const where = { provider };
+    if (tenantId) where.tenant_id = tenantId;
+    return db.TenantPaymentAccount.findAll({
+      where,
+      order: [['updated_at', 'DESC']],
+      limit: options.limit || 100,
+      transaction: options.transaction
+    }).then((rows) => rows.map(toPlain));
+  },
+
+  findSessionByIdempotency({ tenantId, targetType = 'store_checkout', idempotencyKey } = {}, options = {}) {
+    return db.CommercePaymentSession.findOne({
+      where: {
+        tenant_id: tenantId,
+        target_type: targetType,
+        idempotency_key: idempotencyKey
+      },
+      transaction: options.transaction
+    }).then(toPlain);
+  },
+
+  findSessionByPublicReference(publicReference, options = {}) {
+    return db.CommercePaymentSession.findOne({
+      where: { public_reference: publicReference },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
+  findSessionBySessionId(sessionId, options = {}) {
+    return db.CommercePaymentSession.findByPk(sessionId, {
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
+  listSessions(filters = {}, options = {}) {
+    const where = {};
+    if (filters.tenantId) where.tenant_id = filters.tenantId;
+    if (filters.status) {
+      where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
+    }
+    if (filters.targetType) where.target_type = filters.targetType;
+    if (filters.provider) where.provider = filters.provider;
+    return db.CommercePaymentSession.findAll({
+      where,
+      order: [['created_at', 'DESC']],
+      limit: options.limit || 100,
+      offset: options.offset || 0,
+      transaction: options.transaction
+    }).then((rows) => rows.map(toPlain));
+  },
+
+  async countSessions(filters = {}, options = {}) {
+    const where = {};
+    if (filters.tenantId) where.tenant_id = filters.tenantId;
+    if (filters.status) {
+      where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
+    }
+    if (filters.targetType) where.target_type = filters.targetType;
+    if (filters.provider) where.provider = filters.provider;
+    return db.CommercePaymentSession.count({
+      where,
+      transaction: options.transaction
+    });
+  },
+
+  findSessionByProviderPaymentIntent(providerPaymentIntentId, options = {}) {
+    return db.CommercePaymentSession.findOne({
+      where: { provider_payment_intent_id: providerPaymentIntentId },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
+  findSessionByProviderPayment(providerPaymentId, options = {}) {
+    return db.CommercePaymentSession.findOne({
+      where: { provider_payment_id: providerPaymentId },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
+  async createSession(payload = {}, options = {}) {
+    const row = await db.CommercePaymentSession.create(payload, { transaction: options.transaction });
+    return toPlain(row);
+  },
+
+  async updateSessionById(sessionId, payload = {}, options = {}) {
+    const row = await db.CommercePaymentSession.findByPk(sessionId, {
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    });
+    if (!row) return null;
+    await row.update(payload, { transaction: options.transaction });
+    return toPlain(row);
+  },
+
+  async createRefund(payload = {}, options = {}) {
+    const row = await db.CommercePaymentRefund.create(payload, { transaction: options.transaction });
+    return toPlain(row);
+  },
+
+  async updateRefundById(refundId, payload = {}, options = {}) {
+    const row = await db.CommercePaymentRefund.findByPk(refundId, {
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    });
+    if (!row) return null;
+    await row.update(payload, { transaction: options.transaction });
+    return toPlain(row);
+  },
+
+  listRefundsBySession(paymentSessionId, options = {}) {
+    return db.CommercePaymentRefund.findAll({
+      where: { payment_session_id: paymentSessionId },
+      order: [['created_at', 'DESC']],
+      transaction: options.transaction
+    }).then((rows) => rows.map(toPlain));
+  },
+
+  findRefundByProviderId(providerRefundId, options = {}) {
+    return db.CommercePaymentRefund.findOne({
+      where: { provider_refund_id: providerRefundId },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
+  listRefunds(filters = {}, options = {}) {
+    const where = {};
+    if (filters.tenantId) where.tenant_id = filters.tenantId;
+    if (filters.status) {
+      where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
+    }
+    if (filters.provider) where.provider = filters.provider;
+    return db.CommercePaymentRefund.findAll({
+      where,
+      order: [['created_at', 'DESC']],
+      transaction: options.transaction
+    }).then((rows) => rows.map(toPlain));
+  },
+
+  async sumRefundedCentavos(paymentSessionId, options = {}) {
+    return this.sumRefundCentavosByStatuses(paymentSessionId, ['pending', 'succeeded'], options);
+  },
+
+  async sumRefundCentavosByStatuses(paymentSessionId, statuses = ['pending', 'succeeded'], options = {}) {
+    const total = await db.CommercePaymentRefund.sum('amount_centavos', {
+      where: {
+        payment_session_id: paymentSessionId,
+        status: { [Op.in]: statuses }
+      },
+      transaction: options.transaction
+    });
+    return Number(total || 0);
+  },
+
+  async createAuditLog(payload = {}, options = {}) {
+    if (!db.AuditLog) return null;
+    const row = await db.AuditLog.create({
+      user_id: payload.user_id || null,
+      entity_type: payload.entity_type,
+      entity_id: payload.entity_id || null,
+      action: payload.action,
+      changes: payload.changes || null,
+      ip_address: payload.ip_address || null,
+      user_agent: payload.user_agent || 'PayMongo Commerce Admin',
+      timestamp: new Date()
+    }, { transaction: options.transaction });
+    return toPlain(row);
+  },
+
+  runInTransaction(callback) {
+    return db.sequelize.transaction(callback);
+  },
+
+  findTenantById(tenantId, options = {}) {
+    return db.Tenant.findByPk(tenantId, { transaction: options.transaction }).then(toPlain);
+  }
 };
-
-/** Public-facing session reference, e.g. `CPS-7F3K9A2QXZ`. */
-export const generateSessionPublicReference = () => `CPS-${randomAlphaNumeric(10)}`;
-
-export class CommercePaymentRepository {
-    /**
-     * @param {{commercePaymentSessionModel, sequelize?}} deps - the
-     *   Sequelize CommercePaymentSession model, injected by the caller
-     *   (index.js) rather than imported directly, so this repository stays
-     *   testable with mocks. `sequelize` defaults to
-     *   commercePaymentSessionModel.sequelize when omitted.
-     */
-    constructor({ commercePaymentSessionModel, sequelize } = {}) {
-        if (!commercePaymentSessionModel) {
-            throw new Error('CommercePaymentRepository requires a Sequelize CommercePaymentSession model.');
-        }
-        this.model = commercePaymentSessionModel;
-        this.sequelize = sequelize || commercePaymentSessionModel.sequelize;
-    }
-
-    /**
-     * Persists a new landlord payment session row (status defaults to
-     * `awaiting_payment`, provider defaults to `paymongo`). D-02: no
-     * `split_payload`/`platform_fee_centavos` are ever written here — those
-     * columns stay whatever the model's own nullable default is.
-     *
-     * @param {{storefront_order_id, tenant_id, amount_centavos, provider_payment_intent_id?, provider_payment_id?, qr_code_image_url?, expires_at?, public_reference?}} payload
-     */
-    async createSession({
-        storefront_order_id,
-        tenant_id,
-        amount_centavos,
-        provider_payment_intent_id = null,
-        provider_payment_id = null,
-        qr_code_image_url = null,
-        expires_at = null,
-        public_reference = generateSessionPublicReference()
-    }) {
-        const row = await this.model.create({
-            public_reference,
-            storefront_order_id,
-            // Never integer-coerced (Pitfall 7) — passed through verbatim.
-            tenant_id,
-            status: 'awaiting_payment',
-            provider: 'paymongo',
-            provider_payment_intent_id,
-            provider_payment_id,
-            qr_code_image_url,
-            amount_centavos,
-            expires_at
-        });
-        return toPlain(row);
-    }
-
-    /**
-     * Session resolution order for the webhook (10-08): metadata
-     * reference -> payment_intent id -> payment id (Pattern 1,
-     * 10-RESEARCH.md:201-223). This method covers the FIRST step.
-     */
-    async findSessionByPublicReference(publicReference) {
-        if (!publicReference) return null;
-        const row = await this.model.findOne({ where: { public_reference: publicReference } });
-        return toPlain(row);
-    }
-
-    /** Session resolution, SECOND step (payment_intent id fallback). */
-    async findSessionByProviderPaymentIntent(providerPaymentIntentId) {
-        if (!providerPaymentIntentId) return null;
-        const row = await this.model.findOne({ where: { provider_payment_intent_id: providerPaymentIntentId } });
-        return toPlain(row);
-    }
-
-    /** Session resolution, THIRD/last step (payment id fallback). */
-    async findSessionByProviderPayment(providerPaymentId) {
-        if (!providerPaymentId) return null;
-        const row = await this.model.findOne({ where: { provider_payment_id: providerPaymentId } });
-        return toPlain(row);
-    }
-
-    /**
-     * Resolves the session paired with a landlord storefront_orders row
-     * (10-08's auto-release sweep, T-10-08-07): the sweep starts from
-     * orders due for expiry, not sessions, so it needs the reverse FK
-     * lookup findSessionByPublicReference/etc. don't provide.
-     * @param {string} storefrontOrderId
-     */
-    async findSessionByStorefrontOrderId(storefrontOrderId) {
-        if (!storefrontOrderId) return null;
-        const row = await this.model.findOne({ where: { storefront_order_id: storefrontOrderId } });
-        return toPlain(row);
-    }
-
-    /**
-     * Partial update by primary key (id). Used by 10-08's webhook
-     * finalize/expire flow — NOT invoked by this plan's createQrphSession.
-     * @param {string} id
-     * @param {Object} patch
-     */
-    async updateSessionStatus(id, patch = {}) {
-        const row = await this.model.findByPk(id);
-        if (!row) return null;
-        await row.update(patch);
-        return toPlain(row);
-    }
-}
-
-/**
- * @param {{commercePaymentSessionModel, sequelize?}} deps
- * @returns {CommercePaymentRepository}
- */
-export const buildCommercePaymentRepository = (deps) => new CommercePaymentRepository(deps);
-
-export default CommercePaymentRepository;

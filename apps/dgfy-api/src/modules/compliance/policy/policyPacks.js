@@ -1,10 +1,3 @@
-// policyPacks.js — whole-file port of the read-only legacy
-// backend/src/modules/compliance/policy/policyPacks.js (D-03: full
-// BIR/NPC/BSP policy-pack depth, not narrowed to BIR-only). Versioned packs
-// with per-regulator required settings keys / profile fields / artifacts,
-// plus peripheral-class checks for compliant_active. No behavior change from
-// legacy — this file carries no D-05 logic (that lives in ./policyEngine.js).
-
 const POLICY_PACKS = [
     {
         version: '2026.04.07',

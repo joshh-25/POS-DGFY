@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "last_updated": "2026-04-18",
+  "notes": "Baseline cleared after tenant index remediation waves and strict zero-failure verification.",
+  "failures": []
+}

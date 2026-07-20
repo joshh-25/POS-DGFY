@@ -20,6 +20,12 @@ services:
     ports:
       - "5000:5000"
 
+  dgfy-migration-runner:
+    image: dgfy-platform-migration-runner:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/dgfy-migration-runner/Dockerfile
+
   dgfy-api:
     image: dgfy-platform-api:dev
     build:

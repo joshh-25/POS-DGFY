@@ -1,26 +1,28 @@
 {
   "name": "@dgfy/dgfy-migration-runner",
   "version": "1.0.0",
-  "description": "One-shot DGFY migration runner: schema/data migration, verification, reporting",
+  "description": "Standalone Sequelize migration runner for dgfy-platform, extracted from backend's migration domain",
   "type": "module",
-  "main": "src/cli.js",
   "scripts": {
-    "start": "node src/cli.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest --config jest.config.cjs --runInBand && npm run test:architecture",
-    "test:architecture": "node --test scripts/check-architecture.test.js",
-    "check:architecture": "node scripts/check-architecture.js",
-    "lint": "echo 'lint: deferred — no eslint devDependency/config shipped for this package yet (see WR-07, phase 01 code review)' && exit 0"
+    "migrate": "sequelize-cli db:migrate",
+    "migrate:undo": "sequelize-cli db:migrate:undo",
+    "migrate:create": "sequelize-cli migration:generate --name",
+    "seed": "sequelize-cli db:seed:all",
+    "seed:undo": "sequelize-cli db:seed:undo:all"
   },
+  "keywords": [
+    "inventory",
+    "management",
+    "migrations"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "@inquirer/prompts": "^8.5.2",
-    "commander": "^15.0.0",
+    "bcryptjs": "^2.4.3",
     "dotenv": "^16.6.1",
     "mysql2": "^3.6.5",
     "sequelize": "^6.37.8",
-    "umzug": "^3.8.3"
-  },
-  "devDependencies": {
-    "jest": "^29.7.0"
+    "sequelize-cli": "^6.6.2"
   },
   "engines": {
     "node": ">=18.0.0"

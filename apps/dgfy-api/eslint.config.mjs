@@ -15,6 +15,13 @@ export default [
             "no-unused-vars": "warn",
             "no-console": "off",
             "no-undef": "error",
+            "no-restricted-syntax": [
+                "error",
+                {
+                    "selector": "CallExpression[callee.name='authorize']",
+                    "message": "The 'authorize' middleware is deprecated. Use 'checkPermission' instead."
+                }
+            ]
         },
     },
     {
@@ -27,22 +34,6 @@ export default [
                         {
                             group: ["**/models", "**/models/**"],
                             message: "Controllers must not import models directly. Use module repositories/use-cases."
-                        }
-                    ]
-                }
-            ]
-        }
-    },
-    {
-        files: ["src/modules/**/entities/**/*.js", "src/modules/**/usecases/**/*.js"],
-        rules: {
-            "no-restricted-imports": [
-                "error",
-                {
-                    patterns: [
-                        {
-                            group: ["**/continuity", "**/continuity/**", "**/compat", "**/compat/**"],
-                            message: "Domain layer (entities/usecases) must not import compatibility/continuity code (CMP-03)."
                         }
                     ]
                 }
