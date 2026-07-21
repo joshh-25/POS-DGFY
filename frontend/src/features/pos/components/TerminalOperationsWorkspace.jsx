@@ -2731,10 +2731,9 @@ function ItemsWorkspace({
                     {/* Best Seller toggle - manual on/off, mirroring the Always Available switch
                         above. Turning it on force-tags the item; turning it off defers back to
                         the auto sales-ranking policy (there is no manual "never" state here).
-                        Mobile-only (sm:hidden); the field/state still exists and submits
-                        normally on desktop/tablet, it's just not surfaced there so desktop's
-                        create form is visually unchanged. */}
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:hidden">
+                        Visible on every viewport (mobile, tablet, desktop) - same as Always
+                        Available, no responsive hiding. */}
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
                       <div className="min-w-0">
                         <label htmlFor="pos-items-create-best-seller-mode" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
                           Best Seller
@@ -3067,13 +3066,13 @@ function ItemsWorkspace({
                     {/* Best Seller toggle - manual on/off, mirroring the Always Available switch
                         above. Turning it on force-tags the item; turning it off defers back to
                         the auto sales-ranking policy (there is no manual "never" state here).
-                        Visible on mobile (base) and true desktop (xl:, 1280px+); hidden sm:-lg:
-                        (tablet, both POS surface tablet definitions cap below 1280px) so tablet
-                        stays exactly as it was. order-5/xl:order-6 swaps it with Selling Price
-                        (order-6/xl:order-5) into the right column, desktop only - base order-5
-                        keeps mobile's stacking position unchanged (tablet doesn't render this
-                        field at all, so its order value there is moot). */}
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:hidden xl:flex order-5 xl:order-6">
+                        Visible on every viewport (mobile, tablet, desktop) - was previously
+                        hidden on tablet (sm:hidden), which made manual Best Seller activation
+                        invisible there; removed that restriction. order-5/md:order-6 swaps it
+                        with Selling Price (order-6/md:order-5) into the right column on tablet
+                        AND desktop (md: has no upper bound, so it carries through to xl: too) -
+                        base order-5 keeps mobile's stacking position unchanged. */}
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 order-5 md:order-6">
                       <div className="min-w-0">
                         <label htmlFor="pos-items-edit-best-seller-mode" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
                           Best Seller
@@ -3091,7 +3090,7 @@ function ItemsWorkspace({
                       />
                     </div>
 
-                    <div className="space-y-1.5 order-6 xl:order-5">
+                    <div className="space-y-1.5 order-6 md:order-5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
                         Selling Price <span className="text-rose-500">*</span>
                       </label>
