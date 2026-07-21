@@ -1,5 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import logger from '../config/logger.js';
+import { isPremiumActiveTenant } from '../utils/tenantPlan.js';
+import { MOBILE_SYNC_LIMIT_PER_DAY } from '../modules/pos/usecases/mobilePosUseCases.js';
 
 // Get rate limit configuration from environment variables.
 // In development, use more lenient limits to account for React StrictMode double renders.
@@ -43,6 +45,11 @@ const geoSearchWindowMs = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_WINDOW_MS) 
 const geoSearchMaxRequests = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_MAX_REQUESTS) || (isDevelopment ? 240 : 60);
 const inventoryPushWindowMs = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_WINDOW_MS) || 60 * 1000; // 1 minute
 const inventoryPushMaxRequests = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_MAX_REQUESTS) || (isDevelopment ? 120 : 20);
+const mobilePosFreeSyncWindowMs = parseInt(process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_WINDOW_MS) || 24 * 60 * 60 * 1000; // 24 hours
+// Defaults to the same MOBILE_SYNC_LIMIT_PER_DAY already advertised to
+// clients in sync_policy/sync_limit_policy (mobilePosUseCases.js), so the
+// advertised and enforced caps can't drift apart.
+const mobilePosFreeSyncMaxRequests = parseInt(process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_MAX_REQUESTS) || MOBILE_SYNC_LIMIT_PER_DAY;
 
 // Standard error response format
 const createRateLimitError = (message, metadata = {}) => ({
@@ -79,6 +86,7 @@ const rateLimitCounters = {
   registration: 0,
   geo_search: 0,
   inventory_push: 0,
+  mobile_pos_free_sync: 0,
   other: 0,
 };
 const rateLimitAlertThreshold = parseInt(process.env.RATE_LIMIT_ALERT_THRESHOLD) || 50;
@@ -1077,6 +1085,49 @@ export const inventoryPushLimiter = rateLimit({
   },
 });
 
+// Free-tier cap for the offline-sync API (see dgfy-mobile
+// docs/architecture/SYNC-ARCHITECTURE.md, Channel A). Premium tenants skip
+// this limiter entirely (isPremiumActiveTenant) and sync in realtime; free
+// tenants get up to 2 pushes per rolling 24h window, tenant-keyed - the cap
+// is per business, matching the client's resolveSyncPolicy({ dailyCap: 2 }),
+// not per terminal/device. Only mount this on the write endpoints
+// (POST /mobile-pos/sync/*); GET /mobile-pos/bootstrap/* (Channel B,
+// reference/config) is opportunistic and uncapped for both tiers.
+export const mobilePosFreeSyncLimiter = rateLimit({
+  windowMs: mobilePosFreeSyncWindowMs,
+  max: mobilePosFreeSyncMaxRequests,
+  message: createRateLimitError('Free plan is limited to 2 syncs per day. Upgrade to Premium for unlimited sync.', { requiresUpgrade: true }),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('mobile_pos_free_sync'),
+  keyGenerator: (req) => {
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
+    return `mobile_pos_free_sync:${tenantKey}`;
+  },
+  handler: (req, res, _next, options) => {
+    const retryAfterSeconds = getRetryAfterSeconds(req, options);
+    const body = createRateLimitError(
+      'Free plan is limited to 2 syncs per day. Upgrade to Premium for unlimited sync.',
+      {
+        retryAfterSeconds,
+        limitScope: 'mobile_pos_free_sync',
+        limitKeyType: 'tenant',
+        requiresUpgrade: true
+      }
+    );
+    logRateLimitEvent(req, 'mobile_pos_free_sync', retryAfterSeconds, 'tenant');
+    res.set('Retry-After', String(retryAfterSeconds));
+    res.status(429).json(body);
+  },
+  skip: (req) => {
+    if (isPremiumActiveTenant(req)) return true;
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 export default {
   general: generalLimiter,
   auth: authLimiter,
@@ -1094,4 +1145,5 @@ export default {
   pos: posLimiter,
   geoSearch: geoSearchLimiter,
   inventoryPush: inventoryPushLimiter,
+  mobilePosFreeSync: mobilePosFreeSyncLimiter,
 };
