@@ -21,6 +21,7 @@ import {
     Percent,
     Printer,
     Search,
+    Star,
     Tag,
     UserRound,
     X,
@@ -67,8 +68,6 @@ import {
 import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offlinePosSnapshotStore.js';
 import {
     DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD,
-    getCatalogStockColorClassName,
-    isSellAvailableCatalogItem,
     isServiceCatalogItem,
     normalizeLowStockDisplayThreshold
 } from '../utils/posCatalogAvailability.js';
@@ -526,39 +525,33 @@ const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, uni
     `${itemName}: requested ${money(requestedQty)}${unit ? ` ${unit}` : ''}, only ${money(availableStock)}${unit ? ` ${unit}` : ''} in stock.`
 );
 const getLineKey = (line = {}) => line.line_key || line.item_id;
+// Synthetic/virtual POS category (not a real folder_id) - selecting it filters the catalog to
+// item.is_best_seller items instead of a folder match. A string sentinel keeps it unambiguous
+// against real numeric folder_id values everywhere selectedFolderId is compared/used.
+const BEST_SELLER_CATEGORY_ID = 'best-seller';
 const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+// Always Available and Best Seller tags are intentionally NOT rendered here (removed across
+// all viewports - mobile/tablet/desktop - per explicit request). Their underlying signals are
+// still fully live: isAlwaysAvailable still drives the item name's green color coding
+// (getMobileStockNameColorClassName / getDesktopStockNameColorClassName) and still exempts the
+// item from the out-of-stock/purchase block (isOutOfStock, isSellAvailableCatalogItem) - only
+// the visual badge was removed, not the logic. Service still renders since it wasn't asked to
+// be removed.
 const CatalogItemBadges = ({
     isServiceItem = false,
-    isAlwaysAvailable = false,
-    isBestSeller = false,
     overlay = false
 }) => {
-    if (!isServiceItem && !isAlwaysAvailable && !isBestSeller) return null;
+    if (!isServiceItem) return null;
 
     const sharedClassName = overlay
         ? 'border-white/30 bg-slate-950/55 text-white'
         : 'border-blue-200 bg-blue-50 text-[#1A4E8D]';
-    const bestSellerClassName = overlay
-        ? 'border-amber-200/70 bg-amber-500/85 text-white'
-        : 'border-amber-200 bg-amber-50 text-amber-700';
 
     return (
         <div data-pos-catalog-badges="true" className="flex min-w-0 flex-wrap items-center gap-1">
-            {isServiceItem && (
-                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${sharedClassName}`}>
-                    Service
-                </span>
-            )}
-            {isAlwaysAvailable && (
-                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${sharedClassName}`}>
-                    Always available
-                </span>
-            )}
-            {isBestSeller && (
-                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${bestSellerClassName}`}>
-                    Best seller
-                </span>
-            )}
+            <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${sharedClassName}`}>
+                Service
+            </span>
         </div>
     );
 };
@@ -847,15 +840,18 @@ export default function POSCheckoutTerminal({
     const checkoutGridClassName = 'grid min-h-0 grid-cols-1 gap-4 pb-24 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 xl:h-full xl:overflow-hidden 2xl:gap-6';
     const catalogGridClassName = useMemo(() => {
         if (isTabletViewport) {
+            // IS_DGFY_POS_SURFACE is hardcoded true for this app build (frontend/apps/pos sets
+            // VITE_APP_SURFACE=pos), so this branch - not the one below - is what actually
+            // renders here. 3 columns per row (reverted back from a brief 2-column experiment).
             return IS_DGFY_POS_SURFACE
-                ? 'mt-4 grid grid-cols-2 auto-rows-[7rem] gap-2 sm:grid-cols-3'
-                : 'mt-4 grid grid-cols-3 auto-rows-[11rem] gap-1.5';
+                ? 'mt-4 grid grid-cols-3 auto-rows-[10rem] gap-2'
+                : 'mt-4 grid grid-cols-3 auto-rows-[13rem] gap-1.5';
         }
         // xl: is true desktop only - both tablet definitions (DGFY 640-1023px, standard
         // 768-1279px) cap below 1280px, so this never touches tablet's own branch above.
         return sidebarCollapsed
-            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5 xl:auto-rows-[13.5rem]'
-            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4 xl:auto-rows-[13.5rem]';
+            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5 xl:auto-rows-[12rem]'
+            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4 xl:auto-rows-[12rem]';
     }, [isTabletViewport, sidebarCollapsed]);
     const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-visible pr-0 pb-3 xl:overflow-hidden';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
@@ -866,14 +862,12 @@ export default function POSCheckoutTerminal({
     const currentSalePaneHeightClassName = 'h-full max-h-full';
     const safeCatalog = toArray(catalog);
     const safePosFolders = toArray(posFolders);
-    // This is a POS-only presentation filter. The API remains the stock authority and checkout
-    // revalidates inventory server-side; services and Always Available items are intentionally exempt.
-    // Mobile and true-desktop exception: out-of-stock items stay in the list there (shown
-    // locked/grayed via the existing isOutOfStock handling on the card) instead of being hidden
-    // entirely. Tablet (isTabletViewport) keeps the original hide-when-out-of-stock behavior.
-    const availableCatalog = useMemo(() => (
-        (isMobile || !isTabletViewport) ? safeCatalog : safeCatalog.filter(isSellAvailableCatalogItem)
-    ), [isMobile, isTabletViewport, safeCatalog]);
+    // This is a POS-only presentation list. The API remains the stock authority and checkout
+    // revalidates inventory server-side. Out-of-stock items stay visible here (shown
+    // locked/grayed via the existing isOutOfStock handling on the card) across every viewport -
+    // mobile and desktop already worked this way; tablet now matches (see Task: Show
+    // Out-of-Stock Items - Sell Catalog, Tablet).
+    const availableCatalog = useMemo(() => safeCatalog, [safeCatalog]);
     const availableCategories = useMemo(() => {
         return safePosFolders.filter((folder) => {
             const folderId = Number(folder?.folder_id);
@@ -881,6 +875,12 @@ export default function POSCheckoutTerminal({
             return availableCatalog.some((item) => Number(item?.folder_id) === folderId);
         });
     }, [availableCatalog, safePosFolders]);
+    // Drives the synthetic "Best Seller" category chip: only shown/selectable when at least one
+    // currently-visible item is a best seller. Items keep their real folder too - this is an
+    // additional cross-cutting filter, not a replacement for their normal category.
+    const hasBestSellerItems = useMemo(() => (
+        availableCatalog.some((item) => item?.is_best_seller === true)
+    ), [availableCatalog]);
     const safeDiscountProfiles = toArray(discountProfiles);
     const safeCommercialPromoConfig = toArray(commercialPromoConfig);
     const safeDiscountApprovers = toArray(discountApprovers);
@@ -912,10 +912,10 @@ export default function POSCheckoutTerminal({
         ? { ...appliedDiscount, eligible_item_ids: toArray(appliedDiscount.eligible_item_ids), eligible_items: toArray(appliedDiscount.eligible_items) }
         : null;
     const catalogCardClassName = IS_DGFY_POS_SURFACE && isTabletViewport
-        ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
+        ? 'group flex h-[10rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
         : isTabletViewport
-            ? 'group flex h-[11rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[7.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-[13.5rem]';
+            ? 'group flex h-[13rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
+            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[7.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-[12rem]';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
         : isTabletViewport
@@ -932,8 +932,16 @@ export default function POSCheckoutTerminal({
     const selectedFolder = useMemo(() => (
         safePosFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
     ), [safePosFolders, selectedFolderId]);
+    // Label for the Filter button: handles the synthetic Best Seller selection too, since
+    // selectedFolder (a real-folder lookup) is always null for that sentinel.
+    const selectedFolderLabel = selectedFolderId === BEST_SELLER_CATEGORY_ID
+        ? 'Best Seller'
+        : (selectedFolder ? selectedFolder.name : 'Filter');
     const catalogForDisplay = useMemo(() => {
         if (!selectedFolderId) return availableCatalog;
+        if (selectedFolderId === BEST_SELLER_CATEGORY_ID) {
+            return availableCatalog.filter((item) => item?.is_best_seller === true);
+        }
         return availableCatalog.filter((item) => Number(item?.folder_id) === Number(selectedFolderId));
     }, [availableCatalog, selectedFolderId]);
     const totalCatalogPages = useMemo(() => (
@@ -1699,11 +1707,16 @@ export default function POSCheckoutTerminal({
 
     useEffect(() => {
         if (!selectedFolderId) return;
-        const stillExists = availableCategories.some((folder) => Number(folder.folder_id) === Number(selectedFolderId));
+        // Best Seller is a synthetic category (not in availableCategories, which only ever
+        // holds real folders) - check hasBestSellerItems instead, or this would immediately
+        // reset the selection right after picking it.
+        const stillExists = selectedFolderId === BEST_SELLER_CATEGORY_ID
+            ? hasBestSellerItems
+            : availableCategories.some((folder) => Number(folder.folder_id) === Number(selectedFolderId));
         if (!stillExists) {
             setSelectedFolderId(null);
         }
-    }, [availableCategories, selectedFolderId]);
+    }, [availableCategories, hasBestSellerItems, selectedFolderId]);
 
     useEffect(() => {
         if (!imagePreview) return undefined;
@@ -2958,7 +2971,7 @@ export default function POSCheckoutTerminal({
                                 <button
                                     type="button"
                                     className={`flex h-11 w-full shrink-0 items-center justify-center gap-3 rounded-lg border px-5 text-[13px] font-bold shadow-sm transition ${
-                                        catalogFiltersOpen || selectedFolder
+                                        catalogFiltersOpen || selectedFolderId
                                             ? 'border-[#1A4E8D] bg-blue-50 text-[#1A4E8D] hover:bg-blue-100'
                                             : 'border-slate-300 bg-white text-[#0F172A] hover:bg-slate-50'
                                     }`}
@@ -2968,7 +2981,7 @@ export default function POSCheckoutTerminal({
                                     title="Show or hide catalog filters"
                                 >
                                     <Filter size={18} />
-                                    {selectedFolder ? selectedFolder.name : 'Filter'}
+                                    {selectedFolderLabel}
                                     <ChevronDown className={`h-4 w-4 transition-transform ${catalogFiltersOpen ? 'rotate-180' : ''}`} />
                                 </button>
                             </div>
@@ -2977,7 +2990,7 @@ export default function POSCheckoutTerminal({
                                 <button
                                     type="button"
                                     className={`flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border px-5 text-[13px] font-bold shadow-sm transition max-sm:flex-1 max-sm:min-w-0 ${
-                                        catalogFiltersOpen || selectedFolder
+                                        catalogFiltersOpen || selectedFolderId
                                             ? 'border-[#1A4E8D] bg-blue-50 text-[#1A4E8D] hover:bg-blue-100'
                                             : 'border-slate-300 bg-white text-[#0F172A] hover:bg-slate-50'
                                     }`}
@@ -2987,7 +3000,7 @@ export default function POSCheckoutTerminal({
                                     title="Show or hide catalog filters"
                                 >
                                     <Filter size={18} />
-                                    {selectedFolder ? selectedFolder.name : 'Filter'}
+                                    {selectedFolderLabel}
                                     <ChevronDown className={`h-4 w-4 transition-transform ${catalogFiltersOpen ? 'rotate-180' : ''}`} />
                                 </button>
                             <Suspense fallback={(
@@ -3039,6 +3052,24 @@ export default function POSCheckoutTerminal({
                             <span>All Items</span>
                             {!selectedFolderId && <X className="h-3.5 w-3.5 opacity-70" />}
                         </button>
+                        {hasBestSellerItems && (() => {
+                            const active = selectedFolderId === BEST_SELLER_CATEGORY_ID;
+                            return (
+                                <button
+                                    type="button"
+                                    onClick={() => toggleFolderFilter(BEST_SELLER_CATEGORY_ID)}
+                                    className={`inline-flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-lg border px-4 text-[12px] font-extrabold transition sm:min-w-[120px] ${
+                                        active
+                                            ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-lg shadow-blue-900/10'
+                                            : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
+                                    }`}
+                                >
+                                    <Star className="h-3.5 w-3.5" />
+                                    <span>Best Seller</span>
+                                    {active && <X className="h-3.5 w-3.5 opacity-70" />}
+                                </button>
+                            );
+                        })()}
                         {availableCategories.map((folder) => {
                             const active = selectedFolderId === folder.folder_id;
                             return (
@@ -3129,7 +3160,8 @@ export default function POSCheckoutTerminal({
                         {visibleCatalogItems.map((item) => {
                             const isServiceItem = isServiceCatalogItem(item);
                             const isAlwaysAvailable = item?.pos_always_available === true;
-                            const isBestSeller = item?.is_best_seller === true;
+                            // isBestSeller/item.is_best_seller intentionally not used for display anymore -
+                            // the Best Seller tag was removed across all viewports; nothing else reads it.
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
                             const configuredPosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail');
                             const mappedPosImageSrc = resolveAppAssetUrl(resolveMappedPosItemImage(item));
@@ -3139,7 +3171,6 @@ export default function POSCheckoutTerminal({
                             const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
-                            const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);
                             // Mobile-only: computed on every render from current item data, so it's
                             // correct on initial render and never stale/flickering on resize.
                             const mobileStockNameColorClassName = getMobileStockNameColorClassName(item.current_stock, isAlwaysAvailable || isServiceItem);
@@ -3211,27 +3242,13 @@ export default function POSCheckoutTerminal({
                                                 Out of stock
                                             </span>
                                         )}
-                                        {IS_DGFY_POS_SURFACE && isTabletViewport && (
-                                            <>
-                                                <div className="absolute left-1.5 top-1.5 z-10 max-w-[calc(100%-0.75rem)]">
-                                                    <CatalogItemBadges
-                                                        isServiceItem={isServiceItem}
-                                                        isAlwaysAvailable={isAlwaysAvailable}
-                                                        isBestSeller={isBestSeller}
-                                                        overlay
-                                                    />
-                                                </div>
-                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/45 to-transparent px-2 py-1.5">
-                                                    <p className="min-w-0 text-[11px] font-black leading-tight text-white line-clamp-2">
-                                                        {item.name}
-                                                    </p>
-                                                </div>
-                                            </>
-                                        )}
+                                        {/* No more badges/name/gradient overlay here (DGFY tablet used to show
+                                            them absolutely-positioned on top of the image) - name/tags/price
+                                            now render as normal stacked rows below the image instead, same as
+                                            every other tablet/desktop card (see block below). */}
                                     </div>
                                 </div>
-                                {!(IS_DGFY_POS_SURFACE && isTabletViewport) && (
-                                    <>
+                                <>
                                         {/* Mobile layout (<640px): name on top (full text, no clamp), with
                                             price/availability/quantity-control encased in one div below it. */}
                                         {/* Mobile-only simplification: VAT row, stock dot indicator, and product
@@ -3241,11 +3258,7 @@ export default function POSCheckoutTerminal({
                                             <p className={`min-w-0 text-[13px] font-black leading-tight ${mobileStockNameColorClassName}`}>{item.name}</p>
                                             <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
                                                 <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                                                    <CatalogItemBadges
-                                                        isServiceItem={isServiceItem}
-                                                        isAlwaysAvailable={isAlwaysAvailable}
-                                                        isBestSeller={isBestSeller}
-                                                    />
+                                                    <CatalogItemBadges isServiceItem={isServiceItem} />
                                                     <span className="font-black text-[#1A4E8D] whitespace-nowrap text-[10.5px]">
                                                         {Number(item.default_sale_price || 0) > 0 ? `PHP ${money(item.default_sale_price)}` : 'Not set'}
                                                     </span>
@@ -3327,59 +3340,35 @@ export default function POSCheckoutTerminal({
                                             </div>
                                         </div>
                                         <div className="flex min-w-0 flex-col gap-1.5 max-sm:hidden">
-                                            <div className="flex min-w-0 items-start gap-1.5">
-                                                <p className={`min-w-0 flex-1 text-[13.5px] font-black leading-tight line-clamp-2 ${isTabletViewport ? 'text-[#0F172A]' : desktopStockNameColorClassName}`}>{item.name}</p>
-                                                {isBestSeller && (
-                                                    <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-700">
-                                                        Best seller
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <CatalogItemBadges
-                                                isServiceItem={isServiceItem}
-                                                isAlwaysAvailable={isAlwaysAvailable}
-                                                isBestSeller={false}
-                                            />
+                                            {/* Tablet reuses the exact same color logic/thresholds as mobile
+                                                (getMobileStockNameColorClassName, computed once above as
+                                                mobileStockNameColorClassName) - no new/duplicated logic, just
+                                                applied here too. Desktop keeps its own separate function and
+                                                thresholds, untouched. */}
+                                            <p className={`min-w-0 text-[13.5px] font-black leading-tight line-clamp-2 ${isTabletViewport ? mobileStockNameColorClassName : desktopStockNameColorClassName}`}>{item.name}</p>
+                                            <CatalogItemBadges isServiceItem={isServiceItem} />
                                         </div>
-                                        {/* Product code/SKU: tablet-only. Desktop's simplified layout omits it
-                                            (see Task: Simplify Desktop Sell Catalog Item Layout). */}
-                                        {isTabletViewport && (
-                                            <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#64748B] max-sm:hidden">{item.sku_code}</p>
-                                        )}
-                                    </>
-                                )}
-                                {IS_DGFY_POS_SURFACE && isTabletViewport ? (
-                                    <div className="mt-1 flex items-center justify-center rounded-md px-1 py-0.5">
-                                        <span className={`text-[11px] font-black ${isOutOfStock ? 'text-rose-700' : 'text-[#1A4E8D]'}`}>
-                                            {isOutOfStock
-                                                ? 'Unavailable'
-                                                : `PHP ${money(item.default_sale_price)}`}
+                                        {/* SKU intentionally omitted here: neither desktop nor tablet show it
+                                            anymore (see Task: Increase Item Container Height - Sell Catalog,
+                                            Tablet, Step 2 - tablet cards now show only image/name/tags/price,
+                                            matching desktop's already-simplified structure). */}
+                                </>
+                                {isTabletViewport ? (
+                                    /* Tablet-only simplified card (both DGFY and standard tablet now share
+                                       this - see Task: Remove image gradient overlay, stack name/tags/price
+                                       below image): price only - no stock count, SKU, or VAT row, matching
+                                       desktop's hierarchy (image -> name -> tags -> price) and grouping.
+                                       mt-auto pins price to the bottom of the flex-col card regardless of tag
+                                       count, same stability mechanism as desktop, just with slightly more
+                                       compact spacing/type size for tablet. This is a separate branch from
+                                       desktop's own (below) so desktop's markup stays untouched. */
+                                    <div className="mt-auto pt-2 max-sm:hidden">
+                                        <span className="text-[12px] font-black text-[#1A4E8D] whitespace-nowrap">
+                                            {Number(item.default_sale_price || 0) > 0
+                                                ? `PHP ${money(item.default_sale_price)}`
+                                                : 'Not set'}
                                         </span>
                                     </div>
-                                ) : isTabletViewport ? (
-                                    <>
-                                        <div className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B] max-sm:hidden">
-                                            <span className="font-semibold">Stock:</span>
-                                            <span className={`text-right font-bold whitespace-nowrap ${stockColorClassName}`}>
-                                                {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toFixed(2)}
-                                            </span>
-                                            <span className="font-semibold">Price:</span>
-                                            <span className="text-right font-black text-[#1A4E8D] whitespace-nowrap">
-                                                {Number(item.default_sale_price || 0) > 0
-                                                    ? `PHP ${money(item.default_sale_price)}`
-                                                    : 'Not set'}
-                                            </span>
-                                            <span className="font-semibold">VAT:</span>
-                                            <span className="text-right font-extrabold text-[#334155] whitespace-nowrap">
-                                                {VAT_TYPE_LABEL[item.vat_type || 'vatable'] || 'VATable'}
-                                            </span>
-                                        </div>
-                                        {isOutOfStock && (
-                                            <p className="mt-auto pt-1 text-[10.5px] font-medium text-slate-500 max-sm:hidden">
-                                                Unavailable for checkout.
-                                            </p>
-                                        )}
-                                    </>
                                 ) : (
                                     /* Desktop-only simplified card: price only - no stock count, SKU, or VAT
                                        row (see Task: Simplify Desktop Sell Catalog Item Layout). mt-auto (not

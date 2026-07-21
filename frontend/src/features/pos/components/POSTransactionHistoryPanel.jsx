@@ -186,14 +186,20 @@ export default function POSTransactionHistoryPanel({
 
                 <div className="px-3 lg:px-4">
                     <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-                        <SelectField label="Status" className="max-sm:order-2" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
+                        {/* Tablet-only reorder (see Task: Reorder Filters - History Catalog, Tablet):
+                            Date From, Cashier ID, Date To. Explicit order-* values below make the
+                            current natural sequence explicit for every field so the Cashier/Date
+                            From swap can't disturb anything else's position; only applied when
+                            isTabletViewport, so mobile (max-sm:order-*) and desktop (unordered,
+                            default flow) are untouched. */}
+                        <SelectField label="Status" className={`max-sm:order-2 ${isTabletViewport ? 'order-1' : ''}`} value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
                             <option value="all">All Status</option>
                             <option value="completed">Completed</option>
                             <option value="pending_sync">Pending Sync</option>
                             <option value="voided">Voided</option>
                         </SelectField>
 
-                        <SelectField label="Payments" className="max-sm:order-1" value={historyPaymentType} onChange={(event) => setHistoryPaymentType(event.target.value)}>
+                        <SelectField label="Payments" className={`max-sm:order-1 ${isTabletViewport ? 'order-2' : ''}`} value={historyPaymentType} onChange={(event) => setHistoryPaymentType(event.target.value)}>
                             <option value="all">All Payments</option>
                             <option value="cash">Cash</option>
                             <option value="gcash">GCash</option>
@@ -202,7 +208,7 @@ export default function POSTransactionHistoryPanel({
                             <option value="bank_transfer">Bank Transfer</option>
                         </SelectField>
 
-                        <SelectField label="Order Methods" className="max-sm:order-4 max-sm:col-span-2" value={historyOrderMethod} onChange={(event) => setHistoryOrderMethod(event.target.value)}>
+                        <SelectField label="Order Methods" className={`max-sm:order-4 max-sm:col-span-2 ${isTabletViewport ? 'order-3' : ''}`} value={historyOrderMethod} onChange={(event) => setHistoryOrderMethod(event.target.value)}>
                             <option value="all">All Order Methods</option>
                             <option value="dine_in">Dine In</option>
                             <option value="takeout">Takeout</option>
@@ -211,13 +217,13 @@ export default function POSTransactionHistoryPanel({
                             <option value="appointment">Appointment</option>
                         </SelectField>
 
-                        <SelectField label="Sources" className="max-sm:order-3 max-sm:col-span-2" value={historyOrderSource} onChange={(event) => setHistoryOrderSource(event.target.value)}>
+                        <SelectField label="Sources" className={`max-sm:order-3 max-sm:col-span-2 ${isTabletViewport ? 'order-4' : ''}`} value={historyOrderSource} onChange={(event) => setHistoryOrderSource(event.target.value)}>
                             <option value="all">All Sources</option>
                             <option value="in_store">In-Store</option>
                             <option value="online_store">Online Store</option>
                         </SelectField>
 
-                        <label className="block max-sm:col-span-2 max-sm:order-5">
+                        <label className={`block max-sm:col-span-2 max-sm:order-5 ${isTabletViewport ? 'order-7' : ''}`}>
                             <span className={fieldLabelClassName}>Cashier ID</span>
                             <IconInput icon={UserRound}>
                                 <Input
@@ -231,8 +237,8 @@ export default function POSTransactionHistoryPanel({
                             </IconInput>
                         </label>
 
-                        <div className="grid grid-cols-2 gap-3 sm:contents max-sm:col-span-2 max-sm:order-6">
-                        <label className="block">
+                        <div className={`grid grid-cols-2 gap-3 sm:contents max-sm:col-span-2 max-sm:order-6`}>
+                        <label className={isTabletViewport ? 'block order-5' : 'block'}>
                             <span className={fieldLabelClassName}>Date From</span>
                             <IconInput icon={CalendarDays} mobileIconAlign="right">
                                 <Input
@@ -246,7 +252,7 @@ export default function POSTransactionHistoryPanel({
                             </IconInput>
                         </label>
 
-                        <label className="block">
+                        <label className={isTabletViewport ? 'block order-6' : 'block'}>
                             <span className={fieldLabelClassName}>Date To</span>
                             <IconInput icon={CalendarDays} mobileIconAlign="right">
                                 <Input
@@ -262,7 +268,7 @@ export default function POSTransactionHistoryPanel({
                         </label>
                         </div>
 
-                        <div className="flex items-end gap-3 max-sm:col-span-2 max-sm:order-7 sm:col-span-2 xl:col-span-1 xl:col-start-4">
+                        <div className={`flex items-end gap-3 max-sm:col-span-2 max-sm:order-7 sm:col-span-2 xl:col-span-1 xl:col-start-4 ${isTabletViewport ? 'order-8' : ''}`}>
                             <Button
                                 type="button"
                                 variant="outline"
