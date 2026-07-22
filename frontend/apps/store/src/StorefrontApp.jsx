@@ -320,6 +320,7 @@ import { buildServiceCartValidationIssues } from './modes/services/booking/model
 import { SimpleProductCard } from './modes/simple/storefront/components/SimpleProductCard.jsx';
 import { ServiceProductCard } from './modes/services/storefront/components/ServiceProductCard.jsx';
 import { ServicesPerformanceSidebar } from './modes/services/storefront/components/ServicesPerformanceSidebar.jsx';
+import { ServicesFilterModal } from './modes/services/storefront/components/ServicesFilterModal.jsx';
 import { SimpleHero } from './modes/simple/storefront/components/SimpleHero.jsx';
 import { SimpleCartFloatingButton } from './modes/simple/checkout/components/SimpleCartFloatingButton.jsx';
 import { SimpleCartDrawerSurface } from './modes/simple/checkout/components/SimpleCartDrawerSurface.jsx';
@@ -5659,128 +5660,16 @@ export default function StorefrontApp() {
                         </div>
 
                         {isServiceFilterOpen && (
-                          <div
-                            style={{
-                              position: 'fixed',
-                              inset: 0,
-                              zIndex: 2200,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: isMobileViewport ? 16 : 24
-                            }}
-                          >
-                            <div
-                              style={{
-                                position: 'absolute',
-                                inset: 0,
-                                background: 'rgba(15,23,42,0.45)',
-                                backdropFilter: 'blur(4px)'
-                              }}
-                            />
-                            <div
-                              style={{
-                                position: 'relative',
-                                zIndex: 1,
-                                width: '100%',
-                                maxWidth: 560,
-                                background: '#ffffff',
-                                borderRadius: 22,
-                                border: '1px solid #e5e7eb',
-                                boxShadow: '0 24px 60px rgba(15,23,42,0.18)',
-                                padding: isMobileViewport ? 18 : 22,
-                                display: 'grid',
-                                gap: 16
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                                <div>
-                                  <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Filter Services</div>
-                                  <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
-                                    Applies services-mode filters using storefront availability, service area, and duration fields from SKUpervisor-backed catalog records.
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setIsServiceFilterOpen(false)}
-                                  style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: 999,
-                                    border: '1px solid #e5e7eb',
-                                    background: '#fff',
-                                    color: STYLES.colors.dark,
-                                    cursor: 'pointer',
-                                    fontWeight: 800
-                                  }}
-                                >
-                                  {'\u00D7'}
-                                </button>
-                              </div>
-
-                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
-                                <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
-                                  Availability
-                                  <StorefrontDropdown
-                                    value={serviceAvailabilityFilter}
-                                    onChange={setServiceAvailabilityFilter}
-                                    options={[
-                                      { value: 'all', label: 'All services' },
-                                      { value: 'available', label: 'Available now' },
-                                      { value: 'unavailable', label: 'Unavailable' }
-                                    ]}
-                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
-                                    menuStyle={{ borderRadius: 18 }}
-                                  />
-                                </label>
-                                <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
-                                  Service area
-                                  <StorefrontDropdown
-                                    value={serviceAreaFilter}
-                                    onChange={setServiceAreaFilter}
-                                    options={[
-                                      { value: 'all', label: 'All areas' },
-                                      { value: 'in_store', label: 'In-store' },
-                                      { value: 'customer_location', label: 'Home / on-site' }
-                                    ]}
-                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
-                                    menuStyle={{ borderRadius: 18 }}
-                                  />
-                                </label>
-                                <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
-                                  Duration
-                                  <StorefrontDropdown
-                                    value={serviceDurationFilter}
-                                    onChange={setServiceDurationFilter}
-                                    options={[
-                                      { value: 'all', label: 'Any duration' },
-                                      { value: 'short', label: 'Short under 1 hr' },
-                                      { value: 'standard', label: 'Standard 1-2 hrs' },
-                                      { value: 'extended', label: 'Extended 2+ hrs' }
-                                    ]}
-                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
-                                    menuStyle={{ borderRadius: 18 }}
-                                  />
-                                </label>
-                              </div>
-
-                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
-                                <GhostButton
-                                  style={{ minHeight: 42, fontSize: 13 }}
-                                  onClick={() => {
-                                    setServiceAvailabilityFilter('all');
-                                    setServiceAreaFilter('all');
-                                    setServiceDurationFilter('all');
-                                  }}
-                                >
-                                  Clear filters
-                                </GhostButton>
-                                <PrimaryButton style={{ minHeight: 42, fontSize: 13 }} onClick={() => setIsServiceFilterOpen(false)}>
-                                  Apply filters
-                                </PrimaryButton>
-                              </div>
-                            </div>
-                          </div>
+                          <ServicesFilterModal
+                            isMobileViewport={isMobileViewport}
+                            serviceAvailabilityFilter={serviceAvailabilityFilter}
+                            onAvailabilityChange={setServiceAvailabilityFilter}
+                            serviceAreaFilter={serviceAreaFilter}
+                            onAreaChange={setServiceAreaFilter}
+                            serviceDurationFilter={serviceDurationFilter}
+                            onDurationChange={setServiceDurationFilter}
+                            onClose={() => setIsServiceFilterOpen(false)}
+                          />
                         )}
 
                         <div style={{ display: 'grid', gridTemplateColumns: servicesGridColumns, gap: 22 }}>
