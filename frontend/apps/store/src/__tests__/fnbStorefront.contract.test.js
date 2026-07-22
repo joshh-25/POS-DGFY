@@ -14,6 +14,8 @@ const productDetailsPageSource = () => readSource('modes/fnb/storefront/pages/Fn
 const productDetailsMediaSource = () => readSource('modes/fnb/storefront/components/FnbProductMediaGallery.jsx');
 const productDetailsNutritionSource = () => readSource('modes/fnb/storefront/components/FnbProductNutritionAllergens.jsx');
 const productDetailsReviewsSource = () => readSource('modes/fnb/storefront/components/FnbProductReviewsSection.jsx');
+const productDetailActionsSource = () => readSource('modes/fnb/storefront/hooks/useFnbProductDetailActions.js');
+const productCardSource = () => readSource('modes/fnb/storefront/components/FnbProductCard.jsx');
 const catalogRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbCatalogRuntime.js');
 const itemReviewRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js');
 const checkoutPayloadSource = () => readSource('modes/fnb/checkout/model/buildFnbCheckoutPayload.js');
@@ -67,6 +69,17 @@ describe('Food & Beverage storefront contract', () => {
     expect(mediaSource).toContain('aria-label="Next slide"');
     expect(source).toContain('filterCatalogItems');
     expect(catalogRuntimeSource()).toContain('buildFnbCatalogPresentation');
+  });
+
+  it('opens the cart drawer from product details without changing menu-card fly behavior', () => {
+    const app = appSource();
+    const detailActions = productDetailActionsSource();
+    const productCard = productCardSource();
+
+    expect(detailActions).toContain('openCart: true');
+    expect(app).toContain('Boolean(options?.openCart) || !isFnbMode');
+    expect(productCard).toContain('sourceRect: getCartFlySourceRect(event)');
+    expect(productCard).not.toContain('openCart: true');
   });
 
   it('keeps menu metadata, modifiers, allergens, and reviews available in F&B modules', () => {

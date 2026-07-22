@@ -1,6 +1,7 @@
 export function buildDiscoveryResultsRendererProps({
   activeDiscoveryFilterCount,
   activeDiscoveryFilterDropdown,
+  clearDiscoveryClusterResults,
   clusterResultStores,
   discoveryBusinessModeOptions,
   discoveryCategoryFilter,
@@ -34,6 +35,7 @@ export function buildDiscoveryResultsRendererProps({
   isClusterResultsActive,
   isDiscoveryMobileViewport,
   isDiscoveryTabletViewport,
+  isMobileResultsCollapsed,
   isOpenNowFilterActive,
   isSortFilterActive,
   isStoreListVisible,
@@ -69,6 +71,7 @@ export function buildDiscoveryResultsRendererProps({
   return {
     activeDiscoveryFilterCount,
     activeDiscoveryFilterDropdown,
+    clearDiscoveryClusterResults,
     discoveryBusinessModeOptions,
     discoveryCategoryFilter,
     discoveryCoords,
@@ -100,6 +103,7 @@ export function buildDiscoveryResultsRendererProps({
     isCategoryFilterActive,
     isDiscoveryMobileViewport,
     isDiscoveryTabletViewport,
+    isMobileResultsCollapsed,
     isOpenNowFilterActive,
     isSortFilterActive,
     isStoreListVisible,
