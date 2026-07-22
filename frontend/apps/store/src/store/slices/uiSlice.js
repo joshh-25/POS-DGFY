@@ -1,31 +1,40 @@
 /**
  * uiSlice — cross-cutting presentational state for the storefront shell.
  *
- * Owns viewport + modal/overlay/drawer open flags that today live as loose
- * `useState` in StorefrontApp.jsx. This is the WORKED REFERENCE slice: every
- * other slice in this folder follows its shape exactly.
+ * Owns viewport width + modal/overlay flags that today live as loose `useState`
+ * in StorefrontApp.jsx. This is the WORKED REFERENCE slice: every other slice in
+ * this folder follows its shape exactly.
  *
  * Convention (see docs/refactor/STOREFRONT_STATE_MANAGEMENT.md):
- *   - State is nested under a single domain key (`ui`) so persistence,
- *     resets, and selectors have a clean boundary and names can't collide
- *     across the ~96 values being migrated out of the shell.
- *   - Actions are FLAT, top-level, named `<domain><Verb>` (e.g. `uiOpenOnlinePaymentModal`).
+ *   - State is nested under a single domain key (`ui`) so persistence, resets,
+ *     and selectors have a clean boundary and names can't collide across the ~96
+ *     values being migrated out of the shell.
+ *   - Actions are FLAT, top-level, named `<domain><Verb>` (e.g. `uiSetViewportWidth`).
  *   - Every setter goes through `set((s) => ({ ui: { ...s.ui, ... } }))` so the
  *     domain object is replaced immutably and unrelated slices are untouched.
+ *   - DERIVED values (isMobileViewport, isDesktopViewport, …) are NOT stored —
+ *     they are selectors in selectors/uiSelectors.js computed from `viewportWidth`.
  */
+
+const readInitialViewportWidth = () =>
+  (typeof window === 'undefined' ? 1280 : window.innerWidth);
 
 export const uiInitialState = {
   ui: {
+    // Viewport (source primitive; mobile/desktop breakpoints are derived selectors)
+    viewportWidth: readInitialViewportWidth(),
     // Overlays / modals
     isOnlinePaymentModalOpen: false,
-    showOrderSuccessAnimation: false,
-    // Viewport
-    isMobileViewport: false
+    // Order-success overlay — flag lives here, wired in Wave 3 (checkout-coupled)
+    showOrderSuccessAnimation: false
   }
 };
 
 export const createUiSlice = (set) => ({
   ...uiInitialState,
+
+  uiSetViewportWidth: (width) =>
+    set((s) => ({ ui: { ...s.ui, viewportWidth: Number(width) || 0 } })),
 
   uiOpenOnlinePaymentModal: () =>
     set((s) => ({ ui: { ...s.ui, isOnlinePaymentModalOpen: true } })),
@@ -34,8 +43,5 @@ export const createUiSlice = (set) => ({
     set((s) => ({ ui: { ...s.ui, isOnlinePaymentModalOpen: false } })),
 
   uiSetShowOrderSuccessAnimation: (visible) =>
-    set((s) => ({ ui: { ...s.ui, showOrderSuccessAnimation: Boolean(visible) } })),
-
-  uiSetMobileViewport: (isMobile) =>
-    set((s) => ({ ui: { ...s.ui, isMobileViewport: Boolean(isMobile) } }))
+    set((s) => ({ ui: { ...s.ui, showOrderSuccessAnimation: Boolean(visible) } }))
 });

@@ -1812,3 +1812,37 @@ Validation:
 Notes / next step:
 - Wave 1 migrates low-risk slices (session, ui, discovery-wiring, catalog read paths) via the bridge,
   each with unit tests, gated on browser QA (account/session, modal open/close, discovery, storefront load).
+
+## 2026-07-22 - Wave 1a: migrate ui slice (viewport + online-payment modal) to the store
+
+Slice: First real in-place bridge migration proving the zustand pattern end-to-end in the shell.
+Behavior-preserving — state ownership moved, not behavior.
+
+Files changed:
+- `frontend/apps/store/src/store/slices/uiSlice.js` (real shape: `viewportWidth`, `isOnlinePaymentModalOpen`, `showOrderSuccessAnimation`)
+- `frontend/apps/store/src/store/selectors/uiSelectors.js` (viewport + derived breakpoint selectors)
+- `frontend/apps/store/src/store/__tests__/useStorefrontStore.test.js` (7 tests)
+- `frontend/apps/store/src/StorefrontApp.jsx`
+
+Migrated via bridge (local names preserved → read sites untouched):
+- `viewportWidth` (was `useState`, resize listener) → `s.ui.viewportWidth` + `uiSetViewportWidth`. All
+  ~12 read sites and derived `isMobileViewport`/`isDesktopViewport` unchanged.
+- `isOnlinePaymentModalOpen` → `s.ui.isOnlinePaymentModalOpen` + `uiOpenOnlinePaymentModal`/`uiClose...`
+  (2 call sites in `handlePaymentTypeChange` and the modal `onClose`).
+- `showOrderSuccessAnimation` flag defined in the slice but NOT yet wired — deferred to Wave 3 (it is set
+  inside `handleCheckout`, a money path).
+
+StorefrontApp.jsx line count: 9,230 (+9 — bridge adds a few lines; the drop comes in Wave 2 when the
+prop-drilled JSX zones reading this state collapse).
+
+Validation:
+- Targeted Vitest: passed (`1` file, `7` tests).
+- Lint: 0 errors (pre-existing warnings only).
+- Storefront production build: passed.
+
+QA gate 1 (browser, dev.dgfy.ph) — responsive layout at mobile/desktop widths; selecting "Online" payment
+opens the Payment Unavailable modal and "Okay"/backdrop closes it.
+
+Notes / next step:
+- Remaining Wave 1 slices (session bootstrap, catalog read paths, discovery wiring) are larger, each its
+  own bridge commit + QA gate.

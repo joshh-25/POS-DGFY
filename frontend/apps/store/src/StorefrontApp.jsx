@@ -442,6 +442,11 @@ import {
   formatServicesBookingFailureMessage,
   resolveServicesBookingSubmitContract
 } from './services/servicesBookingContract.js';
+import { useStorefrontStore } from './store/useStorefrontStore.js';
+import {
+  selectIsOnlinePaymentModalOpen,
+  selectViewportWidth
+} from './store/selectors/uiSelectors.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 /* Legacy storefront contract anchors (frontend-only compatibility)
@@ -501,9 +506,10 @@ export default function StorefrontApp() {
   const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
   const previousRouteSlugRef = useRef(routeSlug);
-  const [viewportWidth, setViewportWidth] = useState(() => (
-    typeof window === 'undefined' ? 1280 : window.innerWidth
-  ));
+  // Migrated to the storefront zustand store (uiSlice). Local names preserved so
+  // every read site below is untouched; only the source of the value changed.
+  const viewportWidth = useStorefrontStore(selectViewportWidth);
+  const setViewportWidth = useStorefrontStore((s) => s.uiSetViewportWidth);
   const isMobileViewport = viewportWidth < 840;
   const isDesktopViewport = viewportWidth >= 1024;
   const isCompactPaginationViewport = viewportWidth < 768;
@@ -730,11 +736,14 @@ export default function StorefrontApp() {
     showMobileAddressModal,
   } = useFnbCheckoutRouteState();
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
-  const [isOnlinePaymentModalOpen, setIsOnlinePaymentModalOpen] = useState(false);
+  // Migrated to the storefront zustand store (uiSlice).
+  const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
+  const uiOpenOnlinePaymentModal = useStorefrontStore((s) => s.uiOpenOnlinePaymentModal);
+  const uiCloseOnlinePaymentModal = useStorefrontStore((s) => s.uiCloseOnlinePaymentModal);
 
   const handlePaymentTypeChange = useCallback((val) => {
     if (val === 'online') {
-      setIsOnlinePaymentModalOpen(true);
+      uiOpenOnlinePaymentModal();
       setFnbPaymentType('cash');
     } else {
       setFnbPaymentType(val);
@@ -9214,7 +9223,7 @@ return (
 
       <StorefrontPaymentUnavailableModal
         open={isOnlinePaymentModalOpen}
-        onClose={() => setIsOnlinePaymentModalOpen(false)}
+        onClose={uiCloseOnlinePaymentModal}
       />
     </main >
   );
