@@ -178,7 +178,7 @@ Rules:
 
 Current measured `StorefrontApp.jsx` line count:
 
-- `10,105` lines
+- `9,221` lines
 
 This is still too large, but it has been reduced through safe feature-boundary extraction.
 
@@ -305,6 +305,32 @@ Latest known validation after the most recent F&B cart drawer surface extraction
 
 ## Progress Log
 
+```text
+Date: 2026-07-22
+Slice: Add max-lines lint guardrail + 3 bounded extractions (overlays, ServiceProductCard, follow/share hook).
+Files changed:
+- frontend/.eslintrc.json (max-lines warn @ 1500; StorefrontApp.jsx + tests exempted)
+- frontend/apps/store/docs/refactor/STOREFRONT_FRONTEND_ARCHITECTURE_GUIDE.md (enforced-ceiling note; 500 target)
+- frontend/apps/store/src/shared/components/storefront/StorefrontOrderSuccessOverlay.jsx (new)
+- frontend/apps/store/src/shared/components/storefront/StorefrontPaymentUnavailableModal.jsx (new)
+- frontend/apps/store/src/modes/services/storefront/components/ServiceProductCard.jsx (new)
+- frontend/apps/store/src/shared/hooks/useStorefrontShareActions.js (new)
+- frontend/apps/store/src/StorefrontApp.jsx
+StorefrontApp.jsx line count: 9,221 (from 9,388)
+Validation:
+- Scoped ESLint: 0 errors on all touched/new files (existing StorefrontApp warning debt remains).
+- Targeted tests: discoveryMapLayers, storefrontStoresMapSource.contract, discoveryPresentation,
+  discoverySearchRanking, businessModePins, DgfyCustomerAccountPage.dashboard, fnbStorefront.contract —
+  7 files, 50 tests passed.
+- npx vite build --config apps/store/vite.config.js: passed (only existing Browserslist/chunk-size warnings).
+Manual QA:
+- Not performed in this environment (headless, no WebGL); browser click-through QA recommended before merge.
+Notes / next step:
+- Maps/discovery internals NOT touched (no raw map code remained inline; only prop wiring). develop's map behavior unchanged.
+- Behavior preserved: overlays, services product card, follow/share all moved verbatim.
+- Next safe slices (deferred, need browser QA): DGFY session bootstrap effect -> customer-dashboard/hooks;
+  services booking render assembly -> modes/services/booking; central cart ops (addToCart/updateQty) as isolated slices.
+```
 ```text
 Date: 2026-07-20
 Slice: Move shared cart fly-animation overlay into a shared component.
