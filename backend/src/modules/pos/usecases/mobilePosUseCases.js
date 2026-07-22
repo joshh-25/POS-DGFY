@@ -4,7 +4,10 @@ import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicati
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { getAllSettingsUseCase } from '../../settings/index.js';
 
-const MOBILE_SYNC_LIMIT_PER_DAY = 2;
+// Exported so middleware/rateLimiter.js can enforce the same number it
+// advertises to clients in sync_policy/sync_limit_policy - see
+// mobilePosFreeSyncLimiter.
+export const MOBILE_SYNC_LIMIT_PER_DAY = 2;
 const MOBILE_SYNC_RESET_HOUR = 0;
 const MOBILE_SYNC_RESET_MINUTE = 0;
 const MOBILE_CHECKPOINT_VERSION = 'mobile-pos.v1';
