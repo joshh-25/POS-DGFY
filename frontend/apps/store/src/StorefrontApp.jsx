@@ -319,6 +319,7 @@ import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useSer
 import { buildServiceCartValidationIssues } from './modes/services/booking/model/serviceBookingValidation.js';
 import { SimpleProductCard } from './modes/simple/storefront/components/SimpleProductCard.jsx';
 import { ServiceProductCard } from './modes/services/storefront/components/ServiceProductCard.jsx';
+import { ServicesPerformanceSidebar } from './modes/services/storefront/components/ServicesPerformanceSidebar.jsx';
 import { SimpleHero } from './modes/simple/storefront/components/SimpleHero.jsx';
 import { SimpleCartFloatingButton } from './modes/simple/checkout/components/SimpleCartFloatingButton.jsx';
 import { SimpleCartDrawerSurface } from './modes/simple/checkout/components/SimpleCartDrawerSurface.jsx';
@@ -7575,63 +7576,13 @@ return (
 
     {/* ZONE 5: Sidebar (Desktop) */}
     {isServicesMode && !isMobileViewport && (
-      <aside style={{ display: 'grid', gap: 24, alignContent: 'start' }}>
-        <div style={{ padding: 24, background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, boxShadow: STYLES.shadow.sm }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 20 }}>Performance Summary</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-            <div style={{ fontSize: 48, fontWeight: 900, color: STYLES.colors.dark }}>{selectedStore.storefront_review_summary?.score?.toFixed(1) || '0.0'}</div>
-            <div>
-              <div style={{ color: STYLES.colors.amber, fontSize: 18 }}>*****</div>
-              <div style={{ fontSize: 12, color: STYLES.colors.muted }}>from {selectedStore.storefront_review_summary?.total_count || 0} reviews</div>
-            </div>
-          </div>
-          {isMultiGroup && (
-            <div style={{ display: 'grid', gap: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Service Families</div>
-              {servicesViewModel.serviceGroups.map(group => {
-                const GroupIcon = SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles;
-                return (
-                  <button
-                    key={group.categoryKey}
-                    type="button"
-                    onClick={() => setActiveServiceTab(group.categoryKey)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '10px 14px', borderRadius: 12,
-                      border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${STYLES.colors.border}`,
-                      background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || '#f0fdfa' : '#fff',
-                      color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : STYLES.colors.text,
-                      fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
-                      transition: 'all 0.16s ease'
-                    }}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      <GroupIcon size={16} />
-                      <span>{group.categoryMeta.label}</span>
-                    </span>
-                    <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{group.items.length} services</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {(() => {
-          const promo = parseOptionalObject(selectedStore.storefront_promo);
-          if (!promo || !promo.active) return null;
-          return (
-            <div style={{
-              padding: 24, borderRadius: STYLES.radius.card, background: `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`,
-              color: '#fff', boxShadow: STYLES.shadow.md
-            }}>
-              <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
-              <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>
-              <p style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>{promo.subtitle}</p>
-            </div>
-          );
-        })()}
-      </aside>
+      <ServicesPerformanceSidebar
+        selectedStore={selectedStore}
+        isMultiGroup={isMultiGroup}
+        servicesViewModel={servicesViewModel}
+        resolvedTab={resolvedTab}
+        onSelectServiceTab={setActiveServiceTab}
+      />
     )}
 
     {isReviewModalOpen && isSimpleMode && (
