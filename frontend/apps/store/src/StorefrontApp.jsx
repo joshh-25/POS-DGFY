@@ -5,51 +5,22 @@ import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
-  Clock,
-  MessageSquare,
-  ThumbsUp,
-  Bike,
-  Clock3,
-  FileText,
-  Mail,
   MapPin,
   MessageCircle,
-  MousePointer2,
   Phone,
   Plus,
-  Minus,
   Search,
   ShoppingBag,
   ShoppingCart,
   SlidersHorizontal,
   Sparkles,
-  Star,
-  List,
-  LayoutGrid,
-  CupSoda,
-  Coffee,
-  Sandwich,
-  ChefHat,
   Copy,
-  User,
-  ChevronDown,
-  Share2,
   Trash2,
   X,
-  Lock,
   Navigation,
   Map,
-  MoreHorizontal,
-  Store,
-   ShieldCheck,
-  Heart,
-  LogOut,
-  ChevronLeft,
   ChevronRight,
   Info,
-  ArrowUpDown,
-  ArrowUpRight,
-  ArrowUpNarrowWide,
   Maximize,
 } from 'lucide-react';
 import { canCheckout, getCheckoutBlockReason } from './shared/model/checkoutRules.js';
@@ -3304,18 +3275,6 @@ export default function StorefrontApp() {
       toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
     }
   }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
-  const beginServiceBooking = (serviceItem) => {
-    if (!serviceItem) return;
-    setSelectedServiceDetail(serviceItem);
-    setCheckoutError('');
-    setQuoteError('');
-    setCheckoutResult(null);
-    if (isServicesMode) {
-      goStoreBookingPage({ preserveSelectedService: true });
-      return;
-    }
-    openServiceBookingPanel('review');
-  };
   const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
     if (!serviceItem) return;
     if (storefrontClosedByHours) {
