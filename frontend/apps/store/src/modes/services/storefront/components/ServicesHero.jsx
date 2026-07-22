@@ -14,10 +14,10 @@ import { StorefrontDropdown } from '../../../../features/shared-storefront/compo
 import {
   formatFollowersLabel
 } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
-import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../Components/storefront/hero/StorefrontHeaderNav.jsx';
-import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../Components/storefront/hero/StorefrontHeroNameCluster.jsx';
-import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../Components/storefront/hero/StorefrontShareQr.jsx';
-import { getServicesResponsiveLayout } from '../../../../storefrontViewport.js';
+import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../shared/components/storefront/hero/StorefrontHeaderNav.jsx';
+import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
+import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared/components/storefront/hero/StorefrontShareQr.jsx';
+import { getServicesResponsiveLayout } from '../../../../shared/utils/storefrontViewport.js';
 import { ServicesHeroDesktopContactLocation } from './ServicesHeroDesktopContactLocation.jsx';
 import { ServicesHeroDesktopWhyChooseUs } from './ServicesHeroDesktopWhyChooseUs.jsx';
 import { ServicesHeroMobileInfoCards } from './ServicesHeroMobileInfoCards.jsx';

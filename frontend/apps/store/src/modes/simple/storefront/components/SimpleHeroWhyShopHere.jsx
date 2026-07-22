@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 const SimpleHeroWhyShopHere = ({
   STYLES,
@@ -13,7 +13,7 @@ const SimpleHeroWhyShopHere = ({
       {visibleWhyChooseUs.map((item, index) => (
         <div key={`${item}-${index}`} style={{ display: 'grid', gridTemplateColumns: '30px minmax(0, 1fr)', alignItems: 'center', columnGap: 12, fontSize: 13, color: '#334155', lineHeight: 1.35 }}>
           <div style={{ width: 30, height: 30, borderRadius: 999, background: '#ecfeff', color: heroTheme.accent || '#0f766e', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <CheckCircle2 size={14} />
+            <Sparkles size={14} />
           </div>
           <div>{item}</div>
         </div>

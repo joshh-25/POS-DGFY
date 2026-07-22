@@ -4,7 +4,7 @@ import {
   getDiscoveryMatchBadges,
   getPreferredDiscoveryLocationId,
   selectDiscoveryPinLocations
-} from '../discoveryPresentation.js';
+} from '../discovery/model/discoveryPresentation.js';
 
 describe('selectDiscoveryPinLocations', () => {
   const activeLocations = [

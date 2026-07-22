@@ -1,12 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import QRCode from 'qrcode';
-import maplibregl from 'maplibre-gl';
 import { toast } from 'sonner';
-import SavedAddressCard from './checkout/components/SavedAddressCard';
-import dgfyHeaderLogo from '../../../public/dgfy-logo.png';
-import dgfySymbolLogo from '../../../public/dgfy-symbologo.png';
-import dgfyBusinessOwnerPhoto from '../../../public/man.png';
-import { formatStorefrontBusinessHoursDisplay, STOREFRONT_BUSINESS_DAY_OPTIONS } from '../../../src/features/settings/storefrontBusinessHours.js';
+import SavedAddressCard from './shared/components/checkout/SavedAddressCard.jsx';
 import {
   ArrowLeft,
   CalendarDays,
@@ -18,8 +12,6 @@ import {
   Bike,
   Clock3,
   FileText,
-  ClipboardList,
-  HeartHandshake,
   Mail,
   MapPin,
   MessageCircle,
@@ -35,20 +27,12 @@ import {
   Star,
   List,
   LayoutGrid,
-  Shirt,
-  Snowflake,
-  Scissors,
-  SprayCan,
-  Droplets,
-  Wrench,
   CupSoda,
   Coffee,
   Sandwich,
-  UtensilsCrossed,
   ChefHat,
   Copy,
   User,
-  ChevronUp,
   ChevronDown,
   Share2,
   Trash2,
@@ -58,8 +42,7 @@ import {
   Map,
   MoreHorizontal,
   Store,
-  ShieldCheck,
-  Zap,
+   ShieldCheck,
   Heart,
   LogOut,
   ChevronLeft,
@@ -70,23 +53,14 @@ import {
   ArrowUpNarrowWide,
   Maximize,
 } from 'lucide-react';
-import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
-import { filterCatalogItems } from './catalogSearch.js';
-import {
-  getDiscoveryEmptyStateMessage,
-  getDiscoveryMatchBadges,
-  getPreferredDiscoveryLocationId,
-  selectDiscoveryPinLocations
-} from './discoveryPresentation.js';
+import { canCheckout, getCheckoutBlockReason } from './shared/model/checkoutRules.js';
+import { filterCatalogItems } from './shared/model/catalogSearch.js';
 import {
   getSpreadMarkerCoordinate,
   haversineDistanceKm,
   toNumberOrNull
 } from './features/discovery/utils/discoveryMapMath.js';
-import {
-  makePinElement,
-  makeUserLocationElement
-} from './features/discovery/utils/discoveryMapMarkers.js';
+import { makePinElement } from './features/discovery/utils/discoveryMapMarkers.js';
 import {
   createStorePopupNode,
   locationsMatchProfileSnapshot,
@@ -95,15 +69,58 @@ import {
   normalizeStorefrontCategories,
   normalizeStorefrontDeliveryPartners,
   normalizeStorefrontGallery,
-  normalizeStorefrontReviewSummary,
-  resolveDiscoveryCategoryFilterValue,
-  sanitizeExternalLink
+  normalizeStorefrontReviewSummary
 } from './features/discovery/utils/storefrontDiscoveryNormalization.js';
 import {
   classifyStoreCatalogError,
   normalizeStorefrontErrorMessage
-} from './storefrontErrorMessages.js';
+} from './shared/model/storefrontErrorMessages.js';
 import {
+  buildCartTotals,
+  getLineModifiersTotal,
+  getLineTotal
+} from './shared/model/storefrontCartModel.js';
+import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPersistence.js';
+import {
+  buildCustomerFullName,
+  buildMaskedSavedCustomerPreview,
+  clearCheckoutAuthResumeDraft,
+  clearSavedCustomerDetails,
+  getOrCreateStorefrontVisitorId,
+  maskValue,
+  normalizeSavedCustomerDetails,
+  persistRecentStore,
+  readCheckoutAuthResumeDraft,
+  readLastStoreSlug,
+  readSavedCustomerDetails,
+  splitCustomerName,
+  writeCheckoutAuthResumeDraft,
+  writeSavedCustomerDetails
+} from './shared/model/storefrontCustomerStorage.js';
+import {
+  buildStockExceededMessage,
+  extractStockViolation,
+  formatStorefrontAddress,
+  isItemAvailable,
+  isServiceCatalogItem,
+  trimAddressCountrySuffix
+} from './shared/model/storefrontCatalogModel.js';
+import {
+  DGFY_ACRONYM,
+  DGFY_BRAND_NAME,
+  DGFY_CONVENIENCE_FEE_LABEL,
+  DGFY_CONVENIENCE_FEE_RATE,
+  ORDER_METHOD_OPTIONS
+} from './shared/model/storefrontConstants.js';
+import {
+  getStorefrontClosedBody,
+  getStorefrontClosedToastMessage,
+  STOREFRONT_CLOSED_TITLE
+} from './shared/model/storefrontClosedState.js';
+import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.js';
+import { parseBooleanFlag, parseOptionalArray, parseOptionalObject } from './shared/model/storefrontJsonModel.js';
+import {
+  buildAccessPolicyStorePatch,
   canUseBooking,
   canUseCheckout,
   canUseProductCart,
@@ -111,31 +128,51 @@ import {
   getAccessCapabilities,
   getInventoryDisplayLabel,
   getStorefrontAccessBlockMessage
-} from './customerAccess.js';
+} from './shared/model/customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './modes/fnb/storefront/model/fnbStorefrontViewModel.js';
+import { buildFnbCommunityModel } from './modes/fnb/storefront/model/fnbCommunityModel.js';
 import { buildFnbFallbackReasons, FNB_CATEGORY_ICON_MAP } from './modes/fnb/storefront/model/fnbStorefrontPresentation.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
+import { StorefrontCheckoutDrawerFrame } from './shared/components/StorefrontCheckoutDrawerFrame.jsx';
+import { StorefrontCartFlyAnimations } from './shared/components/StorefrontCartFlyAnimations.jsx';
+import { createStorefrontClosedNoticeRenderer } from './shared/components/StorefrontClosedNotice.jsx';
+import { DefaultStorefrontHero } from './shared/components/DefaultStorefrontHero.jsx';
 import { StorefrontHeroShell } from './shared/components/StorefrontHeroShell.jsx';
 import {
   buildGoogleMapsDirectionsUrl,
   buildVisibleStorefrontContactRows
 } from './shared/utils/storefrontContactPresentation.js';
-import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from './discoveryMapDom.js';
-import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
-import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
+import { openStorefrontActionLink } from './shared/utils/externalLinks.js';
+import { money, round4, toSlug } from './shared/utils/storefrontFormatters.js';
+import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
 import {
-  DiscoveryCategoryRail,
-  DiscoveryHeader,
-  DiscoveryHero,
-  DiscoveryMapCard,
-  DiscoverySearchRegion,
-  getDiscoveryLayoutTokens,
-  getDiscoveryViewportState
-} from './Components/store/DiscoveryResponsiveLayout.jsx';
-import { SolutionsPage } from './Components/storefront/pages/SolutionsPage.jsx';
+  buildTicketImage,
+  downloadDataUrl,
+  formatTicketDate
+} from './shared/utils/storefrontTicketImage.js';
+import {
+  getDiscoveryEmptyStateMessage,
+  getDiscoveryMatchBadges,
+  getPreferredDiscoveryLocationId,
+  selectDiscoveryPinLocations
+} from './discovery/model/discoveryPresentation.js';
+import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from './discovery/model/discoveryMapDom.js';
+import { normalizeStorefrontPageModel } from './app/runtime/normalizeStorefrontPageModel.js';
+import {
+  buildKnownStoreRouteCandidates,
+  buildStorefrontSlugFallbackQueries,
+  findCanonicalStorefrontSlug
+} from './app/routing/defaultStorefrontRoute.js';
+import { createStoreMarkerPreviewNode } from './discovery/model/storefrontMarkerPreview.js';
 import { FnbProductDetailsRoute } from './modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx';
-import { buildStorefrontQrUrl } from './storefrontQrUrl.js';
+import { buildFnbMobileLayout } from './modes/fnb/storefront/model/fnbMobileLayout.js';
+import { buildStorefrontQrUrl } from './shared/utils/storefrontQrUrl.js';
 import { FNB_RECOMMENDED_LOCATION } from './modes/fnb/checkout/model/fnbCheckoutAddressLocations.js';
+import {
+  buildFnbCartActionLabel,
+  buildFnbCartStatusLabel,
+  buildFnbDrawerSupportLabel
+} from './modes/fnb/checkout/model/fnbCartPresentation.js';
 import {
   isEnabledStorefrontCheckoutPaymentType,
   STOREFRONT_CHECKOUT_PAYMENT_OPTIONS
@@ -147,6 +184,8 @@ import { useFnbCheckoutPresentation } from './modes/fnb/checkout/hooks/useFnbChe
 import { useFnbCheckoutQuote } from './modes/fnb/checkout/hooks/useFnbCheckoutQuote.js';
 import { useFnbCheckoutRouteState } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteState.js';
 import { useFnbCheckoutSubmission } from './modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js';
+import { useFnbCheckoutPromoRenderers } from './modes/fnb/checkout/hooks/useFnbCheckoutPromoRenderers.jsx';
+import { useFnbCartDrawerRouteProps } from './modes/fnb/checkout/hooks/useFnbCartDrawerRouteProps.js';
 import { useFnbGuestCheckoutOtp } from './modes/fnb/checkout/hooks/useFnbGuestCheckoutOtp.js';
 import { FnbCheckoutConfirmation } from './modes/fnb/checkout/components/FnbCheckoutConfirmation.jsx';
 import { FnbCheckoutCustomerStepView } from './modes/fnb/checkout/components/FnbCheckoutCustomerStepView.jsx';
@@ -164,7 +203,7 @@ import { FnbCheckoutExpandedMapModal } from './modes/fnb/checkout/components/Fnb
 import { FnbCheckoutSavedAddressSelector } from './modes/fnb/checkout/components/FnbCheckoutSavedAddressSelector.jsx';
 import { FnbCartDrawerHeader } from './modes/fnb/checkout/components/FnbCartDrawerHeader.jsx';
 import { FnbCheckoutSummaryContent } from './modes/fnb/checkout/components/FnbCheckoutSummaryContent.jsx';
-import { FnbCartDrawerRoute } from './modes/fnb/checkout/pages/FnbCartDrawerRoute.jsx';
+import { FnbCartDrawerSurface } from './modes/fnb/checkout/pages/FnbCartDrawerSurface.jsx';
 import { FnbCheckoutRouteMount } from './modes/fnb/checkout/pages/FnbCheckoutRouteMount.jsx';
 import { useCustomerDashboardIdentity } from './customer-dashboard/hooks/useCustomerDashboardIdentity.js';
 import { useCustomerDashboardRuntime } from './customer-dashboard/hooks/useCustomerDashboardRuntime.js';
@@ -211,51 +250,122 @@ import {
   tileTransformRequest
 } from './app/runtime/storefrontMapRuntime.js';
 import { createCustomerIdentityRenderers } from './features/checkout/renderers/customerIdentityRenderers.jsx';
+import { DeliveryPinMap } from './features/locations/components/DeliveryPinMap.jsx';
 import { createAddressPinEditorRenderer } from './features/locations/renderers/addressPinEditorRenderer.jsx';
 import {
   buildPinnedDeliveryAddress,
   formatReverseGeocodedAddress,
   isGeneratedPinnedDeliveryAddress,
-  normalizeCoordinatePair
+  normalizeCoordinatePair,
+  reverseGeocodeDeliveryPin
 } from './features/locations/utils/pinnedDeliveryAddress.js';
-import { StoreCatalogEmptyState } from './features/shared-storefront/components/StoreCatalogEmptyState.jsx';
+import { StoreCatalogEmptyStates } from './features/shared-storefront/components/StoreCatalogEmptyStates.jsx';
+import { StorefrontExpandableBusinessHours } from './features/shared-storefront/components/StorefrontExpandableBusinessHours.jsx';
 import { StorefrontDropdown } from './features/shared-storefront/components/StorefrontDropdown.jsx';
-import { StoreFollowGlyph } from './features/shared-storefront/components/StoreFollowGlyph.jsx';
+import { StorefrontFollowFloatingAction } from './shared/components/storefront/StorefrontFollowFloatingAction.jsx';
 import {
+  deriveStorefrontRegistrationYear,
+  formatRatingSummary,
   formatFollowersLabel,
-  getStorefrontContactIcon
+  getDeliveryPlatformLinks,
+  getPreferredSocialContact,
+  getStorefrontContactFooterLinks,
+  getStorefrontContactIcon,
+  getStorefrontSocialFooterLinks,
+  maskReviewerName
 } from './features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { StorefrontExpandedMapModal } from './discovery/components/StorefrontExpandedMapModal.jsx';
+import { DiscoveryHomePage } from './discovery/pages/DiscoveryHomePage.jsx';
+import {
+  HERO_CANVAS_MAX_WIDTH,
+  MAX_STOREFRONT_WHY_CHOOSE_US,
+  MOBILE_DROPDOWN_MENU_STYLE,
+  MOBILE_DROPDOWN_OPTION_STYLE,
+  MOBILE_NATIVE_SELECT_STYLE,
+  STOREFRONT_CONTACT_INFO_COLUMNS,
+  STOREFRONT_INFO_ICON_COLUMN,
+  STOREFRONT_INFO_PANEL_MAX_WIDTH,
+  STOREFRONT_INFO_ROW_GAP,
+  STYLES
+} from './shared/theme/storefrontStyleTokens.js';
+import { ServicesDiscoveryDetailModal } from './modes/services/storefront/components/ServicesDiscoveryDetailModal.jsx';
+import { ServicesHero } from './modes/services/storefront/components/ServicesHero.jsx';
+import { buildServiceFallbackReasons } from './modes/services/storefront/model/servicesHeroPresentation.js';
+import { SERVICE_CATEGORY_ICON_MAP } from './modes/services/storefront/model/serviceCategoryIconMap.jsx';
+import {
+  BOOKING_FIELD_STYLE,
+  buildServiceBookingFieldPlan,
+  buildServicePaymentOptions,
+  formatBookingReviewValue,
+  isBookingFieldComplete,
+  normalizeServiceFormFields,
+  shouldBookingFieldSpanFullWidth
+} from './modes/services/booking/model/serviceBookingFields.js';
+import {
+  buildServiceDateOptions,
+  buildServiceTimeSlotOptions,
+  combineDateAndTimeParts,
+  formatLongDateLabel,
+  formatServiceAppointmentSummary,
+  formatTimeSlotLabel,
+  getDatePartFromAppointment,
+  getPreferredBookingTimeForDate,
+  getTimePartFromAppointment
+} from './modes/services/booking/model/serviceBookingSchedule.js';
+import { buildServiceBookingSummaryModel } from './modes/services/booking/model/serviceBookingSummary.js';
+import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useServiceBookingFieldFocus.js';
+import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
+import { buildServiceCartValidationIssues } from './modes/services/booking/model/serviceBookingValidation.js';
+import { SimpleProductCard } from './modes/simple/storefront/components/SimpleProductCard.jsx';
+import { SimpleHero } from './modes/simple/storefront/components/SimpleHero.jsx';
+import { SimpleCartFloatingButton } from './modes/simple/checkout/components/SimpleCartFloatingButton.jsx';
+import { SimpleCartDrawerSurface } from './modes/simple/checkout/components/SimpleCartDrawerSurface.jsx';
+import { SimpleCheckoutRoutePage } from './modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx';
+import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
+import { useSimpleCheckoutRouteProps } from './modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js';
+import { buildSimpleFallbackReasons } from './modes/simple/storefront/model/simpleStorefrontPresentation.js';
 import { StoresMap } from './discovery/components/StoresMap.jsx';
-import { useDiscoveryRuntime } from './discovery/hooks/useDiscoveryRuntime.js';
-import { buildDiscoveryResultsRendererProps } from './discovery/model/discoveryRendererProps.js';
-import { DiscoveryRouteContainer } from './discovery/pages/DiscoveryRouteContainer.jsx';
-import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './Components/storefront/hero/StorefrontHeroNameCluster.jsx';
-import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './Components/storefront/hero/StorefrontHeaderNav.jsx';
-import { StorefrontShareQr as SharedStorefrontShareQr } from './Components/storefront/hero/StorefrontShareQr.jsx';
-import { StorefrontPromoSection as SharedStorefrontPromoSection } from './Components/storefront/sections/StorefrontPromoSection.jsx';
-import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from './Components/storefront/sections/StorefrontReviewsSection.jsx';
-import { StorefrontFooterSection as SharedStorefrontFooterSection } from './Components/storefront/sections/StorefrontFooterSection.jsx';
+import {
+  DISCOVERY_CATEGORY_FILTER_OPTIONS,
+  DISCOVERY_CATEGORY_MATCHERS,
+  POPULAR_DISCOVERY_CATEGORIES
+} from './discovery/model/discoveryFilterOptions.js';
+import { useDiscoveryCategoryRail } from './discovery/hooks/useDiscoveryCategoryRail.js';
+import { useDiscoveryExplorationOutsideClick } from './discovery/hooks/useDiscoveryExplorationOutsideClick.js';
+import { useDiscoveryFilterDropdown } from './discovery/hooks/useDiscoveryFilterDropdown.js';
+import { useDiscoveryFilterOptions } from './discovery/hooks/useDiscoveryFilterOptions.js';
+import { useDiscoveryFeaturedMerchants } from './discovery/hooks/useDiscoveryFeaturedMerchants.jsx';
+import { useDiscoveryDerivedResults } from './discovery/hooks/useDiscoveryDerivedResults.js';
+import { useDiscoveryHighlightSync } from './discovery/hooks/useDiscoveryHighlightSync.js';
+import { useDiscoveryNavActions } from './discovery/hooks/useDiscoveryNavActions.js';
+import { useDiscoveryResultsRoute } from './discovery/hooks/useDiscoveryResultsRoute.js';
+import { useDiscoverySearchActions } from './discovery/hooks/useDiscoverySearchActions.js';
+import { useDiscoveryState } from './discovery/hooks/useDiscoveryState.js';
+import { useDiscoveryStoreLoader } from './discovery/hooks/useDiscoveryStoreLoader.js';
+import { useDiscoveryViewport } from './discovery/hooks/useDiscoveryViewport.js';
+import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
+import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './shared/components/storefront/hero/StorefrontHeaderNav.jsx';
+import { StorefrontShareQr as SharedStorefrontShareQr } from './shared/components/storefront/hero/StorefrontShareQr.jsx';
+import { StorefrontPromoSection as SharedStorefrontPromoSection } from './shared/components/storefront/sections/StorefrontPromoSection.jsx';
+import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from './shared/components/storefront/sections/StorefrontReviewsSection.jsx';
+import { StorefrontFooterSection as SharedStorefrontFooterSection } from './shared/components/storefront/sections/StorefrontFooterSection.jsx';
 import { FnbCatalogToolbar } from './modes/fnb/storefront/components/FnbCatalogToolbar.jsx';
 import { FnbHero } from './modes/fnb/storefront/components/FnbHero.jsx';
 import { useFnbCatalogRuntime } from './modes/fnb/storefront/hooks/useFnbCatalogRuntime.js';
 import { useFnbProductDetailsRoute } from './modes/fnb/storefront/hooks/useFnbProductDetailsRoute.js';
+import { useFnbProductDetailsRouteProps } from './modes/fnb/storefront/hooks/useFnbProductDetailsRouteProps.js';
 import { useFnbProductDetailNavigation } from './modes/fnb/storefront/hooks/useFnbProductDetailNavigation.js';
+import { useFnbProductDetailActions } from './modes/fnb/storefront/hooks/useFnbProductDetailActions.js';
+import { useFnbProductDetailsReviewProps } from './modes/fnb/storefront/hooks/useFnbProductDetailsReviewProps.js';
 import { useFnbItemReviewRuntime } from './modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js';
 import { useFnbProductModifiers } from './modes/fnb/storefront/hooks/useFnbProductModifiers.js';
 import { buildFnbPromoSectionModel } from './modes/fnb/promos/model/fnbPromoModel.js';
-import {
-  buildFnbAllergens,
-  buildFnbNutritionCards,
-  countSelectedModifiersByGroup,
-  normalizeFnbModifierGroups,
-} from './modes/fnb/storefront/model/fnbProductDetailsModel.js';
 import { FnbProductCard } from './modes/fnb/storefront/components/FnbProductCard.jsx';
 import { FnbItemReviewModal } from './modes/fnb/storefront/components/FnbItemReviewModal.jsx';
 import { FnbHeroDesktopAboutGallery } from './modes/fnb/storefront/components/FnbHeroDesktopAboutGallery.jsx';
 import { FnbHeroDesktopContactLocation } from './modes/fnb/storefront/components/FnbHeroDesktopContactLocation.jsx';
 import { FnbHeroDesktopWhyChooseUs } from './modes/fnb/storefront/components/FnbHeroDesktopWhyChooseUs.jsx';
-import { getServicesResponsiveLayout } from './storefrontViewport.js';
+import { getServicesResponsiveLayout } from './shared/utils/storefrontViewport.js';
 import { createTrackingAdapterRegistry } from './tracking/core.js';
 import {
   fnbTrackingAdapter,
@@ -277,7 +387,7 @@ import {
   mergeAccountPanelActivity,
   resolveStorefrontRouteSlug
 } from './tracking/accountActivity.js';
-import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
+import HospitalityBookingPanel from './modes/hospitality/booking/components/HospitalityBookingPanel.jsx';
 import {
   createBlankGuestCustomerIdentity,
   shouldHydrateSavedGuestCustomerDetails
@@ -291,7 +401,7 @@ import {
   buildBusinessRegistrationUrl,
   buildDgfyAuthUrl,
   buildPosAppUrl
-} from './businessRegistrationUrl.js';
+} from './shared/utils/businessRegistrationUrl.js';
 import { resolveStorefrontAccountUrl } from '../../../src/features/dgfyRouteHelpers.js';
 import {
   markDgfySessionActive,
@@ -313,25 +423,20 @@ import {
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
 import { hasCustomerName, hasPrimaryContact, hasDeliveryAddress, isCustomerStepComplete } from './checkout/checkoutValidation.js';
-import { CheckoutHeroHeader } from './checkout/components/CheckoutHeroHeader.jsx';
-import { OrderSummaryCard } from './checkout/components/OrderSummaryCard.jsx';
-import { PromoCodePanel } from './checkout/components/PromoCodePanel.jsx';
-import { PaymentMethodSelectorBlock } from './checkout/components/PaymentMethodSelectorBlock.jsx';
-import { CheckoutStepProgressHeader } from './checkout/components/CheckoutStepProgressHeader.jsx';
-import { SelectableOptionCard } from './checkout/components/SelectableOptionCard.jsx';
+import { PaymentMethodSelectorBlock } from './shared/components/checkout/PaymentMethodSelectorBlock.jsx';
+import { CheckoutStepProgressHeader } from './shared/components/checkout/CheckoutStepProgressHeader.jsx';
 import { FnbTrackingRouteContainer } from './modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
 import { DeliveryTrackingView } from './features/tracking/components/DeliveryTrackingView.jsx';
-import { ServiceBookingConfirmation } from './services/components/ServiceBookingConfirmation.jsx';
-import { ServiceBookingEmptyState } from './services/components/ServiceBookingEmptyState.jsx';
-import { ServiceBookingLocationSection } from './services/components/ServiceBookingLocationSection.jsx';
-import { ServiceBookingSelectedServiceCard } from './services/components/ServiceBookingSelectedServiceCard.jsx';
-import { ServiceBookingSummaryCard } from './services/components/ServiceBookingSummaryCard.jsx';
-import { ServiceBookingStepOne, ServiceBookingStepTwo, ServiceBookingStepThree } from './services/components/ServiceBookingSteps.jsx';
-import { ServiceCartDrawer } from './services/components/ServiceCartDrawer.jsx';
+import { ServiceBookingConfirmation } from './modes/services/booking/components/ServiceBookingConfirmation.jsx';
+import { ServiceBookingEmptyState } from './modes/services/booking/components/ServiceBookingEmptyState.jsx';
+import { ServiceBookingLocationSection } from './modes/services/booking/components/ServiceBookingLocationSection.jsx';
+import { ServiceBookingSelectedServiceCard } from './modes/services/booking/components/ServiceBookingSelectedServiceCard.jsx';
+import { ServiceBookingSummaryCard } from './modes/services/booking/components/ServiceBookingSummaryCard.jsx';
+import { ServiceBookingStepOne, ServiceBookingStepTwo, ServiceBookingStepThree } from './modes/services/booking/components/ServiceBookingSteps.jsx';
+import { ServiceCartDrawer } from './modes/services/booking/components/ServiceCartDrawer.jsx';
 import { FnbHeroMobileInfoCards } from './modes/fnb/storefront/components/FnbHeroMobileInfoCards.jsx';
 import {
-  collectServicesRuntimeCompatibilityIssues,
   formatServicesBookingFailureMessage,
   resolveServicesBookingSubmitContract
 } from './services/servicesBookingContract.js';
@@ -376,2883 +481,16 @@ checkoutResult.payments.filter
 cart_line_id
 */
 
-const ORDER_METHOD_OPTIONS = [
-  { value: 'delivery', label: 'Delivery' },
-  { value: 'pickup', label: 'Pickup' },
-  { value: 'dine_in', label: 'Dine In' },
-  { value: 'takeout', label: 'Takeout' }
-];
-
-const createStorefrontIdempotencyKey = (prefix = 'storefront') => {
-  const normalizedPrefix = String(prefix || 'storefront').trim() || 'storefront';
-  const randomId = window.crypto?.randomUUID?.();
-  return randomId
-    ? `${normalizedPrefix}-${randomId}`
-    : `${normalizedPrefix}-${Date.now()}`;
-};
-const SERVICE_CATEGORY_ICON_MAP = Object.freeze({
-  aircon: Snowflake,
-  laundry: Shirt,
-  pressing: Scissors,
-  addon: Sparkles,
-  repair: Wrench,
-  cleaning: SprayCan,
-  consultation: ClipboardList,
-  grooming: HeartHandshake,
-  wellness: Droplets,
-  service: Sparkles
-});
-const DGFY_BRAND_NAME = 'DGFY';
-const DGFY_ACRONYM = 'Discover Goods For You';
-const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
-const DGFY_CONVENIENCE_FEE_RATE = 0.01;
-const DISCOVERY_BADGE_TONE_STYLES = {
-  teal: { color: '#0f766e', background: '#ecfeff', borderColor: '#99f6e4' },
-  blue: { color: '#1a4e8d', background: '#eff6ff', borderColor: '#bfdbfe' },
-  slate: { color: '#334155', background: '#f8fafc', borderColor: '#cbd5e1' },
-  emerald: { color: '#047857', background: '#ecfdf5', borderColor: '#a7f3d0' },
-  amber: { color: '#92400e', background: '#fff7ed', borderColor: '#fed7aa' }
-};
-async function reverseGeocodeDeliveryPin(pin, { signal } = {}) {
-  const normalized = normalizeCoordinatePair(pin);
-  if (!normalized) return '';
-  const response = await fetch(
-    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(normalized.latitude)}&lon=${encodeURIComponent(normalized.longitude)}`,
-    { signal, headers: { Accept: 'application/json' } }
-  );
-  if (!response.ok) return buildPinnedDeliveryAddress(normalized);
-  return formatReverseGeocodedAddress(await response.json()) || buildPinnedDeliveryAddress(normalized);
-}
-
-const POPULAR_DISCOVERY_CATEGORIES = Object.freeze([
-  { label: 'Food', query: 'Food' },
-  { label: 'Grocery', query: 'Grocery' },
-  { label: 'Laundry', query: 'Laundry' },
-  { label: 'Salon', query: 'Salon' },
-  { label: 'Hardware', query: 'Hardware' },
-  { label: 'More', query: 'Services' }
-]);
-const DISCOVERY_CATEGORY_FILTER_OPTIONS = Object.freeze([
-  ['all', 'All'],
-  ['food', 'Food'],
-  ['grocery', 'Grocery'],
-  ['laundry', 'Laundry'],
-  ['salon', 'Salon'],
-  ['hardware', 'Hardware'],
-  ['services', 'Services'],
-  ['pharmacy', 'Pharmacy'],
-  ['electronics', 'Electronics'],
-  ['bakery', 'Bakery'],
-  ['clothing', 'Clothing'],
-  ['drinks', 'Drinks'],
-  ['food stall', 'Food Stall'],
-  ['frozen', 'Frozen']
-]);
-const DISCOVERY_CATEGORY_MATCHERS = Object.freeze({
-  food: ['food', 'cafe', 'coffee', 'bakery', 'drinks', 'food stall', 'frozen', 'f&b'],
-  grocery: ['grocery', 'supermarket', 'mart'],
-  laundry: ['laundry', 'wash'],
-  salon: ['salon', 'beauty', 'spa'],
-  hardware: ['hardware', 'repair', 'auto'],
-  services: ['services', 'service'],
-  pharmacy: ['pharmacy', 'health', 'medical'],
-  electronics: ['electronics', 'gadget', 'device', 'tech'],
-  bakery: ['bakery', 'bread', 'pastry'],
-  clothing: ['clothing', 'fashion', 'apparel'],
-  drinks: ['drinks', 'beverage', 'juice', 'milk tea'],
-  'food stall': ['food stall', 'stall'],
-  frozen: ['frozen', 'ice cream']
-});
-
-const money = (v) => `PHP ${Number(v || 0).toFixed(2)}`;
-const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
-const toSlug = (v) => String(v || '').trim().toLowerCase();
-const normalizeServiceFormFields = (schema) => {
-  const fields = Array.isArray(schema?.fields) ? schema.fields : Array.isArray(schema?.questions) ? schema.questions : [];
-  return fields
-    .map((field, index) => ({
-      id: String(field.id || field.key || field.name || `field_${index}`),
-      label: String(field.label || field.question || field.name || `Question ${index + 1}`),
-      type: ['textarea', 'select', 'checkbox', 'number', 'date', 'text'].includes(String(field.type || '').trim()) ? String(field.type).trim() : 'text',
-      required: field.required === true,
-      options: Array.isArray(field.options) ? field.options.map((option) => String(option)) : []
-    }))
-    .filter((field) => field.id && field.label);
-};
-const shouldBookingFieldSpanFullWidth = (field) => {
-  const label = String(field?.label || '').trim().toLowerCase();
-  const type = String(field?.type || '').trim().toLowerCase();
-  if (type === 'textarea' || type === 'date' || type === 'checkbox') return true;
-  return ['address', 'location', 'schedule', 'instruction', 'instructions', 'notes', 'message', 'details'].some((token) => label.includes(token));
-};
-const buildServicePaymentOptions = (servicePaymentPolicy) => {
-  if (servicePaymentPolicy === 'prepaid_required') return [{ value: 'prepaid', label: 'Pay Now' }];
-  if (servicePaymentPolicy === 'postpaid_only') return [{ value: 'postpaid', label: 'Pay Later' }];
-  if (servicePaymentPolicy === 'deposit_allowed') {
-    return [
-      { value: 'postpaid', label: 'Pay Later' },
-      { value: 'prepaid', label: 'Pay Now' },
-      { value: 'deposit', label: 'Deposit' }
-    ];
-  }
-  return [
-    { value: 'postpaid', label: 'Pay Later' },
-    { value: 'prepaid', label: 'Pay Now' }
-  ];
-};
-const normalizeBookingFieldText = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-const getBookingFieldSearchText = (field) => normalizeBookingFieldText(`${field?.id || ''} ${field?.label || ''}`);
-const bookingFieldMatchesAny = (field, tokens) => {
-  const haystack = ` ${getBookingFieldSearchText(field)} `;
-  return tokens.some((token) => haystack.includes(` ${normalizeBookingFieldText(token)} `));
-};
-const isServiceAreaOnSite = (serviceItem) => {
-  const value = normalizeBookingFieldText(serviceItem?.serviceAreaLabel || serviceItem?.service_detail?.service_area_type || '');
-  return value.includes('home') || value.includes('on site') || value.includes('onsite') || value.includes('customer location');
-};
-const buildServiceBookingFieldPlan = ({ fields, serviceItem }) => {
-  const usedIds = new Set();
-  const takeField = (predicate) => {
-    const match = fields.find((field) => !usedIds.has(field.id) && predicate(field));
-    if (match) usedIds.add(match.id);
-    return match || null;
-  };
-
-  const customerNameField = takeField((field) => (
-    bookingFieldMatchesAny(field, ['customer name', 'full name', 'client name', 'contact person', 'name'])
-    && !bookingFieldMatchesAny(field, ['business name', 'branch name', 'service name'])
-  ));
-  const contactNumberField = takeField((field) => bookingFieldMatchesAny(field, ['contact number', 'phone number', 'mobile number', 'contact no', 'telephone', 'phone']));
-  const emailField = takeField((field) => bookingFieldMatchesAny(field, ['email', 'email address']));
-  const addressField = takeField((field) => bookingFieldMatchesAny(field, ['full service address', 'service address', 'full address', 'address', 'pickup address', 'location']));
-  const preferredDateField = takeField((field) => (
-    field.type === 'date'
-    || bookingFieldMatchesAny(field, ['preferred schedule', 'schedule', 'appointment date', 'booking date', 'preferred date', 'service date', 'date'])
-  ));
-  const preferredTimeField = takeField((field) => bookingFieldMatchesAny(field, ['preferred time slot', 'time slot', 'preferred time', 'time window', 'appointment time', 'service time']));
-  const unitTypeField = takeField((field) => bookingFieldMatchesAny(field, ['unit type', 'service type', 'appliance type', 'unit variant']));
-  const unitCountField = takeField((field) => (
-    field.type === 'number'
-      ? bookingFieldMatchesAny(field, ['number of units', 'unit count', 'units', 'quantity', 'qty'])
-      : bookingFieldMatchesAny(field, ['number of units', 'unit count', 'quantity', 'qty'])
-  ));
-  const instructionField = takeField((field) => bookingFieldMatchesAny(field, ['special instructions', 'special instruction', 'instructions', 'instruction', 'notes', 'message', 'additional details']));
-
-  const remainingFields = fields.filter((field) => !usedIds.has(field.id));
-  return {
-    customerNameField,
-    contactNumberField,
-    emailField,
-    addressField,
-    preferredDateField,
-    preferredTimeField,
-    unitTypeField,
-    unitCountField,
-    instructionField,
-    remainingFields,
-    requiresAddress: Boolean(addressField) || isServiceAreaOnSite(serviceItem)
-  };
-};
-const isBookingFieldComplete = (field, value) => {
-  if (!field?.required) return true;
-  return field.type === 'checkbox' ? value === true : String(value || '').trim().length > 0;
-};
-const formatBookingReviewValue = (field, value) => {
-  if (field?.type === 'checkbox') return value === true ? 'Confirmed' : 'Not confirmed';
-  return String(value || '').trim() || 'Not provided';
-};
-const BOOKING_FIELD_STYLE = {
-  width: '100%',
-  maxWidth: '100%',
-  boxSizing: 'border-box',
-  marginTop: 6,
-  border: '1px solid #cbd5e1',
-  borderRadius: 14,
-  padding: '12px 13px',
-  background: '#fff',
-  fontSize: 14,
-  outline: 'none',
-  transition: 'border-color 0.2s'
-};
-const parseOptionalArray = (value) => {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== 'string' || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const parseOptionalObject = (value) => {
-  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-  if (typeof value !== 'string' || !value.trim()) return null;
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-};
-
-const parseBooleanFlag = (value, fallback = false) => {
-  if (value === true || value === false) return value;
-  if (value == null || value === '') return fallback;
-  const normalized = String(value).trim().toLowerCase();
-  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
-  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
-  return fallback;
-};
-const buildAccessPolicyStorePatch = (accessPolicy = null) => {
-  if (!accessPolicy || typeof accessPolicy !== 'object') return null;
-  return {
-    customer_access_mode: accessPolicy.customer_access_mode,
-    effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
-    max_customer_access_mode: accessPolicy.max_customer_access_mode,
-    inventory_display_mode: accessPolicy.inventory_display_mode,
-    inventory_low_stock_display_threshold: accessPolicy.inventory_low_stock_display_threshold,
-    access_capabilities: accessPolicy.access_capabilities,
-    access_limitation_reason: accessPolicy.limitation_reason || accessPolicy.access_limitation_reason || null,
-    customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled
-  };
-};
-
-export const findCanonicalStorefrontSlug = (requestedSlug, stores = []) => {
-  const normalizedRequestedSlug = toSlug(requestedSlug);
-  if (!normalizedRequestedSlug) return '';
-
-  const candidates = Array.isArray(stores) ? stores : [];
-  const exactSlugMatch = candidates.find((store) => toSlug(store?.slug) === normalizedRequestedSlug);
-  if (exactSlugMatch?.slug) return toSlug(exactSlugMatch.slug);
-
-  const slugPrefixMatch = candidates.find((store) => toSlug(store?.slug).startsWith(`${normalizedRequestedSlug}-`));
-  if (slugPrefixMatch?.slug) return toSlug(slugPrefixMatch.slug);
-
-  const tenantNameMatch = candidates.find((store) => toSlug(store?.tenant_name) === normalizedRequestedSlug);
-  if (tenantNameMatch?.slug) return toSlug(tenantNameMatch.slug);
-
-  return '';
-};
-
-export const buildStorefrontSlugFallbackQueries = (requestedSlug) => {
-  const normalizedRequestedSlug = toSlug(requestedSlug);
-  if (!normalizedRequestedSlug) return [];
-
-  const withoutHashSuffix = normalizedRequestedSlug
-    .replace(/-[0-9a-f]{6,}$/i, '')
-    .replace(/-[0-9]{4,}$/i, '');
-  const candidates = [
-    normalizedRequestedSlug,
-    withoutHashSuffix,
-    withoutHashSuffix.replace(/-/g, ' '),
-    normalizedRequestedSlug.replace(/-/g, ' ')
-  ];
-
-  return Array.from(new Set(candidates.map((candidate) => String(candidate || '').trim()).filter(Boolean)));
-};
-
-const STOREFRONT_RECENT_STORES_STORAGE_KEY = 'dgfy_store_recent_stores';
-const STOREFRONT_LAST_STORE_STORAGE_KEY = 'dgfy_store_last_store_slug';
-const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
-const STOREFRONT_CHECKOUT_AUTH_RESUME_KEY = 'dgfy_store_checkout_auth_resume_v1';
-const normalizeSavedCustomerDetails = (value) => {
-  if (!value || typeof value !== 'object') return null;
-  const rawName = String(value.name || '').trim();
-  const rawFirstName = String(value.firstName || '').trim();
-  const rawLastName = String(value.lastName || '').trim();
-  const derivedNameParts = rawName
-    ? (() => {
-        const segments = rawName.split(/\s+/).filter(Boolean);
-        if (segments.length <= 1) return { firstName: rawName, lastName: '' };
-        return {
-          firstName: segments.slice(0, -1).join(' '),
-          lastName: segments.slice(-1).join(' ')
-        };
-      })()
-    : { firstName: '', lastName: '' };
-  const firstName = rawFirstName || derivedNameParts.firstName;
-  const lastName = rawLastName || derivedNameParts.lastName;
-  const name = [firstName, lastName].filter(Boolean).join(' ').trim() || rawName;
-  const phone = String(value.phone || '').trim();
-  const email = String(value.email || '').trim();
-  if (!name && !phone && !email) return null;
-  return {
-    firstName,
-    lastName,
-    name,
-    phone,
-    email,
-    updatedAt: Number(value.updatedAt) || Date.now(),
-    source: String(value.source || 'guest').trim() || 'guest'
-  };
-};
-
-const readSavedCustomerDetails = () => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(STOREFRONT_SAVED_DETAILS_STORAGE_KEY) || 'null');
-    return normalizeSavedCustomerDetails(parsed);
-  } catch {
-    return null;
-  }
-};
-
-const writeSavedCustomerDetails = (value) => {
-  if (typeof window === 'undefined') return null;
-  const normalized = normalizeSavedCustomerDetails(value);
-  if (!normalized) return null;
-  window.localStorage.setItem(STOREFRONT_SAVED_DETAILS_STORAGE_KEY, JSON.stringify(normalized));
-  return normalized;
-};
-
-const clearSavedCustomerDetails = () => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(STOREFRONT_SAVED_DETAILS_STORAGE_KEY);
-};
-
-const normalizeCheckoutAuthResumeDraft = (value) => {
-  if (!value || typeof value !== 'object') return null;
-  const routeSlug = toSlug(value.routeSlug || value.storeSlug || '');
-  const checkoutTab = String(value.checkoutTab || '').trim();
-  const cart = Array.isArray(value.cart) ? value.cart : [];
-  if (!routeSlug || !checkoutTab || cart.length === 0) return null;
-  return {
-    version: 1,
-    routeSlug,
-    returnTo: String(value.returnTo || '').trim(),
-    checkoutTab,
-    fnbOrderStep: Number(value.fnbOrderStep || 0) || null,
-    simpleOrderStep: Number(value.simpleOrderStep || 0) || null,
-    serviceBookingStep: Number(value.serviceBookingStep || 0) || null,
-    selectedLocationId: Number.isFinite(Number(value.selectedLocationId)) ? Number(value.selectedLocationId) : null,
-    selectedSavedLocationId: String(value.selectedSavedLocationId || '').trim(),
-    orderMethod: String(value.orderMethod || '').trim(),
-    fnbScheduledFor: String(value.fnbScheduledFor || '').trim(),
-    fnbScheduleMode: String(value.fnbScheduleMode || '').trim(),
-    fnbSpecialInstructions: String(value.fnbSpecialInstructions || '').trim(),
-    serviceAppointmentAt: String(value.serviceAppointmentAt || '').trim(),
-    servicePaymentTiming: String(value.servicePaymentTiming || '').trim(),
-    customerAddress: String(value.customerAddress || '').trim(),
-    serviceLocationLandmarkNote: String(value.serviceLocationLandmarkNote || '').trim(),
-    resolvedDeliveryAddress: String(value.resolvedDeliveryAddress || '').trim(),
-    deliveryLocationAction: String(value.deliveryLocationAction || '').trim(),
-    customerPin: value.customerPin && Number.isFinite(Number(value.customerPin.latitude)) && Number.isFinite(Number(value.customerPin.longitude))
-      ? {
-        latitude: Number(value.customerPin.latitude),
-        longitude: Number(value.customerPin.longitude)
-      }
-      : null,
-    serviceIntakeResponses: value.serviceIntakeResponses && typeof value.serviceIntakeResponses === 'object'
-      ? value.serviceIntakeResponses
-      : {},
-    cart,
-    selectedServiceItemId: Number.isFinite(Number(value.selectedServiceItemId)) ? Number(value.selectedServiceItemId) : null,
-    savedAt: Number(value.savedAt) || Date.now()
-  };
-};
-
-const readCheckoutAuthResumeDraft = () => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const parsed = JSON.parse(window.sessionStorage.getItem(STOREFRONT_CHECKOUT_AUTH_RESUME_KEY) || 'null');
-    return normalizeCheckoutAuthResumeDraft(parsed);
-  } catch {
-    return null;
-  }
-};
-
-const writeCheckoutAuthResumeDraft = (value) => {
-  if (typeof window === 'undefined') return null;
-  const normalized = normalizeCheckoutAuthResumeDraft(value);
-  if (!normalized) return null;
-  window.sessionStorage.setItem(STOREFRONT_CHECKOUT_AUTH_RESUME_KEY, JSON.stringify(normalized));
-  return normalized;
-};
-
-const clearCheckoutAuthResumeDraft = () => {
-  if (typeof window === 'undefined') return;
-  window.sessionStorage.removeItem(STOREFRONT_CHECKOUT_AUTH_RESUME_KEY);
-};
-
 export const __storefrontTrackingTestUtils = {
   normalizeTrackedOrderEntry,
   mapAccountActivityToTrackedOrderEntry
 };
 
-const maskValue = (value = '', keepPrefix = 2, keepSuffix = 1) => {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (raw.length <= keepPrefix + keepSuffix) return '*'.repeat(Math.max(2, raw.length));
-  return `${raw.slice(0, keepPrefix)}${'*'.repeat(Math.max(2, raw.length - keepPrefix - keepSuffix))}${raw.slice(-keepSuffix)}`;
-};
-
-const splitCustomerName = (value = '') => {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return { firstName: '', lastName: '' };
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) return { firstName: trimmed, lastName: '' };
-  return {
-    firstName: parts.slice(0, -1).join(' '),
-    lastName: parts.slice(-1).join(' ')
-  };
-};
-
-const buildCustomerFullName = (firstName = '', lastName = '') => (
-  [String(firstName || '').trim(), String(lastName || '').trim()].filter(Boolean).join(' ').trim()
-);
-
-const normalizeRecentStoreEntry = (entry) => {
-  if (!entry || typeof entry !== 'object') return null;
-  const slug = toSlug(entry.slug);
-  if (!slug) return null;
-  return {
-    slug,
-    tenant_name: String(entry.tenant_name || entry.name || slug).trim() || slug,
-    address_line: String(entry.address_line || '').trim(),
-    business_mode: String(entry.business_mode || entry.workflow_mode || '').trim().toLowerCase(),
-    storefront_open: entry.storefront_open !== false
-  };
-};
-
-const readRecentStores = () => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(STOREFRONT_RECENT_STORES_STORAGE_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizeRecentStoreEntry).filter(Boolean).slice(0, 8);
-  } catch {
-    return [];
-  }
-};
-
-const readLastStoreSlug = () => {
-  if (typeof window === 'undefined') return '';
-  return toSlug(window.localStorage.getItem(STOREFRONT_LAST_STORE_STORAGE_KEY) || '');
-};
-
-const persistRecentStore = (entry) => {
-  const normalizedEntry = normalizeRecentStoreEntry(entry);
-  if (typeof window === 'undefined' || !normalizedEntry) return readRecentStores();
-  const next = [
-    normalizedEntry,
-    ...readRecentStores().filter((store) => toSlug(store.slug) !== normalizedEntry.slug)
-  ].slice(0, 8);
-  window.localStorage.setItem(STOREFRONT_RECENT_STORES_STORAGE_KEY, JSON.stringify(next));
-  window.localStorage.setItem(STOREFRONT_LAST_STORE_STORAGE_KEY, normalizedEntry.slug);
-  return next;
-};
-
-const extractStockViolation = (error) => {
-  const details = error?.details;
-  if (!details) return null;
-
-  if (details?.stock_violation && typeof details.stock_violation === 'object') {
-    return details.stock_violation;
-  }
-
-  if (Array.isArray(details?.stock_violations) && details.stock_violations.length > 0) {
-    return details.stock_violations[0];
-  }
-
-  if (Array.isArray(details)) {
-    return details.find((entry) => entry && typeof entry === 'object' && Number.isFinite(Number(entry.available_stock)) && Number.isFinite(Number(entry.requested_qty))) || null;
-  }
-
-  return null;
-};
-
-const buildStockExceededMessage = (violation = {}) => {
-  const itemName = violation.item_name || 'item';
-  return `${itemName} is currently unavailable at the selected location.`;
-};
-
-const formatStorefrontAddress = (source = {}) => {
-  if (!source || typeof source !== 'object') return '';
-  const firstLine = [
-    source.barangay,
-    source.street_address || source.streetAddress,
-    source.subdivision
-  ]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(', ');
-  const secondLine = [
-    source.city,
-    source.state,
-    source.province
-  ]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(', ');
-  const formatted = [firstLine, secondLine].filter(Boolean).join(', ');
-  if (formatted) return formatted;
-  return String(source.address_line || source.addressLine || '').trim();
-};
-
-const trimAddressCountrySuffix = (value) => String(value || '')
-  .replace(/,\s*Philippines\s*$/i, '')
-  .trim();
-
-const isItemAvailable = (item = {}) => {
-  if (item?.is_available === true) return true;
-  if (item?.is_available === false) return false;
-  const status = String(item?.availability_status || '').toLowerCase();
-  if (status === 'in_stock' || status === 'bookable') return true;
-  return Number(item?.current_stock || 0) > 0;
-};
-
-const isServiceCatalogItem = (item = {}) => String(item?.category || '').trim().toLowerCase() === 'service';
-
-const downloadDataUrl = (dataUrl, filename) => {
-  const link = document.createElement('a');
-  link.href = dataUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-};
-
-const loadImage = (src) => new Promise((resolve, reject) => {
-  const image = new Image();
-  image.onload = () => resolve(image);
-  image.onerror = reject;
-  image.src = src;
-});
-
-const buildTicketImage = async ({ result = {}, storeName = '', cartLines = [], totals = {} } = {}) => {
-  const booking = result.booking || null;
-  const reference = booking?.public_reference || result.tracking_pin || result.order?.tracking_pin || 'PENDING';
-  const typeLabel = booking ? 'SERVICE TICKET' : 'ORDER RECEIPT';
-  const paymentStatus = booking?.payment_status || result.order?.payment_status || result.payment_status || 'unpaid';
-  const canvas = document.createElement('canvas');
-  canvas.width = 900;
-  canvas.height = 1250;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '700 42px Arial';
-  ctx.fillText(typeLabel, 64, 88);
-  ctx.font = '700 26px Arial';
-  ctx.fillText(storeName || DGFY_BRAND_NAME, 64, 132);
-  ctx.font = '400 22px Arial';
-  ctx.fillStyle = '#475569';
-  ctx.fillText(`Reference: ${reference}`, 64, 182);
-  ctx.fillText(`Payment: ${paymentStatus}`, 64, 218);
-  if (booking?.start_at) ctx.fillText(`Appointment: ${formatTicketDate(booking.start_at)}`, 64, 254);
-  if (booking?.service?.name || booking?.service_name) ctx.fillText(`Service: ${booking.service?.name || booking.service_name}`, 64, 290);
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.beginPath();
-  ctx.moveTo(64, 330);
-  ctx.lineTo(836, 330);
-  ctx.stroke();
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '700 24px Arial';
-  ctx.fillText('Line Items', 64, 382);
-  ctx.font = '400 22px Arial';
-  let y = 426;
-  cartLines.slice(0, 10).forEach((line) => {
-    ctx.fillStyle = '#0f172a';
-    ctx.fillText(`${Number(line.quantity || 1)} x ${line.name}`, 64, y);
-    ctx.fillStyle = '#475569';
-    ctx.fillText(money(Number(line.quantity || 1) * Number(line.price || 0)), 650, y);
-    y += 38;
-  });
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.beginPath();
-  ctx.moveTo(64, y + 8);
-  ctx.lineTo(836, y + 8);
-  ctx.stroke();
-  y += 58;
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '700 28px Arial';
-  ctx.fillText('Total', 64, y);
-  ctx.fillText(money(totals.total_amount || booking?.total_amount || result.order?.total_amount || 0), 650, y);
-  y += 56;
-  ctx.font = '400 20px Arial';
-  ctx.fillStyle = '#64748b';
-  ctx.fillText(booking ? 'Booking ticket - not a fiscal receipt unless marked paid.' : 'Digital order receipt/ticket. Keep this image for your records.', 64, y);
-  const qrPayload = JSON.stringify({ type: booking ? 'service_booking' : 'store_order', reference, store: storeName || '' });
-  const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 1, width: 220 });
-  const qrImage = await loadImage(qrDataUrl);
-  ctx.drawImage(qrImage, 340, 900, 220, 220);
-  ctx.font = '700 22px Arial';
-  ctx.fillStyle = '#0f172a';
-  ctx.textAlign = 'center';
-  ctx.fillText(reference, 450, 1156);
-  ctx.textAlign = 'left';
-  return canvas.toDataURL('image/png');
-};
-
-const formatTicketDate = (value) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Unscheduled';
-  return date.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
-
-const STOREFRONT_VISITOR_ID_STORAGE_KEY = 'dgfy_storefront_visitor_id';
-const STOREFRONT_VISITOR_ID_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
-const getOrCreateStorefrontVisitorId = () => {
-  if (typeof window === 'undefined') return '';
-  const existing = String(window.localStorage.getItem(STOREFRONT_VISITOR_ID_STORAGE_KEY) || '').trim();
-  if (STOREFRONT_VISITOR_ID_PATTERN.test(existing)) return existing;
-  const generated = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID().replace(/-/g, '')
-    : `${Date.now()}${Math.random().toString(36).slice(2, 18)}`;
-  window.localStorage.setItem(STOREFRONT_VISITOR_ID_STORAGE_KEY, generated);
-  return generated;
-};
-
-function DeliveryPinMap({
-  pin = null,
-  onPinChange,
-  disabled = false,
-  height = 260,
-  highlighted = false,
-  highlightColor = '#f97316',
-  highlightGlow = 'rgba(249,115,22,0.14)',
-  overlayControls = null
-}) {
-  const frameRef = useRef(null);
-  const ref = useRef(null);
-  const mapRef = useRef(null);
-  const markerRef = useRef(null);
-  const [mapUnavailable, setMapUnavailable] = useState(false);
-  const resolvedHeight = typeof height === 'number' ? `${height}px` : String(height || '260px');
-
-  const scheduleMapResize = useCallback((reason = 'layout') => {
-    const map = mapRef.current;
-    const frame = frameRef.current;
-    if (!map || !frame) return undefined;
-
-    const runResize = () => {
-      const rect = frame.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      const canvas = map.getCanvas?.();
-      const canvasContainer = map.getCanvasContainer?.();
-      if (canvasContainer?.style) {
-        canvasContainer.style.width = '100%';
-        canvasContainer.style.height = '100%';
-      }
-      if (canvas?.style) {
-        canvas.style.zIndex = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-      }
-      map.resize();
-    };
-
-    const rafId = window.requestAnimationFrame(runResize);
-    const earlyTimer = window.setTimeout(runResize, reason === 'visible' ? 60 : 40);
-    const settleTimer = window.setTimeout(runResize, 220);
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      window.clearTimeout(earlyTimer);
-      window.clearTimeout(settleTimer);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!ref.current || mapRef.current) return undefined;
-    let map;
-    try {
-      map = new maplibregl.Map({
-        container: ref.current,
-        style: TILING_SERVER,
-        transformRequest: tileTransformRequest,
-        center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
-        zoom: 13
-      });
-    } catch (error) {
-      console.warn('[DeliveryPinMap] MapLibre init unavailable', error);
-      window.setTimeout(() => setMapUnavailable(true), 0);
-      return undefined;
-    }
-    const canvasContainer = map.getCanvasContainer?.();
-    if (canvasContainer?.style) {
-      canvasContainer.style.width = '100%';
-      canvasContainer.style.height = '100%';
-    }
-    const canvas = map.getCanvas();
-    canvas.style.zIndex = '0';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    map.on('error', (e) => console.error('[DeliveryPinMap] MapLibre error', e));
-    map.on('load', () => {
-      scheduleMapResize('load');
-    });
-    mapRef.current = map;
-    const cleanupInitialResize = scheduleMapResize('init');
-    return () => {
-      cleanupInitialResize?.();
-      if (markerRef.current) {
-        markerRef.current.remove();
-        markerRef.current = null;
-      }
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [scheduleMapResize]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    if (markerRef.current) {
-      markerRef.current.remove();
-      markerRef.current = null;
-    }
-
-    if (pin?.latitude != null && pin?.longitude != null) {
-      const lat = Number(pin.latitude);
-      const lng = Number(pin.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        const el = makeUserLocationElement();
-        markerRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom', draggable: !disabled })
-          .setLngLat([lng, lat])
-          .addTo(map);
-        if (!disabled) {
-          markerRef.current.on('dragstart', () => {
-            if (markerRef.current?._element) markerRef.current._element.style.cursor = 'grabbing';
-          });
-          markerRef.current.on('dragend', () => {
-            const nextLngLat = markerRef.current?.getLngLat?.();
-            if (markerRef.current?._element) markerRef.current._element.style.cursor = 'grab';
-            const nextLat = Number(nextLngLat?.lat);
-            const nextLng = Number(nextLngLat?.lng);
-            if (!Number.isFinite(nextLat) || !Number.isFinite(nextLng)) return;
-            onPinChange?.({
-              latitude: Number(nextLat.toFixed(6)),
-              longitude: Number(nextLng.toFixed(6))
-            });
-          });
-        }
-        map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15) });
-      }
-    }
-  }, [disabled, onPinChange, pin]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (disabled) return undefined;
-
-    const handleClick = (event) => {
-      const lat = Number(event?.lngLat?.lat);
-      const lng = Number(event?.lngLat?.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      onPinChange?.({
-        latitude: Number(lat.toFixed(6)),
-        longitude: Number(lng.toFixed(6))
-      });
-    };
-
-    map.on('click', handleClick);
-    return () => map.off('click', handleClick);
-  }, [disabled, onPinChange]);
-
-  useEffect(() => {
-    if (!mapRef.current || !frameRef.current) return undefined;
-    const cleanupTasks = [];
-    cleanupTasks.push(scheduleMapResize('visible'));
-
-    let resizeObserver = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        const cleanup = scheduleMapResize('observer');
-        if (cleanup) cleanupTasks.push(cleanup);
-      });
-      resizeObserver.observe(frameRef.current);
-    }
-
-    const handleViewportResize = () => {
-      const cleanup = scheduleMapResize('viewport');
-      if (cleanup) cleanupTasks.push(cleanup);
-    };
-    window.addEventListener('resize', handleViewportResize);
-    window.addEventListener('orientationchange', handleViewportResize);
-    window.visualViewport?.addEventListener?.('resize', handleViewportResize);
-
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', handleViewportResize);
-      window.removeEventListener('orientationchange', handleViewportResize);
-      window.visualViewport?.removeEventListener?.('resize', handleViewportResize);
-      cleanupTasks.splice(0).forEach((cleanup) => cleanup?.());
-    };
-  }, [disabled, resolvedHeight, scheduleMapResize]);
-
-  if (mapUnavailable) {
-    return (
-      <div
-        data-delivery-map-frame="fallback"
-        style={{
-          marginBottom: 10,
-          width: '100%',
-          height: resolvedHeight,
-          minHeight: resolvedHeight,
-          border: `2px solid ${highlighted ? highlightColor : '#cbd5e1'}`,
-          borderRadius: 16,
-          background: '#f8fafc',
-          padding: 16,
-          color: '#475569',
-          fontSize: 13,
-          boxShadow: highlighted ? `0 12px 28px ${highlightGlow}` : 'none'
-        }}
-      >
-        Map pin selection is unavailable on this device. Use the delivery address fields instead.
-      </div>
-    );
-  }
-
-  return (
-    <div
-      ref={frameRef}
-      data-delivery-map-frame="true"
-      style={{
-        position: 'relative',
-        marginBottom: 10,
-        width: '100%',
-        maxWidth: '100%',
-        height: resolvedHeight,
-        minHeight: resolvedHeight,
-        overflow: 'hidden',
-        border: `1.5px solid ${highlighted ? highlightColor : '#dbe5ee'}`,
-        borderRadius: 18,
-        isolation: 'isolate',
-        zIndex: 0,
-        boxShadow: highlighted ? `0 0 0 4px ${highlightGlow}` : '0 10px 28px rgba(15,23,42,0.06)',
-        transition: 'all 200ms ease'
-      }}
-    >
-      <div
-        ref={ref}
-        data-delivery-map-root="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          height: '100%',
-          width: '100%',
-          minHeight: 0
-        }}
-      />
-      {overlayControls && (
-        <div
-          data-delivery-map-controls="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            zIndex: 10
-          }}
-        >
-            {overlayControls}
-        </div>
-      )}
-      {disabled && (
-        <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(255,255,255,.6)', zIndex: 20 }} />
-      )}
-    </div>
-  );
-}
-
-const STYLES = {
-  colors: {
-    brand: '#ea580c',
-    brandDark: '#c2410c',
-    brandLight: '#fff7ed',
-    teal: '#0f766e',
-    tealLight: '#ecfeff',
-    amber: '#f59e0b',
-    dark: '#0f172a',
-    text: '#334155',
-    muted: '#64748b',
-    border: '#e2e8f0',
-    bg: '#f8fafc'
-  },
-  radius: { card: '24px', input: '14px', button: '12px' },
-  shadow: { sm: '0 4px 12px rgba(15,23,42,0.04)', md: '0 12px 34px rgba(15,23,42,0.08)', lg: '0 24px 58px rgba(15,23,42,0.12)' },
-  fonts: {
-    body: '"Open Sans", "Segoe UI", system-ui, sans-serif',
-    heading: '"Inter", "Open Sans", "Segoe UI", system-ui, sans-serif',
-    main: '"Open Sans", "Segoe UI", system-ui, sans-serif'
-  }
-};
-
-const HERO_CANVAS_MAX_WIDTH = 1320;
-const STOREFRONT_INFO_PANEL_MAX_WIDTH = HERO_CANVAS_MAX_WIDTH - 84;
-const STOREFRONT_CONTACT_INFO_COLUMNS = 'minmax(0, 0.96fr) minmax(248px, 1.04fr)';
-const STOREFRONT_INFO_ROW_GAP = 12;
-const STOREFRONT_INFO_ICON_COLUMN = 20;
-const MAX_STOREFRONT_CONTACT_ROWS = 4;
-const MAX_STOREFRONT_WHY_CHOOSE_US = 4;
+const dgfyHeaderLogo = '/dgfy-logo.png';
+const dgfySymbolLogo = '/dgfy-symbologo.png';
+const dgfyBusinessOwnerPhoto = '/man.png';
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
-const MOBILE_NATIVE_SELECT_STYLE = {
-  width: '100%',
-  minHeight: 44,
-  borderRadius: 14,
-  border: '1px solid #dbe5ee',
-  background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
-  padding: '0 42px 0 14px',
-  fontSize: 14,
-  fontWeight: 700,
-  color: STYLES.colors.dark,
-  fontFamily: 'inherit',
-  outline: 'none',
-  appearance: 'none',
-  WebkitAppearance: 'none',
-  MozAppearance: 'none',
-  boxShadow: '0 8px 18px rgba(15,23,42,.06)',
-  cursor: 'pointer'
-};
-const MOBILE_DROPDOWN_MENU_STYLE = {
-  left: 0,
-  right: 0,
-  width: '100%',
-  minWidth: '100%',
-  marginTop: 8,
-  borderRadius: 18,
-  padding: 8,
-  border: '1px solid #dbe5ee',
-  background: '#ffffff',
-  boxShadow: '0 18px 36px rgba(15,23,42,.16)'
-};
-const MOBILE_DROPDOWN_OPTION_STYLE = {
-  minHeight: 48,
-  padding: '12px 14px'
-};
-
-const DefaultStorefrontHero = ({
-  modeAdapter,
-  selectedStore,
-  isMobileViewport,
-  handleShareAction,
-  setIsCheckoutOpen
-}) => {
-  const heroTheme = modeAdapter.heroTheme || {};
-  return (
-    <>
-      <StorefrontHeroShell
-        fullBleed
-        isMobileViewport={isMobileViewport}
-        sectionStyle={{
-          minHeight: isMobileViewport ? 190 : 316,
-          borderRadius: 0,
-          overflow: 'visible',
-          background: `linear-gradient(135deg, ${heroTheme.surface || '#0f172a'} 0%, ${heroTheme.accentDark || '#134e4a'} 52%, ${heroTheme.accent || '#0f766e'} 100%)`,
-          boxShadow: STYLES.shadow.lg
-        }}
-        backgroundChildren={
-          <>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
-          </>
-        }
-      >
-        <div style={{ display: isMobileViewport ? 'none' : 'block' }}>
-          <div style={{
-            position: 'absolute',
-            left: `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-            right: `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-            bottom: -25,
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 28,
-            paddingLeft: 218
-          }}>
-            <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: 35 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Badge background="#0f766e" color="#fff" style={{ fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroEyebrow}</Badge>
-              </div>
-              <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
-                <h1 style={{ margin: 0, color: '#fff', fontSize: 50, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: heroTheme.displayFont }}>{selectedStore?.tenant_name || 'Loading Storefront...'}</h1>
-                <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
-              </div>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              flexDirection: 'row',
-              flexShrink: 0,
-              marginLeft: 'auto',
-              marginBottom: 35
-            }}>
-              <GhostButton onClick={handleShareAction} style={{ minWidth: 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont }}>
-                Share Storefront
-              </GhostButton>
-              <PrimaryButton onClick={() => setIsCheckoutOpen(true)} style={{ minWidth: 150, background: heroTheme.accent || '#0f766e', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(15,118,110,0.28)', border: 'none', fontWeight: 900, fontFamily: heroTheme.bodyFont }}>
-                {modeAdapter.primaryActionLabel}
-              </PrimaryButton>
-            </div>
-          </div>
-        </div>
-
-        <div style={{
-          position: 'absolute',
-          left: isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-          bottom: isMobileViewport ? '-45px' : -25,
-          width: isMobileViewport ? 110 : 190,
-          height: isMobileViewport ? 110 : 190,
-          borderRadius: '50%',
-          background: '#fff',
-          border: '3px solid #fff',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-          overflow: 'hidden',
-          zIndex: 20,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          {selectedStore?.storefront_profile_image_url ? (
-            <img
-              src={selectedStore.storefront_profile_image_url}
-              alt={`${selectedStore?.tenant_name} profile`}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          ) : (
-            <div style={{ fontSize: isMobileViewport ? 32 : 66, fontWeight: 900, color: heroTheme.accentDark || '#134e4a', fontFamily: heroTheme.displayFont }}>{(selectedStore?.tenant_name || 'S').charAt(0)}</div>
-          )}
-        </div>
-      </StorefrontHeroShell>
-
-      <div style={{ display: isMobileViewport ? 'block' : 'none', background: '#fff' }}>
-        <div style={{ padding: '14px 16px 10px' }}>
-          <div style={{ display: 'flex', marginLeft: 80, gap: 8, marginBottom: 12, marginRight: 2 }}>
-            <GhostButton onClick={handleShareAction} style={{ flex: 1, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, fontFamily: heroTheme.bodyFont, fontWeight: 600, fontSize: 13 }}>
-              Share
-            </GhostButton>
-            <PrimaryButton onClick={() => setIsCheckoutOpen(true)} style={{ flex: 1, background: heroTheme.accent || '#0f766e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
-              {modeAdapter.primaryActionLabel}
-            </PrimaryButton>
-          </div>
-
-          <div style={{ display: 'grid', gap: 8 }}>
-            <h1 style={{ margin: 0, color: '#0f172a', fontSize: 24, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: heroTheme.displayFont }}>{selectedStore?.tenant_name || 'Loading Storefront...'}</h1>
-            <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
-            <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#475569', fontSize: 12, fontWeight: 600, marginTop: 4, fontFamily: heroTheme.bodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>{modeAdapter.heroEyebrow}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div style={{ display: isMobileViewport ? 'none' : 'block' }}>
-        <div style={{
-          maxWidth: HERO_CANVAS_MAX_WIDTH,
-          margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
-          padding: 26,
-          background: '#ffffff',
-          border: '1px solid #e8edf3',
-          borderRadius: 24,
-          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
-        }}>
-          {/* Default Info content. The map is rendered separately below in StorefrontApp */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px', color: '#64748b' }}>
-            Browse the store categories and products below.
-          </div>
-        </div>
-      </div>
-    </>
-  );
-};
-
-
-const openStorefrontActionLink = (href) => {
-  const target = String(href || '').trim();
-  if (!target || typeof window === 'undefined') return;
-  if (target.startsWith('tel:') || target.startsWith('mailto:')) {
-    window.location.href = target;
-    return;
-  }
-  window.open(target, '_blank', 'noopener,noreferrer');
-};
-
-const formatStorefrontHoursLabel = (rawValue, fallbackDisplay = '') => {
-  return String(
-    formatStorefrontBusinessHoursDisplay(rawValue)
-    || rawValue
-    || fallbackDisplay
-    || ''
-  ).trim();
-};
-
-const STOREFRONT_CLOSED_TITLE = 'This storefront is currently closed.';
-const STOREFRONT_CLOSED_BODY_FALLBACK = 'Orders are unavailable right now. Please come back during business hours.';
-
-const getStorefrontClosedBody = (hoursLabel = '') => (
-  hoursLabel
-    ? `Orders are unavailable right now. Come back during business hours: ${hoursLabel}.`
-    : STOREFRONT_CLOSED_BODY_FALLBACK
-);
-
-const getStorefrontClosedToastMessage = (hoursLabel = '') => (
-  hoursLabel
-    ? `This storefront is currently closed. Come back during business hours: ${hoursLabel}.`
-    : 'This storefront is currently closed. Please come back during business hours.'
-);
-
-const formatRatingSummary = (reviewSummary = null) => {
-  const score = Number(reviewSummary?.score);
-  if (!Number.isFinite(score) || score <= 0) return 'New storefront';
-  const count = Number(reviewSummary?.total_count ?? reviewSummary?.totalCount);
-  return Number.isFinite(count) && count > 0
-    ? `${score.toFixed(1)} (${count})`
-    : score.toFixed(1);
-};
-
-const getPreferredSocialContact = ({ messengerLink = '', facebookLink = '' } = {}) => {
-  const normalizedMessengerLink = String(messengerLink || '').trim();
-  const normalizedFacebookLink = String(facebookLink || '').trim();
-  if (normalizedMessengerLink) {
-    return { label: 'Messenger', value: 'Message us', href: normalizedMessengerLink };
-  }
-  if (normalizedFacebookLink) {
-    return { label: 'Facebook', value: 'Facebook', href: normalizedFacebookLink };
-  }
-  return null;
-};
-
-const formatMinutes = (time) => {
-  const [hourRaw, minuteRaw] = String(time || '00:00').split(':');
-  const hour24 = Number.parseInt(hourRaw, 10);
-  const minute = Number.parseInt(minuteRaw, 10);
-  if (!Number.isFinite(hour24) || !Number.isFinite(minute)) return '';
-  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
-  const hour12 = hour24 % 12 || 12;
-  return `${hour12}:${String(minute).padStart(2, '0')} ${meridiem}`;
-};
-
-const StorefrontExpandableBusinessHours = ({ schedule, theme }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const { weekly = {}, timezone = 'Asia/Manila' } = schedule || {};
-
-  const groupedSchedule = useMemo(() => {
-    const groups = [];
-    STOREFRONT_BUSINESS_DAY_OPTIONS.forEach((day) => {
-      const entry = weekly[day.key];
-      if (!entry?.enabled) return;
-      const signature = (entry.intervals || [])
-        .map((interval) => `${interval.open}-${interval.close}`)
-        .join('|');
-      const existing = groups.find(g => g.signature === signature);
-      if (existing) {
-        existing.days.push(day.label);
-        existing.dayKeys.push(day.key);
-      } else {
-        const intervalsStr = (entry.intervals || []).map(interval =>
-          interval.open === interval.close
-            ? '24 hours'
-            : `${formatMinutes(interval.open)} - ${formatMinutes(interval.close)}`
-        ).join(', ');
-        groups.push({
-          signature,
-          days: [day.label],
-          dayKeys: [day.key],
-          intervals: intervalsStr
-        });
-      }
-    });
-    return groups;
-  }, [weekly]);
-
-  const currentStatus = useMemo(() => {
-    let now;
-    try {
-      now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
-    } catch {
-      now = new Date();
-    }
-    const currentDayIndex = now.getDay();
-    const currentDayOption = STOREFRONT_BUSINESS_DAY_OPTIONS[currentDayIndex];
-    const currentDayKey = currentDayOption.key;
-
-    const entry = weekly[currentDayKey];
-    if (!entry?.enabled) {
-      return { prefix: 'Closed today', prefixColor: '#ef4444', suffix: '', dayKey: currentDayKey };
-    }
-
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-    const intervals = entry.intervals || [];
-    const isCurrentlyOpen = intervals.some((interval) => {
-      if (interval.open === interval.close) return true;
-      const openMins = Number(interval.open.split(':')[0]) * 60 + Number(interval.open.split(':')[1]);
-      const closeMins = Number(interval.close.split(':')[0]) * 60 + Number(interval.close.split(':')[1]);
-      const adjustedCloseMins = closeMins < openMins ? closeMins + 1440 : closeMins;
-      return currentMinutes >= openMins && currentMinutes < adjustedCloseMins;
-    });
-    const currentInterval = intervals.find((interval) => {
-      if (interval.open === interval.close) return true;
-      const openMins = Number(interval.open.split(':')[0]) * 60 + Number(interval.open.split(':')[1]);
-      const closeMins = Number(interval.close.split(':')[0]) * 60 + Number(interval.close.split(':')[1]);
-      const adjustedCloseMins = closeMins < openMins ? closeMins + 1440 : closeMins;
-      return currentMinutes >= openMins && currentMinutes < adjustedCloseMins;
-    });
-    const nextClose = currentInterval?.close || null;
-    const nextOpen = intervals.find((interval) => {
-      const openMins = Number(interval.open.split(':')[0]) * 60 + Number(interval.open.split(':')[1]);
-      return currentMinutes < openMins;
-    })?.open || null;
-
-    const intervalsStr = intervals.map(interval => {
-      if (interval.open === interval.close) {
-        return '24 hours';
-      }
-
-      return `${formatMinutes(interval.open)} - ${formatMinutes(interval.close)}`;
-    }).join(', ');
-
-    if (intervalsStr === '24 hours') {
-      return { prefix: 'Open 24 hours today', prefixColor: '#16a34a', suffix: '', dayKey: currentDayKey };
-    }
-
-    if (isCurrentlyOpen) {
-      return { prefix: 'Open now', prefixColor: '#16a34a', suffix: ` - Closes at ${formatMinutes(nextClose)}`, dayKey: currentDayKey };
-    } else if (nextOpen) {
-      return { prefix: 'Closed now', prefixColor: '#ef4444', suffix: ` - Opens at ${formatMinutes(nextOpen)} today`, dayKey: currentDayKey };
-    }
-
-    return { prefix: 'Open today', prefixColor: '#334155', suffix: `: ${intervalsStr}`, dayKey: currentDayKey };
-  }, [weekly, timezone]);
-
-  if (groupedSchedule.length === 0) {
-    return <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Closed</div>;
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          margin: 0,
-          fontFamily: 'inherit',
-          fontSize: 13,
-          fontWeight: 600,
-          color: '#334155',
-          cursor: 'pointer',
-          textAlign: 'left'
-        }}
-      >
-        <span>
-          <span style={{ color: currentStatus.prefixColor || '#334155' }}>{currentStatus.prefix}</span>
-          <span style={{ color: '#334155', whiteSpace: 'pre-wrap' }}>{currentStatus.suffix}</span>
-        </span>
-        {isExpanded ? <ChevronUp size={14} color="#64748b" /> : <ChevronDown size={14} color="#64748b" />}
-      </button>
-
-      {isExpanded && (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-          marginTop: 4,
-          padding: '8px 12px',
-          background: 'rgba(0,0,0,0.03)',
-          borderRadius: 8
-        }}>
-          {groupedSchedule.map((group, index) => {
-            const isToday = group.dayKeys.includes(currentStatus.dayKey);
-            return (
-              <div
-                key={index}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'auto 1fr',
-                  gap: 8,
-                  fontSize: 12,
-                  color: isToday ? (theme?.accentDark || '#0f172a') : '#475569',
-                  fontWeight: isToday ? 700 : 500
-                }}
-              >
-                <div>{group.days.join(', ')}</div>
-                <div style={{ textAlign: 'right' }}>{group.intervals}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const maskReviewerName = (value) => {
-  const name = String(value || '').trim();
-  if (!name) return 'Anonymous';
-  const words = name.split(/\s+/).filter(Boolean);
-  return words
-    .map((word) => {
-      if (word.length <= 2) return `${word.charAt(0)}*`;
-      return `${word.slice(0, 2)}${'*'.repeat(Math.max(2, word.length - 2))}`;
-    })
-    .join(' ');
-};
-
-const deriveStorefrontRegistrationYear = (value) => {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return '';
-  return String(date.getFullYear());
-};
-
-const STOREFRONT_FOOTER_SOCIAL_LABELS = ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'];
-const STOREFRONT_FOOTER_CONTACT_LABELS = ['Call', 'Email'];
-const DELIVERY_PARTNER_LOGOS = Object.freeze({
-  grab: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSboB_YmMRIM3d5SN4mxXvUZmG5j0kbI1N2hg&s',
-  foodpanda: 'https://cdn.worldvectorlogo.com/logos/foodpanda-logo.svg',
-  lalamove: 'https://images.seeklogo.com/logo-png/44/1/lalamove-logo-png_seeklogo-447373.png'
-});
-
-const getStorefrontSocialFooterLinks = (links = []) => (
-  (Array.isArray(links) ? links : []).filter((link) => STOREFRONT_FOOTER_SOCIAL_LABELS.includes(link?.label))
-);
-
-const getStorefrontContactFooterLinks = (links = []) => (
-  (Array.isArray(links) ? links : []).filter((link) => STOREFRONT_FOOTER_CONTACT_LABELS.includes(link?.label))
-);
-
-const getDeliveryPlatformLinks = (deliveryPartners = []) => (
-  (Array.isArray(deliveryPartners) ? deliveryPartners : [])
-    .map((entry) => {
-      const partner = String(entry?.partner || '').trim().toLowerCase();
-      if (!partner) return null;
-      const href = sanitizeExternalLink(entry?.url);
-      if (!href) return null;
-      return {
-        partner,
-        label: String(entry?.label || (partner === 'foodpanda' ? 'foodpanda' : partner.charAt(0).toUpperCase() + partner.slice(1))).trim(),
-        href,
-        logoUrl: DELIVERY_PARTNER_LOGOS[partner] || ''
-      };
-    })
-    .filter(Boolean)
-);
-
-const buildSimpleFallbackReasons = ({ categories = [], catalog = [] } = {}) => {
-  const reasons = [];
-  if (Array.isArray(categories) && categories.length > 0) {
-    reasons.push(...categories.slice(0, 2));
-  }
-  const normalizedCatalog = Array.isArray(catalog) ? catalog : [];
-  const productCount = normalizedCatalog.length;
-  if (productCount > 0) {
-    reasons.push(`${productCount} products currently available`);
-  }
-  const uniqueGroups = [...new Set(normalizedCatalog
-    .map((item) => String(item?.categoryMeta?.label || item?.category_name || item?.category || '').trim())
-    .filter(Boolean))];
-  if (uniqueGroups.length > 0) {
-    reasons.push(...uniqueGroups.slice(0, 2).map((label) => `${label} selections ready`));
-  }
-  return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
-};
-
-const formatServiceAppointmentSummary = (appointmentAt) => {
-  const raw = String(appointmentAt || '').trim();
-  if (!raw) return 'Schedule needed';
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return 'Schedule needed';
-  return parsed.toLocaleString('en-PH', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  });
-};
-
-const SERVICE_FALLBACK_TIME_SLOTS = ['09:00', '11:00', '13:00', '15:00', '17:00'];
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const DAY_KEY_ALIASES = {
-  0: ['0', 'sun', 'sunday'],
-  1: ['1', 'mon', 'monday'],
-  2: ['2', 'tue', 'tues', 'tuesday'],
-  3: ['3', 'wed', 'wednesday'],
-  4: ['4', 'thu', 'thur', 'thurs', 'thursday'],
-  5: ['5', 'fri', 'friday'],
-  6: ['6', 'sat', 'saturday']
-};
-
-const pad2 = (value) => String(value).padStart(2, '0');
-const formatLocalDateInputValue = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-
-const formatLongDateLabel = (dateString) => {
-  if (!dateString) return 'Pick a date';
-  const parsed = new Date(`${dateString}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return 'Pick a date';
-  return parsed.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
-};
-
-const formatShortDateLabel = (dateString) => {
-  if (!dateString) return 'Pick a date';
-  const parsed = new Date(`${dateString}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return 'Pick a date';
-  return parsed.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
-};
-
-const formatTimeSlotLabel = (timeString) => {
-  if (!timeString) return 'Pick a time';
-  const [hourRaw, minuteRaw = '00'] = String(timeString).split(':');
-  const hour = Number(hourRaw);
-  const minute = Number(minuteRaw);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return 'Pick a time';
-  const normalized = new Date(2000, 0, 1, hour, minute, 0, 0);
-  return normalized.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' });
-};
-
-const getDatePartFromAppointment = (appointmentAt) => {
-  const raw = String(appointmentAt || '').trim();
-  return raw.includes('T') ? raw.split('T')[0] : '';
-};
-
-const getTimePartFromAppointment = (appointmentAt) => {
-  const raw = String(appointmentAt || '').trim();
-  if (!raw.includes('T')) return '';
-  const timePart = raw.split('T')[1] || '';
-  return timePart.slice(0, 5);
-};
-
-const combineDateAndTimeParts = (datePart, timePart) => {
-  if (!datePart || !timePart) return '';
-  return `${datePart}T${timePart}`;
-};
-
-const normalizeSlotClockValue = (value) => {
-  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return '';
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return '';
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return '';
-  return `${pad2(hour)}:${pad2(minute)}`;
-};
-
-const toMinutesFromClock = (clockValue) => {
-  const normalized = normalizeSlotClockValue(clockValue);
-  if (!normalized) return null;
-  const [hour, minute] = normalized.split(':').map(Number);
-  return (hour * 60) + minute;
-};
-
-const parseWeeklyAvailabilitySlot = (entry) => {
-  if (typeof entry === 'string') {
-    const [startRaw, endRaw] = entry.split('-');
-    const start = normalizeSlotClockValue(startRaw);
-    const end = normalizeSlotClockValue(endRaw);
-    return start && end ? { start, end } : null;
-  }
-  if (entry && typeof entry === 'object') {
-    const start = normalizeSlotClockValue(entry.start || entry.from || entry.open);
-    const end = normalizeSlotClockValue(entry.end || entry.to || entry.close);
-    return start && end ? { start, end } : null;
-  }
-  return null;
-};
-
-const getServiceWeeklyAvailability = (serviceItem) => (
-  serviceItem?.service_resources?.weekly_availability
-  || serviceItem?.service_detail?.service_resources?.weekly_availability
-  || serviceItem?.service_detail?.weekly_availability
-  || null
-);
-
-const getServiceDurationMinutes = (serviceItem) => {
-  const duration = Number(serviceItem?.service_detail?.duration_minutes || serviceItem?.duration_minutes || 0);
-  return Number.isFinite(duration) && duration > 0 ? duration : 120;
-};
-
-const getNormalizedWeeklyAvailabilityByDay = (serviceItem) => {
-  const raw = getServiceWeeklyAvailability(serviceItem);
-  const resolved = {};
-  for (let dayIndex = 0; dayIndex <= 6; dayIndex += 1) {
-    let dayValue = null;
-    const aliases = DAY_KEY_ALIASES[dayIndex] || [];
-    for (const alias of aliases) {
-      if (raw && Object.prototype.hasOwnProperty.call(raw, alias)) {
-        dayValue = raw[alias];
-        break;
-      }
-    }
-    const normalizedEntries = (Array.isArray(dayValue) ? dayValue : dayValue != null ? [dayValue] : [])
-      .map(parseWeeklyAvailabilitySlot)
-      .filter(Boolean);
-    resolved[dayIndex] = normalizedEntries;
-  }
-  return resolved;
-};
-
-const buildServiceDateOptions = (serviceItem, maxOptions = 7) => {
-  const dayMap = getNormalizedWeeklyAvailabilityByDay(serviceItem);
-  const hasAvailabilityRules = Object.values(dayMap).some((entries) => entries.length > 0);
-  const leadTimeMinutes = Math.max(0, Number(serviceItem?.service_detail?.lead_time_minutes || 0));
-  const firstAllowed = new Date(Date.now() + (leadTimeMinutes * 60 * 1000));
-  const options = [];
-  for (let offset = 0; offset < 30 && options.length < maxOptions; offset += 1) {
-    const candidate = new Date(firstAllowed);
-    candidate.setHours(0, 0, 0, 0);
-    candidate.setDate(candidate.getDate() + offset);
-    const daySlots = dayMap[candidate.getDay()] || [];
-    if (hasAvailabilityRules && daySlots.length === 0) continue;
-    options.push({
-      value: formatLocalDateInputValue(candidate),
-      label: formatShortDateLabel(formatLocalDateInputValue(candidate)),
-      weekday: DAY_LABELS[candidate.getDay()],
-      hasAvailability: daySlots.length > 0
-    });
-  }
-  return options;
-};
-
-const buildServiceTimeSlotOptions = (serviceItem, dateString) => {
-  if (!dateString) return [];
-  const selectedDate = new Date(`${dateString}T00:00:00`);
-  if (Number.isNaN(selectedDate.getTime())) return [];
-  const dayMap = getNormalizedWeeklyAvailabilityByDay(serviceItem);
-  const daySlots = dayMap[selectedDate.getDay()] || [];
-  if (daySlots.length === 0) {
-    return SERVICE_FALLBACK_TIME_SLOTS.map((value) => ({ value, label: formatTimeSlotLabel(value), source: 'fallback' }));
-  }
-  const intervalMinutes = Math.max(60, Math.min(120, getServiceDurationMinutes(serviceItem)));
-  const values = [];
-  daySlots.forEach((slot) => {
-    const startMinutes = toMinutesFromClock(slot.start);
-    const endMinutes = toMinutesFromClock(slot.end);
-    if (startMinutes == null || endMinutes == null || endMinutes <= startMinutes) return;
-    for (let minute = startMinutes; minute < endMinutes; minute += intervalMinutes) {
-      const clockValue = `${pad2(Math.floor(minute / 60))}:${pad2(minute % 60)}`;
-      values.push(clockValue);
-    }
-  });
-  return [...new Set(values)].map((value) => ({ value, label: formatTimeSlotLabel(value), source: 'availability' }));
-};
-
-const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '') => {
-  const availableSlots = buildServiceTimeSlotOptions(serviceItem, dateString);
-  if (currentTime && availableSlots.some((slot) => slot.value === currentTime)) return currentTime;
-  return availableSlots[0]?.value || '09:00';
-};
-
-
-const buildServiceFallbackReasons = ({ serviceGroups = [], servicesViewModel = null, categories = [] } = {}) => {
-  const reasons = [];
-  if (Array.isArray(categories) && categories.length > 0) {
-    reasons.push(...categories.slice(0, 2));
-  }
-  if (Array.isArray(serviceGroups) && serviceGroups.length > 0) {
-    serviceGroups.slice(0, 2).forEach((group) => {
-      const count = Number(group?.items?.length || 0);
-      if (count > 0) {
-        reasons.push(`${group.categoryMeta?.label || 'Service'} options (${count})`);
-      }
-    });
-  }
-  const totalServices = Number(servicesViewModel?.totalServices || 0);
-  if (totalServices > 0) {
-    reasons.push(`${totalServices} services currently listed`);
-  }
-  return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
-};
-
-const SimpleProductCard = ({
-  item,
-  imageUrl,
-  available,
-  modeAdapter = {},
-  addToCart,
-  onViewDetails
-}) => {
-  const heroTheme = modeAdapter?.heroTheme || {};
-  const accentDark = heroTheme.accentDark || '#134e4a';
-  const accentSoft = heroTheme.accentSoft || '#ecfeff';
-  const categoryLabel = item.folder_name || item.category || 'Product';
-  const availabilityLabel = item?.inventory_display?.label || (available ? 'Available' : 'Not available');
-  const bodyFont = heroTheme.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
-  const displayFont = heroTheme.displayFont || bodyFont;
-
-  return (
-    <article style={{
-      background: '#fff',
-      borderRadius: 18,
-      border: '1px solid #dbe5ee',
-      overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
-      boxShadow: '0 12px 26px rgba(15, 23, 42, 0.06)'
-    }}>
-      <div
-        style={{ width: '100%', height: 184, background: '#f8fafc', position: 'relative', overflow: 'hidden', cursor: 'pointer' }}
-        onClick={() => onViewDetails?.(item)}
-      >
-        {imageUrl ? (
-          <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        ) : (
-          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b', fontSize: 13, fontWeight: 700 }}>
-            No image yet
-          </div>
-        )}
-        <div style={{ position: 'absolute', top: 10, left: 10 }}>
-          <Badge background={accentSoft} color={accentDark} border="#bfe8e4">{categoryLabel}</Badge>
-        </div>
-      </div>
-      <div style={{ padding: 14, display: 'grid', gap: 10, flex: 1 }}>
-        <div>
-          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700, lineHeight: 1.2, color: '#0f172a', fontFamily: displayFont }}>{item.name}</h4>
-          <p style={{ margin: '6px 0 0 0', fontSize: 13, color: '#475569', lineHeight: 1.45, fontFamily: bodyFont, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {item.description || 'Simple mode product ready for quick ordering.'}
-          </p>
-        </div>
-        <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-            <strong style={{ fontSize: 19, fontWeight: 800, color: accentDark, fontFamily: displayFont }}>{money(item.default_sale_price ?? 0)}</strong>
-            <span style={{ fontSize: 12, fontWeight: 700, color: available ? '#047857' : '#be123c' }}>{availabilityLabel}</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <GhostButton
-              style={{ minHeight: 40, padding: '8px 12px', fontSize: 13, fontWeight: 700, fontFamily: bodyFont }}
-              onClick={() => onViewDetails?.(item)}
-            >
-              View Details
-            </GhostButton>
-            <PrimaryButton
-              style={{ minHeight: 40, padding: '8px 12px', fontWeight: 700, fontFamily: bodyFont }}
-              onClick={() => addToCart(item)}
-              disabled={!available}
-            >
-              {available ? 'Add to Order' : 'Unavailable'}
-            </PrimaryButton>
-          </div>
-        </div>
-      </div>
-    </article>
-  );
-};
-
-const ServicesHero = ({
-  serviceHeroModel,
-  selectedStore,
-  isMobileViewport,
-  viewportWidth,
-  hasMultipleStoreBranches,
-  hasSelectedBranchFromMenu,
-  selectedLocationId,
-  handleBranchMenuSelection,
-  storeLocations,
-  catalogSearch,
-  setCatalogSearch,
-  goDiscovery,
-  hasServiceCart,
-  goStoreBookingPage,
-  cartCount,
-  modeAdapter,
-  isBrandingImageBlocked,
-  markBrandingImageError,
-  selectedLocation,
-  isAboutExpanded,
-  setIsAboutExpanded,
-  isServiceGalleryExpanded,
-  setIsServiceGalleryExpanded,
-  openStorefrontActionLink,
-  openTrackPanel,
-  openAccountPanel,
-  onRegisterBusiness,
-  isStorefrontAccountAuthenticated,
-  activeCustomerOrderCount,
-  accountIdentityName,
-  accountIdentityRawEmail,
-  accountIdentityContact,
-  accountIdentityInitials,
-  followEnabled,
-  shareEnabled,
-  followState,
-  handleFollowAction
-}) => {
-  const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
-  const [expandedMobileCard, setExpandedMobileCard] = useState(null);
-  const addressText = String(serviceHeroModel.addressLine || serviceHeroModel.locationLabel || '').trim();
-  const selectedBranchLabel = String(selectedLocation?.name || serviceHeroModel.locationLabel || '').trim();
-  const storefrontCityLabel = String(selectedLocation?.city || selectedStore?.city || '').trim();
-  const galleryImages = Array.isArray(serviceHeroModel.galleryImages) ? serviceHeroModel.galleryImages.filter(Boolean) : [];
-  const previewImages = isServiceGalleryExpanded ? galleryImages : galleryImages.slice(0, 4);
-  const aboutText = String(serviceHeroModel.sectionAboutText || '').trim();
-  const hasAboutSection = aboutText.length > 0;
-  const hasGallerySection = galleryImages.length > 0;
-  const hasAboutOrGallerySection = hasAboutSection || hasGallerySection;
-  const hasAboutToggle = aboutText.length > 180;
-  const hasAddress = Boolean(addressText);
-  const hasMapData = Array.isArray(serviceHeroModel.mapStores) && serviceHeroModel.mapStores.length > 0;
-  const visibleWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) ? serviceHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
-  const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
-    contactRows: serviceHeroModel.contactRows,
-    hours: serviceHeroModel.hours,
-    addressText,
-    directionsUrl: serviceHeroModel.directionsUrl
-  }), [serviceHeroModel.contactRows, serviceHeroModel.hours, serviceHeroModel.directionsUrl, addressText]);
-  const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
-  const hasContactRows = visibleContactRows.length > 0;
-  const desktopColumns = hasAboutOrGallerySection
-    ? (hasWhyChooseUs ? '1fr 1.6fr 0.92fr' : '1fr 1.6fr')
-    : (hasWhyChooseUs ? '1.6fr 0.92fr' : '1fr');
-  const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
-  const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
-  const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
-  const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
-  const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || servicesBodyFont;
-  const servicesHighlight = '#f59e0b';
-  const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
-  const servicesResponsiveLayout = useMemo(() => getServicesResponsiveLayout(viewportWidth), [viewportWidth]);
-  const servicesFollowersLabel = formatFollowersLabel(followState?.followersCount);
-  const servicesMobileInfoCardWidth = 'calc(100% - 32px)';
-  const storefrontShareUrl = useMemo(() => {
-    if (!selectedStore?.slug) return '';
-    return buildStorefrontQrUrl({
-      slug: selectedStore.slug,
-      currentPath: typeof window !== 'undefined' ? window.location.pathname : '/'
-    });
-  }, [selectedStore?.slug]);
-
-  return (
-    <section style={{ marginBottom: 40 }}>
-      <SharedStorefrontHeaderNav
-        isMobileViewport={isMobileViewport}
-        bodyFont={servicesBodyFont}
-        onBack={goDiscovery}
-        onShop={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-        onTrack={openTrackPanel}
-        onAccount={openAccountPanel}
-        onRegisterBusiness={onRegisterBusiness}
-        activeOrderCount={isStorefrontAccountAuthenticated ? activeCustomerOrderCount : 0}
-        isAuthenticated={isStorefrontAccountAuthenticated}
-        accountName={accountIdentityName}
-        accountEmail={accountIdentityRawEmail || accountIdentityContact}
-        accountInitials={accountIdentityInitials}
-        storefrontName={serviceHeroModel.name}
-        storefrontModeLabel={serviceHeroModel.modeLabel}
-        storefrontLogoUrl={serviceHeroModel.profileImageUrl}
-        storefrontSlug={selectedStore?.slug}
-        hasMultipleBranches={hasMultipleStoreBranches}
-        branchSelector={hasMultipleStoreBranches ? (
-          isMobileViewport ? (
-            <StorefrontDropdown
-              value={selectedLocationId ?? ''}
-              onChange={handleBranchMenuSelection}
-              options={storeLocations.map((location) => ({
-                value: location.location_id,
-                label: location.name || location.address_line || `Branch ${location.location_id}`
-              }))}
-              triggerStyle={MOBILE_NATIVE_SELECT_STYLE}
-              containerStyle={{ minWidth: 0 }}
-              menuStyle={MOBILE_DROPDOWN_MENU_STYLE}
-              optionStyle={MOBILE_DROPDOWN_OPTION_STYLE}
-              selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
-            />
-          ) : (
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif', minWidth: 0, maxWidth: 236, flex: '0 1 236px' }}>
-              <MapPin size={16} />
-              {!hasSelectedBranchFromMenu && <span>Branch:</span>}
-              <StorefrontDropdown
-                value={selectedLocationId ?? ''}
-                onChange={handleBranchMenuSelection}
-                options={storeLocations.map((location) => ({
-                  value: location.location_id,
-                  label: location.name || location.address_line || `Branch ${location.location_id}`
-                }))}
-                triggerStyle={{
-                  minHeight: 34,
-                  border: 'none',
-                  background: 'transparent',
-                  boxShadow: 'none',
-                  padding: '4px 34px 4px 2px',
-                  fontFamily: '"Inter", sans-serif'
-                }}
-                containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
-                menuStyle={{ minWidth: 320, width: 'max-content', maxWidth: 'min(420px, calc(100vw - 32px))', padding: 10 }}
-                optionStyle={{ padding: '12px 18px', fontFamily: '"Inter", sans-serif' }}
-                selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
-              />
-            </label>
-          )
-        ) : null}
-      />
-
-      <StorefrontHeroShell
-        fullBleed
-        isMobileViewport={servicesResponsiveLayout.isMobileViewport}
-        sectionStyle={{
-          minHeight: servicesResponsiveLayout.isMobileViewport ? 190 : 316,
-          borderRadius: 0,
-          overflow: 'visible',
-          background: serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
-            ? `url(${serviceHeroModel.coverImageUrl}) center/cover`
-            : 'linear-gradient(135deg,#172033 0%,#22324b 50%,#40516c 100%)',
-          boxShadow: STYLES.shadow.lg
-        }}
-        backgroundChildren={
-          <>
-            {serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
-              <img
-                src={serviceHeroModel.coverImageUrl}
-                alt=""
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
-              />
-            )}
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
-          </>
-        }
-      >
-        <SharedStorefrontShareQr
-          storeUrl={storefrontShareUrl}
-          storeName={serviceHeroModel.storeName || selectedStore?.tenant_name || 'Storefront'}
-          storeLogoUrl={serviceHeroModel.profileImageUrl || ''}
-          isMobileViewport={servicesResponsiveLayout.isMobileViewport}
-          accentColor={servicesPrimary}
-          shareEnabled={shareEnabled}
-        />
-        {servicesResponsiveLayout.isMobileViewport && (
-          <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: servicesBodyFont, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{serviceHeroModel.statusLabel}</Badge>
-          </div>
-        )}
-        {!servicesResponsiveLayout.isMobileViewport && (
-          <div style={{
-            position: 'absolute',
-            left: `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-            right: `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-            bottom: servicesResponsiveLayout.heroProfileBottomOffset,
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: servicesResponsiveLayout.isTabletViewport ? 22 : 28,
-            paddingLeft: servicesResponsiveLayout.heroContentPaddingLeft
-          }}>
-            <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: servicesResponsiveLayout.isTabletViewport ? 24 : 35 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff">{serviceHeroModel.statusLabel}</Badge>
-                {serviceHeroModel.hours && (
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)' }}>{serviceHeroModel.hours}</span>
-                )}
-              </div>
-              <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
-                <SharedStorefrontHeroNameCluster
-                  name={serviceHeroModel.name}
-                  textColor="#fff"
-                  fontSize={servicesResponsiveLayout.isTabletViewport ? 44 : 50}
-                  fontFamily={servicesDisplayFont}
-                  followEnabled={followEnabled}
-                  followState={followState}
-                  handleFollowAction={handleFollowAction}
-                />
-                {serviceHeroModel.tagline ? (
-                  <p style={{ margin: 0, color: '#ccfbf1', fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: servicesBodyFont }}>{serviceHeroModel.tagline}</p>
-                ) : (
-                  <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: servicesBodyFont }}>{modeAdapter.heroDescription}</p>
-                )}
-              </div>
-              <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: servicesBodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={16} fill={servicesHighlight} color={servicesHighlight} />{serviceHeroModel.ratingLabel}</span>
-                <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span>
-                {followEnabled && (
-                  <>
-                    <span style={{ flexShrink: 0 }}>{servicesFollowersLabel}</span>
-                    <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span>
-                  </>
-                )}
-                <span style={{ flexShrink: 0 }}>{serviceHeroModel.modeLabel}</span>
-                <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><MapPin size={16} />{serviceHeroModel.locationLabel}</span>
-              </div>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              alignItems: 'flex-end',
-              gap: 12,
-              flexDirection: servicesResponsiveLayout.heroActionDirection,
-              flexShrink: 0,
-              marginLeft: 'auto',
-              marginBottom: servicesResponsiveLayout.isTabletViewport ? 24 : 35
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {serviceHeroModel.actions?.canCall && (
-                  <GhostButton onClick={() => openStorefrontActionLink(serviceHeroModel.actions?.callHref)} style={{ minWidth: 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: servicesBodyFont, fontWeight: 800 }}>
-                    <Phone size={18} />
-                    Call
-                  </GhostButton>
-                )}
-                <PrimaryButton onClick={() => {
-                  if (hasServiceCart) {
-                    goStoreBookingPage();
-                    return;
-                  }
-                  document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }} style={{ minWidth: 150, background: servicesPrimary, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: `0 10px 25px ${servicesPrimaryShadow}`, border: 'none', fontWeight: 900, fontFamily: servicesBodyFont }}>
-                  <MousePointer2 size={18} />
-                  {hasServiceCart ? 'Continue Booking' : 'Order Now'}
-                </PrimaryButton>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div style={{
-          position: 'absolute',
-          left: servicesResponsiveLayout.isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-          bottom: servicesResponsiveLayout.isMobileViewport ? '-45px' : `${servicesResponsiveLayout.heroProfileBottomOffset}px`,
-          width: servicesResponsiveLayout.isMobileViewport ? 110 : servicesResponsiveLayout.heroProfileSize,
-          height: servicesResponsiveLayout.isMobileViewport ? 110 : servicesResponsiveLayout.heroProfileSize,
-          borderRadius: '50%',
-          background: '#fff',
-          border: '3px solid #fff',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-          overflow: 'hidden',
-          zIndex: 20,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          {serviceHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
-            <img
-              src={serviceHeroModel.profileImageUrl}
-              alt={`${serviceHeroModel.name} profile`}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
-            />
-          ) : (
-            <div style={{ fontSize: servicesResponsiveLayout.isMobileViewport ? 32 : servicesResponsiveLayout.isTabletViewport ? 58 : 66, fontWeight: 900, color: servicesPrimaryDark, fontFamily: servicesDisplayFont }}>{serviceHeroModel.name.charAt(0)}</div>
-          )}
-        </div>
-      </StorefrontHeroShell>
-
-      <div style={{ display: servicesResponsiveLayout.isMobileViewport ? 'block' : 'none', background: '#fff' }}>
-          <div style={{ padding: '14px 16px 10px' }}>
-            <div style={{ display: 'flex', marginLeft: 118, gap: 8, marginBottom: 12, marginRight: 2 }}>
-              {serviceHeroModel.actions?.canMessage && (
-                <GhostButton onClick={() => openStorefrontActionLink(serviceHeroModel.actions.messageHref)} style={{ flex: 1, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, fontFamily: servicesBodyFont, fontWeight: 600, fontSize: 13 }}>
-                  <MessageSquare size={16} />
-                  Message
-                </GhostButton>
-              )}
-              {serviceHeroModel.actions?.canCall && (
-                <PrimaryButton onClick={() => openStorefrontActionLink(serviceHeroModel.actions.callHref)} style={{ flex: 1, background: servicesPrimary, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, fontFamily: servicesBodyFont }}>
-                  <Phone size={16} />
-                  Call
-                </PrimaryButton>
-              )}
-            </div>
-
-            <div style={{ display: 'grid', gap: 8 }}>
-              <SharedStorefrontHeroNameCluster
-                name={serviceHeroModel.name}
-                textColor="#0f172a"
-                fontSize={24}
-                fontFamily={servicesDisplayFont}
-                followEnabled={followEnabled}
-                followState={followState}
-                handleFollowAction={handleFollowAction}
-              />
-
-              {serviceHeroModel.tagline ? (
-                <p style={{ margin: 0, color: servicesPrimary, fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: servicesBodyFont }}>{serviceHeroModel.tagline}</p>
-              ) : (
-                <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, fontFamily: servicesBodyFont }}>{modeAdapter.heroDescription}</p>
-              )}
-
-              <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#475569', fontSize: 12, fontWeight: 600, marginTop: 4, fontFamily: servicesBodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={14} fill={servicesHighlight} color={servicesHighlight} />{serviceHeroModel.ratingLabel}</span>
-                <span style={{ opacity: 0.3, flexShrink: 0 }}>|</span>
-                {followEnabled && (
-                  <>
-                    <span style={{ flexShrink: 0 }}>{servicesFollowersLabel}</span>
-                    <span style={{ opacity: 0.3, flexShrink: 0 }}>|</span>
-                  </>
-                )}
-                <span style={{ flexShrink: 0 }}>{serviceHeroModel.modeLabel}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      <div style={{ display: servicesResponsiveLayout.isMobileViewport ? 'grid' : 'none', gap: 0, paddingBottom: 24, marginTop: 24 }}>
-          <div className="no-scrollbar" style={{ width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px 16px 20px', display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', scrollPaddingInline: 16, WebkitOverflowScrolling: 'touch', margin: 0, alignItems: 'stretch', boxSizing: 'border-box' }}>
-
-            {(hasAboutSection || hasGallerySection) && (
-              <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesPrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesPrimaryShadow}`, boxSizing: 'border-box' }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12, fontFamily: servicesBodyFont }}>
-                  {hasAboutSection ? 'About Us' : 'Store Details'}
-                </div>
-                {hasAboutSection && (
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <p style={{
-                      fontSize: 13,
-                      lineHeight: 1.7,
-                      color: '#475569',
-                      margin: 0,
-                      display: isAboutExpanded ? 'block' : '-webkit-box',
-                      WebkitLineClamp: isAboutExpanded ? 'unset' : 3,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                      fontFamily: servicesBodyFont
-                    }}>
-                      {aboutText}
-                    </p>
-                    {hasAboutToggle && (
-                      <button type="button" onClick={() => setIsAboutExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', marginTop: 8, fontFamily: servicesBodyFont }}>
-                        {isAboutExpanded ? 'See less' : 'See more'}
-                      </button>
-                    )}
-                  </div>
-                )}
-                {hasGallerySection && (
-                  <div style={{ display: 'grid', gap: 10, marginTop: hasAboutSection ? 16 : 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Gallery</div>
-                    <div className="no-scrollbar" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
-                      {previewImages.map((url, index) => (
-                        <div key={`${url}-${index}`} style={{ width: 84, minWidth: 84, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
-                          <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </div>
-                      ))}
-                    </div>
-                    {galleryImages.length > 4 && (
-                      <button type="button" onClick={() => setIsServiceGalleryExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
-                        {isServiceGalleryExpanded ? 'Show fewer photos' : 'View all photos'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {(hasContactRows || hasMapData) && (
-              <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesPrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesPrimaryShadow}`, boxSizing: 'border-box' }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: servicesBodyFont }}>Contact & Location</div>
-                <div style={{ display: 'grid', gap: 14 }}>
-                  {visibleContactRows.filter(row => row.label !== 'Address' && row.label !== 'Hours').slice(0, expandedMobileCard === 'contact' ? 99 : 1).map((row) => {
-                     const icon = getStorefrontContactIcon(row.label);
-                     const content = (
-                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: servicesBodyFont, fontWeight: 600 }}>
-                         <div style={{ color: servicesPrimaryDark, display: 'flex' }}>{icon}</div>
-                         <div>{row.value}</div>
-                         <ChevronRight size={16} color="#94a3b8" style={{ marginLeft: 'auto' }} />
-                       </div>
-                     );
-                     return row.href ? (
-                       <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{content}</button>
-                     ) : <div key={row.label}>{content}</div>;
-                  })}
-
-                  {selectedBranchLabel ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: servicesBodyFont, fontWeight: 600 }}>
-                     <div style={{ color: '#475569', display: 'flex' }}><MapPin size={16} /></div>
-                     <div>{selectedBranchLabel}</div>
-                    </div>
-                  ) : null}
-                </div>
-
-                {hasMapData && expandedMobileCard === 'contact' && (
-                  <>
-                    <div style={{ height: 1, background: '#f1f5f9', margin: '16px 0' }} />
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
-                       <MapPin size={18} color="#475569" style={{ marginTop: 2 }} />
-                       <div style={{ flex: 1, display: 'grid', gap: 2 }}>
-                          {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: servicesBodyFont }}>{addressText}</div> : null}
-                          {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: servicesBodyFont }}>{storefrontCityLabel}</div> : null}
-                       </div>
-                       <button
-                         type="button"
-                         onClick={(event) => {
-                           event.preventDefault();
-                           event.stopPropagation();
-                           const addressRow = visibleContactRows.find((row) => row.label === 'Address' && row.actionHref);
-                           if (addressRow?.actionHref) {
-                             openStorefrontActionLink(addressRow.actionHref);
-                             return;
-                           }
-                           setIsExpandedMapOpen(true);
-                         }}
-                         style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: servicesBodyFont }}
-                       >
-                         Get directions
-                       </button>
-                    </div>
-                    <div style={{ position: 'relative', width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
-                      <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} />
-                      <button
-                        type="button"
-                        onClick={() => setIsExpandedMapOpen(true)}
-                        style={{ position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 8, background: '#fff', border: '1px solid #cbd5e1', boxShadow: '0 4px 12px rgba(15,23,42,0.1)', display: 'grid', placeItems: 'center', cursor: 'pointer', color: '#334155', zIndex: 10 }}
-                      >
-                        <Maximize size={16} />
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {(hasMapData || visibleContactRows.length > 1) && expandedMobileCard !== 'contact' && (
-                   <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: servicesPrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
-                      See details & map <ChevronDown size={14} />
-                   </button>
-                )}
-                {expandedMobileCard === 'contact' && (
-                   <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: servicesPrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
-                      Hide details <ChevronUp size={14} />
-                   </button>
-                )}
-              </div>
-            )}
-
-            {hasWhyChooseUs && (
-              <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesPrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesPrimaryShadow}`, boxSizing: 'border-box' }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: servicesBodyFont }}>Why Choose Us</div>
-                <div style={{ display: 'grid', gap: 14 }}>
-                {visibleWhyChooseUs.slice(0, expandedMobileCard === 'why' ? 99 : 2).map((item, index) => (
-                  <div key={`why-${index}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ color: servicesPrimary, marginTop: 2 }}><CheckCircle2 size={16} /></div>
-                    <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.4, fontFamily: servicesBodyFont }}>{item}</div>
-                  </div>
-                ))}
-                </div>
-              {visibleWhyChooseUs.length > 2 && expandedMobileCard !== 'why' && (
-                <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: 'none', border: 'none', padding: 0, color: servicesPrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
-                  View all <ChevronDown size={14} />
-                </button>
-              )}
-              {expandedMobileCard === 'why' && (
-                <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: servicesPrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
-                  Show less <ChevronUp size={14} />
-                </button>
-              )}
-              </div>
-            )}
-          </div>
-      </div>
-        <div style={{
-          display: servicesResponsiveLayout.isMobileViewport ? 'none' : 'grid',
-          maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
-          margin: servicesResponsiveLayout.isTabletViewport ? '56px 24px 36px' : '70px auto 40px',
-          padding: 26,
-          background: '#ffffff',
-          border: '1px solid #e8edf3',
-          borderRadius: 24,
-          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
-          gridTemplateColumns: desktopColumns,
-          gap: 26
-        }}>
-          {hasAboutOrGallerySection && (
-            <div style={{ display: 'grid', gap: 20, alignContent: 'start' }}>
-              {hasAboutSection && (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>About Us</div>
-                  <p style={{
-                    fontSize: 14,
-                    lineHeight: 1.7,
-                    color: '#475569',
-                    margin: 0,
-                    display: isAboutExpanded ? 'block' : '-webkit-box',
-                    WebkitLineClamp: isAboutExpanded ? 'unset' : 4,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                    fontFamily: servicesBodyFont
-                  }}>
-                    {aboutText}
-                  </p>
-                  {hasAboutToggle && (
-                    <button type="button" onClick={() => setIsAboutExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
-                      {isAboutExpanded ? 'See less' : 'Read more'}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {hasGallerySection && (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Gallery</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 2 }}>
-                    {previewImages.map((url, index) => (
-                      <div key={`${url}-${index}`} style={{ width: '100%', height: 72, borderRadius: 10, overflow: 'hidden', background: '#e2e8f0' }}>
-                        <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      </div>
-                    ))}
-                  </div>
-                  {galleryImages.length > 4 && (
-                    <button type="button" onClick={() => setIsServiceGalleryExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
-                      {isServiceGalleryExpanded ? 'Show fewer photos' : 'View all photos'}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gap: 14, paddingLeft: hasAboutOrGallerySection ? 26 : 0, borderLeft: hasAboutOrGallerySection ? '1px solid #eef2f6' : 'none', alignContent: 'start' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Contact & Location</div>
-            <div style={{ display: 'grid', gridTemplateColumns: hasMapData ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
-              {hasContactRows && (
-                <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
-                  {visibleContactRows.map((row) => {
-                    const icon = getStorefrontContactIcon(row.label);
-                    const isCompactSingleLine = ['call', 'phone', 'facebook', 'messenger', 'message', 'hours'].includes(String(row.label || '').trim().toLowerCase());
-                    const content = (
-                      <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'start', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#111827', fontFamily: servicesBodyFont }}>
-                        <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, minWidth: STOREFRONT_INFO_ICON_COLUMN, color: servicesPrimaryDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</div>
-                        <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
-                          {row.actionHref ? (
-                            <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: servicesBodyFont }}>
-                              {row.actionLabel || 'Get directions'}
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                    return row.href ? (
-                      <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
-                        {content}
-                      </button>
-                    ) : (
-                      <div key={row.label}>{content}</div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {hasMapData && (
-                <div style={{ display: 'grid', gap: 10, alignContent: 'start', marginTop: -30 }}>
-                  <div style={{ position: 'relative', width: '100%', height: 156, borderRadius: 14, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
-                    <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} />
-                    <button
-                      type="button"
-                      onClick={() => setIsExpandedMapOpen(true)}
-                      aria-label="Open large map"
-                      title="Open large map"
-                      style={{
-                        position: 'absolute',
-                        top: 12,
-                        right: 12,
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: '#fff',
-                        border: '1px solid #cbd5e1',
-                        boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
-                        display: 'grid',
-                        placeItems: 'center',
-                        cursor: 'pointer',
-                        color: '#334155',
-                        zIndex: 10
-                      }}
-                    >
-                      <Maximize size={18} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {hasWhyChooseUs && (
-            <div style={{ display: 'grid', gap: 14, paddingLeft: 26, borderLeft: '1px solid #eef2f6', alignContent: 'start' }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Why Choose Us?</div>
-              <div style={{ display: 'grid', gap: 12, paddingTop: 4 }}>
-                {visibleWhyChooseUs.map((item, index) => (
-                  <div key={`why-${index}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ color: servicesPrimary, marginTop: 2, display: 'flex' }}><CheckCircle2 size={16} /></div>
-                    <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.4, fontFamily: servicesBodyFont }}>{item}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      <StorefrontExpandedMapModal
-        open={isExpandedMapOpen}
-        onClose={() => setIsExpandedMapOpen(false)}
-        title={`${serviceHeroModel.name || selectedStore?.tenant_name || 'Store'} Map`}
-        subtitle="View the store location in a larger map."
-        stores={serviceHeroModel.mapStores}
-        selectedKey={serviceHeroModel.mapSelectedKey}
-      />
-    </section>
-  );
-};
-
-const SimpleHero = ({
-  simpleHeroModel,
-  selectedStore,
-  isMobileViewport,
-  hasMultipleStoreBranches,
-  hasSelectedBranchFromMenu,
-  selectedLocationId,
-  handleBranchMenuSelection,
-  storeLocations,
-  catalogSearch,
-  setCatalogSearch,
-  goDiscovery,
-  cartCount,
-  setIsCheckoutOpen,
-  modeAdapter,
-  isBrandingImageBlocked,
-  markBrandingImageError,
-  selectedLocation,
-  openStorefrontActionLink,
-  openTrackPanel,
-  openAccountPanel,
-  onRegisterBusiness,
-  isStorefrontAccountAuthenticated,
-  activeCustomerOrderCount,
-  accountIdentityName,
-  accountIdentityRawEmail,
-  accountIdentityContact,
-  accountIdentityInitials,
-  followEnabled = false,
-  shareEnabled = true,
-  followState,
-  handleFollowAction
-}) => {
-  const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
-  const [expandedMobileCard, setExpandedMobileCard] = useState(null);
-  const [isAboutExpanded, setIsAboutExpanded] = useState(false);
-  const heroTheme = modeAdapter.heroTheme || {};
-  const selectedBranchLabel = String(selectedLocation?.name || simpleHeroModel.locationLabel || '').trim();
-  const storefrontCityLabel = String(selectedLocation?.city || selectedStore?.city || '').trim();
-  const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
-  const aboutText = String(simpleHeroModel.sectionAboutText || '').trim();
-  const hasAboutSection = aboutText.length > 0;
-  const hasAboutToggle = aboutText.length > 180;
-  const hasAddress = Boolean(addressText);
-  const hasMapData = Array.isArray(simpleHeroModel.mapStores) && simpleHeroModel.mapStores.length > 0;
-  const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
-  const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
-    contactRows: simpleHeroModel.contactRows,
-    hours: simpleHeroModel.hours,
-    addressText,
-    directionsUrl: simpleHeroModel.directionsUrl
-  }), [simpleHeroModel.contactRows, simpleHeroModel.hours, simpleHeroModel.directionsUrl, addressText]);
-  const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
-  const hasContactRows = visibleContactRows.length > 0;
-  const simpleMobileInfoCardWidth = 'calc(100% - 32px)';
-  const desktopColumns = hasAboutSection
-    ? (hasWhyChooseUs ? '1fr 1.6fr 0.92fr' : '1fr 1.6fr')
-    : (hasWhyChooseUs ? '1.6fr 0.92fr' : '1fr');
-  const storefrontShareUrl = useMemo(() => {
-    if (!selectedStore?.slug) return '';
-    return buildStorefrontQrUrl({
-      slug: selectedStore.slug,
-      currentPath: typeof window !== 'undefined' ? window.location.pathname : '/'
-    });
-  }, [selectedStore?.slug]);
-
-  return (
-    <section style={{ marginBottom: 40 }}>
-      <SharedStorefrontHeaderNav
-        isMobileViewport={isMobileViewport}
-        bodyFont={heroTheme.bodyFont}
-        onBack={goDiscovery}
-        onShop={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-        onTrack={openTrackPanel}
-        onAccount={openAccountPanel}
-        onRegisterBusiness={onRegisterBusiness}
-        activeOrderCount={isStorefrontAccountAuthenticated ? activeCustomerOrderCount : 0}
-        isAuthenticated={isStorefrontAccountAuthenticated}
-        accountName={accountIdentityName}
-        accountEmail={accountIdentityRawEmail || accountIdentityContact}
-        accountInitials={accountIdentityInitials}
-        storefrontName={simpleHeroModel.name}
-        storefrontModeLabel={simpleHeroModel.modeLabel}
-        storefrontLogoUrl={simpleHeroModel.profileImageUrl}
-        storefrontSlug={selectedStore?.slug}
-        hasMultipleBranches={hasMultipleStoreBranches}
-        branchSelector={hasMultipleStoreBranches ? (
-          isMobileViewport ? (
-            <StorefrontDropdown
-              value={selectedLocationId ?? ''}
-              onChange={handleBranchMenuSelection}
-              options={storeLocations.map((location) => ({
-                value: location.location_id,
-                label: location.name || location.address_line || `Branch ${location.location_id}`
-              }))}
-              triggerStyle={MOBILE_NATIVE_SELECT_STYLE}
-              containerStyle={{ minWidth: 0 }}
-              menuStyle={MOBILE_DROPDOWN_MENU_STYLE}
-              optionStyle={MOBILE_DROPDOWN_OPTION_STYLE}
-              selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
-            />
-          ) : (
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif', minWidth: 0, maxWidth: 236, flex: '0 1 236px' }}>
-              <MapPin size={16} />
-              {!hasSelectedBranchFromMenu && <span>Branch:</span>}
-              <StorefrontDropdown
-                value={selectedLocationId ?? ''}
-                onChange={handleBranchMenuSelection}
-                options={storeLocations.map((location) => ({
-                  value: location.location_id,
-                  label: location.name || location.address_line || `Branch ${location.location_id}`
-                }))}
-                triggerStyle={{
-                  minHeight: 34,
-                  border: 'none',
-                  background: 'transparent',
-                  boxShadow: 'none',
-                  padding: '4px 34px 4px 2px',
-                  fontFamily: '"Inter", sans-serif'
-                }}
-                containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
-                menuStyle={{ minWidth: 320, width: 'max-content', maxWidth: 'min(420px, calc(100vw - 32px))', padding: 10 }}
-                optionStyle={{ padding: '12px 18px', fontFamily: '"Inter", sans-serif' }}
-                selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
-              />
-            </label>
-          )
-        ) : null}
-      />
-
-      <StorefrontHeroShell
-        fullBleed
-        isMobileViewport={isMobileViewport}
-        sectionStyle={{
-          minHeight: isMobileViewport ? 190 : 316,
-          borderRadius: 0,
-          overflow: 'visible',
-          background: simpleHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
-            ? `url(${simpleHeroModel.coverImageUrl}) center/cover`
-            : `linear-gradient(135deg, ${heroTheme.surface || '#0f172a'} 0%, ${heroTheme.accentDark || '#134e4a'} 52%, ${heroTheme.accent || '#0f766e'} 100%)`,
-          boxShadow: STYLES.shadow.lg
-        }}
-        backgroundChildren={
-          <>
-            {simpleHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
-              <img
-                src={simpleHeroModel.coverImageUrl}
-                alt=""
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
-              />
-            )}
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
-          </>
-        }
-      >
-        <SharedStorefrontShareQr
-          storeUrl={storefrontShareUrl}
-          storeName={simpleHeroModel.storeName || selectedStore?.tenant_name || 'Storefront'}
-          storeLogoUrl={simpleHeroModel.profileImageUrl || ''}
-          isMobileViewport={isMobileViewport}
-          accentColor={heroTheme.accent || '#0f766e'}
-          shareEnabled={shareEnabled}
-        />
-        {isMobileViewport && (
-          <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{simpleHeroModel.statusLabel}</Badge>
-          </div>
-        )}
-        {!isMobileViewport && (
-          <div style={{
-            position: 'absolute',
-            left: `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-            right: `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-            bottom: -25,
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 28,
-            paddingLeft: 218
-          }}>
-            <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: 35 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.statusLabel}</Badge>
-                {simpleHeroModel.hours && (
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.hours}</span>
-                )}
-              </div>
-              <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
-                <h1 style={{ margin: 0, color: '#fff', fontSize: 50, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: heroTheme.displayFont }}>{simpleHeroModel.name}</h1>
-                {simpleHeroModel.tagline ? (
-                  <p style={{ margin: 0, color: '#ccfbf1', fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
-                ) : (
-                  <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
-                )}
-              </div>
-              <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: heroTheme.bodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={16} fill="#5eead4" color="#5eead4" />{simpleHeroModel.ratingLabel}</span>
-                <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span>
-                <span style={{ flexShrink: 0 }}>{simpleHeroModel.modeLabel}</span>
-                <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><MapPin size={16} />{simpleHeroModel.locationLabel}</span>
-              </div>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              flexDirection: 'row',
-              flexShrink: 0,
-              marginLeft: 'auto',
-              marginBottom: 35
-            }}>
-              {simpleHeroModel.actions?.canCall && (
-                <GhostButton onClick={() => openStorefrontActionLink(simpleHeroModel.actions?.callHref)} style={{ minWidth: 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont }}>
-                  <Phone size={18} />
-                  Call
-                </GhostButton>
-              )}
-              <PrimaryButton onClick={() => {
-                if (cartCount > 0) {
-                  setIsCheckoutOpen(true);
-                  return;
-                }
-                document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }} style={{ minWidth: 150, background: heroTheme.accent || '#0f766e', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(15,118,110,0.28)', border: 'none', fontWeight: 900, fontFamily: heroTheme.bodyFont }}>
-                <MousePointer2 size={18} />
-                {cartCount > 0 ? 'Open Cart' : (modeAdapter.primaryActionLabel || 'Start Ordering')}
-              </PrimaryButton>
-            </div>
-          </div>
-        )}
-
-        <div style={{
-          position: 'absolute',
-          left: isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-          top: 'auto',
-          bottom: isMobileViewport ? '-45px' : '-25px',
-          width: isMobileViewport ? 110 : 190,
-          height: isMobileViewport ? 110 : 190,
-          borderRadius: '50%',
-          background: '#fff',
-          border: '3px solid #fff',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-          overflow: 'hidden',
-          zIndex: 20,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          {simpleHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
-            <img
-              src={simpleHeroModel.profileImageUrl}
-              alt={`${simpleHeroModel.name} profile`}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
-            />
-          ) : (
-            <div style={{ fontSize: isMobileViewport ? 32 : 66, fontWeight: 900, color: heroTheme.accentDark || '#134e4a', fontFamily: heroTheme.displayFont }}>{simpleHeroModel.name.charAt(0)}</div>
-          )}
-        </div>
-      </StorefrontHeroShell>
-
-      <div style={{ display: isMobileViewport ? 'block' : 'none', background: '#fff' }}>
-          <div style={{ padding: '14px 16px 10px' }}>
-            <div style={{ display: 'flex', marginLeft: 118, gap: 8, marginBottom: 12, marginRight: 2 }}>
-              {simpleHeroModel.actions?.canMessage && (
-                <GhostButton onClick={() => openStorefrontActionLink(simpleHeroModel.actions.messageHref)} style={{ flex: 1, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, fontFamily: heroTheme.bodyFont, fontWeight: 600, fontSize: 13 }}>
-                  <MessageSquare size={16} />
-                  Message
-                </GhostButton>
-              )}
-              {simpleHeroModel.actions?.canCall && (
-                <PrimaryButton onClick={() => openStorefrontActionLink(simpleHeroModel.actions.callHref)} style={{ flex: 1, background: heroTheme.accent || '#0f766e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
-                  <Phone size={16} />
-                  Call
-                </PrimaryButton>
-              )}
-            </div>
-
-            <div style={{ display: 'grid', gap: 8 }}>
-              <SharedStorefrontHeroNameCluster
-                name={simpleHeroModel.name}
-                textColor="#0f172a"
-                fontSize={24}
-                fontFamily={heroTheme.displayFont}
-                followEnabled={followEnabled}
-                followState={followState}
-                handleFollowAction={handleFollowAction}
-              />
-
-              {simpleHeroModel.tagline ? (
-                <p style={{ margin: 0, color: heroTheme.accent || '#0f766e', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
-              ) : (
-                <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
-              )}
-
-              <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#475569', fontSize: 12, fontWeight: 600, marginTop: 4, fontFamily: heroTheme.bodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={14} fill="#5eead4" color="#5eead4" />{simpleHeroModel.ratingLabel}</span>
-                <span style={{ opacity: 0.3, flexShrink: 0 }}>|</span>
-                <span style={{ flexShrink: 0 }}>{simpleHeroModel.modeLabel}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      <div style={{ display: isMobileViewport ? 'none' : 'block' }}>
-        <div style={{
-          maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
-          margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
-          padding: 26,
-          background: '#ffffff',
-          border: '1px solid #e8edf3',
-          borderRadius: 24,
-          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
-          display: 'grid',
-          gridTemplateColumns: desktopColumns,
-          gap: 26
-        }}>
-          {hasAboutSection && (
-            <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>About Us</div>
-              <div style={{ display: 'grid', gap: 10 }}>
-                <p style={{
-                  fontSize: 13,
-                  lineHeight: 1.7,
-                  color: '#475569',
-                  margin: 0,
-                  display: '-webkit-box',
-                  WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                  fontFamily: heroTheme.bodyFont
-                }}>
-                  {aboutText}
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gap: 14, paddingLeft: (!isMobileViewport && hasAboutSection) ? 26 : 0, borderLeft: (!isMobileViewport && hasAboutSection) ? '1px solid #eef2f6' : 'none', alignContent: 'start' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
-            <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
-              {hasContactRows && (
-                <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
-                  {visibleContactRows.map((row) => {
-                    const icon = getStorefrontContactIcon(row.label);
-                    const isCompactSingleLine = !isMobileViewport && ['call', 'phone', 'facebook', 'messenger', 'message', 'hours'].includes(String(row.label || '').trim().toLowerCase());
-                    const content = (
-                      <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'start', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
-                        <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, minWidth: STOREFRONT_INFO_ICON_COLUMN, color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</div>
-                        <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
-                          {row.actionHref ? (
-                            <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
-                              {row.actionLabel || 'Open'}
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                    return row.href ? (
-                      <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
-                        {content}
-                      </button>
-                    ) : (
-                      <div key={row.label}>{content}</div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {hasMapData && (
-                <div style={{ display: 'grid', gap: 10, alignContent: 'start', marginTop: isMobileViewport ? 0 : -30 }}>
-                  <div style={{ position: 'relative', width: '100%', height: 156, borderRadius: 14, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
-                    <StoresMap stores={simpleHeroModel.mapStores} selectedKey={simpleHeroModel.mapSelectedKey} onSelectStore={() => { }} />
-                    <button
-                      type="button"
-                      onClick={() => setIsExpandedMapOpen(true)}
-                      aria-label="Open large map"
-                      title="Open large map"
-                      style={{
-                        position: 'absolute',
-                        top: 12,
-                        right: 12,
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: '#fff',
-                        border: '1px solid #cbd5e1',
-                        boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
-                        display: 'grid',
-                        placeItems: 'center',
-                        cursor: 'pointer',
-                        color: '#334155',
-                        zIndex: 10
-                      }}
-                    >
-                      <Maximize size={18} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {hasWhyChooseUs && (
-            <div style={{ display: 'grid', gap: 14, alignContent: 'start', alignItems: 'start', paddingLeft: isMobileViewport ? 0 : 26, borderLeft: isMobileViewport ? 'none' : '1px solid #eef2f6' }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Why Shop Here?</div>
-              <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
-                {visibleWhyChooseUs.map((item, index) => (
-                  <div key={`${item}-${index}`} style={{ display: 'grid', gridTemplateColumns: `30px minmax(0, 1fr)`, alignItems: 'center', columnGap: 12, fontSize: 13, color: '#334155', lineHeight: 1.35 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: 999, background: '#ecfeff', color: heroTheme.accent || '#0f766e', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Sparkles size={14} />
-                    </div>
-                    <div>{item}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isMobileViewport && (
-        <div style={{ display: 'grid', gap: 0, paddingBottom: 24, marginTop: 24 }}>
-          <div className="no-scrollbar" style={{ width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px 16px 20px', display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', scrollPaddingInline: 16, WebkitOverflowScrolling: 'touch', margin: 0, alignItems: 'stretch', boxSizing: 'border-box' }}>
-
-            {hasAboutSection && (
-              <div style={{ width: simpleMobileInfoCardWidth, minWidth: simpleMobileInfoCardWidth, maxWidth: simpleMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${heroTheme.accentSoft || '#ecfeff'}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${heroTheme.accentShadow || 'rgba(15,118,110,0.24)'}`, boxSizing: 'border-box' }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12, fontFamily: heroTheme.bodyFont }}>
-                  About Us
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <p style={{
-                    fontSize: 13,
-                    lineHeight: 1.7,
-                    color: '#475569',
-                    margin: 0,
-                    display: '-webkit-box',
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                    fontFamily: heroTheme.bodyFont
-                  }}>
-                    {aboutText}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {(hasContactRows || hasMapData) && (
-              <div style={{ width: simpleMobileInfoCardWidth, minWidth: simpleMobileInfoCardWidth, maxWidth: simpleMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${heroTheme.accentSoft || '#ecfeff'}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${heroTheme.accentShadow || 'rgba(15,118,110,0.24)'}`, boxSizing: 'border-box' }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
-                <div style={{ display: 'grid', gap: 14 }}>
-                  {visibleContactRows.filter(row => row.label !== 'Address' && row.label !== 'Hours').slice(0, expandedMobileCard === 'contact' ? 99 : 1).map((row) => {
-                     const icon = getStorefrontContactIcon(row.label);
-                     const content = (
-                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: heroTheme.bodyFont, fontWeight: 600 }}>
-                         <div style={{ color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'flex' }}>{icon}</div>
-                         <div>{row.value}</div>
-                         <ChevronRight size={16} color="#94a3b8" style={{ marginLeft: 'auto' }} />
-                       </div>
-                     );
-                     return row.href ? (
-                       <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{content}</button>
-                     ) : <div key={row.label}>{content}</div>;
-                  })}
-
-                  {selectedBranchLabel ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: heroTheme.bodyFont, fontWeight: 600 }}>
-                     <div style={{ color: '#475569', display: 'flex' }}><MapPin size={16} /></div>
-                     <div>{selectedBranchLabel}</div>
-                    </div>
-                  ) : null}
-                </div>
-
-                {hasMapData && expandedMobileCard === 'contact' && (
-                  <>
-                    <div style={{ height: 1, background: '#f1f5f9', margin: '16px 0' }} />
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
-                       <MapPin size={18} color="#475569" style={{ marginTop: 2 }} />
-                       <div style={{ flex: 1, display: 'grid', gap: 2 }}>
-                          {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: heroTheme.bodyFont }}>{addressText}</div> : null}
-                          {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: heroTheme.bodyFont }}>{storefrontCityLabel}</div> : null}
-                       </div>
-                       <button
-                         type="button"
-                         onClick={(event) => {
-                           event.preventDefault();
-                           event.stopPropagation();
-                           const addressRow = visibleContactRows.find((row) => row.label === 'Address' && row.actionHref);
-                           if (addressRow?.actionHref) {
-                             openStorefrontActionLink(addressRow.actionHref);
-                             return;
-                           }
-                           setIsExpandedMapOpen(true);
-                         }}
-                         style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}
-                       >
-                         Get directions
-                       </button>
-                    </div>
-                    <div style={{ position: 'relative', width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
-                      <StoresMap stores={simpleHeroModel.mapStores} selectedKey={simpleHeroModel.mapSelectedKey} onSelectStore={() => { }} />
-                      <button
-                        type="button"
-                        onClick={() => setIsExpandedMapOpen(true)}
-                        style={{ position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 8, background: '#fff', border: '1px solid #cbd5e1', boxShadow: '0 4px 12px rgba(15,23,42,0.1)', display: 'grid', placeItems: 'center', cursor: 'pointer', color: '#334155', zIndex: 10 }}
-                      >
-                        <Maximize size={16} />
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {(hasMapData || visibleContactRows.length > 1) && expandedMobileCard !== 'contact' && (
-                   <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: heroTheme.accent || STYLES.colors.brand, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: heroTheme.bodyFont }}>
-                      See details & map <ChevronDown size={14} />
-                   </button>
-                )}
-                {expandedMobileCard === 'contact' && (
-                   <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: heroTheme.accent || STYLES.colors.brand, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: heroTheme.bodyFont }}>
-                      Hide details <ChevronUp size={14} />
-                   </button>
-                )}
-              </div>
-            )}
-
-            {hasWhyChooseUs && (
-              <div style={{ width: simpleMobileInfoCardWidth, minWidth: simpleMobileInfoCardWidth, maxWidth: simpleMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${heroTheme.accentSoft || '#ecfeff'}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${heroTheme.accentShadow || 'rgba(15,118,110,0.24)'}`, boxSizing: 'border-box' }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: heroTheme.bodyFont }}>Why Shop Here?</div>
-                <div style={{ display: 'grid', gap: 14 }}>
-                {visibleWhyChooseUs.slice(0, expandedMobileCard === 'why' ? 99 : 2).map((item, index) => (
-                  <div key={`why-${index}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ color: heroTheme.accent || STYLES.colors.brand, marginTop: 2 }}><CheckCircle2 size={16} /></div>
-                    <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.4, fontFamily: heroTheme.bodyFont }}>{item}</div>
-                  </div>
-                ))}
-                </div>
-              {visibleWhyChooseUs.length > 2 && expandedMobileCard !== 'why' && (
-                <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: 'none', border: 'none', padding: 0, color: heroTheme.accent || STYLES.colors.brand, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: heroTheme.bodyFont }}>
-                  View all <ChevronDown size={14} />
-                </button>
-              )}
-              {expandedMobileCard === 'why' && (
-                <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: heroTheme.accent || STYLES.colors.brand, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: heroTheme.bodyFont }}>
-                  Show less <ChevronUp size={14} />
-                </button>
-              )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      <StorefrontExpandedMapModal
-        open={isExpandedMapOpen}
-        onClose={() => setIsExpandedMapOpen(false)}
-        title={`${simpleHeroModel.name || selectedStore?.tenant_name || 'Store'} Map`}
-        subtitle="View the store location in a larger map."
-        stores={simpleHeroModel.mapStores}
-        selectedKey={simpleHeroModel.mapSelectedKey}
-      />
-    </section>
-  );
-};
 
 export default function StorefrontApp() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
@@ -3261,55 +499,145 @@ export default function StorefrontApp() {
   const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
   const previousRouteSlugRef = useRef(routeSlug);
-  const bookingPreferredDateInputRef = useRef(null);
+  const [viewportWidth, setViewportWidth] = useState(() => (
+    typeof window === 'undefined' ? 1280 : window.innerWidth
+  ));
+  const isMobileViewport = viewportWidth < 840;
+  const isDesktopViewport = viewportWidth >= 1024;
+  const isCompactPaginationViewport = viewportWidth < 768;
+  const isTabletPaginationViewport = viewportWidth >= 768 && viewportWidth < 1024;
+  const fnbMobileLayout = useMemo(() => buildFnbMobileLayout(isMobileViewport), [isMobileViewport]);
+  const fnbMobileSectionTrailingInset = fnbMobileLayout.sectionTrailingInset;
+  const fnbMobileCatalogInlinePadding = fnbMobileLayout.catalogInlinePadding;
+  const fnbMobileMenuInnerWidth = fnbMobileLayout.menuInnerWidth;
+  const {
+    discoveryLayout,
+    discoveryViewport,
+    discoveryViewportMode,
+    isDiscoveryDesktopViewport,
+    isDiscoveryMobileViewport,
+    isDiscoveryTabletViewport
+  } = useDiscoveryViewport(viewportWidth);
 
   const [stores, setStores] = useState([]);
   const [loadingStores, setLoadingStores] = useState(true);
   const [storesError, setStoresError] = useState('');
   const [search, setSearch] = useState('');
   const [debouncedDiscoverySearch, setDebouncedDiscoverySearch] = useState('');
-  const searchRef = useRef(search);
-  const discoveryMapPinsPersistenceRef = useRef([]);
-  const heroDiscoveryMapPinsPersistenceRef = useRef([]);
-  const lastDiscoveryNoMatchToastRef = useRef('');
-  const discoveryNoMatchToastTimerRef = useRef(null);
-  const discoveryInteractiveAreaRef = useRef(null);
-  const featuredCarouselRef = useRef(null);
-  const featuredCategoryRailRef = useRef(null);
-  const featuredSectionRef = useRef(null);
-  const discoveryFilterToolbarRef = useRef(null);
-  const [discoveryResultMode, setDiscoveryResultMode] = useState('union');
-  const [discoveryStockFilter, setDiscoveryStockFilter] = useState('include_out_of_stock');
-  const [discoveryPinScope, setDiscoveryPinScope] = useState('tenant_primary');
-  const [discoveryIncludeMatchMeta, setDiscoveryIncludeMatchMeta] = useState(true);
-  const [discoveryAppliedFilters, setDiscoveryAppliedFilters] = useState(null);
-  const [isDiscoverySearchFocused, setIsDiscoverySearchFocused] = useState(false);
-  const [hasDiscoveryExplorationStarted, setHasDiscoveryExplorationStarted] = useState(false);
-  const [isDiscoveryNoMatchToastActive, setIsDiscoveryNoMatchToastActive] = useState(false);
-  const [isCategoryRowExpanded, setIsCategoryRowExpanded] = useState(false);
-  const mobileCategoryRailRef = useRef(null);
-  const desktopCategoryRailRef = useRef(null);
-  const [hasDesktopCategoryOverflow, setHasDesktopCategoryOverflow] = useState(false);
-  const [showDesktopCategoryOverflowCue, setShowDesktopCategoryOverflowCue] = useState(false);
-  const [mobileCategoryGroupIndex, setMobileCategoryGroupIndex] = useState(0);
-  const [selectedMapPin, setSelectedMapPin] = useState(null);
-  const [isStoreListVisible, setIsStoreListVisible] = useState(false);
-  const [isMobileResultsCollapsed, setIsMobileResultsCollapsed] = useState(false);
+  const {
+    activeDiscoveryFilterDropdown,
+    activeDiscoveryNavItem,
+    discoveryAppliedFilters,
+    discoveryAvailabilityFilter,
+    discoveryCategoryFilter,
+    discoveryCoords,
+    discoveryCoordsRef,
+    discoveryDistanceFilter,
+    discoveryIncludeMatchMeta,
+    discoveryLocationMap,
+    discoveryOpenFilter,
+    discoveryPinScope,
+    discoveryRatingFilter,
+    discoveryResultMode,
+    discoveryResultsPage,
+    discoverySortBy,
+    discoveryStockFilter,
+    hasDiscoveryExplorationStarted,
+    highlightedDiscoveryMarkerKey,
+    highlightedStoreSlug,
+    isMobileResultsCollapsed,
+    isDiscoveryNavMenuOpen,
+    isDiscoveryNoMatchToastActive,
+    isDiscoverySearchFocused,
+    isStoreListVisible,
+    loadingDiscoveryLocations,
+    openDiscoveryFaqIndex,
+    renderDiscoveryResetButton,
+    searchRef,
+    selectedMapPin,
+    viewMode,
+    setActiveDiscoveryFilterDropdown,
+    setActiveDiscoveryNavItem,
+    setDiscoveryAppliedFilters,
+    setDiscoveryAvailabilityFilter,
+    setDiscoveryCategoryFilter,
+    setDiscoveryCoords,
+    setDiscoveryDistanceFilter,
+    setDiscoveryIncludeMatchMeta,
+    setDiscoveryLocationMap,
+    setDiscoveryOpenFilter,
+    setDiscoveryPinScope,
+    setDiscoveryRatingFilter,
+    setDiscoveryResultMode,
+    setDiscoveryResultsPage,
+    setDiscoverySortBy,
+    setDiscoveryStockFilter,
+    setHasDiscoveryExplorationStarted,
+    setHighlightedDiscoveryMarkerKey,
+    setHighlightedStoreSlug,
+    setIsMobileResultsCollapsed,
+    setIsDiscoveryNavMenuOpen,
+    setIsDiscoveryNoMatchToastActive,
+    setIsDiscoverySearchFocused,
+    setIsStoreListVisible,
+    setLoadingDiscoveryLocations,
+    setOpenDiscoveryFaqIndex,
+    setRenderDiscoveryResetButton,
+    setSelectedMapPin,
+    setShowDiscoveryResetButton,
+    setViewMode,
+    showDiscoveryResetButton
+  } = useDiscoveryState({ search });
+  const { discoveryFilterToolbarRef } = useDiscoveryFilterDropdown({
+    setActiveDiscoveryFilterDropdown
+  });
+  const { loadStores } = useDiscoveryStoreLoader({
+    debouncedDiscoverySearch,
+    discoveryCoordsRef,
+    discoveryIncludeMatchMeta,
+    discoveryPinScope,
+    discoveryResultMode,
+    discoveryStockFilter,
+    requestJson,
+    searchRef,
+    setDiscoveryAppliedFilters,
+    setDiscoveryCoords,
+    setDiscoveryLocationMap,
+    setLoadingDiscoveryLocations,
+    setLoadingStores,
+    setStores,
+    setStoresError,
+    stores,
+    toSlug
+  });
+  const {
+    handleDiscoverySearch,
+    handleNearMe,
+    handlePopularDiscoveryCategory
+  } = useDiscoverySearchActions({
+    loadStores,
+    search,
+    searchRef,
+    setDebouncedDiscoverySearch,
+    setDiscoveryCategoryFilter,
+    setDiscoveryPinScope,
+    setHasDiscoveryExplorationStarted,
+    setIsMobileResultsCollapsed,
+    setIsStoreListVisible,
+    setSearch,
+    setSelectedMapPin
+  });
   const [catalogSearch, setCatalogSearch] = useState('');
-  const [viewMode, setViewMode] = useState('list');
-  const [discoveryResultsPage, setDiscoveryResultsPage] = useState(1);
-  const [discoverySortBy, setDiscoverySortBy] = useState('nearest');
-  const [discoveryCategoryFilter, setDiscoveryCategoryFilter] = useState('all');
-  const [discoveryDistanceFilter, setDiscoveryDistanceFilter] = useState('all');
-  const [discoveryOpenFilter, setDiscoveryOpenFilter] = useState('all');
-  const [discoveryRatingFilter, setDiscoveryRatingFilter] = useState('all');
-  const [discoveryAvailabilityFilter, setDiscoveryAvailabilityFilter] = useState('all');
-  const [activeDiscoveryFilterDropdown, setActiveDiscoveryFilterDropdown] = useState(null);
-  const [featuredCategoryFilter, setFeaturedCategoryFilter] = useState('all');
-  const [featuredBaseStores, setFeaturedBaseStores] = useState([]);
-  const [renderDiscoveryResetButton, setRenderDiscoveryResetButton] = useState(false);
-  const [showDiscoveryResetButton, setShowDiscoveryResetButton] = useState(false);
-  const [highlightedStoreSlug, setHighlightedStoreSlug] = useState('');
+  const {
+    featuredCarouselRef,
+    featuredCategoryFilter,
+    featuredCategoryOptions,
+    featuredCategoryRailRef,
+    featuredSectionRef,
+    featuredVisibleStores,
+    handleFeaturedCategoryFilter,
+    setFeaturedBaseStores
+  } = useDiscoveryFeaturedMerchants({ normalizeStorefrontCategories });
   const [selectedStore, setSelectedStore] = useState(null);
   const isStorePage = Boolean(routeSlug);
   const currentPathSubpage = readStoreSubpage();
@@ -3340,21 +668,13 @@ export default function StorefrontApp() {
   const [itemReviewInviteContext, setItemReviewInviteContext] = useState(null);
   const [itemReviewSectionHighlighted, setItemReviewSectionHighlighted] = useState(false);
   const serviceCartFabRef = useRef(null);
-  const discoverySortLabelByValue = {
-    nearest: 'Nearest',
-    catalog: 'Most Popular',
-    rating: 'Highest Rated',
-    open: 'Open Now'
-  };
-  useEffect(() => {
-    const onPointerDown = (event) => {
-      if (!discoveryFilterToolbarRef.current?.contains(event.target)) {
-        setActiveDiscoveryFilterDropdown(null);
-      }
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, []);
+  const {
+    discoveryBusinessModeOptions,
+    discoverySortLabelByValue
+  } = useDiscoveryFilterOptions({
+    workflowModeLabels: WORKFLOW_MODE_LABELS,
+    workflowModeSelectValues: WORKFLOW_MODE_SELECT_VALUES
+  });
   const openServiceDetail = (service) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const serviceItemId = String(service?.item_id || '').trim();
@@ -3384,6 +704,12 @@ export default function StorefrontApp() {
   const [serviceAreaFilter, setServiceAreaFilter] = useState('all');
   const [serviceDurationFilter, setServiceDurationFilter] = useState('all');
   const [serviceBookingStep, setServiceBookingStep] = useState(1);
+  const {
+    bookingPreferredDateInputRef,
+    jumpToBookingField,
+    openPreferredBookingDatePicker,
+    registerBookingFieldRef
+  } = useServiceBookingFieldFocus({ serviceBookingStep, setServiceBookingStep });
   const [servicePage, setServicePage] = useState(1);
   const [servicePageSize, setServicePageSize] = useState(8);
 
@@ -3416,11 +742,6 @@ export default function StorefrontApp() {
 
   const [isAboutExpanded, setIsAboutExpanded] = useState(false);
   const [isServiceGalleryExpanded, setIsServiceGalleryExpanded] = useState(false);
-  const [discoveryCoords, setDiscoveryCoords] = useState(null);
-  const discoveryCoordsRef = useRef(discoveryCoords);
-  const [discoveryLocationMap, setDiscoveryLocationMap] = useState({});
-  const [loadingDiscoveryLocations, setLoadingDiscoveryLocations] = useState(false);
-  const [highlightedDiscoveryMarkerKey, setHighlightedDiscoveryMarkerKey] = useState('');
   const [storeLocations, setStoreLocations] = useState([]);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
   const [selectedLocationId, setSelectedLocationId] = useState(null);
@@ -3468,8 +789,6 @@ export default function StorefrontApp() {
   });
   const [servicePaymentPreviewReceiptName, setServicePaymentPreviewReceiptName] = useState('');
   const [serviceIntakeResponses, setServiceIntakeResponses] = useState({});
-  const bookingFieldRefs = useRef({});
-  const [pendingBookingFocusKey, setPendingBookingFocusKey] = useState('');
   const [pinLocationLoading, setPinLocationLoading] = useState(false);
   const [pinLocationError, setPinLocationError] = useState('');
   const [quoteResult, setQuoteResult] = useState(null);
@@ -3498,49 +817,26 @@ export default function StorefrontApp() {
     supported: true
   });
   const storefrontVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
-  const [viewportWidth, setViewportWidth] = useState(() => (
-    typeof window === 'undefined' ? 1280 : window.innerWidth
-  ));
-  const [openDiscoveryFaqIndex, setOpenDiscoveryFaqIndex] = useState(0);
-  const [isDiscoveryNavMenuOpen, setIsDiscoveryNavMenuOpen] = useState(false);
-  const [activeDiscoveryNavItem, setActiveDiscoveryNavItem] = useState('Explore');
-  const isMobileViewport = viewportWidth < 840;
-  const isDesktopViewport = viewportWidth >= 1024;
-  const isCompactPaginationViewport = viewportWidth < 768;
-  const isTabletPaginationViewport = viewportWidth >= 768 && viewportWidth < 1024;
-  const FNB_MOBILE_FLOATING_CART_TRAILING_GUTTER = 84;
-  const fnbMobileSectionTrailingInset = isMobileViewport ? FNB_MOBILE_FLOATING_CART_TRAILING_GUTTER : 0;
-  const fnbMobileCatalogInlinePadding = isMobileViewport ? '0 16px' : '0 24px';
-  const fnbMobileMenuInnerWidth = isMobileViewport ? 'calc(100% - 8px)' : '100%';
-  const discoveryViewport = useMemo(() => getDiscoveryViewportState(viewportWidth), [viewportWidth]);
   const {
-    viewportMode: discoveryViewportMode,
-    isMobileViewport: isDiscoveryMobileViewport,
-    isTabletViewport: isDiscoveryTabletViewport,
-    isDesktopViewport: isDiscoveryDesktopViewport
-  } = discoveryViewport;
-  const discoveryLayout = useMemo(() => getDiscoveryLayoutTokens(discoveryViewportMode), [discoveryViewportMode]);
-  useEffect(() => {
-    if (isDiscoveryMobileViewport) {
-      setHasDesktopCategoryOverflow(false);
-      setShowDesktopCategoryOverflowCue(false);
-      return undefined;
-    }
-    const railElement = desktopCategoryRailRef.current;
-    if (!railElement) return undefined;
-    const syncDesktopCategoryOverflow = () => {
-      const maxScrollLeft = Math.max(0, railElement.scrollWidth - railElement.clientWidth);
-      setHasDesktopCategoryOverflow(maxScrollLeft > 8);
-      setShowDesktopCategoryOverflowCue(maxScrollLeft > 8 && railElement.scrollLeft < (maxScrollLeft - 8));
-    };
-    syncDesktopCategoryOverflow();
-    railElement.addEventListener('scroll', syncDesktopCategoryOverflow, { passive: true });
-    window.addEventListener('resize', syncDesktopCategoryOverflow);
-    return () => {
-      railElement.removeEventListener('scroll', syncDesktopCategoryOverflow);
-      window.removeEventListener('resize', syncDesktopCategoryOverflow);
-    };
-  }, [isCategoryRowExpanded, isDiscoveryMobileViewport]);
+    handleDiscoveryExploreClick,
+    handleDiscoveryMenuToggle,
+    handleDiscoveryNavItemClick
+  } = useDiscoveryNavActions({
+    activeDiscoveryNavItem,
+    isDiscoveryMobileViewport,
+    setActiveDiscoveryNavItem,
+    setIsDiscoveryNavMenuOpen
+  });
+  const {
+    desktopCategoryRailRef,
+    hasDesktopCategoryOverflow,
+    isCategoryRowExpanded,
+    mobileCategoryGroupIndex,
+    mobileCategoryRailRef,
+    setIsCategoryRowExpanded,
+    setMobileCategoryGroupIndex,
+    showDesktopCategoryOverflowCue
+  } = useDiscoveryCategoryRail({ isDiscoveryMobileViewport });
   useEffect(() => {
     let cancelled = false;
 
@@ -3638,11 +934,8 @@ export default function StorefrontApp() {
       cancelled = true;
     };
   }, []);
-  const discoveryRequestSequenceRef = useRef(0);
-  const discoveryAbortControllerRef = useRef(null);
   const storeLoadRequestSequenceRef = useRef(0);
   const locationCatalogRequestSequenceRef = useRef(0);
-  const lastImmediateDiscoveryRequestRef = useRef({ search: '', at: 0 });
   const markBrandingImageError = useCallback((key) => {
     const normalizedKey = String(key || '').trim();
     if (!normalizedKey) return;
@@ -3701,8 +994,21 @@ export default function StorefrontApp() {
     setFnbViewMode,
     setIsFnbCategoryDropdownOpen
   } = fnbCatalogRuntime;
-  const fnbProductDetailsRuntime = useFnbProductDetailsRoute({ catalog, isFnbMode, routeItemId });
+  const fnbProductDetailsRuntime = useFnbProductDetailsRoute({
+    catalog,
+    filteredCatalog,
+    filteredFnbViewModel,
+    isFnbMode,
+    isSimpleMode,
+    routeItemId
+  });
   const {
+    detailPageFnbAllergens,
+    detailPageFnbItem,
+    detailPageFnbModifierCounts,
+    detailPageFnbModifierGroups,
+    detailPageFnbNutritionCards,
+    detailPageFnbRelatedItems,
     selectedFnbDetail,
     selectedFnbDetailQuantity,
     selectedFnbLineModifiers,
@@ -3733,6 +1039,13 @@ export default function StorefrontApp() {
     toSlug
   });
   const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
+  useStorefrontCartPersistence({
+    cart,
+    enabled: isFnbMode || isServicesMode,
+    mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : ''),
+    setCart,
+    storeSlug: selectedStore?.slug || routeSlug
+  });
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
@@ -3800,14 +1113,10 @@ export default function StorefrontApp() {
   const servicesPrimaryShadowStrong = 'rgba(15,118,110,0.32)';
   const servicesHighlight = '#f59e0b';
   const servicesHighlightSoft = '#fffbeb';
-  const maskedSavedCustomerPreview = useMemo(() => {
-    if (!savedCustomerDetails) return '';
-    const previewParts = [];
-    if (savedCustomerDetails.name) previewParts.push(savedCustomerDetails.name);
-    if (savedCustomerDetails.phone) previewParts.push(maskValue(savedCustomerDetails.phone, 3, 2));
-    if (savedCustomerDetails.email) previewParts.push(maskValue(savedCustomerDetails.email, 2, 8));
-    return previewParts.join(' | ');
-  }, [savedCustomerDetails]);
+  const maskedSavedCustomerPreview = useMemo(
+    () => buildMaskedSavedCustomerPreview(savedCustomerDetails),
+    [savedCustomerDetails]
+  );
   const hasSavedCustomerDetails = Boolean(savedCustomerDetails && (savedCustomerDetails.name || savedCustomerDetails.phone || savedCustomerDetails.email));
   const customerNameParts = useMemo(() => splitCustomerName(customerName), [customerName]);
   const resolvedCustomerFirstName = String(customerFirstName || customerNameParts.firstName || '').trim();
@@ -3824,10 +1133,10 @@ export default function StorefrontApp() {
   const closeAccountDrawer = useCallback(() => {
     setIsAccountDrawerOpen(false);
   }, []);
-  const knownStoreRouteCandidates = useMemo(() => {
-    const recentStores = readRecentStores();
-    return [selectedStore, ...stores, ...recentStores].filter(Boolean);
-  }, [selectedStore, stores]);
+  const knownStoreRouteCandidates = useMemo(
+    () => buildKnownStoreRouteCandidates(selectedStore, stores),
+    [selectedStore, stores]
+  );
   const {
     accountPanel,
     accountOrderActionReference,
@@ -4145,75 +1454,6 @@ export default function StorefrontApp() {
     </section>
   );
 
-
-  const loadStores = useCallback(async (coords = undefined, options = {}) => {
-    const useImmediateSearch = options?.useImmediateSearch === true;
-    const requestSearch = useImmediateSearch ? String(searchRef.current || '').trim() : debouncedDiscoverySearch.trim();
-    if (useImmediateSearch) {
-      lastImmediateDiscoveryRequestRef.current = { search: requestSearch, at: Date.now() };
-    }
-    const requestSequence = discoveryRequestSequenceRef.current + 1;
-    discoveryRequestSequenceRef.current = requestSequence;
-    discoveryAbortControllerRef.current?.abort?.();
-    const discoveryController = typeof AbortController === 'function' ? new AbortController() : null;
-    discoveryAbortControllerRef.current = discoveryController;
-    setLoadingStores(true);
-    setStoresError('');
-    try {
-      const resolvedCoords = coords === undefined ? discoveryCoordsRef.current : coords;
-      const q = new URLSearchParams();
-      if (requestSearch) q.set('search', requestSearch);
-      q.set('result_mode', discoveryResultMode);
-      q.set('stock_filter', discoveryStockFilter);
-      q.set('pin_scope', discoveryPinScope);
-      q.set('include_match_meta', discoveryIncludeMatchMeta ? 'true' : 'false');
-      if (resolvedCoords?.latitude && resolvedCoords?.longitude) {
-        q.set('latitude', String(resolvedCoords.latitude));
-        q.set('longitude', String(resolvedCoords.longitude));
-        const nextCoords = {
-          latitude: Number(resolvedCoords.latitude),
-          longitude: Number(resolvedCoords.longitude)
-        };
-        discoveryCoordsRef.current = nextCoords;
-        setDiscoveryCoords((previous) => {
-          if (
-            previous
-            && Number(previous.latitude) === Number(nextCoords.latitude)
-            && Number(previous.longitude) === Number(nextCoords.longitude)
-          ) {
-            return previous;
-          }
-          return nextCoords;
-        });
-      } else {
-        discoveryCoordsRef.current = null;
-        setDiscoveryCoords(null);
-      }
-      q.set('limit', '100');
-      const data = await requestJson(
-        `/api/v1/storefront/discovery?${q.toString()}`,
-        discoveryController ? { signal: discoveryController.signal } : undefined
-      );
-      if (requestSequence === discoveryRequestSequenceRef.current) {
-        setStores(Array.isArray(data?.stores) ? data.stores : []);
-        setDiscoveryAppliedFilters(data?.applied_filters || null);
-      }
-    } catch (error) {
-      if (error?.name === 'AbortError') return;
-      if (requestSequence === discoveryRequestSequenceRef.current) {
-        setDiscoveryAppliedFilters(null);
-        setStoresError(error.message || 'Failed to load discovery stores.');
-      }
-    } finally {
-      if (discoveryAbortControllerRef.current === discoveryController) {
-        discoveryAbortControllerRef.current = null;
-      }
-      if (requestSequence === discoveryRequestSequenceRef.current) {
-        setLoadingStores(false);
-      }
-    }
-  }, [debouncedDiscoverySearch, discoveryResultMode, discoveryStockFilter, discoveryPinScope, discoveryIncludeMatchMeta]);
-
   const openStoreBySlug = useCallback(async (slug) => {
     const normalized = toSlug(slug);
     if (!normalized) return;
@@ -4344,27 +1584,6 @@ export default function StorefrontApp() {
 
 
   useEffect(() => {
-    searchRef.current = search;
-  }, [search]);
-
-  useEffect(() => {
-    const lastImmediate = lastImmediateDiscoveryRequestRef.current;
-    const debouncedSearch = debouncedDiscoverySearch.trim();
-    if (
-      debouncedSearch
-      && lastImmediate?.search === debouncedSearch
-      && Date.now() - Number(lastImmediate.at || 0) < 400
-    ) {
-      return;
-    }
-    loadStores();
-  }, [loadStores, debouncedDiscoverySearch]);
-
-  useEffect(() => {
-    discoveryCoordsRef.current = discoveryCoords;
-  }, [discoveryCoords]);
-
-  useEffect(() => {
     if (!routeSlug) return;
     openStoreBySlug(routeSlug);
   }, [routeSlug, openStoreBySlug]);
@@ -4443,43 +1662,6 @@ export default function StorefrontApp() {
     setSelectedFnbDetailQuantity(1);
     setSelectedFnbLineModifiers([]);
   }, [catalog, isFnbMode, routeItemId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadDiscoveryLocations = async () => {
-      if (!Array.isArray(stores) || stores.length === 0) {
-        setDiscoveryLocationMap({});
-        return;
-      }
-
-      setLoadingDiscoveryLocations(true);
-      try {
-        const locationPairs = await Promise.all(
-          stores.map(async (store) => {
-            const slug = toSlug(store?.slug);
-            if (!slug) return [slug, { locations: [], primary_location_id: null }];
-            try {
-              const data = await requestJson('/api/v1/store/locations', { storeSlug: slug });
-              const locations = Array.isArray(data?.locations) ? data.locations : [];
-              return [slug, { locations, primary_location_id: data?.primary_location_id ?? null }];
-            } catch {
-              return [slug, { locations: [], primary_location_id: null }];
-            }
-          })
-        );
-        if (cancelled) return;
-        setDiscoveryLocationMap(Object.fromEntries(locationPairs.filter(([slug]) => Boolean(slug))));
-      } finally {
-        if (!cancelled) setLoadingDiscoveryLocations(false);
-      }
-    };
-
-    loadDiscoveryLocations();
-    return () => {
-      cancelled = true;
-    };
-  }, [stores]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -4568,12 +1750,6 @@ export default function StorefrontApp() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  useEffect(() => {
-    if (!isDiscoveryMobileViewport) {
-      setIsDiscoveryNavMenuOpen(false);
-    }
-  }, [isDiscoveryMobileViewport]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
@@ -4794,606 +1970,67 @@ export default function StorefrontApp() {
     setActiveDiscoveryNavItem('Explore');
   };
 
-  const handleDiscoveryNavItemClick = useCallback((item) => {
-    const nextItem = String(item || '').trim();
-    if (!nextItem) return;
-    setIsDiscoveryNavMenuOpen(false);
-    if (nextItem === 'Explore' && typeof window !== 'undefined') {
-      setActiveDiscoveryNavItem('Explore');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (nextItem === 'Solutions' && typeof window !== 'undefined') {
-      setActiveDiscoveryNavItem('Solutions');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (nextItem === 'Contact Us' && typeof document !== 'undefined') {
-      const contactAnchor = document.getElementById(
-        activeDiscoveryNavItem === 'Solutions' ? 'solutions-contact-anchor' : 'discovery-contact-anchor'
-      );
-      if (contactAnchor && typeof contactAnchor.scrollIntoView === 'function') {
-        contactAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-      return;
-    }
-    setActiveDiscoveryNavItem(nextItem);
-  }, [activeDiscoveryNavItem]);
-
   const handleBranchMenuSelection = useCallback((nextValue) => {
     const nextLocationId = nextValue ? Number(nextValue) : null;
     setSelectedLocationId(nextLocationId);
     setHasSelectedBranchFromMenu(true);
   }, []);
 
-  const getLineModifiersTotal = useCallback((line) => (
-    (Array.isArray(line?.line_modifiers) ? line.line_modifiers : []).reduce(
-      (sum, entry) => sum + (Number(entry?.price_delta || 0) || 0),
-      0
-    )
-  ), []);
-  const getLineUnitTotal = useCallback((line) => (
-    (Number(line?.price || 0) || 0) + getLineModifiersTotal(line)
-  ), [getLineModifiersTotal]);
-  const getLineTotal = useCallback((line) => (
-    Math.max(1, Number(line?.quantity || 1)) * getLineUnitTotal(line)
-  ), [getLineUnitTotal]);
-  const cartSubtotal = useMemo(() => cart.reduce(
-    (sum, line) => sum + (Math.max(1, Number(line?.quantity || 1)) * (Number(line?.price || 0) || 0)),
-    0
-  ), [cart]);
-  const cartAddOnsTotal = useMemo(() => cart.reduce(
-    (sum, line) => sum + (Math.max(1, Number(line?.quantity || 1)) * getLineModifiersTotal(line)),
-    0
-  ), [cart, getLineModifiersTotal]);
-  const cartTotal = useMemo(() => cart.reduce((sum, line) => sum + getLineTotal(line), 0), [cart, getLineTotal]);
-  const cartCount = useMemo(() => cart.reduce((sum, line) => sum + Number(line.quantity || 0), 0), [cart]);
+  const cartTotals = useMemo(() => buildCartTotals(cart), [cart]);
+  const cartSubtotal = cartTotals.subtotal;
+  const cartAddOnsTotal = cartTotals.addOnsTotal;
+  const cartTotal = cartTotals.total;
+  const cartCount = cartTotals.count;
   const hasDiscoverySearch = debouncedDiscoverySearch.trim().length > 0;
-  const storesWithNearestBranch = useMemo(() => {
-    const discoveryLat = toNumberOrNull(discoveryCoords?.latitude);
-    const discoveryLng = toNumberOrNull(discoveryCoords?.longitude);
-    const hasDiscoveryLocation = discoveryLat != null && discoveryLng != null;
-    return (Array.isArray(stores) ? stores : [])
-      .map((store) => {
-        const slug = toSlug(store?.slug);
-        const locationBundle = discoveryLocationMap[slug] || {};
-        const allLocations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
-        const activeLocations = allLocations.filter((location) => location?.is_active !== false);
-        const pins = activeLocations
-          .map((location) => ({
-            ...location,
-            latitude: toNumberOrNull(location?.latitude),
-            longitude: toNumberOrNull(location?.longitude)
-          }))
-          .filter((location) => location.latitude != null && location.longitude != null);
-        const matchingLocationIds = Array.isArray(store?.matching_location_ids)
-          ? store.matching_location_ids
-            .map((locationId) => Number(locationId))
-            .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
-          : [];
-        const nearestMatchingLocationId = Number(store?.nearest_matching_location_id);
-        const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
-          ? (pins.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
-          : null;
-        const primaryLocation = pins.find((location) => Number(location.location_id) === Number(locationBundle.primary_location_id))
-          || pins.find((location) => location?.is_primary_storefront === true)
-          || null;
-        const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
-        const fallbackLat = toNumberOrNull(store?.latitude);
-        const fallbackLng = toNumberOrNull(store?.longitude);
-        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? DEFAULT_CENTER.latitude;
-        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? DEFAULT_CENTER.longitude;
-        const nearestPinWithDistance = hasDiscoveryLocation
-          ? pins
-            .map((location) => ({
-              location,
-              distance_km: haversineDistanceKm(discoveryLat, discoveryLng, location.latitude, location.longitude)
-            }))
-            .sort((a, b) => a.distance_km - b.distance_km)[0] || null
-          : null;
-        const nearestDistanceKm = nearestPinWithDistance?.distance_km
-          ?? (Number.isFinite(Number(store?.distance_km)) ? Number(store.distance_km) : null);
-        const nearestLocation = nearestPinWithDistance?.location || fallbackLocation;
-        return {
-          ...store,
-          latitude: anchorLatitude,
-          longitude: anchorLongitude,
-          active_location_count: activeLocations.length,
-          nearest_distance_km: nearestDistanceKm,
-          nearest_location_name: nearestLocation?.name || null,
-          nearest_location_hours: String(
-            nearestLocation?.business_hours_label
-            || nearestLocation?.business_hours
-            || nearestLocation?.operating_hours
-            || nearestLocation?.hours_label
-            || nearestLocation?.hours_text
-            || nearestLocation?.hours
-            || ''
-          ).trim(),
-          nearest_location_id: nearestLocation?.location_id ?? null,
-          nearest_is_primary: nearestLocation?.is_primary_storefront === true,
-          match_reasons: Array.isArray(store?.match_reasons) ? store.match_reasons : [],
-          matching_item_count: Number(store?.matching_item_count || 0),
-          matching_item_sample: Array.isArray(store?.matching_item_sample) ? store.matching_item_sample : [],
-          has_in_stock_match: store?.has_in_stock_match === true,
-          matching_location_ids: matchingLocationIds,
-          nearest_matching_location_id: Number.isInteger(nearestMatchingLocationId) ? nearestMatchingLocationId : null
-        };
-      })
-      .sort((a, b) => {
-        const left = Number.isFinite(a.nearest_distance_km) ? a.nearest_distance_km : Number.POSITIVE_INFINITY;
-        const right = Number.isFinite(b.nearest_distance_km) ? b.nearest_distance_km : Number.POSITIVE_INFINITY;
-        if (left !== right) return left - right;
-        return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
-      });
-  }, [stores, discoveryCoords, discoveryLocationMap]);
-  const discoveryResultStores = useMemo(() => {
-    const hasDiscoveryLocation = discoveryCoords?.latitude != null && discoveryCoords?.longitude != null;
-    const searcherRadiusKm = 0.1;
-    const radiusScoped = hasDiscoverySearch && hasDiscoveryLocation
-      ? storesWithNearestBranch.filter((store) => {
-          const distanceKm = Number(store?.nearest_distance_km);
-          if (!Number.isFinite(distanceKm) || distanceKm > searcherRadiusKm) return false;
-
-          // Also honor each business-configured delivery radius when present.
-          const deliveryRadiusKm = Number(store?.delivery_radius_km);
-          if (Number.isFinite(deliveryRadiusKm) && deliveryRadiusKm > 0) {
-            return distanceKm <= deliveryRadiusKm;
-          }
-          return true;
-        })
-      : storesWithNearestBranch;
-    const sorted = [...radiusScoped];
-    sorted.sort((a, b) => {
-      if (discoverySortBy === 'open') {
-        if (Boolean(a?.storefront_open) !== Boolean(b?.storefront_open)) return a?.storefront_open ? -1 : 1;
-      } else if (discoverySortBy === 'rating') {
-        const leftRating = Number(normalizeStorefrontReviewSummary(a?.storefront_review_summary)?.score || 0);
-        const rightRating = Number(normalizeStorefrontReviewSummary(b?.storefront_review_summary)?.score || 0);
-        if (leftRating !== rightRating) return rightRating - leftRating;
-      } else if (discoverySortBy === 'wait') {
-        const leftWait = Number(a?.estimated_wait_minutes || Number.POSITIVE_INFINITY);
-        const rightWait = Number(b?.estimated_wait_minutes || Number.POSITIVE_INFINITY);
-        if (leftWait !== rightWait) return leftWait - rightWait;
-      } else if (discoverySortBy === 'catalog') {
-        const leftCatalog = Number(a?.catalog_count || 0);
-        const rightCatalog = Number(b?.catalog_count || 0);
-        if (leftCatalog !== rightCatalog) return rightCatalog - leftCatalog;
-      }
-      const leftDistance = Number.isFinite(Number(a?.nearest_distance_km)) ? Number(a.nearest_distance_km) : Number.POSITIVE_INFINITY;
-      const rightDistance = Number.isFinite(Number(b?.nearest_distance_km)) ? Number(b.nearest_distance_km) : Number.POSITIVE_INFINITY;
-      if (leftDistance !== rightDistance) return leftDistance - rightDistance;
-      return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
-    });
-    return sorted;
-  }, [storesWithNearestBranch, hasDiscoverySearch, discoveryCoords, discoverySortBy]);
-  const filteredDiscoveryStores = useMemo(() => {
-    return discoveryResultStores.filter((store) => {
-      const categories = normalizeStorefrontCategories(store?.storefront_categories).map((entry) => String(entry || '').trim().toLowerCase());
-      const primaryCategory = categories[0] || String(store?.workflow_mode || store?.business_mode || 'store').replace(/_/g, ' ').trim().toLowerCase();
-      const ratingSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
-      const ratingValue = Number(ratingSummary?.score || 0);
-      const distanceValue = Number(store?.nearest_distance_km);
-
-      if (discoveryCategoryFilter !== 'all') {
-        const haystack = [
-          primaryCategory,
-          ...categories,
-          String(store?.workflow_mode || '').replace(/_/g, ' ').trim().toLowerCase(),
-          String(store?.business_mode || '').replace(/_/g, ' ').trim().toLowerCase()
-        ].filter(Boolean);
-        const matchers = DISCOVERY_CATEGORY_MATCHERS[normalizeDiscoveryCategoryKey(discoveryCategoryFilter)] || [normalizeDiscoveryCategoryKey(discoveryCategoryFilter)];
-        const hasCategoryMatch = matchers.some((matcher) => haystack.some((entry) => entry.includes(matcher) || matcher.includes(entry)));
-        if (!hasCategoryMatch) return false;
-      }
-      if (discoveryOpenFilter === 'open' && store?.storefront_open !== true) return false;
-      if (discoveryAvailabilityFilter === 'in_stock' && store?.has_in_stock_match !== true) return false;
-      if (discoveryRatingFilter !== 'all') {
-        const minimum = Number(discoveryRatingFilter);
-        if (!Number.isFinite(ratingValue) || ratingValue < minimum) return false;
-      }
-      if (discoveryDistanceFilter !== 'all') {
-        const maxDistance = Number(discoveryDistanceFilter);
-        if (!Number.isFinite(distanceValue) || distanceValue > maxDistance) return false;
-      }
-      return true;
-    });
-  }, [
-    discoveryResultStores,
-    discoveryCategoryFilter,
-    discoveryDistanceFilter,
-    discoveryOpenFilter,
-    discoveryRatingFilter,
-    discoveryAvailabilityFilter
-  ]);
-  const discoveryMapPins = useMemo(() => {
-    const discoveryLat = toNumberOrNull(discoveryCoords?.latitude);
-    const discoveryLng = toNumberOrNull(discoveryCoords?.longitude);
-    const hasDiscoveryLocation = discoveryLat != null && discoveryLng != null;
-    const hasSearchQuery = search.trim().length > 0;
-    const pins = [];
-    filteredDiscoveryStores.forEach((store) => {
-      const slug = toSlug(store?.slug);
-      const locationBundle = discoveryLocationMap[slug] || {};
-      const locations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
-      const activeWithCoords = locations
-        .filter((location) => location?.is_active !== false)
-        .map((location) => ({
-          ...location,
-          latitude: toNumberOrNull(location?.latitude),
-          longitude: toNumberOrNull(location?.longitude)
-        }))
-        .filter((location) => location.latitude != null && location.longitude != null);
-      const matchingLocationIds = Array.isArray(store?.matching_location_ids)
-        ? store.matching_location_ids
-          .map((locationId) => Number(locationId))
-          .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
-        : [];
-      const nearestMatchingLocationId = Number(store?.nearest_matching_location_id);
-      const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
-        ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
-        : null;
-      if (activeWithCoords.length === 0) {
-        const lat = toNumberOrNull(store?.latitude);
-        const lng = toNumberOrNull(store?.longitude);
-        if (lat == null || lng == null) return;
-        pins.push({
-          ...store,
-          marker_key: `${slug}:fallback`,
-          latitude: lat,
-          longitude: lng,
-          location_id: store?.location_id ?? null,
-          location_name: store?.nearest_location_name || store?.tenant_name,
-          branch_label: 'Storefront pin',
-          distance_km: Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null
-        });
-        return;
-      }
-
-        const scopedLocations = selectDiscoveryPinLocations({
-          activeLocations: activeWithCoords,
-          hasSearchQuery,
-          pinScope: discoveryPinScope,
-          matchingLocationIds,
-          nearestMatchingLocationId: nearestMatchingLocation?.location_id ?? null
-        });
-        const scopedLocationMap = new globalThis.Map();
-        scopedLocations.forEach((location) => {
-          if (!location) return;
-          const numericLocationId = Number(location.location_id);
-          const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
-            ? `loc:${numericLocationId}`
-            : `coord:${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}:${toSlug(location?.name || '')}`;
-          const current = scopedLocationMap.get(locationIdentity);
-          if (!current || location?.is_primary_storefront === true) {
-            scopedLocationMap.set(locationIdentity, location);
-          }
-        });
-        if (discoveryPinScope === 'all_matching_branches') {
-          const primaryScoped = activeWithCoords.find((location) => location?.is_primary_storefront === true);
-          if (primaryScoped) {
-            const numericLocationId = Number(primaryScoped.location_id);
-            const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
-              ? `loc:${numericLocationId}`
-              : `coord:${Number(primaryScoped.latitude).toFixed(6)}:${Number(primaryScoped.longitude).toFixed(6)}:${toSlug(primaryScoped?.name || '')}`;
-            if (!scopedLocationMap.has(locationIdentity)) {
-              scopedLocationMap.set(locationIdentity, primaryScoped);
-            }
-          }
-        }
-        const scopedLocationsUnique = Array.from(scopedLocationMap.values());
-
-        scopedLocationsUnique.forEach((location) => {
-          const numericLocationId = Number(location.location_id);
-          const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
-            ? String(numericLocationId)
-            : `${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
-          pins.push({
-            ...store,
-            marker_key: `${slug}:${stableLocationId}`,
-            location_id: location.location_id,
-            location_name: location.name || store?.tenant_name,
-            address_line: location.address_line || store?.address_line || '',
-            latitude: location.latitude,
-          longitude: location.longitude,
-          is_primary_storefront: location.is_primary_storefront === true,
-          branch_label: location.is_primary_storefront ? 'Primary branch' : 'Branch',
-          distance_km: hasDiscoveryLocation
-            ? haversineDistanceKm(discoveryLat, discoveryLng, location.latitude, location.longitude)
-            : null
-        });
-      });
-    });
-      const uniquePins = [];
-      const seenPinKeys = new globalThis.Map();
-      const scorePin = (pin) => {
-        let score = 0;
-        if (pin?.is_primary_storefront === true) score += 5;
-        if (Number.isFinite(Number(pin?.location_id)) && Number(pin.location_id) > 0) score += 4;
-        if (pin?.address_line) score += 2;
-        if (pin?.location_name) score += 1;
-        return score;
-      };
-      pins.forEach((pin, index) => {
-        if (!pin) return;
-        const numericLocationId = Number(pin.location_id);
-        const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
-          ? `${pin.slug || toSlug(pin?.tenant_name)}:loc:${numericLocationId}`
-          : `${pin.slug || toSlug(pin?.tenant_name)}:coord:${Number(pin.latitude).toFixed(6)}:${Number(pin.longitude).toFixed(6)}`;
-        const existingIndex = seenPinKeys.get(dedupeKey);
-        if (existingIndex == null) {
-          seenPinKeys.set(dedupeKey, uniquePins.length);
-          uniquePins.push(pin);
-          return;
-        }
-        if (scorePin(pin) > scorePin(uniquePins[existingIndex])) {
-          uniquePins[existingIndex] = pin;
-        }
-      });
-      return uniquePins.sort((a, b) => {
-        const left = Number.isFinite(Number(a.distance_km)) ? Number(a.distance_km) : Number.POSITIVE_INFINITY;
-        const right = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km) : Number.POSITIVE_INFINITY;
-        if (left !== right) return left - right;
-      return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
-    });
-  }, [filteredDiscoveryStores, discoveryLocationMap, discoveryCoords, discoveryPinScope, search]);
-  const discoveryPinsBySlug = useMemo(() => {
-    const map = {};
-    discoveryMapPins.forEach((pin) => {
-      const slug = toSlug(pin?.slug);
-      if (!slug) return;
-      if (!Array.isArray(map[slug])) {
-        map[slug] = [];
-      }
-      map[slug].push(pin);
-    });
-    return map;
-  }, [discoveryMapPins]);
-  const fallbackDiscoveryMapPins = useMemo(() => (
-    (Array.isArray(filteredDiscoveryStores) ? filteredDiscoveryStores : [])
-      .map((store) => {
-        const lat = toNumberOrNull(store?.latitude);
-        const lng = toNumberOrNull(store?.longitude);
-        if (lat == null || lng == null) return null;
-        const slug = toSlug(store?.slug || store?.tenant_name);
-        return {
-          ...store,
-          marker_key: `${slug || 'store'}:anchor`,
-          latitude: lat,
-          longitude: lng,
-          location_id: store?.nearest_location_id ?? store?.location_id ?? null,
-          location_name: store?.nearest_location_name || store?.tenant_name || 'Storefront',
-          address_line: store?.address_line || '',
-          is_primary_storefront: true,
-          branch_label: 'Storefront pin',
-          distance_km: Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null
-        };
-      })
-      .filter(Boolean)
-  ), [filteredDiscoveryStores]);
-  const heroDiscoveryMapPins = useMemo(() => {
-    const discoveryLat = toNumberOrNull(discoveryCoords?.latitude);
-    const discoveryLng = toNumberOrNull(discoveryCoords?.longitude);
-    const hasDiscoveryLocation = discoveryLat != null && discoveryLng != null;
-    const pins = [];
-
-    (Array.isArray(storesWithNearestBranch) ? storesWithNearestBranch : []).forEach((store) => {
-      const slug = toSlug(store?.slug || store?.tenant_name);
-      const locationBundle = discoveryLocationMap[slug] || {};
-      const activeLocations = (Array.isArray(locationBundle.locations) ? locationBundle.locations : [])
-        .filter((location) => location?.is_active !== false)
-        .map((location) => ({
-          ...location,
-          latitude: toNumberOrNull(location?.latitude),
-          longitude: toNumberOrNull(location?.longitude)
-        }))
-        .filter((location) => location.latitude != null && location.longitude != null);
-
-      if (activeLocations.length === 0) {
-        const lat = toNumberOrNull(store?.latitude);
-        const lng = toNumberOrNull(store?.longitude);
-        if (lat == null || lng == null) return;
-        pins.push({
-          ...store,
-          marker_key: `${slug || 'store'}:hero-anchor`,
-          latitude: lat,
-          longitude: lng,
-          location_id: store?.nearest_location_id ?? store?.location_id ?? null,
-          location_name: store?.nearest_location_name || store?.tenant_name || 'Storefront',
-          address_line: store?.address_line || '',
-          is_primary_storefront: true,
-          branch_label: store?.nearest_is_primary ? 'Primary branch' : 'Storefront pin',
-          distance_km: Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null
-        });
-        return;
-      }
-
-      const uniqueLocationMap = new globalThis.Map();
-      activeLocations.forEach((location) => {
-        const numericLocationId = Number(location.location_id);
-        const identity = Number.isInteger(numericLocationId) && numericLocationId > 0
-          ? `loc:${numericLocationId}`
-          : `coord:${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
-        const current = uniqueLocationMap.get(identity);
-        if (!current || location?.is_primary_storefront === true) {
-          uniqueLocationMap.set(identity, location);
-        }
-      });
-
-      Array.from(uniqueLocationMap.values()).forEach((location) => {
-        const numericLocationId = Number(location.location_id);
-        const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
-          ? String(numericLocationId)
-          : `${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
-        pins.push({
-          ...store,
-          marker_key: `${slug || 'store'}:hero:${stableLocationId}`,
-          latitude: location.latitude,
-          longitude: location.longitude,
-          location_id: location.location_id ?? null,
-          location_name: location.name || store?.tenant_name || 'Storefront',
-          address_line: location.address_line || store?.address_line || '',
-          is_primary_storefront: location.is_primary_storefront === true,
-          branch_label: location.is_primary_storefront === true ? 'Primary branch' : 'Branch',
-          distance_km: hasDiscoveryLocation
-            ? haversineDistanceKm(discoveryLat, discoveryLng, location.latitude, location.longitude)
-            : null
-        });
-      });
-    });
-
-    const uniquePins = [];
-    const seenPinKeys = new globalThis.Map();
-    pins.forEach((pin) => {
-      if (!pin) return;
-      const numericLocationId = Number(pin.location_id);
-      const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
-        ? `${pin.slug || toSlug(pin?.tenant_name)}:loc:${numericLocationId}`
-        : `${pin.slug || toSlug(pin?.tenant_name)}:coord:${Number(pin.latitude).toFixed(6)}:${Number(pin.longitude).toFixed(6)}`;
-      if (seenPinKeys.has(dedupeKey)) return;
-      seenPinKeys.set(dedupeKey, true);
-      uniquePins.push(pin);
-    });
-
-    return uniquePins.sort((a, b) => {
-      const left = Number.isFinite(Number(a.distance_km)) ? Number(a.distance_km) : Number.POSITIVE_INFINITY;
-      const right = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km) : Number.POSITIVE_INFINITY;
-      if (left !== right) return left - right;
-      return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
-    });
-  }, [storesWithNearestBranch, discoveryLocationMap, discoveryCoords]);
-  const rememberedHeroDiscoveryMapPins = Array.isArray(heroDiscoveryMapPinsPersistenceRef.current)
-    ? heroDiscoveryMapPinsPersistenceRef.current
-    : [];
-  const stableHeroDiscoveryMapPins = heroDiscoveryMapPins.length > 0
-    ? heroDiscoveryMapPins
-    : rememberedHeroDiscoveryMapPins;
-  const activeDiscoveryMapPins = discoveryMapPins.length > 0 ? discoveryMapPins : fallbackDiscoveryMapPins;
-  const rememberedDiscoveryMapPins = Array.isArray(discoveryMapPinsPersistenceRef.current)
-    ? discoveryMapPinsPersistenceRef.current
-    : [];
-  const persistentDiscoveryMapPins = hasDiscoverySearch
-    && !loadingStores
-    && !storesError
-    && filteredDiscoveryStores.length === 0
-    ? (isDiscoveryNoMatchToastActive ? [] : rememberedDiscoveryMapPins)
-    : (activeDiscoveryMapPins.length > 0 ? activeDiscoveryMapPins : rememberedDiscoveryMapPins);
-  const searchedDiscoveryMapPins = hasDiscoverySearch && filteredDiscoveryStores.length > 0
-    ? discoveryMapPins
-    : persistentDiscoveryMapPins;
-  const discoveryResultsMapKey = useMemo(() => {
-    const searchKey = String(search || '').trim().toLowerCase();
-    const pinKey = (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
-      .map((pin) => String(
-        pin?.marker_key
-        || `${toSlug(pin?.slug || pin?.tenant_name)}:${pin?.location_id ?? `${pin?.latitude}:${pin?.longitude}`}`
-      ))
-      .join('|');
-    return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
-  }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
-  const discoverySummary = useMemo(() => {
-    const totalStores = filteredDiscoveryStores.length;
-    const openStores = filteredDiscoveryStores.filter((store) => store.storefront_open).length;
-    const totalCatalogItems = filteredDiscoveryStores.reduce((sum, store) => sum + Number(store.catalog_count || 0), 0);
-    const waitTotals = filteredDiscoveryStores.reduce((sum, store) => sum + Number(store.estimated_wait_minutes || 0), 0);
-    const avgWait = totalStores > 0 ? Math.round(waitTotals / totalStores) : 0;
-    return {
-      totalStores,
-      openStores,
-      totalCatalogItems,
-      avgWait
-    };
-  }, [filteredDiscoveryStores]);
-  const nearestDistanceKm = useMemo(() => {
-    const withDistance = filteredDiscoveryStores
-      .map((store) => Number(store?.nearest_distance_km))
-      .filter((distance) => Number.isFinite(distance));
-    if (withDistance.length === 0) return null;
-    return Math.min(...withDistance);
-  }, [filteredDiscoveryStores]);
-  const highlightedStore = useMemo(() => {
-    if (!filteredDiscoveryStores.length) return null;
-    if (!highlightedStoreSlug) return filteredDiscoveryStores[0];
-    return filteredDiscoveryStores.find((store) => store.slug === highlightedStoreSlug) || filteredDiscoveryStores[0];
-  }, [filteredDiscoveryStores, highlightedStoreSlug]);
-  useEffect(() => {
-    return () => {
-      if (discoveryNoMatchToastTimerRef.current) {
-        window.clearTimeout(discoveryNoMatchToastTimerRef.current);
-        discoveryNoMatchToastTimerRef.current = null;
-      }
-    };
-  }, []);
-  useEffect(() => {
-    if (heroDiscoveryMapPins.length > 0) {
-      heroDiscoveryMapPinsPersistenceRef.current = heroDiscoveryMapPins;
-    }
-  }, [heroDiscoveryMapPins]);
-  useEffect(() => {
-    if (activeDiscoveryMapPins.length > 0) {
-      discoveryMapPinsPersistenceRef.current = activeDiscoveryMapPins;
-    }
-  }, [activeDiscoveryMapPins]);
-  useEffect(() => {
-    if (!hasDiscoverySearch || loadingStores || storesError) {
-      if (discoveryNoMatchToastTimerRef.current) {
-        window.clearTimeout(discoveryNoMatchToastTimerRef.current);
-        discoveryNoMatchToastTimerRef.current = null;
-      }
-      setIsDiscoveryNoMatchToastActive(false);
-      lastDiscoveryNoMatchToastRef.current = '';
-      return;
-    }
-    if (filteredDiscoveryStores.length > 0) {
-      if (discoveryNoMatchToastTimerRef.current) {
-        window.clearTimeout(discoveryNoMatchToastTimerRef.current);
-        discoveryNoMatchToastTimerRef.current = null;
-      }
-      setIsDiscoveryNoMatchToastActive(false);
-      lastDiscoveryNoMatchToastRef.current = '';
-      return;
-    }
-    const queryLabel = String(debouncedDiscoverySearch || search || discoveryCategoryFilter || '').trim() || 'your search';
-    const toastKey = `${queryLabel}::${discoveryCategoryFilter}::${discoveryDistanceFilter}::${discoveryOpenFilter}::${discoveryRatingFilter}::${discoveryAvailabilityFilter}`;
-    setIsDiscoveryNoMatchToastActive(true);
-    if (discoveryNoMatchToastTimerRef.current) {
-      window.clearTimeout(discoveryNoMatchToastTimerRef.current);
-    }
-    discoveryNoMatchToastTimerRef.current = window.setTimeout(() => {
-      setIsDiscoveryNoMatchToastActive(false);
-      discoveryNoMatchToastTimerRef.current = null;
-    }, 2600);
-    if (lastDiscoveryNoMatchToastRef.current === toastKey) return;
-    lastDiscoveryNoMatchToastRef.current = toastKey;
-    toast.info(`No storefronts matched "${queryLabel}". Try another category or broader search.`);
-  }, [
+  const { discoveryInteractiveAreaRef } = useDiscoveryExplorationOutsideClick({
+    hasDiscoveryExplorationStarted,
     hasDiscoverySearch,
-    loadingStores,
-    storesError,
-    filteredDiscoveryStores.length,
+    isDiscoverySearchFocused,
+    setHasDiscoveryExplorationStarted
+  });
+  const {
+    activeDiscoveryMapPins,
+    discoveryMapPins,
+    discoveryPinsBySlug,
+    discoveryResultStores,
+    discoveryResultsMapKey,
+    discoverySummary,
+    filteredDiscoveryStores,
+    highlightedStore,
+    nearestDistanceKm,
+    searchedDiscoveryMapPins,
+    stableHeroDiscoveryMapPins,
+    storesWithNearestBranch
+  } = useDiscoveryDerivedResults({
+    DEFAULT_CENTER,
+    DISCOVERY_CATEGORY_MATCHERS,
     debouncedDiscoverySearch,
-    search,
+    discoveryAvailabilityFilter,
     discoveryCategoryFilter,
+    discoveryCoords,
     discoveryDistanceFilter,
+    discoveryLocationMap,
     discoveryOpenFilter,
+    discoveryPinScope,
     discoveryRatingFilter,
-    discoveryAvailabilityFilter
-  ]);
-  useEffect(() => {
-    if (!hasDiscoveryExplorationStarted || hasDiscoverySearch || isDiscoverySearchFocused) return undefined;
-
-    const handlePointerDownOutsideDiscovery = (event) => {
-      const interactionArea = discoveryInteractiveAreaRef.current;
-      if (!interactionArea) return;
-      if (interactionArea.contains(event.target)) return;
-      setHasDiscoveryExplorationStarted(false);
-    };
-
-    document.addEventListener('pointerdown', handlePointerDownOutsideDiscovery);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDownOutsideDiscovery);
-    };
-  }, [hasDiscoveryExplorationStarted, hasDiscoverySearch, isDiscoverySearchFocused]);
+    discoverySortBy,
+    hasDiscoverySearch,
+    haversineDistanceKm,
+    highlightedStoreSlug,
+    isDiscoveryNoMatchToastActive,
+    loadingStores,
+    normalizeDiscoveryCategoryKey,
+    normalizeStorefrontCategories,
+    normalizeStorefrontReviewSummary,
+    search,
+    selectDiscoveryPinLocations,
+    setIsDiscoveryNoMatchToastActive,
+    stores,
+    storesError,
+    toNumberOrNull,
+    toSlug,
+    toast
+  });
   const selectedLocation = useMemo(() => {
     if (!Array.isArray(storeLocations) || storeLocations.length === 0) return null;
     if (selectedLocationId == null) return null;
@@ -5542,118 +2179,29 @@ export default function StorefrontApp() {
     setIsServiceGalleryExpanded(false);
   }, [selectedStore?.slug, selectedLocationId]);
   useEffect(() => {
-    setIsReviewModalOpen(false);
-    setReviewSubmitLoading(false);
-    resetReviewDraft();
-    setItemReviewSummary(null);
-    setItemReviewCards([]);
-    setItemReviewsLoading(false);
-    setItemReviewInviteContext(null);
-    setItemReviewSectionHighlighted(false);
-  }, [selectedStore?.slug]);
-  useEffect(() => {
     setHasSelectedBranchFromMenu(false);
   }, [selectedStore?.slug]);
-  const fnbCommunityModel = useMemo(() => {
-    if (!selectedStore) return null;
-    const socialLinks = parseOptionalObject(selectedStore?.storefront_social_links) || {};
-    const facebookLink = String(socialLinks.facebook || '').trim();
-    const instagramLink = String(socialLinks.instagram || '').trim();
-    const tiktokLink = String(socialLinks.tiktok || '').trim();
-    const websiteLink = String(socialLinks.website || socialLinks.web || '').trim();
-    const messengerLink = String(heroSectionModel?.messengerLink || socialLinks.messenger || '').trim();
-    const email = String(heroSectionModel?.email || '').trim();
-    const phone = String(heroSectionModel?.phone || '').trim();
-    const hours = formatStorefrontHoursLabel(
-      selectedStore?.storefront_hours,
-      heroSectionModel?.hours || selectedStore?.storefront_hours_status?.display || ''
-    );
-    const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
-    const addressLine = formatStorefrontAddress(selectedLocation || overviewSectionModel?.location || selectedStore || {});
-    const registrationYear = deriveStorefrontRegistrationYear(
-      selectedStore?.business_registered_at
-      || selectedStore?.registered_at
-      || selectedStore?.tenant_created_at
-      || selectedStore?.created_at
-    );
-    const rawReviewSummary = supportingSectionModel?.reviewSummary || parseOptionalObject(selectedStore?.storefront_review_summary) || null;
-    const reviewSummary = normalizeStorefrontReviewSummary(rawReviewSummary);
-    const reviewHighlights = Array.isArray(supportingSectionModel?.reviewHighlights)
-      ? supportingSectionModel.reviewHighlights.filter(Boolean)
-      : [];
-    const menuCategories = Array.isArray(filteredFnbViewModel?.menuSections)
-      ? filteredFnbViewModel.menuSections.map((section) => ({
-        key: section.sectionKey,
-        label: section.sectionLabel,
-        count: Number(section?.items?.length || 0)
-      }))
-      : [];
-    return {
-      name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
-      tagline: heroSectionModel?.tagline || '',
-      aboutText: heroSectionModel?.aboutText || modeAdapter.heroDescription,
-      sectionAboutText: heroSectionModel?.aboutText || '',
-      locationLabel: addressLine || locationName || 'Location details coming soon',
-      hours,
-      reviewSummary,
-      reviewHighlights,
-      menuCategories,
-      registrationYear,
-      footerLinks: [
-        websiteLink ? { label: 'Website', href: websiteLink } : null,
-        facebookLink ? { label: 'Facebook', href: facebookLink } : null,
-        instagramLink ? { label: 'Instagram', href: instagramLink } : null,
-        tiktokLink ? { label: 'TikTok', href: tiktokLink } : null,
-        messengerLink ? { label: 'Messenger', href: messengerLink } : null,
-        phone ? { label: 'Call', href: `tel:${phone}` } : null,
-        email ? { label: 'Email', href: `mailto:${email}` } : null
-      ].filter(Boolean)
-    };
-  }, [
+  const fnbCommunityModel = useMemo(() => buildFnbCommunityModel({
     selectedStore,
-    heroSectionModel,
     selectedLocation,
     overviewSectionModel,
     supportingSectionModel,
+    heroSectionModel,
+    filteredFnbViewModel,
+    fallbackDescription: modeAdapter.heroDescription
+  }), [
+    selectedStore,
+    selectedLocation,
+    overviewSectionModel,
+    supportingSectionModel,
+    heroSectionModel,
     filteredFnbViewModel,
     modeAdapter.heroDescription
   ]);
-  const detailPageFnbItem = useMemo(() => (
-    selectedFnbDetail || (routeItemId ? catalog.find((item) => String(item?.item_id) === String(routeItemId)) || null : null)
-  ), [catalog, routeItemId, selectedFnbDetail]);
-  const detailPageFnbModifierGroups = useMemo(() => (
-    normalizeFnbModifierGroups(detailPageFnbItem)
-  ), [detailPageFnbItem]);
-  const detailPageFnbModifierCounts = useMemo(() => (
-    countSelectedModifiersByGroup(selectedFnbLineModifiers)
-  ), [selectedFnbLineModifiers]);
-  const detailPageFnbNutritionCards = useMemo(() => (
-    buildFnbNutritionCards(detailPageFnbItem)
-  ), [detailPageFnbItem]);
-  const detailPageFnbAllergens = useMemo(() => (
-    buildFnbAllergens(detailPageFnbItem)
-  ), [detailPageFnbItem]);
-  const detailPageFnbRelatedItems = useMemo(() => {
-    if (!detailPageFnbItem) return [];
-    const currentSection = String(detailPageFnbItem.sectionKey || '').trim();
-    const currentItemId = Number(detailPageFnbItem.item_id);
-    if (isSimpleMode) {
-      const fallbackItems = filteredCatalog.filter((item) => Number(item?.item_id) !== currentItemId);
-      const sameFolder = fallbackItems.filter((item) => String(item?.folder_name || item?.category || '').trim() === String(detailPageFnbItem?.folder_name || detailPageFnbItem?.category || '').trim());
-      return (sameFolder.length > 0 ? sameFolder : fallbackItems).slice(0, 3);
-    }
-    const baseItems = Array.isArray(filteredFnbViewModel?.menuItems) ? filteredFnbViewModel.menuItems : [];
-    const sameSection = baseItems.filter((item) => (
-      Number(item?.item_id) !== currentItemId
-      && String(item?.sectionKey || '').trim() === currentSection
-    ));
-    const fallbackItems = baseItems.filter((item) => Number(item?.item_id) !== currentItemId);
-    return (sameSection.length > 0 ? sameSection : fallbackItems).slice(0, 3);
-  }, [detailPageFnbItem, filteredCatalog, filteredFnbViewModel, isSimpleMode]);
   const {
-    loadFnbItemReviews,
+    submitFnbItemReview,
     openFnbItemReviewFromInvite,
-    removeReviewTokenFromItemRoute,
+    resetFnbItemReviewDraft,
     syncFnbItemReviewSectionIntoView
   } = useFnbItemReviewRuntime({
     buildHistoryState: buildStorefrontHistoryState,
@@ -5663,10 +2211,13 @@ export default function StorefrontApp() {
     detailItem: detailPageFnbItem,
     isDetailsRoute: isFnbDetailsSubpage,
     isFnbMode,
+    itemReviewInviteContext,
     itemSubpage: STORE_ITEM_SUBPAGE,
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
     onOpenDetail: openFnbDetail,
     requestJson,
+    reviewDraft,
+    reviewSubmitLoading,
     routeItemId,
     routeReviewToken,
     routeSlug,
@@ -5679,10 +2230,21 @@ export default function StorefrontApp() {
     setReviewLoading: setItemReviewsLoading,
     setReviewSectionHighlighted: setItemReviewSectionHighlighted,
     setReviewSummary: setItemReviewSummary,
+    setReviewSubmitLoading,
     setRouteReviewToken,
     toast,
     toSlug
   });
+  useEffect(() => {
+    setIsReviewModalOpen(false);
+    setReviewSubmitLoading(false);
+    resetFnbItemReviewDraft();
+    setItemReviewSummary(null);
+    setItemReviewCards([]);
+    setItemReviewsLoading(false);
+    setItemReviewInviteContext(null);
+    setItemReviewSectionHighlighted(false);
+  }, [resetFnbItemReviewDraft, selectedStore?.slug]);
   const { toggleFnbDetailModifier } = useFnbProductModifiers({
     setSelectedModifiers: setSelectedFnbLineModifiers
   });
@@ -5897,16 +2459,9 @@ export default function StorefrontApp() {
   );
   const storefrontClosedMessageBody = getStorefrontClosedBody(storefrontHoursLabel);
   const storefrontClosedToastMessage = getStorefrontClosedToastMessage(storefrontHoursLabel);
-  const renderStorefrontClosedNotice = ({
-    accent = '#92400e',
-    background = '#fffbeb',
-    border = '#fde68a',
-    title = STOREFRONT_CLOSED_TITLE
-  } = {}) => (
-    <div style={{ border: `1px solid ${border}`, background, color: accent, borderRadius: 14, padding: '12px 14px', display: 'grid', gap: 4 }}>
-      <div style={{ fontSize: 13, fontWeight: 800 }}>{title}</div>
-      <div style={{ fontSize: 13, lineHeight: 1.5 }}>{storefrontClosedMessageBody}</div>
-    </div>
+  const renderStorefrontClosedNotice = useMemo(
+    () => createStorefrontClosedNoticeRenderer(storefrontClosedMessageBody),
+    [storefrontClosedMessageBody]
   );
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
@@ -5919,40 +2474,10 @@ export default function StorefrontApp() {
     quoteNeedsRefresh,
     requireQuote: requireQuoteForCheckout
   });
-  const serviceCartValidationIssues = useMemo(() => (
-    [
-      ...serviceCartLines.flatMap((line) => {
-        const lineName = line?.variantName || line?.name || 'Service';
-        const lineIssues = [];
-        if (!String(line?.service_schedule_at || '').trim()) {
-          lineIssues.push({
-            cart_line_id: line?.cart_line_id || '',
-            item_id: line?.item_id,
-            serviceName: lineName,
-            field: 'Preferred schedule',
-            message: `${lineName}: choose a preferred appointment date and time.`
-          });
-        }
-        const lineIntakeFields = normalizeServiceFormFields(line?.service_detail?.intake_form_schema);
-        lineIntakeFields.forEach((field) => {
-          if (!field.required) return;
-          const value = line?.intake_responses?.[field.id];
-          const missingValue = field.type === 'checkbox' ? value !== true : !String(value || '').trim();
-          if (missingValue) {
-            lineIssues.push({
-              cart_line_id: line?.cart_line_id || '',
-              item_id: line?.item_id,
-              serviceName: lineName,
-              field: field.label,
-              message: `${lineName}: complete "${field.label}".`
-            });
-          }
-        });
-        return lineIssues;
-      }),
-      ...collectServicesRuntimeCompatibilityIssues(serviceCartLines)
-    ]
-  ), [serviceCartLines]);
+  const serviceCartValidationIssues = useMemo(
+    () => buildServiceCartValidationIssues(serviceCartLines),
+    [serviceCartLines]
+  );
   const checkoutAllowed = canCheckout({
     selectedStore,
     cartCount,
@@ -5964,35 +2489,33 @@ export default function StorefrontApp() {
     quoteNeedsRefresh,
     requireQuote: requireQuoteForCheckout
   }) && !hasMixedServiceCart && (!hasServiceCart || serviceCartValidationIssues.length === 0);
-  const fnbCartStatusLabel = useMemo(() => {
-    if (cartCount === 0) return 'Browse menu';
-    if (storefrontClosedByHours) return 'Closed';
-    if (hasStockViolation) return 'Update quantities';
-    if (isFnbMode && (!quoteResult || quoteNeedsRefresh)) return 'Updating totals';
-    if (!quoteResult) return 'Quote required';
-    if (quoteNeedsRefresh) return 'Refresh quote';
-    if (checkoutAllowed) return 'Ready to checkout';
-    return 'Review order';
-  }, [cartCount, storefrontClosedByHours, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
-  const fnbCartActionLabel = useMemo(() => {
-    if (cartCount === 0) return 'Browse menu';
-    if (isCheckoutOpen) return 'Close cart';
-    if (hasStockViolation) return 'Review cart';
-    if (isFnbMode) return isMobileViewport ? 'Checkout' : 'View cart and checkout';
-    if (!quoteResult || quoteNeedsRefresh) return 'Review and quote';
-    return isMobileViewport ? 'Checkout' : 'View cart and checkout';
-  }, [cartCount, hasStockViolation, isCheckoutOpen, isFnbMode, isMobileViewport, quoteResult, quoteNeedsRefresh]);
-  const fnbDrawerSupportLabel = useMemo(() => {
-    if (cartCount === 0) return 'Add menu items to start an order.';
-    if (storefrontClosedByHours) {
-      return storefrontClosedMessageBody;
-    }
-    if (hasStockViolation) return 'Adjust quantities that exceed available stock before checkout.';
-    if (isFnbMode && (!quoteResult || quoteNeedsRefresh)) return 'Totals update automatically before you place the order.';
-    if (!quoteResult) return 'Review the cart, then request a fresh quote before checkout.';
-    if (quoteNeedsRefresh) return 'Cart changed. Refresh the quote to sync totals and enable checkout.';
-    return 'Everything is synced. You can continue through checkout.';
-  }, [cartCount, storefrontClosedByHours, storefrontClosedMessageBody, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh]);
+  const fnbCartStatusLabel = useMemo(() => buildFnbCartStatusLabel({
+    cartCount,
+    storefrontClosedByHours,
+    hasStockViolation,
+    isFnbMode,
+    quoteResult,
+    quoteNeedsRefresh,
+    checkoutAllowed
+  }), [cartCount, storefrontClosedByHours, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
+  const fnbCartActionLabel = useMemo(() => buildFnbCartActionLabel({
+    cartCount,
+    isCheckoutOpen,
+    hasStockViolation,
+    isFnbMode,
+    isMobileViewport,
+    quoteResult,
+    quoteNeedsRefresh
+  }), [cartCount, hasStockViolation, isCheckoutOpen, isFnbMode, isMobileViewport, quoteResult, quoteNeedsRefresh]);
+  const fnbDrawerSupportLabel = useMemo(() => buildFnbDrawerSupportLabel({
+    cartCount,
+    storefrontClosedByHours,
+    storefrontClosedMessageBody,
+    hasStockViolation,
+    isFnbMode,
+    quoteResult,
+    quoteNeedsRefresh
+  }), [cartCount, storefrontClosedByHours, storefrontClosedMessageBody, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh]);
   const activeBookingService = activeServiceCartLine || selectedServiceDetail || null;
   const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
   const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
@@ -6047,118 +2570,40 @@ export default function StorefrontApp() {
     && missingStepOneAdditionalFields.length === 0;
   const paymentStepComplete = Boolean(servicePaymentTiming);
   const reviewStepReady = stepOneComplete;
-  const bookingSummaryQuantity = hasServiceCart
-    ? serviceCartLines.reduce((sum, line) => sum + Math.max(1, Number(line.quantity || 1)), 0)
-    : Math.max(1, Number(serviceDraftQuantity || 1));
-  const bookingSummaryAmount = hasServiceCart
-    ? serviceCartTotal
-    : ((Number(activeBookingService?.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1)));
-  const serviceBookingSummaryTitle = hasServiceCart
-    ? (serviceCartLines.length > 1
-      ? `${serviceCartLines.length} services selected`
-      : (firstServiceLine?.variantName || firstServiceLine?.name || 'Service booking'))
-    : (activeBookingService?.variantName || activeBookingService?.name || 'Service booking');
-  const serviceBookingSummarySchedule = hasServiceCart
-    ? (() => {
-      const uniqueSchedules = Array.from(new Set(
-        serviceCartLines
-          .map((line) => formatServiceAppointmentSummary(line.service_schedule_at))
-          .filter((value) => value && value !== 'Select a schedule')
-      ));
-      if (uniqueSchedules.length === 1) return uniqueSchedules[0];
-      if (uniqueSchedules.length > 1) return 'Varies by service';
-      return formatServiceAppointmentSummary(serviceAppointmentAt);
-    })()
-    : formatServiceAppointmentSummary(serviceAppointmentAt);
-  const reviewServiceLines = useMemo(() => serviceCartLines.map((line, index) => ({
-    key: String(line.cart_line_id || line.item_id || index),
-    title: line.variantName || line.name || `Service ${index + 1}`,
-    editFieldKey: 'preferred_date',
-    rows: [
-      { label: 'Service', value: line.variantName || line.name || 'Service', fieldKey: 'preferred_date' },
-      { label: 'Preferred Schedule', value: formatServiceAppointmentSummary(line.service_schedule_at), fieldKey: 'preferred_date' },
-      ...(line.service_detail?.service_area_type || line.serviceAreaLabel
-        ? [{ label: 'Service Variant', value: line.service_detail?.service_area_type || line.serviceAreaLabel, fieldKey: 'unit_type' }]
-        : []),
-      { label: 'Number of Units', value: String(Math.max(1, Number(line.quantity || 1))), fieldKey: 'unit_count' },
-      { label: 'Additional Instructions', value: String(line.service_notes || '').trim() || 'No additional instructions.', fieldKey: 'service_notes' },
-    ],
-  })), [serviceCartLines]);
-  const serviceBookingSummaryRows = useMemo(() => {
-    const baseRows = [
-      { label: 'Services', value: serviceBookingSummaryTitle },
-      { label: 'Schedule', value: serviceBookingSummarySchedule },
-      { label: 'Units', value: String(bookingSummaryQuantity) },
-      { label: 'Payment', value: bookingPagePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Pending' },
-    ];
-    if (serviceLocationSummaryDraft) {
-      baseRows.push({ label: 'Location', value: serviceLocationSummaryDraft });
-    }
-    return baseRows;
-  }, [bookingPagePaymentOptions, bookingSummaryQuantity, serviceBookingSummarySchedule, serviceBookingSummaryTitle, serviceLocationSummaryDraft, servicePaymentTiming]);
-  const serviceBookingSummaryLineItems = useMemo(() => {
-    const summarySource = hasServiceCart
-      ? serviceCartLines
-      : (activeBookingService
-        ? [{
-          item_id: activeBookingService.item_id,
-          cart_line_id: activeBookingService.item_id,
-          name: activeBookingService.name,
-          variantName: activeBookingService.variantName || '',
-          quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
-          price: Number(activeBookingService.default_sale_price ?? 0) || 0,
-          service_schedule_at: serviceAppointmentAt,
-          service_notes: String(serviceIntakeResponses.special_instructions || serviceIntakeResponses.instructions || '').trim(),
-          durationLabel: activeBookingService.durationLabel || '',
-          service_detail: activeBookingService.service_detail || null,
-        }]
-        : []);
-    return summarySource.map((line, index) => {
-      const lineDuration = String(
-        line.durationLabel
-        || activeBookingService?.durationLabel
-        || ''
-      ).trim();
-      const variant = String(line.service_detail?.service_area_type || line.serviceAreaLabel || line.variantName || '').trim();
-      return {
-        key: String(line.cart_line_id || line.item_id || index),
-        title: String(line.variantName || line.name || `Service ${index + 1}`).trim(),
-        variant,
-        schedule: formatServiceAppointmentSummary(line.service_schedule_at || serviceAppointmentAt),
-        quantity: String(Math.max(1, Number(line.quantity || 1))),
-        duration: lineDuration,
-        notes: String(line.service_notes || '').trim(),
-        amount: money((Number(line.price || 0) || 0) * Math.max(1, Number(line.quantity || 1))),
-      };
-    });
-  }, [activeBookingService, hasServiceCart, money, serviceAppointmentAt, serviceCartLines, serviceDraftQuantity, serviceIntakeResponses.instructions, serviceIntakeResponses.special_instructions]);
-  const openPreferredBookingDatePicker = useCallback(() => {
-    const input = bookingPreferredDateInputRef.current;
-    if (!input) return;
-    if (typeof input.showPicker === 'function') {
-      try {
-        input.showPicker();
-        return;
-      } catch {
-        // Fall through to focus/click for browsers that block showPicker.
-      }
-    }
-    input.focus();
-    input.click();
-  }, []);
-  const registerBookingFieldRef = useCallback((key) => (node) => {
-    if (!key) return;
-    if (node) {
-      bookingFieldRefs.current[key] = node;
-    } else {
-      delete bookingFieldRefs.current[key];
-    }
-  }, []);
-  const jumpToBookingField = useCallback((step, fieldKey) => {
-    setServiceBookingStep(step);
-    setPendingBookingFocusKey(fieldKey);
-  }, []);
-
+  const {
+    bookingSummaryAmount,
+    bookingSummaryQuantity,
+    reviewServiceLines,
+    serviceBookingSummaryLineItems,
+    serviceBookingSummaryRows,
+    serviceBookingSummarySchedule,
+    serviceBookingSummaryTitle
+  } = useMemo(() => buildServiceBookingSummaryModel({
+    activeBookingService,
+    bookingPagePaymentOptions,
+    firstServiceLine,
+    hasServiceCart,
+    money,
+    serviceAppointmentAt,
+    serviceCartLines,
+    serviceCartTotal,
+    serviceDraftQuantity,
+    serviceIntakeResponses,
+    serviceLocationSummaryDraft,
+    servicePaymentTiming
+  }), [
+    activeBookingService,
+    bookingPagePaymentOptions,
+    firstServiceLine,
+    hasServiceCart,
+    serviceAppointmentAt,
+    serviceCartLines,
+    serviceCartTotal,
+    serviceDraftQuantity,
+    serviceIntakeResponses,
+    serviceLocationSummaryDraft,
+    servicePaymentTiming
+  ]);
   useEffect(() => {
     if (productCartPermitted && checkoutPermitted && bookingPermitted) return;
     if (cart.length === 0 && !quoteResult && !isCheckoutOpen) return;
@@ -6172,19 +2617,15 @@ export default function StorefrontApp() {
     setIsCheckoutOpen(false);
   }, [isBookingSubpage]);
 
-  useEffect(() => {
-    if (!filteredDiscoveryStores.length) {
-      setHighlightedStoreSlug('');
-      setHighlightedDiscoveryMarkerKey('');
-      return;
-    }
-    if (!highlightedStoreSlug || !filteredDiscoveryStores.some((store) => store.slug === highlightedStoreSlug)) {
-      setHighlightedStoreSlug(filteredDiscoveryStores[0].slug);
-    }
-    if (!highlightedDiscoveryMarkerKey || !activeDiscoveryMapPins.some((pin) => getDiscoveryMarkerKey(pin) === highlightedDiscoveryMarkerKey)) {
-      setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(activeDiscoveryMapPins[0]) || '');
-    }
-  }, [filteredDiscoveryStores, highlightedStoreSlug, activeDiscoveryMapPins, highlightedDiscoveryMarkerKey]);
+  useDiscoveryHighlightSync({
+    activeDiscoveryMapPins,
+    filteredDiscoveryStores,
+    getDiscoveryMarkerKey,
+    highlightedDiscoveryMarkerKey,
+    highlightedStoreSlug,
+    setHighlightedDiscoveryMarkerKey,
+    setHighlightedStoreSlug
+  });
   useEffect(() => {
     if (!isStorePage) return;
     setQuoteNeedsRefresh(true);
@@ -6337,20 +2778,6 @@ export default function StorefrontApp() {
     serviceDraftQuantity,
     serviceUnitType
   ]);
-  useEffect(() => {
-    if (!pendingBookingFocusKey) return;
-    const node = bookingFieldRefs.current[pendingBookingFocusKey];
-    if (!node) return;
-    const timer = window.requestAnimationFrame(() => {
-      const focusTarget = typeof node.focus === 'function'
-        ? node
-        : node.querySelector?.('input, textarea, button, [tabindex]:not([tabindex="-1"])');
-      node.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-      focusTarget?.focus?.();
-      setPendingBookingFocusKey('');
-    });
-    return () => window.cancelAnimationFrame(timer);
-  }, [pendingBookingFocusKey, serviceBookingStep]);
   useEffect(() => {
     if (!isBookingSubpage || !activeBookingService || selectedServiceDatePart) return;
     const firstDate = bookingDateOptions[0]?.value || '';
@@ -6557,7 +2984,7 @@ export default function StorefrontApp() {
       animateCartCardToFab(options?.sourceRect || null);
     } else {
       setCheckoutTab(isFnbMode ? 'cart' : 'review');
-      const shouldOpenCartDrawer = options?.openCart === true || !isFnbMode;
+      const shouldOpenCartDrawer = !isFnbMode;
       setIsCheckoutOpen(shouldOpenCartDrawer);
       if (isFnbMode && !shouldOpenCartDrawer) {
         animateCartCardToFab(options?.sourceRect || null);
@@ -6569,6 +2996,35 @@ export default function StorefrontApp() {
       toast.error(stockWarning);
     }
   };
+  const fnbProductDetailActions = useFnbProductDetailActions({ addToCart, goStoreOrderPage, item: detailPageFnbItem, quantity: selectedFnbDetailQuantity, selectedModifiers: selectedFnbLineModifiers });
+  const fnbProductDetailsReviewProps = useFnbProductDetailsReviewProps({
+    customerName,
+    isFnbMode,
+    itemReviewCards,
+    itemReviewInviteContext,
+    itemReviewSectionHighlighted,
+    itemReviewSummary,
+    itemReviewsLoading,
+    savedCustomerName: savedCustomerDetails?.name,
+    setIsReviewModalOpen,
+    setReviewDraft,
+    syncFnbItemReviewSectionIntoView
+  });
+  const fnbProductDetailsRouteProps = useFnbProductDetailsRouteProps({
+    actions: fnbProductDetailActions,
+    detailRuntime: fnbProductDetailsRuntime,
+    isItemAvailable,
+    isMobileViewport,
+    onToggleModifier: toggleFnbDetailModifier,
+    navigation: {
+      onBack: closeFnbDetail,
+      onSelectRelatedItem: openFnbDetail
+    },
+    reviewProps: fnbProductDetailsReviewProps,
+    selectedLocation,
+    selectedStore,
+    withAssetOrigin
+  });
   const handleServicesCartCheckout = () => {
     if (cart.length === 0) {
       toast.error('Your cart is empty.');
@@ -6588,6 +3044,23 @@ export default function StorefrontApp() {
   const openServiceBookingPanel = (nextTab = 'review') => {
     setCheckoutTab(nextTab);
     setIsCheckoutOpen(true);
+  };
+  const openServiceCartEditor = (line) => {
+    if (!line) return;
+    setSelectedServiceCartLineId(String(line.cart_line_id || ''));
+    setSelectedServiceDetail({
+      ...line,
+      item_id: line.item_id,
+      service_detail: line.service_detail || null
+    });
+    setServiceAppointmentAt(String(line.service_schedule_at || ''));
+    setServiceDraftQuantity(Math.max(1, Number(line.quantity || 1)));
+    setServiceDraftNotes(String(line.service_notes || ''));
+    setServiceIntakeResponses(line?.intake_responses && typeof line.intake_responses === 'object' ? line.intake_responses : {});
+    setServicePaymentTiming(String(line.payment_timing || servicePaymentOptions[0]?.value || 'postpaid'));
+    if (isServicesMode) {
+      goStoreBookingPage({ preserveSelectedService: true });
+    }
   };
   const openTrackPanel = () => {
     if (isStorePage || canOpenTrackingDrawer) {
@@ -6913,24 +3386,6 @@ export default function StorefrontApp() {
     }
     toast.success(targetCartLineId ? 'Booking line updated.' : 'Service added to your booking summary.');
   };
-  const openServiceCartEditor = (line) => {
-    if (!line) return;
-    setSelectedServiceCartLineId(String(line.cart_line_id || ''));
-    setSelectedServiceDetail({
-      ...line,
-      item_id: line.item_id,
-      service_detail: line.service_detail || null
-    });
-    setServiceAppointmentAt(String(line.service_schedule_at || ''));
-    setServiceDraftQuantity(Math.max(1, Number(line.quantity || 1)));
-    setServiceDraftNotes(String(line.service_notes || ''));
-    setServiceIntakeResponses(line?.intake_responses && typeof line.intake_responses === 'object' ? line.intake_responses : {});
-    setServicePaymentTiming(String(line.payment_timing || servicePaymentOptions[0]?.value || 'postpaid'));
-    if (isServicesMode) {
-      goStoreBookingPage({ preserveSelectedService: true });
-    }
-  };
-
   const removeCartItem = (itemId, cartLineId = '') => {
     setCart((prev) => prev.filter((line) => (
       cartLineId
@@ -6972,6 +3427,32 @@ export default function StorefrontApp() {
       toast.error(stockWarning);
     }
   };
+
+  const serviceCartDrawerProps = useServiceCartDrawerProps({
+    cartButtonRef: serviceCartFabRef,
+    cartImageErrors,
+    handleServicesCartCheckout,
+    hasMixedServiceCart,
+    hasServiceCart,
+    isCheckoutOpen,
+    isMobileViewport,
+    money,
+    openServiceCartEditor,
+    productCartLines,
+    removeCartItem,
+    serviceCartCount,
+    serviceCartLines,
+    serviceCartTotal,
+    servicesDisplayFont,
+    servicesPrimary,
+    servicesPrimaryDark,
+    servicesPrimaryShadow,
+    servicesPrimaryShadowStrong,
+    setCartImageErrors,
+    setIsCheckoutOpen,
+    updateQty,
+    withAssetOrigin
+  });
 
   const {
     buildPayload: checkoutPayload,
@@ -7136,46 +3617,19 @@ export default function StorefrontApp() {
     )
   ), [customerAddress, customerPin, deliveryLocationDisplayAddress, resolvedDeliveryAddress]);
 
-  const renderPromoCodePanel = useCallback(({
-    compact = false,
-    accentColor = '#0f766e',
-    bodyFont = servicesBodyFont,
-    isMobile = false
-  } = {}) => (
-    <PromoCodePanel
-      code={checkoutPromoCode}
-      onChange={setCheckoutPromoCode}
-      onClear={() => setCheckoutPromoCode('')}
-      onApplyPromo={handlePromoCardApply}
-      statusMessage={promoStatusMessage}
-      statusTone={promoStatusTone}
-      appliedDiscountText={appliedPromoDiscountText}
-      compact={compact}
-      accentColor={accentColor}
-      bodyFont={bodyFont}
-      isMobile={isMobile}
-      availablePromos={Array.isArray(promoSectionModel) ? promoSectionModel : []}
-    />
-  ), [
+  const {
+    renderCheckoutPromoStack,
+    renderPromoCodePanel
+  } = useFnbCheckoutPromoRenderers({
     appliedPromoDiscountText,
     checkoutPromoCode,
     handlePromoCardApply,
     promoSectionModel,
     promoStatusMessage,
     promoStatusTone,
-    servicesBodyFont
-  ]);
-
-  const renderCheckoutPromoStack = useCallback((summaryNode, options = {}) => (
-    <div style={{ display: 'grid', gap: 10 }}>
-      {renderPromoCodePanel({
-        compact: options.compact !== false,
-        accentColor: options.accentColor || '#0f766e',
-        bodyFont: options.bodyFont || servicesBodyFont
-      })}
-      {summaryNode}
-    </div>
-  ), [renderPromoCodePanel, servicesBodyFont]);
+    servicesBodyFont,
+    setCheckoutPromoCode
+  });
 
   useEffect(() => {
     if (!isDeliveryOrder || !hasPinnedDeliveryLocation) {
@@ -7358,57 +3812,6 @@ export default function StorefrontApp() {
     toast.error('Copy failed. Please copy manually.');
     return false;
   }, []);
-
-  const resetReviewDraft = () => {
-    setReviewDraft({
-      name: '',
-      anonymous: false,
-      rating: 0,
-      message: ''
-    });
-  };
-
-  const handleReviewDraftSubmit = async () => {
-    if (reviewSubmitLoading) return;
-    if (!String(reviewDraft.name || '').trim()) {
-      toast.error('Enter your name before sending a review.');
-      return;
-    }
-    if (!Number(reviewDraft.rating)) {
-      toast.error('Choose a star rating before sending a review.');
-      return;
-    }
-    if (isFnbMode && itemReviewInviteContext?.token && detailPageFnbItem?.item_id) {
-      setReviewSubmitLoading(true);
-      try {
-        await requestJson(`/api/v1/dgfy/customer/review-invites/${encodeURIComponent(itemReviewInviteContext.token)}/submit`, {
-          method: 'POST',
-          body: {
-            name: reviewDraft.name,
-            anonymous: reviewDraft.anonymous === true,
-            rating: reviewDraft.rating,
-            comment: String(reviewDraft.message || '').trim() || null,
-            submission_channel: itemReviewInviteContext?.invite?.delivery_channel || 'tracking'
-          }
-        });
-        toast.success('Review submitted for approval.');
-        setIsReviewModalOpen(false);
-        setItemReviewInviteContext(null);
-        removeReviewTokenFromItemRoute(detailPageFnbItem.item_id);
-        resetReviewDraft();
-        await loadFnbItemReviews(detailPageFnbItem.item_id);
-        return;
-      } catch (error) {
-        toast.error(normalizeStorefrontErrorMessage(error, 'Unable to submit your review right now.'));
-        return;
-      } finally {
-        setReviewSubmitLoading(false);
-      }
-    }
-    toast.info('Review submission UI is ready. Backend publishing will be connected later.');
-    setIsReviewModalOpen(false);
-    resetReviewDraft();
-  };
 
   const handleQuote = async () => {
     if (!selectedStore) return;
@@ -7732,117 +4135,6 @@ export default function StorefrontApp() {
     routeSlug,
     selectedStore?.slug
   ]);
-  const handleNearMe = () => {
-    const currentSearch = String(searchRef.current || search || '').trim();
-    setHasDiscoveryExplorationStarted(true);
-    setIsMobileResultsCollapsed(false);
-    setDiscoveryPinScope('nearest_matching_branch');
-    if (!navigator?.geolocation) {
-      setDebouncedDiscoverySearch(currentSearch);
-      loadStores(undefined, { useImmediateSearch: true, pinScope: 'nearest_matching_branch' });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setDebouncedDiscoverySearch(currentSearch);
-        loadStores({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        }, { useImmediateSearch: true, pinScope: 'nearest_matching_branch' });
-      },
-      () => {
-        setDebouncedDiscoverySearch(currentSearch);
-        loadStores(undefined, { useImmediateSearch: true, pinScope: 'nearest_matching_branch' });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000
-      }
-    );
-  };
-  const handleDiscoverySearch = () => {
-    const currentSearch = String(searchRef.current || search || '').trim();
-    setHasDiscoveryExplorationStarted(true);
-    setIsStoreListVisible(false);
-    setIsMobileResultsCollapsed(false);
-    setSelectedMapPin(null);
-    setDebouncedDiscoverySearch(currentSearch);
-    if (!navigator?.geolocation) {
-      loadStores(undefined, { useImmediateSearch: true });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        loadStores({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        }, { useImmediateSearch: true });
-      },
-      () => {
-        loadStores(undefined, { useImmediateSearch: true });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000
-      }
-    );
-  };
-  const handlePopularDiscoveryCategory = (query) => {
-    const normalized = String(query || '').trim();
-    const categoryFilterValue = resolveDiscoveryCategoryFilterValue(normalized);
-    const nextSearch = categoryFilterValue === 'all' ? '' : normalized;
-    setHasDiscoveryExplorationStarted(true);
-    setIsMobileResultsCollapsed(false);
-    setSearch(nextSearch);
-    searchRef.current = nextSearch;
-    setDebouncedDiscoverySearch(nextSearch);
-    setDiscoveryCategoryFilter(categoryFilterValue);
-    handleDiscoverySearch();
-  };
-  const handleFeaturedCategoryFilter = (event, categoryKey) => {
-    if (event?.preventDefault) event.preventDefault();
-    if (event?.stopPropagation) event.stopPropagation();
-    setFeaturedCategoryFilter(String(categoryKey || 'all'));
-    featuredSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
-  };
-  const featuredCategoryOptions = [
-    { key: 'all', label: 'All Categories', icon: null },
-    { key: 'food', label: 'Food', icon: <UtensilsCrossed size={14} /> },
-    { key: 'grocery', label: 'Grocery', icon: <ShoppingCart size={14} /> },
-    { key: 'pharmacy', label: 'Pharmacy', icon: <HeartHandshake size={14} /> },
-    { key: 'services', label: 'Services', icon: <Wrench size={14} /> },
-    { key: 'electronics', label: 'Electronics', icon: <Zap size={14} /> }
-  ];
-  const featuredVisibleStores = useMemo(() => {
-    const base = Array.isArray(featuredBaseStores) ? featuredBaseStores : [];
-    if (featuredCategoryFilter === 'all') return base.slice(0, 10);
-
-    const categoryKeywords = {
-      food: ['food', 'f&b', 'restaurant', 'cafe', 'coffee', 'pizza', 'bakery'],
-      grocery: ['grocery', 'market', 'mart', 'supermarket', 'convenience'],
-      pharmacy: ['pharmacy', 'medical', 'health', 'drugstore', 'clinic'],
-      services: ['service', 'laundry', 'salon', 'spa', 'hardware', 'repair', 'auto'],
-      electronics: ['electronics', 'electronic', 'gadget', 'tech', 'computer', 'mobile']
-    };
-
-    const terms = categoryKeywords[featuredCategoryFilter] || [];
-    return base
-      .filter((store) => {
-        const categories = normalizeStorefrontCategories(store?.storefront_categories);
-        const categoryText = categories.join(' ').toLowerCase();
-        const modeText = String(store?.workflow_mode || store?.business_mode || '').toLowerCase();
-        const searchText = `${categoryText} ${modeText}`;
-        return terms.some((term) => searchText.includes(term));
-      })
-      .slice(0, 10);
-  }, [featuredBaseStores, featuredCategoryFilter]);
-  const discoveryBusinessModeOptions = useMemo(() => ([
-    ['all', 'Category: All'],
-    ...WORKFLOW_MODE_SELECT_VALUES.map((modeKey) => [
-      modeKey,
-      WORKFLOW_MODE_LABELS[modeKey] || String(modeKey || '').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
-    ])
-  ]), []);
   const {
     activeFnbOrderStepMeta,
     dgfyIceBlue,
@@ -7890,6 +4182,115 @@ export default function StorefrontApp() {
     totalsForDisplay,
     viewportWidth,
   });
+  const fnbCartDrawerRouteProps = useFnbCartDrawerRouteProps({
+    cart,
+    cartAddOnsTotal,
+    cartCount,
+    cartImageErrors,
+    cartSubtotal,
+    cartTotal,
+    checkoutTab,
+    fnbOrderBrand,
+    getLineTotal,
+    goStoreCatalogPage,
+    goStoreOrderPage,
+    isDesktopCheckout,
+    isFnbMode,
+    isFnbOrderSubpage,
+    isCheckoutOpen,
+    isMobileViewport,
+    money,
+    removeCartItem,
+    renderPromoCodePanel,
+    servicesBodyFont,
+    setCartImageErrors,
+    setIsCheckoutOpen,
+    updateQty,
+    withAssetOrigin
+  });
+  const simpleCartDrawerProps = useSimpleCartDrawerProps({
+    activeOrderMethodLabel,
+    cart,
+    cartCount,
+    cartImageErrors,
+    cartTotal,
+    goStoreOrderPage,
+    isCheckoutOpen,
+    isMobileViewport,
+    money,
+    removeCartItem,
+    servicesDisplayFont,
+    servicesPrimary,
+    servicesPrimaryDark,
+    servicesPrimaryShadowStrong,
+    setCartImageErrors,
+    setIsCheckoutOpen,
+    updateQty,
+    withAssetOrigin
+  });
+  const simpleCheckoutRouteProps = useSimpleCheckoutRouteProps({
+    canUseGuestCheckoutFlow,
+    cart,
+    cartCount,
+    checkoutError,
+    checkoutLoading,
+    checkoutResult,
+    customerAddress,
+    customerPin,
+    DropdownComponent: StorefrontDropdown,
+    fnbPaymentType,
+    fnbScheduledFor,
+    fnbSpecialInstructions,
+    goStoreCatalogPage,
+    handleCheckout,
+    handleDownloadCheckoutImage,
+    handlePaymentTypeChange,
+    handlePinMyLocation,
+    handleQuote,
+    isDeliveryOrder,
+    isDesktopCheckout,
+    isDgfyCustomerSignedIn,
+    isMobileViewport,
+    money,
+    orderMethod,
+    pinLocationError,
+    pinLocationLoading,
+    promoDiscountSummaryRow,
+    quoteError,
+    quoteResult,
+    renderAccountOwnedIdentitySummary,
+    renderCheckoutPromoStack,
+    renderGuestCheckoutEntry,
+    renderGuestIdentityFields,
+    renderStorefrontClosedNotice,
+    requireQuoteForCheckout,
+    selectedLocation,
+    selectedLocationId,
+    selectedStore,
+    servicesBodyFont,
+    servicesDisplayFont,
+    setCheckoutResult,
+    setCustomerAddress,
+    setCustomerPin,
+    setFnbScheduledFor,
+    setFnbSpecialInstructions,
+    setOrderMethod,
+    setPinLocationError,
+    setSelectedLocationId,
+    setSimpleOrderStep,
+    simpleCheckoutAllowed,
+    simpleCustomerStepComplete,
+    simpleHasCustomerIdentity,
+    simpleHasPrimaryIdentityContact,
+    simpleOrderMethodOptions,
+    simpleOrderStep,
+    simpleStepOneReady,
+    storefrontClosedByHours,
+    storeLocations,
+    totalsForDisplay,
+    withAssetOrigin
+  });
+  const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
   const fnbAutoQuoteCartSignature = useMemo(() => (
     cart.map((line) => [
@@ -7994,32 +4395,50 @@ export default function StorefrontApp() {
   const simpleStepOneReady = cart.length > 0;
   const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
   const {
-    activeDiscoveryFilterCount,
-    clusterResultStores,
-    discoveryPaginationItems,
-    discoveryTotalPages,
-    handleDiscoveryClusterSelect,
-    hasActiveDiscoveryFilters,
-    isClusterResultsActive,
-    isCategoryFilterActive,
-    isOpenNowFilterActive,
-    isSortFilterActive,
-    paginatedDiscoveryStores,
-    resetDiscoveryResultsView
-  } = useDiscoveryRuntime({
+    discoveryResultsRendererProps,
+    isClusterResultsActive
+  } = useDiscoveryResultsRoute({
+    activeDiscoveryFilterDropdown,
     debouncedDiscoverySearch,
     discoveryAvailabilityFilter,
+    discoveryBusinessModeOptions,
     discoveryCategoryFilter,
+    discoveryCoords,
     discoveryDistanceFilter,
+    discoveryFilterToolbarRef,
+    discoveryLayout,
+    discoveryPinsBySlug,
     discoveryOpenFilter,
     discoveryRatingFilter,
+    discoveryResultStores,
+    discoveryResultsMapKey,
     discoveryResultsPage,
     discoverySortBy,
+    discoverySortLabelByValue,
+    discoveryViewportMode,
     filteredDiscoveryStores,
+    formatStorefrontHoursLabel,
+    getDiscoveryEmptyStateMessage,
+    getDiscoveryMarkerKey,
+    getPreferredDiscoveryLocationId,
+    goStore,
+    goStoreOrderForDiscovery,
+    handleNearMe,
     hasDiscoverySearch,
+    highlightedDiscoveryMarkerKey,
+    highlightedStoreSlug,
+    isBrandingImageBlocked,
     isDiscoveryMobileViewport,
     isDiscoveryTabletViewport,
+    isStoreListVisible,
+    loadingStores,
+    markBrandingImageError,
+    normalizeStorefrontCategories,
+    normalizeStorefrontReviewSummary,
+    renderDiscoveryResetButton,
     search,
+    searchedDiscoveryMapPins,
+    setActiveDiscoveryFilterDropdown,
     setDiscoveryAvailabilityFilter,
     setDiscoveryCategoryFilter,
     setDiscoveryDistanceFilter,
@@ -8035,68 +4454,6 @@ export default function StorefrontApp() {
     setIsStoreListVisible,
     setRenderDiscoveryResetButton,
     setShowDiscoveryResetButton,
-    setSelectedMapPin,
-    storesWithNearestBranch,
-    viewMode
-  });
-  const discoveryResultsRendererProps = buildDiscoveryResultsRendererProps({
-    activeDiscoveryFilterCount,
-    activeDiscoveryFilterDropdown,
-    clusterResultStores,
-    discoveryBusinessModeOptions,
-    discoveryCategoryFilter,
-    discoveryCoords,
-    discoveryFilterToolbarRef,
-    discoveryLayout,
-    discoveryPaginationItems,
-    discoveryPinsBySlug,
-    discoveryResultStores,
-    discoveryResultsMapKey,
-    discoveryResultsPage,
-    discoverySortBy,
-    discoverySortLabelByValue,
-    discoveryTotalPages,
-    discoveryViewportMode,
-    filteredDiscoveryStores,
-    formatStorefrontHoursLabel,
-    getDiscoveryEmptyStateMessage,
-    getDiscoveryMarkerKey,
-    getPreferredDiscoveryLocationId,
-    goStore,
-    goStoreOrderForDiscovery,
-    handleDiscoveryClusterSelect,
-    handleNearMe,
-    hasActiveDiscoveryFilters,
-    hasDiscoverySearch,
-    highlightedDiscoveryMarkerKey,
-    highlightedStoreSlug,
-    isBrandingImageBlocked,
-    isCategoryFilterActive,
-    isClusterResultsActive,
-    isDiscoveryMobileViewport,
-    isDiscoveryTabletViewport,
-    isOpenNowFilterActive,
-    isSortFilterActive,
-    isStoreListVisible,
-    loadingStores,
-    markBrandingImageError,
-    normalizeStorefrontCategories,
-    normalizeStorefrontReviewSummary,
-    paginatedDiscoveryStores,
-    renderDiscoveryResetButton,
-    resetDiscoveryResultsView,
-    search,
-    searchedDiscoveryMapPins,
-    setActiveDiscoveryFilterDropdown,
-    setDiscoveryCategoryFilter,
-    setDiscoveryOpenFilter,
-    setDiscoveryResultsPage,
-    setDiscoverySortBy,
-    setHasDiscoveryExplorationStarted,
-    setHighlightedDiscoveryMarkerKey,
-    setHighlightedStoreSlug,
-    setIsMobileResultsCollapsed,
-    setIsStoreListVisible,
     setSelectedMapPin,
     setViewMode,
     showDiscoveryResetButton,
@@ -8230,1790 +4587,119 @@ export default function StorefrontApp() {
       }}>
         {!isStorePage && (
           <>
-            <DiscoveryHeader
-              viewportMode={discoveryViewportMode}
-              logoSrc={dgfyHeaderLogo}
-              onLogoClick={() => goDiscovery()}
-              navItems={['Explore', 'Solutions', 'Contact Us']}
-              activeItem={activeDiscoveryNavItem === 'Contact Us' ? 'Explore' : activeDiscoveryNavItem}
-              isAuthenticated={isDgfyCustomerSignedIn}
-              accountLabel="My Account"
-              accountName={accountIdentityName}
-              accountInitials={accountIdentityInitials}
-              accountSubtitle={accountIdentityRawEmail || accountIdentityContact}
-              authLabel="Log in / Sign up"
-              businessLabel="Register Your Business"
-              menuOpen={isDiscoveryNavMenuOpen}
-              onMenuToggle={() => setIsDiscoveryNavMenuOpen((open) => !open)}
-              onItemClick={handleDiscoveryNavItemClick}
-              onAuthClick={() => {
-                setIsDiscoveryNavMenuOpen(false);
-                if (isDgfyCustomerSignedIn) {
-                  openCustomerDashboard();
-                  return;
-                }
-                openCanonicalDgfyAuth('customer');
-              }}
-              onBusinessClick={openBusinessRegistrationFlow}
+            <DiscoveryHomePage
+              accountIdentityContact={accountIdentityContact}
+              accountIdentityInitials={accountIdentityInitials}
+              accountIdentityName={accountIdentityName}
+              accountIdentityRawEmail={accountIdentityRawEmail}
+              activeDiscoveryNavItem={activeDiscoveryNavItem}
+              buildBusinessLoginUrl={buildBusinessLoginUrl}
+              buildBusinessRegistrationUrl={buildBusinessRegistrationUrl}
+              desktopCategoryRailRef={desktopCategoryRailRef}
+              dgfyBusinessOwnerPhoto={dgfyBusinessOwnerPhoto}
+              dgfyHeaderLogo={dgfyHeaderLogo}
+              dgfySymbolLogo={dgfySymbolLogo}
+              discoveryCoords={discoveryCoords}
+              discoveryInteractiveAreaRef={discoveryInteractiveAreaRef}
+              discoveryLayout={discoveryLayout}
+              discoveryPinsBySlug={discoveryPinsBySlug}
+              discoveryResultsRendererProps={discoveryResultsRendererProps}
+              discoveryViewportMode={discoveryViewportMode}
+              featuredCarouselRef={featuredCarouselRef}
+              featuredCategoryFilter={featuredCategoryFilter}
+              featuredCategoryOptions={featuredCategoryOptions}
+              featuredCategoryRailRef={featuredCategoryRailRef}
+              featuredSectionRef={featuredSectionRef}
+              featuredVisibleStores={featuredVisibleStores}
+              formatStorefrontHoursLabel={formatStorefrontHoursLabel}
+              getDiscoveryMarkerKey={getDiscoveryMarkerKey}
+              getPreferredDiscoveryLocationId={getPreferredDiscoveryLocationId}
+              goDiscovery={goDiscovery}
+              goStore={goStore}
+              handleDiscoveryExploreClick={handleDiscoveryExploreClick}
+              handleDiscoveryMenuToggle={handleDiscoveryMenuToggle}
+              handleDiscoveryNavItemClick={handleDiscoveryNavItemClick}
+              handleDiscoverySearch={handleDiscoverySearch}
+              handleFeaturedCategoryFilter={handleFeaturedCategoryFilter}
+              handleNearMe={handleNearMe}
+              handlePopularDiscoveryCategory={handlePopularDiscoveryCategory}
+              hasDesktopCategoryOverflow={hasDesktopCategoryOverflow}
+              hasDiscoveryExplorationStarted={hasDiscoveryExplorationStarted}
+              hasDiscoverySearch={hasDiscoverySearch}
+              highlightedDiscoveryMarkerKey={highlightedDiscoveryMarkerKey}
+              isBrandingImageBlocked={isBrandingImageBlocked}
+              isCategoryRowExpanded={isCategoryRowExpanded}
+              isClusterResultsActive={isClusterResultsActive}
+              isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
+              isDiscoveryMobileViewport={isDiscoveryMobileViewport}
+              isDiscoveryNavMenuOpen={isDiscoveryNavMenuOpen}
+              isDiscoverySearchFocused={isDiscoverySearchFocused}
+              isDiscoveryTabletViewport={isDiscoveryTabletViewport}
+              isMobileViewport={isMobileViewport}
+              loadStores={loadStores}
+              markBrandingImageError={markBrandingImageError}
+              mobileCategoryGroupIndex={mobileCategoryGroupIndex}
+              mobileCategoryRailRef={mobileCategoryRailRef}
+              normalizeStorefrontCategories={normalizeStorefrontCategories}
+              normalizeStorefrontReviewSummary={normalizeStorefrontReviewSummary}
+              openBusinessRegistrationFlow={openBusinessRegistrationFlow}
+              openCanonicalDgfyAuth={openCanonicalDgfyAuth}
+              openCustomerDashboard={openCustomerDashboard}
+              openDiscoveryFaqIndex={openDiscoveryFaqIndex}
+              search={search}
+              searchRef={searchRef}
+              setDebouncedDiscoverySearch={setDebouncedDiscoverySearch}
+              setHasDiscoveryExplorationStarted={setHasDiscoveryExplorationStarted}
+              setHighlightedDiscoveryMarkerKey={setHighlightedDiscoveryMarkerKey}
+              setHighlightedStoreSlug={setHighlightedStoreSlug}
+              setIsCategoryRowExpanded={setIsCategoryRowExpanded}
+              setIsDiscoveryNavMenuOpen={setIsDiscoveryNavMenuOpen}
+              setIsDiscoverySearchFocused={setIsDiscoverySearchFocused}
+              setMobileCategoryGroupIndex={setMobileCategoryGroupIndex}
+              setOpenDiscoveryFaqIndex={setOpenDiscoveryFaqIndex}
+              setSearch={setSearch}
+              showDesktopCategoryOverflowCue={showDesktopCategoryOverflowCue}
+              stableHeroDiscoveryMapPins={stableHeroDiscoveryMapPins}
+              storesWithNearestBranch={storesWithNearestBranch}
+              toSlug={toSlug}
+              withAssetOrigin={withAssetOrigin}
             />
-            {activeDiscoveryNavItem === 'Solutions' ? (
-              <SolutionsPage
-                logoSrc={dgfyHeaderLogo}
-                onExploreClick={() => {
-                  setActiveDiscoveryNavItem('Explore');
-                  if (typeof window !== 'undefined') {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }
-                }}
-              />
-            ) : (
-            <>
-            <section style={{ display: 'grid', gap: 0, paddingBottom: 8 }}>
 
-              {/* ?? HERO ?? */}
-              <div
-                style={{
-                  display: 'none',
-                  overflow: 'hidden',
-                  maxHeight: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 0 : 220,
-                  opacity: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 0 : 1,
-                  paddingTop: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 0 : (isMobileViewport ? 32 : 48),
-                  paddingBottom: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 0 : (isMobileViewport ? 24 : 28),
-                  transition: 'all 500ms cubic-bezier(0.4, 0, 0.2, 1)',
-                  pointerEvents: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 'none' : 'auto',
-                  textAlign: isMobileViewport ? 'left' : 'center'
-                }}
-              >
-                <h1
-                  style={{
-                    margin: isMobileViewport ? '0' : '0 auto',
-                    fontSize: isMobileViewport ? 42 : 54,
-                    lineHeight: 1.05,
-                    letterSpacing: '-0.03em',
-                    fontWeight: 900,
-                    color: '#0f172a',
-                    maxWidth: isMobileViewport ? '100%' : 680,
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  Discover{' '}
-                  <span
-                    style={{
-                      background: 'linear-gradient(135deg, #1a4e8d, #1a4e8d)',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      backgroundClip: 'text'
-                    }}
-                  >
-                    Goods
-                  </span>
-                  {' '}For You
-                </h1>
-                  <p style={{ margin: isMobileViewport ? '16px auto 0' : '14px auto 0', maxWidth: isMobileViewport ? 332 : 800, color: '#94a3b8', fontSize: isMobileViewport ? 14 : 16.5, lineHeight: isMobileViewport ? 1.45 : 1.6, boxSizing: 'border-box' }}>
-                  Find nearby products, services, and businesses-faster, smarter, and all in one place.
-                </p>
-              </div>
 
-              <DiscoveryHero
-                viewportMode={discoveryViewportMode}
-                collapsed={isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted}
-                title={(
-                  <>
-                    Discover{' '}
-                    <span
-                      style={{
-                        background: 'linear-gradient(135deg, #1a4e8d, #1a4e8d)',
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                        backgroundClip: 'text'
-                      }}
-                    >
-                      Goods
-                    </span>
-                    {' '}For You
-                  </>
-                )}
-                  subtitle="Find nearby products, services, and businesses-faster, smarter, and all in one place."
-              />
 
-              <div ref={discoveryInteractiveAreaRef} style={{ display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
-              <div style={{ position: 'sticky', top: isDiscoveryMobileViewport ? 'calc(env(safe-area-inset-top, 0px) + 8px)' : discoveryLayout.navOffset, zIndex: 49, backgroundColor: '#ffffff', display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
 
-                {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ PERMANENT SEARCH ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-                  <DiscoverySearchRegion viewportMode={discoveryViewportMode}>
-                  <div style={{ width: '100%', minWidth: 0, padding: discoveryLayout.searchPadding, boxSizing: 'border-box' }}>
 
-                      {/* Input row */}
-                      <div style={{ maxWidth: discoveryLayout.searchMaxWidth, margin: '0 auto', width: '100%', minWidth: 0 }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                        alignItems: 'center',
-                        gap: 0,
-                        background: '#fff',
-                        border: '1.5px solid',
-                        borderColor: isDiscoverySearchFocused ? '#1a4e8d' : '#e2e8f0',
-                        borderRadius: 14,
-                        padding: '3px 4px 3px 16px',
-                        boxShadow: isDiscoverySearchFocused
-                          ? '0 0 0 4px rgba(59,130,246,.10), 0 8px 30px rgba(15,23,42,.09)'
-                          : '0 2px 12px rgba(15,23,42,.07)',
-                        transition: 'border-color 220ms ease, box-shadow 220ms ease'
-                      }}
-                    >
-                      <Search
-                        size={18}
-                        style={{
-                          color: isDiscoverySearchFocused ? '#1a4e8d' : '#94a3b8',
-                          flexShrink: 0,
-                          transition: 'color 220ms ease'
-                        }}
-                      />
-                      <input
-                        id="discovery-search-input"
-                        value={search}
-                        onChange={(e) => {
-                          setSearch(e.target.value);
-                          searchRef.current = e.target.value;
-                        }}
-                        onFocus={(e) => {
-                          setIsDiscoverySearchFocused(true);
-                          setHasDiscoveryExplorationStarted(true);
-                          const inputEl = e.currentTarget;
-                          const textLength = String(inputEl.value || '').length;
-                          if (!textLength) return;
-                          // Keep caret editable after repeated searches: avoid full-text select replacement.
-                          requestAnimationFrame(() => {
-                            const isAllSelected = inputEl.selectionStart === 0 && inputEl.selectionEnd === textLength;
-                            if (isAllSelected) {
-                              inputEl.setSelectionRange(textLength, textLength);
-                            }
-                          });
-                        }}
-                        onBlur={() => setTimeout(() => setIsDiscoverySearchFocused(false), 180)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleDiscoverySearch(); }}
-                        placeholder="Search products, services or stores nearby..."
-                        autoComplete="off"
-                        style={{
-                          flex: 1,
-                          border: 'none',
-                          outline: 'none',
-                          fontSize: isDiscoveryMobileViewport ? 16 : 15,
-                          color: '#0f172a',
-                          background: 'transparent',
-                          padding: '7px 10px',
-                          minWidth: 0
-                        }}
-                      />
-                      {search && (
-                        <button
-                          type="button"
-                          onClick={() => { setSearch(''); setDebouncedDiscoverySearch(''); loadStores(undefined, { useImmediateSearch: true }); }}
-                          style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px', display: 'inline-flex', marginRight: 4 }}
-                        >
-                          <X size={15} />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={handleNearMe}
-                        title="Use my current location"
-                        style={{ border: 'none', background: 'none', color: '#1a4e8d', cursor: 'pointer', padding: '6px', display: isDiscoveryMobileViewport ? 'none' : 'inline-flex', marginRight: 4 }}
-                      >
-                        <Navigation size={18} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleDiscoverySearch}
-                        style={{
-                          borderRadius: 12,
-                          border: 'none',
-                          background: '#1a4e8d',
-                          color: '#fff',
-                          padding: isDiscoveryMobileViewport ? '9px 16px' : discoveryViewportMode === 'tablet' ? '10px 20px' : '10px 24px',
-                          fontWeight: 700,
-                          fontSize: 14,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                          boxShadow: '0 8px 20px rgba(37,99,235,.25)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          letterSpacing: '0.01em',
-                          transition: 'all 200ms ease'
-                        }}
-                      >
-                        <Search size={16} />
-                          Search
-                        </button>
-                      </div>
-                      </div>
-                      {
-                      (() => {
-                        const primaryCats = [
-                          { label: 'Food', icon: <UtensilsCrossed size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
-                          { label: 'Grocery', icon: <ShoppingCart size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-                          { label: 'Laundry', icon: <Droplets size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' },
-                          { label: 'Salon', icon: <Scissors size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#9333ea', bg: '#faf5ff', border: '#e9d5ff' },
-                          { label: 'Pharmacy', icon: <HeartHandshake size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#e11d48', bg: '#fff1f2', border: '#fecdd3' }
-                        ];
-                          const extendedCats = [
-                          { label: 'Bakery', icon: <Coffee size={14} />, color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
-                          { label: 'Clothing', icon: <Shirt size={14} />, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
-                          { label: 'Drinks', icon: <CupSoda size={14} />, color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
-                          { label: 'Food Stall', icon: <Sandwich size={14} />, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-                          { label: 'Frozen', icon: <Snowflake size={14} />, color: '#1a4e8d', bg: '#eff6ff', border: '#bfdbfe' },
-                          { label: 'Beauty', icon: <SprayCan size={14} />, color: '#db2777', bg: '#fdf2f8', border: '#fbcfe8' },
-                            { label: 'Hardware', icon: <Wrench size={14} />, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' }
-                          ];
-                            const mobileCategoryStep = 3;
-                            const mobilePrimaryCount = 5;
-                            const allMobileCategories = [...primaryCats, ...extendedCats];
-                            const mobileOverflowCount = Math.max(0, allMobileCategories.length - mobilePrimaryCount);
-                            const mobileOverflowGroups = Math.ceil(mobileOverflowCount / mobileCategoryStep);
-                            const cardStyle = (cat) => ({
-                              borderRadius: 999,
-                              background: cat.bg,
-                              color: cat.color,
-                              padding: isDiscoveryMobileViewport ? '6px 12px' : '6px 14px',
-                              minHeight: isDiscoveryMobileViewport ? 34 : 34,
-                              height: 'auto',
-                              fontSize: isDiscoveryMobileViewport ? 13 : 13,
-                              lineHeight: 1.15,
-                              fontWeight: isDiscoveryMobileViewport ? 600 : 600,
-                              cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                              gap: isDiscoveryMobileViewport ? 6 : 6,
-                              flexShrink: 0,
-                              width: 'auto',
-                              border: `1.5px solid ${cat.border}`,
-                              boxShadow: '0 2px 8px rgba(15,23,42,.04)',
-                              transition: 'all 200ms ease'
-                          });
-                        const visibleCategories = isDiscoveryMobileViewport
-                          ? allMobileCategories
-                          : (isCategoryRowExpanded ? [...primaryCats, ...extendedCats] : primaryCats);
-                        const desktopRailWidth = isCategoryRowExpanded ? 'min(100%, 980px)' : 'max-content';
-                        return (
-                          <DiscoveryCategoryRail viewportMode={discoveryViewportMode}>
-                            <div style={{ marginTop: isDiscoveryMobileViewport ? 18 : 24 }}>
-                              <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14, display: isDiscoveryMobileViewport ? 'block' : 'none' }}>Categories</div>
-                              <div style={{ display: 'flex', justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center', width: '100%', minWidth: 0 }}>
-                                <div
-                                  style={{
-                                    position: 'relative',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center',
-                                    gap: isDiscoveryMobileViewport ? 10 : 10,
-                                    width: isDiscoveryMobileViewport ? '100%' : desktopRailWidth,
-                                    maxWidth: '100%',
-                                    minWidth: 0,
-                                    margin: isDiscoveryMobileViewport ? '0' : '0 auto'
-                                  }}
-                                >
-                                  {!isDiscoveryMobileViewport && (
-                                    <span style={{ fontSize: 12, lineHeight: 1, color: '#94a3b8', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0 }}>
-                                      Categories
-                                    </span>
-                                  )}
-                                  <div
-                                    ref={isDiscoveryMobileViewport ? mobileCategoryRailRef : desktopCategoryRailRef}
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: isDiscoveryMobileViewport ? 'flex-start' : (isCategoryRowExpanded ? 'flex-start' : 'center'),
-                                      gap: isDiscoveryMobileViewport ? 10 : 8,
-                                      overflowX: 'auto',
-                                      paddingBottom: isDiscoveryMobileViewport ? 8 : 2,
-                                      width: isDiscoveryMobileViewport ? '100%' : (isCategoryRowExpanded ? '100%' : 'auto'),
-                                      minWidth: 0,
-                                      scrollbarWidth: 'none',
-                                      msOverflowStyle: 'none'
-                                    }}
-                                  >
-                                    {visibleCategories.map((cat, index) => (
-                                      <button
-                                        key={cat.label}
-                                        type="button"
-                                        data-mobile-category-index={isDiscoveryMobileViewport ? index : undefined}
-                                        onClick={() => handlePopularDiscoveryCategory(cat.label)}
-                                        style={cardStyle(cat)}
-                                      >
-                                        <div style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          width: isDiscoveryMobileViewport ? 16 : 18,
-                                          height: isDiscoveryMobileViewport ? 16 : 18
-                                        }}>
-                                          {cat.icon}
-                                        </div>
-                                        <span style={{ display: 'block', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
-                                      </button>
-                                    ))}
-                                      {isDiscoveryMobileViewport && mobileOverflowGroups > 0 && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const nextGroup = (mobileCategoryGroupIndex + 1) % (mobileOverflowGroups + 1);
-                                            setMobileCategoryGroupIndex(nextGroup);
-                                            const targetIndex = nextGroup === 0
-                                              ? 0
-                                              : Math.min(
-                                                allMobileCategories.length - 1,
-                                                mobilePrimaryCount + ((nextGroup - 1) * mobileCategoryStep)
-                                              );
-                                            const railElement = mobileCategoryRailRef.current;
-                                            if (!railElement) return;
-                                            const targetButton = railElement.querySelector(`[data-mobile-category-index="${targetIndex}"]`);
-                                            if (targetButton && typeof targetButton.scrollIntoView === 'function') {
-                                              targetButton.scrollIntoView({
-                                                behavior: 'smooth',
-                                                block: 'nearest',
-                                                inline: 'start'
-                                              });
-                                            }
-                                          }}
-                                        style={{
-                                          position: 'sticky',
-                                          right: 0,
-                                          top: 0,
-                                          height: 34,
-                                          minWidth: 46,
-                                          borderRadius: 999,
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.78) 40%, rgba(255,255,255,.98) 100%)',
-                                          backdropFilter: 'blur(6px)',
-                                          WebkitBackdropFilter: 'blur(6px)',
-                                          pointerEvents: 'auto',
-                                          color: '#94a3b8',
-                                          border: '1px solid rgba(226,232,240,.85)',
-                                          boxShadow: '0 6px 16px rgba(15,23,42,.08)',
-                                          cursor: 'pointer'
-                                        }}
-                                        aria-label="Show more categories"
-                                      >
-                                        <ChevronRight size={16} />
-                                      </button>
-                                    )}
-                                    {!isDiscoveryMobileViewport && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setIsCategoryRowExpanded(!isCategoryRowExpanded)}
-                                        style={{
-                                          ...cardStyle({ bg: '#fff', color: '#64748b', border: '#dbe3ee' }),
-                                          border: '1.5px solid #dbe3ee',
-                                          minHeight: 34,
-                                          minWidth: 84
-                                        }}
-                                      >
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                          <MoreHorizontal size={16} />
-                                        </div>
-                                        {isCategoryRowExpanded ? 'Less' : 'More'}
-                                      </button>
-                                    )}
-                                  </div>
-                                  {!isDiscoveryMobileViewport && isCategoryRowExpanded && hasDesktopCategoryOverflow && showDesktopCategoryOverflowCue && (
-                                    <button
-                                      type="button"
-                                      onClick={() => desktopCategoryRailRef.current?.scrollBy({ left: 220, behavior: 'smooth' })}
-                                      aria-label="Show more categories"
-                                      style={{
-                                        flexShrink: 0,
-                                        width: 34,
-                                        height: 34,
-                                        borderRadius: 999,
-                                        border: '1px solid rgba(226,232,240,.9)',
-                                        background: '#ffffff',
-                                        color: '#64748b',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        boxShadow: '0 6px 16px rgba(15,23,42,.08)',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      <ChevronRight size={16} />
-                                    </button>
-                                  )}
-                                  </div>
-                              </div>
+                  <ServicesDiscoveryDetailModal
+                    Badge={Badge}
+                    GhostButton={GhostButton}
+                    PrimaryButton={PrimaryButton}
+                    STYLES={STYLES}
+                    checkoutError={checkoutError}
+                    closeServiceDetail={closeServiceDetail}
+                    isBookingSubpage={isBookingSubpage}
+                    isMobileViewport={isMobileViewport}
+                    isServiceDetailsSubpage={isServiceDetailsSubpage}
+                    missingRequiredSelectedServiceIntake={missingRequiredSelectedServiceIntake}
+                    money={money}
+                    renderStorefrontClosedNotice={renderStorefrontClosedNotice}
+                    saveServiceBookingDraft={saveServiceBookingDraft}
+                    selectedServiceDetail={selectedServiceDetail}
+                    selectedServiceIntakeFields={selectedServiceIntakeFields}
+                    selectedServicePaymentOptions={selectedServicePaymentOptions}
+                    serviceAppointmentAt={serviceAppointmentAt}
+                    serviceDraftNotes={serviceDraftNotes}
+                    serviceDraftQuantity={serviceDraftQuantity}
+                    serviceIntakeResponses={serviceIntakeResponses}
+                    servicePaymentTiming={servicePaymentTiming}
+                    setServiceAppointmentAt={setServiceAppointmentAt}
+                    setServiceDraftNotes={setServiceDraftNotes}
+                    setServiceDraftQuantity={setServiceDraftQuantity}
+                    setServiceIntakeResponses={setServiceIntakeResponses}
+                    setServicePaymentTiming={setServicePaymentTiming}
+                    storefrontClosedByHours={storefrontClosedByHours}
+                    withAssetOrigin={withAssetOrigin}
+                  />
 
-                            </div>
-                          </DiscoveryCategoryRail>
-                        );
-                      })()
-                    }
-                </div>
-                  </DiscoverySearchRegion>
-
-
-                  {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ STATIC HERO MAP ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-                  {!hasDiscoverySearch && !isClusterResultsActive && (
-                    <>
-                      <DiscoveryMapCard viewportMode={discoveryViewportMode}>
-                      <div
-                    style={{
-                      position: 'relative',
-                      borderRadius: 18,
-                      overflow: 'hidden',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 8px 32px rgba(15,23,42,.10)'
-                    }}
-                  >
-                      <StoresMap
-                        stores={stableHeroDiscoveryMapPins}
-                        selectedKey={highlightedDiscoveryMarkerKey || null}
-                        userLocation={discoveryCoords}
-                        height={discoveryLayout.heroMapHeight}
-                        openPopupOnHover={true}
-                        onSelectCluster={handleDiscoveryClusterSelect}
-                        onSelectStore={(pin) => {
-                          setHasDiscoveryExplorationStarted(true);
-                          setHighlightedStoreSlug(pin.slug);
-                          setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin) || '');
-                          goStore(pin.slug, pin.location_id ?? null);
-                      }}
-                    />
-                    {/* Subtle top gradient to blend search bar edge */}
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 48, background: 'linear-gradient(180deg, rgba(255,255,255,.20) 0%, transparent 100%)', pointerEvents: 'none' }} />
-                    {/* Bottom stat bar */}
-                      <div
-                        style={{
-                          position: 'absolute',
-                          bottom: isDiscoveryMobileViewport ? 12 : 0,
-                          left: isDiscoveryMobileViewport ? 12 : 0,
-                          right: isDiscoveryMobileViewport ? 12 : 0,
-                        background: isDiscoveryMobileViewport ? 'rgba(15, 23, 42, 0.75)' : 'linear-gradient(0deg, rgba(15,23,42,.72) 0%, transparent 100%)',
-                        backdropFilter: isDiscoveryMobileViewport ? 'blur(12px)' : 'none',
-                        borderRadius: isDiscoveryMobileViewport ? 20 : 0,
-                          padding: isDiscoveryMobileViewport ? '16px 18px' : discoveryViewportMode === 'tablet' ? '26px 22px 14px' : '32px 24px 16px',
-                          display: isDiscoveryMobileViewport ? 'none' : 'flex',
-                          alignItems: isDiscoveryMobileViewport ? 'center' : 'flex-end',
-                          justifyContent: 'space-between',
-                          border: isDiscoveryMobileViewport ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                          boxShadow: isDiscoveryMobileViewport ? '0 8px 32px rgba(0,0,0,0.25)' : 'none'
-                        }}
-                    >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: isDiscoveryMobileViewport ? 10 : discoveryViewportMode === 'tablet' ? 18 : 20, width: '100%', justifyContent: isDiscoveryMobileViewport ? 'space-between' : 'flex-start' }}>
-                          {isDiscoveryMobileViewport ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: 'space-between' }}>
-                              <div style={{ minWidth: 0, borderRadius: 12, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)', padding: '7px 10px', display: 'grid', gap: 3 }}>
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#f8fafc' }}>
-                                  <MapPin size={13} />
-                                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', opacity: 0.9 }}>Location</span>
-                                </div>
-                                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(248,250,252,.86)', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>
-                                  Store Label
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={handleNearMe}
-                                style={{
-                                  minWidth: 72,
-                                  borderRadius: 12,
-                                  background: 'rgba(255,255,255,.95)',
-                                  color: '#0f172a',
-                                  border: '1px solid rgba(148,163,184,.28)',
-                                  display: 'grid',
-                                  placeItems: 'center',
-                                  gap: 2,
-                                  padding: '6px 8px',
-                                  cursor: 'pointer',
-                                  boxShadow: '0 4px 10px rgba(15,23,42,.16)'
-                                }}
-                              >
-                                <Navigation size={15} fill="#0f172a" />
-                                <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', lineHeight: 1.1 }}>Current Location</span>
-                              </button>
-                            </div>
-                          ) : (
-                          [
-                            { label: 'Stores', value: String(stableHeroDiscoveryMapPins.length || 0) },
-                            { label: 'Open Now', value: String(storesWithNearestBranch.filter((s) => s.storefront_open).length) }
-                          ].map((stat) => (
-                            <div key={stat.label}>
-                              <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', lineHeight: 1.1 }}>{stat.value}</div>
-                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.68)', fontWeight: 500, marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{stat.label}</div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                        {!isDiscoveryMobileViewport && (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.20)', borderRadius: 999, padding: '6px 12px', color: 'rgba(255,255,255,.88)', fontSize: 12, fontWeight: 600, backdropFilter: 'blur(8px)' }}>
-                            <MapPin size={12} />
-                            Live Map
-                          </div>
-                        )}
-                      </div>
-                      </div>
-                      {isDiscoveryMobileViewport && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            right: 10,
-                            bottom: 12,
-                            zIndex: 12,
-                            display: 'grid',
-                            gap: 10,
-                            justifyItems: 'end'
-                          }}
-                        >
-                          <button
-                            type="button"
-                            style={{
-                              width: 84,
-                              minHeight: 80,
-                              borderRadius: 16,
-                              border: '1px solid rgba(148,163,184,0.28)',
-                              background: 'rgba(255,255,255,.96)',
-                              boxShadow: '0 6px 18px rgba(15,23,42,.16)',
-                              display: 'grid',
-                              placeItems: 'center',
-                              gap: 4,
-                              padding: '8px 6px',
-                              color: '#0f172a',
-                              cursor: 'default'
-                            }}
-                            aria-label="Store location"
-                          >
-                            <MapPin size={16} />
-                            <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Store</span>
-                            <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleNearMe}
-                            style={{
-                              width: 84,
-                              minHeight: 80,
-                              borderRadius: 16,
-                              border: '1px solid rgba(148,163,184,0.28)',
-                              background: 'rgba(255,255,255,.96)',
-                              boxShadow: '0 6px 18px rgba(15,23,42,.16)',
-                              display: 'grid',
-                              placeItems: 'center',
-                              gap: 4,
-                              padding: '8px 6px',
-                              color: '#0f172a',
-                              cursor: 'pointer'
-                            }}
-                            aria-label="Current location"
-                          >
-                            <Navigation size={16} fill="#0f172a" />
-                            <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Current</span>
-                            <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Map information"
-                            style={{
-                              width: 38,
-                              height: 38,
-                              borderRadius: 999,
-                              border: '1px solid rgba(148,163,184,0.28)',
-                              background: 'rgba(255,255,255,.98)',
-                              color: '#0f172a',
-                              boxShadow: '0 6px 14px rgba(15,23,42,.16)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              cursor: 'default'
-                            }}
-                          >
-                            <Info size={15} />
-                          </button>
-                        </div>
-                      )}
-                        </DiscoveryMapCard>
-                    </>
-                  )}
-                {(hasDiscoverySearch || isClusterResultsActive) && <DiscoveryRouteContainer rendererProps={discoveryResultsRendererProps} />}
-              </div>
-              </div>
-            </section>
-
-                    {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ WHY CHOOSE DGFY ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-                    {false && (
-                    <section style={{ padding: isMobileViewport ? '56px 16px 28px' : '88px 0 44px', maxWidth: 1220, margin: '0 auto' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, .95fr) minmax(0, 1.15fr)', gap: isMobileViewport ? 28 : 34, alignItems: 'center' }}>
-                        <div style={{ display: 'grid', gap: 22 }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, background: '#eff6ff', color: '#1a4e8d', border: '1px solid #dbeafe', padding: '10px 14px', fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', width: 'fit-content' }}>
-                            <Store size={14} />
-                            For Business Owners
-                          </div>
-                          <div style={{ display: 'grid', gap: 14, maxWidth: 520 }}>
-                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 42 : 64, lineHeight: 0.98, letterSpacing: '-0.05em', fontWeight: 900, color: '#0f172a' }}>
-                              Put Your Business on the <span style={{ color: '#1a4e8d' }}>Map</span>
-                            </h2>
-                            <p style={{ margin: 0, fontSize: isMobileViewport ? 16 : 20, lineHeight: 1.65, color: '#64748b', maxWidth: 470 }}>
-                              Help customers discover your business and manage sales with DGFY.
-                            </p>
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
-                            {[
-                              { icon: <MapPin size={22} color="#1a4e8d" />, bg: '#eff6ff', title: 'Get Discovered', body: 'Be found by nearby customers searching for what you offer.' },
-                              { icon: <ShoppingCart size={22} color="#16a34a" />, bg: '#ecfdf5', title: 'Manage Smarter', body: 'Use POS, inventory, and tools to run your business better.' },
-                              { icon: <Zap size={22} color="#8b5cf6" />, bg: '#f5f3ff', title: 'Grow Faster', body: 'Reach more customers and increase your sales with DGFY.' }
-                            ].map((item) => (
-                              <div key={item.title} style={{ display: 'grid', gap: 10, paddingRight: isMobileViewport ? 0 : 12 }}>
-                                <div style={{ width: 58, height: 58, borderRadius: '50%', background: item.bg, display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px rgba(226,232,240,.8)' }}>
-                                  {item.icon}
-                                </div>
-                                <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{item.title}</div>
-                                <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.7 }}>{item.body}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div style={{ position: 'relative' }}>
-                          <div style={{ position: 'relative', minHeight: isMobileViewport ? 420 : 540, borderRadius: 30, overflow: 'hidden', border: '1px solid rgba(15,23,42,.08)', boxShadow: '0 30px 70px rgba(15,23,42,.10)', background: 'linear-gradient(135deg, #1f2937 0%, #334155 18%, #475569 38%, #1f2937 100%)' }}>
-                            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 18%, rgba(251,191,36,.22) 0%, transparent 18%), radial-gradient(circle at 78% 20%, rgba(255,255,255,.10) 0%, transparent 16%), linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(15,23,42,.24) 100%)' }} />
-                            <div style={{ position: 'absolute', top: 26, left: 28, display: 'flex', gap: 14 }}>
-                              {[0, 1, 2].map((index) => (
-                                <div key={index} style={{ width: 16, height: 16, borderRadius: '50%', background: index === 0 ? '#f59e0b' : '#fde68a', boxShadow: '0 10px 24px rgba(0,0,0,.18)' }} />
-                              ))}
-                            </div>
-                            <div style={{ position: 'absolute', inset: isMobileViewport ? '18% 10% 0 10%' : '14% 14% 0 6%', borderRadius: 26, background: 'linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(15,23,42,.20) 100%)', border: '1px solid rgba(255,255,255,.10)', overflow: 'hidden' }}>
-                              <img
-                                src={dgfyBusinessOwnerPhoto}
-                                alt="Business owner using DGFY"
-                                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: isMobileViewport ? 'center top' : '36% center', display: 'block', filter: 'saturate(1.02) contrast(1.02)' }}
-                              />
-                              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.04) 0%, rgba(15,23,42,0.28) 100%)' }} />
-                            </div>
-                            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '20%', background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,.26) 100%)' }} />
-
-                            <div style={{ position: 'absolute', left: isMobileViewport ? 18 : 'auto', right: isMobileViewport ? 18 : 22, top: isMobileViewport ? 'auto' : '22%', bottom: isMobileViewport ? 18 : 24, width: isMobileViewport ? 'auto' : 248, borderRadius: 28, background: 'rgba(255,255,255,.96)', border: '1px solid rgba(226,232,240,.9)', boxShadow: '0 24px 48px rgba(15,23,42,.18)', padding: isMobileViewport ? 18 : 22, backdropFilter: 'blur(12px)' }}>
-                              <div style={{ width: 58, height: 58, borderRadius: '50%', background: '#eff6ff', display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px #dbeafe' }}>
-                                <img src={dgfySymbolLogo} alt="DGFY" style={{ width: 28, height: 28, objectFit: 'contain' }} />
-                              </div>
-                              <div style={{ marginTop: 18, fontSize: isMobileViewport ? 28 : 34, lineHeight: 1.02, letterSpacing: '-0.04em', fontWeight: 900, color: '#0f172a' }}>
-                                Register Your <span style={{ color: '#1a4e8d' }}>Business</span>
-                              </div>
-                              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #e2e8f0', fontSize: 15, lineHeight: 1.7, color: '#64748b' }}>
-                                List your products, services, and storefront with DGFY.
-                              </div>
-                              <button
-                                type="button"
-                                onClick={openBusinessRegistrationFlow}
-                                style={{ marginTop: 22, width: '100%', minHeight: isMobileViewport ? 48 : 52, borderRadius: 16, border: '1px solid #1a4586', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4586 100%)', color: '#fff', fontSize: isMobileViewport ? 13 : 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(26, 78, 141, .28)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: isMobileViewport ? 8 : 10, cursor: 'pointer', whiteSpace: 'nowrap', letterSpacing: isMobileViewport ? '-0.01em' : 'normal', padding: isMobileViewport ? '0 16px' : '0 18px' }}
-                              >
-                                Register Your Business
-                                <ChevronRight size={18} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-
-                    )}
-
-                    {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ HOW DGFY WORKS ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-                    <section style={{ padding: isMobileViewport ? '60px 16px' : '100px 0 80px', maxWidth: 1140, margin: '0 auto', textAlign: 'center', position: 'relative' }}>
-                      <h2 style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 16 }}>
-                        How <span style={{ color: '#1a4e8d' }}>DGFY</span> Works
-                      </h2>
-                      <div style={{ fontSize: isMobileViewport ? 14 : 16, color: '#64748b', margin: '0 auto 60px', lineHeight: 1.6 }}>
-                        <span style={{ fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Discover. Compare. Choose. Done.</span>
-                        Find what you need in just a few simple steps.
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(4, 1fr)', gap: isMobileViewport ? 60 : 32, position: 'relative', alignItems: 'start' }}>
-
-                        {/* Connector Line (Desktop Only) */}
-                        {!isMobileViewport && (
-                          <div style={{ position: 'absolute', top: 92, left: '12%', right: '12%', height: 2, background: 'repeating-linear-gradient(to right, #cbd5e1 0, #cbd5e1 6px, transparent 6px, transparent 12px)', zIndex: 0 }} />
-                        )}
-
-                        {/* Step 1: Search */}
-                        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
-                          <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>01</div>
-
-                          {/* Mock UI Card */}
-                          <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 18, marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 14px' }}>
-                              <Search size={16} color="#1a4e8d" />
-                              <div style={{ flex: 1, height: 6, background: '#cbd5e1', borderRadius: 4, opacity: 0.5 }} />
-                              <div style={{ width: 28, height: 28, background: '#1a4e8d', borderRadius: 8, display: 'grid', placeItems: 'center' }}><Search size={14} color="#fff" /></div>
-                            </div>
-                            <div style={{ display: 'flex', gap: 6, overflow: 'hidden' }}>
-                              {['Food', 'Grocery', 'Pharmacy'].map(t => (
-                                <div key={t} style={{ fontSize: 10, fontWeight: 600, padding: '5px 12px', borderRadius: 99, border: '1px solid #e2e8f0', color: '#475569', flexShrink: 0 }}>{t}</div>
-                              ))}
-                            </div>
-                            {/* Mock Map */}
-                            <div style={{ flex: 1, background: '#f8fafc', borderRadius: 12, position: 'relative', overflow: 'hidden', backgroundImage: 'radial-gradient(circle at center, #e2e8f0 1px, transparent 1px)', backgroundSize: '16px 16px' }}>
-                              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 100, height: 100, borderRadius: '50%', border: '1px solid rgba(59,130,246,0.2)', background: 'rgba(59,130,246,0.05)' }} />
-                              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 50, height: 50, borderRadius: '50%', border: '1px solid rgba(59,130,246,0.4)', background: 'rgba(59,130,246,0.1)' }} />
-                              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#1a4e8d' }}><MapPin size={28} fill="#1a4e8d" color="#fff" strokeWidth={2} /></div>
-                            </div>
-                          </div>
-
-                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#1a4e8d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '4px solid #fff', boxShadow: '0 0 0 1px #e2e8f0', marginTop: isMobileViewport ? 34 : 42, order: 1 }}>
-                            <Search size={20} strokeWidth={2.5} />
-                          </div>
-                          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, order: 1 }}>Search</h3>
-                          <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, maxWidth: 200, order: 1 }}>Search for products or services near you.</p>
-                        </div>
-
-                        {/* Step 2: Compare */}
-                        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
-                          <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>02</div>
-
-                          {/* Mock UI Card */}
-                          <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 14, marginTop: 18, marginBottom: 0, display: 'flex', gap: 10, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              {[
-                                { n: 'Kape Central', r: '4.8 (128)' },
-                                { n: 'Robinsons Mart', r: '4.6 (195)' },
-                                { n: 'J&M Hardware', r: '4.7 (66)' }
-                              ].map((s, i) => (
-                                <div key={s.n} style={{ background: '#fff', border: '1px solid #f1f5f9', borderRadius: 12, padding: 8, display: 'flex', gap: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                  <div style={{ width: 28, height: 28, borderRadius: 8, background: i === 0 ? '#fde68a' : i === 1 ? '#bbf7d0' : '#e9d5ff' }} />
-                                  <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                    <div style={{ fontSize: 10, fontWeight: 800, color: '#0f172a' }}>{s.n}</div>
-                                    <div style={{ fontSize: 8, color: '#64748b', margin: '2px 0 4px' }}>0.4 km {'\u2022'} 10-15 min</div>
-                                    <div style={{ fontSize: 8, color: '#d97706', fontWeight: 700 }}>{'\u2605'} {s.r}</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ width: 44, background: '#f8fafc', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-around', padding: '10px 0' }}>
-                              <div style={{ color: '#f59e0b' }}><MapPin size={20} fill="#fde68a" /></div>
-                              <div style={{ color: '#22c55e' }}><MapPin size={20} fill="#bbf7d0" /></div>
-                              <div style={{ color: '#a855f7' }}><MapPin size={20} fill="#e9d5ff" /></div>
-                            </div>
-                          </div>
-
-                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#1a4e8d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '4px solid #fff', boxShadow: '0 0 0 1px #e2e8f0', marginTop: isMobileViewport ? 34 : 42, order: 1 }}>
-                            <List size={20} strokeWidth={2.5} />
-                          </div>
-                          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, order: 1 }}>Compare</h3>
-                          <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, maxWidth: 200, order: 1 }}>Compare nearby stores and service providers.</p>
-                        </div>
-
-                        {/* Step 3: Choose */}
-                        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
-                          <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>03</div>
-
-                          {/* Mock UI Card */}
-                          <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', overflow: 'hidden', marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', textAlign: 'left', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
-                            <div style={{ height: 110, background: 'linear-gradient(135deg, #fcd34d, #f59e0b)' }} />
-                            <div style={{ padding: '16px' }}>
-                              <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a' }}>Kape Central</div>
-                              <div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>Coffee Shop</div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 600 }}>0.4 km {'\u2022'} 10-15 min</div>
-                                <div style={{ fontSize: 9, color: '#16a34a', fontWeight: 800, background: '#f0fdf4', padding: '3px 6px', borderRadius: 6 }}>{'\u2605'} 4.8 (128)</div>
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 20 }}>
-                                {['Directions', 'Call', 'Message', 'Save'].map((a, idx) => (
-                                  <div key={a} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                                    <div style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid #f1f5f9', display: 'grid', placeItems: 'center', color: '#64748b' }}>
-                                      {idx === 0 ? <Navigation size={14} /> : idx === 1 ? <Phone size={14} /> : idx === 2 ? <MessageCircle size={14} /> : <MapPin size={14} />}
-                                    </div>
-                                    <div style={{ fontSize: 8, fontWeight: 700, color: '#475569' }}>{a}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#1a4e8d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '4px solid #fff', boxShadow: '0 0 0 1px #e2e8f0', marginTop: isMobileViewport ? 34 : 42, order: 1 }}>
-                            <ShoppingBag size={20} strokeWidth={2.5} />
-                          </div>
-                          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, order: 1 }}>Choose</h3>
-                          <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, maxWidth: 200, order: 1 }}>Choose your preferred merchant or service.</p>
-                        </div>
-
-                        {/* Step 4: Order */}
-                        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
-                          <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>04</div>
-
-                          {/* Mock UI Card */}
-                          <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 24, marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
-                            <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-                              <CheckCircle2 size={36} strokeWidth={3} />
-                            </div>
-                            <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a' }}>You&apos;re All Set!</div>
-                            <div style={{ fontSize: 11, color: '#64748b', margin: '8px 0 24px', lineHeight: 1.5 }}>Your order has been placed successfully.</div>
-                            <div style={{ background: '#1a4e8d', color: '#fff', fontSize: 11, fontWeight: 700, padding: '12px 0', width: '100%', borderRadius: 10, marginBottom: 12 }}>View Order</div>
-                            <div style={{ color: '#1a4e8d', fontSize: 11, fontWeight: 700 }}>Track Your Order</div>
-                          </div>
-
-                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#1a4e8d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '4px solid #fff', boxShadow: '0 0 0 1px #e2e8f0', marginTop: isMobileViewport ? 34 : 42, order: 1 }}>
-                            <CheckCircle2 size={20} strokeWidth={2.5} />
-                          </div>
-                          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, order: 1 }}>Order</h3>
-                          <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, maxWidth: 200, order: 1 }}>Place your order, book a service, or get in touch instantly.</p>
-                        </div>
-
-                      </div>
-                    </section>
-
-                    {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ FEATURED MERCHANTS ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-                    <section ref={featuredSectionRef} style={{ padding: isMobileViewport ? '40px 16px 80px' : '40px 0 100px', maxWidth: 1200, margin: '0 auto', textAlign: 'center', overflow: 'hidden' }}>
-                      <h2 style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 12 }}>
-                        Featured <span style={{ color: '#1a4e8d' }}>Local Merchants</span>
-                      </h2>
-                      <p style={{ fontSize: isMobileViewport ? 14 : 16, color: '#64748b', maxWidth: 600, margin: '0 auto 40px', lineHeight: 1.6 }}>
-                        Explore top-rated stores and trusted service providers near you.
-                      </p>
-
-                      {/* Category Pills */}
-                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 40, width: '100%' }}>
-                        <div
-                          ref={featuredCategoryRailRef}
-                          style={{
-                            position: 'relative',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: isMobileViewport ? 'flex-start' : 'center',
-                            gap: 10,
-                            width: isMobileViewport ? '100%' : 'max-content',
-                            maxWidth: '100%',
-                            overflowX: 'auto',
-                            overflowY: 'hidden',
-                            flexWrap: 'nowrap',
-                            scrollbarWidth: 'none',
-                            msOverflowStyle: 'none',
-                            paddingBottom: 6
-                          }}
-                        >
-                          {featuredCategoryOptions.map((cat) => {
-                            const isActive = featuredCategoryFilter === cat.key;
-                            return (
-                              <button
-                                key={cat.label}
-                                type="button"
-                                onClick={(event) => handleFeaturedCategoryFilter(event, cat.key)}
-                                style={{
-                                  padding: '10px 18px',
-                                  borderRadius: 99,
-                                  border: isActive ? '1px solid #1a4e8d' : '1px solid #e2e8f0',
-                                  background: isActive ? '#1a4e8d' : '#fff',
-                                  color: isActive ? '#fff' : '#475569',
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  gap: 6,
-                                  boxShadow: isActive ? '0 4px 12px rgba(37,99,235,0.2)' : '0 2px 8px rgba(15,23,42,0.02)',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s ease',
-                                  whiteSpace: 'nowrap',
-                                  flexShrink: 0
-                                }}
-                              >
-                                {cat.icon}
-                                {cat.label}
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            onClick={() => featuredCategoryRailRef.current?.scrollBy({ left: isMobileViewport ? 220 : 280, behavior: 'smooth' })}
-                            aria-label="Show more featured categories"
-                            style={{
-                              position: 'sticky',
-                              right: 0,
-                              top: 0,
-                              minWidth: 42,
-                              height: 34,
-                              borderRadius: 999,
-                              border: '1px solid rgba(226,232,240,.9)',
-                              background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.82) 45%, rgba(255,255,255,.98) 100%)',
-                              color: '#94a3b8',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              boxShadow: '0 6px 16px rgba(15,23,42,.08)',
-                              cursor: 'pointer',
-                              flexShrink: 0
-                            }}
-                          >
-                            <ChevronRight size={16} />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Cards Grid/Carousel */}
-                      <div ref={featuredCarouselRef} style={{ display: 'flex', gap: 24, overflowX: isMobileViewport ? 'auto' : 'hidden', paddingBottom: 24, paddingLeft: isMobileViewport ? 16 : 4, paddingRight: isMobileViewport ? 16 : 4, scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', margin: isMobileViewport ? '0 -16px' : '0', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                        {featuredVisibleStores.map((store, i) => {
-                          const storeSlug = toSlug(store?.slug);
-                          const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
-                          const preferredLocationId = getPreferredDiscoveryLocationId({ store, storePins });
-                          const n = store.tenant_name || store.name || 'Store';
-                          const storeCategories = normalizeStorefrontCategories(store?.storefront_categories);
-                          const c = storeCategories[0] || String(store?.workflow_mode || store?.business_mode || 'Local Business').replace(/_/g, ' ');
-                          const reviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
-                          const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '4.7';
-                          const ratingCount = Number(reviewSummary?.total_count || store?.matching_item_count || 0);
-                          const d = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km` : '0.4 km';
-                          const t = [
-                            Number(store?.active_location_count || 0) > 0 ? `${Number(store.active_location_count)} Branches` : null,
-                            store?.has_in_stock_match === true ? 'Available Now' : null,
-                            store.matching_item_count > 2 ? 'Featured' : 'Local'
-                          ].filter(Boolean);
-                            const isOpen = store.storefront_open ?? true;
-                            const featuredHoursLabel = formatStorefrontHoursLabel(
-                              store?.storefront_hours,
-                              store?.nearest_location_hours || store?.storefront_hours_status?.display || ''
-                            );
-                            const featuredClosedNote = !isOpen
-                            ? `Store closed for now${featuredHoursLabel ? ` \u2022 ${featuredHoursLabel}` : ''}`
-                              : '';
-                          const coverImageUrl = withAssetOrigin(store?.storefront_cover_image_url) || withAssetOrigin(store?.storefront_profile_image_url) || '';
-                          const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url) || coverImageUrl || '';
-                          const coverImageKey = `featured-cover:${storeSlug}:${coverImageUrl}`;
-                          const profileImageKey = `featured-profile:${storeSlug}:${profileImageUrl}`;
-
-                          const catStr = String(c).toLowerCase();
-                          let icon = <Store size={40} color="#fff" />;
-                          let color = '#1a4e8d';
-                          let bg = 'linear-gradient(135deg, #1a4e8d 0%, #1a4e8d 100%)';
-
-                          if (catStr.includes('coffee') || catStr.includes('cafe') || catStr.includes('f&b') || catStr.includes('food')) {
-                            icon = <Coffee size={40} color="#fff" />;
-                            color = '#78350f';
-                            bg = 'linear-gradient(135deg, #fcd34d 0%, #b45309 100%)';
-                          } else if (catStr.includes('grocery') || catStr.includes('supermarket') || catStr.includes('mart')) {
-                            icon = <ShoppingCart size={40} color="#fff" />;
-                            color = '#dc2626';
-                            bg = 'linear-gradient(135deg, #fca5a5 0%, #dc2626 100%)';
-                          } else if (catStr.includes('hardware') || catStr.includes('repair') || catStr.includes('auto')) {
-                            icon = <Wrench size={40} color="#fff" />;
-                            color = '#ca8a04';
-                            bg = 'linear-gradient(135deg, #fef08a 0%, #ca8a04 100%)';
-                          } else if (catStr.includes('salon') || catStr.includes('spa') || catStr.includes('beauty')) {
-                            icon = <Scissors size={40} color="#fff" />;
-                            color = '#be185d';
-                            bg = 'linear-gradient(135deg, #f9a8d4 0%, #be185d 100%)';
-                          } else if (catStr.includes('pharmacy') || catStr.includes('health') || catStr.includes('medical')) {
-                            icon = <HeartHandshake size={40} color="#fff" />;
-                            color = '#115e59';
-                            bg = 'linear-gradient(135deg, #2dd4bf 0%, #115e59 100%)';
-                          }
-
-                          return (
-                              <div key={store.id || store.slug || i} style={{ minWidth: 280, width: 280, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 12px 32px rgba(15,23,42,0.05)', display: 'flex', flexDirection: 'column', textAlign: 'left', overflow: 'hidden', scrollSnapAlign: 'start', flexShrink: 0, position: 'relative', opacity: isOpen ? 1 : 0.72 }}>
-
-                              {/* Cover Area */}
-                              <div style={{ height: 160, background: bg, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {coverImageUrl && !isBrandingImageBlocked(coverImageKey) ? (
-                                  <img
-                                    src={coverImageUrl}
-                                    alt={`${n} cover`}
-                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                                    onError={() => markBrandingImageError(coverImageKey)}
-                                  />
-                                ) : null}
-                                <div style={{ position: 'absolute', inset: 0, background: coverImageUrl && !isBrandingImageBlocked(coverImageKey) ? 'linear-gradient(180deg, rgba(15,23,42,.12) 0%, rgba(15,23,42,.48) 100%)' : 'transparent' }} />
-                                {/* Subtle pattern overlay */}
-                                <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at center, rgba(255,255,255,0.2) 1px, transparent 1px)', backgroundSize: '16px 16px', opacity: 0.5 }} />
-
-                                  {isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#16a34a', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }}>Open Now</div>}
-                                  {!isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(239,68,68,0.3)' }}>Closed</div>}
-
-                                {/* Big thematic icon */}
-                                {!coverImageUrl || isBrandingImageBlocked(coverImageKey) ? <div style={{ opacity: 0.8, position: 'relative', zIndex: 1 }}>{icon}</div> : null}
-                              </div>
-
-                              {/* Profile Pic overlapping */}
-                              <div style={{ padding: '0 20px', position: 'relative' }}>
-                                <div style={{ width: 64, height: 64, borderRadius: '50%', background: color, border: '4px solid #fff', marginTop: -32, display: 'grid', placeItems: 'center', color: '#fff', fontSize: 24, fontWeight: 900, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', position: 'relative', zIndex: 2, overflow: 'hidden' }}>
-                                  {profileImageUrl && !isBrandingImageBlocked(profileImageKey) ? (
-                                    <img
-                                      src={profileImageUrl}
-                                      alt={`${n} profile`}
-                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                      onError={() => markBrandingImageError(profileImageKey)}
-                                    />
-                                  ) : (
-                                    n.charAt(0)
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Info */}
-                              <div style={{ padding: '16px 20px 24px', display: 'flex', flexDirection: 'column', flex: 1 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                                    <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n}</h3>
-                                    <span
-                                      title={isOpen ? 'Open' : 'Closed'}
-                                      aria-label={isOpen ? 'Open' : 'Closed'}
-                                      style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, transform: 'translateY(1px)' }}
-                                    >
-                                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: isOpen ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isOpen ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
-                                    </span>
-                                  </div>
-                                  <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 12px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 20 }}>
-                                  <span style={{ color: '#f59e0b', fontSize: 14 }}>{'\u2605'}</span> {ratingValue} ({ratingCount}) <span style={{ color: '#cbd5e1', margin: '0 2px' }}>{'\u2022'}</span> {d}
-                                </div>
-
-                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24, height: 26, overflow: 'hidden' }}>
-                                    {t.slice(0, 3).map((tag) => (
-                                      <div key={tag} style={{ fontSize: 10, fontWeight: 700, color: '#1a4e8d', background: '#eff6ff', padding: '5px 12px', borderRadius: 8, whiteSpace: 'nowrap' }}>
-                                        {tag}
-                                      </div>
-                                    ))}
-                                  </div>
-                                  {!isOpen && (
-                                    <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: -8, marginBottom: 12 }}>
-                                      {featuredClosedNote}
-                                    </div>
-                                  )}
-
-                                <button onClick={() => goStore(store.slug, preferredLocationId)} style={{ marginTop: 'auto', width: '100%', padding: '12px 0', borderRadius: 12, border: '1.5px solid #1a4e8d', background: 'transparent', color: '#1a4e8d', fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s ease', letterSpacing: '0.01em' }} onMouseOver={(e) => {e.target.style.background = '#1a4e8d'; e.target.style.color = '#fff';}} onMouseOut={(e) => {e.target.style.background = 'transparent'; e.target.style.color = '#1a4e8d';}}>
-                                  View Store
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {featuredVisibleStores.length === 0 && (
-                        <div style={{ marginTop: 14, borderRadius: 16, border: '1px solid #dbeafe', background: '#eff6ff', color: '#1a4e8d', padding: isMobileViewport ? '12px 14px' : '14px 16px', fontSize: 14, fontWeight: 600 }}>
-                          This category is not available in Featured Local Merchants for now. Please try another category.
-                        </div>
-                      )}
-
-                      {/* Carousel Controls */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 16 }}>
-                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: -304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#94a3b8', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>e.currentTarget.style.color='#1a4e8d'} onMouseOut={(e)=>e.currentTarget.style.color='#94a3b8'}><ChevronLeft size={20} /></div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1a4e8d' }} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 304, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 608, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 912, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 1216, behavior: 'smooth' })} />
-                        </div>
-                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: 304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#1a4e8d', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>{e.currentTarget.style.background='#f8fafc'}} onMouseOut={(e)=>{e.currentTarget.style.background='#fff'}}><ChevronRight size={20} /></div>
-                      </div>
-                    </section>
-
-                    {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ FOR BUSINESS OWNERS ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-                    <section style={{ padding: isMobileViewport ? '16px 16px 80px' : '8px 0 108px', maxWidth: 1220, margin: '0 auto' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, .95fr) minmax(0, 1.15fr)', gap: isMobileViewport ? 28 : 34, alignItems: 'center' }}>
-                        <div style={{ display: 'grid', gap: 22 }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, background: '#eff6ff', color: '#1a4e8d', border: '1px solid #dbeafe', padding: '10px 14px', fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', width: 'fit-content' }}>
-                            <Store size={14} />
-                            For Business Owners
-                          </div>
-                          <div style={{ display: 'grid', gap: 14, maxWidth: 520 }}>
-                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 42 : 64, lineHeight: 0.98, letterSpacing: '-0.05em', fontWeight: 900, color: '#0f172a' }}>
-                              Put Your Business on the <span style={{ color: '#1a4e8d' }}>Map</span>
-                            </h2>
-                            <p style={{ margin: 0, fontSize: isMobileViewport ? 16 : 20, lineHeight: 1.65, color: '#64748b', maxWidth: 470 }}>
-                              Help customers discover your business and manage sales with DGFY.
-                            </p>
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
-                            {[
-                              { icon: <MapPin size={22} color="#1a4e8d" />, bg: '#eff6ff', title: 'Get Discovered', body: 'Be found by nearby customers searching for what you offer.' },
-                              { icon: <ShoppingCart size={22} color="#16a34a" />, bg: '#ecfdf5', title: 'Manage Smarter', body: 'Use POS, inventory, and tools to run your business better.' },
-                              { icon: <Zap size={22} color="#8b5cf6" />, bg: '#f5f3ff', title: 'Grow Faster', body: 'Reach more customers and increase your sales with DGFY.' }
-                            ].map((item) => (
-                              <div key={item.title} style={{ display: 'grid', gap: 10, paddingRight: isMobileViewport ? 0 : 12 }}>
-                                <div style={{ width: 58, height: 58, borderRadius: '50%', background: item.bg, display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px rgba(226,232,240,.8)' }}>
-                                  {item.icon}
-                                </div>
-                                <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{item.title}</div>
-                                <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.7 }}>{item.body}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div style={{ position: 'relative' }}>
-                          <div style={{ position: 'relative', minHeight: isMobileViewport ? 420 : 540, borderRadius: 30, overflow: 'hidden', border: '1px solid rgba(15,23,42,.08)', boxShadow: '0 30px 70px rgba(15,23,42,.10)', background: 'linear-gradient(135deg, #1f2937 0%, #334155 18%, #475569 38%, #1f2937 100%)' }}>
-                            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 18%, rgba(251,191,36,.22) 0%, transparent 18%), radial-gradient(circle at 78% 20%, rgba(255,255,255,.10) 0%, transparent 16%), linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(15,23,42,.24) 100%)' }} />
-                            <div style={{ position: 'absolute', top: 26, left: 28, display: 'flex', gap: 14 }}>
-                              {[0, 1, 2].map((index) => (
-                                <div key={index} style={{ width: 16, height: 16, borderRadius: '50%', background: index === 0 ? '#f59e0b' : '#fde68a', boxShadow: '0 10px 24px rgba(0,0,0,.18)' }} />
-                              ))}
-                            </div>
-                            <div style={{ position: 'absolute', inset: isMobileViewport ? '18% 10% 0 10%' : '14% 14% 0 6%', borderRadius: 26, background: 'linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(15,23,42,.20) 100%)', border: '1px solid rgba(255,255,255,.10)', overflow: 'hidden' }}>
-                              <img
-                                src={dgfyBusinessOwnerPhoto}
-                                alt="Business owner using DGFY"
-                                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: isMobileViewport ? 'center top' : '36% center', display: 'block', filter: 'saturate(1.02) contrast(1.02)' }}
-                              />
-                              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.04) 0%, rgba(15,23,42,0.28) 100%)' }} />
-                            </div>
-                            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '20%', background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,.26) 100%)' }} />
-
-                            <div style={{ position: 'absolute', left: isMobileViewport ? 18 : 'auto', right: isMobileViewport ? 18 : 22, top: isMobileViewport ? 'auto' : '22%', bottom: isMobileViewport ? 18 : 24, width: isMobileViewport ? 'auto' : 248, borderRadius: 28, background: 'rgba(255,255,255,.96)', border: '1px solid rgba(226,232,240,.9)', boxShadow: '0 24px 48px rgba(15,23,42,.18)', padding: isMobileViewport ? 18 : 22, backdropFilter: 'blur(12px)' }}>
-                              <div style={{ width: 58, height: 58, borderRadius: '50%', background: '#eff6ff', display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px #dbeafe' }}>
-                                <img src={dgfySymbolLogo} alt="DGFY" style={{ width: 28, height: 28, objectFit: 'contain' }} />
-                              </div>
-                              <div style={{ marginTop: 18, fontSize: isMobileViewport ? 28 : 34, lineHeight: 1.02, letterSpacing: '-0.04em', fontWeight: 900, color: '#0f172a' }}>
-                                Register Your <span style={{ color: '#1a4e8d' }}>Business</span>
-                              </div>
-                              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #e2e8f0', fontSize: 15, lineHeight: 1.7, color: '#64748b' }}>
-                                List your products, services, and storefront with DGFY.
-                              </div>
-                              <button
-                                type="button"
-                                onClick={openBusinessRegistrationFlow}
-                                style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4586', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4586 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(26, 78, 141, .28)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
-                              >
-                                Register Your Business
-                                <ChevronRight size={18} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-
-                    {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ DISCOVERY FAQ ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-                    <section style={{ padding: isMobileViewport ? '0 16px 88px' : '0 0 112px', maxWidth: 1180, margin: '0 auto' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, .82fr) minmax(0, 1.18fr)', gap: isMobileViewport ? 28 : 42, alignItems: 'start' }}>
-                        <div style={{ display: 'grid', gap: 18 }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, background: '#eff6ff', color: '#1a4e8d', border: '1px solid #dbeafe', padding: '10px 14px', fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', width: 'fit-content' }}>
-                            <MessageCircle size={14} />
-                            Frequently Asked Questions
-                          </div>
-                          <div style={{ display: 'grid', gap: 14, maxWidth: 460 }}>
-                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 34 : 50, lineHeight: 1.02, letterSpacing: '-0.04em', fontWeight: 900, color: '#0f172a' }}>
-                              Answers Before You <span style={{ color: '#1a4e8d' }}>Explore</span>
-                            </h2>
-                            <p style={{ margin: 0, fontSize: isMobileViewport ? 15 : 18, lineHeight: 1.75, color: '#64748b' }}>
-                              Everything shoppers and business owners usually ask before using DGFY discovery.
-                            </p>
-                          </div>
-                          <div style={{ display: 'grid', gap: 12, padding: isMobileViewport ? '20px 18px' : '22px 24px', borderRadius: 26, background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,.06)' }}>
-                            {[
-                              { label: 'Search nearby', value: 'Product- and service-based discovery within your area' },
-                              { label: 'Business signup', value: 'Fast onboarding for merchants ready to be found' },
-                              { label: 'Customer trust', value: 'Clear status, distance, branches, and storefront details' }
-                            ].map((item) => (
-                              <div key={item.label} style={{ display: 'grid', gap: 4 }}>
-                                <div style={{ fontSize: 12, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.label}</div>
-                                <div style={{ fontSize: 14, lineHeight: 1.7, color: '#475569' }}>{item.value}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gap: 14 }}>
-                          {[
-                            {
-                              question: 'How does DGFY find businesses near me?',
-                              answer: 'When you search, DGFY uses your current location when available and matches nearby businesses that offer the product or service you need. Results are then organized into an easier map-and-list discovery view.'
-                            },
-                            {
-                              question: 'Do I need to enable location to use storefront discovery?',
-                              answer: 'Location gives you more accurate nearby results and distance estimates. If location is unavailable, the page can still show broader discovery results, but the experience is less precise.'
-                            },
-                            {
-                              question: 'What does Register Your Business do?',
-                              answer: 'It takes merchants to the DGFY registration flow so they can list their storefront, products, and services, then become discoverable to nearby customers on the platform.'
-                            },
-                            {
-                              question: 'Can customers compare multiple stores before choosing?',
-                              answer: 'Yes. The discovery experience is designed to help customers compare business cards, location distance, store status, and storefront details before visiting or ordering.'
-                            }
-                          ].map((item, index) => {
-                            const isOpen = openDiscoveryFaqIndex === index;
-                            return (
-                              <div
-                                key={item.question}
-                                style={{
-                                  borderRadius: 24,
-                                  background: '#fff',
-                                  border: isOpen ? '1px solid #bfdbfe' : '1px solid #e2e8f0',
-                                  boxShadow: isOpen ? '0 18px 40px rgba(37,99,235,.10)' : '0 10px 26px rgba(15,23,42,.05)',
-                                  overflow: 'hidden',
-                                  transition: 'all 220ms ease'
-                                }}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => setOpenDiscoveryFaqIndex((current) => current === index ? -1 : index)}
-                                  style={{
-                                    width: '100%',
-                                    background: 'transparent',
-                                    border: 'none',
-                                    padding: isMobileViewport ? '20px 18px' : '22px 24px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: 16,
-                                    textAlign: 'left',
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  <div style={{ display: 'grid', gap: 6 }}>
-                                    <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>{item.question}</div>
-                                    <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
-                                      {isOpen ? 'Tap to collapse' : 'Tap to expand'}
-                                    </div>
-                                  </div>
-                                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: isOpen ? '#1a4e8d' : '#eff6ff', color: isOpen ? '#fff' : '#1a4e8d', display: 'grid', placeItems: 'center', flexShrink: 0, transition: 'all 200ms ease' }}>
-                                    <ChevronDown size={18} style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 200ms ease' }} />
-                                  </div>
-                                </button>
-                                {isOpen ? (
-                                  <div style={{ padding: isMobileViewport ? '0 18px 20px' : '0 24px 22px' }}>
-                                    <div style={{ height: 1, background: '#e2e8f0', marginBottom: 16 }} />
-                                    <p style={{ margin: 0, fontSize: 15, lineHeight: 1.8, color: '#475569' }}>
-                                      {item.answer}
-                                    </p>
-                                  </div>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </section>
-
-                    <footer id="discovery-contact-anchor" style={{ marginLeft: 'calc(50% - 50vw)', width: '100%', minWidth: '100vw', background: 'linear-gradient(180deg, #0c3c86 0%, #0a3475 38%, #082c63 100%)', color: '#fff', position: 'relative', overflow: 'hidden' }}>
-                      <div style={{ position: 'absolute', top: -42, left: '-4%', right: '-4%', height: 88, background: 'linear-gradient(90deg, rgba(59,130,246,.38) 0%, rgba(96,165,250,.18) 35%, rgba(59,130,246,.34) 100%)', borderBottomLeftRadius: '50% 100%', borderBottomRightRadius: '50% 100%', opacity: 0.9 }} />
-                      <div style={{ position: 'absolute', top: -20, left: '-8%', right: '-8%', height: 54, background: 'linear-gradient(90deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.04) 50%, rgba(255,255,255,.10) 100%)', borderBottomLeftRadius: '50% 100%', borderBottomRightRadius: '50% 100%', opacity: 0.75 }} />
-
-                      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1200, margin: '0 auto', padding: isMobileViewport ? '96px 20px 42px' : '108px 24px 48px' }}>
-                        <div
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: isMobileViewport ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
-                            gap: isMobileViewport ? 28 : 36,
-                            justifyItems: isMobileViewport ? 'center' : 'stretch'
-                          }}
-                        >
-                          {[
-                            {
-                              title: 'Company',
-                              links: [
-                                { label: 'About Us', href: '/about' },
-                                { label: 'Contact', href: '/contact' },
-                                { label: 'Privacy Policy', href: '/privacy' },
-                                { label: 'Terms & Conditions', href: '/terms' }
-                              ]
-                            },
-                            {
-                              title: 'Explore',
-                              links: [
-                                { label: 'Products', href: '/' },
-                                { label: 'Services', href: '/' },
-                                { label: 'Merchants', href: '/' }
-                              ]
-                            },
-                            {
-                              title: 'For Business',
-                              links: [
-                                { label: 'Register Your Business', href: buildBusinessRegistrationUrl() },
-                                { label: 'Business Login', href: buildBusinessLoginUrl() }
-                              ]
-                            },
-                            {
-                              title: 'Contact',
-                              links: [
-                                { label: 'Email', href: 'mailto:hello@dgfy.ph' },
-                                { label: 'Facebook', href: 'https://facebook.com' },
-                                { label: 'Instagram', href: 'https://instagram.com' },
-                                { label: 'LinkedIn', href: 'https://linkedin.com' }
-                              ]
-                            }
-                          ].map((group) => (
-                            <div
-                              key={group.title}
-                              style={{
-                                display: 'grid',
-                                gap: 16,
-                                alignContent: 'start',
-                                justifyItems: isMobileViewport ? 'center' : 'start',
-                                textAlign: isMobileViewport ? 'center' : 'left'
-                              }}
-                            >
-                              <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#ffffff' }}>
-                                {group.title}
-                              </div>
-                              <div style={{ display: 'grid', gap: 12 }}>
-                                {group.links.map((link) => (
-                                  <a
-                                    key={`${group.title}-${link.label}`}
-                                    href={link.href}
-                                    target={String(link.href).startsWith('http') ? '_blank' : undefined}
-                                    rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
-                                    style={{ fontSize: 16, lineHeight: 1.55, color: 'rgba(226,232,240,.96)', textDecoration: 'none' }}
-                                  >
-                                    {link.label}
-                                  </a>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div style={{ marginTop: isMobileViewport ? 42 : 54, height: 1, background: 'rgba(226,232,240,.18)' }} />
-
-                        <div style={{ display: 'grid', justifyItems: 'center', textAlign: 'center', gap: 14, paddingTop: isMobileViewport ? 28 : 34 }}>
-                          <img src={dgfyHeaderLogo} alt="DGFY logo" style={{ width: isMobileViewport ? 220 : 340, maxWidth: '88%', height: 'auto', display: 'block' }} />
-                          <div style={{ fontSize: isMobileViewport ? 28 : 40, fontWeight: 900, letterSpacing: '-0.04em', color: '#ffffff' }}>
-                            <span style={{ color: '#aee8f4' }}>D</span>iscover{' '}
-                            <span style={{ color: '#aee8f4' }}>G</span>oods{' '}
-                            <span style={{ color: '#aee8f4' }}>F</span>or{' '}
-                            <span style={{ color: '#aee8f4' }}>Y</span>ou
-                          </div>
-                          <div style={{ fontSize: 14, lineHeight: 1.7, color: 'rgba(226,232,240,.86)', maxWidth: 540 }}>
-                            Search nearby products, services, and businesses faster with a discovery experience built for modern local commerce.
-                          </div>
-                          <div style={{ marginTop: 6, fontSize: 13, color: 'rgba(203,213,225,.78)' }}>
-                            &copy; {new Date().getFullYear()} DGFY. Powered by SKUpervisor. All Rights Reserved.
-                          </div>
-                        </div>
-                      </div>
-                    </footer>
-                {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ DYNAMIC MAP & LIST ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-                {false && hasDiscoverySearch && (
-                <div style={{ borderRadius: 20, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 24px rgba(15,23,42,.08)' }}>
-                  <div style={{ display: 'flex', flexDirection: isDiscoveryTabletViewport ? 'column' : 'row', alignItems: 'stretch', position: 'relative', overflow: 'hidden', transition: 'all 350ms cubic-bezier(0.4,0,0.2,1)' }}>
-
-                    {/* MAP */}
-                    <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0, height: isDiscoveryMobileViewport ? 'calc(100vh - 192px)' : discoveryLayout.discoveryMapHeight }}>
-
-                      {/* Map */}
-                      {!loadingStores && !storesError && activeDiscoveryMapPins.length > 0 ? (
-                        <StoresMap
-                          stores={activeDiscoveryMapPins}
-                          selectedKey={highlightedDiscoveryMarkerKey || null}
-                          userLocation={discoveryCoords}
-                          height="100%"
-                          onSelectStore={(pin) => {
-                            setHighlightedStoreSlug(pin.slug);
-                            setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin) || '');
-                            const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug);
-                            setSelectedMapPin(matched || null);
-                          }}
-                          autoOpenPopups={true}
-                        />
-                      ) : (
-                        <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
-                          {loadingStores ? 'Loading map...' : storesError || getDiscoveryEmptyStateMessage(search)}
-                        </div>
-                      )}
-                      {/* View All Stores / Hide List ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â top-right overlay */}
-                      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 11 }}>
-                        <button
-                          type="button"
-                          onClick={() => setIsStoreListVisible((v) => !v)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 7,
-                            borderRadius: 10,
-                            border: 'none',
-                            background: isStoreListVisible ? '#0f172a' : '#1a4e8d',
-                            color: '#fff',
-                            padding: '9px 16px',
-                            fontWeight: 700,
-                            fontSize: 13,
-                            cursor: 'pointer',
-                            boxShadow: '0 4px 16px rgba(15,23,42,.22)',
-                            transition: 'background 200ms'
-                          }}
-                        >
-                          {isStoreListVisible ? <X size={14} /> : <List size={14} />}
-                          {isStoreListVisible ? 'Hide List' : `View All Stores${filteredDiscoveryStores.length ? ` (${filteredDiscoveryStores.length})` : ''}`}
-                        </button>
-                      </div>
-
-
-                    </div>
-
-                    {/* RESULTS PANEL ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â slides in from right */}
-                    <aside
-                      style={{
-                        background: '#fff',
-                        borderLeft: isStoreListVisible ? '1px solid #f1f5f9' : 'none',
-                        display: 'grid',
-                        gridTemplateRows: 'auto 1fr',
-                        overflow: 'hidden',
-                        position: isDiscoveryMobileViewport ? 'absolute' : 'static',
-                        top: 0,
-                        right: 0,
-                        bottom: 0,
-                        zIndex: 10,
-                        width: isStoreListVisible ? (isDiscoveryMobileViewport ? '100%' : isDiscoveryTabletViewport ? '100%' : `${discoveryLayout.resultsPanelWidth}px`) : '0px',
-                        minWidth: 0,
-                        maxHeight: discoveryLayout.resultsPanelMaxHeight,
-                        opacity: isStoreListVisible ? 1 : 0,
-                        transition: 'width 350ms cubic-bezier(0.4,0,0.2,1), opacity 300ms ease, border-color 350ms'
-                      }}
-                    >
-                      {/* Panel header */}
-                      <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid #f1f5f9' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Business Matches</div>
-                            <h2 style={{ margin: '4px 0 0', fontSize: 24, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>Discover Nearby</h2>
-                            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>{filteredDiscoveryStores.length} {filteredDiscoveryStores.length === 1 ? 'store' : 'stores'} found near {discoveryCoords ? 'your location' : 'Iloilo City'}</p>
-                            {!discoveryCoords && <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8' }}>Enable location for radius-based results.</p>}
-                          </div>
-                          <button type="button" onClick={() => { setSearch(''); searchRef.current = ''; setDebouncedDiscoverySearch(''); setDiscoveryCategoryFilter('all'); setDiscoveryDistanceFilter('all'); setDiscoveryOpenFilter('all'); setDiscoveryRatingFilter('all'); setDiscoveryAvailabilityFilter('all'); setDiscoverySortBy('nearest'); loadStores(undefined, { useImmediateSearch: true }); }} style={{ border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', padding: '6px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}><X size={12} />Reset</button>
-                        </div>
-                        {/* Sort + view toggle in one row */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, gap: 8 }}>
-                          <select value={discoverySortBy} onChange={(e) => setDiscoverySortBy(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', fontSize: 13, color: '#334155', fontWeight: 600, background: '#fff', cursor: 'pointer' }}>
-                            <option value="nearest">Sort by: Nearest</option>
-                            <option value="catalog">Sort by: Popular</option>
-                            <option value="rating">Sort by: Top Rated</option>
-                            <option value="open">Sort by: Open Now</option>
-                          </select>
-                          <div style={{ display: 'flex', gap: 5 }}>
-                            <button type="button" onClick={() => setViewMode('list')} style={{ width: 32, height: 32, borderRadius: 7, border: `1px solid ${viewMode === 'list' ? '#1a4e8d' : '#e2e8f0'}`, background: viewMode === 'list' ? '#eff6ff' : '#fff', color: viewMode === 'list' ? '#1a4e8d' : '#94a3b8', display: 'grid', placeItems: 'center', cursor: 'pointer' }}><List size={14} /></button>
-                            <button type="button" onClick={() => setViewMode('grid')} style={{ width: 32, height: 32, borderRadius: 7, border: `1px solid ${viewMode === 'grid' ? '#1a4e8d' : '#e2e8f0'}`, background: viewMode === 'grid' ? '#eff6ff' : '#fff', color: viewMode === 'grid' ? '#1a4e8d' : '#94a3b8', display: 'grid', placeItems: 'center', cursor: 'pointer' }}><LayoutGrid size={14} /></button>
-                          </div>
-                        </div>
-                        {/* Filter selects */}
-                        <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-                          {[
-                            { value: discoveryCategoryFilter, setter: setDiscoveryCategoryFilter, label: 'Category', options: discoveryBusinessModeOptions },
-                            { value: discoveryDistanceFilter, setter: setDiscoveryDistanceFilter, label: 'Distance', options: [['all','Any'],['0.1','100m'],['1','1km'],['3','3km']] },
-                            { value: discoveryOpenFilter, setter: setDiscoveryOpenFilter, label: 'Status', options: [['all','All'],['open','Open']] }
-                          ].map((f) => (
-                            <select key={f.label} value={f.value} onChange={(e) => f.setter(e.target.value)} style={{ borderRadius: 7, border: '1px solid #e2e8f0', padding: '5px 8px', fontSize: 12, fontWeight: 600, color: f.value !== 'all' ? '#1a4e8d' : '#64748b', background: f.value !== 'all' ? '#eff6ff' : '#fff', cursor: 'pointer' }}>
-                              {f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                            </select>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Scrollable store list */}
-                      <div style={{ overflowY: 'auto', padding: '12px 16px 16px' }}>
-                        {loadingStores && <div style={{ padding: 20, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>Loading stores...</div>}
-                        {!loadingStores && filteredDiscoveryStores.length === 0 && <div style={{ padding: 20, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>{getDiscoveryEmptyStateMessage(search)}</div>}
-                        <div style={{ display: 'grid', gap: 10 }}>
-                          {filteredDiscoveryStores.map((store) => {
-                            const storeSlug = toSlug(store?.slug);
-                            const imgUrl = withAssetOrigin(store?.storefront_cover_image_url);
-                            const imgKey = `discovery-cover:${storeSlug}:${imgUrl}`;
-                            const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
-                            const preferredLocationId = getPreferredDiscoveryLocationId({ store, storePins });
-                            const cats = normalizeStorefrontCategories(store?.storefront_categories);
-                            const catLabel = cats[0] || String(store?.workflow_mode || 'Store').replace(/_/g, ' ');
-                            const rev = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
-                            const rating = Number.isFinite(Number(rev?.score)) ? Number(rev.score).toFixed(1) : '4.7';
-                            const ratingCount = Number(rev?.total_count || store?.matching_item_count || 0);
-                            const isActive = highlightedStoreSlug === store.slug;
-                            return (
-                              <article key={store.slug} onMouseEnter={() => setHighlightedStoreSlug(store.slug)} style={{ borderRadius: 14, border: `1px solid ${isActive ? '#bfdbfe' : '#f1f5f9'}`, background: isActive ? '#fafcff' : '#fff', padding: 10, display: 'grid', gridTemplateColumns: '76px 1fr', gap: 10, alignItems: 'start', transition: 'border-color .15s, background .15s', cursor: 'default' }}>
-                                <div style={{ borderRadius: 10, overflow: 'hidden', height: 76, background: '#f1f5f9' }}>
-                                  {imgUrl && !isBrandingImageBlocked(imgKey) ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => markBrandingImageError(imgKey)} /> : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 10, fontWeight: 700 }}>DGFY</div>}
-                                </div>
-                                <div style={{ minWidth: 0 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{store.tenant_name}</span>
-                                    {store.matching_item_count > 2 && <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800, background: '#eff6ff', color: '#1a4e8d' }}>Featured</span>}
-                                  </div>
-                                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, textTransform: 'capitalize' }}>{catLabel}</div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, fontSize: 12 }}>
-                                    <span style={{ color: '#f59e0b', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><Star size={12} fill="currentColor" />{rating}</span>
-                                    <span style={{ color: '#64748b' }}>({ratingCount})</span>
-                                    <span style={{ color: '#94a3b8' }}>{'\u00B7'}</span>
-                                    <span style={{ color: '#64748b' }}>{Number.isFinite(Number(store.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km` : '-'}</span>
-                                    <span style={{ color: '#94a3b8' }}>{'\u00B7'}</span>
-                                    <span style={{ color: '#64748b' }}>{store.estimated_wait_minutes || 10}-{Number(store.estimated_wait_minutes || 10) + 5} min</span>
-                                    <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 700, background: store.storefront_open ? '#ecfdf5' : '#fff7ed', color: store.storefront_open ? '#16a34a' : '#c2410c' }}>{store.storefront_open ? 'Open Now' : 'Closed'}</span>
-                                  </div>
-                                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                                    <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={{ flex: 1, borderRadius: 8, border: '1px solid #dbeafe', background: '#fff', color: '#1a4e8d', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>View Store</button>
-                                    <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={{ flex: 1, borderRadius: 8, border: 'none', background: '#ff8a1f', color: '#fff', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12, boxShadow: '0 4px 10px rgba(249,115,22,.20)' }}>Order Now</button>
-                                  </div>
-                                </div>
-                              </article>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </aside>
-                  </div>
-                </div>
-              )}
-
-
-
-
-                  {selectedServiceDetail && !isBookingSubpage && !isServiceDetailsSubpage && (
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 2200, display: 'grid', placeItems: isMobileViewport ? 'end stretch' : 'center', padding: isMobileViewport ? 0 : 24 }}>
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        aria-label="Close service detail"
-                        onClick={closeServiceDetail}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') closeServiceDetail();
-                        }}
-                        style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.58)', backdropFilter: 'blur(8px)' }}
-                      />
-                      <section
-                        style={{
-                          position: 'relative',
-                          zIndex: 2201,
-                          width: isMobileViewport ? '100%' : 'min(980px, calc(100vw - 48px))',
-                          maxHeight: isMobileViewport ? '92vh' : 'calc(100vh - 48px)',
-                          overflow: 'hidden',
-                          borderRadius: isMobileViewport ? '24px 24px 0 0' : 28,
-                          background: '#ffffff',
-                          border: '1px solid #dbe5ee',
-                          boxShadow: '0 30px 90px rgba(15,23,42,.24)',
-                          display: 'grid',
-                          gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(280px, 360px) minmax(0, 1fr)'
-                        }}
-                      >
-                        <div style={{ position: 'relative', minHeight: isMobileViewport ? 220 : '100%', background: '#f8fafc' }}>
-                          {withAssetOrigin(selectedServiceDetail.image_url) ? (
-                            <img
-                              src={withAssetOrigin(selectedServiceDetail.image_url)}
-                              alt={selectedServiceDetail.variantName || selectedServiceDetail.name}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
-                          ) : (
-                            <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
-                              No image
-                            </div>
-                          )}
-                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.04) 0%, rgba(15,23,42,.26) 100%)' }} />
-                          <button
-                            type="button"
-                            onClick={closeServiceDetail}
-                            style={{
-                              position: 'absolute',
-                              top: 16,
-                              right: 16,
-                              width: 40,
-                              height: 40,
-                              borderRadius: 999,
-                              border: '1px solid rgba(255,255,255,.55)',
-                              background: 'rgba(15,23,42,.55)',
-                              color: '#fff',
-                              display: 'grid',
-                              placeItems: 'center',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <X size={18} />
-                          </button>
-                          <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18, display: 'grid', gap: 10 }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                              <Badge background="rgba(255,255,255,.92)" color={STYLES.colors.brand} border="rgba(255,255,255,.92)">
-                                {selectedServiceDetail.categoryMeta?.label || 'Service'}
-                              </Badge>
-                              <Badge background="rgba(15,23,42,.72)" color="#fff" border="rgba(255,255,255,.14)">
-                                {selectedServiceDetail.serviceAreaLabel}
-                              </Badge>
-                            </div>
-                            <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, color: '#fff' }}>
-                              {selectedServiceDetail.variantName || selectedServiceDetail.name}
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: 'rgba(255,255,255,.92)', fontSize: 13, fontWeight: 700 }}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                <Clock3 size={14} />
-                                {selectedServiceDetail.durationLabel}
-                              </span>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                <MousePointer2 size={14} />
-                                {selectedServicePaymentOptions.map((option) => option.label).join(' / ')}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr auto', minHeight: 0 }}>
-                          <div style={{ padding: isMobileViewport ? '18px 18px 12px' : '24px 28px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 10 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
-                              <div style={{ display: 'grid', gap: 8 }}>
-                                <div style={{ fontSize: 28, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.05 }}>
-                                  {money(selectedServiceDetail.default_sale_price ?? 0)}
-                                </div>
-                                <div style={{ fontSize: 14, color: STYLES.colors.text, lineHeight: 1.6, maxWidth: 540 }}>
-                                  {selectedServiceDetail.description || 'Service details are synced from SKUpervisor. Select your preferred schedule and booking requirements below.'}
-                                </div>
-                              </div>
-                              {!isMobileViewport && (
-                                <div style={{ minWidth: 180, borderRadius: 18, border: '1px solid #e2e8f0', background: '#f8fafc', padding: 14, display: 'grid', gap: 8 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking notes</div>
-                                  <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
-                                    SKUpervisor validates lead time, conflicts, and booking rules when you submit.
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div style={{ overflowY: 'auto', padding: isMobileViewport ? '16px 18px' : '20px 28px', display: 'grid', gap: 18 }}>
-                            <section style={{ display: 'grid', gap: 12 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <CalendarDays size={18} color="#f97316" />
-                                <div>
-                                  <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Preferred Schedule</div>
-                                  <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Choose the requested appointment time. Final availability is confirmed by SKUpervisor.</div>
-                                </div>
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr 160px', gap: 12 }}>
-                                <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                  Preferred date and time
-                                  <input
-                                    type="datetime-local"
-                                    value={serviceAppointmentAt}
-                                    onChange={(event) => setServiceAppointmentAt(event.target.value)}
-                                    style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                  />
-                                </label>
-                                <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                  Payment timing
-                                  <select
-                                    value={servicePaymentTiming}
-                                    onChange={(event) => setServicePaymentTiming(event.target.value)}
-                                    style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                  >
-                                    {selectedServicePaymentOptions.map((option) => (
-                                      <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                  Units / count
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    value={serviceDraftQuantity}
-                                    onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
-                                    style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                  />
-                                </label>
-                              </div>
-                            </section>
-
-                            <section style={{ display: 'grid', gap: 12 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <FileText size={18} color="#f97316" />
-                                <div>
-                                  <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Service instructions</div>
-                                  <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Add any practical notes that will help the service team prepare.</div>
-                                </div>
-                              </div>
-                              <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                Special instructions
-                                <textarea
-                                  value={serviceDraftNotes}
-                                  onChange={(event) => setServiceDraftNotes(event.target.value)}
-                                  placeholder="Access notes, unit details, pickup preferences, or anything the service team should know."
-                                  style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
-                                />
-                              </label>
-                            </section>
-
-                            {selectedServiceIntakeFields.length > 0 && (
-                              <section style={{ display: 'grid', gap: 12 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                  <CheckCircle2 size={18} color="#f97316" />
-                                  <div>
-                                    <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Booking requirements</div>
-                                    <div style={{ fontSize: 12, color: STYLES.colors.muted }}>These fields come from the service intake form configured in SKUpervisor.</div>
-                                  </div>
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
-                                  {selectedServiceIntakeFields.map((field) => (
-                                    <label key={field.id} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
-                                      {field.label}{field.required ? ' *' : ''}
-                                      {field.type === 'textarea' ? (
-                                        <textarea
-                                          value={serviceIntakeResponses[field.id] || ''}
-                                          onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
-                                          style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
-                                        />
-                                      ) : field.type === 'select' ? (
-                                        <select
-                                          value={serviceIntakeResponses[field.id] || ''}
-                                          onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
-                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                        >
-                                          <option value="">Select</option>
-                                          {field.options.map((option) => (
-                                            <option key={option} value={option}>{option}</option>
-                                          ))}
-                                        </select>
-                                      ) : field.type === 'checkbox' ? (
-                                        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
-                                          <input
-                                            type="checkbox"
-                                            checked={serviceIntakeResponses[field.id] === true}
-                                            onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))}
-                                          />
-                                          <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
-                                        </div>
-                                      ) : (
-                                        <input
-                                          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                                          value={serviceIntakeResponses[field.id] || ''}
-                                          onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
-                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
-                                        />
-                                      )}
-                                    </label>
-                                  ))}
-                                </div>
-                              </section>
-                            )}
-                          </div>
-
-                          <div style={{ padding: isMobileViewport ? '14px 18px 18px' : '18px 28px 24px', borderTop: '1px solid #e2e8f0', background: '#fff', display: 'grid', gap: 12 }}>
-                            {storefrontClosedByHours && renderStorefrontClosedNotice()}
-                            {checkoutError && (
-                              <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
-                                {checkoutError}
-                              </div>
-                            )}
-                            {missingRequiredSelectedServiceIntake.length > 0 && (
-                              <div style={{ fontSize: 13, color: '#b45309', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 14, padding: '10px 12px' }}>
-                                Complete the required booking details before adding this service to your booking summary.
-                              </div>
-                            )}
-                            <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column-reverse' : 'row', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', gap: 12 }}>
-                              <div style={{ display: 'grid', gap: 4 }}>
-                                <div style={{ fontSize: 13, color: STYLES.colors.muted }}>Current estimate</div>
-                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>
-                                  {money((Number(selectedServiceDetail.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1)))}
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 10 }}>
-                                <GhostButton style={{ minHeight: 46, minWidth: 150 }} onClick={closeServiceDetail}>
-                                  Cancel
-                                </GhostButton>
-                                <PrimaryButton style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
-                                  Add to Booking
-                                </PrimaryButton>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </section>
-                    </div>
-                  )}
-
-          </>
-            )}
           </>
         )}
 
@@ -10090,6 +4776,10 @@ export default function StorefrontApp() {
                     STOREFRONT_INFO_PANEL_MAX_WIDTH,
                     STOREFRONT_INFO_ROW_GAP,
                     STYLES
+                  }}
+                  helperFns={{
+                    buildVisibleStorefrontContactRows,
+                    getDeliveryPlatformLinks
                   }}
                 />
             )}
@@ -10389,9 +5079,14 @@ export default function StorefrontApp() {
                     followState={followState}
                     handleFollowAction={handleFollowAction}
                     handleShareAction={handleShareAction}
+                    ui={{ Badge, GhostButton, PrimaryButton, StorefrontExpandableBusinessHours, StorefrontHeroShell }}
+                    heroStyles={{ HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STOREFRONT_CONTACT_INFO_COLUMNS, STOREFRONT_INFO_ICON_COLUMN, STOREFRONT_INFO_PANEL_MAX_WIDTH, STOREFRONT_INFO_ROW_GAP, STYLES }}
+                    helperFns={{ buildVisibleStorefrontContactRows }}
                   />
                 ) : (!isFnbMode && !isSimpleMode) ? (
                   <DefaultStorefrontHero
+                    HERO_CANVAS_MAX_WIDTH={HERO_CANVAS_MAX_WIDTH}
+                    STYLES={STYLES}
                     modeAdapter={modeAdapter}
                     selectedStore={selectedStore}
                     isMobileViewport={isMobileViewport}
@@ -10453,52 +5148,10 @@ export default function StorefrontApp() {
               const ActiveServiceGroupIcon = activeGroupMeta?.iconToken ? (SERVICE_CATEGORY_ICON_MAP[activeGroupMeta.iconToken] || Sparkles) : Sparkles;
 
               if ((isFnbMode || isSimpleMode) && isFnbDetailsSubpage) {
-                const reviewSummary = itemReviewSummary || null;
                 return (
                   <FnbProductDetailsRoute
                     isActive
-                    item={detailPageFnbItem}
-                    storeName={selectedStore?.tenant_name || 'Storefront'}
-                    storeLogoUrl={withAssetOrigin(selectedStore?.storefront_profile_image_url)}
-                    branchLabel={selectedLocation?.name || selectedStore?.location_name || 'Main Branch'}
-                    onBack={closeFnbDetail}
-                    quantity={selectedFnbDetailQuantity}
-                    setQuantity={setSelectedFnbDetailQuantity}
-                    selectedModifiers={selectedFnbLineModifiers}
-                    modifierGroups={detailPageFnbModifierGroups}
-                    modifierCounts={detailPageFnbModifierCounts}
-                    onToggleModifier={toggleFnbDetailModifier}
-                    onAddToCart={() => addToCart(detailPageFnbItem, { quantity: selectedFnbDetailQuantity, line_modifiers: selectedFnbLineModifiers, openCart: true })}
-                    onBuyNow={() => {
-                      addToCart(detailPageFnbItem, { quantity: selectedFnbDetailQuantity, line_modifiers: selectedFnbLineModifiers, openCart: true });
-                      goStoreOrderPage({ initialTab: 'cart' });
-                    }}
-                    available={detailPageFnbItem ? isItemAvailable(detailPageFnbItem) : false}
-                    unitPrice={Number(detailPageFnbItem?.default_sale_price ?? 0)}
-                    totalPrice={(Number(detailPageFnbItem?.default_sale_price ?? 0) + selectedFnbLineModifiers.reduce((sum, entry) => sum + Number(entry?.price_delta || 0), 0)) * Math.max(1, Number(selectedFnbDetailQuantity || 1))}
-                    nutritionCards={detailPageFnbNutritionCards}
-                    allergens={detailPageFnbAllergens}
-                    relatedItems={detailPageFnbRelatedItems}
-                    onSelectRelatedItem={openFnbDetail}
-                    onQuickAdd={(item) => addToCart(item, { openCart: true })}
-                    isMobileViewport={isMobileViewport}
-                    ratingScore={isFnbMode ? (reviewSummary?.average_rating ?? reviewSummary?.score ?? null) : null}
-                    reviewCount={isFnbMode ? (reviewSummary?.total_count ?? reviewSummary?.totalCount ?? null) : null}
-                    reviewDistribution={isFnbMode ? (reviewSummary?.distribution || null) : null}
-                    reviews={isFnbMode ? itemReviewCards : []}
-                    reviewsLoading={isFnbMode ? itemReviewsLoading : false}
-                    canWriteReview={isFnbMode && Boolean(itemReviewInviteContext?.token)}
-                    onOpenWriteReview={() => {
-                      if (!isFnbMode) return;
-                      if (!itemReviewInviteContext?.token) return;
-                      setReviewDraft((previous) => ({
-                        ...previous,
-                        name: String(previous.name || savedCustomerDetails?.name || customerName || '').trim()
-                      }));
-                      syncFnbItemReviewSectionIntoView();
-                      setIsReviewModalOpen(true);
-                    }}
-                    reviewSectionHighlighted={itemReviewSectionHighlighted}
+                    {...fnbProductDetailsRouteProps}
                   />
                 );
               }
@@ -11779,7 +6432,7 @@ export default function StorefrontApp() {
                               Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
                             </div>
                             <PrimaryButton
-                              onClick={handleReviewDraftSubmit}
+                              onClick={submitFnbItemReview}
                               style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
                             >
                               Send Review
@@ -12578,27 +7231,16 @@ return (
           </div>
         )}
 
-        {catalogState === 'empty_setup' && (
-          <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-            <StoreCatalogEmptyState mode="setup_pending" onRefreshTenantPage={refreshStorePageForTenantSetup} />
-          </div>
-        )}
-
-        {catalogState === 'empty_search_on_zero' && (
-          <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-            <StoreCatalogEmptyState mode="search_on_empty" searchQuery={catalogSearch.trim()} onRefreshTenantPage={refreshStorePageForTenantSetup} />
-          </div>
-        )}
-
-        {isServicesMode && filteredCatalog.length === 0 && !catalogError && (
-          <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-            <StoreCatalogEmptyState
-              mode={hasCatalogSearchQuery ? 'search_on_empty' : 'setup_pending'}
-              searchQuery={catalogSearch.trim()}
-              onRefreshTenantPage={refreshStorePageForTenantSetup}
-            />
-          </div>
-        )}
+        <StoreCatalogEmptyStates
+          catalogState={catalogState}
+          catalogError={catalogError}
+          catalogSearch={catalogSearch}
+          filteredCatalog={filteredCatalog}
+          hasCatalogSearchQuery={hasCatalogSearchQuery}
+          isMobileViewport={isMobileViewport}
+          isServicesMode={isServicesMode}
+          onRefreshTenantPage={refreshStorePageForTenantSetup}
+        />
 
         {(catalogState === 'ready' || catalogState === 'empty_no_match') && (
           <div style={isFnbMode ? {
@@ -12890,372 +7532,8 @@ return (
       )}
 
       {isSimpleMode && isResolvedOrderSubpage && simpleStorefrontModel && (
-        <div style={{ display: 'grid', gap: 18, maxWidth: 1240, margin: '0 auto', width: '100%', padding: isMobileViewport ? '8px 16px 18px' : '18px 24px 28px' }}>
-          <section style={{ border: '1px solid #e2e8f0', borderRadius: 0, background: '#fff', padding: isMobileViewport ? '12px 14px' : '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginLeft: 'calc(50% - 50vw)', width: '100vw', maxWidth: '100vw', boxSizing: 'border-box' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <button
-                type="button"
-                onClick={goStoreCatalogPage}
-                style={{ width: 40, height: 40, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 900, cursor: 'pointer', flexShrink: 0 }}
-                aria-label="Back to catalog"
-              >
-                &larr;
-              </button>
-              <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #dbe5ee', overflow: 'hidden', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                {withAssetOrigin(selectedStore?.storefront_profile_image_url) ? (
-                  <img src={withAssetOrigin(selectedStore?.storefront_profile_image_url)} alt={`${selectedStore?.tenant_name || 'Business'} profile`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>Logo</span>
-                )}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 20, fontWeight: 900, color: '#0f172a', lineHeight: 1.2, fontFamily: servicesDisplayFont, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {selectedStore?.tenant_name || 'Storefront'}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <CheckoutHeroHeader
-            eyebrow="Order Journey"
-            title="Complete Your Product Order"
-            description="Set fulfillment first, provide one reliable contact, then review payment and totals before submitting."
-            badges={[
-              { label: `${cartCount} item${cartCount === 1 ? '' : 's'}`, tone: 'pill' },
-              { label: isDeliveryOrder ? 'Delivery order flow' : 'Pickup order flow' }
-            ]}
-            isMobileViewport={isMobileViewport}
-            accentColor="#0f766e"
-            accentSoft="#ecfeff"
-            accentBorder="#99f6e4"
-            displayFont={servicesDisplayFont}
-          />
-
-          <CheckoutStepProgressHeader
-            steps={[
-              { realStep: 1, displayStep: 1, label: isDgfyCustomerSignedIn ? 'Account' : 'Customer', allow: true },
-              { realStep: 2, displayStep: 2, label: 'Fulfillment', allow: cart.length > 0 && simpleCustomerStepComplete },
-              { realStep: 3, displayStep: 3, label: 'Review & Pay', allow: cart.length > 0 && simpleCustomerStepComplete },
-              { realStep: 4, displayStep: 4, label: 'Confirmation', allow: Boolean(checkoutResult), completeWhen: () => Boolean(checkoutResult) }
-            ]}
-            activeStep={simpleOrderStep}
-            onStepClick={(item) => {
-              if (!item.allow) return;
-              setSimpleOrderStep(item.realStep);
-            }}
-            variant="cards"
-            isMobileViewport={isMobileViewport}
-            accentColor="#0f766e"
-            accentSoft="#ecfeff"
-            accentBorder="#99f6e4"
-          />
-
-          {simpleOrderStep === 1 && (
-            <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
-              {isDgfyCustomerSignedIn || canUseGuestCheckoutFlow ? (
-              <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 1: Customer Details</div>
-                <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>
-                  {isDgfyCustomerSignedIn
-                    ? 'Your account details are already linked. Review them here before continuing to fulfillment.'
-                    : 'Enter the customer details for this order before continuing to fulfillment.'}
-                </div>
-                {isDgfyCustomerSignedIn ? renderAccountOwnedIdentitySummary({
-                  title: 'Customer Account',
-                  subtitle: 'These account details will be used for this order.'
-                }) : renderGuestIdentityFields({
-                  title: 'Guest Details',
-                  subtitle: 'These guest details will be used for this order.',
-                  includeAddress: isDeliveryOrder,
-                  addressLabel: 'Delivery Address',
-                  addressPlaceholder: 'House no., street, barangay, landmark',
-                  addressRequired: isDeliveryOrder
-                })}
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: isMobileViewport ? 38 : 42, minWidth: isMobileViewport ? 140 : 172, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: isMobileViewport ? 14 : 15 }}>Back to Catalog</button>
-                  <button type="button" onClick={() => setSimpleOrderStep(2)} disabled={!simpleCustomerStepComplete} style={{ minHeight: isMobileViewport ? 38 : 42, minWidth: isMobileViewport ? 120 : 156, borderRadius: 12, border: 'none', background: simpleCustomerStepComplete ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: simpleCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: isMobileViewport ? 14 : 15 }}>Continue</button>
-                </div>
-                {!simpleCustomerStepComplete && (
-                  <div style={{ fontSize: 12, color: '#b45309' }}>
-                    Add customer name, one contact method, and a delivery address when delivery is selected.
-                  </div>
-                )}
-              </section>
-              ) : renderGuestCheckoutEntry({
-                title: 'Continue to your order',
-                description: 'Create an account or continue as guest to continue this order.',
-                resumeTarget: {
-                  checkoutTab: 'checkout',
-                  simpleOrderStep: 1
-                }
-              })}
-              {renderCheckoutPromoStack(
-                <OrderSummaryCard
-                  accentColor="#0f766e"
-                  totalLabel="Order Summary"
-                  totalAmount={totalsForDisplay.total_amount}
-                  money={money}
-                  sticky={isDesktopCheckout}
-                  statusRows={[
-                    { label: 'Customer', value: simpleHasCustomerIdentity ? 'Ready' : 'Needed' },
-                    { label: 'Contact', value: simpleHasPrimaryIdentityContact ? 'Ready' : 'Needed' },
-                    { label: 'Status', value: simpleCustomerStepComplete ? 'Ready for fulfillment' : 'Waiting for details' }
-                  ]}
-                  bodyFont={servicesBodyFont}
-                  displayFont={servicesDisplayFont}
-                />,
-                {
-                  accentColor: '#0f766e',
-                  bodyFont: servicesBodyFont
-                }
-              )}
-            </div>
-          )}
-
-          {simpleOrderStep === 2 && (
-            <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
-              {isDgfyCustomerSignedIn || canUseGuestCheckoutFlow ? (
-              <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 2: Fulfillment</div>
-                <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Choose how the customer will receive the order, then add optional timing or notes once.</div>
-                {storeLocations.length > 0 && (
-                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                    Fulfillment Location
-                    <select
-                      value={selectedLocationId ?? ''}
-                      onChange={(event) => setSelectedLocationId(event.target.value ? Number(event.target.value) : null)}
-                      style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
-                    >
-                      {storeLocations.map((location) => (
-                        <option key={location.location_id} value={location.location_id} disabled={location.is_open === false || location.is_active === false}>
-                          {location.name} {location.is_primary_storefront ? '(Primary)' : ''} {location.is_open === false ? '(Closed)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                  {simpleOrderMethodOptions.map((option) => {
-                    const isActive = orderMethod === option.value;
-                    return (
-                      <SelectableOptionCard
-                        key={`simple-order-method-${option.value}`}
-                        onClick={() => {
-                          setOrderMethod(option.value);
-                          setPinLocationError('');
-                        }}
-                        label={option.label}
-                        active={isActive}
-                        activeBorderColor="#0f766e"
-                        activeBackground="#ecfeff"
-                        activeTextColor="#0f766e"
-                        inactiveBorderColor="#dbe5ee"
-                        inactiveTextColor="#334155"
-                        minHeight={48}
-                        padding="0 16px"
-                        gap={10}
-                        borderRadius={12}
-                        fontSize={14}
-                        fontWeight={800}
-                        showCheck={false}
-                      />
-                    );
-                  })}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                    Schedule time (optional)
-                    <input type="datetime-local" value={fnbScheduledFor} onChange={(event) => setFnbScheduledFor(event.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                  </label>
-                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                    Special instructions (optional)
-                    <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value)} placeholder="Packing notes, landmark hints, or pickup reminders." rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
-                  </label>
-                </div>
-                {isDgfyCustomerSignedIn && isDeliveryOrder && (
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                      Delivery Address *
-                      <textarea value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} placeholder="House no., street, barangay, landmark" rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
-                    </label>
-                  </div>
-                )}
-
-                {isDeliveryOrder && (
-                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', display: 'grid', gap: 10 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Delivery Pin</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Optional, but recommended for faster handoff.</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button type="button" onClick={handlePinMyLocation} disabled={pinLocationLoading} style={{ borderRadius: 12, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700, cursor: 'pointer' }}>
-                          {pinLocationLoading ? 'Pinning...' : 'Pin My Location'}
-                        </button>
-                        <button type="button" onClick={() => setCustomerPin(null)} disabled={!customerPin} style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', fontWeight: 700, cursor: !customerPin ? 'not-allowed' : 'pointer' }}>
-                          Clear Pin
-                        </button>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '9px 12px' }}>
-                      {customerPin
-                        ? `Pinned at ${Number(customerPin.latitude).toFixed(6)}, ${Number(customerPin.longitude).toFixed(6)}`
-                        : 'No pin selected yet. Tap the map or use your current location.'}
-                    </div>
-                    <DeliveryPinMap pin={customerPin} onPinChange={setCustomerPin} disabled={false} />
-                    {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={() => setSimpleOrderStep(1)} style={{ minHeight: isMobileViewport ? 38 : 42, minWidth: isMobileViewport ? 120 : 136, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: isMobileViewport ? 14 : 15 }}>Back</button>
-                  <button type="button" onClick={() => setSimpleOrderStep(3)} disabled={!simpleStepOneReady} style={{ minHeight: isMobileViewport ? 38 : 42, minWidth: isMobileViewport ? 140 : 156, borderRadius: 12, border: 'none', background: simpleStepOneReady ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: simpleStepOneReady ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: isMobileViewport ? 14 : 15 }}>Continue</button>
-                </div>
-                {selectedLocation?.is_open === false && (
-                  <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
-                    Selected location is closed and cannot accept orders right now.
-                  </div>
-                )}
-              </section>
-              ) : renderGuestCheckoutEntry({
-                title: 'Continue to your order',
-                description: 'Create an account or continue as guest to continue this order.',
-                resumeTarget: {
-                  checkoutTab: 'checkout',
-                  simpleOrderStep: 2
-                }
-              })}
-              {renderCheckoutPromoStack(
-                <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
-                  <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
-                  <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>Ready for review</strong></div>
-                  </div>
-                </aside>,
-                {
-                  accentColor: '#0f766e',
-                  bodyFont: servicesBodyFont
-                }
-              )}
-            </div>
-          )}
-
-          {simpleOrderStep === 3 && !checkoutResult && (
-            <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
-              <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 3: Review and Payment</div>
-                <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart, refresh the quote when needed, then choose payment and submit the order.</div>
-                <PaymentMethodSelectorBlock
-                  label="Payment Type"
-                  value={fnbPaymentType}
-                  onChange={handlePaymentTypeChange}
-                  options={[
-                    { value: 'cash', label: 'Cash on delivery/pickup' },
-                    { value: 'gcash', label: 'GCash' },
-                    { value: 'maya', label: 'Maya' },
-                    { value: 'card', label: 'Card' },
-                    { value: 'bank_transfer', label: 'Bank transfer' }
-                  ]}
-                  DropdownComponent={StorefrontDropdown}
-                  triggerStyle={{ minHeight: 44, borderRadius: 12 }}
-                  bodyFont={servicesBodyFont}
-                />
-                <div style={{ maxHeight: isMobileViewport ? 260 : 320, overflowY: 'auto', display: 'grid', gap: 8 }}>
-                  {cart.map((line) => (
-                    <div key={`simple-order-summary-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff', padding: '9px 10px', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
-                      <span>{line.name} x {Math.max(1, Number(line.quantity || 1))}</span>
-                      <strong>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</strong>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: isMobileViewport ? 38 : 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: 'pointer', fontSize: isMobileViewport ? 14 : 15 }}>
-                    {quoteResult ? 'Refresh Quote' : 'Get Quote'}
-                  </button>
-                  <button type="button" onClick={handleCheckout} disabled={!simpleCheckoutAllowed} style={{ minHeight: isMobileViewport ? 38 : 44, borderRadius: 12, border: 'none', background: simpleCheckoutAllowed ? '#ea580c' : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: simpleCheckoutAllowed ? 'pointer' : 'not-allowed', fontSize: isMobileViewport ? 14 : 15 }}>
-                    {checkoutLoading ? 'Processing...' : 'Place Order'}
-                  </button>
-                </div>
-                <button type="button" onClick={() => setSimpleOrderStep(2)} style={{ justifySelf: 'start', minHeight: isMobileViewport ? 38 : 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer', fontSize: isMobileViewport ? 14 : 15 }}>Back</button>
-                {storefrontClosedByHours && renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' })}
-                {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
-                {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
-                {requireQuoteForCheckout && !quoteResult && cart.length > 0 && (
-                  <div style={{ fontSize: 12, color: '#b45309' }}>Quote the order first so totals and fees are synced before checkout.</div>
-                )}
-              </section>
-              {renderCheckoutPromoStack(
-                <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
-                  <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
-                  <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Payment</span><strong>{String(fnbPaymentType || 'cash').replace('_', ' ').toUpperCase()}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{simpleCheckoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields')}</strong></div>
-                  </div>
-                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
-                    {promoDiscountSummaryRow ? (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{promoDiscountSummaryRow.label}</span><strong>{promoDiscountSummaryRow.value}</strong></div>
-                    ) : null}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{totalsForDisplay.service_fee_label}</span><strong>{money(totalsForDisplay.service_fee_amount)}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
-                  </div>
-                </aside>,
-                {
-                  accentColor: '#0f766e',
-                  bodyFont: servicesBodyFont
-                }
-              )}
-            </div>
-          )}
-
-          {simpleOrderStep === 4 && checkoutResult && (
-            <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
-              <section style={{ border: '1px solid #99f6e4', borderRadius: 16, background: '#ecfeff', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmed</div>
-                <div style={{ fontSize: isMobileViewport ? 24 : 30, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, fontFamily: servicesDisplayFont }}>Your order is now in the storefront queue.</div>
-                <div style={{ fontSize: 14, color: '#475569' }}>Reference: <strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {(Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []).map((line) => (
-                    <div key={`simple-confirm-line-${line.item_id}`} style={{ border: '1px solid #b6f2e9', borderRadius: 12, background: '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
-                      <span>{line.name} x {Math.max(1, Number(line.quantity || 1))}</span>
-                      <strong>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</strong>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {checkoutResult?.payment?.checkout_url && (
-                    <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: '#ea580c', color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                      Pay Now
-                    </a>
-                  )}
-                  <button type="button" onClick={handleDownloadCheckoutImage} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>
-                    Download Image
-                  </button>
-                  <button type="button" onClick={() => { setCheckoutResult(null); setSimpleOrderStep(1); goStoreCatalogPage(); }} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>
-                    Back to Catalog
-                  </button>
-                </div>
-              </section>
-              <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Receipt Snapshot</div>
-                <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(checkoutResult?.totals?.total_amount ?? totalsForDisplay.total_amount)}</div>
-                <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Tracking PIN</span><strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Payment</span><strong>{String(fnbPaymentType || 'cash').replace('_', ' ').toUpperCase()}</strong></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
-                </div>
-              </aside>
-            </div>
-          )}
-        </div>
+        <SimpleCheckoutRoutePage {...simpleCheckoutRouteProps} />
       )}
-
       {isSimpleMode && !isResolvedOrderSubpage && simpleStorefrontModel && (
         <>
           <SharedStorefrontPromoSection
@@ -13605,7 +7883,7 @@ return (
               Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
             </div>
             <PrimaryButton
-              onClick={handleReviewDraftSubmit}
+              onClick={submitFnbItemReview}
               style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
             >
               Send Review
@@ -13621,7 +7899,7 @@ return (
         isSubmitting={reviewSubmitLoading}
         onClose={() => setIsReviewModalOpen(false)}
         onDraftChange={(changes) => setReviewDraft((previous) => ({ ...previous, ...changes }))}
-        onSubmit={handleReviewDraftSubmit}
+        onSubmit={submitFnbItemReview}
         reviewDraft={reviewDraft}
       />
     )}
@@ -13633,354 +7911,26 @@ return (
         )}
 
       </div>
-      <style>{`
-        @keyframes service-cart-fly-anim {
-          0% {
-            transform: translate3d(0, 0, 0) scale(1);
-            opacity: 0.96;
-          }
-          70% {
-            transform: translate3d(var(--service-cart-fly-x), var(--service-cart-fly-y), 0) scale(0.48);
-            opacity: 0.88;
-          }
-          100% {
-            transform: translate3d(var(--service-cart-fly-x), var(--service-cart-fly-y), 0) scale(0.2);
-            opacity: 0;
-          }
-        }
-      `}</style>
 
   { isStorePage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
     <>
-      {isStorefrontV2 && selectedStore && !isFnbMode && !isServicesMode && (() => {
-        const followEnabled = parseBooleanFlag(selectedStore.storefront_follow_enabled, false);
-        if (!followEnabled) return null;
-        return (
-          <div
-            style={{
-              position: 'fixed',
-              zIndex: 2090,
-              left: isMobileViewport ? 10 : 'auto',
-              right: isMobileViewport ? 10 : 18,
-              bottom: isMobileViewport ? 78 : 84,
-              display: 'flex',
-              gap: 8,
-              justifyContent: 'flex-end',
-              flexWrap: 'wrap'
-            }}
-          >
-            {followEnabled && (
-              <div style={{ display: 'grid', gap: 4, justifyItems: 'end' }}>
-                <button type="button" aria-label={followState.isFollowing ? 'Unfollow this storefront' : 'Follow this storefront'} title={followState.isFollowing ? 'Following' : 'Follow'} disabled={followState.loading} onClick={handleFollowAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: followState.isFollowing ? '#ecfeff' : '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)', opacity: followState.loading ? 0.7 : 1, cursor: followState.loading ? 'not-allowed' : 'pointer' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <StoreFollowGlyph isFollowing={followState.isFollowing} size={16} tone="#334155" badgeSize={14} badgeTextSize={10} />
-                    {followState.isFollowing ? 'Following' : 'Follow'}
-                  </span>
-                </button>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px', boxShadow: '0 6px 16px rgba(15,23,42,.08)' }}>
-                  {followState.followersCount} follower(s)
-                </span>
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      <StorefrontFollowFloatingAction
+        enabled={isStorefrontV2 && selectedStore && !isFnbMode && !isServicesMode && parseBooleanFlag(selectedStore.storefront_follow_enabled, false)}
+        followState={followState}
+        isMobileViewport={isMobileViewport}
+        onFollow={handleFollowAction}
+      />
       {!isAccountDrawerOpen && isServicesCartDrawerMode && (
-        <ServiceCartDrawer
-          cartButtonRef={serviceCartFabRef}
-          isCheckoutOpen={isCheckoutOpen}
-          setIsCheckoutOpen={setIsCheckoutOpen}
-          isMobileViewport={isMobileViewport}
-          servicesPrimary={servicesPrimary}
-          servicesPrimaryDark={servicesPrimaryDark}
-          servicesPrimaryShadow={servicesPrimaryShadow}
-          servicesPrimaryShadowStrong={servicesPrimaryShadowStrong}
-          servicesDisplayFont={servicesDisplayFont}
-          serviceCartCount={serviceCartCount}
-          serviceCartLines={serviceCartLines}
-          cartImageErrors={cartImageErrors}
-          setCartImageErrors={setCartImageErrors}
-          withAssetOrigin={withAssetOrigin}
-          money={money}
-          updateQty={updateQty}
-          removeCartItem={removeCartItem}
-          productCartLines={productCartLines}
-          serviceCartTotal={serviceCartTotal}
-          hasServiceCart={hasServiceCart}
-          hasMixedServiceCart={hasMixedServiceCart}
-          openServiceCartEditor={openServiceCartEditor}
-          handleServicesCartCheckout={handleServicesCartCheckout}
-        />
+        <ServiceCartDrawer {...serviceCartDrawerProps} />
       )}
-      {(isServicesMode || isFnbMode) && serviceCartFlyAnimations.length > 0 && (
-        <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 2195 }}>
-          {serviceCartFlyAnimations.map((animation) => (
-            <div
-              key={animation.id}
-              style={{
-                position: 'fixed',
-                left: animation.startX,
-                top: animation.startY,
-                width: animation.size,
-                height: animation.size,
-                borderRadius: 18,
-                background: isFnbMode
-                  ? 'linear-gradient(135deg, rgba(249,115,22,0.16), rgba(251,146,60,0.32))'
-                  : 'linear-gradient(135deg, rgba(15,118,110,0.16), rgba(45,212,191,0.32))',
-                border: isFnbMode
-                  ? '1px solid rgba(249,115,22,0.24)'
-                  : '1px solid rgba(15,118,110,0.22)',
-                boxShadow: '0 18px 38px rgba(15,23,42,0.16)',
-                backdropFilter: 'blur(8px)',
-                animation: `service-cart-fly-anim 620ms cubic-bezier(.2,.8,.2,1) forwards`,
-                '--service-cart-fly-x': `${animation.deltaX}px`,
-                '--service-cart-fly-y': `${animation.deltaY}px`
-              }}
-            >
-              <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: isFnbMode ? '#ea580c' : '#0f766e' }}>
-                {isFnbMode ? (
-                  <ShoppingCart size={Math.max(18, Math.round(animation.size * 0.38))} strokeWidth={2.2} />
-                ) : (
-                  <ShoppingBag size={Math.max(18, Math.round(animation.size * 0.38))} strokeWidth={2.2} />
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+      {(isServicesMode || isFnbMode) && (
+        <StorefrontCartFlyAnimations animations={serviceCartFlyAnimations} isFnbMode={isFnbMode} />
       )}
       {!isAccountDrawerOpen && isSimpleCartSurfaceMode && (
         <>
-          <button
-            type="button"
-            onClick={() => setIsCheckoutOpen((previous) => !previous)}
-            aria-label={isCheckoutOpen ? 'Close product cart' : 'Open product cart'}
-            style={{
-              position: 'fixed',
-              right: isMobileViewport ? 16 : 24,
-              bottom: isMobileViewport ? 16 : 24,
-              zIndex: 2100,
-              width: isMobileViewport ? 62 : 68,
-              height: isMobileViewport ? 62 : 68,
-              borderRadius: '50%',
-              border: '1px solid rgba(255,255,255,0.18)',
-              background: 'linear-gradient(135deg,#1a4586,#1a4e8d)',
-              color: '#fff',
-              boxShadow: '0 18px 38px rgba(26,69,134,.34)',
-              cursor: 'pointer',
-              display: 'grid',
-              placeItems: 'center'
-            }}
-          >
-            <span
-              style={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                minWidth: 22,
-                height: 22,
-                padding: '0 6px',
-                borderRadius: 999,
-                background: '#0f172a',
-                color: '#fff',
-                fontSize: 11,
-                fontWeight: 900,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: '2px solid #fff'
-              }}
-            >
-              {cartCount}
-            </span>
-            <ShoppingCart size={24} strokeWidth={2.2} />
-          </button>
+          <SimpleCartFloatingButton {...simpleCartDrawerProps.floatingButtonProps} />
 
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 2095,
-              pointerEvents: isCheckoutOpen ? 'auto' : 'none'
-            }}
-          >
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setIsCheckoutOpen(false)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  setIsCheckoutOpen(false);
-                }
-              }}
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'rgba(15,23,42,.46)',
-                backdropFilter: 'blur(4px)',
-                opacity: isCheckoutOpen ? 1 : 0,
-                transition: 'opacity 180ms ease'
-              }}
-            />
-            <aside
-              style={{
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                width: isMobileViewport ? 'min(100vw, 100%)' : 'min(520px, calc(100vw - 40px))',
-                background: '#ffffff',
-                borderLeft: '1px solid #dbe5ee',
-                boxShadow: '0 24px 60px rgba(15,23,42,.18)',
-                display: 'flex',
-                flexDirection: 'column',
-                transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(104%)',
-                transition: 'transform 220ms ease'
-              }}
-            >
-              <div style={{ padding: isMobileViewport ? '18px 16px 14px' : '22px 20px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                  <div style={{ display: 'grid', gap: 4 }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Product Cart</div>
-                    <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>Added products</div>
-                    <div style={{ fontSize: 13, color: '#64748b' }}>Manage the products in cart, then continue to checkout.</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsCheckoutOpen(false)}
-                    style={{ width: 42, height: 42, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 900, cursor: 'pointer' }}
-                  >
-                    x
-                  </button>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 10px' }}>
-                    {cartCount} item{cartCount === 1 ? '' : 's'}
-                  </span>
-                  <span style={{ fontSize: 12, color: '#64748b' }}>
-                    {activeOrderMethodLabel}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
-                {cart.length === 0 ? (
-                  <div style={{ border: '1px dashed #cbd5e1', borderRadius: 20, background: '#f8fafc', padding: '28px 20px', textAlign: 'center', display: 'grid', gap: 8 }}>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>No product added yet</div>
-                    <div style={{ fontSize: 13, lineHeight: 1.6, color: '#64748b' }}>
-                      Add a product from the catalog to continue to checkout.
-                    </div>
-                  </div>
-                ) : (
-                  cart.map((line) => (
-                    <div key={`simple-cart-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 22, background: '#fff', boxShadow: '0 12px 28px rgba(15,23,42,.06)', padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 12 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
-                        <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                          {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
-                            <img
-                              src={withAssetOrigin(line.image_url)}
-                              alt={line.name}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                              onError={() => {
-                                const normalizedLineItemId = Number(line.item_id);
-                                if (!Number.isFinite(normalizedLineItemId)) return;
-                                setCartImageErrors((previous) => {
-                                  const next = new Set(previous);
-                                  next.add(normalizedLineItemId);
-                                  return next;
-                                });
-                              }}
-                            />
-                          ) : (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>No image</span>
-                          )}
-                        </div>
-                        <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'start', gap: 10 }}>
-                            <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
-                              <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>
-                                {line.name}
-                              </div>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>
-                                Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
-                              </div>
-                            </div>
-                            <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
-                              {money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}
-                            </div>
-                            <button
-                              type="button"
-                              aria-label={`Remove ${line.name}`}
-                              onClick={() => removeCartItem(line.item_id)}
-                              style={{ width: 28, height: 28, border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, alignSelf: 'center' }}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
-                              {activeOrderMethodLabel}
-                            </span>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
-                              Qty {Math.max(1, Number(line.quantity || 1))}
-                            </span>
-                          </div>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
-                            <button
-                              type="button"
-                              onClick={() => updateQty(line.item_id, Math.max(0, Number(line.quantity || 1) - 1))}
-                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
-                            >
-                              -
-                            </button>
-                            <span style={{ minWidth: 14, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
-                              {Math.max(1, Number(line.quantity || 1))}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => updateQty(line.item_id, Number(line.quantity || 1) + 1)}
-                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div style={{ borderTop: '1px solid #e2e8f0', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12, background: '#ffffff' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>Current total</div>
-                    <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
-                  </div>
-                  <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
-                    {cartCount} selected
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={goStoreOrderPage}
-                  disabled={cart.length === 0}
-                  style={{
-                    minHeight: 50,
-                    borderRadius: 16,
-                    border: 'none',
-                    background: cart.length === 0 ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`,
-                    color: '#fff',
-                    fontSize: 15,
-                    fontWeight: 900,
-                    cursor: cart.length === 0 ? 'not-allowed' : 'pointer',
-                    boxShadow: cart.length === 0 ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}`
-                  }}
-                >
-                  Order &amp; Purchase
-                </button>
-              </div>
-            </aside>
-          </div>
+          <SimpleCartDrawerSurface {...simpleCartDrawerProps.drawerSurfaceProps} />
         </>
       )}
       <button
@@ -14096,69 +8046,27 @@ return (
             <div style={{ marginTop: 2, fontSize: 12, textDecoration: 'underline' }}>{isCheckoutOpen ? 'Close checkout' : 'View Cart'}</div>
           </>
         )}
-      </button>
+        </button>
 
-      <div style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: (isServicesCartDrawerMode || isSimpleCartSurfaceMode || (isSimpleMode && isResolvedOrderSubpage)) ? 'none' : ((isCheckoutOpen || isFnbOrderSubpage) ? 'auto' : 'none'), display: (isServicesCartDrawerMode || isSimpleCartSurfaceMode || (isSimpleMode && isResolvedOrderSubpage)) ? 'none' : 'block' }}>
-        {!isFnbOrderSubpage && !(isSimpleMode && isResolvedOrderSubpage) && (
-          <div role="button" tabIndex={0} onClick={() => setIsCheckoutOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsCheckoutOpen(false); }} style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.50)', backdropFilter: 'blur(6px)', opacity: isCheckoutOpen ? 1 : 0, transition: 'opacity 180ms ease' }} />
-        )}
-        <aside
-          style={{
-            position: 'absolute',
-            zIndex: 2001,
-            background: (isFnbMode || isSimpleMode) ? '#ffffff' : 'linear-gradient(180deg,#ffffff 0%,#f7fbfb 100%)',
-            borderStyle: 'solid',
-            borderColor: (isFnbMode || isSimpleMode) ? 'transparent' : '#d6e2e8',
-            borderTopWidth: (isFnbMode || isSimpleMode) ? 0 : 1,
-            borderRightWidth: (isFnbMode || isSimpleMode) ? 0 : 1,
-            borderBottomWidth: (isFnbMode || isSimpleMode) ? 0 : 1,
-            borderLeftWidth: (isDesktopCheckout && (isFnbMode || isSimpleMode)) ? 1 : ((isFnbMode || isSimpleMode) ? 0 : 1),
-            borderLeftColor: (isDesktopCheckout && (isFnbMode || isSimpleMode)) ? '#dbe5ee' : ((isFnbMode || isSimpleMode) ? 'transparent' : '#d6e2e8'),
-            boxShadow: isDesktopCheckout
-              ? ((isFnbMode || isSimpleMode) ? '0 24px 60px rgba(15,23,42,.18)' : '0 30px 80px rgba(15,23,42,.18)')
-              : '0 -14px 34px rgba(15,23,42,.22)',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            transition: 'transform 220ms ease, opacity 220ms ease',
-            opacity: (isCheckoutOpen || isFnbOrderSubpage) ? 1 : 0,
-            ...(isFnbOrderSubpage
-              ? {
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                width: '100%',
-                maxWidth: '100%',
-                borderRadius: 0,
-                transform: 'translateX(0)'
-              }
-              : (isDesktopCheckout
-              ? {
-                top: (isFnbMode || isSimpleMode) ? 0 : 24,
-                right: 0,
-                bottom: 0,
-                width: (isFnbMode || isSimpleMode) ? 'min(520px, calc(100vw - 40px))' : 'min(1080px, calc(100vw - 48px))',
-                borderRadius: (isFnbMode || isSimpleMode) ? 0 : 26,
-                transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(32px)'
-              }
-              : {
-                left: 0,
-                right: 0,
-                bottom: 0,
-                maxHeight: '92vh',
-                borderTopLeftRadius: 22,
-                borderTopRightRadius: 22,
-                transform: isCheckoutOpen ? 'translateY(0)' : 'translateY(105%)'
-              }))
-          }}
-        >
-          {!(isFnbMode && isFnbOrderSubpage) && (
-          <div style={{ padding: isDesktopCheckout ? ((isFnbMode || isSimpleMode) ? '22px 20px 16px' : '16px 18px 12px 18px') : '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: (isFnbMode || isSimpleMode) ? '#ffffff' : 'rgba(255,255,255,.88)', boxShadow: isFnbMode ? '0 8px 20px rgba(15,23,42,0.04)' : 'none', zIndex: 2 }}>
+        <FnbCartDrawerSurface
+          cartCount={cartCount}
+          cartDrawerProps={fnbCartDrawerRouteProps}
+          isDesktop={isDesktopCheckout}
+          isMobileViewport={isMobileViewport}
+          isOpen={isFnbCartDrawerSurfaceOpen}
+          onClose={() => setIsCheckoutOpen(false)}
+        />
+
+        <StorefrontCheckoutDrawerFrame
+          compactMode={isFnbMode || isSimpleMode}
+          desktop={isDesktopCheckout}
+          disabled={isFnbCartDrawerSurfaceOpen || isServicesCartDrawerMode || isSimpleCartSurfaceMode || (isSimpleMode && isResolvedOrderSubpage)}
+          fullPage={isFnbOrderSubpage}
+          headerContent={(
             <div>
-              {isFnbMode ? (
-                <FnbCartDrawerHeader cartCount={cartCount} isMobileViewport={isMobileViewport} />
-              ) : isSimpleMode ? (
+                {isFnbMode ? (
+                  <FnbCartDrawerHeader cartCount={cartCount} isMobileViewport={isMobileViewport} />
+                ) : isSimpleMode ? (
                 <div style={{ display: 'grid', gap: 4 }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Product Cart</div>
                   <div style={{ fontSize: 24, fontWeight: 900, color: '#1e293b', fontFamily: servicesDisplayFont }}>Added products</div>
@@ -14191,30 +8099,21 @@ return (
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
                       {serviceBookingSummarySchedule}
                     </span>
-                  )}
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (isFnbOrderSubpage) {
-                  goStoreCatalogPage();
-                  return;
-                }
-                setIsCheckoutOpen(false);
-              }}
-              style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}
-            >
-              {isFnbOrderSubpage ? '<' : 'x'}
-            </button>
-          </div>
+                    )}
+                  </div>
+                )}
+              </div>
           )}
-
-          {!isFnbMode && (
-            <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
-              {[
-                ...(isServicesMode && hasServiceCart ? [{ id: 'review', label: 'Booking Summary' }] : []),
+          hideBackdrop={isFnbOrderSubpage || (isSimpleMode && isResolvedOrderSubpage)}
+          hideHeader={isFnbMode && isFnbOrderSubpage}
+          isFnbMode={isFnbMode}
+          onBack={goStoreCatalogPage}
+          onClose={() => setIsCheckoutOpen(false)}
+          open={isCheckoutOpen || isFnbOrderSubpage}
+          tabBarContent={!isFnbMode ? (
+              <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
+                {[
+                  ...(isServicesMode && hasServiceCart ? [{ id: 'review', label: 'Booking Summary' }] : []),
                 { id: 'checkout', label: isServicesMode && hasServiceCart ? 'Customer Details' : 'Checkout' },
                 ...(!isFnbMode ? [
                   { id: 'track', label: 'Track' }
@@ -14229,12 +8128,11 @@ return (
                   style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
                 >
                   {tab.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div style={{ overflowY: 'auto', overflowX: 'hidden', padding: 0 }}>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+        >
             <FnbCheckoutRouteMount
                 isActive={isFnbOrderSubpage && isFnbMode && checkoutTab !== 'track'}
                 brandColor={fnbOrderBrand}
@@ -14911,29 +8809,6 @@ return (
                 </FnbCheckoutRouteBody>
               </FnbCheckoutRouteMount>
 
-            <FnbCartDrawerRoute
-                isActive={checkoutTab === 'cart' && isFnbMode && !isFnbOrderSubpage}
-                cart={cart}
-                cartAddOnsTotal={cartAddOnsTotal}
-                cartCount={cartCount}
-                cartImageErrors={cartImageErrors}
-                cartSubtotal={cartSubtotal}
-                cartTotal={cartTotal}
-                fnbOrderBrand={fnbOrderBrand}
-                getLineTotal={getLineTotal}
-                goStoreCatalogPage={goStoreCatalogPage}
-                goStoreOrderPage={goStoreOrderPage}
-                isDesktopCheckout={isDesktopCheckout}
-                isMobileViewport={isMobileViewport}
-                money={money}
-                removeCartItem={removeCartItem}
-                renderPromoCodePanel={renderPromoCodePanel}
-                servicesBodyFont={servicesBodyFont}
-                setCartImageErrors={setCartImageErrors}
-                setIsCheckoutOpen={setIsCheckoutOpen}
-                updateQty={updateQty}
-                withAssetOrigin={withAssetOrigin}
-            />
             {checkoutTab === 'review' && hasServiceCart && !isServicesMode && (
               <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.25fr) minmax(280px, 360px)' : '1fr', gap: 16, alignItems: 'start' }}>
                 <section style={{ display: 'grid', gap: 14 }}>
@@ -15444,9 +9319,7 @@ return (
 
             <FnbTrackingRouteContainer {...fnbTrackingRouteProps} renderDrawer={false} />
 
-          </div>
-        </aside>
-      </div>
+      </StorefrontCheckoutDrawerFrame>
       <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible={false} />
       {showOrderSuccessAnimation && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'rgba(15,23,42,0.42)', backdropFilter: 'blur(8px)', display: 'grid', placeItems: 'center', pointerEvents: 'none', padding: 20 }}>

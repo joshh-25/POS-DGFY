@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getServicesResponsiveLayout,
   getStorefrontViewportState
-} from '../storefrontViewport.js';
+} from '../shared/utils/storefrontViewport.js';
 
 describe('storefrontViewport', () => {
   it('classifies storefront widths into mobile, tablet, and desktop bands', () => {

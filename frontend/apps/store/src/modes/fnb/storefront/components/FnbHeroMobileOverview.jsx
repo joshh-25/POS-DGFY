@@ -1,7 +1,7 @@
 import React from 'react';
 import { MessageSquare, Phone } from 'lucide-react';
 import { GhostButton, PrimaryButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
-import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../Components/storefront/hero/StorefrontHeroNameCluster.jsx';
+import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
 
 export const FnbHeroMobileOverview = ({
   followEnabled,

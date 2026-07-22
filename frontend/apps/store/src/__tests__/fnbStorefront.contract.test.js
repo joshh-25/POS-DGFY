@@ -24,7 +24,6 @@ const signedInCheckoutAddressesSource = () => readSource('modes/fnb/checkout/hoo
 const fnbTrackingContainerSource = () => readSource('modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx');
 const fnbTrackingAdapterSource = () => readSource('modes/fnb/tracking/model/fnbTrackingAdapter.js');
 const fnbTrackingPayloadSource = () => readSource('modes/fnb/tracking/model/fnbTrackingPayload.js');
-const fnbTrackingDrawerSource = () => readSource('modes/fnb/tracking/components/FnbTrackingDrawer.jsx');
 const fnbTrackingDrawerTotalsSource = () => readSource('modes/fnb/tracking/components/FnbTrackingDrawerTotals.jsx');
 const fnbTrackingActiveViewSource = () => readSource('modes/fnb/tracking/components/FnbTrackingActiveView.jsx');
 const fnbTrackingCompletedViewSource = () => readSource('modes/fnb/tracking/components/FnbTrackingCompletedView.jsx');
@@ -33,9 +32,9 @@ const guestTrackingDrawerSource = () => readSource('tracking/components/GuestTra
 const accountPageSource = () => readSource('customer-dashboard/pages/DgfyCustomerAccountPage.jsx');
 const businessSectionSource = () => readSource('customer-dashboard/components/BusinessSection.jsx');
 const customerAccountPanelHookSource = () => readSource('customer-dashboard/hooks/useCustomerAccountPanel.js');
-const panelSource = () => readSource('FnbReservationPanel.jsx');
-const solutionsPageSource = () => readSource('Components/storefront/pages/SolutionsPage.jsx');
-const businessRegistrationUrlSource = () => readSource('businessRegistrationUrl.js');
+const panelSource = () => readSource('modes/fnb/storefront/components/FnbReservationPanel.jsx');
+const solutionsPageSource = () => readSource('discovery/pages/SolutionsPage.jsx');
+const businessRegistrationUrlSource = () => readSource('shared/utils/businessRegistrationUrl.js');
 
 describe('Food & Beverage storefront contract', () => {
   it('keeps route constants and navigation outside the root shell', () => {

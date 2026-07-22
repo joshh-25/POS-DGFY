@@ -12,7 +12,7 @@ import {
   getDistanceMeters,
   getDiscoveryPinIconId,
   setGeoJsonSourceData
-} from '../discoveryMapLayers.js';
+} from '../discovery/model/discoveryMapLayers.js';
 
 describe('discovery map layer helpers', () => {
   it('builds exact-coordinate layer features without display offsets', () => {

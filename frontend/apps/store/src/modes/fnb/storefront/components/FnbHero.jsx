@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { MapPin, Star, UtensilsCrossed } from 'lucide-react';
 import { StorefrontExpandedMapModal } from '../../../../discovery/components/StorefrontExpandedMapModal.jsx';
 import { buildFnbHeroViewModel } from '../model/buildFnbHeroViewModel.js';
-import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../Components/storefront/hero/StorefrontHeaderNav.jsx';
+import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../shared/components/storefront/hero/StorefrontHeaderNav.jsx';
 import { FnbHeroDesktopAboutGallery } from './FnbHeroDesktopAboutGallery.jsx';
 import { FnbHeroDesktopContactLocation } from './FnbHeroDesktopContactLocation.jsx';
 import { FnbHeroDesktopWhyChooseUs } from './FnbHeroDesktopWhyChooseUs.jsx';

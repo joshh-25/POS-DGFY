@@ -16,9 +16,9 @@ import {
   tileTransformRequest
 } from '../../app/runtime/storefrontMapRuntime.js';
 import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
-import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from '../../discoveryMapDom.js';
+import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from '../model/discoveryMapDom.js';
 import { getDiscoveryPinScaleForZoom } from '../model/discoveryMapPresentation.js';
-import { createStoreMarkerPreviewNode } from '../../storefrontMarkerPreview.js';
+import { createStoreMarkerPreviewNode } from '../model/storefrontMarkerPreview.js';
 
 const getStoreResultKey = (store) => (
   getDiscoveryMarkerKey(store)

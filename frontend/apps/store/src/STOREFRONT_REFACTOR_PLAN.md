@@ -1,4 +1,4 @@
-﻿# Storefront Frontend Refactor and Folderization Plan
+# Storefront Frontend Refactor and Folderization Plan
 
 > Working note: This is the active storefront refactor and folderization basis for the local storefront frontend work.
 > A separate storefront frontend architecture guide using SOLID and MVVM principles may still be restored later.

@@ -2,8 +2,8 @@ import React from 'react';
 import QRCode from 'qrcode';
 import dgfyHeaderLogo from '../../../../../../public/dgfy-logo.png';
 import { ArrowLeft, Mail, MapPin, MousePointer2, Search, Share2, ShoppingBag, ShoppingCart, Sparkles, Star } from 'lucide-react';
-import { getStorefrontModeAdapter } from '../../modePresentationRegistry.js';
-import { buildStorefrontQrUrl } from '../../storefrontQrUrl.js';
+import { getStorefrontModeAdapter } from '../../app/runtime/modePresentationRegistry.js';
+import { buildStorefrontQrUrl } from '../../shared/utils/storefrontQrUrl.js';
 import { useStorefrontTemplateViewport } from './useStorefrontTemplateViewport.js';
 import './storefrontTemplate.css';
 

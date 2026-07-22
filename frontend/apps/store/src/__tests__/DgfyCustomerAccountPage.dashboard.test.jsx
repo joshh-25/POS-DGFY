@@ -3,7 +3,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DgfyCustomerAccountPage } from '../Components/storefront/pages/DgfyCustomerAccountPage.jsx';
+import { DgfyCustomerAccountPage } from '../customer-dashboard/pages/DgfyCustomerAccountPage.jsx';
 
 const accountPanel = {
   me: {
@@ -204,7 +204,7 @@ describe('DGFY customer account dashboard', () => {
 
     const drawer = screen.getByTestId('dgfy-customer-account-page');
     expect(drawer.style.position).toBe('fixed');
-    expect(drawer.style.zIndex).toBe('200');
+    expect(drawer.style.zIndex).toBe('1400');
   });
 
   it('renders the premium business grid with direct POS access and storefront assets', () => {

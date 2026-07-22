@@ -1,7 +1,7 @@
 import React from 'react';
-import { CustomerIdentityCard } from '../../../checkout/components/CustomerIdentityCard.jsx';
-import { GuestIdentityForm } from '../../../checkout/components/GuestIdentityForm.jsx';
-import { SavedCustomerDetailsPanel } from '../../../checkout/components/SavedCustomerDetailsPanel.jsx';
+import { CustomerIdentityCard } from '../../../shared/components/checkout/CustomerIdentityCard.jsx';
+import { GuestIdentityForm } from '../components/GuestIdentityForm.jsx';
+import { SavedCustomerDetailsPanel } from '../../../shared/components/checkout/SavedCustomerDetailsPanel.jsx';
 
 export function createCustomerIdentityRenderers({
   hasSavedCustomerDetails,
