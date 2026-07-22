@@ -1846,3 +1846,27 @@ opens the Payment Unavailable modal and "Okay"/backdrop closes it.
 Notes / next step:
 - Remaining Wave 1 slices (session bootstrap, catalog read paths, discovery wiring) are larger, each its
   own bridge commit + QA gate.
+
+## 2026-07-22 - Wave 2: extract pure-display JSX zones (shell reduction)
+
+Slice: Extract self-contained presentational render blocks out of StorefrontApp.jsx into
+owner-folder components. Each is a verbatim, behavior-preserving move; the enclosing
+conditional and any handler wiring stay at the call site. Safety net: ESLint `no-undef`
+guarantees no referenced identifier was left unpassed/unimported (headless-verifiable given
+the WebGL flows can't be clicked here).
+
+Extractions:
+- `ServicesPerformanceSidebar` → `modes/services/storefront/components/` (desktop services aside:
+  performance summary + service-family nav + promo card). 9,231 → 9,181 (-50).
+- `FnbCommunitySection` → `modes/fnb/storefront/components/` (promo + reviews + footer tail).
+  9,181 → 9,116 (-65).
+
+StorefrontApp.jsx line count: 9,116 (down 115 across Wave 2 so far).
+
+Validation per extraction: 0 lint errors (no-undef clean), `build:store` passes.
+
+QA gate 2 (browser, dev.dgfy.ph): services storefront desktop sidebar renders (score, families,
+promo); F&B storefront community tail renders (promo/reviews/footer, "Write a review" opens modal).
+
+Notes / next step: continue extracting the remaining safe pure-display zones; the catalog grid and
+checkout mount are deliberately excluded (too large / money-path — reserved for QA-gated waves).
