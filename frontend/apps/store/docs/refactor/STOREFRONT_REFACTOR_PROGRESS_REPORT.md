@@ -1870,3 +1870,29 @@ promo); F&B storefront community tail renders (promo/reviews/footer, "Write a re
 
 Notes / next step: continue extracting the remaining safe pure-display zones; the catalog grid and
 checkout mount are deliberately excluded (too large / money-path — reserved for QA-gated waves).
+
+## 2026-07-22 - Wave 2 (cont.): dead-code purge + modal/pager extractions
+
+Continued shell reduction, all behavior-preserving, each commit gated on 0 lint errors
+(no-undef as the missing-prop safety net) + `build:store`.
+
+- Deleted three `{false && …}` dead render blocks (legacy services hero + fnb mobile/desktop
+  catalog, superseded): -735.
+- `ServicesFilterModal` → modes/services/storefront/components/: -111.
+- Consolidated the two near-duplicate review composers into one shared
+  `shared/components/storefront/StorefrontReviewModal.jsx` (props: accent colours, title font,
+  star-key prefix, message copy): -272.
+- Dropped 7 imports left unused by the dead-code purge (map/discovery imports untouched): -7.
+- `ServicesPaginationBar` → modes/services/storefront/components/: -46.
+
+StorefrontApp.jsx line count: **7,945** (down from 9,231 at the start of this branch; -1,286 total
+across Wave 0→2). Lint warnings 130→125; still 0 errors.
+
+QA gate 2 (browser, dev.dgfy.ph): services storefront (desktop sidebar, filter modal open/apply/clear,
+pagination), F&B community tail, services + simple "Write a review" modals (name/anon/stars/message,
+Send), online-payment modal, responsive layout.
+
+Next (require QA — not done unsupervised): the catalog grid IIFE (~2.6k lines, cart-mutation), the
+checkout drawer/mount (~1.4k lines, quote/checkout/OTP), and the state-slice migration of the
+money-path domains (cart/checkout/serviceBooking) + route containers to cross under 1,000. These are
+the QA-gated Waves 3–4.
