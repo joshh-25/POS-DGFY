@@ -420,4 +420,3 @@ Before staging a storefront PR:
 ## Non-Negotiable Rule
 
 If a change requires adding a large block to `StorefrontApp.jsx`, stop and create a feature-owned route container, hook, model, or component instead.
-

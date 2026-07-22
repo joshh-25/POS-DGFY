@@ -88,4 +88,3 @@ const SimpleProductCard = ({
 };
 
 export { SimpleProductCard };
-

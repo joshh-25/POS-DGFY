@@ -502,4 +502,3 @@ Reason:
 - it is already partially extracted
 - it is the main source of the current storefront/dashboard overlap problem
 - it gives the fastest structural win without changing mode-specific transaction behavior
-

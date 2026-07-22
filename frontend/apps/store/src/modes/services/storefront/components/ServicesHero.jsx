@@ -374,7 +374,7 @@ const ServicesHero = ({
                 </PrimaryButton>
               )}
             </div>
-            
+
             <div style={{ display: 'grid', gap: 8 }}>
               <SharedStorefrontHeroNameCluster
                 name={serviceHeroModel.name}
@@ -385,7 +385,7 @@ const ServicesHero = ({
                 followState={followState}
                 handleFollowAction={handleFollowAction}
               />
-              
+
               {serviceHeroModel.tagline ? (
                 <p style={{ margin: 0, color: servicesPrimary, fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: servicesBodyFont }}>{serviceHeroModel.tagline}</p>
               ) : (
@@ -475,7 +475,7 @@ const ServicesHero = ({
                   )}
                 </div>
               )}
-              
+
               {hasGallerySection && (
                 <div style={{ display: 'grid', gap: 10 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Gallery</div>
@@ -515,7 +515,7 @@ const ServicesHero = ({
               visibleContactRows={visibleContactRows}
             />
           </div>
-          
+
           {hasWhyChooseUs && (
             <ServicesHeroDesktopWhyChooseUs
               servicesBodyFont={servicesBodyFont}
@@ -537,5 +537,3 @@ const ServicesHero = ({
 };
 
 export { ServicesHero };
-
-

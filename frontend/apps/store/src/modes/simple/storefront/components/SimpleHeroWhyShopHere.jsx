@@ -23,4 +23,3 @@ const SimpleHeroWhyShopHere = ({
 );
 
 export { SimpleHeroWhyShopHere };
-

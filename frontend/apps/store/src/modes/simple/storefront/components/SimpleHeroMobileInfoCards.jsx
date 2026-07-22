@@ -150,4 +150,3 @@ const SimpleHeroMobileInfoCards = ({
 };
 
 export { SimpleHeroMobileInfoCards };
-
