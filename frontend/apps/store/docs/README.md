@@ -20,6 +20,7 @@ Before changing Storefront frontend code, read:
 - [`refactor/STOREFRONT_REFACTOR_IMPLEMENTATION_GOAL.md`](refactor/STOREFRONT_REFACTOR_IMPLEMENTATION_GOAL.md): execution checklist and file-size guardrails.
 - [`refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`](refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md): completed slices and validation evidence.
 - [`refactor/STOREFRONT_REFACTOR_HANDOFF.md`](refactor/STOREFRONT_REFACTOR_HANDOFF.md): current state for another developer.
+- [`refactor/STOREFRONT_REFACTOR_CHECKPOINT_2026-07-22.md`](refactor/STOREFRONT_REFACTOR_CHECKPOINT_2026-07-22.md): pushed branch status, validation evidence, exclusions, and continuation guidance.
 
 ## Supporting Standards
 

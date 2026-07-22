@@ -49,7 +49,10 @@ export function BusinessSection({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 24 }}>
           {accepted.map((company) => {
             const name = company.company_name || company.name || 'Business';
-            const owned = company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner' || company.role === 'business_owner';
+            const owned = company.is_owner === true
+              || company.membership_type === 'owner'
+              || company.role === 'owner'
+              || company.role === 'business_owner';
             const coverUrl = getBusinessCoverUrl(company, resolveBusinessAssetUrl);
             const profileUrl = getBusinessProfileUrl(company, resolveBusinessAssetUrl);
             const roleLabel = getBusinessRoleLabel(company);

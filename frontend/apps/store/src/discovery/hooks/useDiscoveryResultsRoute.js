@@ -71,6 +71,7 @@ export function useDiscoveryResultsRoute({
 }) {
   const {
     activeDiscoveryFilterCount,
+    clearDiscoveryClusterResults,
     clusterResultStores,
     discoveryPaginationItems,
     discoveryTotalPages,
@@ -119,6 +120,7 @@ export function useDiscoveryResultsRoute({
   const discoveryResultsRendererProps = buildDiscoveryResultsRendererProps({
     activeDiscoveryFilterCount,
     activeDiscoveryFilterDropdown,
+    clearDiscoveryClusterResults,
     clusterResultStores,
     discoveryBusinessModeOptions,
     discoveryCategoryFilter,
@@ -152,6 +154,7 @@ export function useDiscoveryResultsRoute({
     isClusterResultsActive,
     isDiscoveryMobileViewport,
     isDiscoveryTabletViewport,
+    isMobileResultsCollapsed,
     isOpenNowFilterActive,
     isSortFilterActive,
     isStoreListVisible,

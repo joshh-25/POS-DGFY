@@ -1,11 +1,12 @@
 import React from 'react';
 import QRCode from 'qrcode';
-import dgfyHeaderLogo from '../../../../../../public/dgfy-logo.png';
 import { ArrowLeft, Mail, MapPin, MousePointer2, Search, Share2, ShoppingBag, ShoppingCart, Sparkles, Star } from 'lucide-react';
 import { getStorefrontModeAdapter } from '../../app/runtime/modePresentationRegistry.js';
 import { buildStorefrontQrUrl } from '../../shared/utils/storefrontQrUrl.js';
 import { useStorefrontTemplateViewport } from './useStorefrontTemplateViewport.js';
 import './storefrontTemplate.css';
+
+const DGFY_HEADER_LOGO_URL = '/dgfy-logo.png';
 
 const renderStars = (count = 5) => (
   Array.from({ length: count }, (_, index) => (
@@ -78,7 +79,7 @@ export function StoreDashboard({ pageModel = {}, onNavigate }) {
               </button>
 
               <button type="button" className="store-template__brand" onClick={() => onNavigate?.('brand')}>
-                <img src={dgfyHeaderLogo} alt="DGFY logo" />
+                <img src={DGFY_HEADER_LOGO_URL} alt="DGFY logo" />
               </button>
             </div>
 

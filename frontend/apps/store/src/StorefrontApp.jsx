@@ -2983,7 +2983,7 @@ export default function StorefrontApp() {
       animateCartCardToFab(options?.sourceRect || null);
     } else {
       setCheckoutTab(isFnbMode ? 'cart' : 'review');
-      const shouldOpenCartDrawer = !isFnbMode;
+      const shouldOpenCartDrawer = Boolean(options?.openCart) || !isFnbMode;
       setIsCheckoutOpen(shouldOpenCartDrawer);
       if (isFnbMode && !shouldOpenCartDrawer) {
         animateCartCardToFab(options?.sourceRect || null);

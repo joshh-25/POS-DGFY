@@ -148,7 +148,10 @@ export const getCustomerBusinessCategoryLabel = (company = {}) => String(
   company?.category_label || company?.business_category || company?.category || company?.workflow_mode || ''
 ).trim();
 
-export const getCustomerBusinessRoleLabel = (company = {}, prettyStatus = (value) => String(value || '')) => {
+export const getCustomerBusinessRoleLabel = (
+  company = {},
+  prettyStatus = (value) => String(value || '')
+) => {
   const role = String(company?.role || company?.membership_role || '').trim().toLowerCase();
   const isOwner = company?.is_owner === true
     || company?.membership_type === 'owner'

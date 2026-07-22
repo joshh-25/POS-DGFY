@@ -5,6 +5,7 @@ import {
   getPreferredDiscoveryLocationId,
   selectDiscoveryPinLocations
 } from '../discovery/model/discoveryPresentation.js';
+import { buildDiscoveryResultsRendererProps } from '../discovery/model/discoveryRendererProps.js';
 
 describe('selectDiscoveryPinLocations', () => {
   const activeLocations = [
@@ -88,5 +89,22 @@ describe('location + empty-state helpers', () => {
 
   it('provides recovery guidance in search empty-state message', () => {
     expect(getDiscoveryEmptyStateMessage('milk')).toContain('No stores matched "milk"');
+  });
+});
+
+describe('buildDiscoveryResultsRendererProps', () => {
+  it('preserves results-panel state and the cluster clear action', () => {
+    const clearDiscoveryClusterResults = () => {};
+    const props = buildDiscoveryResultsRendererProps({
+      clearDiscoveryClusterResults,
+      clusterResultStores: [],
+      getDiscoveryMarkerKey: () => '',
+      isClusterResultsActive: false,
+      isMobileResultsCollapsed: true,
+      searchedDiscoveryMapPins: []
+    });
+
+    expect(props.clearDiscoveryClusterResults).toBe(clearDiscoveryClusterResults);
+    expect(props.isMobileResultsCollapsed).toBe(true);
   });
 });

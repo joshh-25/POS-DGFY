@@ -13,9 +13,9 @@ import {
   COMPLETED_CUSTOMER_ORDER_STATUSES
 } from '../model/customerOrderStatus.js';
 import {
-  getCustomerBusinessRoleLabel,
   getCustomerBusinessCoverUrl,
   getCustomerBusinessProfileUrl,
+  getCustomerBusinessRoleLabel,
   getCustomerBusinessStatusLabel
 } from '../model/customerBusinessAssets.js';
 import {
