@@ -116,7 +116,7 @@ import {
   STOREFRONT_CLOSED_TITLE
 } from './shared/model/storefrontClosedState.js';
 import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.js';
-import { parseBooleanFlag, parseOptionalArray, parseOptionalObject } from './shared/model/storefrontJsonModel.js';
+import { parseBooleanFlag, parseOptionalObject } from './shared/model/storefrontJsonModel.js';
 import {
   buildAccessPolicyStorePatch,
   canUseBooking,
@@ -129,7 +129,7 @@ import {
 } from './shared/model/customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './modes/fnb/storefront/model/fnbStorefrontViewModel.js';
 import { buildFnbCommunityModel } from './modes/fnb/storefront/model/fnbCommunityModel.js';
-import { buildFnbFallbackReasons, FNB_CATEGORY_ICON_MAP } from './modes/fnb/storefront/model/fnbStorefrontPresentation.js';
+import { FNB_CATEGORY_ICON_MAP } from './modes/fnb/storefront/model/fnbStorefrontPresentation.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontCheckoutDrawerFrame } from './shared/components/StorefrontCheckoutDrawerFrame.jsx';
 import { StorefrontCartFlyAnimations } from './shared/components/StorefrontCartFlyAnimations.jsx';
@@ -348,9 +348,6 @@ import { useDiscoverySearchActions } from './discovery/hooks/useDiscoverySearchA
 import { useDiscoveryState } from './discovery/hooks/useDiscoveryState.js';
 import { useDiscoveryStoreLoader } from './discovery/hooks/useDiscoveryStoreLoader.js';
 import { useDiscoveryViewport } from './discovery/hooks/useDiscoveryViewport.js';
-import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
-import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './shared/components/storefront/hero/StorefrontHeaderNav.jsx';
-import { StorefrontShareQr as SharedStorefrontShareQr } from './shared/components/storefront/hero/StorefrontShareQr.jsx';
 import { StorefrontPromoSection as SharedStorefrontPromoSection } from './shared/components/storefront/sections/StorefrontPromoSection.jsx';
 import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from './shared/components/storefront/sections/StorefrontReviewsSection.jsx';
 import { StorefrontFooterSection as SharedStorefrontFooterSection } from './shared/components/storefront/sections/StorefrontFooterSection.jsx';
@@ -423,7 +420,7 @@ import {
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
-import { hasCustomerName, hasPrimaryContact, hasDeliveryAddress, isCustomerStepComplete } from './checkout/checkoutValidation.js';
+import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { PaymentMethodSelectorBlock } from './shared/components/checkout/PaymentMethodSelectorBlock.jsx';
 import { CheckoutStepProgressHeader } from './shared/components/checkout/CheckoutStepProgressHeader.jsx';
 import { FnbTrackingRouteContainer } from './modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
@@ -504,8 +501,6 @@ export default function StorefrontApp() {
   const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
   const previousRouteSlugRef = useRef(routeSlug);
-  // Migrated to the storefront zustand store (uiSlice). Local names preserved so
-  // every read site below is untouched; only the source of the value changed.
   const viewportWidth = useStorefrontStore(selectViewportWidth);
   const setViewportWidth = useStorefrontStore((s) => s.uiSetViewportWidth);
   const isMobileViewport = viewportWidth < 840;
@@ -734,7 +729,6 @@ export default function StorefrontApp() {
     showMobileAddressModal,
   } = useFnbCheckoutRouteState();
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
-  // Migrated to the storefront zustand store (uiSlice).
   const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
   const uiOpenOnlinePaymentModal = useStorefrontStore((s) => s.uiOpenOnlinePaymentModal);
   const uiCloseOnlinePaymentModal = useStorefrontStore((s) => s.uiCloseOnlinePaymentModal);
@@ -763,9 +757,6 @@ export default function StorefrontApp() {
   const [catalogErrorGuidance, setCatalogErrorGuidance] = useState('');
 
   const [orderMethod, setOrderMethod] = useState('delivery');
-  // Migrated to the storefront zustand store (cartSlice). Local names preserved
-  // so every cart read, memo dependency, prop pass, and handler is untouched.
-  // `setCart` is useState-compatible (accepts a value or an updater function).
   const cart = useStorefrontStore((s) => s.cart.items);
   const setCart = useStorefrontStore((s) => s.cartSet);
   const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
