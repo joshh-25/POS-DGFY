@@ -22,7 +22,8 @@
     "rules": {
         "react/react-in-jsx-scope": "off",
         "react/prop-types": "off",
-        "no-unused-vars": "warn"
+        "no-unused-vars": "warn",
+        "max-lines": ["warn", { "max": 1500, "skipBlankLines": true, "skipComments": true }]
     },
     "settings": {
         "react": {
@@ -33,7 +34,14 @@
         {
             "files": ["apps/store/src/StorefrontApp.jsx"],
             "rules": {
-                "react-hooks/preserve-manual-memoization": "warn"
+                "react-hooks/preserve-manual-memoization": "warn",
+                "max-lines": "off"
+            }
+        },
+        {
+            "files": ["**/__tests__/**", "**/*.test.js", "**/*.test.jsx"],
+            "rules": {
+                "max-lines": "off"
             }
         }
     ]

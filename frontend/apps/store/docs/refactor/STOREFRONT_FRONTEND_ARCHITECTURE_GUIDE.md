@@ -286,6 +286,20 @@ Line count is a warning signal, not the only quality metric. Still, these limits
 | Model / mapper / utility | 180 lines | 250 lines |
 | Test file | 350 lines | 500 lines |
 
+### Enforced Lint Ceiling
+
+The table above is the **target**; a single hard ceiling is now enforced in
+`frontend/.eslintrc.json` via `max-lines` to block silent regressions:
+
+- **Current enforced ceiling: 1,500 lines (`warn`)** — deliberately loose so the
+  in-progress `StorefrontApp.jsx` and the discovery results renderer do not spam CI
+  while the refactor continues.
+- `StorefrontApp.jsx` and test files are exempted via `overrides` (the shell must
+  shrink on its own schedule; tests use the 350/500 target above by review).
+- **Direction of travel:** ratchet the ceiling down toward the 500-line target as
+  files come under it, and eventually flip `warn` to `error`. Treat 500 as the real
+  goal for any new component/hook/model file.
+
 ### Split Triggers
 
 Split a file when it has more than one of these responsibilities:

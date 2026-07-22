@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
-  Check,
   Clock,
   MessageSquare,
   ThumbsUp,
@@ -262,6 +261,9 @@ import { StoreCatalogEmptyStates } from './features/shared-storefront/components
 import { StorefrontExpandableBusinessHours } from './features/shared-storefront/components/StorefrontExpandableBusinessHours.jsx';
 import { StorefrontDropdown } from './features/shared-storefront/components/StorefrontDropdown.jsx';
 import { StorefrontFollowFloatingAction } from './shared/components/storefront/StorefrontFollowFloatingAction.jsx';
+import { useStorefrontShareActions } from './shared/hooks/useStorefrontShareActions.js';
+import { StorefrontOrderSuccessOverlay } from './shared/components/storefront/StorefrontOrderSuccessOverlay.jsx';
+import { StorefrontPaymentUnavailableModal } from './shared/components/storefront/StorefrontPaymentUnavailableModal.jsx';
 import {
   deriveStorefrontRegistrationYear,
   formatRatingSummary,
@@ -316,6 +318,7 @@ import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useS
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { buildServiceCartValidationIssues } from './modes/services/booking/model/serviceBookingValidation.js';
 import { SimpleProductCard } from './modes/simple/storefront/components/SimpleProductCard.jsx';
+import { ServiceProductCard } from './modes/services/storefront/components/ServiceProductCard.jsx';
 import { SimpleHero } from './modes/simple/storefront/components/SimpleHero.jsx';
 import { SimpleCartFloatingButton } from './modes/simple/checkout/components/SimpleCartFloatingButton.jsx';
 import { SimpleCartDrawerSurface } from './modes/simple/checkout/components/SimpleCartDrawerSurface.jsx';
@@ -808,13 +811,6 @@ export default function StorefrontApp() {
   const [checkoutTab, setCheckoutTab] = useState('checkout');
   const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
   const [hasAppliedCheckoutAuthResume, setHasAppliedCheckoutAuthResume] = useState(false);
-  const [followState, setFollowState] = useState({
-    loading: false,
-    isFollowing: false,
-    followersCount: 0,
-    error: '',
-    supported: true
-  });
   const storefrontVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
   const {
     handleDiscoveryExploreClick,
@@ -2448,6 +2444,13 @@ export default function StorefrontApp() {
   const requireQuoteForCheckout = !hasServiceCart && !isFnbMode && !isSimpleMode;
   const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
   const followEnabledForStore = parseBooleanFlag(selectedStore?.storefront_follow_enabled, false);
+  const { followState, handleFollowAction, handleShareAction } = useStorefrontShareActions({
+    selectedStore,
+    isStorePage,
+    isStorefrontV2,
+    followEnabledForStore,
+    storefrontVisitorId
+  });
   const followUiEnabledForStore = followEnabledForStore && followState.supported !== false;
   const shareEnabledForStore = parseBooleanFlag(selectedStore?.storefront_share_enabled, true);
   const storefrontHoursStatus = selectedStore?.storefront_hours_status || null;
@@ -3671,105 +3674,6 @@ export default function StorefrontApp() {
     resolveAddress();
     return () => controller.abort();
   }, [customerPin, hasPinnedDeliveryLocation, isDeliveryOrder]);
-
-  useEffect(() => {
-    const slug = String(selectedStore?.slug || '').trim().toLowerCase();
-    if (!isStorePage || !isStorefrontV2 || !followEnabledForStore || !slug || !storefrontVisitorId) {
-      setFollowState({ loading: false, isFollowing: false, followersCount: 0, error: '', supported: true });
-      return;
-    }
-    let cancelled = false;
-    const loadFollowStatus = async () => {
-      setFollowState((prev) => ({ ...prev, loading: true }));
-      try {
-        const status = await requestJson(`/api/v1/store/follow/status?storefront_slug=${encodeURIComponent(slug)}&visitor_id=${encodeURIComponent(storefrontVisitorId)}`, {
-          method: 'GET',
-          storeSlug: slug,
-          credentials: 'omit'
-        });
-        if (cancelled) return;
-        setFollowState({
-          loading: false,
-          isFollowing: status?.is_following === true,
-          followersCount: Number(status?.followers_count || 0),
-          error: '',
-          supported: true
-        });
-      } catch (error) {
-        if (cancelled) return;
-        const normalizedError = normalizeStorefrontErrorMessage(error, 'Follow status unavailable.');
-        const backendContractDrift = /unknown column|provisioning_status/i.test(normalizedError);
-        setFollowState({
-          loading: false,
-          isFollowing: false,
-          followersCount: 0,
-          error: backendContractDrift ? '' : 'Follow status unavailable.',
-          supported: !backendContractDrift
-        });
-      }
-    };
-    loadFollowStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [isStorePage, isStorefrontV2, followEnabledForStore, selectedStore?.slug, storefrontVisitorId]);
-
-  const handleFollowAction = async () => {
-    const slug = String(selectedStore?.slug || '').trim().toLowerCase();
-    if (!slug || !storefrontVisitorId || followState.loading || followState.supported === false) return;
-    const nextIsFollowing = !followState.isFollowing;
-    setFollowState((prev) => ({ ...prev, loading: true, error: '' }));
-    try {
-      const response = await requestJson('/api/v1/store/follow', {
-        method: nextIsFollowing ? 'POST' : 'DELETE',
-        storeSlug: slug,
-        credentials: 'omit',
-        body: {
-          storefront_slug: slug,
-          visitor_id: storefrontVisitorId
-        }
-      });
-      setFollowState({
-        loading: false,
-        isFollowing: response?.is_following === true,
-        followersCount: Number(response?.followers_count || 0),
-        error: ''
-      });
-      toast.success(response?.is_following ? 'Storefront followed.' : 'Storefront unfollowed.');
-    } catch (error) {
-      let followError = normalizeStorefrontErrorMessage(error, 'Unable to update follow status.');
-      if (Number(error?.status) === 404) {
-        followError = 'Storefront is unavailable for follow.';
-      } else if (Number(error?.status) === 429) {
-        followError = 'Too many follow requests. Please wait and retry.';
-      }
-      setFollowState((prev) => ({ ...prev, loading: false, error: followError }));
-      toast.error(followError);
-    }
-  };
-
-  const handleShareAction = async () => {
-    const targetUrl = typeof window !== 'undefined' ? window.location.href : '';
-    const sharePayload = {
-      title: selectedStore?.tenant_name || 'Storefront',
-      text: selectedStore?.storefront_tagline || `${DGFY_BRAND_NAME} tenant storefront`,
-      url: targetUrl
-    };
-    try {
-      if (navigator?.share) {
-        await navigator.share(sharePayload);
-        return;
-      }
-      if (navigator?.clipboard?.writeText && targetUrl) {
-        await navigator.clipboard.writeText(targetUrl);
-        toast.success('Storefront link copied.');
-        return;
-      }
-    } catch {
-      // fallback to toast below
-    }
-    toast.info('Sharing is unavailable in this browser.');
-  };
 
   const copyTextToClipboard = useCallback(async (value, successMessage = 'Copied.') => {
     const text = String(value || '').trim();
@@ -7289,41 +7193,23 @@ return (
                       onViewDetails={openFnbDetail}
                     />
                   ) : (
-                    <div key={item.item_id} style={{
-                      background: '#fff', borderRadius: 20, border: `1px solid ${STYLES.colors.border}`,
-                      overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'all 0.2s ease',
-                      boxShadow: STYLES.shadow.sm, cursor: 'pointer'
-                    }} onClick={() => openServiceDetail(item)} data-cart-fly-origin="true">
-                      <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: STYLES.colors.bg, position: 'relative', overflow: 'hidden' }}>
-                        {imageUrl ? (
-                          <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: STYLES.colors.muted }}>No image</div>
-                        )}
-                        <div style={{ position: 'absolute', top: 12, right: 12 }}>
-                          <Badge background="rgba(255,255,255,0.9)" color={STYLES.colors.dark} border={STYLES.colors.border}>{item.service_detail?.service_area === 'onsite' ? 'Home Visit' : 'In-Store'}</Badge>
-                        </div>
-                      </div>
-                      <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        <div>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', marginBottom: 4 }}>
-                            <ServiceCategoryIcon size={13} />
-                            <span>{item.categoryMeta?.label || 'General'}</span>
-                          </div>
-                          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.3, color: STYLES.colors.dark }}>{item.variantName || item.name}</h4>
-                        </div>
-                        <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.text, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {item.description || 'Expert service selection.'}
-                        </p>
-                        <div style={{ marginTop: 'auto' }}>
-                          <div style={{ fontSize: 20, fontWeight: 900, color: servicesPrimaryDark, marginBottom: 12 }}>{money(item.default_sale_price ?? 0)}</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                            <GhostButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); openServiceDetail(item); }}>Details</GhostButton>
-                            <PrimaryButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item, { sourceRect: getCartFlySourceRect(e) }); }} disabled={!available}>Add</PrimaryButton>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <ServiceProductCard
+                      key={item.item_id}
+                      item={item}
+                      imageUrl={imageUrl}
+                      available={available}
+                      money={money}
+                      styles={STYLES}
+                      servicesPrimary={servicesPrimary}
+                      servicesPrimaryDark={servicesPrimaryDark}
+                      CategoryIcon={ServiceCategoryIcon}
+                      Badge={Badge}
+                      GhostButton={GhostButton}
+                      PrimaryButton={PrimaryButton}
+                      addToCart={addToCart}
+                      getCartFlySourceRect={getCartFlySourceRect}
+                      onViewDetails={openServiceDetail}
+                    />
                   )
                 );
               })}
@@ -9320,69 +9206,16 @@ return (
 
       </StorefrontCheckoutDrawerFrame>
       <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible={false} />
-      {showOrderSuccessAnimation && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'rgba(15,23,42,0.42)', backdropFilter: 'blur(8px)', display: 'grid', placeItems: 'center', pointerEvents: 'none', padding: 20 }}>
-          <div style={{ width: 'min(420px, calc(100vw - 32px))', borderRadius: 28, background: '#ffffff', border: '1px solid #dbe5ee', boxShadow: '0 30px 80px rgba(15,23,42,0.24)', padding: '30px 28px 26px', display: 'grid', justifyItems: 'center', gap: 18, textAlign: 'center' }}>
-            <div style={{ position: 'relative', width: 118, height: 118, display: 'grid', placeItems: 'center' }}>
-              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(34,197,94,0.12)', animation: 'dgfySuccessPulse 1.25s ease-out infinite' }} />
-              <div style={{ position: 'absolute', inset: 12, borderRadius: '50%', background: 'rgba(34,197,94,0.16)', animation: 'dgfySuccessPulse 1.25s ease-out infinite 0.12s' }} />
-              <div style={{ position: 'relative', width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg,#22c55e 0%,#16a34a 100%)', color: '#fff', display: 'grid', placeItems: 'center', boxShadow: '0 0 0 10px rgba(34,197,94,0.18), 0 18px 40px rgba(34,197,94,0.28)', animation: 'dgfySuccessPop 320ms ease-out' }}>
-                <Check size={34} strokeWidth={3.4} />
-              </div>
-            </div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
-                Order Submitted successfully.
-              </div>
-              <div style={{ fontSize: 14, lineHeight: 1.6, color: '#64748b', maxWidth: 300 }}>
-                Your order has been sent to the store team. We will open tracking as soon as the next update is ready.
-              </div>
-            </div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 40, padding: '0 14px', borderRadius: 14, background: '#eff6ff', border: '1px solid #dbeafe', color: '#1d4ed8', fontSize: 13, fontWeight: 800 }}>
-              <Clock3 size={14} />
-              Redirecting to tracking...
-            </div>
-          </div>
-          <style>{`
-            @keyframes dgfySuccessPulse {
-              0% { transform: scale(0.92); opacity: 0.9; }
-              70% { transform: scale(1.08); opacity: 0; }
-              100% { transform: scale(1.12); opacity: 0; }
-            }
-            @keyframes dgfySuccessPop {
-              0% { transform: scale(0.82); opacity: 0; }
-              100% { transform: scale(1); opacity: 1; }
-            }
-          `}</style>
-        </div>
-      )}
+      <StorefrontOrderSuccessOverlay visible={showOrderSuccessAnimation} />
     </>
   )}
       {customerDashboardDrawerRouteNode}
 
 
-      {isOnlinePaymentModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsOnlinePaymentModalOpen(false)}>
-          <div style={{ background: '#fff', borderRadius: 20, width: '90%', maxWidth: 400, padding: 24, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Payment Unavailable</div>
-              <button type="button" onClick={() => setIsOnlinePaymentModalOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', color: '#64748b' }}>
-                <X size={20} strokeWidth={2.5} />
-              </button>
-            </div>
-            <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.5, marginBottom: 24 }}>
-              Online payment is not yet available. Please use cash on delivery/pickup for now.
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsOnlinePaymentModalOpen(false)}
-              style={{ width: '100%', minHeight: 44, borderRadius: 12, border: 'none', background: '#cbd5e1', color: '#1e293b', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
-            >
-              Okay
-            </button>
-          </div>
-        </div>
-      )}
+      <StorefrontPaymentUnavailableModal
+        open={isOnlinePaymentModalOpen}
+        onClose={() => setIsOnlinePaymentModalOpen(false)}
+      />
     </main >
   );
 }
