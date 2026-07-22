@@ -6,6 +6,16 @@ export const DISCOVERY_USER_SOURCE_ID = 'dgfy-discovery-user-location';
 export const DISCOVERY_PIN_HALO_LAYER_ID = 'dgfy-discovery-pin-halo';
 export const DISCOVERY_PIN_LAYER_ID = 'dgfy-discovery-pin-symbols';
 export const DISCOVERY_USER_LAYER_ID = 'dgfy-discovery-user-location';
+export const DISCOVERY_DENSITY_CLUSTER_LAYER_ID = 'dgfy-discovery-density-cluster';
+export const DISCOVERY_DENSITY_CLUSTER_LABEL_LAYER_ID = 'dgfy-discovery-density-cluster-label';
+
+// Zoom-based density clustering (Tier 2) groups distinct, nearby-but-not-identical
+// locations that visually overlap at the current zoom. It runs on top of the
+// exact/near-coordinate "same address" grouping (Tier 1, buildCoordinateGroups
+// below) rather than replacing it — see plan/PIN_CLUSTERING_IMPLEMENTATION_PLAN.md.
+export const DISCOVERY_CLUSTER_RADIUS = 60;
+export const DISCOVERY_CLUSTER_MAX_ZOOM = 14;
+export const DISCOVERY_CLUSTER_MIN_POINTS = 2;
 
 const PROVISIONED_PLACEHOLDER_COORDINATES = [
   { latitude: 10.699817, longitude: 122.559893 }
@@ -316,7 +326,48 @@ export const ensureDiscoveryMapLayers = (map) => {
   if (typeof map.getSource === 'function' && !map.getSource(DISCOVERY_PIN_SOURCE_ID) && typeof map.addSource === 'function') {
     map.addSource(DISCOVERY_PIN_SOURCE_ID, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] }
+      data: { type: 'FeatureCollection', features: [] },
+      cluster: true,
+      clusterRadius: DISCOVERY_CLUSTER_RADIUS,
+      clusterMaxZoom: DISCOVERY_CLUSTER_MAX_ZOOM,
+      clusterMinPoints: DISCOVERY_CLUSTER_MIN_POINTS,
+      clusterProperties: {
+        storeCount: ['+', ['get', 'count']],
+        anyHighlighted: ['any', ['get', 'highlighted']]
+      }
+    });
+  }
+  if (typeof map.getLayer === 'function' && !map.getLayer(DISCOVERY_DENSITY_CLUSTER_LAYER_ID) && typeof map.addLayer === 'function') {
+    map.addLayer({
+      id: DISCOVERY_DENSITY_CLUSTER_LAYER_ID,
+      type: 'circle',
+      source: DISCOVERY_PIN_SOURCE_ID,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-radius': ['step', ['get', 'point_count'], 17, 10, 21, 25, 25],
+        'circle-color': '#1a4e8d',
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 3,
+        'circle-opacity': 0.92
+      }
+    });
+  }
+  if (typeof map.getLayer === 'function' && !map.getLayer(DISCOVERY_DENSITY_CLUSTER_LABEL_LAYER_ID) && typeof map.addLayer === 'function') {
+    map.addLayer({
+      id: DISCOVERY_DENSITY_CLUSTER_LABEL_LAYER_ID,
+      type: 'symbol',
+      source: DISCOVERY_PIN_SOURCE_ID,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['to-string', ['get', 'storeCount']],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 13,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true
+      },
+      paint: {
+        'text-color': '#ffffff'
+      }
     });
   }
   if (typeof map.getLayer === 'function' && !map.getLayer(DISCOVERY_PIN_HALO_LAYER_ID) && typeof map.addLayer === 'function') {
@@ -324,7 +375,7 @@ export const ensureDiscoveryMapLayers = (map) => {
       id: DISCOVERY_PIN_HALO_LAYER_ID,
       type: 'circle',
       source: DISCOVERY_PIN_SOURCE_ID,
-      filter: ['==', ['get', 'highlighted'], true],
+      filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'highlighted'], true]],
       paint: {
         'circle-radius': 28,
         'circle-color': '#1a4e8d',
@@ -340,6 +391,7 @@ export const ensureDiscoveryMapLayers = (map) => {
       id: DISCOVERY_PIN_LAYER_ID,
       type: 'symbol',
       source: DISCOVERY_PIN_SOURCE_ID,
+      filter: ['!', ['has', 'point_count']],
       layout: {
         'icon-image': ['get', 'iconId'],
         'icon-anchor': 'bottom',
