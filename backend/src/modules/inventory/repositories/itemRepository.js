@@ -61,6 +61,12 @@ const visibleItemWhere = (where = {}) => {
     });
 };
 
+const activeFolderWhere = (where = {}) => ({
+    ...where,
+    is_active: true,
+    deleted_at: null
+});
+
 const hasOwn = (obj, key) => Boolean(obj) && Object.prototype.hasOwnProperty.call(obj, key);
 
 const isMissingStorefrontCatalogOverrideTableError = (error) => {
@@ -1102,7 +1108,7 @@ export const itemRepository = {
                 }
 
                 const existingFolders = await ItemFolder.findAll({
-                    where: { parent_id: null },
+                    where: activeFolderWhere({ parent_id: null }),
                     attributes: ['folder_id', 'name', 'is_active'],
                     transaction,
                     lock: transaction.LOCK.UPDATE
@@ -1111,12 +1117,6 @@ export const itemRepository = {
                 let folder = existingFolders.find((candidate) => (
                     String(candidate?.name || '').trim().replace(/\s+/g, ' ').toLowerCase() === normalizedRequestedCategoryName
                 ));
-
-                if (folder && folder.is_active === false) {
-                    const error = new Error(`Category "${folder.name}" is inactive. Activate it in Category Management before using it.`);
-                    error.statusCode = 422;
-                    throw error;
-                }
 
                 if (!folder) {
                     try {
@@ -1131,7 +1131,7 @@ export const itemRepository = {
                         if (error?.name !== 'SequelizeUniqueConstraintError') throw error;
 
                         folder = await ItemFolder.findOne({
-                            where: { parent_id: null, name: requestedCategoryName, is_active: true },
+                            where: activeFolderWhere({ parent_id: null, name: requestedCategoryName }),
                             transaction,
                             lock: transaction.LOCK.UPDATE
                         });
@@ -1145,13 +1145,13 @@ export const itemRepository = {
                 const folderId = Number(itemData.folder_id);
                 const folder = Number.isInteger(folderId) && folderId > 0
                     ? await ItemFolder.findOne({
-                        where: { folder_id: folderId, is_active: true },
+                        where: activeFolderWhere({ folder_id: folderId }),
                         transaction,
                         lock: transaction.LOCK.UPDATE
                     })
                     : null;
                 if (!folder) {
-                    const error = new Error('Select an active category managed by an administrator.');
+                    const error = new Error('The selected category is unavailable. Choose an active category or create a new one.');
                     error.statusCode = 422;
                     throw error;
                 }
@@ -1323,7 +1323,7 @@ export const itemRepository = {
                 }
 
                 const existingFolders = await ItemFolder.findAll({
-                    where: { parent_id: null },
+                    where: activeFolderWhere({ parent_id: null }),
                     attributes: ['folder_id', 'name', 'is_active'],
                     transaction,
                     lock: transaction.LOCK.UPDATE
@@ -1332,12 +1332,6 @@ export const itemRepository = {
                 let folder = existingFolders.find((candidate) => (
                     String(candidate?.name || '').trim().replace(/\s+/g, ' ').toLowerCase() === normalizedRequestedCategoryName
                 ));
-
-                if (folder && folder.is_active === false) {
-                    const error = new Error(`Category "${folder.name}" is inactive. Activate it in Category Management before using it.`);
-                    error.statusCode = 422;
-                    throw error;
-                }
 
                 if (!folder) {
                     try {
@@ -1352,7 +1346,7 @@ export const itemRepository = {
                         if (error?.name !== 'SequelizeUniqueConstraintError') throw error;
 
                         folder = await ItemFolder.findOne({
-                            where: { parent_id: null, name: requestedCategoryName, is_active: true },
+                            where: activeFolderWhere({ parent_id: null, name: requestedCategoryName }),
                             transaction,
                             lock: transaction.LOCK.UPDATE
                         });
@@ -1366,13 +1360,13 @@ export const itemRepository = {
                 const folderId = Number(itemData.folder_id);
                 const folder = Number.isInteger(folderId) && folderId > 0
                     ? await ItemFolder.findOne({
-                        where: { folder_id: folderId, is_active: true },
+                        where: activeFolderWhere({ folder_id: folderId }),
                         transaction,
                         lock: transaction.LOCK.UPDATE
                     })
                     : null;
                 if (!folder) {
-                    const error = new Error('Select an active category managed by an administrator.');
+                    const error = new Error('The selected category is unavailable. Choose an active category or create a new one.');
                     error.statusCode = 422;
                     throw error;
                 }
@@ -2958,11 +2952,13 @@ export const itemRepository = {
 
         try {
             const folders = await ItemFolder.findAll({
+                where: { deleted_at: null },
                 include: [
                     {
                         model: Item,
                         as: 'items',
                         attributes: ['item_id'],
+                        where: visibleItemWhere(),
                         required: false
                     }
                 ]
@@ -2995,6 +2991,7 @@ export const itemRepository = {
 
         try {
             const existingFolders = await ItemFolder.findAll({
+                where: activeFolderWhere({ parent_id }),
                 attributes: ['folder_id', 'name', 'description', 'show_in_pos_filter', 'is_active', 'parent_id']
             });
             const normalizedLookup = normalizedName.toLowerCase();
@@ -3051,24 +3048,30 @@ export const itemRepository = {
         const Item = dbStore.get('Item');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         const transaction = await sequelize.transaction();
+        let normalizedName = '';
 
         try {
             const folder = await ItemFolder.findByPk(folderId, {
                 transaction,
                 lock: transaction.LOCK.UPDATE
             });
-            if (!folder) {
+            if (!folder || folder.deleted_at) {
                 const error = new Error('Folder not found');
                 error.statusCode = 404;
                 throw error;
             }
 
             const previousName = folder.name;
+            normalizedName = Object.prototype.hasOwnProperty.call(payload, 'name')
+                ? String(payload.name || '').trim()
+                : folder.name;
+            const nextIsActive = Object.prototype.hasOwnProperty.call(payload, 'is_active')
+                ? payload.is_active === true
+                : folder.is_active !== false;
             const updates = {};
-            if (Object.prototype.hasOwnProperty.call(payload, 'name')) {
-                const normalizedName = String(payload.name || '').trim();
+            if (nextIsActive) {
                 const existingFolders = await ItemFolder.findAll({
-                    where: { parent_id: folder.parent_id || null },
+                    where: activeFolderWhere({ parent_id: folder.parent_id || null }),
                     attributes: ['folder_id', 'name'],
                     transaction,
                     lock: transaction.LOCK.UPDATE
@@ -3080,8 +3083,11 @@ export const itemRepository = {
                 if (duplicate) {
                     const error = new Error(`Category "${duplicate.name}" already exists.`);
                     error.statusCode = 409;
+                    error.code = 'CATEGORY_EXISTS';
                     throw error;
                 }
+            }
+            if (Object.prototype.hasOwnProperty.call(payload, 'name')) {
                 updates.name = normalizedName;
             }
             if (Object.prototype.hasOwnProperty.call(payload, 'description')) {
@@ -3115,10 +3121,16 @@ export const itemRepository = {
             };
         } catch (error) {
             if (!transaction.finished) await transaction.rollback();
+            if (error.name === 'SequelizeUniqueConstraintError') {
+                const conflict = new Error(`Category "${normalizedName}" already exists.`, { cause: error });
+                conflict.statusCode = 409;
+                conflict.code = 'CATEGORY_EXISTS';
+                throw conflict;
+            }
             throw error;
         }
     },
-    async deleteFolder(folderId, replacementFolderId = null) {
+    async deleteFolder(folderId, replacementFolderId = null, userId = null) {
         const ItemFolder = dbStore.get('ItemFolder');
         const Item = dbStore.get('Item');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
@@ -3129,7 +3141,7 @@ export const itemRepository = {
                 transaction,
                 lock: transaction.LOCK.UPDATE
             });
-            if (!folder) {
+            if (!folder || folder.deleted_at) {
                 const error = new Error('Folder not found');
                 error.statusCode = 404;
                 throw error;
@@ -3137,7 +3149,7 @@ export const itemRepository = {
 
             // Lock assigned items before moving them so a concurrent item edit cannot leave an orphaned category reference.
             const assignedItems = await Item.findAll({
-                where: { folder_id: folder.folder_id || folderId },
+                where: visibleItemWhere({ folder_id: folder.folder_id || folderId }),
                 attributes: ['item_id'],
                 transaction,
                 lock: transaction.LOCK.UPDATE
@@ -3170,13 +3182,12 @@ export const itemRepository = {
                     error.code = 'CATEGORY_REPLACEMENT_NOT_FOUND';
                     throw error;
                 }
-                if (replacementFolder.is_active === false) {
+                if (replacementFolder.is_active === false || replacementFolder.deleted_at) {
                     const error = new Error('The replacement category must be active.');
                     error.statusCode = 409;
                     error.code = 'CATEGORY_REPLACEMENT_INACTIVE';
                     throw error;
                 }
-
                 await Item.update(
                     {
                         folder_id: replacementFolder.folder_id,
@@ -3189,7 +3200,11 @@ export const itemRepository = {
                 );
             }
 
-            await folder.destroy({ transaction });
+            await folder.update({
+                is_active: false,
+                deleted_at: new Date(),
+                deleted_by: userId
+            }, { transaction });
             await transaction.commit();
 
             return {

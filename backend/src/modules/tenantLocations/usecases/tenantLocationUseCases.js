@@ -339,6 +339,14 @@ export const buildDeleteTenantLocationUseCase = ({ tenantLocationRepository }) =
                     );
                 }
 
+                if (existing.is_active === true) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Deactivate this location before permanently deleting its pin.',
+                        { statusCode: 409 }
+                    );
+                }
+
                 const referenceCounts = await tenantLocationRepository.countOperationalReferences(normalizedId, {
                     transaction
                 });

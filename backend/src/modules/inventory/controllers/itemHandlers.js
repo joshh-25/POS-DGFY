@@ -911,7 +911,7 @@ export const deleteFolder = async (req, res, next) => {
     const folder_id = req.validatedParams?.folder_id || req.params.folder_id;
     const replacementFolderId = req.validatedData?.replacement_folder_id;
     const result = await runInventoryUseCase(
-      () => deleteFolderUseCase({ folderId: folder_id, replacementFolderId }),
+      () => deleteFolderUseCase({ folderId: folder_id, replacementFolderId, userId: req.user?.user_id || null }),
       'Failed to delete folder'
     );
     await trackProductUsageFromResult({

@@ -2,13 +2,19 @@ name: PR DGFY API Code Checks
 
 on:
   workflow_call:
+    inputs:
+      runner_labels_json:
+        description: JSON array passed to runs-on for this job
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
 
 # Mirrors the `test-dgfy-api` job in ci.yml (which only runs on master pushes/PRs)
 # so apps/dgfy-api gets the same architecture + compat-boundary + lint + test
 # gate on develop/main PRs that backend/frontend already have.
 jobs:
   code-check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     timeout-minutes: 15
     defaults:
       run:

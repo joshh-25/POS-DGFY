@@ -39,6 +39,9 @@ const toPositiveInt = (value) => {
 };
 const TERMINAL_REGISTRY_MODE_VALUES = new Set(['warn', 'enforce']);
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const POS_BEST_SELLER_SETTINGS_KEY = 'pos_best_seller_settings';
+const DEFAULT_BEST_SELLER_SETTINGS = Object.freeze({ enabled: true, lookback_days: 30, top_limit: 3 });
+const DAILY_BEST_SELLER_SETTINGS = Object.freeze({ lookback_days: 1, top_limit: 1 });
 const LOW_CONFIDENCE_BACKFILL_SOURCES = new Set(['active_location_fallback', 'no_resolution']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const parseJsonLoosely = (value) => {
@@ -143,9 +146,20 @@ const POS_CATALOG_OVERRIDE_ATTRIBUTES = [
     'item_id',
     'pos_visible',
     'pos_always_available',
+    'pos_best_seller_mode',
     'pos_image_path',
     'pos_image_url'
 ];
+
+const normalizeBestSellerSettings = (value) => {
+    const parsed = parseJsonLoosely(value);
+    return {
+        enabled: parsed?.enabled !== false,
+        lookback_days: DEFAULT_BEST_SELLER_SETTINGS.lookback_days,
+        top_limit: DEFAULT_BEST_SELLER_SETTINGS.top_limit,
+        daily_top_enabled: parsed?.daily_top_enabled === true
+    };
+};
 
 const safeGetModel = (name) => {
     try {
@@ -311,6 +325,89 @@ const loadCatalogOverridesMap = async (itemIds = [], options = {}) => {
     }
 };
 
+const queryTopSellingItemIds = async ({
+    normalizedItemIds,
+    PosTransaction,
+    PosTransactionLine,
+    sequelize,
+    lookbackDays,
+    topLimit,
+    transaction
+}) => {
+    const since = new Date(Date.now() - (lookbackDays * 24 * 60 * 60 * 1000));
+    const rows = await PosTransactionLine.findAll({
+        where: { item_id: { [Op.in]: normalizedItemIds } },
+        include: [{
+            model: PosTransaction,
+            as: 'transaction',
+            attributes: [],
+            required: true,
+            where: {
+                status: 'completed',
+                payment_status: 'paid',
+                created_at: { [Op.gte]: since }
+            }
+        }],
+        attributes: [
+            'item_id',
+            [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('PosTransactionLine.quantity')), 0), 'sold_quantity']
+        ],
+        group: ['PosTransactionLine.item_id'],
+        order: [[sequelize.literal('sold_quantity'), 'DESC'], ['item_id', 'ASC']],
+        limit: topLimit,
+        raw: true,
+        transaction
+    });
+    return rows
+        .filter((row) => Number(row?.sold_quantity || 0) > 0)
+        .map((row) => Number(row.item_id));
+};
+
+const loadBestSellerItemIds = async (itemIds = [], options = {}) => {
+    const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+        .map((itemId) => Number.parseInt(itemId, 10))
+        .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+    if (normalizedItemIds.length === 0) return new Set();
+
+    const SystemSetting = safeGetModel('SystemSetting');
+    const PosTransaction = safeGetModel('PosTransaction');
+    const PosTransactionLine = safeGetModel('PosTransactionLine');
+    const sequelize = dbStore.getStore()?.sequelize || safeGetModel('sequelize');
+    if (
+        !SystemSetting || typeof SystemSetting.findOne !== 'function'
+        || !PosTransaction || !PosTransactionLine || typeof PosTransactionLine.findAll !== 'function'
+        || !sequelize || typeof sequelize.fn !== 'function' || typeof sequelize.col !== 'function' || typeof sequelize.literal !== 'function'
+    ) return new Set();
+
+    const settingsRow = await SystemSetting.findOne({
+        where: { setting_key: POS_BEST_SELLER_SETTINGS_KEY },
+        attributes: ['setting_value']
+    });
+    const settings = normalizeBestSellerSettings(settingsRow?.setting_value);
+    if (settings.enabled !== true && settings.daily_top_enabled !== true) return new Set();
+
+    const queryArgs = { normalizedItemIds, PosTransaction, PosTransactionLine, sequelize, transaction: options.transaction };
+    const bestSellerIds = new Set();
+
+    if (settings.enabled === true) {
+        (await queryTopSellingItemIds({
+            ...queryArgs,
+            lookbackDays: settings.lookback_days,
+            topLimit: settings.top_limit
+        })).forEach((itemId) => bestSellerIds.add(itemId));
+    }
+
+    if (settings.daily_top_enabled === true) {
+        (await queryTopSellingItemIds({
+            ...queryArgs,
+            lookbackDays: DAILY_BEST_SELLER_SETTINGS.lookback_days,
+            topLimit: DAILY_BEST_SELLER_SETTINGS.top_limit
+        })).forEach((itemId) => bestSellerIds.add(itemId));
+    }
+
+    return bestSellerIds;
+};
+
 const loadStorefrontCatalogImageMap = async (itemIds = [], options = {}) => {
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
         return new Map();
@@ -385,6 +482,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
     const normalizedItems = (Array.isArray(items) ? items : []).map((item) => toPlain(item));
     const itemIds = normalizedItems.map((item) => item.item_id);
     const overrideMap = await loadCatalogOverridesMap(itemIds, options);
+    const autoBestSellerItemIds = await loadBestSellerItemIds(itemIds, options);
     const storefrontImageMap = await loadStorefrontCatalogImageMap(itemIds, options);
     const primaryBarcodeMap = options.includePrimaryBarcode === true
         ? await loadPrimaryBarcodeMap(itemIds, options)
@@ -395,10 +493,16 @@ const applyCatalogOverrides = async (items, options = {}) => {
             const override = overrideMap.get(item.item_id);
             const storefrontImage = storefrontImageMap.get(item.item_id);
             const posVisible = resolveCatalogVisibility({ item, override, surface: 'pos' });
+            const bestSellerMode = ['force', 'never'].includes(override?.pos_best_seller_mode)
+                ? override.pos_best_seller_mode
+                : 'auto';
             return {
                 ...item,
                 pos_visible: posVisible,
                 pos_always_available: override?.pos_always_available === true,
+                pos_best_seller_mode: bestSellerMode,
+                is_best_seller: bestSellerMode === 'force'
+                    || (bestSellerMode === 'auto' && autoBestSellerItemIds.has(Number(item.item_id))),
                 pos_image_path: override?.pos_image_path || null,
                 pos_image_url: storefrontImage?.storefront_image_url || null,
                 pos_image_variants: deriveImageAssetVariantUrls({
@@ -864,7 +968,13 @@ const buildReportInclude = () => ([
         include: [{
             model: dbStore.get('Item'),
             as: 'item',
-            attributes: ['item_id', 'name', 'sku_code', 'category', 'cost_per_unit', 'default_sale_price', 'unit_of_measure']
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'product_folder', 'folder_id', 'cost_per_unit', 'default_sale_price', 'unit_of_measure'],
+            include: [{
+                model: dbStore.get('ItemFolder'),
+                as: 'folder',
+                attributes: ['folder_id', 'name'],
+                required: false
+            }]
         }]
     },
     {
@@ -1128,7 +1238,7 @@ const buildDiscountBreakdown = (rows = []) => {
     })).sort((left, right) => Number(right.discount_amount || 0) - Number(left.discount_amount || 0));
 };
 
-const buildFilterOptions = (transactions = [], lineRows = []) => {
+const buildFilterOptions = (transactions = [], lineRows = [], categoryOptions = []) => {
     const cashierMap = new Map();
     transactions.forEach((transaction) => {
         const userId = toPositiveInt(transaction?.cashier?.user_id || transaction?.cashier_id);
@@ -1138,7 +1248,13 @@ const buildFilterOptions = (transactions = [], lineRows = []) => {
             cashier_name: transaction?.cashier?.username || `Cashier #${userId}`
         });
     });
-    const categories = Array.from(new Set(lineRows.map((row) => String(row.category || '').trim()).filter(Boolean))).sort();
+    const categories = Array.isArray(categoryOptions) && categoryOptions.length > 0
+        ? categoryOptions
+        : Array.from(new Set(lineRows.map((row) => String(row.category || '').trim()).filter(Boolean))).sort().map((name) => ({
+            folder_id: null,
+            name,
+            legacy: true
+        }));
     return {
         cashiers: Array.from(cashierMap.values()).sort((left, right) => left.cashier_name.localeCompare(right.cashier_name)),
         categories,
@@ -1147,8 +1263,15 @@ const buildFilterOptions = (transactions = [], lineRows = []) => {
     };
 };
 
+// POS item forms assign the customer-facing Food Category through item folders.
+// Keep the legacy item.category value only for older records without a folder.
+const resolveReportItemCategory = (item = {}) => (
+    String(item?.folder?.name || item?.product_folder || item?.category || '').trim()
+);
+
 const normalizeReportLineRows = (transactions = [], filters = {}) => {
     const normalizedCategory = String(filters.category || '').trim().toLowerCase();
+    const normalizedFolderId = toPositiveInt(filters.category_id);
     const rows = [];
 
     (Array.isArray(transactions) ? transactions : []).forEach((transaction) => {
@@ -1163,7 +1286,11 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
 
         (Array.isArray(transaction?.lines) ? transaction.lines : []).forEach((line) => {
             const item = line?.item || {};
-            const category = String(item?.category || '').trim().toLowerCase();
+            const reportCategory = resolveReportItemCategory(item);
+            const category = reportCategory.toLowerCase();
+            if (normalizedFolderId && Number(item?.folder_id) !== normalizedFolderId) {
+                return;
+            }
             if (normalizedCategory && category !== normalizedCategory) {
                 return;
             }
@@ -1198,7 +1325,7 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 item_id: line?.item_id,
                 item_name: item?.name || `Item #${line?.item_id}`,
                 sku_code: item?.sku_code || null,
-                category: item?.category || null,
+                category: reportCategory || null,
                 quantity,
                 gross_sales: grossSales,
                 net_sales: lineNetSales,
@@ -1221,7 +1348,7 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
     return rows;
 };
 
-const buildReportPayloadFromTransactions = (transactions = [], filters = {}) => {
+const buildReportPayloadFromTransactions = (transactions = [], filters = {}, categoryOptions = []) => {
     const normalizedLines = normalizeReportLineRows(transactions, filters);
     const summary = serializeReportSummary(normalizedLines);
     const dailySeries = buildTimeSeries(normalizedLines, 'daily');
@@ -1276,9 +1403,10 @@ const buildReportPayloadFromTransactions = (transactions = [], filters = {}) => 
             terminal_id: String(filters.terminal_id || '').trim() || null,
             payment_type: String(filters.payment_type || '').trim() || null,
             source: String(filters.source || '').trim() || null,
+            category_id: toPositiveInt(filters.category_id),
             category: String(filters.category || '').trim() || null
         },
-        filter_options: buildFilterOptions(transactions, normalizedLines),
+        filter_options: buildFilterOptions(transactions, normalizedLines, categoryOptions),
         summary_cards: {
             total_sales: summary.net_sales,
             total_transactions: summary.total_transactions,
@@ -2310,9 +2438,28 @@ export const posRepository = {
         return rows.map(toPlain);
     },
 
+    async listActiveReportCategories(options = {}) {
+        const ItemFolder = dbStore.get('ItemFolder');
+        if (!ItemFolder) return [];
+
+        const rows = await ItemFolder.findAll({
+            where: {
+                is_active: true,
+                deleted_at: null
+            },
+            attributes: ['folder_id', 'name'],
+            order: [['name', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
     async getReportsOverview(filters = {}, options = {}) {
-        const transactions = await this.listReportTransactions(filters, options);
-        return buildReportPayloadFromTransactions(transactions, filters);
+        const [transactions, categoryOptions] = await Promise.all([
+            this.listReportTransactions(filters, options),
+            this.listActiveReportCategories(options)
+        ]);
+        return buildReportPayloadFromTransactions(transactions, filters, categoryOptions);
     },
 
     async exportReports(filters = {}, options = {}) {
@@ -2894,6 +3041,9 @@ export const posRepository = {
                 ...itemWithLocationStock,
                 pos_visible: posVisible,
                 pos_always_available: override?.pos_always_available === true,
+                pos_best_seller_mode: ['force', 'never'].includes(override?.pos_best_seller_mode)
+                    ? override.pos_best_seller_mode
+                    : 'auto',
                 pos_image_path: override?.pos_image_path || null,
                 pos_image_url: override?.pos_image_url || null,
                 pos_image_variants: deriveImageAssetVariantUrls({
@@ -3139,6 +3289,9 @@ export const posRepository = {
             pos_always_available: Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
                 ? payload.pos_always_available === true
                 : (existing?.pos_always_available ?? false),
+            pos_best_seller_mode: Object.prototype.hasOwnProperty.call(payload, 'pos_best_seller_mode')
+                ? payload.pos_best_seller_mode
+                : (existing?.pos_best_seller_mode || 'auto'),
             pos_image_path: payload.pos_image_path ?? (existing?.pos_image_path ?? null),
             pos_image_url: payload.pos_image_url ?? (existing?.pos_image_url ?? null)
         };
@@ -3223,6 +3376,12 @@ export const posRepository = {
         return PosTerminalShift.findOne({
             where,
             include: [
+                {
+                    model: dbStore.get('User'),
+                    as: 'cashier',
+                    attributes: ['user_id', 'username', 'email'],
+                    required: false
+                },
                 {
                     model: dbStore.get('PosCashDrawerEvent'),
                     as: 'cashEvents',

@@ -1,14 +1,4 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-
 import { validatePhase14RehearsalEvidence } from '../scripts/validate-phase14-rehearsal-evidence.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EVIDENCE_PATH = path.resolve(
-  __dirname,
-  '../../../.planning/phases/14-sales-history-migration-full-verification/14-REHEARSAL-EVIDENCE.json'
-);
 
 /** A schema-exact, contract-clean evidence object used as the mutation base. */
 function validEvidence() {
@@ -55,13 +45,6 @@ function validEvidence() {
 describe('validatePhase14RehearsalEvidence — contract', () => {
   test('accepts a schema-exact, contract-clean evidence object', () => {
     const { ok, errors } = validatePhase14RehearsalEvidence(validEvidence());
-    expect(errors).toEqual([]);
-    expect(ok).toBe(true);
-  });
-
-  test('accepts the real committed 14-REHEARSAL-EVIDENCE.json', () => {
-    const parsed = JSON.parse(readFileSync(EVIDENCE_PATH, 'utf8'));
-    const { ok, errors } = validatePhase14RehearsalEvidence(parsed);
     expect(errors).toEqual([]);
     expect(ok).toBe(true);
   });

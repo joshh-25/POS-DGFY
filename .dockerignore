@@ -1,0 +1,50 @@
+# Docker only reads <build context>/.dockerignore, and every image here
+# builds with `context: .` (repo root) -- backend/.dockerignore and
+# frontend/.dockerignore are never actually consulted. This supersedes them.
+
+# VCS / editor / agent tooling
+/.git
+/.github
+/.agent
+/.claude
+/.codex
+/.cursor
+/.husky
+/tmp
+
+# Top-level directories no Dockerfile COPYs from
+/Standalone POS
+/output
+/backups
+/docs
+/scripts
+/mobile
+/android
+/System_Audit
+/release-controller
+/packages
+/artifacts
+/nginx
+/skills
+
+# Dependency / build-output / local-only noise, at any depth
+node_modules
+dist
+dist-apps
+desktop-dist
+coverage
+npm-debug.log*
+bun.lock
+*.md
+
+# Local dev state not needed at build time, at any depth
+.env
+.env.*
+!.env.example
+!.env.*.example
+logs
+uploads
+storage
+device-bridge
+tests
+config

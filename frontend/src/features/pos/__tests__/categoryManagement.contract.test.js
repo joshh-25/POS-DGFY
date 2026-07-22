@@ -40,6 +40,8 @@ describe('POS category management contract', () => {
     expect(source).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
     expect(source).toContain('Move assigned items to');
     expect(source).toContain('replacementFolderId');
+    expect(source).toContain("Select an active replacement category before deleting this category.");
+    expect(source).toContain('replacementFolderIdNumber > 0');
   });
 
   it('maps the saved category ID back into the edit-item category control', () => {

@@ -1,3 +1,15 @@
+# Plan — Tablet Report Filters 2-Column Grid Layout
+
+## High-Level Strategy
+Optimize the visual structure of the Report filters panel (`PosReportsAnalyticsWorkspace.jsx`) on tablet and medium viewports. Instead of stacking Date From, Date To, Range, Cashier, and the Export/Print buttons in a single vertical column, we will change the parent container grid to format as 2 columns on medium screens and above (`md:grid-cols-2`). Since the sub-elements are dissolved into the parent grid via `sm:contents` on screens larger than mobile, this will automatically layout Date From & Date To side-by-side on Row 1, Range & Cashier side-by-side on Row 2, and the Export CSV & Print PDF buttons side-by-side on Row 3. Mobile layout and large desktop layouts will remain fully preserved.
+
+## Goals
+- [x] 1. Modify the filters parent container div class in `PosReportsAnalyticsWorkspace.jsx` to include `md:grid-cols-2` (changing `className="grid gap-3 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]"` to `className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]"`).
+- [x] 2. Update the Range/Cashier subgrid wrapper div to use `grid-cols-2` on mobile (`className="grid grid-cols-2 gap-3 sm:contents"`) to align with the Date From/To mobile layout, ensuring symmetry.
+- [x] 3. Verify that ESLint passes and the build compiles cleanly.
+
+---
+
 # Plan — Order Details Card Button Grid Layout (Follow-up 3)
 
 ## High-Level Strategy

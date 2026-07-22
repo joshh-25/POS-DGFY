@@ -56,7 +56,6 @@ import {
 import { canCheckout, getCheckoutBlockReason } from './shared/model/checkoutRules.js';
 import { filterCatalogItems } from './shared/model/catalogSearch.js';
 import {
-  getSpreadMarkerCoordinate,
   haversineDistanceKm,
   toNumberOrNull
 } from './features/discovery/utils/discoveryMapMath.js';

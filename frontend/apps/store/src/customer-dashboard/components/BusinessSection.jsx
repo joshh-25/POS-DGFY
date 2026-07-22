@@ -19,7 +19,7 @@ export function BusinessSection({
   resolveBusinessAssetUrl,
   getBusinessCoverUrl,
   getBusinessProfileUrl,
-  getBusinessCategoryLabel,
+  getBusinessRoleLabel,
   getBusinessStatusLabel
 }) {
   const normalizedCompanies = businessCompanies.length > 0
@@ -49,10 +49,10 @@ export function BusinessSection({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 24 }}>
           {accepted.map((company) => {
             const name = company.company_name || company.name || 'Business';
-            const owned = company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner';
+            const owned = company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner' || company.role === 'business_owner';
             const coverUrl = getBusinessCoverUrl(company, resolveBusinessAssetUrl);
             const profileUrl = getBusinessProfileUrl(company, resolveBusinessAssetUrl);
-            const categoryLabel = getBusinessCategoryLabel(company) || 'Business account';
+            const roleLabel = getBusinessRoleLabel(company);
             const statusLabel = getBusinessStatusLabel(company);
 
             return (
@@ -88,7 +88,7 @@ export function BusinessSection({
                   <div style={{ marginTop: 16 }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: theme.infoBg, color: theme.primary, padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
                       <Store size={14} />
-                      {categoryLabel}
+                      {roleLabel}
                     </span>
                   </div>
 

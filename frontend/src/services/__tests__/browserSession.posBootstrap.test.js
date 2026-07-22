@@ -83,6 +83,20 @@ describe('standalone POS browser session bootstrap', () => {
     expect(reloadedSession.canRefreshBrowserSession()).toBe(true);
   });
 
+  it('allows one cookie-backed POS restore after a successful company switch handoff', async () => {
+    globalThis.window.sessionStorage.setItem('pos_company_switch_handoff_v1', JSON.stringify({
+      tenantId: 'tenant-switched',
+      createdAt: Date.now()
+    }));
+
+    const session = await import('../browserSession.js');
+
+    expect(session.canRefreshBrowserSession()).toBe(true);
+    await expect(session.refreshBrowserSession()).resolves.toBe('refreshed-access-token');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(globalThis.window.sessionStorage.getItem('pos_company_switch_handoff_v1')).toBeNull();
+  });
+
   it('requires explicit login again after the POS session is cleared', async () => {
     const session = await import('../browserSession.js');
     session.setBrowserSession({ token: 'explicit-pos-login-token' });

@@ -65,6 +65,7 @@ import {
   getStorefrontCatalogOverrides,
   updateStorefrontCatalogOverride,
   updateBulkStorefrontCatalogOverrides,
+  uploadStorefrontCatalogImage,
   uploadStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
   uploadBulkStorefrontCatalogImages,
@@ -103,7 +104,8 @@ const POS_CHECKLIST_SEARCH_KEYS = [
 
 const MSME_RESTRICTED_CATEGORY_FILTERS = new Set(['raw_material', 'packaging', 'finished_goods', 'work_in_progress']);
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
-const STOREFRONT_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const STOREFRONT_ITEM_IMAGE_SINGLE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
+const STOREFRONT_ITEM_IMAGE_GALLERY_MAX_BYTES = 10 * 1024 * 1024;
 const normalizeFolderName = (value) => String(value || '').trim();
 const toFolderLookupKey = (value) => normalizeFolderName(value).toLowerCase();
 
@@ -571,9 +573,12 @@ export default function Items() {
       return;
     }
     const filesToUpload = normalizedFiles.slice(0, remainingSlots);
-    const oversizedFile = filesToUpload.find((file) => Number(file?.size || 0) > STOREFRONT_ITEM_IMAGE_MAX_BYTES);
+    const maxSourceBytes = filesToUpload.length === 1
+      ? STOREFRONT_ITEM_IMAGE_SINGLE_SOURCE_MAX_BYTES
+      : STOREFRONT_ITEM_IMAGE_GALLERY_MAX_BYTES;
+    const oversizedFile = filesToUpload.find((file) => Number(file?.size || 0) > maxSourceBytes);
     if (oversizedFile) {
-      toast.error(`Cannot upload ${oversizedFile.name || 'item image'}: image size must be 5 MB or smaller.`);
+      toast.error(`Cannot upload ${oversizedFile.name || 'item image'}: ${filesToUpload.length === 1 ? 'single images may be up to 100 MB before optimization' : 'gallery images must be 10 MB or smaller'}.`);
       return;
     }
     if (normalizedFiles.length > remainingSlots) {
@@ -581,7 +586,9 @@ export default function Items() {
     }
 
     try {
-      const updated = await uploadStorefrontCatalogImages(itemId, filesToUpload);
+      const updated = filesToUpload.length === 1
+        ? await uploadStorefrontCatalogImage(itemId, filesToUpload[0])
+        : await uploadStorefrontCatalogImages(itemId, filesToUpload);
       setStorefrontCatalogOverrides((prev) => ({
         ...prev,
         [itemId]: { ...(prev[itemId] || {}), ...updated }

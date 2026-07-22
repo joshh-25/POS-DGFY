@@ -10,6 +10,11 @@ export const IMAGE_VARIANT_WIDTHS = Object.freeze({
     large: 1920
 });
 
+export const MAX_PUBLIC_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_INPUT_IMAGE_PIXELS = 40 * 1024 * 1024;
+const PHOTO_QUALITY_STEPS = Object.freeze([80, 76, 72, 68]);
+const GRAPHIC_QUALITY_STEPS = Object.freeze([100, 90, 80]);
+
 const IMAGE_VARIANT_FILE_NAMES = Object.freeze({
     thumbnail: 'thumb',
     medium: 'medium',
@@ -68,38 +73,69 @@ const getPublicFormat = ({ classification }) => (
         : { ext: '.png', encoder: 'png' }
 );
 
+const getSafeImageInput = (sourcePath) => sharp(sourcePath, {
+    limitInputPixels: MAX_INPUT_IMAGE_PIXELS,
+    failOn: 'error'
+});
+
+const getCandidateWidths = ({ width, sourceWidth }) => {
+    const maximumWidth = Number.isFinite(sourceWidth) && sourceWidth > 0
+        ? Math.min(width, sourceWidth)
+        : width;
+    const candidates = [maximumWidth];
+    let currentWidth = maximumWidth;
+
+    while (currentWidth > 640) {
+        currentWidth = Math.max(640, Math.floor(currentWidth * 0.8));
+        candidates.push(currentWidth);
+        if (currentWidth === 640) break;
+    }
+
+    return [...new Set(candidates.filter((candidate) => Number.isFinite(candidate) && candidate > 0))];
+};
+
 const buildVariantOutput = async ({
     sourcePath,
     destinationPath,
     encoder,
     width,
-    sourceWidth
+    sourceWidth,
+    maxBytes = null
 }) => {
-    const transform = sharp(sourcePath).rotate();
-    if (Number.isFinite(width) && width > 0 && (!Number.isFinite(sourceWidth) || sourceWidth > width)) {
-        transform.resize({ width, fit: 'inside', withoutEnlargement: true });
-    } else {
-        transform.resize({ fit: 'inside', withoutEnlargement: true });
+    const candidateWidths = maxBytes
+        ? getCandidateWidths({ width, sourceWidth })
+        : [width];
+    const qualitySteps = encoder === 'webp' ? PHOTO_QUALITY_STEPS : GRAPHIC_QUALITY_STEPS;
+
+    for (const candidateWidth of candidateWidths) {
+        for (const quality of qualitySteps) {
+            const transform = getSafeImageInput(sourcePath).rotate();
+            if (Number.isFinite(candidateWidth) && candidateWidth > 0) {
+                transform.resize({ width: candidateWidth, fit: 'inside', withoutEnlargement: true });
+            } else {
+                transform.resize({ fit: 'inside', withoutEnlargement: true });
+            }
+
+            if (encoder === 'webp') {
+                transform.webp({ quality, effort: 5 });
+            } else {
+                transform.png({ compressionLevel: 9, palette: true, quality });
+            }
+
+            const outputInfo = await transform.toFile(destinationPath);
+            const output = {
+                width: Number.isFinite(outputInfo?.width) ? outputInfo.width : null,
+                height: Number.isFinite(outputInfo?.height) ? outputInfo.height : null,
+                size: Number.isFinite(outputInfo?.size) ? outputInfo.size : null
+            };
+
+            if (!maxBytes || output.size <= maxBytes) {
+                return output;
+            }
+        }
     }
 
-    if (encoder === 'webp') {
-        transform.webp({
-            quality: 80,
-            effort: 5
-        });
-    } else {
-        transform.png({
-            compressionLevel: 9,
-            palette: true
-        });
-    }
-
-    const outputInfo = await transform.toFile(destinationPath);
-    return {
-        width: Number.isFinite(outputInfo?.width) ? outputInfo.width : null,
-        height: Number.isFinite(outputInfo?.height) ? outputInfo.height : null,
-        size: Number.isFinite(outputInfo?.size) ? outputInfo.size : null
-    };
+    throw new Error(`Unable to optimize image below ${maxBytes} bytes`);
 };
 
 const buildPublicUrl = (relativePath) => `/uploads/${toPosixRelative(relativePath)}`;
@@ -172,56 +208,58 @@ export const storeOptimizedImageAsset = async ({
     await fsPromises.mkdir(publicAssetDir, { recursive: true });
     await fsPromises.mkdir(originalAssetDir, { recursive: true });
 
-    const classification = classifyImageAsset({ reportedMime });
-    const { ext: publicExt, encoder } = getPublicFormat({ classification });
-    const originalExt = getOriginalExtension({ originalName, reportedMime });
-    const originalFilename = `original${originalExt}`;
-    const originalAbsolutePath = path.join(originalAssetDir, originalFilename);
-    await fsPromises.rename(tempPath, originalAbsolutePath);
+    try {
+        const classification = classifyImageAsset({ reportedMime });
+        const { ext: publicExt, encoder } = getPublicFormat({ classification });
+        const originalExt = getOriginalExtension({ originalName, reportedMime });
+        const originalFilename = `original${originalExt}`;
+        const originalAbsolutePath = path.join(originalAssetDir, originalFilename);
+        await fsPromises.rename(tempPath, originalAbsolutePath);
 
-    const originalMeta = await sharp(originalAbsolutePath).metadata();
-    const originalStat = await fsPromises.stat(originalAbsolutePath);
-    const sourceWidth = Number.isFinite(originalMeta?.width) ? originalMeta.width : null;
-    const sourceHeight = Number.isFinite(originalMeta?.height) ? originalMeta.height : null;
+        const originalMeta = await getSafeImageInput(originalAbsolutePath).metadata();
+        const originalStat = await fsPromises.stat(originalAbsolutePath);
+        const sourceWidth = Number.isFinite(originalMeta?.width) ? originalMeta.width : null;
+        const sourceHeight = Number.isFinite(originalMeta?.height) ? originalMeta.height : null;
 
-    const generatedVariants = {};
-    for (const [variantKey, width] of Object.entries(IMAGE_VARIANT_WIDTHS)) {
-        if (variantKey !== 'large' && Number.isFinite(sourceWidth) && sourceWidth < width) {
-            generatedVariants[variantKey] = null;
-            continue;
+        const generatedVariants = {};
+        for (const [variantKey, width] of Object.entries(IMAGE_VARIANT_WIDTHS)) {
+            if (variantKey !== 'large' && Number.isFinite(sourceWidth) && sourceWidth < width) {
+                generatedVariants[variantKey] = null;
+                continue;
+            }
+
+            const variantFilename = `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${publicExt}`;
+            const variantRelativePath = path.posix.join(
+                normalizedSurface,
+                ...normalizedScopeSegments.map((segment) => toPosixRelative(segment)),
+                assetId,
+                variantFilename
+            );
+            const variantAbsolutePath = path.join(publicAssetDir, variantFilename);
+            const output = await buildVariantOutput({
+                sourcePath: originalAbsolutePath,
+                destinationPath: variantAbsolutePath,
+                encoder,
+                width,
+                sourceWidth,
+                maxBytes: variantKey === 'large' ? MAX_PUBLIC_IMAGE_BYTES : null
+            });
+            generatedVariants[variantKey] = {
+                path: variantRelativePath,
+                url: buildPublicUrl(variantRelativePath),
+                width: output.width,
+                height: output.height,
+                size: output.size,
+                mime: encoder === 'webp' ? 'image/webp' : 'image/png'
+            };
         }
 
-        const variantFilename = `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${publicExt}`;
-        const variantRelativePath = path.posix.join(
-            normalizedSurface,
-            ...normalizedScopeSegments.map((segment) => toPosixRelative(segment)),
-            assetId,
-            variantFilename
-        );
-        const variantAbsolutePath = path.join(publicAssetDir, variantFilename);
-        const output = await buildVariantOutput({
-            sourcePath: originalAbsolutePath,
-            destinationPath: variantAbsolutePath,
-            encoder,
-            width,
-            sourceWidth
-        });
-        generatedVariants[variantKey] = {
-            path: variantRelativePath,
-            url: buildPublicUrl(variantRelativePath),
-            width: output.width,
-            height: output.height,
-            size: output.size,
-            mime: encoder === 'webp' ? 'image/webp' : 'image/png'
-        };
-    }
+        const largeVariant = generatedVariants.large;
+        if (!largeVariant?.path || !largeVariant?.url) {
+            throw new Error('Large image variant was not generated');
+        }
 
-    const largeVariant = generatedVariants.large;
-    if (!largeVariant?.path || !largeVariant?.url) {
-        throw new Error('Large image variant was not generated');
-    }
-
-    const manifest = {
+        const manifest = {
         asset_id: assetId,
         surface: normalizedSurface,
         scope_segments: normalizedScopeSegments,
@@ -235,11 +273,11 @@ export const storeOptimizedImageAsset = async ({
             size: Number.isFinite(originalStat?.size) ? originalStat.size : null
         },
         variants: generatedVariants
-    };
-    const manifestPath = path.join(publicAssetDir, 'asset.json');
-    await fsPromises.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+        };
+        const manifestPath = path.join(publicAssetDir, 'asset.json');
+        await fsPromises.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 
-    return {
+        return {
         path: largeVariant.path,
         url: largeVariant.url,
         variants: {
@@ -259,8 +297,13 @@ export const storeOptimizedImageAsset = async ({
             size: manifest.original.size,
             mime: manifest.original.mime
         },
-        classification
-    };
+            classification
+        };
+    } catch (error) {
+        await fsPromises.rm(publicAssetDir, { recursive: true, force: true });
+        await fsPromises.rm(originalAssetDir, { recursive: true, force: true });
+        throw error;
+    }
 };
 
 export const removeOptimizedImageAsset = async ({ uploadsRoot, storedPath }) => {

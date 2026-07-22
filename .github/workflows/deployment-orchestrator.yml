@@ -21,6 +21,11 @@ on:
         required: false
         type: boolean
         default: false
+      runner_labels_json:
+        description: JSON array passed to runs-on for build/publish jobs
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
     outputs:
       backend_sha_tag:
         value: ${{ jobs.backend.outputs.sha_tag }}
@@ -28,8 +33,6 @@ on:
         value: ${{ jobs.frontend.outputs.sha_tag }}
       dgfy_api_sha_tag:
         value: ${{ jobs.dgfy-api.outputs.sha_tag }}
-      migration_runner_sha_tag:
-        value: ${{ jobs.dgfy-migration-runner.outputs.sha_tag }}
 
 permissions:
   contents: read
@@ -41,6 +44,7 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -54,40 +58,32 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
       packages: write
 
   dgfy-api:
+    if: false  # TEMP: disabled, only backend/frontend builds enabled
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
-    secrets: inherit
-    permissions:
-      contents: read
-      packages: write
-
-  dgfy-migration-runner:
-    # One-shot migration CLI image, published to GHCR (multi-arch) but not
-    # deployed as a compose service -- see deploy-migration-runner.yml.
-    uses: ./.github/workflows/deploy-migration-runner.yml
-    with:
-      environment: ${{ inputs.environment }}
-      image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
       packages: write
 
   publish:
-    needs: [ backend, frontend, dgfy-api, dgfy-migration-runner ]
-    if: inputs.publish
+    needs: [ backend, frontend ]
+    if: inputs.publish && needs.backend.result == 'success' && needs.frontend.result == 'success'
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}
       vpn_required: ${{ inputs.vpn_required }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read

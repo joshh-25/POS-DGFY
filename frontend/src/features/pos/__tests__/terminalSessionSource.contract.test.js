@@ -11,9 +11,8 @@ const standalonePosMainSource = readFileSync(standalonePosMainPath, 'utf8');
 
 describe('TerminalPage session contract', () => {
   it('uses browserSession for protected POS auth state instead of persisted privileged tokens', () => {
-    expect(terminalPageSource).toContain(
-      "import { clearBrowserSession, getAccessToken, getCompanyToken, refreshBrowserSession } from '@/services/browserSession.js';"
-    );
+    expect(terminalPageSource).toContain("from '@/services/browserSession.js';");
+    expect(terminalPageSource).toContain('preparePosCompanySwitchHandoff,');
     expect(terminalPageSource).toContain('refreshBrowserSession()');
     expect(terminalPageSource).toContain('getCompanyToken()');
     expect(terminalPageSource).not.toMatch(/localStorage\.getItem\(['"`](authToken|companyToken)['"`]/);
@@ -64,6 +63,12 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain("resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';");
     expect(terminalPageSource).toContain("No registered business was found for this account. Opening your DGFY customer dashboard.");
     expect(terminalPageSource).toContain('window.location.href = resolveStorefrontAccountUrl();');
+  });
+
+  it('clears source-company terminal lock state before loading a switched company session', () => {
+    expect(terminalPageSource).toContain(
+      "setStoredTerminalLock(false);\n        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);\n        preparePosCompanySwitchHandoff({ tenantId: normalizedTenantId });\n        window.location.assign('/terminal');"
+    );
   });
 
   it('sends onboarding handoff to the dedicated POS app origin when started from IMS', () => {

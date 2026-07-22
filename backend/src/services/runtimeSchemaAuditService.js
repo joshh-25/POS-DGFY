@@ -39,9 +39,11 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs',
     '20260629000001-add-pos-always-available-contract.cjs',
     '20260705000001-add-admin-provisioned-membership-source.cjs',
+    '20260710000001-create-delivery-jobs.cjs',
     '20260711000001-add-pickup-cash-collection-fields.cjs',
     '20260711000002-add-item-folder-active-contract.cjs',
     '20260711000003-repair-pickup-cash-collection-columns.cjs',
+    '20260714000002-add-pos-best-seller-contract.cjs',
     '20260502000001-add-services-mode-booking-tables.cjs'
 ]);
 
@@ -66,7 +68,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
     items: ['item_id', 'vat_type'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter', 'is_active'],
-    pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available'],
+    pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available', 'pos_best_seller_mode'],
     pos_transactions: [
         'pos_transaction_id',
         'document_type',
@@ -99,6 +101,13 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'payment_collected_by',
         'payment_collected_shift_id',
         'payment_collected_terminal_id'
+    ],
+    delivery_jobs: [
+        'delivery_job_id',
+        'pos_transaction_id',
+        'location_id',
+        'provider',
+        'status'
     ],
     stock_movements: ['movement_id', 'item_id', 'movement_type', 'quantity', 'location_id', 'source_location_id', 'destination_location_id'],
     fifo_batches: ['batch_id', 'item_id', 'location_id', 'quantity', 'quantity_consumed'],
@@ -170,7 +179,8 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
         }
     },
     pos_catalog_overrides: {
-        pos_always_available: { allowNull: false }
+        pos_always_available: { allowNull: false },
+        pos_best_seller_mode: { allowNull: false }
     },
     pos_transaction_lines: {
         stock_effect_type: { allowNull: false },

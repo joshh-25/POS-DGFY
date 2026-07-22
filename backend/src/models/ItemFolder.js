@@ -9,8 +9,7 @@ const ItemFolder = sequelize.define('ItemFolder', {
     },
     name: {
         type: DataTypes.STRING(100),
-        allowNull: false,
-        unique: true
+        allowNull: false
     },
     description: {
         type: DataTypes.TEXT,
@@ -25,6 +24,18 @@ const ItemFolder = sequelize.define('ItemFolder', {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: true
+    },
+    deleted_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    deleted_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: 'users',
+            key: 'user_id'
+        }
     },
     parent_id: {
         type: DataTypes.INTEGER,
