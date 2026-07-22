@@ -17,6 +17,7 @@ import { updateSettings, uploadStorefrontAsset } from '@/services/settingsServic
 import { provisionCashierFromGmail } from '@/services/userService.js';
 import { createTenantLocation, updateTenantLocation } from '@/services/tenantLocationService.js';
 import { bulkCreateOnboardingItems } from '@/services/onboardingService.js';
+import { uploadStorefrontCatalogImage } from '@/services/storefrontCatalogService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
@@ -166,6 +167,9 @@ export default function PosTenantSetupModal({
   const [locationSaving, setLocationSaving] = useState(false);
   const [storefrontContinueAttempted, setStorefrontContinueAttempted] = useState(false);
   const [starterItemSaving, setStarterItemSaving] = useState(false);
+  const [starterItemImageFile, setStarterItemImageFile] = useState(null);
+  const [starterItemImagePreviewUrl, setStarterItemImagePreviewUrl] = useState('');
+  const [createdStarterItem, setCreatedStarterItem] = useState(null);
   const starterPresetOptions = useMemo(() => resolveStarterPresetOptions(workflowMode), [workflowMode]);
   const [starterItemForm, setStarterItemForm] = useState(() => ({
     mode_item_preset: starterPresetOptions[0]?.key || 'product',
@@ -177,6 +181,8 @@ export default function PosTenantSetupModal({
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
 
   const localPreviewUrlsRef = useRef(new Set());
+  const starterItemPreviewUrlRef = useRef('');
+  const starterItemPhotoInputRef = useRef(null);
 
   const [locationDraft, setLocationDraft] = useState(() => createLocationDraft(
     resolvePrimaryLocation(terminalLocations),
@@ -204,6 +210,10 @@ export default function PosTenantSetupModal({
     if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') return;
     localPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     localPreviewUrlsRef.current.clear();
+    if (starterItemPreviewUrlRef.current) {
+      URL.revokeObjectURL(starterItemPreviewUrlRef.current);
+      starterItemPreviewUrlRef.current = '';
+    }
   }, []);
 
   useEffect(() => {
@@ -657,7 +667,38 @@ export default function PosTenantSetupModal({
       if (failures.length > 0) {
         throw new Error(failures[0]?.message || 'Starter item was rejected by onboarding validation.');
       }
+
+      const createdRow = Array.isArray(result?.results)
+        ? result.results.find((entry) => entry?.status === 'created' && entry?.item)
+        : null;
+      const createdItem = createdRow?.item || null;
+      const createdItemId = Number(createdItem?.item_id || createdItem?.id || 0);
+      if (!createdItem || !Number.isInteger(createdItemId) || createdItemId <= 0) {
+        throw new Error('Starter item was created but its item record could not be loaded. Refresh and try again.');
+      }
+
+      let uploadedImageUrl = '';
+      if (starterItemImageFile) {
+        try {
+          const uploadedImage = await uploadStorefrontCatalogImage(createdItemId, starterItemImageFile);
+          uploadedImageUrl = String(
+            uploadedImage?.storefront_image_url
+            || uploadedImage?.image_url
+            || uploadedImage?.url
+            || uploadedImage?.path
+            || ''
+          ).trim();
+        } catch (imageError) {
+          toast.error(imageError?.response?.data?.message || 'Starter item was created, but its photo could not be uploaded. You can add it later from Items.');
+        }
+      }
+
       await onSetupDataChanged();
+      setCreatedStarterItem({
+        ...createdItem,
+        item_id: createdItemId,
+        image_url: uploadedImageUrl
+      });
       setStarterItemForm((current) => ({
         ...current,
         name: '',
@@ -665,11 +706,39 @@ export default function PosTenantSetupModal({
         cost_per_unit: '',
         current_stock: '0'
       }));
+      setStarterItemImageFile(null);
+      if (starterItemPreviewUrlRef.current) {
+        URL.revokeObjectURL(starterItemPreviewUrlRef.current);
+        starterItemPreviewUrlRef.current = '';
+      }
+      setStarterItemImagePreviewUrl('');
       toast.success('Starter item created.');
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to create starter item.');
     } finally {
       setStarterItemSaving(false);
+    }
+  };
+
+  const handleStarterItemPhotoChange = (file) => {
+    if (starterItemPreviewUrlRef.current && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(starterItemPreviewUrlRef.current);
+      starterItemPreviewUrlRef.current = '';
+    }
+    setStarterItemImageFile(file || null);
+    if (!file || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+      setStarterItemImagePreviewUrl('');
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    starterItemPreviewUrlRef.current = previewUrl;
+    setStarterItemImagePreviewUrl(previewUrl);
+  };
+
+  const handleRemoveStarterItemPhoto = () => {
+    handleStarterItemPhotoChange(null);
+    if (starterItemPhotoInputRef.current) {
+      starterItemPhotoInputRef.current.value = '';
     }
   };
 
@@ -841,7 +910,87 @@ export default function PosTenantSetupModal({
                         className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
                       />
                     </div>
+                    <div className="grid gap-2">
+                      <Label className="text-[12px] font-black text-[#0F172A]">Item Photo <span className="font-medium text-slate-500">(optional)</span></Label>
+                      <Input
+                        ref={starterItemPhotoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="sr-only"
+                        onChange={(event) => {
+                          handleStarterItemPhotoChange(event.target.files?.[0] || null);
+                          event.target.value = '';
+                        }}
+                      />
+                      {starterItemImagePreviewUrl ? (
+                        <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                          <img
+                            src={starterItemImagePreviewUrl}
+                            alt="Starter item photo preview"
+                            className="h-12 w-12 rounded-md object-cover"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold text-slate-700">{starterItemImageFile?.name || 'Photo selected'}</p>
+                            <p className="mt-0.5 text-[11px] text-slate-500">One photo per item</p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => starterItemPhotoInputRef.current?.click()}
+                            >
+                              Replace
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={handleRemoveStarterItemPhoto}
+                              className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => starterItemPhotoInputRef.current?.click()}
+                          className="h-11 justify-start border-dashed border-slate-300 text-slate-700 hover:border-[#1A4E8D] hover:bg-blue-50"
+                        >
+                          <ImagePlus className="mr-2 h-4 w-4" />
+                          Upload item photo
+                        </Button>
+                      )}
+                    </div>
                   </div>
+                  {createdStarterItem ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                      <p className="text-[12px] font-black uppercase tracking-[0.14em] text-emerald-700">Saved Starter Item</p>
+                      <div className="mt-3 flex items-center gap-3 rounded-xl border border-emerald-100 bg-white p-3">
+                        {createdStarterItem.image_url ? (
+                          <img
+                            src={resolveAssetUrl(createdStarterItem.image_url)}
+                            alt={createdStarterItem.name || 'Starter item'}
+                            className="h-16 w-16 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="grid h-16 w-16 place-items-center rounded-lg bg-slate-100 text-slate-500">
+                            <ImagePlus className="h-5 w-5" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-black text-[#0F172A]">{createdStarterItem.name}</p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            PHP {Number(createdStarterItem.default_sale_price || 0).toFixed(2)} · Stock {Number(createdStarterItem.current_stock || 0)}
+                          </p>
+                        </div>
+                        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-label="Starter item saved" />
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="flex justify-end">
                     <Button
                       type="button"

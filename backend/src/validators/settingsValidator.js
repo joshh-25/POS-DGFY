@@ -382,6 +382,12 @@ const inventoryDisplayModeSchema = Joi.string().trim().lowercase().valid(...INVE
   'any.only': `Inventory display mode must be one of: ${INVENTORY_DISPLAY_MODES.join(', ')}`
 });
 const inventoryLowStockDisplayThresholdSchema = Joi.number().integer().min(1).max(9999);
+const posBestSellerSettingsSchema = Joi.object({
+  enabled: Joi.boolean().default(true),
+  lookback_days: Joi.number().integer().valid(30).default(30),
+  top_limit: Joi.number().integer().valid(3).default(3),
+  daily_top_enabled: Joi.boolean().default(false)
+}).default({ enabled: true, lookback_days: 30, top_limit: 3, daily_top_enabled: false });
 
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
@@ -440,6 +446,7 @@ export const updateSettingsSchema = Joi.object({
   clear_pos_settings_access_pin: Joi.boolean().optional(),
   pos_petty_cash_symbol: Joi.string().trim().max(12).allow('').optional(),
   pos_petty_cash_amount: Joi.number().min(0).precision(4).optional(),
+  pos_best_seller_settings: posBestSellerSettingsSchema.optional(),
   store_delivery_fee: Joi.number().min(0).precision(4).optional(),
   store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').optional().messages({
     'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'
@@ -596,6 +603,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_settings_access_pin_hash: Joi.string().trim().allow(''),
     pos_petty_cash_symbol: Joi.string().trim().max(12).allow(''),
     pos_petty_cash_amount: Joi.number().min(0).precision(4),
+    pos_best_seller_settings: posBestSellerSettingsSchema,
     store_delivery_fee: Joi.number().min(0).precision(4),
     store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').messages({
       'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'

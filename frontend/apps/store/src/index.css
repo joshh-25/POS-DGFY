@@ -276,7 +276,6 @@
   display: block;
   transform: scale(var(--pin-scale, 1));
   transform-origin: 50% 100%;
-  transition: transform 140ms ease;
 }
 
 .discovery-result-cluster-visual {
@@ -314,6 +313,34 @@
 }
 
 .discovery-result-cluster.is-selected {
+  outline: 3px solid rgba(174, 232, 244, 0.76);
+  outline-offset: 2px;
+}
+
+.discovery-density-cluster {
+  position: relative;
+  display: block;
+  overflow: visible;
+  z-index: 30;
+  cursor: pointer;
+}
+
+.discovery-density-cluster-visual {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 3px solid #ffffff;
+  background: #334155;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.3);
+}
+
+.discovery-density-cluster.is-selected .discovery-density-cluster-visual {
   outline: 3px solid rgba(174, 232, 244, 0.76);
   outline-offset: 2px;
 }
@@ -437,7 +464,6 @@
   justify-content: center;
   transform: scale(var(--pin-scale, 1));
   transform-origin: 50% 100%;
-  transition: transform 160ms ease;
 }
 
 .discovery-result-pin-visual.is-glowing {

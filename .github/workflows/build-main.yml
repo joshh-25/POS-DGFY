@@ -12,20 +12,88 @@ permissions:
   contents: read
   packages: write
 
+# DUAL-DEPLOY (2026-07-20): dgfy.ph went live in production alongside
+# beta.dgfy.ph, both domain groups sharing ONE backend/MySQL/Redis on the same
+# server. A push to main now builds BOTH frontends and deploys them together:
+#
+#   * frontend:beta    -- built against the BETA GitHub Environment's VITE_*
+#                         (beta.dgfy.ph auth/handoff URLs). Served by the
+#                         `frontend-beta` container -> *.beta.dgfy.ph.
+#   * frontend:latest  -- built against the PROD GitHub Environment's VITE_*
+#                         (dgfy.ph auth/handoff URLs). Served by the `frontend`
+#                         container -> the *.dgfy.ph production domains.
+#   * backend:beta     -- built ONCE and shared. The backend image is
+#                         environment-agnostic (deploy-backend.yml passes no
+#                         per-env build args; its runtime config is the
+#                         server's hand-maintained .env), so there is no
+#                         separate prod backend build.
+#
+# After all three images are pushed, a SINGLE publish job SSH-deploys once
+# (docker compose pull && up -d against the server's own compose), which
+# refreshes frontend-beta:beta, frontend:latest and backend:beta in one go.
+# The deploy is resolved from the PROD Environment's SSH secrets (validated in
+# the 2026-07-20 cutover); BETA and PROD carry the same deploy secrets since it
+# is one server.
+#
+# NOTE (shared backend, no gate): every push to main restarts the shared
+# backend that BOTH beta and prod now depend on, with no approval gate. This is
+# the accepted interim behaviour for the dual-deploy window.
+#
+# Future cleanup (Option B, out of scope here): make PROD the sole deploy
+# owner and reduce BETA to frontend-only vars. See the cutover runbook:
+# docs/deployment/2026-07-20-dgfy-ph-production-cutover-runbook.md
+
 jobs:
-  build-and-push:
-    uses: ./.github/workflows/deployment-orchestrator.yml
+  # Shared backend image (environment-agnostic; built once, tagged beta to
+  # match the server's IMAGE_TAG=beta).
+  backend:
+    uses: ./.github/workflows/deploy-backend.yml
     with:
-      # BETA CUTOVER: beta.dgfy.ph is standing in for production for now.
-      # When the real dgfy.ph cutover happens, switch these two lines back
-      # to `environment: PROD` / `image_tags: "latest"` -- PROD's own vars
-      # (VITE_DGFY_AUTH_URL etc., currently unset) need the real dgfy.ph
-      # values set first. See the BETA GitHub Environment for the vars/
-      # secrets shape to replicate.
       environment: BETA
       image_tags: "beta"
-      publish: true
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
       packages: write
+
+  # Beta frontend image (beta.dgfy.ph VITE_* baked in).
+  frontend-beta:
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      environment: BETA
+      image_tags: "beta"
+      runner_labels_json: '["self-hosted"]'
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  # Prod frontend image (dgfy.ph VITE_* baked in).
+  frontend-prod:
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      environment: PROD
+      image_tags: "latest"
+      runner_labels_json: '["self-hosted"]'
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  # Single SSH deploy that refreshes all three images on the server in one
+  # `docker compose pull && up -d`. Only runs if every image built.
+  publish:
+    needs: [ backend, frontend-beta, frontend-prod ]
+    if: >-
+      needs.backend.result == 'success' &&
+      needs.frontend-beta.result == 'success' &&
+      needs.frontend-prod.result == 'success'
+    uses: ./.github/workflows/publish-platform.yml
+    with:
+      environment: PROD
+      runner_labels_json: '["self-hosted"]'
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: read

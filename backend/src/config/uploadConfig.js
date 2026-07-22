@@ -15,6 +15,9 @@ if (!fs.existsSync(uploadDir)) {
 
 export const TEMP_DIR = uploadDir;
 export const IMAGE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+// Catalog single-image uploads are optimized server-side before public storage.
+// Keep the raw intake bounded so one request cannot exhaust local disk or memory.
+export const CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES = 10 * 1024 * 1024;
 export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES = 50;
 
@@ -96,8 +99,8 @@ const buildBulkCatalogImageUpload = ({ maxBytes = BULK_CATALOG_IMAGE_TRANSPORT_M
 });
 
 export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
-export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
+export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES, maxFiles: 1 });
 export const posCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES });
-export const storefrontCatalogImageUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
+export const storefrontCatalogImageUpload = buildStrictImageUpload({ maxBytes: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES, maxFiles: 1 });
 export const storefrontCatalogGalleryImageUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 10 });
 export const storefrontCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES });

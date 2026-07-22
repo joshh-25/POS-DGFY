@@ -16,22 +16,12 @@ import {
   HelpCircle,
   Receipt
 } from 'lucide-react';
+import { ensureMapImage, setGeoJsonSourceData } from '../../../discovery/model/discoveryMapLayers.js';
+import { renderDeliveryPinSpriteSvg } from '../../../discovery/model/businessModePins.js';
+import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../../../src/components/maps/mapLibreShared.js';
 
-const createMarkerElement = (color, iconHtml) => {
-  const el = document.createElement('div');
-  el.style.width = '36px';
-  el.style.height = '36px';
-  el.style.backgroundColor = color;
-  el.style.borderRadius = '50%';
-  el.style.border = '3px solid #fff';
-  el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-  el.style.display = 'flex';
-  el.style.alignItems = 'center';
-  el.style.justifyContent = 'center';
-  el.style.color = '#fff';
-  el.innerHTML = iconHtml;
-  return el;
-};
+const TRACKING_PIN_SOURCE_ID = 'dgfy-tracking-pins';
+const TRACKING_PIN_LAYER_ID = 'dgfy-tracking-pin-symbols';
 
 const getTimelineIndex = (status) => {
   switch (status) {
@@ -49,7 +39,7 @@ const getTimelineIndex = (status) => {
 export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMenu }) => {
   const mapRef = useRef(null);
   const containerRef = useRef(null);
-  const markersRef = useRef([]);
+  const resizeObserverRef = useRef(null);
   const [copiedField, setCopiedField] = useState('');
 
   const isMobileViewport = typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
@@ -92,6 +82,7 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
       ],
       fitBoundsOptions: { padding: 40 }
     });
+    applyMapLibreCanvasSizing(map);
     mapRef.current = map;
 
     map.on('load', () => {
@@ -117,19 +108,54 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
         paint: { 'line-color': '#1a4e8d', 'line-width': 4, 'line-dasharray': [2, 2] }
       });
 
-      const storeMarker = new maplibregl.Marker({
-        element: createMarkerElement('#1a4586', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>')
-      }).setLngLat([startPin.longitude, startPin.latitude]).addTo(map);
+      map.addSource(TRACKING_PIN_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+      map.addLayer({
+        id: TRACKING_PIN_LAYER_ID,
+        type: 'symbol',
+        source: TRACKING_PIN_SOURCE_ID,
+        layout: {
+          'icon-image': ['get', 'kind'],
+          'icon-anchor': 'bottom',
+          'icon-size': 1,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true
+        }
+      });
 
-      const customerMarker = new maplibregl.Marker({
-        element: createMarkerElement('#f97316', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>')
-      }).setLngLat([endPin.longitude, endPin.latitude]).addTo(map);
-
-      markersRef.current = [storeMarker, customerMarker];
+      Promise.all([
+        ensureMapImage(map, 'store', renderDeliveryPinSpriteSvg('store')),
+        ensureMapImage(map, 'customer', renderDeliveryPinSpriteSvg('customer'))
+      ]).then(() => {
+        if (mapRef.current !== map) return;
+        setGeoJsonSourceData(map, TRACKING_PIN_SOURCE_ID, {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [startPin.longitude, startPin.latitude] },
+              properties: { kind: 'store' }
+            },
+            {
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [endPin.longitude, endPin.latitude] },
+              properties: { kind: 'customer' }
+            }
+          ]
+        });
+      });
     });
 
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserverRef.current = new ResizeObserver(() => safeResizeMap(map, containerRef.current));
+      resizeObserverRef.current.observe(containerRef.current);
+    }
+
     return () => {
-      markersRef.current.forEach((marker) => marker.remove());
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
       map.remove();
       mapRef.current = null;
     };
@@ -195,7 +221,7 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
             </div>
           </div>
 
-          <div ref={containerRef} style={{ height: 320, borderRadius: 20, border: '1px solid #e2e8f0', overflow: 'hidden', background: '#f1f5f9' }} />
+          <div ref={containerRef} style={{ width: '100%', height: 320, borderRadius: 20, border: '1px solid #e2e8f0', overflow: 'hidden', background: '#f1f5f9' }} />
 
           {currentIndex >= 3 && (
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff' }}>

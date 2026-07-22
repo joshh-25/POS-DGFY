@@ -163,8 +163,8 @@ body {
   transition: opacity 120ms ease;
 }
 
-.wizard-step-navigator__button:hover + .wizard-step-navigator__tooltip,
-.wizard-step-navigator__button:focus-visible + .wizard-step-navigator__tooltip {
+.wizard-step-navigator__button:hover+.wizard-step-navigator__tooltip,
+.wizard-step-navigator__button:focus-visible+.wizard-step-navigator__tooltip {
   opacity: 1;
 }
 
@@ -282,6 +282,7 @@ body {
     transform: translateX(16px);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -376,6 +377,7 @@ body.pos-receipt-print-mode {
 }
 
 @media print {
+
   body.pos-modal-scroll-lock,
   body.pos-receipt-print-mode {
     overflow: visible;
@@ -393,7 +395,7 @@ body.pos-receipt-print-mode {
     scroll-padding-bottom: 0;
   }
 
-  body.pos-online-order-receipt-print-mode > #root {
+  body.pos-online-order-receipt-print-mode>#root {
     visibility: hidden;
   }
 

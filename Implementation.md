@@ -1,3 +1,26 @@
+# Implementation — Tablet Report Filters 2-Column Grid Layout
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [PosReportsAnalyticsWorkspace.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/PosReportsAnalyticsWorkspace.jsx)
+- Update parent filter grid class at line 457 to `className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]"`.
+- Update the Range and Cashier wrapper subgrid at line 474 to `className="grid grid-cols-2 gap-3 sm:contents"` to mirror the Date From/To grid structure on mobile screens.
+
+## Verification Plan
+
+### Automated Tests
+- Run ESLint to verify syntax:
+  `npm run lint` in `frontend` folder.
+
+### Manual Verification
+- Visual inspection of the Report panel under tablet viewports to check that Date From/To, Range/Cashier, and Export/Print buttons are laid out side-by-side in 2 columns.
+- Ensure that mobile viewports display correctly (2 columns for inputs, 1 column for buttons).
+- Ensure that desktop viewports display correctly in a single horizontal row.
+
+---
+
 # Implementation — Order Details Card Button Grid Layout (Follow-up 3)
 
 ## Proposed Changes
