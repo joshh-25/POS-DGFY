@@ -100,6 +100,9 @@ export const resolveStorefrontAccountUrl = () => {
     }
     if (isDev) {
       const currentPort = String(window.location.port || '').trim();
+      if (currentPort && currentPort !== '5173' && currentPort !== '5174') {
+        return `${origin}/map-dgfy/account`;
+      }
       if (currentPort === '5174') {
         return `${resolveLocalOriginForPort(configuredDevPort)}/map-dgfy/account`;
       }

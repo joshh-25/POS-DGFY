@@ -385,8 +385,9 @@ const inventoryLowStockDisplayThresholdSchema = Joi.number().integer().min(1).ma
 const posBestSellerSettingsSchema = Joi.object({
   enabled: Joi.boolean().default(true),
   lookback_days: Joi.number().integer().valid(30).default(30),
-  top_limit: Joi.number().integer().valid(3).default(3)
-}).default({ enabled: true, lookback_days: 30, top_limit: 3 });
+  top_limit: Joi.number().integer().valid(3).default(3),
+  daily_top_enabled: Joi.boolean().default(false)
+}).default({ enabled: true, lookback_days: 30, top_limit: 3, daily_top_enabled: false });
 
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({

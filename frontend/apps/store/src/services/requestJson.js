@@ -33,7 +33,8 @@ export const requestJson = async (url, {
   selectedStore = null,
   selectedLocationId = null,
   authToken = '',
-  cache = 'default'
+  cache = 'default',
+  credentials = 'include'
 } = {}) => {
   let response;
   try {
@@ -42,7 +43,7 @@ export const requestJson = async (url, {
     const csrfToken = ['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod) ? '' : getCsrfToken();
     response = await fetch(withApiOrigin(url), {
       method: normalizedMethod,
-      credentials: 'include',
+      credentials,
       cache,
       headers: {
         'Content-Type': 'application/json',

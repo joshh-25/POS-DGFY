@@ -1,0 +1,1 @@
+fixture content A for checksum determinism tests

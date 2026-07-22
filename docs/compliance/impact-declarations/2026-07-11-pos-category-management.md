@@ -5,7 +5,7 @@ last_reviewed: 2026-07-14
 related_adr: 0009-multi-location-inventory-ledger-and-safety-first-rollout.md
 declaration_id: 2026-07-11-pos-category-management
 classification: major
-surfaces: pos,terminal,inventory,tenant-schema
+surfaces: pos,terminal,settings,inventory,tenant-schema
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.11
 verification_evidence: focused inventory repository tests,POS category contract test,tenant schema coverage,architecture and compliance guardrails

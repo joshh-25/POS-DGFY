@@ -2,23 +2,15 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 
-const readStorefrontAppSource = () => {
-  const directPath = path.resolve(process.cwd(), 'apps/store/src/StorefrontApp.jsx');
-  const repoPath = path.resolve(process.cwd(), 'frontend/apps/store/src/StorefrontApp.jsx');
+const readStoresMapSource = () => {
+  const directPath = path.resolve(process.cwd(), 'apps/store/src/discovery/components/StoresMap.jsx');
+  const repoPath = path.resolve(process.cwd(), 'frontend/apps/store/src/discovery/components/StoresMap.jsx');
   return fs.readFileSync(fs.existsSync(directPath) ? directPath : repoPath, 'utf8');
-};
-
-const extractFunctionSource = (source, functionName) => {
-  const start = source.indexOf(`function ${functionName}(`);
-  if (start < 0) return '';
-  const nextFunction = source.indexOf('\nfunction ', start + 1);
-  return source.slice(start, nextFunction < 0 ? undefined : nextFunction);
 };
 
 describe('StoresMap source contract', () => {
   it('keeps storefront discovery pins renderer-owned instead of DOM Marker-owned', () => {
-    const source = readStorefrontAppSource();
-    const storesMapSource = extractFunctionSource(source, 'StoresMap');
+    const storesMapSource = readStoresMapSource();
 
     expect(storesMapSource).toContain('buildDiscoveryPinLayerModel');
     expect(storesMapSource).toContain('ensureDiscoveryMapLayers');

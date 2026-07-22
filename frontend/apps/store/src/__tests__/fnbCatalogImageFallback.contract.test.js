@@ -4,7 +4,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const appSource = () => fs.readFileSync(path.join(appRoot, 'StorefrontApp.jsx'), 'utf8');
+const appSource = () => fs.readFileSync(
+  path.join(appRoot, 'modes/fnb/storefront/components/FnbProductCard.jsx'),
+  'utf8'
+);
 
 describe('F&B catalog image fallback contract', () => {
   it('uses the existing category placeholder after a catalog image fails to load', () => {

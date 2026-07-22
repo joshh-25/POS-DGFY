@@ -45,8 +45,25 @@ export function createCustomerIdentityRenderers({
     addressLabel = 'Delivery Address',
     addressPlaceholder = 'House no., street, barangay, landmark',
     addressRequired = false,
-    showSavedDetailsCard = true
+    showSavedDetailsCard = true,
+    layoutVariant = 'default',
+    savedDetailsTitle = 'Saved Details',
+    savedDetailsApplyLabel = 'Apply Details',
+    onSavedDetailsApply = handleApplyGuestDetails
   } = {}) => {
+    const rememberDetailsControl = (
+      <label style={{ display: layoutVariant === 'fnbGuest' ? 'grid' : 'flex', gridTemplateColumns: layoutVariant === 'fnbGuest' ? 'auto minmax(0, 1fr)' : undefined, alignItems: layoutVariant === 'fnbGuest' ? 'start' : 'center', gap: layoutVariant === 'fnbGuest' ? '3px 9px' : 8, fontSize: 12, color: '#334155' }}>
+        <input
+          type="checkbox"
+          checked={rememberCustomerDetails}
+          onChange={(event) => setRememberCustomerDetails(event.target.checked)}
+          style={{ width: 16, height: 16, marginTop: layoutVariant === 'fnbGuest' ? 1 : 0 }}
+        />
+        <span style={{ fontWeight: layoutVariant === 'fnbGuest' ? 700 : undefined }}>Remember these details for my next order</span>
+        {layoutVariant === 'fnbGuest' ? <span style={{ gridColumn: '2', color: '#64748b' }}>Save time on your next order.</span> : null}
+      </label>
+    );
+
     const guestDetailsFields = (
       <GuestIdentityForm
         title={hasSavedCustomerDetails && showSavedDetailsCard ? '' : title}
@@ -73,27 +90,50 @@ export function createCustomerIdentityRenderers({
         autoFocusFirstField={isGuestDetailsFreshEntry}
         firstFieldFocusKey={guestDetailsFocusKey}
         embedded={hasSavedCustomerDetails && showSavedDetailsCard}
-        footer={!hasSavedCustomerDetails || !showSavedDetailsCard ? (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#334155' }}>
-            <input
-              type="checkbox"
-              checked={rememberCustomerDetails}
-              onChange={(event) => setRememberCustomerDetails(event.target.checked)}
-              style={{ width: 16, height: 16 }}
-            />
-            <span>Remember these details for my next order</span>
-          </label>
-        ) : null}
+        layoutVariant={layoutVariant}
+        footer={!hasSavedCustomerDetails || !showSavedDetailsCard || guestDetailsEditMode ? rememberDetailsControl : null}
       />
     );
 
+    const hasAppliedGuestIdentity = Boolean(
+      String(customerName || '').trim()
+      || String(customerPhone || '').trim()
+      || String(customerEmail || '').trim()
+    );
+
+    if (layoutVariant === 'fnbGuest') {
+      const isEditingGuestIdentity = guestDetailsEditMode || !hasAppliedGuestIdentity;
+      return (
+        <SavedCustomerDetailsPanel
+          title={savedDetailsTitle}
+          customerName={String(customerName || savedCustomerDetails?.name || '').trim()}
+          customerEmail={String(customerEmail || savedCustomerDetails?.email || '').trim()}
+          customerPhone={String(customerPhone || savedCustomerDetails?.phone || '').trim()}
+          hasSavedCustomerDetails={hasSavedCustomerDetails || hasAppliedGuestIdentity}
+          isEditing={isEditingGuestIdentity}
+          isMobileViewport={isMobileViewport}
+          feedback={guestDetailsFeedback}
+          onUseDifferentDetails={handleOpenGuestDetailsEditor}
+          onCancelEdit={handleCancelGuestDetailsEditor}
+          onApplyEdit={onSavedDetailsApply}
+          applyLabel={savedDetailsApplyLabel}
+        >
+          {guestDetailsFields}
+        </SavedCustomerDetailsPanel>
+      );
+    }
+
     if (!showSavedDetailsCard || !hasSavedCustomerDetails) {
-      return guestDetailsFields;
+      return (
+        <>
+          {guestDetailsFields}
+        </>
+      );
     }
 
     return (
       <SavedCustomerDetailsPanel
-        title="Customer Details"
+        title={savedDetailsTitle}
         subtitle="We'll use these details for your order or booking."
         customerName={String(customerName || savedCustomerDetails?.name || '').trim()}
         customerEmail={String(customerEmail || savedCustomerDetails?.email || '').trim()}
@@ -106,7 +146,8 @@ export function createCustomerIdentityRenderers({
         feedback={guestDetailsFeedback}
         onUseDifferentDetails={handleOpenGuestDetailsEditor}
         onCancelEdit={handleCancelGuestDetailsEditor}
-        onApplyEdit={handleApplyGuestDetails}
+        onApplyEdit={onSavedDetailsApply}
+        applyLabel={savedDetailsApplyLabel}
         onRememberChange={setRememberCustomerDetails}
       >
         {guestDetailsFields}

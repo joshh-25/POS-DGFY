@@ -45,11 +45,20 @@ const iconPath = (icon) => {
       return '<path d="M3 7h11v9H3Z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>';
     case 'GraduationCap':
       return '<path d="M3 9 12 5l9 4-9 4-9-4Z"/><path d="M7 11v4c3 2 7 2 10 0v-4"/>';
+    case 'Home':
+      return '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>';
+    case 'MapPin':
+      return '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>';
     case 'Store':
     default:
       return '<path d="M4 10h16l-2-5H6l-2 5Z"/><path d="M5 10v10h14V10"/><path d="M9 20v-5h6v5"/>';
   }
 };
+
+export const DELIVERY_PIN_META = Object.freeze({
+  store: { icon: 'Home', label: 'Store location', color: '#1a4586' },
+  customer: { icon: 'MapPin', label: 'Delivery location', color: '#f97316' }
+});
 
 const normalizePinHex = (value, fallback = '#1a4e8d') => {
   const raw = String(value || fallback).trim();
@@ -77,6 +86,35 @@ export const renderBusinessModePinSpriteSvg = (mode, selected = false) => {
         </filter>
       </defs>
       <g filter="url(#pinShadow)">
+        <circle cx="${circleX}" cy="${circleY}" r="${radius}" fill="${color}" stroke="#fff" stroke-width="3"/>
+        <path d="M12 ${tailTop} L19 47 L26 ${tailTop} Z" fill="${color}"/>
+        <svg x="8.5" y="${circleY - 10.5}" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          ${paths}
+        </svg>
+      </g>
+    </svg>
+  `.trim();
+};
+
+export const renderDeliveryPinSpriteSvg = (kind, selected = false) => {
+  const meta = DELIVERY_PIN_META[kind] || DELIVERY_PIN_META.customer;
+  const color = normalizePinHex(meta.color);
+  const circleSize = selected ? 38 : 34;
+  const circleX = 19;
+  const circleY = selected ? 19 : 17;
+  const radius = circleSize / 2 - 2;
+  const shadowOpacity = selected ? '0.38' : '0.28';
+  const shadowY = selected ? '7' : '6';
+  const tailTop = selected ? 38 : 35;
+  const paths = iconPath(meta.icon);
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">
+      <defs>
+        <filter id="deliveryPinShadow" x="-40%" y="-30%" width="180%" height="180%" color-interpolation-filters="sRGB">
+          <feDropShadow dx="0" dy="${shadowY}" stdDeviation="4" flood-color="#0f172a" flood-opacity="${shadowOpacity}"/>
+        </filter>
+      </defs>
+      <g filter="url(#deliveryPinShadow)">
         <circle cx="${circleX}" cy="${circleY}" r="${radius}" fill="${color}" stroke="#fff" stroke-width="3"/>
         <path d="M12 ${tailTop} L19 47 L26 ${tailTop} Z" fill="${color}"/>
         <svg x="8.5" y="${circleY - 10.5}" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

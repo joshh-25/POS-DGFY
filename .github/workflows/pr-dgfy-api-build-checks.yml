@@ -2,10 +2,16 @@ name: PR DGFY API Build Check
 
 on:
   workflow_call:
+    inputs:
+      runner_labels_json:
+        description: JSON array passed to runs-on for this job
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
 
 jobs:
   build-check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -15,11 +21,11 @@ jobs:
       # Same build as deploy-api.yml, minus the push -- just proves the
       # image builds cleanly off this PR's code. Shares the gha cache scope
       # with the real deploy build so both stay fast.
-      - name: Build dgfy-api image (no push)
+      - name: Build api image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infrastructure/docker/dgfy-api/Dockerfile
           push: false
-          cache-from: type=gha,scope=dgfy-api
-          cache-to: type=gha,scope=dgfy-api,mode=max
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max

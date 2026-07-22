@@ -24,5 +24,15 @@ function runCheck(scriptPath, environment) {
   }
 }
 
-runCheck(guardrailScript, { ARCH_GUARDRAIL_MODULES_ROOT: modulesRoot });
+runCheck(guardrailScript, {
+  ARCH_GUARDRAIL_MODULES_ROOT: modulesRoot,
+  ARCH_GUARDRAIL_ALLOWLIST_PATH: path.join(
+    projectRoot,
+    'apps',
+    'dgfy-api',
+    'src',
+    'config',
+    'architectureGuardrailsAllowlist.js'
+  ),
+});
 runCheck(controllerBoundaryScript, { CONTROLLER_BOUNDARY_TARGETS: modulesRoot });

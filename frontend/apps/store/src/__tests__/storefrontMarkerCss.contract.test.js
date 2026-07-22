@@ -42,6 +42,18 @@ describe('Storefront marker CSS contract', () => {
     expect(userRule).toContain('z-index: 5');
   });
 
+  it('renders density clusters as a plain circle, visually distinct from same-address pin clusters', () => {
+    const css = readStoreCss();
+    const rootRule = css.match(/\.discovery-density-cluster\s*\{[^}]+\}/)?.[0] || '';
+    const visualRule = css.match(/\.discovery-density-cluster-visual\s*\{[^}]+\}/)?.[0] || '';
+
+    expect(rootRule).toContain('z-index: 30');
+    expect(rootRule).not.toContain('width: 38px');
+    expect(visualRule).toContain('position: absolute');
+    expect(visualRule).toContain('border-radius: 999px');
+    expect(visualRule).not.toContain('border-top: 11px solid');
+  });
+
   it('keeps search-active pulse from scaling the marker body', () => {
     const css = readStoreCss();
     const glowRule = css.match(/\.discovery-result-pin-visual\.is-glowing\s*\{[^}]+\}/)?.[0] || '';

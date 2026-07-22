@@ -5,7 +5,7 @@ last_reviewed: 2026-07-14
 related_adr: 0031-pos-terminal-pairing-and-shift-safe-navigation.md
 declaration_id: 2026-07-11-pos-terminal-pwa-access
 classification: major
-surfaces: pos,terminal,pwa,offline
+surfaces: pos,terminal,settings,pwa,offline
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.11
 verification_evidence: focused terminal navigation contract test,architecture and compliance guardrails,compliance impact guardrail,docs lint

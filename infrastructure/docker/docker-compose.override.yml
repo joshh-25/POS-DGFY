@@ -21,7 +21,7 @@ services:
       - "5000:5000"
 
   dgfy-api:
-    image: dgfy-platform-dgfy-api:dev
+    image: dgfy-platform-api:dev
     build:
       context: ../..
       dockerfile: infrastructure/docker/dgfy-api/Dockerfile
