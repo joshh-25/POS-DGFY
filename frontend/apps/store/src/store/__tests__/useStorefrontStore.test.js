@@ -70,7 +70,38 @@ describe('uiSlice reference actions', () => {
     useStorefrontStore.getState().uiSetViewportWidth(700);
     // Touching ui must leave every other domain namespace untouched.
     expect(useStorefrontStore.getState().session).toEqual({});
-    expect(useStorefrontStore.getState().cart).toEqual({});
+    expect(useStorefrontStore.getState().cart).toEqual({ items: [] });
+  });
+});
+
+describe('cartSlice (useState-compatible cartSet)', () => {
+  it('starts with an empty items array', () => {
+    expect(useStorefrontStore.getState().cart.items).toEqual([]);
+  });
+
+  it('accepts a direct value (setCart([...]))', () => {
+    const items = [{ id: 'a', qty: 1 }];
+    useStorefrontStore.getState().cartSet(items);
+    expect(useStorefrontStore.getState().cart.items).toBe(items);
+  });
+
+  it('accepts an updater function (setCart(prev => ...))', () => {
+    useStorefrontStore.getState().cartSet([{ id: 'a', qty: 1 }]);
+    useStorefrontStore.getState().cartSet((prev) => [...prev, { id: 'b', qty: 2 }]);
+    const { items } = useStorefrontStore.getState().cart;
+    expect(items.map((line) => line.id)).toEqual(['a', 'b']);
+  });
+
+  it('clears via setCart([])', () => {
+    useStorefrontStore.getState().cartSet([{ id: 'a', qty: 1 }]);
+    useStorefrontStore.getState().cartSet([]);
+    expect(useStorefrontStore.getState().cart.items).toEqual([]);
+  });
+
+  it('produces a new items reference on change (memo-dependency safety)', () => {
+    const before = useStorefrontStore.getState().cart.items;
+    useStorefrontStore.getState().cartSet((prev) => [...prev, { id: 'x', qty: 1 }]);
+    expect(useStorefrontStore.getState().cart.items).not.toBe(before);
   });
 });
 

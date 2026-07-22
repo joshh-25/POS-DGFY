@@ -1896,3 +1896,28 @@ Next (require QA — not done unsupervised): the catalog grid IIFE (~2.6k lines,
 checkout drawer/mount (~1.4k lines, quote/checkout/OTP), and the state-slice migration of the
 money-path domains (cart/checkout/serviceBooking) + route containers to cross under 1,000. These are
 the QA-gated Waves 3–4.
+
+## 2026-07-22 - Wave 3a: migrate cart items to the store (cartSlice) [QA-REQUIRED]
+
+Slice: Move the cart line-items array out of StorefrontApp.jsx into the zustand store — the
+foundational money-path state read by totals, drawers, FAB, checkout, and the catalog. First
+Wave 3 increment; behavior-preserving via the in-place bridge.
+
+Files changed:
+- `frontend/apps/store/src/store/slices/cartSlice.js` (`cart.items` + useState-compatible `cartSet`)
+- `frontend/apps/store/src/store/__tests__/useStorefrontStore.test.js` (+5 cart tests; fixed bleed assertion)
+- `frontend/apps/store/src/StorefrontApp.jsx`
+
+Migration (local names preserved → 51 reads, 9 setters, all prop/hook passes and `[cart]` memo deps unchanged):
+- `const [cart, setCart] = useState([])` → `cart = s.cart.items`, `setCart = s.cartSet`.
+- `cartSet` accepts both a value (`setCart([])`) and an updater (`setCart(prev => …)`), matching every call site.
+- Cart persistence unchanged (still `useStorefrontCartPersistence`); zustand `persist` intentionally NOT wired.
+
+StorefrontApp.jsx line count: 7,949 (+4 — bridge comment).
+
+Validation: 198 non-integration tests pass (40 files; +5 cart); 0 lint errors; `build:store` passes.
+
+QA gate 3a (browser, dev.dgfy.ph) — **money path, please verify:** add items to cart (F&B / services /
+simple); update quantity; remove a line; cart count/subtotal/total update in the drawer + floating FAB;
+service vs product cart lines split correctly; cart survives navigation and reload (persistence);
+proceeding to checkout shows the right cart. No checkout submission changed in this increment.

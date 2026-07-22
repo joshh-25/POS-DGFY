@@ -763,7 +763,11 @@ export default function StorefrontApp() {
   const [catalogErrorGuidance, setCatalogErrorGuidance] = useState('');
 
   const [orderMethod, setOrderMethod] = useState('delivery');
-  const [cart, setCart] = useState([]);
+  // Migrated to the storefront zustand store (cartSlice). Local names preserved
+  // so every cart read, memo dependency, prop pass, and handler is untouched.
+  // `setCart` is useState-compatible (accepts a value or an updater function).
+  const cart = useStorefrontStore((s) => s.cart.items);
+  const setCart = useStorefrontStore((s) => s.cartSet);
   const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
   const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
   const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
