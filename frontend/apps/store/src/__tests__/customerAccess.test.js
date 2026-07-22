@@ -7,7 +7,7 @@ import {
   getAccessCapabilities,
   getInventoryDisplayLabel,
   getStorefrontAccessBlockMessage
-} from '../customerAccess.js';
+} from '../shared/model/customerAccess.js';
 
 describe('store customer access helpers', () => {
   it('preserves legacy transaction-capable defaults when metadata is absent', () => {

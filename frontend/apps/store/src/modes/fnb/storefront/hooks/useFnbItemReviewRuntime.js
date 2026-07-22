@@ -12,10 +12,13 @@ export function useFnbItemReviewRuntime({
   detailItem,
   isDetailsRoute,
   isFnbMode,
+  itemReviewInviteContext,
   itemSubpage,
   normalizeErrorMessage,
   onOpenDetail,
   requestJson,
+  reviewDraft,
+  reviewSubmitLoading,
   routeItemId,
   routeReviewToken,
   routeSlug,
@@ -28,6 +31,7 @@ export function useFnbItemReviewRuntime({
   setReviewLoading,
   setReviewSectionHighlighted,
   setReviewSummary,
+  setReviewSubmitLoading,
   setRouteReviewToken,
   toast,
   toSlug
@@ -154,10 +158,78 @@ export function useFnbItemReviewRuntime({
     onOpenDetail(targetItem, { reviewToken: invite.token });
   }, [catalog, detailItem, onOpenDetail]);
 
+  const resetReviewDraft = useCallback(() => {
+    setReviewDraft({
+      name: '',
+      anonymous: false,
+      rating: 0,
+      message: ''
+    });
+  }, [setReviewDraft]);
+
+  const submitFnbItemReview = useCallback(async () => {
+    if (reviewSubmitLoading) return;
+    if (!String(reviewDraft.name || '').trim()) {
+      toast.error('Enter your name before sending a review.');
+      return;
+    }
+    if (!Number(reviewDraft.rating)) {
+      toast.error('Choose a star rating before sending a review.');
+      return;
+    }
+    if (isFnbMode && itemReviewInviteContext?.token && detailItem?.item_id) {
+      setReviewSubmitLoading(true);
+      try {
+        await requestJson(`/api/v1/dgfy/customer/review-invites/${encodeURIComponent(itemReviewInviteContext.token)}/submit`, {
+          method: 'POST',
+          body: {
+            name: reviewDraft.name,
+            anonymous: reviewDraft.anonymous === true,
+            rating: reviewDraft.rating,
+            comment: String(reviewDraft.message || '').trim() || null,
+            submission_channel: itemReviewInviteContext?.invite?.delivery_channel || 'tracking'
+          }
+        });
+        toast.success('Review submitted for approval.');
+        setIsReviewModalOpen(false);
+        setInviteContext(null);
+        removeReviewTokenFromItemRoute(detailItem.item_id);
+        resetReviewDraft();
+        await loadFnbItemReviews(detailItem.item_id);
+        return;
+      } catch (error) {
+        toast.error(normalizeErrorMessage(error, 'Unable to submit your review right now.'));
+        return;
+      } finally {
+        setReviewSubmitLoading(false);
+      }
+    }
+    toast.info('Review submission UI is ready. Backend publishing will be connected later.');
+    setIsReviewModalOpen(false);
+    resetReviewDraft();
+  }, [
+    detailItem?.item_id,
+    isFnbMode,
+    itemReviewInviteContext,
+    loadFnbItemReviews,
+    normalizeErrorMessage,
+    removeReviewTokenFromItemRoute,
+    requestJson,
+    resetReviewDraft,
+    reviewDraft,
+    reviewSubmitLoading,
+    setInviteContext,
+    setIsReviewModalOpen,
+    setReviewSubmitLoading,
+    toast
+  ]);
+
   return {
     loadFnbItemReviews,
     openFnbItemReviewFromInvite,
     removeReviewTokenFromItemRoute,
+    resetFnbItemReviewDraft: resetReviewDraft,
+    submitFnbItemReview,
     syncFnbItemReviewSectionIntoView: scrollReviewSectionIntoView
   };
 }
