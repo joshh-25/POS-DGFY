@@ -860,8 +860,11 @@ export default function POSCheckoutTerminal({
     );
     const signedInUserIsAdminLike = terminalUser?.is_master_admin === true
         || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
-    const signedInUserCanApproveManualDiscount = terminalUser?.is_master_admin === true
-        || ['admin', 'manager'].includes(String(terminalUser?.role || '').trim().toLowerCase());
+    const currentUserIsConfiguredDiscountApprover = safeDiscountApprovers.some((approver) => (
+        Number(approver?.user_id) > 0
+        && Number(approver.user_id) === Number(terminalUser?.user_id)
+    ));
+    const signedInUserCanApproveManualDiscount = currentUserIsConfiguredDiscountApprover;
     const terminalPermissionList = useMemo(() => {
         if (Array.isArray(terminalUser?.permissions)) return terminalUser.permissions;
         if (typeof terminalUser?.permissions !== 'string') return [];
@@ -2178,8 +2181,16 @@ export default function POSCheckoutTerminal({
         const approvalUserId = manualDiscountUsesCurrentPosApprover
             ? Number(terminalUser?.user_id)
             : Number(discountDraft.approver_user_id);
+        if (discountRequiresApproval && (!Number.isInteger(approvalUserId) || approvalUserId <= 0)) {
+            toast.error('Select a configured POS discount approver, or ask the Master Admin to configure an approval PIN.');
+            return;
+        }
         if (!statutory && !discountDraft.customer_name.trim()) {
             toast.error('Customer name is required for this discount.');
+            return;
+        }
+        if (type === 'manual' && discountDraft.reason.trim().length < 3) {
+            toast.error('Enter a reason of at least 3 characters for this manual discount.');
             return;
         }
         if (statutory && (!discountDraft.customer_name.trim() || !discountDraft.id_number.trim())) {
@@ -2188,10 +2199,6 @@ export default function POSCheckoutTerminal({
         }
         if (statutory && safeEligibleDiscountItemIds.length === 0) {
             toast.error('Select at least one eligible item.');
-            return;
-        }
-        if (discountRequiresApproval && !approvalUserId) {
-            toast.error('Select the manager or admin approving this discount.');
             return;
         }
         if (type === 'promo' && (!discountDraft.promo_code || !discountDraft.promo_code.trim())) {
@@ -3947,12 +3954,16 @@ export default function POSCheckoutTerminal({
                                 </div>
                             )}
 
-                            {discountDraft.type === 'employee' && (
+                            {['employee', 'manual'].includes(discountDraft.type) && (
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-[#0F172A]">Reason <span className="font-medium text-slate-400">(optional)</span></label>
+                                    <label className="text-xs font-semibold text-[#0F172A]">
+                                        Reason {discountDraft.type === 'manual'
+                                            ? <span className="text-rose-500">*</span>
+                                            : <span className="font-medium text-slate-400">(optional)</span>}
+                                    </label>
                                     <div className="relative">
                                         <MessageSquare className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter reason" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
+                                        <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder={discountDraft.type === 'manual' ? 'Enter manual discount reason' : 'Enter reason'} value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
                                     </div>
                                 </div>
                             )}
@@ -3971,12 +3982,12 @@ export default function POSCheckoutTerminal({
                                             <div className="relative">
                                                 <BadgeCheck className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                                 <select value={discountDraft.approver_user_id} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))} disabled={discountApproversLoading} className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2">
-                                                    <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select manager or admin'}</option>
+                                                    <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select configured manager or admin'}</option>
                                                     {safeDiscountApprovers.map((approver) => <option key={approver.user_id} value={approver.user_id}>{approver.username} ({approver.role})</option>)}
                                                 </select>
                                                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                             </div>
-                                            {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-[10px] font-medium text-amber-700 mt-0.5">No approver PIN configured.</p>}
+                                            {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-[10px] font-medium text-amber-700 mt-0.5">No POS approval PIN is configured. Ask the Master Admin to configure one.</p>}
                                         </div>
                                     )}
                                     <div className="space-y-1 col-span-2">
