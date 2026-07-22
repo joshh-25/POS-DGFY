@@ -46,8 +46,8 @@ The working goal is:
 
 Use these documents as the required first read before every storefront frontend edit:
 
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PLAN.md`
-- `frontend/apps/store/src/STOREFRONT_FRONTEND_ARCHITECTURE_GUIDE.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PLAN.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_FRONTEND_ARCHITECTURE_GUIDE.md`
 
 Refactor rules:
 
@@ -311,7 +311,7 @@ Slice: Move shared cart fly-animation overlay into a shared component.
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/shared/components/StorefrontCartFlyAnimations.jsx
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 9,699
 Validation:
 - Pre-slice route probe: passed on http://10.123.35.127:5176/tenant-store/kusina-caf-e36b28; HTTP 200 and React root present.
@@ -333,7 +333,7 @@ Slice: Move Services cart drawer prop assembly into a Services-owned hook.
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/services/booking/hooks/useServiceCartDrawerProps.js
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 9,747
 Validation:
 - Pre-slice route probe: passed on http://10.123.35.127:5176/tenant-store/kusina-caf-e36b28; HTTP 200 and React root present.
@@ -355,7 +355,7 @@ Slice: Move Services booking cart validation into a Services-owned model helper.
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/services/booking/model/serviceBookingValidation.js
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 9,745
 Validation:
 - Pre-slice live render/console gate: passed on http://10.123.35.127:5176/tenant-store/kusina-caf-e36b28; React root rendered, body was non-empty, and no runtime error text appeared.
@@ -377,7 +377,7 @@ Slice: Move Services booking field-focus behavior into a Services-owned hook.
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/services/booking/hooks/useServiceBookingFieldFocus.js
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 9,775
 Validation:
 - Pre-slice live render/console gate: passed on http://10.123.35.127:5176/tenant-store/kusina-caf-e36b28; React root rendered, body was non-empty, and no runtime error text appeared.
@@ -400,7 +400,7 @@ Slice: Move Services booking summary derivation into a Services-owned model help
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/services/booking/model/serviceBookingSummary.js
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 9,811
 Validation:
 - Pre-slice live render/console gate: passed on http://10.123.35.127:5176/tenant-store/kusina-caf-e36b28; React root rendered, body was non-empty, and no runtime error text appeared.
@@ -423,8 +423,8 @@ Slice: Move generic storefront closed notice view into shared/components.
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/shared/components/StorefrontClosedNotice.jsx
-- frontend/apps/store/src/STOREFRONT_REFACTOR_IMPLEMENTATION_GOAL.md
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_IMPLEMENTATION_GOAL.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 10,105
 Validation:
 - Scoped ESLint: passed with 0 errors and existing StorefrontApp warning debt only.
@@ -445,7 +445,7 @@ Slice: Move F&B cart drawer overlay/header/frame into FnbCartDrawerSurface.
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/fnb/checkout/pages/FnbCartDrawerSurface.jsx
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 10,173
 Validation:
 - Targeted tests: passed, 5 files, 44 tests.
@@ -463,7 +463,7 @@ Slice: Move F&B cart drawer route prop assembly into useFnbCartDrawerRouteProps.
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/fnb/checkout/hooks/useFnbCartDrawerRouteProps.js
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 10,164
 Validation:
 - Targeted tests: passed, 5 files, 44 tests.
@@ -481,7 +481,7 @@ Slice: Move F&B product-detail route prop assembly into useFnbProductDetailsRout
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/fnb/storefront/hooks/useFnbProductDetailsRouteProps.js
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 10,160
 Validation:
 - Targeted tests: passed, 5 files, 44 tests.
@@ -499,7 +499,7 @@ Slice: Move F&B product-detail review route props into useFnbProductDetailsRevie
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/fnb/storefront/hooks/useFnbProductDetailsReviewProps.js
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 10,166
 Validation:
 - Targeted tests: passed, 5 files, 44 tests.
@@ -517,7 +517,7 @@ Slice: Move F&B product-detail add-to-cart, buy-now, quick-add, and price action
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/fnb/storefront/hooks/useFnbProductDetailActions.js
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 10,169
 Validation:
 - Targeted tests: passed, 5 files, 44 tests.
@@ -535,7 +535,7 @@ Slice: Move F&B item review submit/reset handling into useFnbItemReviewRuntime.
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 10,170
 Validation:
 - Targeted tests: passed, 5 files, 44 tests.
@@ -557,7 +557,7 @@ Slice: Extract shared checkout drawer frame wrapper into StorefrontCheckoutDrawe
 Files changed:
 - frontend/apps/store/src/StorefrontApp.jsx
 - frontend/apps/store/src/shared/components/StorefrontCheckoutDrawerFrame.jsx
-- frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
+- frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md
 StorefrontApp.jsx line count: 10,111
 Validation:
 - Scoped ESLint: passed with 0 errors and existing warnings only.
@@ -600,7 +600,7 @@ Files changed:
 - `frontend/apps/store/src/modes/services/booking/components/ServiceBookingSummaryCard.jsx`
 - `frontend/apps/store/src/modes/services/booking/components/ServiceCartDrawer.jsx`
 - `frontend/apps/store/src/__tests__/storefrontClosedHoursMessaging.contract.test.js`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 10,111
 
@@ -653,7 +653,7 @@ Slice: Move `DgfyCustomerAuthModal` from legacy `Components/storefront/pages` in
 Files changed:
 - `frontend/apps/store/src/customer-dashboard/components/DgfyCustomerAuthModal.jsx`
 - `frontend/apps/store/src/customer-dashboard/pages/CustomerDashboardRouteHost.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,893
 
@@ -679,8 +679,8 @@ Files changed:
 - `frontend/apps/store/src/discovery/pages/SolutionsPage.jsx`
 - `frontend/apps/store/src/discovery/pages/DiscoveryHomePage.jsx`
 - `frontend/apps/store/src/__tests__/fnbStorefront.contract.test.js`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_IMPLEMENTATION_GOAL.md`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_IMPLEMENTATION_GOAL.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,893
 
@@ -707,7 +707,7 @@ Files changed:
 - `frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx`
 - `frontend/apps/store/src/Components/storefront/account/DgfyCustomerAccountSections.jsx`
 - `frontend/apps/store/src/Components/storefront/account/DgfyCustomerAccountUi.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,893
 
@@ -733,7 +733,7 @@ Slice: Delete the unreferenced legacy F&B product-detail page from `Components/s
 Files changed:
 - `frontend/apps/store/src/Components/storefront/pages/FnbProductDetailsPage.jsx`
 - `frontend/apps/store/src/__tests__/fnbStorefront.contract.test.js`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,893
 
@@ -759,8 +759,8 @@ Slice: Move F&B checkout promo renderer wiring from `StorefrontApp.jsx` into `mo
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/fnb/checkout/hooks/useFnbCheckoutPromoRenderers.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_IMPLEMENTATION_GOAL.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_IMPLEMENTATION_GOAL.md`
 
 StorefrontApp.jsx line count: 10,078
 
@@ -789,7 +789,7 @@ Files changed:
 - `frontend/apps/store/src/modes/fnb/checkout/components/PromoCodePanel.jsx`
 - `frontend/apps/store/src/modes/fnb/checkout/hooks/useFnbCheckoutPromoRenderers.jsx`
 - `frontend/apps/store/src/__tests__/PromoCodePanel.test.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 10,078
 
@@ -816,7 +816,7 @@ Files changed:
 - `frontend/apps/store/src/checkout/components/SelectableOptionCard.jsx`
 - `frontend/apps/store/src/shared/components/checkout/SelectableOptionCard.jsx`
 - `frontend/apps/store/src/modes/fnb/checkout/components/FnbCheckoutFulfillmentChoices.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -843,7 +843,7 @@ Files changed:
 - `frontend/apps/store/src/checkout/components/CheckoutHeroHeader.jsx`
 - `frontend/apps/store/src/shared/components/checkout/CheckoutHeroHeader.jsx`
 - `frontend/apps/store/src/modes/fnb/checkout/components/FnbCheckoutJourneyHeader.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -870,7 +870,7 @@ Files changed:
 - `frontend/apps/store/src/checkout/components/CheckoutStepProgressHeader.jsx`
 - `frontend/apps/store/src/shared/components/checkout/CheckoutStepProgressHeader.jsx`
 - `frontend/apps/store/src/modes/fnb/checkout/components/FnbCheckoutJourneyHeader.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -897,7 +897,7 @@ Files changed:
 - `frontend/apps/store/src/checkout/components/OrderSummaryCard.jsx`
 - `frontend/apps/store/src/shared/components/checkout/OrderSummaryCard.jsx`
 - `frontend/apps/store/src/modes/fnb/checkout/components/FnbCheckoutSummaryContent.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -923,7 +923,7 @@ Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/checkout/components/PaymentMethodSelectorBlock.jsx`
 - `frontend/apps/store/src/shared/components/checkout/PaymentMethodSelectorBlock.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -950,7 +950,7 @@ Files changed:
 - `frontend/apps/store/src/shared/components/checkout/CustomerIdentityCard.jsx`
 - `frontend/apps/store/src/checkout/components/SavedCustomerDetailsPanel.jsx`
 - `frontend/apps/store/src/features/checkout/renderers/customerIdentityRenderers.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -977,7 +977,7 @@ Files changed:
 - `frontend/apps/store/src/checkout/components/SavedCustomerDetailsPanel.jsx`
 - `frontend/apps/store/src/shared/components/checkout/SavedCustomerDetailsPanel.jsx`
 - `frontend/apps/store/src/features/checkout/renderers/customerIdentityRenderers.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -1003,7 +1003,7 @@ Files changed:
 - `frontend/apps/store/src/checkout/components/GuestIdentityForm.jsx`
 - `frontend/apps/store/src/features/checkout/components/GuestIdentityForm.jsx`
 - `frontend/apps/store/src/features/checkout/renderers/customerIdentityRenderers.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -1033,7 +1033,7 @@ Files changed:
 - `frontend/apps/store/src/customer-dashboard/components/AddressesSection.jsx`
 - `frontend/apps/store/src/modes/fnb/checkout/components/FnbCheckoutSavedAddressSelector.jsx`
 - `frontend/apps/store/src/modes/services/booking/components/ServiceBookingLocationSection.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -1059,7 +1059,7 @@ Slice: Remove the unused legacy `Components/CheckoutSuccessAnimation.jsx` duplic
 Files changed:
 - `frontend/apps/store/src/Components/CheckoutSuccessAnimation.jsx`
 - `frontend/apps/store/src/features/checkout/components/CheckoutSuccessAnimation.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,861
 
@@ -1083,7 +1083,7 @@ Slice: Move the non-mode storefront follow floating action UI from `StorefrontAp
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/shared/components/storefront/StorefrontFollowFloatingAction.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,888
 
@@ -1107,7 +1107,7 @@ Slice: Move the Simple-mode floating product-cart button from `StorefrontApp.jsx
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCartFloatingButton.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,851
 
@@ -1132,7 +1132,7 @@ Slice: Move the Simple-mode product cart drawer surface from `StorefrontApp.jsx`
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCartDrawerSurface.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,694
 
@@ -1156,7 +1156,7 @@ Slice: Move Simple cart drawer and floating-button prop/callback assembly from `
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/hooks/useSimpleCartDrawerProps.js`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,469
 
@@ -1180,7 +1180,7 @@ Slice: Move the repeated Simple cart line-card markup from `SimpleCartDrawerSurf
 Files changed:
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCartDrawerSurface.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCartLineItem.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,469
 
@@ -1207,7 +1207,7 @@ Slice: Move duplicated Simple checkout order-summary aside markup from `Storefro
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCheckoutSummaryCard.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,468
 
@@ -1233,7 +1233,7 @@ Slice: Move the Simple order-page store header from `StorefrontApp.jsx` into a S
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCheckoutStoreHeader.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,452
 
@@ -1259,7 +1259,7 @@ Slice: Move the Simple checkout Step 2 pickup/delivery method selector from `Sto
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleOrderMethodSelector.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,433
 
@@ -1286,7 +1286,7 @@ Slice: Move the Simple checkout Step 2 schedule time and special-instructions fi
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCheckoutScheduleFields.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,431
 
@@ -1313,7 +1313,7 @@ Slice: Move the Simple checkout Step 2 signed-in delivery address field from `St
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleDeliveryAddressField.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,430
 
@@ -1340,7 +1340,7 @@ Slice: Move the Simple checkout Step 2 delivery pin panel from `StorefrontApp.js
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleDeliveryPinPanel.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,416
 
@@ -1367,7 +1367,7 @@ Slice: Move the Simple checkout Step 3 review item list from `StorefrontApp.jsx`
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCheckoutReviewItemsList.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,414
 
@@ -1394,7 +1394,7 @@ Slice: Move Simple checkout Step 3 quote/place/back actions and adjacent warning
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCheckoutPaymentActions.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,629
 
@@ -1420,7 +1420,7 @@ Slice: Move the Simple checkout Step 3 review/payment section from `StorefrontAp
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCheckoutPaymentStep.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,616
 
@@ -1446,7 +1446,7 @@ Slice: Move the Simple checkout Step 4 order confirmation and receipt snapshot v
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCheckoutSuccessStep.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,592
 
@@ -1473,7 +1473,7 @@ Slice: Move the Simple checkout Step 1 customer/details view from `StorefrontApp
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCheckoutCustomerStep.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,568
 
@@ -1499,7 +1499,7 @@ Slice: Move the Simple checkout Step 2 fulfillment view from `StorefrontApp.jsx`
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/components/SimpleCheckoutFulfillmentStep.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,525
 
@@ -1524,7 +1524,7 @@ Fix: Resolve a runtime initialization error before continuing the next refactor 
 
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 Changes:
 - Moved `openServiceBookingPanel` and `openServiceCartEditor` above `useServiceCartDrawerProps` so the hook no longer receives `openServiceCartEditor` before initialization.
@@ -1546,7 +1546,7 @@ Fix: Resolve the follow-up runtime initialization error before continuing the ne
 
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 Changes:
 - Moved `useServiceCartDrawerProps` below `removeCartItem` and `updateQty` so all service cart drawer callback dependencies are initialized before the hook consumes them.
@@ -1570,7 +1570,7 @@ Fix: Restore the intended F&B add-to-cart flow before continuing refactor work.
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/fnb/checkout/hooks/useFnbCartDrawerRouteProps.js`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 Changes:
 - F&B add-to-cart now keeps the cart drawer closed and only runs the cart fly animation.
@@ -1597,7 +1597,7 @@ Files changed:
 - `frontend/apps/store/src/shared/hooks/useStorefrontCartPersistence.js`
 - `frontend/apps/store/src/shared/model/storefrontCartStorage.js`
 - `frontend/apps/store/src/__tests__/storefrontCartStorage.test.js`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 Changes:
 - Added a shared cart storage model that scopes persisted carts by storefront slug and mode.
@@ -1622,7 +1622,7 @@ Goal: Preserve active Services booking cart items across a browser refresh using
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/__tests__/storefrontCartStorage.test.js`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 Changes:
 - Enabled `useStorefrontCartPersistence` for Services mode in addition to F&B mode.
@@ -1645,7 +1645,7 @@ Slice: Move the Simple checkout Step 1-4 route composition out of `StorefrontApp
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,392
 
@@ -1673,7 +1673,7 @@ Slice: Move the Simple checkout route prop assembly out of the render tree and i
 Files changed:
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/apps/store/src/modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,389
 
@@ -1701,7 +1701,7 @@ Slice: Move the Services booking Step 1 schedule/service-detail form body into a
 Files changed:
 - `frontend/apps/store/src/modes/services/booking/components/ServiceBookingSteps.jsx`
 - `frontend/apps/store/src/modes/services/booking/components/ServiceBookingDetailsForm.jsx`
-- `frontend/apps/store/src/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
 
 StorefrontApp.jsx line count: 9,184
 
@@ -1722,3 +1722,33 @@ Validation:
 Notes / next step:
 - Browser QA must confirm Services Step 1 still renders the customer identity area, schedule fields, service fields, location section, and Continue button.
 - Continue only after console is clear. The next safe target is Services Step 2 review composition or Step 3 payment notice extraction.
+
+## 2026-07-22 - Refactor Documentation Organization
+
+Slice: Move Storefront refactor records out of runtime source and add a clear documentation entry point.
+
+Files changed:
+- `frontend/apps/store/docs/README.md`
+- `frontend/apps/store/docs/STOREFRONT_SHARED_UI_GUIDE.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_FRONTEND_ARCHITECTURE_GUIDE.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_HANDOFF.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_IMPLEMENTATION_GOAL.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PLAN.md`
+- `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PROGRESS_REPORT.md`
+
+StorefrontApp.jsx line count: 9,184
+
+Changes:
+- Moved the five refactor records from `src/` to `docs/refactor/` without changing runtime code.
+- Added a Storefront documentation index and required reading order.
+- Added shared UI ownership, dependency, file-size, and new-mode guidance.
+- Updated internal documentation paths and the current StorefrontApp baseline.
+
+Validation:
+- Documentation lint: passed (`npm run lint:docs`).
+- Architecture checks: passed; Windows-incompatible inline environment assignments were executed as equivalent PowerShell environment variables.
+- Storefront production build: passed (`npm --prefix frontend run build:store`).
+- Git diff check: passed.
+
+Notes / next step:
+- Keep these records in `frontend/apps/store/docs/refactor/` and update the progress report after every bounded refactor slice.

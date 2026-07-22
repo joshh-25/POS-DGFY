@@ -176,7 +176,7 @@ Add this entry format to the progress report after every slice:
 
 Current measured `StorefrontApp.jsx` size:
 
-- `10,078` lines
+- `9,184` lines
 
 This remains above the target and should continue shrinking through safe feature-boundary extraction.
 

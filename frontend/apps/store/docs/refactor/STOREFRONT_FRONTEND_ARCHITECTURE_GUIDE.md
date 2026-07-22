@@ -21,8 +21,8 @@ The goal is simple:
 
 Before editing storefront frontend code, read these files:
 
-1. `frontend/apps/store/src/STOREFRONT_REFACTOR_PLAN.md`
-2. `frontend/apps/store/src/STOREFRONT_FRONTEND_ARCHITECTURE_GUIDE.md`
+1. `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PLAN.md`
+2. `frontend/apps/store/docs/refactor/STOREFRONT_FRONTEND_ARCHITECTURE_GUIDE.md`
 3. `docs/development/STOREFRONT_FRONTEND_CODING_STANDARD_AND_FILE_OWNERSHIP.md`
 4. `docs/features/STOREFRONT_MODE_IMPLEMENTATION_STANDARD.md`
 
