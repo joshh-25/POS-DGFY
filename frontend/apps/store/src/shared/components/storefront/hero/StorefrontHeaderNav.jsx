@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, MapPin, Menu, Package, ShoppingBag, User, X } from 'lucide-react';
-import dgfyHeaderLogo from '../../../../../public/dgfy-logo.png';
 
 const HERO_CANVAS_MAX_WIDTH = 1320;
-const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
+const DGFY_HEADER_LOGO_URL = '/dgfy-logo.png';
 const DGFY_DISCOVERY_HOME_URL = 'https://dgfy.ph/';
 const DGFY_OCEAN_BLUE = '#1A4E8D';
 const DGFY_DEEP_BLUE = '#1A4586';
