@@ -123,6 +123,53 @@ describe('dgfy tenant-session transport contract', () => {
     expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('refreshToken');
   });
 
+  it('keeps the refresh token in the JSON body for a mobile client (no cookie jar to rely on)', async () => {
+    mockStartDgfyTenantSessionUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        payload: {
+          success: true,
+          data: {
+            user_id: 10,
+            email: 'founder@example.test',
+            token: 'tenant-access-token',
+            refreshToken: 'tenant-refresh-token',
+            expiresIn: 86400,
+            company: {
+              id: 44,
+              name: 'Auto Foods',
+              token: 'company-token-44'
+            },
+            onboarding: { tenant_onboarding_state: 'not_started' }
+          },
+          message: 'SKUpervisor session started.'
+        }
+      }
+    });
+
+    const req = {
+      dgfyAccount: { id: 'dgfy-account-1', email: 'founder@example.test' },
+      body: { tenant_id: 44, company_token: 'company-token-44' },
+      headers: { 'x-client-platform': 'mobile' }
+    };
+    const res = createRes();
+
+    await startDgfyTenantSession(req, res);
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ refreshToken: 'tenant-refresh-token' })
+      })
+    );
+
+    // The cookie is still set too - harmless for a client with no cookie
+    // jar, and keeps a mixed browser/native WebView caller working either way.
+    const cookies = res.setHeader.mock.calls
+      .filter(([name]) => String(name).toLowerCase() === 'set-cookie')
+      .at(-1)?.[1] || [];
+    expect(cookies.join(';')).toContain('sku_refresh_token=tenant-refresh-token');
+  });
+
   it('does not set tenant cookies when membership authorization fails', async () => {
     mockStartDgfyTenantSessionUseCase.mockResolvedValue({
       success: false,

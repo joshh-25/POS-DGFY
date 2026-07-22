@@ -13,6 +13,7 @@ let storeTrackingLimiter;
 let storeTrackingReadLimiter;
 let storeGuestCheckoutOtpRequestLimiter;
 let storeGuestCheckoutOtpVerifyLimiter;
+let mobilePosFreeSyncLimiter;
 let logger;
 let defaultAuthRateLimitWindowMs;
 
@@ -30,6 +31,8 @@ beforeAll(async () => {
   process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_STORE_TRACKING_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS = '1';
+  process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_WINDOW_MS = '60000';
+  process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_MAX_REQUESTS = '2';
   process.env.RATE_LIMIT_ALERT_THRESHOLD = '999999';
 
   const loggerModule = await import('../src/config/logger.js');
@@ -46,6 +49,7 @@ beforeAll(async () => {
   storeTrackingReadLimiter = limiterModule.storeTrackingReadLimiter;
   storeGuestCheckoutOtpRequestLimiter = limiterModule.storeGuestCheckoutOtpRequestLimiter;
   storeGuestCheckoutOtpVerifyLimiter = limiterModule.storeGuestCheckoutOtpVerifyLimiter;
+  mobilePosFreeSyncLimiter = limiterModule.mobilePosFreeSyncLimiter;
 });
 
 afterAll(() => {
@@ -308,5 +312,76 @@ describe('Rate limiter behavior', () => {
       .get('/api/v1/store/track/SK-SHARED01')
       .set('x-store-slug', 'another-store')
       .expect(200);
+  });
+
+  describe('mobilePosFreeSyncLimiter (B2: free-tier offline-sync cap)', () => {
+    const withTenant = (tenant) => (req, _res, next) => {
+      req.tenant = tenant;
+      next();
+    };
+
+    it('caps a free tenant at the configured daily sync count and returns an upgrade prompt', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-1', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').expect(200);
+
+      const third = await request(app).post('/api/v1/mobile-pos/sync/checkouts').expect(429);
+      expect(third.body).toEqual(expect.objectContaining({
+        success: false,
+        message: 'Free plan is limited to 2 syncs per day. Upgrade to Premium for unlimited sync.',
+        limitScope: 'mobile_pos_free_sync',
+        limitKeyType: 'tenant',
+        requiresUpgrade: true,
+        retryAfterSeconds: expect.any(Number),
+      }));
+      expect(Number(third.headers['retry-after'])).toBeGreaterThan(0);
+    });
+
+    it('shares one budget across every sync endpoint for the same free tenant', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-shared', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncLimiter, (_req, res) => res.status(200).json({ ok: true }));
+      app.post('/api/v1/mobile-pos/sync/shifts', mobilePosFreeSyncLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/shifts').expect(200);
+
+      // The budget is per business, not per endpoint - a third call to
+      // either route is the third sync of the day and gets capped.
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').expect(429);
+    });
+
+    it('never caps a premium tenant with an active subscription', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-premium-1', plan: 'premium', subscription_status: 'active' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').expect(200);
+    });
+
+    it('does not let one free tenant exhaust another free tenant\'s daily budget', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use((req, _res, next) => {
+        req.tenant = { id: req.headers['x-test-tenant'], plan: 'free' };
+        next();
+      });
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').set('x-test-tenant', 'tenant-a').expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').set('x-test-tenant', 'tenant-a').expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').set('x-test-tenant', 'tenant-a').expect(429);
+
+      // Tenant B's budget is untouched by tenant A exhausting theirs.
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').set('x-test-tenant', 'tenant-b').expect(200);
+    });
   });
 });
