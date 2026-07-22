@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DISCOVERY_CLUSTER_MAX_ZOOM,
+  DISCOVERY_CLUSTER_MIN_POINTS,
+  DISCOVERY_CLUSTER_RADIUS,
+  DISCOVERY_DENSITY_CLUSTER_LABEL_LAYER_ID,
+  DISCOVERY_DENSITY_CLUSTER_LAYER_ID,
   DISCOVERY_NEAR_CLUSTER_RADIUS_METERS,
   DISCOVERY_PIN_HALO_LAYER_ID,
   DISCOVERY_PIN_LAYER_ID,
@@ -11,10 +16,39 @@ import {
   ensureDiscoveryMapLayers,
   getDistanceMeters,
   getDiscoveryPinIconId,
+  hasPlottableCoordinate,
   setGeoJsonSourceData
 } from '../discovery/model/discoveryMapLayers.js';
 
 describe('discovery map layer helpers', () => {
+  it('excludes stores with missing or null-island coordinates from the map source', () => {
+    const model = buildDiscoveryPinLayerModel({
+      stores: [
+        { slug: 'located', tenant_name: 'Located', location_id: 1, latitude: 10.72, longitude: 122.56 },
+        { slug: 'no-location', tenant_name: 'No Location', location_id: null, latitude: null, longitude: null },
+        { slug: 'null-island', tenant_name: 'Null Island', location_id: 2, latitude: 0, longitude: 0 }
+      ]
+    });
+
+    const keys = model.sourceData.features.map((feature) => feature.properties.markerKey);
+    expect(model.sourceData.features).toHaveLength(1);
+    expect(keys).toEqual(['located:loc:1']);
+    expect(model.bounds).toHaveLength(1);
+    const hasNullIsland = model.sourceData.features.some((feature) => {
+      const [lng, lat] = feature.geometry.coordinates;
+      return Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001;
+    });
+    expect(hasNullIsland).toBe(false);
+  });
+
+  it('treats missing, null, and null-island coordinates as non-plottable', () => {
+    expect(hasPlottableCoordinate(10.72, 122.56)).toBe(true);
+    expect(hasPlottableCoordinate(null, null)).toBe(false);
+    expect(hasPlottableCoordinate(0, 0)).toBe(false);
+    expect(hasPlottableCoordinate(undefined, 122.56)).toBe(false);
+    expect(hasPlottableCoordinate('', '')).toBe(false);
+    expect(hasPlottableCoordinate(Number.NaN, 5)).toBe(false);
+  });
   it('builds exact-coordinate layer features without display offsets', () => {
     const model = buildDiscoveryPinLayerModel({
       stores: [
@@ -147,20 +181,60 @@ describe('discovery map layer helpers', () => {
     expect(ensureDiscoveryMapLayers(map)).toBe(true);
 
     expect(map.addSource).toHaveBeenCalledWith(DISCOVERY_USER_SOURCE_ID, expect.objectContaining({ type: 'geojson' }));
-    expect(map.addSource).toHaveBeenCalledWith(DISCOVERY_PIN_SOURCE_ID, expect.objectContaining({ type: 'geojson' }));
+    expect(map.addSource).toHaveBeenCalledWith(DISCOVERY_PIN_SOURCE_ID, expect.objectContaining({
+      type: 'geojson',
+      cluster: true,
+      clusterRadius: DISCOVERY_CLUSTER_RADIUS,
+      clusterMaxZoom: DISCOVERY_CLUSTER_MAX_ZOOM,
+      clusterMinPoints: DISCOVERY_CLUSTER_MIN_POINTS
+    }));
     expect(layers.map((layer) => layer.id)).toEqual([
       DISCOVERY_USER_LAYER_ID,
+      DISCOVERY_DENSITY_CLUSTER_LAYER_ID,
+      DISCOVERY_DENSITY_CLUSTER_LABEL_LAYER_ID,
       DISCOVERY_PIN_HALO_LAYER_ID,
       DISCOVERY_PIN_LAYER_ID
     ]);
     expect(layers.at(-1)).toMatchObject({
       type: 'symbol',
+      filter: ['!', ['has', 'point_count']],
       layout: {
         'icon-anchor': 'bottom',
         'icon-allow-overlap': true,
         'icon-ignore-placement': true
       }
     });
+  });
+
+  it('scopes density-cluster layers to synthetic cluster points and unclustered layers to real pins', () => {
+    const sources = new Map();
+    const layers = [];
+    const map = {
+      getSource: vi.fn((id) => sources.get(id)),
+      addSource: vi.fn((id, source) => {
+        sources.set(id, { ...source, setData: vi.fn() });
+      }),
+      getLayer: vi.fn((id) => layers.find((layer) => layer.id === id)),
+      addLayer: vi.fn((layer) => {
+        layers.push(layer);
+      })
+    };
+
+    ensureDiscoveryMapLayers(map);
+
+    const densityLayer = layers.find((layer) => layer.id === DISCOVERY_DENSITY_CLUSTER_LAYER_ID);
+    const densityLabelLayer = layers.find((layer) => layer.id === DISCOVERY_DENSITY_CLUSTER_LABEL_LAYER_ID);
+    const haloLayer = layers.find((layer) => layer.id === DISCOVERY_PIN_HALO_LAYER_ID);
+    const pinLayer = layers.find((layer) => layer.id === DISCOVERY_PIN_LAYER_ID);
+
+    expect(densityLayer).toMatchObject({ type: 'circle', filter: ['has', 'point_count'] });
+    expect(densityLabelLayer).toMatchObject({
+      type: 'symbol',
+      filter: ['has', 'point_count'],
+      layout: expect.objectContaining({ 'text-field': ['to-string', ['get', 'storeCount']] })
+    });
+    expect(haloLayer.filter).toEqual(['all', ['!', ['has', 'point_count']], ['==', ['get', 'highlighted'], true]]);
+    expect(pinLayer.filter).toEqual(['!', ['has', 'point_count']]);
   });
 
   it('sets GeoJSON source data through MapLibre source ownership', () => {

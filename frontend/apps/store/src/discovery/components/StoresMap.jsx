@@ -2,60 +2,59 @@ import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { MapPin } from 'lucide-react';
 import {
-  getSpreadMarkerCoordinate,
-  haversineDistanceKm,
-  toNumberOrNull
-} from '../../features/discovery/utils/discoveryMapMath.js';
-import {
-  makePinElement,
-  makeUserLocationElement
-} from '../../features/discovery/utils/discoveryMapMarkers.js';
+  DISCOVERY_DENSITY_CLUSTER_LAYER_ID,
+  DISCOVERY_PIN_LAYER_ID,
+  DISCOVERY_PIN_SOURCE_ID,
+  DISCOVERY_USER_SOURCE_ID,
+  buildDiscoveryPinLayerModel,
+  buildUserLocationSourceData,
+  ensureDiscoveryMapLayers,
+  ensureMapImage,
+  setGeoJsonSourceData
+} from '../model/discoveryMapLayers.js';
 import {
   DEFAULT_CENTER,
   TILING_SERVER,
   tileTransformRequest
 } from '../../app/runtime/storefrontMapRuntime.js';
 import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
-import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from '../model/discoveryMapDom.js';
-import { getDiscoveryPinScaleForZoom } from '../model/discoveryMapPresentation.js';
+import { getDiscoveryMarkerKey } from '../model/discoveryMapDom.js';
 import { createStoreMarkerPreviewNode } from '../model/storefrontMarkerPreview.js';
 
-const getStoreResultKey = (store) => (
-  getDiscoveryMarkerKey(store)
-  || store?.slug
-  || store?.tenant_slug
-  || store?.storefront_slug
-  || store?.id
-  || store?.tenant_id
-  || `${store?.latitude || 'lat'}:${store?.longitude || 'lng'}:${store?.tenant_name || store?.store_name || 'store'}`
-);
+const toSlug = (value) => String(value || '').trim().toLowerCase();
+
+const EMPTY_HIGHLIGHTED_MARKER_KEYS = [];
+const STORE_MARKER_POPUP_OFFSET = { bottom: [0, -58], top: [0, 58], left: [58, 0], right: [-58, 0] };
+const STORE_MARKER_FIT_PADDING = { top: 76, right: 76, bottom: 104, left: 76 };
+const STORE_MARKER_AUTO_OPEN_FIT_PADDING = { top: 96, right: 96, bottom: 120, left: 96 };
 
 export function StoresMap({
   stores,
   selectedKey,
+  highlightedKeys = EMPTY_HIGHLIGHTED_MARKER_KEYS,
   onSelectStore,
   userLocation = null,
   height = 360,
   autoOpenPopups = false,
   openPopupOnHover = false,
   onSelectCluster = null,
-  pinGlow = false
+  viewportPolicy = 'auto',
+  viewportSignal = ''
 }) {
-  void getSpreadMarkerCoordinate;
-  void haversineDistanceKm;
-  void pinGlow;
-  void toNumberOrNull;
-
   const ref = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef([]);
   const popupsRef = useRef([]);
-  const userMarkerRef = useRef(null);
+  const layerEventCleanupRef = useRef(null);
   const onSelectStoreRef = useRef(onSelectStore);
   const onSelectClusterRef = useRef(onSelectCluster);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
+  const markerSignatureRef = useRef('');
+  const viewportHasFitRef = useRef(false);
+  const lastViewportLocationSignatureRef = useRef('');
+  const lastViewportSignalRef = useRef('');
   const [mapUnavailable, setMapUnavailable] = useState(false);
+  const [mapStyleReady, setMapStyleReady] = useState(false);
 
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
@@ -87,332 +86,443 @@ export function StoresMap({
 
     map.on('error', (e) => console.error('[MapLibre error]', e));
     map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
+    const markReady = () => setMapStyleReady(true);
+    if (typeof map.isStyleLoaded === 'function') {
+      if (map.isStyleLoaded()) {
+        markReady();
+      } else if (typeof map.once === 'function') {
+        map.once('load', markReady);
+      } else {
+        map.on('load', markReady);
+      }
+    } else {
+      markReady();
+    }
 
     return () => {
+      if (typeof map.off === 'function') {
+        try { map.off('load', markReady); } catch {
+          // MapLibre cleanup is best-effort across mocked and real maps.
+        }
+      }
       map.remove();
       mapRef.current = null;
+      setMapStyleReady(false);
     };
+  }, []);
+  useEffect(() => () => {
+    if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+      window.cancelAnimationFrame(autoOpenFrameRef.current);
+      autoOpenFrameRef.current = null;
+    }
+    popupsRef.current.forEach((popup) => {
+      try { popup?.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the popup.
+      }
+    });
+    popupsRef.current = [];
+    if (typeof layerEventCleanupRef.current === 'function') {
+      layerEventCleanupRef.current();
+      layerEventCleanupRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !mapStyleReady) return undefined;
     const generation = popupGenerationRef.current + 1;
     popupGenerationRef.current = generation;
+    let cancelled = false;
     if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
       window.cancelAnimationFrame(autoOpenFrameRef.current);
       autoOpenFrameRef.current = null;
     }
 
-    popupsRef.current.forEach((popup) => {
-      try {
-        popup?.remove?.();
-      } catch {
-        // MapLibre can detach popups during rapid map rerenders.
-      }
-    });
-    popupsRef.current = [];
-    markersRef.current.forEach((marker) => marker.remove());
-    markersRef.current = [];
-
     const rows = Array.isArray(stores) ? stores : [];
-    const uniqueRows = [];
-    const seenMarkerKeys = new Set();
-    rows.forEach((store) => {
-      if (!store) return;
-      const markerKey = getDiscoveryMarkerKey(store);
-      if (!markerKey) {
-        uniqueRows.push(store);
+    const nextMarkerSignature = rows
+      .map((store) => {
+        const markerKey = getDiscoveryMarkerKey(store);
+        const lat = Number(store?.latitude);
+        const lng = Number(store?.longitude);
+        return [
+          markerKey || toSlug(store?.slug || store?.tenant_name),
+          Number.isFinite(lat) ? lat.toFixed(6) : '',
+          Number.isFinite(lng) ? lng.toFixed(6) : '',
+          store?.location_id ?? ''
+        ].join(':');
+      })
+      .join('|');
+    const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
+    markerSignatureRef.current = nextMarkerSignature;
+    const normalizedViewportSignal = String(viewportSignal || '').trim();
+    const viewportSignalChanged = lastViewportSignalRef.current !== normalizedViewportSignal;
+    lastViewportSignalRef.current = normalizedViewportSignal;
+    const userLocationSignature = userLocation?.latitude != null && userLocation?.longitude != null
+      ? `${Number(userLocation.latitude).toFixed(6)}:${Number(userLocation.longitude).toFixed(6)}`
+      : '';
+    const userLocationChanged = lastViewportLocationSignatureRef.current !== userLocationSignature;
+    lastViewportLocationSignatureRef.current = userLocationSignature;
+
+    const retainedPopupKeys = new Set();
+    const retainedPopups = [];
+    popupsRef.current.forEach((popup) => {
+      const isOpen = typeof popup?.isOpen === 'function'
+        ? popup.isOpen()
+        : Boolean(popup?.node?.isConnected);
+      if (!markerSetChanged && isOpen) {
+        const popupMarkerKey = String(popup?.__dgfyMarkerKey || '').trim();
+        if (popupMarkerKey) retainedPopupKeys.add(popupMarkerKey);
+        retainedPopups.push(popup);
         return;
       }
-      if (seenMarkerKeys.has(markerKey)) return;
-      seenMarkerKeys.add(markerKey);
-      uniqueRows.push(store);
+      try { popup?.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the popup.
+      }
     });
-    const bounds = [];
-    const autoOpenCallbacks = [];
-    const scalableMarkerElements = [];
-    const applyMarkerScale = () => {
-      const scale = getDiscoveryPinScaleForZoom(map.getZoom?.());
-      scalableMarkerElements.forEach((element) => {
-        element?.style?.setProperty?.('--pin-scale', String(scale));
-      });
-    };
-    const coordinateGroups = uniqueRows.reduce((acc, store) => {
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return acc;
-      const key = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      if (!Array.isArray(acc[key])) {
-        acc[key] = [];
-      }
-      acc[key].push(store);
-      return acc;
-    }, {});
-    const renderedCoordinateGroups = new Set();
+    popupsRef.current = retainedPopups;
+    if (typeof layerEventCleanupRef.current === 'function') {
+      layerEventCleanupRef.current();
+      layerEventCleanupRef.current = null;
+    }
 
-    uniqueRows.forEach((store) => {
-      if (!store) return;
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const coordinateKey = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      if (renderedCoordinateGroups.has(coordinateKey)) return;
-      renderedCoordinateGroups.add(coordinateKey);
-      const group = Array.isArray(coordinateGroups[coordinateKey]) ? coordinateGroups[coordinateKey] : [];
-      if (group.length === 0) return;
-      const clusterSelected = selectedKey
-        ? group.some((entry) => String(getDiscoveryMarkerKey(entry) || '') === String(selectedKey))
-        : group.some((entry) => entry?.is_primary_storefront === true);
+    const layerModel = buildDiscoveryPinLayerModel({ stores: rows, selectedKey, highlightedKeys });
+    const userSourceData = buildUserLocationSourceData(userLocation);
+    const userFeature = userSourceData.features[0];
+    const bounds = [...layerModel.bounds];
+    if (userFeature) bounds.push(userFeature.geometry.coordinates);
 
-      if (group.length > 1) {
-        const clusterElement = makeClusterElement(group.length, clusterSelected, `${group.length} storefronts at this location`);
-        clusterElement.style.touchAction = 'none';
-        clusterElement.style.setProperty('--pin-scale', '1');
-        scalableMarkerElements.push(clusterElement);
-        const clusterPopup = new maplibregl.Popup({
-          anchor: 'bottom',
-          offset: { bottom: [0, -54], top: [0, 16], left: [16, 0], right: [-16, 0] },
-          closeOnClick: false,
-          focusAfterOpen: false
-        });
-        popupsRef.current.push(clusterPopup);
-        const clusterNode = createSharedCoordinatePreviewNode(group, {
-          onSelect: (selectedStorefront) => {
-            clusterPopup.remove();
-            onSelectStoreRef.current?.(selectedStorefront);
+    const layerReady = ensureDiscoveryMapLayers(map);
+    if (layerReady) {
+      setGeoJsonSourceData(map, DISCOVERY_USER_SOURCE_ID, userSourceData);
+    }
+
+    const popupEntries = new globalThis.Map();
+    let activeHoverEntry = null;
+    const createPopupForEntry = (entry) => {
+      const existing = popupEntries.get(entry.coordinateKey);
+      if (existing) return existing;
+      const { group, isCluster, lat, lng, markerKey } = entry;
+      if (isCluster) {
+        const clusterEntry = {
+          markerKey,
+          coordinateKey: entry.coordinateKey,
+          highlighted: entry.highlighted,
+          isCluster: true,
+          group,
+          open: (mode = 'click') => {
+            if (mode !== 'click') return;
+            onSelectClusterRef.current?.(group, entry);
           },
-          onClose: () => {
-            clusterPopup.remove();
-          }
-        });
-        clusterPopup.setDOMContent(clusterNode);
-        const stopClusterMapEvent = (event) => {
-          event?.preventDefault?.();
-          event?.stopPropagation?.();
-          event?.stopImmediatePropagation?.();
+          setMarkerHovered: () => {}
         };
-        const openClusterPopup = (event) => {
-          stopClusterMapEvent(event);
-          if (typeof onSelectClusterRef.current === 'function') {
-            onSelectClusterRef.current(group, {
-              coordinateKey,
-              lat,
-              lng,
-              markerKey: getDiscoveryMarkerKey(group[0]) || coordinateKey
-            });
-            return;
-          }
-          clusterPopup.setLngLat([lng, lat]).addTo(map);
-        };
-        clusterElement.addEventListener('pointerdown', stopClusterMapEvent, { capture: true });
-        clusterElement.addEventListener('mousedown', stopClusterMapEvent, { capture: true });
-        clusterElement.addEventListener('touchstart', stopClusterMapEvent, { capture: true, passive: false });
-        clusterElement.addEventListener('dblclick', stopClusterMapEvent, { capture: true });
-        clusterElement.addEventListener('click', openClusterPopup, { capture: true });
-        clusterElement.addEventListener('pointerup', openClusterPopup, { capture: true });
-        clusterElement.addEventListener('mouseup', openClusterPopup, { capture: true });
-        clusterElement.addEventListener('touchend', openClusterPopup, { capture: true, passive: false });
-        clusterElement.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            openClusterPopup(event);
-          }
-        });
-        const clusterMarker = new maplibregl.Marker({ element: clusterElement, anchor: 'center' })
-          .setLngLat([lng, lat])
-          .addTo(map);
-        markersRef.current.push(clusterMarker);
-        bounds.push([lng, lat]);
-        return;
+        popupEntries.set(entry.coordinateKey, clusterEntry);
+        return clusterEntry;
       }
-
-      const [singleStore] = group;
-      const markerKey = getDiscoveryMarkerKey(singleStore) || `${lat}:${lng}`;
-      const highlighted = selectedKey
-        ? markerKey === String(selectedKey)
-        : singleStore.is_primary_storefront === true;
-      const branchName = String(singleStore?.location_name || singleStore?.nearest_location_name || 'Branch');
-      const tenantName = String(singleStore?.tenant_name || 'Storefront');
-      const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
-      const element = makePinElement(singleStore.workflow_mode || singleStore.business_mode, highlighted, markerAriaLabel);
-      scalableMarkerElements.push(element);
       const popup = new maplibregl.Popup({
         anchor: 'bottom',
-        offset: { bottom: [0, -64], top: [0, 16], left: [16, 0], right: [-16, 0] },
+        offset: STORE_MARKER_POPUP_OFFSET,
         closeOnClick: false,
         focusAfterOpen: false
       });
+      popup.__dgfyMarkerKey = markerKey;
       popupsRef.current.push(popup);
+
       let closeTimer = null;
       let markerHovered = false;
-      let previewHovered = false;
       let popupOpening = false;
+      let popupOpenMode = 'idle';
+      let previewNodeRef = null;
       const clearCloseTimer = () => {
         if (closeTimer) {
           window.clearTimeout(closeTimer);
           closeTimer = null;
         }
       };
-      const openPopup = () => {
+      const closeHoverPopup = () => {
+        if (popupGenerationRef.current !== generation || popupOpenMode !== 'hover') return;
+        markerHovered = false;
+        popupOpenMode = 'idle';
         clearCloseTimer();
-        const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
-        if (popupGenerationRef.current !== generation || popupOpening || popupAlreadyOpen) return;
-        popupOpening = true;
-        try {
-          if (popupGenerationRef.current !== generation) return;
-          popup.setLngLat([lng, lat]).addTo(map);
-        } finally {
-          popupOpening = false;
+        if (previewNodeRef?.style) {
+          previewNodeRef.style.pointerEvents = '';
         }
+        popup.remove();
       };
       const schedulePopupClose = () => {
         clearCloseTimer();
         closeTimer = window.setTimeout(() => {
-          if (popupGenerationRef.current === generation && !markerHovered && !previewHovered) {
-            popup.remove();
-          }
-        }, 120);
+          if (!markerHovered) closeHoverPopup();
+        }, 40);
       };
+      const bindPreviewHover = (node) => {
+        node.addEventListener('mouseenter', () => {
+          if (popupOpenMode === 'click') {
+            clearCloseTimer();
+          }
+        });
+        node.addEventListener('mouseleave', () => {
+          if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
+        });
+        node.addEventListener('focusin', () => {
+          if (popupOpenMode === 'click') {
+            clearCloseTimer();
+          }
+        });
+        node.addEventListener('focusout', (event) => {
+          const nextFocused = event.relatedTarget;
+          if (nextFocused && node.contains(nextFocused)) return;
+          if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
+        });
+      };
+      const [singleStore] = group;
       const previewNode = createStoreMarkerPreviewNode(singleStore, {
         resolveAssetUrl: withAssetOrigin,
         onAction: () => onSelectStoreRef.current?.(singleStore),
         onClose: () => {
           markerHovered = false;
-          previewHovered = false;
           clearCloseTimer();
+          popupOpenMode = 'idle';
+          if (previewNodeRef?.style) {
+            previewNodeRef.style.pointerEvents = '';
+          }
           popup.remove();
         }
       });
-      previewNode.addEventListener('mouseenter', () => {
-        previewHovered = true;
-        clearCloseTimer();
-      });
-      previewNode.addEventListener('mouseleave', () => {
-        previewHovered = false;
-        schedulePopupClose();
-      });
-      previewNode.addEventListener('focusin', () => {
-        previewHovered = true;
-        clearCloseTimer();
-      });
-      previewNode.addEventListener('focusout', (event) => {
-        const nextFocused = event.relatedTarget;
-        if (nextFocused && previewNode.contains(nextFocused)) return;
-        previewHovered = false;
-        schedulePopupClose();
-      });
+      previewNodeRef = previewNode;
+      bindPreviewHover(previewNode);
       previewNode.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
           event.preventDefault();
+          popupOpenMode = 'idle';
+          if (previewNodeRef?.style) {
+            previewNodeRef.style.pointerEvents = '';
+          }
           popup.remove();
-          element.focus();
         }
       });
       popup.setDOMContent(previewNode);
-      const hoverPreviewEnabled = openPopupOnHover
-        && typeof window !== 'undefined'
-        && window.matchMedia?.('(hover: hover)').matches;
-      const openPopupFromPointer = (event) => {
-        event?.preventDefault?.();
-        event?.stopPropagation?.();
-        openPopup();
+      const open = (mode = 'click') => {
+        popupOpenMode = mode === 'click' || popupOpenMode === 'click' ? 'click' : 'hover';
+        clearCloseTimer();
+        if (previewNodeRef?.style) {
+          previewNodeRef.style.pointerEvents = popupOpenMode === 'hover' ? 'none' : '';
+        }
+        const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
+        if (popupOpening || popupAlreadyOpen) return;
+        popupOpening = true;
+        try {
+          popup.setLngLat([lng, lat]).addTo(map);
+        } finally {
+          popupOpening = false;
+        }
       };
-      element.addEventListener('click', openPopupFromPointer);
-      element.addEventListener('pointerup', openPopupFromPointer);
-      element.addEventListener('touchend', openPopupFromPointer, { passive: false });
-      element.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          openPopup();
+      popupEntries.set(entry.coordinateKey, {
+        markerKey,
+        coordinateKey: entry.coordinateKey,
+        highlighted: entry.highlighted,
+        isCluster: false,
+        open,
+        closeHoverPopup,
+        setMarkerHovered: (value) => {
+          markerHovered = Boolean(value);
+          if (markerHovered) {
+            clearCloseTimer();
+          } else if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
         }
       });
-      if (hoverPreviewEnabled) {
-        element.addEventListener('mouseenter', () => {
-          markerHovered = true;
-          openPopup();
-        });
-        element.addEventListener('mouseleave', () => {
-          markerHovered = false;
-          schedulePopupClose();
-        });
-        element.addEventListener('focus', () => {
-          markerHovered = true;
-          openPopup();
-        });
-        element.addEventListener('blur', () => {
-          markerHovered = false;
-          schedulePopupClose();
-        });
-      }
-      const marker = new maplibregl.Marker({ element, anchor: 'bottom' })
-        .setLngLat([lng, lat])
-        .addTo(map);
-      if (autoOpenPopups) {
-        autoOpenCallbacks.push({ key: markerKey, open: openPopup });
-      }
-      markersRef.current.push(marker);
-      bounds.push([lng, lat]);
+      return popupEntries.get(entry.coordinateKey);
+    };
+
+    const groupsByCoordinateKey = new globalThis.Map();
+    layerModel.groups.forEach((entry) => {
+      groupsByCoordinateKey.set(entry.coordinateKey, entry);
+      // Highlighted entries are built eagerly: autoOpenPopups needs them to exist
+      // before the user interacts. Everything else is built lazily on first
+      // hover/click below, so up to ~100 pins don't all fire preview-image
+      // fetches and build DOM subtrees on every stores/search change.
+      if (entry.highlighted) createPopupForEntry(entry);
     });
 
-    if (userMarkerRef.current) {
-      userMarkerRef.current.remove();
-      userMarkerRef.current = null;
-    }
-    if (userLocation?.latitude != null && userLocation?.longitude != null) {
-      const userLatitude = Number(userLocation.latitude);
-      const userLongitude = Number(userLocation.longitude);
-      if (Number.isFinite(userLatitude) && Number.isFinite(userLongitude)) {
-        const element = makeUserLocationElement();
-        userMarkerRef.current = new maplibregl.Marker({ element })
-          .setLngLat([userLongitude, userLatitude])
-          .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
-          .addTo(map);
-        bounds.push([userLongitude, userLatitude]);
+    const getEventEntry = (event) => {
+      const feature = Array.isArray(event?.features) ? event.features[0] : null;
+      const coordinateKey = String(feature?.properties?.coordinateKey || '').trim();
+      if (!coordinateKey) return null;
+      const existing = popupEntries.get(coordinateKey);
+      if (existing) return existing;
+      const rawEntry = groupsByCoordinateKey.get(coordinateKey);
+      return rawEntry ? createPopupForEntry(rawEntry) : null;
+    };
+    const clickHandler = (event) => {
+      event?.preventDefault?.();
+      const entry = getEventEntry(event);
+      entry?.open?.('click');
+    };
+    const hoverPreviewEnabled = openPopupOnHover
+      && typeof window !== 'undefined'
+      && window.matchMedia?.('(hover: hover)').matches;
+    const mouseEnterHandler = (event) => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = 'pointer';
       }
+      if (!hoverPreviewEnabled) return;
+      const entry = getEventEntry(event);
+      if (activeHoverEntry && activeHoverEntry !== entry) {
+        activeHoverEntry.closeHoverPopup?.();
+      }
+      activeHoverEntry = entry || null;
+      entry?.setMarkerHovered?.(true);
+      entry?.open?.('hover');
+    };
+    const mouseLeaveHandler = (event) => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
+      if (!hoverPreviewEnabled) return;
+      const entry = getEventEntry(event);
+      if (activeHoverEntry === entry) {
+        activeHoverEntry = null;
+      }
+      entry?.setMarkerHovered?.(false);
+    };
+    const mapMouseMoveHandler = (event) => {
+      if (!hoverPreviewEnabled || !activeHoverEntry || typeof map.queryRenderedFeatures !== 'function') return;
+      const renderedFeatures = map.queryRenderedFeatures(event?.point, { layers: [DISCOVERY_PIN_LAYER_ID] }) || [];
+      const stillOnActiveMarker = renderedFeatures.some((feature) => (
+        String(feature?.properties?.coordinateKey || '').trim() === activeHoverEntry.coordinateKey
+      ));
+      if (stillOnActiveMarker) return;
+      activeHoverEntry.setMarkerHovered?.(false);
+      activeHoverEntry = null;
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
+    };
+    const densityClusterClickHandler = (event) => {
+      event?.preventDefault?.();
+      const feature = Array.isArray(event?.features) ? event.features[0] : null;
+      const clusterId = feature?.properties?.cluster_id;
+      const coordinates = feature?.geometry?.coordinates;
+      if (clusterId == null || !Array.isArray(coordinates)) return;
+      const source = typeof map.getSource === 'function' ? map.getSource(DISCOVERY_PIN_SOURCE_ID) : null;
+      if (!source || typeof source.getClusterExpansionZoom !== 'function') return;
+      // getClusterExpansionZoom is Promise-based in MapLibre GL JS v5 (not callback-based).
+      Promise.resolve(source.getClusterExpansionZoom(clusterId))
+        .then((zoom) => {
+          if (typeof zoom === 'number' && typeof map.easeTo === 'function') {
+            map.easeTo({ center: coordinates, zoom });
+          }
+        })
+        .catch(() => {
+          // Cluster expansion is a convenience interaction; ignore failures.
+        });
+    };
+    const densityClusterMouseEnterHandler = () => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = 'pointer';
+      }
+    };
+    const densityClusterMouseLeaveHandler = () => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
+    };
+    if (layerReady && typeof map.on === 'function') {
+      map.on('click', DISCOVERY_PIN_LAYER_ID, clickHandler);
+      map.on('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler);
+      map.on('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler);
+      map.on('mousemove', mapMouseMoveHandler);
+      map.on('click', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterClickHandler);
+      map.on('mouseenter', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterMouseEnterHandler);
+      map.on('mouseleave', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterMouseLeaveHandler);
+      layerEventCleanupRef.current = () => {
+        if (typeof map.off !== 'function') return;
+        try { map.off('click', DISCOVERY_PIN_LAYER_ID, clickHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mousemove', mapMouseMoveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('click', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterClickHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseenter', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterMouseEnterHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseleave', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterMouseLeaveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+      };
     }
 
-    applyMarkerScale();
-    map.on('zoom', applyMarkerScale);
-    map.on('zoomend', applyMarkerScale);
+    Promise.all(layerModel.requiredImages.map(({ id, svg }) => ensureMapImage(map, id, svg)))
+      .then(() => {
+        if (cancelled || popupGenerationRef.current !== generation) return;
+        if (layerReady) {
+          setGeoJsonSourceData(map, DISCOVERY_PIN_SOURCE_ID, layerModel.sourceData);
+        }
+      });
 
-    if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
-    if (bounds.length > 1) {
-      const lngs = bounds.map((entry) => entry[0]);
-      const lats = bounds.map((entry) => entry[1]);
+    const shouldFitViewport = viewportPolicy !== 'search-stable'
+      || !viewportHasFitRef.current
+      || viewportSignalChanged
+      || userLocationChanged;
+    if (shouldFitViewport && bounds.length === 1) {
+      map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
+      viewportHasFitRef.current = true;
+    }
+    if (shouldFitViewport && bounds.length > 1) {
+      const lngs = bounds.map((b) => b[0]);
+      const lats = bounds.map((b) => b[1]);
       map.fitBounds(
         [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-        { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
+        { padding: autoOpenPopups ? STORE_MARKER_AUTO_OPEN_FIT_PADDING : STORE_MARKER_FIT_PADDING, maxZoom: autoOpenPopups ? 13.5 : 14 }
       );
+      viewportHasFitRef.current = true;
     }
-    if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
+    const autoOpenEntries = Array.from(popupEntries.values()).filter((entry) => entry.highlighted);
+    if (autoOpenPopups && autoOpenEntries.length > 0 && typeof window !== 'undefined') {
       autoOpenFrameRef.current = window.requestAnimationFrame(() => {
         autoOpenFrameRef.current = null;
         if (popupGenerationRef.current !== generation) return;
         const openedMarkerKeys = new Set();
-        autoOpenCallbacks.forEach((entry) => {
-          const markerKey = String(entry?.key || '');
-          if (!markerKey || openedMarkerKeys.has(markerKey)) return;
+        autoOpenEntries.forEach((entry) => {
+          const markerKey = String(entry?.markerKey || '');
+          if (!markerKey || retainedPopupKeys.has(markerKey) || openedMarkerKeys.has(markerKey)) return;
           openedMarkerKeys.add(markerKey);
           entry?.open?.();
         });
       });
     }
     return () => {
-      map.off('zoom', applyMarkerScale);
-      map.off('zoomend', applyMarkerScale);
+      cancelled = true;
       if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
         window.cancelAnimationFrame(autoOpenFrameRef.current);
         autoOpenFrameRef.current = null;
       }
+      if (typeof layerEventCleanupRef.current === 'function') {
+        layerEventCleanupRef.current();
+        layerEventCleanupRef.current = null;
+      }
     };
-  }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
+  }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, mapStyleReady]);
 
   if (mapUnavailable) {
     return (
       <div style={{ minHeight: height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden', background: '#f8fafc', padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#1f5f9f', fontWeight: 900 }}>
-          <MapPin size={15} />
+          <MapPin size={18} />
           Store map unavailable
         </div>
         <p style={{ margin: '8px 0 16px', color: '#64748b', fontSize: 13 }}>
@@ -421,7 +531,7 @@ export function StoresMap({
         <div style={{ display: 'grid', gap: 8 }}>
           {(stores || []).slice(0, 6).map((store) => (
             <button
-              key={getStoreResultKey(store)}
+              key={getDiscoveryMarkerKey(store)}
               type="button"
               onClick={() => onSelectStoreRef.current?.(store)}
               style={{ textAlign: 'left', border: '1px solid #dbeafe', background: '#fff', borderRadius: 12, padding: '10px 12px', color: '#0f172a', fontWeight: 800, cursor: 'pointer' }}
