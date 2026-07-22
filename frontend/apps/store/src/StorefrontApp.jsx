@@ -164,7 +164,6 @@ import {
 import { createStoreMarkerPreviewNode } from './discovery/model/storefrontMarkerPreview.js';
 import { FnbProductDetailsRoute } from './modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx';
 import { buildFnbMobileLayout } from './modes/fnb/storefront/model/fnbMobileLayout.js';
-import { buildStorefrontQrUrl } from './shared/utils/storefrontQrUrl.js';
 import { FNB_RECOMMENDED_LOCATION } from './modes/fnb/checkout/model/fnbCheckoutAddressLocations.js';
 import {
   buildFnbCartActionLabel,
@@ -367,10 +366,6 @@ import { useFnbProductModifiers } from './modes/fnb/storefront/hooks/useFnbProdu
 import { buildFnbPromoSectionModel } from './modes/fnb/promos/model/fnbPromoModel.js';
 import { FnbProductCard } from './modes/fnb/storefront/components/FnbProductCard.jsx';
 import { FnbItemReviewModal } from './modes/fnb/storefront/components/FnbItemReviewModal.jsx';
-import { FnbHeroDesktopAboutGallery } from './modes/fnb/storefront/components/FnbHeroDesktopAboutGallery.jsx';
-import { FnbHeroDesktopContactLocation } from './modes/fnb/storefront/components/FnbHeroDesktopContactLocation.jsx';
-import { FnbHeroDesktopWhyChooseUs } from './modes/fnb/storefront/components/FnbHeroDesktopWhyChooseUs.jsx';
-import { getServicesResponsiveLayout } from './shared/utils/storefrontViewport.js';
 import { createTrackingAdapterRegistry } from './tracking/core.js';
 import {
   fnbTrackingAdapter,
@@ -432,7 +427,6 @@ import { PaymentMethodSelectorBlock } from './shared/components/checkout/Payment
 import { CheckoutStepProgressHeader } from './shared/components/checkout/CheckoutStepProgressHeader.jsx';
 import { FnbTrackingRouteContainer } from './modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
-import { DeliveryTrackingView } from './features/tracking/components/DeliveryTrackingView.jsx';
 import { ServiceBookingConfirmation } from './modes/services/booking/components/ServiceBookingConfirmation.jsx';
 import { ServiceBookingEmptyState } from './modes/services/booking/components/ServiceBookingEmptyState.jsx';
 import { ServiceBookingLocationSection } from './modes/services/booking/components/ServiceBookingLocationSection.jsx';
@@ -440,7 +434,6 @@ import { ServiceBookingSelectedServiceCard } from './modes/services/booking/comp
 import { ServiceBookingSummaryCard } from './modes/services/booking/components/ServiceBookingSummaryCard.jsx';
 import { ServiceBookingStepOne, ServiceBookingStepTwo, ServiceBookingStepThree } from './modes/services/booking/components/ServiceBookingSteps.jsx';
 import { ServiceCartDrawer } from './modes/services/booking/components/ServiceCartDrawer.jsx';
-import { FnbHeroMobileInfoCards } from './modes/fnb/storefront/components/FnbHeroMobileInfoCards.jsx';
 import { FnbCommunitySection } from './modes/fnb/storefront/components/FnbCommunitySection.jsx';
 import {
   formatServicesBookingFailureMessage,
