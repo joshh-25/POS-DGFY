@@ -1778,3 +1778,37 @@ Validation:
 
 Notes / next step:
 - Keep these records in `frontend/apps/store/docs/refactor/` and update the progress report after every bounded refactor slice.
+
+## 2026-07-22 - Wave 0: zustand store scaffolding + state-management standard
+
+Slice: Stand up a proper, documented state-management layer for the storefront (sliced zustand),
+the enabler for decomposing `StorefrontApp.jsx` below 1,000 lines. No behavior change — scaffold only.
+
+Files added:
+- `frontend/apps/store/src/store/useStorefrontStore.js` (composed store + devtools + official reset)
+- `frontend/apps/store/src/store/slices/{ui,session,catalog,cart,checkout,serviceBooking,discovery}Slice.js`
+  (`uiSlice` is the fully-worked reference; the rest are documented scaffolds filled in later waves)
+- `frontend/apps/store/src/store/selectors/uiSelectors.js`
+- `frontend/apps/store/src/store/__tests__/useStorefrontStore.test.js`
+- `frontend/apps/store/docs/refactor/STOREFRONT_STATE_MANAGEMENT.md`
+
+Files changed:
+- `frontend/apps/store/docs/refactor/STOREFRONT_FRONTEND_ARCHITECTURE_GUIDE.md`
+  (required-reading entry + State Management section)
+
+StorefrontApp.jsx line count: 9,221 (unchanged — scaffold not yet wired)
+
+Decisions:
+- Library: zustand (repo already standardises on it via `frontend/src/store/useStore.js`); not Redux/Context.
+- Structure: slice pattern — state nested per domain (`s.cart`), actions flat (`s.cartAdd`).
+- Middleware: `devtools` only now; `persist` deferred to Wave 3 (cart), `immer` not used (not a repo dep).
+- Migration uses the in-place bridge (relocate state keeping the same shell-local name → then collapse props).
+
+Validation:
+- Targeted Vitest: passed (`1` file, `6` tests) — scaffolding, ui reference actions, reset.
+- Lint (`apps/store/src/store`): passed, 0 errors.
+- Storefront production build: passed (`npm --prefix frontend run build:store`).
+
+Notes / next step:
+- Wave 1 migrates low-risk slices (session, ui, discovery-wiring, catalog read paths) via the bridge,
+  each with unit tests, gated on browser QA (account/session, modal open/close, discovery, storefront load).
