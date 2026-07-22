@@ -439,6 +439,7 @@ import { ServiceBookingSummaryCard } from './modes/services/booking/components/S
 import { ServiceBookingStepOne, ServiceBookingStepTwo, ServiceBookingStepThree } from './modes/services/booking/components/ServiceBookingSteps.jsx';
 import { ServiceCartDrawer } from './modes/services/booking/components/ServiceCartDrawer.jsx';
 import { FnbHeroMobileInfoCards } from './modes/fnb/storefront/components/FnbHeroMobileInfoCards.jsx';
+import { FnbCommunitySection } from './modes/fnb/storefront/components/FnbCommunitySection.jsx';
 import {
   formatServicesBookingFailureMessage,
   resolveServicesBookingSubmitContract
@@ -7495,82 +7496,16 @@ return (
       )}
 
       {isFnbMode && !isOrderSubpage && !isFnbDetailsSubpage && fnbCommunityModel && (
-        <>
-          <SharedStorefrontPromoSection
-            items={promoSectionModel}
-            isMobileViewport={isMobileViewport}
-            layoutVariant="compact"
-            palette="fnb"
-            titleFontFamily={modeAdapter.heroTheme?.displayFont}
-            bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
-            sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
-            contentMaxWidth={1280}
-            sectionBackground="#ffffff"
-            titleSize={isMobileViewport ? 28 : 36}
-            subtitleSize={isMobileViewport ? 14 : 16}
-            activePromoCode={checkoutPromoCode}
-            onApplyPromo={handlePromoCardApply}
-            collapseSpacing
-          />
-
-          <SharedStorefrontReviewsSection
-            isMobileViewport={isMobileViewport}
-            viewportWidth={viewportWidth}
-            title="Customer Reviews"
-            subtitle="See what diners are saying about this menu storefront."
-            onWriteReview={() => setIsReviewModalOpen(true)}
-            reviewHighlights={fnbCommunityModel.reviewHighlights}
-            emptyMessage="Customer reviews will appear here once this storefront adds review data in SKUpervisor."
-            titleFontFamily={modeAdapter.heroTheme?.displayFont}
-            bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
-            cardVariant="white"
-            writeButtonColor="#f97316"
-            sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
-            contentMaxWidth={1280}
-            titleSize={isMobileViewport ? 28 : 36}
-            subtitleSize={isMobileViewport ? 14 : 16}
-            collapseSpacing
-            starSymbol="*"
-          />
-
-          <SharedStorefrontFooterSection
-            isMobileViewport={isMobileViewport}
-            name={fnbCommunityModel.name}
-            registrationYear={fnbCommunityModel.registrationYear}
-            description={fnbCommunityModel.tagline || fnbCommunityModel.aboutText || 'Food and beverage storefront powered by SKUpervisor content.'}
-            displayFont={modeAdapter.heroTheme?.displayFont}
-            bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
-            sectionPadding={isMobileViewport ? '28px 16px 24px' : '48px 32px 36px'}
-            badgeLinks={getStorefrontSocialFooterLinks(fnbCommunityModel.footerLinks)}
-            columns={[
-              {
-                title: 'Menu Categories',
-                items: fnbCommunityModel.menuCategories.slice(0, 5).map((group) => ({ label: group.label })),
-                emptyText: 'No categories yet.'
-              },
-              {
-                title: 'Socials',
-                items: fnbCommunityModel.footerLinks
-                  .filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))
-                  .map((link) => ({ label: link.label, href: link.href })),
-                emptyText: 'No social links yet.'
-              },
-              {
-                title: 'Contact',
-                items: [
-                  ...fnbCommunityModel.footerLinks
-                    .filter((link) => ['Call', 'Email'].includes(link.label))
-                    .map((link) => ({
-                      label: link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', ''),
-                      href: link.href
-                    })),
-                  ...(fnbCommunityModel.hours ? [{ label: fnbCommunityModel.hours }] : []),
-                  { label: fnbCommunityModel.locationLabel }
-                ]
-              }
-            ]}
-          />
-        </>
+        <FnbCommunitySection
+          fnbCommunityModel={fnbCommunityModel}
+          promoSectionModel={promoSectionModel}
+          isMobileViewport={isMobileViewport}
+          viewportWidth={viewportWidth}
+          modeAdapter={modeAdapter}
+          checkoutPromoCode={checkoutPromoCode}
+          onApplyPromo={handlePromoCardApply}
+          onWriteReview={() => setIsReviewModalOpen(true)}
+        />
       )}
     </div>
 
