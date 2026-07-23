@@ -78,10 +78,6 @@ import {
   DGFY_CONVENIENCE_FEE_RATE,
   ORDER_METHOD_OPTIONS
 } from './shared/model/storefrontConstants.js';
-import {
-  getStorefrontClosedBody,
-  getStorefrontClosedToastMessage
-} from './shared/model/storefrontClosedState.js';
 import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.js';
 import { parseBooleanFlag } from './shared/model/storefrontJsonModel.js';
 import {
@@ -92,7 +88,6 @@ import {
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontCheckoutDrawerFrame } from './shared/components/StorefrontCheckoutDrawerFrame.jsx';
 import { StorefrontCartFlyAnimations } from './shared/components/StorefrontCartFlyAnimations.jsx';
-import { createStorefrontClosedNoticeRenderer } from './shared/components/StorefrontClosedNotice.jsx';
 import { DefaultStorefrontHero } from './shared/components/DefaultStorefrontHero.jsx';
 import { StorefrontHeroShell } from './shared/components/StorefrontHeroShell.jsx';
 import {
@@ -206,6 +201,7 @@ import {
 import { StorefrontExpandableBusinessHours } from './features/shared-storefront/components/StorefrontExpandableBusinessHours.jsx';
 import { StorefrontDropdown } from './features/shared-storefront/components/StorefrontDropdown.jsx';
 import { StorefrontFollowFloatingAction } from './shared/components/storefront/StorefrontFollowFloatingAction.jsx';
+import { useStorefrontClosedNotice } from './shared/hooks/useStorefrontClosedNotice.js';
 import { useStorefrontShareActions } from './shared/hooks/useStorefrontShareActions.js';
 import { StorefrontOrderSuccessOverlay } from './shared/components/storefront/StorefrontOrderSuccessOverlay.jsx';
 import { StorefrontCartFab } from './shared/components/storefront/StorefrontCartFab.jsx';
@@ -1653,20 +1649,16 @@ export default function StorefrontApp() {
     followEnabledForStore,
     storefrontVisitorId
   });
-  const followUiEnabledForStore = followEnabledForStore && followState.supported !== false;
-  const shareEnabledForStore = parseBooleanFlag(selectedStore?.storefront_share_enabled, true);
-  const storefrontHoursStatus = selectedStore?.storefront_hours_status || null;
-  const storefrontClosedByHours = storefrontHoursStatus?.is_open_now === false;
-  const storefrontHoursLabel = formatStorefrontHoursLabel(
-    selectedStore?.storefront_hours,
-    storefrontHoursStatus?.display || ''
-  );
-  const storefrontClosedMessageBody = getStorefrontClosedBody(storefrontHoursLabel);
-  const storefrontClosedToastMessage = getStorefrontClosedToastMessage(storefrontHoursLabel);
-  const renderStorefrontClosedNotice = useMemo(
-    () => createStorefrontClosedNoticeRenderer(storefrontClosedMessageBody),
-    [storefrontClosedMessageBody]
-  );
+  const {
+    followUiEnabledForStore,
+    renderStorefrontClosedNotice,
+    shareEnabledForStore,
+    storefrontClosedByHours,
+    storefrontClosedMessageBody,
+    storefrontClosedToastMessage,
+    storefrontHoursLabel,
+    storefrontHoursStatus
+  } = useStorefrontClosedNotice({ followEnabledForStore, followState, selectedStore });
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,
